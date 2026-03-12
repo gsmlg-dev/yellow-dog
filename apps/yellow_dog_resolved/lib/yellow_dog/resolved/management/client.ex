@@ -111,8 +111,14 @@ defmodule YellowDog.Resolved.Management.Client do
                 %{endpoint: state.endpoint}
               )
 
-              state = %{state | conn: conn, websocket: websocket, connected: true,
-                               last_pong_at: System.monotonic_time(:millisecond)}
+              state = %{
+                state
+                | conn: conn,
+                  websocket: websocket,
+                  connected: true,
+                  last_pong_at: System.monotonic_time(:millisecond)
+              }
+
               connected_msg = Handler.connected_event(state.instance_id)
               state = send_message(state, connected_msg)
               timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)

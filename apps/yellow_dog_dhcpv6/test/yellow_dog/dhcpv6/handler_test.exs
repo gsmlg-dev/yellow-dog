@@ -661,9 +661,14 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       # IA_ADDR: IPv6 addr (16 bytes) + preferred (4) + valid (4)
       ia_addr_data = <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16, 0::32, 0::32>>
       ia_addr_opt = DHCPv6.Message.Option.new(5, ia_addr_data)
-      ia_addr_wire = DHCPv6.Message.to_iodata(%DHCPv6.Message{
-        msg_type: 1, transaction_id: <<0, 0, 0>>, options: [ia_addr_opt]
-      })
+
+      ia_addr_wire =
+        DHCPv6.Message.to_iodata(%DHCPv6.Message{
+          msg_type: 1,
+          transaction_id: <<0, 0, 0>>,
+          options: [ia_addr_opt]
+        })
+
       # Extract just the IA_ADDR option bytes from the wire (skip 4-byte msg header)
       <<_::binary-size(4), ia_addr_option_bytes::binary>> = IO.iodata_to_binary(ia_addr_wire)
 

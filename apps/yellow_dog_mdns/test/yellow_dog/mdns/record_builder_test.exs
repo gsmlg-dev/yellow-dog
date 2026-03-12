@@ -69,7 +69,8 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
     test "PTR data points to service FQDN" do
       record = RecordBuilder.build_ptr_record(@test_service)
 
-      assert String.trim_trailing(to_string(record.data), ".") == "Test Web Server._http._tcp.local"
+      assert String.trim_trailing(to_string(record.data), ".") ==
+               "Test Web Server._http._tcp.local"
     end
 
     test "uses service TTL" do

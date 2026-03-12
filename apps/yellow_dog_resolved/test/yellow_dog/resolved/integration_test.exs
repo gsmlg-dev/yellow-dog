@@ -361,7 +361,12 @@ defmodule YellowDog.Resolved.IntegrationTest do
             %{match: {:exact, "mx.test"}, type: :mx, value: "10 mail.test", ttl: 300},
             %{match: {:exact, "srv.test"}, type: :srv, value: "10 20 5060 sip.test", ttl: 300},
             %{match: {:exact, "ns.test"}, type: :ns, value: "ns1.test", ttl: 300},
-            %{match: {:exact, "1.0.168.192.in-addr.arpa"}, type: :ptr, value: "host.ns.test", ttl: 300}
+            %{
+              match: {:exact, "1.0.168.192.in-addr.arpa"},
+              type: :ptr,
+              value: "host.ns.test",
+              ttl: 300
+            }
           ]
       }
 

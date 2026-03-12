@@ -295,14 +295,26 @@ defmodule YellowDog.Mdns.NetworkMonitorTest do
       # First announce the service
       ptr = create_ptr_record("_http._tcp.local", "goodbyehost._http._tcp.local")
       srv = create_srv_record("goodbyehost._http._tcp.local", "goodbyehost.local", 80)
-      NetworkMonitor.cache_response(create_dns_message(answers: [ptr, srv]), {192, 168, 1, 99}, 5353)
+
+      NetworkMonitor.cache_response(
+        create_dns_message(answers: [ptr, srv]),
+        {192, 168, 1, 99},
+        5353
+      )
+
       :timer.sleep(10)
 
       assert NetworkMonitor.get_discovered_service("goodbyehost._http._tcp.local") != nil
 
       # Now send a Goodbye (TTL=0 PTR) for the same service instance
       goodbye_ptr = create_ptr_record("_http._tcp.local", "goodbyehost._http._tcp.local", 0)
-      NetworkMonitor.cache_response(create_dns_message(answers: [goodbye_ptr]), {192, 168, 1, 99}, 5353)
+
+      NetworkMonitor.cache_response(
+        create_dns_message(answers: [goodbye_ptr]),
+        {192, 168, 1, 99},
+        5353
+      )
+
       :timer.sleep(10)
 
       assert NetworkMonitor.get_discovered_service("goodbyehost._http._tcp.local") == nil

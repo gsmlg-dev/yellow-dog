@@ -757,7 +757,14 @@ defmodule YellowDog.Resolved.ForwarderTest do
       :sys.replace_state(pid, fn state ->
         pending = Map.get(state.pending, txn_id)
         # sent_at in the past by 2000 µs → duration will be ~2000 µs
-        %{state | pending: Map.put(state.pending, txn_id, %{pending | sent_at: System.monotonic_time(:microsecond) - 2000})}
+        %{
+          state
+          | pending:
+              Map.put(state.pending, txn_id, %{
+                pending
+                | sent_at: System.monotonic_time(:microsecond) - 2000
+              })
+        }
       end)
 
       response_binary = build_response(query, txn_id)
@@ -801,7 +808,13 @@ defmodule YellowDog.Resolved.ForwarderTest do
             query = DNS.Message.from_iodata(data)
             # Build SERVFAIL response (rcode 2)
             response = %{query | header: %{query.header | qr: 1, rcode: DNS.Message.RCode.new(2)}}
-            :gen_udp.send(socket, addr, reply_port, DNS.to_iodata(response) |> IO.iodata_to_binary())
+
+            :gen_udp.send(
+              socket,
+              addr,
+              reply_port,
+              DNS.to_iodata(response) |> IO.iodata_to_binary()
+            )
         after
           3000 -> :ok
         end

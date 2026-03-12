@@ -377,12 +377,12 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
     } do
       # Construct state as if we just sent block 65536 (wire block 0)
       {:ok, state, _} =
-        Transfer.init([
+        Transfer.init(
           client_addr: @client_addr,
           client_port: @client_port,
           file_path: file_path,
           block_size: 512
-        ])
+        )
 
       state = %{state | current_block: 65536}
 

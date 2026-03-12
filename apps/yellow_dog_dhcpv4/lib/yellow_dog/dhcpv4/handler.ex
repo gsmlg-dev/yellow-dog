@@ -840,17 +840,20 @@ defmodule YellowDog.Dhcpv4.Handler do
   # (e.g. during startup before pools are loaded).  Real pools come from config.
   defp get_fallback_pool do
     case LeaseManager.get_pools() do
-      [first_pool | _] -> first_pool
-      [] -> %{
-        name: "default",
-        range_start: {192, 168, 1, 100},
-        range_end: {192, 168, 1, 200},
-        subnet_mask: {255, 255, 255, 0},
-        gateway: {192, 168, 1, 1},
-        dns_servers: [{192, 168, 1, 1}, {8, 8, 8, 8}],
-        domain_name: "local",
-        lease_time: 86400
-      }
+      [first_pool | _] ->
+        first_pool
+
+      [] ->
+        %{
+          name: "default",
+          range_start: {192, 168, 1, 100},
+          range_end: {192, 168, 1, 200},
+          subnet_mask: {255, 255, 255, 0},
+          gateway: {192, 168, 1, 1},
+          dns_servers: [{192, 168, 1, 1}, {8, 8, 8, 8}],
+          domain_name: "local",
+          lease_time: 86400
+        }
     end
   end
 

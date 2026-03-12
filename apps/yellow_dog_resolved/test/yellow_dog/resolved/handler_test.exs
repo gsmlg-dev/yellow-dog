@@ -207,6 +207,7 @@ defmodule YellowDog.Resolved.HandlerTest do
     # The OPT record uses class field to carry the UDP payload size (RFC 6891).
     defp build_query_with_edns0(name, type, udp_payload_size) do
       msg = build_query(name, type)
+
       # OPT record raw wire: name=root(1b=0x00), type=41(2b), class=udp_size(2b), ttl=0(4b), rdlen=0(2b)
       opt_wire = <<0, 41::16, udp_payload_size::16, 0::32, 0::16>>
       opt_record = DNS.Message.Record.from_iodata(opt_wire)
@@ -249,7 +250,12 @@ defmodule YellowDog.Resolved.HandlerTest do
     end
 
     defp do_simulate_truncate(answers, response, max_size) do
-      truncated = %{response | anlist: answers, header: %{response.header | tc: 1, ancount: length(answers)}}
+      truncated = %{
+        response
+        | anlist: answers,
+          header: %{response.header | tc: 1, ancount: length(answers)}
+      }
+
       data = DNS.to_iodata(truncated) |> IO.iodata_to_binary()
 
       if byte_size(data) <= max_size do

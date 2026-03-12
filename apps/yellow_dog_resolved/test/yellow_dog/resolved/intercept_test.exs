@@ -30,7 +30,8 @@ defmodule YellowDog.Resolved.InterceptTest do
     end
 
     test "matches prefix pattern" do
-      assert %{type: :a, value: "10.0.0.1"} = Intercept.match("dev-server.example.com", :a, @rules)
+      assert %{type: :a, value: "10.0.0.1"} =
+               Intercept.match("dev-server.example.com", :a, @rules)
     end
 
     test "returns nil for non-matching domain" do

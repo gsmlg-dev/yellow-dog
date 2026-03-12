@@ -105,7 +105,10 @@ defmodule YellowDog.Resolved.Router do
     # RFC 1035 §4.1.1: non-QUERY opcodes (IQUERY, STATUS, NOTIFY, UPDATE, …)
     # are not handled by this stub resolver — return NOTIMP immediately.
     if query.header.opcode != DNS.Message.OpCode.query() do
-      Logger.debug("[Resolved] Non-QUERY opcode #{query.header.opcode} — returning NOTIMP (domain=#{domain})")
+      Logger.debug(
+        "[Resolved] Non-QUERY opcode #{query.header.opcode} — returning NOTIMP (domain=#{domain})"
+      )
+
       {:error, ResponseBuilder.build_response(query, [], DNS.Message.RCode.not_imp())}
     else
       config = Config.get()

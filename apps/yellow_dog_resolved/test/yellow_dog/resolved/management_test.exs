@@ -372,10 +372,7 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       # Inject: connected=true, last_pong_at far in the past (beyond 2× heartbeat)
       :sys.replace_state(pid, fn state ->
-        %{state |
-          connected: true,
-          last_pong_at: System.monotonic_time(:millisecond) - 100_000
-        }
+        %{state | connected: true, last_pong_at: System.monotonic_time(:millisecond) - 100_000}
       end)
 
       send(pid, :heartbeat)
@@ -385,7 +382,6 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       :gen_tcp.close(listen_sock)
     end
-
   end
 
   describe "connected_event/1" do

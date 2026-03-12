@@ -632,10 +632,11 @@ defmodule YellowDog.Dns.View do
       Enum.map(records, fn r -> %{r | ttl: min(r.ttl, remaining_ttl)} end)
     end
 
-    %{response |
-      anlist: adjust.(response.anlist),
-      nslist: adjust.(response.nslist),
-      arlist: adjust.(response.arlist)
+    %{
+      response
+      | anlist: adjust.(response.anlist),
+        nslist: adjust.(response.nslist),
+        arlist: adjust.(response.arlist)
     }
   end
 

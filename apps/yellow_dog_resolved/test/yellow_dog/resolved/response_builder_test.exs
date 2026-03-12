@@ -284,7 +284,12 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
 
     test "PTR record with domain name returns {:ok, record}" do
       assert {:ok, record} =
-               ResponseBuilder.build_record("1.0.168.192.in-addr.arpa", :ptr, "host.example.com", 300)
+               ResponseBuilder.build_record(
+                 "1.0.168.192.in-addr.arpa",
+                 :ptr,
+                 "host.example.com",
+                 300
+               )
 
       assert record.ttl == 300
       assert to_string(record.type) == "PTR"

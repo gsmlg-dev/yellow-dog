@@ -520,7 +520,9 @@ defmodule YellowDog.Resolved.RouterTest do
       # even though ttl > 0, rcode != NOERROR so the middle branch is skipped.
       rcode_is_noerror = servfail_with_answer.header.rcode == DNS.Message.RCode.no_error()
       ttl = 300
-      assert not (rcode_is_noerror and ttl > 0), "SERVFAIL must not satisfy the NOERROR+ttl>0 cache condition"
+
+      assert not (rcode_is_noerror and ttl > 0),
+             "SERVFAIL must not satisfy the NOERROR+ttl>0 cache condition"
 
       # And to be thorough: confirm nothing was written to cache for this key.
       assert :miss = Cache.lookup(domain_str, question.type)
@@ -686,7 +688,15 @@ defmodule YellowDog.Resolved.RouterTest do
       ns = DNS.Message.Domain.new("ns1.example.com")
       rp = DNS.Message.Domain.new("admin.example.com")
       # SOA MINIMUM = 300 (< SOA TTL of 3600) — min should be 300
-      soa_record = DNS.Message.Record.new("example.com", :soa, :in, 3600, {ns, rp, 1, 3600, 900, 604_800, 300})
+      soa_record =
+        DNS.Message.Record.new(
+          "example.com",
+          :soa,
+          :in,
+          3600,
+          {ns, rp, 1, 3600, 900, 604_800, 300}
+        )
+
       assert {_ns, _rp, _serial, _refresh, _retry, _expire, soa_minimum} = soa_record.data.data
       assert soa_minimum == 300
 

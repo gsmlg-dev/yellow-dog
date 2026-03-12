@@ -104,12 +104,16 @@ defmodule YellowDog.Resolved.Discovery do
     case YellowDog.Resolved.Management.Client.start_link(management_config) do
       {:ok, pid} ->
         {:noreply,
-         %{state | management_pid: pid, discovered_endpoint: endpoint, reconnect_delay: state.reconnect_base}}
+         %{
+           state
+           | management_pid: pid,
+             discovered_endpoint: endpoint,
+             reconnect_delay: state.reconnect_base
+         }}
 
       {:error, {:already_started, pid}} ->
         # Two concurrent probes completed — reuse the already-running client.
-        {:noreply,
-         %{state | management_pid: pid, discovered_endpoint: endpoint}}
+        {:noreply, %{state | management_pid: pid, discovered_endpoint: endpoint}}
 
       {:error, reason} ->
         # Client failed to start (e.g. connect refused before even upgrading to WS).

@@ -313,57 +313,58 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     # RFC 3315 §18.2.1: Server Identifier must be present and match this server's DUID
     case validate_server_id(parsed_opts.server_id, client_ip) do
-      :error -> {:continue, state}
+      :error ->
+        {:continue, state}
+
       :ok ->
-
-    case {client_duid, ia_na} do
-      {nil, _} ->
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message, :invalid],
-          %{count: 1},
-          %{reason: "REQUEST missing client DUID", client_ip: client_ip}
-        )
-
-        {:continue, state}
-
-      {_, nil} ->
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message, :invalid],
-          %{count: 1},
-          %{reason: "REQUEST missing IA_NA option", client_ip: client_ip}
-        )
-
-        {:continue, state}
-
-      {duid, %{iaid: iaid}} ->
-        # Allocate or renew lease
-        case LeaseManager.allocate_lease(duid, iaid) do
-          {:ok, lease} ->
-            reply = create_reply(message, lease, parsed_opts)
-
+        case {client_duid, ia_na} do
+          {nil, _} ->
             :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :granted],
-              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, client_duid: duid}
-            )
-
-            send_dhcpv6_response(reply, client_ip, client_port, state)
-
-          {:error, reason} ->
-            :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+              [:yellow_dog, :dhcpv6, :message, :invalid],
               %{count: 1},
-              %{reason: inspect(reason), client_duid: duid}
+              %{reason: "REQUEST missing client DUID", client_ip: client_ip}
             )
 
-            # RFC 3315 §18.2.2: must send REPLY with NoAddrsAvail status code
-            # inside the IA_NA, not silently drop the request.
-            reply = create_no_addrs_avail_reply(message, iaid, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
-        end
+            {:continue, state}
 
-        {:continue, state}
-    end
+          {_, nil} ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :message, :invalid],
+              %{count: 1},
+              %{reason: "REQUEST missing IA_NA option", client_ip: client_ip}
+            )
+
+            {:continue, state}
+
+          {duid, %{iaid: iaid}} ->
+            # Allocate or renew lease
+            case LeaseManager.allocate_lease(duid, iaid) do
+              {:ok, lease} ->
+                reply = create_reply(message, lease, parsed_opts)
+
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :granted],
+                  %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+                  %{client_ip: client_ip, client_duid: duid}
+                )
+
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+
+              {:error, reason} ->
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+                  %{count: 1},
+                  %{reason: inspect(reason), client_duid: duid}
+                )
+
+                # RFC 3315 §18.2.2: must send REPLY with NoAddrsAvail status code
+                # inside the IA_NA, not silently drop the request.
+                reply = create_no_addrs_avail_reply(message, iaid, parsed_opts)
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+            end
+
+            {:continue, state}
+        end
     end
   end
 
@@ -380,48 +381,49 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     # RFC 3315 §18.2.3: Server Identifier must be present and match this server's DUID
     case validate_server_id(parsed_opts.server_id, client_ip) do
-      :error -> {:continue, state}
+      :error ->
+        {:continue, state}
+
       :ok ->
+        case {client_duid, ia_na} do
+          {duid, %{iaid: iaid}} when duid != nil ->
+            # Renew existing lease
+            case LeaseManager.allocate_lease(duid, iaid) do
+              {:ok, lease} ->
+                reply = create_reply(message, lease, parsed_opts)
 
-    case {client_duid, ia_na} do
-      {duid, %{iaid: iaid}} when duid != nil ->
-        # Renew existing lease
-        case LeaseManager.allocate_lease(duid, iaid) do
-          {:ok, lease} ->
-            reply = create_reply(message, lease, parsed_opts)
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :granted],
+                  %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+                  %{client_ip: client_ip, client_duid: duid}
+                )
 
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+
+              {:error, reason} ->
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+                  %{count: 1},
+                  %{reason: inspect(reason), client_duid: duid}
+                )
+
+                # RFC 3315 §18.2.3: must send REPLY with NoBinding status when
+                # unable to find or extend the lease — client must not be left waiting.
+                reply = create_ia_na_error_reply(message, iaid, parsed_opts, @status_no_binding)
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+            end
+
+            {:continue, state}
+
+          _ ->
             :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :granted],
-              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, client_duid: duid}
-            )
-
-            send_dhcpv6_response(reply, client_ip, client_port, state)
-
-          {:error, reason} ->
-            :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+              [:yellow_dog, :dhcpv6, :message, :invalid],
               %{count: 1},
-              %{reason: inspect(reason), client_duid: duid}
+              %{reason: "RENEW missing required options", client_ip: client_ip}
             )
 
-            # RFC 3315 §18.2.3: must send REPLY with NoBinding status when
-            # unable to find or extend the lease — client must not be left waiting.
-            reply = create_ia_na_error_reply(message, iaid, parsed_opts, @status_no_binding)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
+            {:continue, state}
         end
-
-        {:continue, state}
-
-      _ ->
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message, :invalid],
-          %{count: 1},
-          %{reason: "RENEW missing required options", client_ip: client_ip}
-        )
-
-        {:continue, state}
-    end
     end
   end
 

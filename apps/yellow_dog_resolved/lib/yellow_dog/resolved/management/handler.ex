@@ -13,7 +13,8 @@ defmodule YellowDog.Resolved.Management.Handler do
   """
   @spec handle_command(map()) :: map() | nil
   # Allow cache_flush without a "data" key — treat as flush-all (same as data: nil).
-  def handle_command(%{"type" => "cache_flush", "id" => id} = msg) when not is_map_key(msg, "data") do
+  def handle_command(%{"type" => "cache_flush", "id" => id} = msg)
+      when not is_map_key(msg, "data") do
     handle_command(%{"type" => "cache_flush", "id" => id, "data" => nil})
   end
 

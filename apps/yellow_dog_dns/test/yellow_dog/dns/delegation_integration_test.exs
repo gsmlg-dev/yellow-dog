@@ -344,5 +344,4 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
       arlist: []
     }
   end
-
 end

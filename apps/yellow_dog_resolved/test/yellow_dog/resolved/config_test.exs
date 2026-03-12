@@ -404,7 +404,11 @@ defmodule YellowDog.Resolved.ConfigTest do
           "upstreams" => [],
           "intercept" => [
             %{"match" => "alias.local", "type" => "CNAME", "value" => "real.example.com"},
-            %{"match" => "txt.local", "type" => "TXT", "value" => "v=spf1 include:example.com ~all"}
+            %{
+              "match" => "txt.local",
+              "type" => "TXT",
+              "value" => "v=spf1 include:example.com ~all"
+            }
           ]
         }
       }
@@ -432,7 +436,11 @@ defmodule YellowDog.Resolved.ConfigTest do
         "resolved" => %{
           "upstreams" => [],
           "intercept" => [
-            %{"match" => "_sip._tcp.local", "type" => "SRV", "value" => "10 20 5060 sip.example.com"}
+            %{
+              "match" => "_sip._tcp.local",
+              "type" => "SRV",
+              "value" => "10 20 5060 sip.example.com"
+            }
           ]
         }
       }
@@ -526,7 +534,11 @@ defmodule YellowDog.Resolved.ConfigTest do
         "resolved" => %{
           "upstreams" => [],
           "intercept" => [
-            %{"match" => "1.0.168.192.in-addr.arpa", "type" => "PTR", "value" => "host.example.com"}
+            %{
+              "match" => "1.0.168.192.in-addr.arpa",
+              "type" => "PTR",
+              "value" => "host.example.com"
+            }
           ]
         }
       }

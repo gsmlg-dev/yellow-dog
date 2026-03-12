@@ -89,7 +89,10 @@ defmodule YellowDog.Resolved.Handler do
 
         %DNS.Message{header: %{qr: 0}} = query ->
           # RFC 1035 §4.1.1: non-QUERY opcodes are not supported — return NOTIMP
-          Logger.debug("[Resolved] Received non-QUERY opcode from #{:inet.ntoa(client_ip)} — returning NOTIMP")
+          Logger.debug(
+            "[Resolved] Received non-QUERY opcode from #{:inet.ntoa(client_ip)} — returning NOTIMP"
+          )
+
           response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.not_imp())
           response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
           Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
@@ -98,7 +101,9 @@ defmodule YellowDog.Resolved.Handler do
           # Silently discard DNS response packets — the resolver only accepts
           # queries (QR=0).  Sending a reply to a response would be incorrect
           # and could participate in reflection amplification.
-          Logger.debug("[Resolved] Received DNS response on query port from #{:inet.ntoa(client_ip)} — discarding")
+          Logger.debug(
+            "[Resolved] Received DNS response on query port from #{:inet.ntoa(client_ip)} — discarding"
+          )
 
         _ ->
           emit_malformed_packet(client_ip)
@@ -170,7 +175,12 @@ defmodule YellowDog.Resolved.Handler do
   end
 
   defp do_truncate(answers, response, max_size) do
-    truncated = %{response | anlist: answers, header: %{response.header | tc: 1, ancount: length(answers)}}
+    truncated = %{
+      response
+      | anlist: answers,
+        header: %{response.header | tc: 1, ancount: length(answers)}
+    }
+
     data = DNS.to_iodata(truncated) |> IO.iodata_to_binary()
 
     if byte_size(data) <= max_size do

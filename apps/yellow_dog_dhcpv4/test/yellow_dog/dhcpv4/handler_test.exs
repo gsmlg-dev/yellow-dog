@@ -458,17 +458,26 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
 
     test "DISCOVER with broadcast bit sends OFFER to 255.255.255.255", %{socket: socket} do
       message = %DHCPv4.Message{
-        op: 1, htype: 1, hlen: 6, hops: 0,
-        xid: 0xAABBCCDD, secs: 0, flags: 0x8000,
-        ciaddr: {0, 0, 0, 0}, yiaddr: {0, 0, 0, 0},
-        siaddr: {0, 0, 0, 0}, giaddr: {0, 0, 0, 0},
+        op: 1,
+        htype: 1,
+        hlen: 6,
+        hops: 0,
+        xid: 0xAABBCCDD,
+        secs: 0,
+        flags: 0x8000,
+        ciaddr: {0, 0, 0, 0},
+        yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0},
+        giaddr: {0, 0, 0, 0},
         chaddr: <<0xAA, 0xBB, 0xCC, 0x11, 0x22, 0x33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
-        sname: <<0::size(512)>>, file: <<0::size(1024)>>,
+        sname: <<0::size(512)>>,
+        file: <<0::size(1024)>>,
         options: [
           %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
           %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
         ]
       }
+
       data = DHCP.Parameter.to_iodata(message)
 
       Handler.handle_data({{0, 0, 0, 0}, 68, data}, %{socket: socket})
@@ -478,17 +487,26 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
 
     test "DISCOVER without broadcast bit sends OFFER to yiaddr (unicast)", %{socket: socket} do
       message = %DHCPv4.Message{
-        op: 1, htype: 1, hlen: 6, hops: 0,
-        xid: 0xAABBCCDE, secs: 0, flags: 0x0000,
-        ciaddr: {0, 0, 0, 0}, yiaddr: {0, 0, 0, 0},
-        siaddr: {0, 0, 0, 0}, giaddr: {0, 0, 0, 0},
+        op: 1,
+        htype: 1,
+        hlen: 6,
+        hops: 0,
+        xid: 0xAABBCCDE,
+        secs: 0,
+        flags: 0x0000,
+        ciaddr: {0, 0, 0, 0},
+        yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0},
+        giaddr: {0, 0, 0, 0},
         chaddr: <<0xAA, 0xBB, 0xCC, 0x11, 0x22, 0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
-        sname: <<0::size(512)>>, file: <<0::size(1024)>>,
+        sname: <<0::size(512)>>,
+        file: <<0::size(1024)>>,
         options: [
           %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
           %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
         ]
       }
+
       data = DHCP.Parameter.to_iodata(message)
 
       Handler.handle_data({{0, 0, 0, 0}, 68, data}, %{socket: socket})

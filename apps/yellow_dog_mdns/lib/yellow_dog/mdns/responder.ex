@@ -122,9 +122,9 @@ defmodule YellowDog.Mdns.Responder do
     # Check if any of our records are in the query's answer section
     Enum.any?(our_records, fn our_record ->
       Enum.any?(query.anlist, fn known_answer ->
+        # RFC 6762 §7.1: suppress if known-answer TTL >= half the record's TTL
+        # ("at least half of their original TTL remaining")
         records_match?(our_record, known_answer) and
-          # RFC 6762 §7.1: suppress if known-answer TTL >= half the record's TTL
-          # ("at least half of their original TTL remaining")
           known_answer.ttl >= div(our_record.ttl, 2)
       end)
     end)

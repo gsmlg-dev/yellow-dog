@@ -675,7 +675,14 @@ defmodule YellowDog.Dns.Zone.Auth do
     ttl = soa.minimum || default_ttl
     mname = trim_trailing_dot(to_string(soa.primary_ns))
     rname = trim_trailing_dot(to_string(soa.admin_email))
-    Message.Record.new(name, :soa, :in, ttl, {mname, rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum})
+
+    Message.Record.new(
+      name,
+      :soa,
+      :in,
+      ttl,
+      {mname, rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum}
+    )
   end
 
   defp build_soa_from_zone(%DNS.Zone{soa: soa, origin: origin}, zone_name, default_ttl)
@@ -689,7 +696,14 @@ defmodule YellowDog.Dns.Zone.Auth do
     expire = Map.get(soa, :expire, 604_800)
     minimum = Map.get(soa, :minimum, 86_400)
     ttl = minimum || default_ttl
-    Message.Record.new(name, :soa, :in, ttl, {mname, rname, serial, refresh, retry, expire, minimum})
+
+    Message.Record.new(
+      name,
+      :soa,
+      :in,
+      ttl,
+      {mname, rname, serial, refresh, retry, expire, minimum}
+    )
   end
 
   defp build_soa_from_zone(_zone, _zone_name, _default_ttl), do: nil
@@ -886,8 +900,12 @@ defmodule YellowDog.Dns.Zone.Auth do
           # The wildcard candidate is the query name with the leftmost label
           # replaced by "*" (e.g., "a.example.com" → "*.example.com").
           wildcard = wildcard_candidate(qname)
-          wildcard_records = if wildcard, do: lookup_records(state.table, wildcard, qtype), else: []
-          wildcard_cnames = if wildcard, do: lookup_records(state.table, wildcard, :cname), else: []
+
+          wildcard_records =
+            if wildcard, do: lookup_records(state.table, wildcard, qtype), else: []
+
+          wildcard_cnames =
+            if wildcard, do: lookup_records(state.table, wildcard, :cname), else: []
 
           cond do
             Enum.any?(wildcard_records) ->
