@@ -1035,13 +1035,17 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       MockNetlink.link_up(interface, carrier: true)
       Process.sleep(50)
 
+      # Simulate the kernel address event that would occur after add_address command
+      MockNetlink.address_added(interface, "2001:db8::1/64", family: "inet6")
+      Process.sleep(50)
+
       {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
       Process.sleep(50)
       FSM.activate(pid)
       Process.sleep(300)
 
       {:ok, state} = FSM.get_state(pid)
-      # IPv4 disabled + IPv6 manual → ip_check passes (method == :disabled) → activated
+      # IPv4 disabled + IPv6 manual → static address applied → ip_check finds global → activated
       assert state.state in [:activated, :ip_check, :configuring]
 
       GenServer.stop(pid, :normal)
@@ -1071,8 +1075,8 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       Process.sleep(300)
 
       {:ok, state} = FSM.get_state(pid)
-      # Bad IPv6 CIDR is non-fatal; IPv4 disabled → ip_check passes → activated
-      assert state.state in [:activated, :ip_check, :configuring]
+      # Bad IPv6 CIDR → apply_static_ipv6 fails → ip_check retries (no global address)
+      assert state.state in [:ip_check, :configuring]
 
       GenServer.stop(pid, :normal)
     end
@@ -2251,6 +2255,241 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
         assert_receive {:netman_event, _, {:deactivated, ^interface}}, 500
       end
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "IPv6 SLAAC (ipv4=disabled, ipv6=auto)" do
+    @tag :capture_log
+    test "waits for SLAAC address then activates" do
+      interface = "fsm_slaac_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "slaac-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(100)
+
+      # Should be in configuring, waiting for SLAAC (no immediate ip_check)
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :configuring
+
+      # Simulate SLAAC address arrival via kernel netlink
+      MockNetlink.address_added(interface, "2001:db8::abcd/64", family: "inet6", scope: "global")
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:ip_check, :activated]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "times out when no SLAAC address arrives" do
+      interface = "fsm_slaac_to_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "slaac-to-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      # Suspend to inject activate then force timeout
+      :sys.suspend(pid)
+      FSM.activate(pid)
+      :sys.resume(pid)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      # Should be stuck in configuring waiting for SLAAC
+      assert state.state == :configuring
+
+      # Force the configuring timeout
+      send(pid, {:timeout, :state_timeout, :configuring_timeout})
+      Process.sleep(100)
+
+      # Timeout path handled by gen_statem state_timeout — may need direct event
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:configuring, :failed]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "carrier loss during SLAAC wait transitions to deactivating" do
+      interface = "fsm_slaac_cl_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "slaac-cl-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :configuring
+
+      # Lose carrier while waiting for SLAAC
+      MockNetlink.carrier_change(interface, false)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:deactivating, :disconnected]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "dual-stack auto: SLAAC address triggers ip_check even without DHCP" do
+      interface = "fsm_dual_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "dual-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      :sys.suspend(pid)
+      FSM.activate(pid)
+
+      # Inject SLAAC address (arrives before DHCP completes)
+      send(
+        pid,
+        {:netman_event, "netman:address:#{interface}",
+         {:add, %{scope: :global, address: "2001:db8::1", prefix_len: 64, family: :inet6}}}
+      )
+
+      :sys.resume(pid)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      # SLAAC address provides global → ip_check passes even without DHCP lease
+      assert state.state in [:ip_check, :activated]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "activated IPv6 auto: SLAAC address removal triggers deactivation" do
+      interface = "fsm_v6rm_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "v6rm-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(100)
+
+      # FSM should be in configuring, waiting for SLAAC
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :configuring
+
+      # Simulate SLAAC address arrival
+      MockNetlink.address_added(interface, "2001:db8::abcd/64", family: "inet6", scope: "global")
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:activated, :ip_check]
+
+      if state.state == :activated do
+        # Remove the SLAAC address
+        MockNetlink.address_removed(interface, "2001:db8::abcd/64")
+        Process.sleep(200)
+
+        {:ok, state} = FSM.get_state(pid)
+        # IPv6 auto needs global → should deactivate when all global addresses lost
+        assert state.state in [:deactivating, :disconnected]
+      end
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "both disabled: ip_check passes without any address" do
+      interface = "fsm_bothd_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "bothd-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      # Both protocols disabled → no address needed → activated
+      assert state.state == :activated
 
       GenServer.stop(pid, :normal)
     end

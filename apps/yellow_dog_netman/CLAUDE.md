@@ -56,7 +56,7 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 771+ tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test     # 777+ tests + 2055 properties (~25 min)
 cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
@@ -73,3 +73,10 @@ cd apps/yellow_dog_netman && mix credo --strict
 
 - DNS search domains: `ipv4.dns_search` / `ipv6.dns_search` in TOML profiles
 - Search domains flow through DesiredState → ReconciliationEngine DNS diffs → FSM push_dns → Resolved
+
+## IPv6 SLAAC Handling
+
+- FSM `configure_ip` with `ipv4=disabled, ipv6=auto` waits for kernel SLAAC (netlink address event)
+- `ip_check` only bypasses address verification when BOTH IPv4 and IPv6 are disabled/link-local
+- `activated` state monitors global address removal for both IPv4 and IPv6 protocols
+- In tests: mock netlink doesn't auto-populate ETS from `add_address` commands — must call `MockNetlink.address_added` to simulate kernel events

@@ -235,7 +235,16 @@ defmodule YellowDog.Netman.Connection.FSM do
         apply_static_ip(data)
 
       :disabled ->
-        transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
+        # IPv4 disabled — check if IPv6 needs time for SLAAC
+        case data.profile.ipv6.method do
+          :auto ->
+            # Wait for kernel SLAAC to provide a global address via netlink
+            {:keep_state, data}
+
+          _ ->
+            # :manual (already applied above), :disabled, :link_local — proceed
+            transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
+        end
     end
   end
 
@@ -326,7 +335,12 @@ defmodule YellowDog.Netman.Connection.FSM do
     addresses = AddressManager.get_addresses(data.interface)
     has_global = Enum.any?(addresses, &(&1.scope == :global))
 
-    if has_global or data.profile.ipv4.method == :disabled do
+    # Only bypass address check when neither protocol expects a global address
+    no_global_expected =
+      data.profile.ipv4.method == :disabled and
+        data.profile.ipv6.method in [:disabled, :link_local]
+
+    if has_global or no_global_expected do
       data = %{data | ip_check_retries: 0}
 
       transition(data, :ip_check, :activated, [
@@ -403,7 +417,12 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def activated(:info, {:netman_event, _, {:remove, %{scope: :global}}}, data) do
     # A global address was removed — check if we still have any
-    if data.profile.ipv4.method != :disabled do
+    # Only matters if at least one protocol expects a global address
+    needs_global =
+      data.profile.ipv4.method != :disabled or
+        data.profile.ipv6.method in [:auto, :manual]
+
+    if needs_global do
       addresses = AddressManager.get_addresses(data.interface)
       has_global = Enum.any?(addresses, &(&1.scope == :global))
 
