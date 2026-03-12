@@ -87,7 +87,8 @@ defmodule YellowDog.Mdns.RecordBuilder do
     %Record{
       name: service.fqdn,
       type: ResourceRecordType.new(:srv),
-      class: Class.internet(),
+      # RFC 6762 §11.3: SRV is a unique record — set cache-flush bit (class 0x8001)
+      class: Class.internet_flush(),
       ttl: service.ttl || @default_service_ttl,
       data: Data.SRV.new({service.priority, service.weight, service.port, service.host})
     }
@@ -118,7 +119,8 @@ defmodule YellowDog.Mdns.RecordBuilder do
     %Record{
       name: service.fqdn,
       type: ResourceRecordType.new(:txt),
-      class: Class.internet(),
+      # RFC 6762 §11.3: TXT is a unique record — set cache-flush bit (class 0x8001)
+      class: Class.internet_flush(),
       ttl: service.ttl || @default_service_ttl,
       data: Data.TXT.new(txt_data)
     }
@@ -138,7 +140,8 @@ defmodule YellowDog.Mdns.RecordBuilder do
       %Record{
         name: service.host,
         type: ResourceRecordType.new(:a),
-        class: Class.internet(),
+        # RFC 6762 §11.3: A is a unique record — set cache-flush bit (class 0x8001)
+        class: Class.internet_flush(),
         ttl: @default_host_ttl,
         data: Data.A.new(ip)
       }
@@ -159,7 +162,8 @@ defmodule YellowDog.Mdns.RecordBuilder do
       %Record{
         name: service.host,
         type: ResourceRecordType.new(:aaaa),
-        class: Class.internet(),
+        # RFC 6762 §11.3: AAAA is a unique record — set cache-flush bit (class 0x8001)
+        class: Class.internet_flush(),
         ttl: @default_host_ttl,
         data: Data.AAAA.new(ip)
       }

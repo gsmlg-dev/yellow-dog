@@ -92,7 +92,8 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
 
       assert record.name == "Test Web Server._http._tcp.local"
       assert to_string(record.type) == "SRV"
-      assert to_string(record.class) == "IN"
+      # RFC 6762 §11.3: SRV is a unique record — cache-flush bit must be set (class IN+)
+      assert to_string(record.class) == "IN+"
     end
 
     test "SRV data contains correct fields" do
@@ -122,7 +123,8 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
 
       assert record.name == "Test Web Server._http._tcp.local"
       assert to_string(record.type) == "TXT"
-      assert to_string(record.class) == "IN"
+      # RFC 6762 §11.3: TXT is a unique record — cache-flush bit must be set (class IN+)
+      assert to_string(record.class) == "IN+"
     end
 
     test "TXT data contains key=value pairs" do
