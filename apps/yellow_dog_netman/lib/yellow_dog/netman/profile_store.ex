@@ -24,6 +24,8 @@ defmodule YellowDog.Netman.ProfileStore do
     :watcher_pid,
     :debounce_ref,
     profiles: %{},
+    # Reverse mapping: file path → profile ID, for detecting ID changes on reload
+    path_ids: %{},
     pending_reloads: MapSet.new()
   ]
 
@@ -77,14 +79,15 @@ defmodule YellowDog.Netman.ProfileStore do
     profile_dir =
       Application.get_env(:yellow_dog_netman, :profile_dir, @default_profile_dir)
 
-    profiles = load_profiles(profile_dir)
+    {profiles, path_ids} = load_profiles(profile_dir)
     watcher_pid = start_watcher(profile_dir)
 
     {:ok,
      %__MODULE__{
        profile_dir: profile_dir,
        watcher_pid: watcher_pid,
-       profiles: profiles
+       profiles: profiles,
+       path_ids: path_ids
      }}
   end
 
@@ -224,19 +227,19 @@ defmodule YellowDog.Netman.ProfileStore do
       |> Path.join("*.toml")
       |> Path.wildcard()
       |> Enum.reject(&symlink?/1)
-      |> Enum.reduce(%{}, fn path, acc ->
+      |> Enum.reduce({%{}, %{}}, fn path, {profiles, path_ids} ->
         case parse_toml_file(path) do
           {:ok, profile} ->
-            Map.put(acc, profile.id, profile)
+            {Map.put(profiles, profile.id, profile), Map.put(path_ids, path, profile.id)}
 
           {:error, reason} ->
             Logger.warning("Failed to parse profile #{path}: #{inspect(reason)}")
-            acc
+            {profiles, path_ids}
         end
       end)
     else
       Logger.info("Profile directory does not exist: #{dir}")
-      %{}
+      {%{}, %{}}
     end
   end
 
@@ -287,9 +290,21 @@ defmodule YellowDog.Netman.ProfileStore do
   defp reload_profile(state, path) do
     case parse_toml_file(path) do
       {:ok, profile} ->
-        profiles = Map.put(state.profiles, profile.id, profile)
+        # If the profile ID changed, remove the old entry
+        old_id = Map.get(state.path_ids, path)
+
+        profiles =
+          if old_id && old_id != profile.id do
+            Logger.info("Profile ID changed from #{old_id} to #{profile.id} in #{path}")
+            EventBus.publish("netman:profile:changed", {:deleted, old_id})
+            state.profiles |> Map.delete(old_id) |> Map.put(profile.id, profile)
+          else
+            Map.put(state.profiles, profile.id, profile)
+          end
+
+        path_ids = Map.put(state.path_ids, path, profile.id)
         EventBus.publish("netman:profile:changed", {:reloaded, profile.id})
-        %{state | profiles: profiles}
+        %{state | profiles: profiles, path_ids: path_ids}
 
       {:error, reason} ->
         Logger.warning("Failed to reload profile #{path}: #{inspect(reason)}")

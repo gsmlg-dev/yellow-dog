@@ -534,4 +534,70 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert matched.id == hi_id
     end
   end
+
+  describe "profile ID change on hot-reload" do
+    test "old profile ID is removed when TOML file changes its connection.id" do
+      tmp_dir = System.tmp_dir!()
+      tmp_file = Path.join(tmp_dir, "id_change_test_#{:rand.uniform(65535)}.toml")
+
+      # Write initial TOML with ID "old-id"
+      File.write!(tmp_file, """
+      [connection]
+      id = "id-change-old"
+      type = "ethernet"
+      interface = "eth_idchg"
+
+      [ipv4]
+      method = "auto"
+
+      [ipv6]
+      method = "disabled"
+      """)
+
+      on_exit(fn ->
+        File.rm(tmp_file)
+        ProfileStore.delete("id-change-old")
+        ProfileStore.delete("id-change-new")
+      end)
+
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      # First load: creates "id-change-old"
+      send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
+      Process.sleep(300)
+
+      assert {:ok, %Profile{id: "id-change-old"}} = ProfileStore.get("id-change-old")
+
+      # Drain events
+      assert_receive {:netman_event, "netman:profile:changed",
+                      {:reloaded, "id-change-old"}}, 500
+
+      # Now change the ID in the file
+      File.write!(tmp_file, """
+      [connection]
+      id = "id-change-new"
+      type = "ethernet"
+      interface = "eth_idchg"
+
+      [ipv4]
+      method = "auto"
+
+      [ipv6]
+      method = "disabled"
+      """)
+
+      send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
+      Process.sleep(300)
+
+      # Old ID should be deleted, new ID should exist
+      assert {:error, :not_found} = ProfileStore.get("id-change-old")
+      assert {:ok, %Profile{id: "id-change-new"}} = ProfileStore.get("id-change-new")
+
+      # Should receive a :deleted event for old ID and :reloaded for new ID
+      assert_receive {:netman_event, "netman:profile:changed",
+                      {:deleted, "id-change-old"}}, 500
+      assert_receive {:netman_event, "netman:profile:changed",
+                      {:reloaded, "id-change-new"}}, 500
+    end
+  end
 end

@@ -607,7 +607,7 @@ defmodule YellowDog.Netman.Connection.FSM do
       "Deactivation timed out for #{data.interface}, forcing transition to disconnected"
     )
 
-    data = %{data | lease: nil}
+    data = %{data | lease: nil, reactivate: false, ip_check_retries: 0}
     transition(data, :deactivating, :disconnected)
   end
 
@@ -938,8 +938,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     lease_dns =
       case data.lease do
         %{dns_servers: servers} when is_list(servers) ->
-          Enum.map(servers, fn ip ->
-            ip |> :inet.ntoa() |> List.to_string()
+          Enum.flat_map(servers, fn
+            s when is_binary(s) -> [s]
+            ip when is_tuple(ip) -> [ip |> :inet.ntoa() |> List.to_string()]
+            _ -> []
           end)
 
         _ ->
