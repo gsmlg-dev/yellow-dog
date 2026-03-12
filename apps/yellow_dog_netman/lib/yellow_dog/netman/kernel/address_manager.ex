@@ -19,7 +19,7 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
           address: String.t(),
           prefix_len: non_neg_integer(),
           family: :inet | :inet6,
-          scope: String.t() | nil,
+          scope: :global | :link | :host,
           interface: String.t()
         }
 

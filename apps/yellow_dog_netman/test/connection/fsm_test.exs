@@ -2419,6 +2419,53 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     end
 
     @tag :capture_log
+    test "dual-stack auto: DHCP failure falls back to IPv6 SLAAC" do
+      interface = "fsm_dsfb_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "dsfb-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(100)
+
+      # Simulate DHCP fatal failure (non-retryable)
+      send(pid, {:dhcp_lease_failed, {:mac_detection_failed, :test}})
+      Process.sleep(50)
+
+      # FSM should NOT be :failed — should stay in :configuring waiting for SLAAC
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :configuring
+
+      # Now inject SLAAC address — should trigger ip_check
+      send(
+        pid,
+        {:netman_event, "netman:address:#{interface}",
+         {:add, %{scope: :global, address: "2001:db8::2", prefix_len: 64, family: :inet6}}}
+      )
+
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:ip_check, :activated]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
     test "activated IPv6 auto: SLAAC address removal triggers deactivation" do
       interface = "fsm_v6rm_#{:rand.uniform(99_999)}"
 

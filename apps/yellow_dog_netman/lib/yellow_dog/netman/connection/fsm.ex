@@ -309,7 +309,15 @@ defmodule YellowDog.Netman.Connection.FSM do
         )
       end
 
-      transition(%{data | error: :dhcp_failed, dhcp_retries: 0}, :configuring, :failed)
+      # In dual-stack mode (ipv4=auto + ipv6=auto), fall back to waiting for
+      # IPv6 SLAAC instead of failing immediately (configuring timeout will
+      # still catch the case where SLAAC also doesn't arrive)
+      if data.profile.ipv6.method == :auto do
+        Logger.info("DHCP failed for #{data.interface}, falling back to IPv6 SLAAC")
+        {:keep_state, %{data | dhcp_retries: 0}}
+      else
+        transition(%{data | error: :dhcp_failed, dhcp_retries: 0}, :configuring, :failed)
+      end
     end
   end
 
