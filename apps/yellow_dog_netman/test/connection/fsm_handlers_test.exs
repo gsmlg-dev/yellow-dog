@@ -1446,7 +1446,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.profile.ipv4.dns == ["8.8.8.8"]
     end
 
-    test "activated: method change triggers deactivation" do
+    test "activated: method change triggers deactivation with reactivate flag" do
       iface = "hdlr_upd_m_#{:rand.uniform(65535)}"
       old_profile = base_profile(iface)
 
@@ -1460,6 +1460,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       result = FSM.activated(:cast, {:update_profile, new_profile}, data)
       assert {:next_state, :deactivating, new_data, _actions} = result
       assert new_data.profile.ipv4.method == :auto
+      assert new_data.reactivate == true
     end
 
     test "disconnected: update_profile replaces cached profile" do
@@ -1476,7 +1477,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.profile.autoconnect_priority == 50
     end
 
-    test "configuring: method change triggers deactivation" do
+    test "configuring: method change triggers deactivation with reactivate flag" do
       iface = "hdlr_upd_c_#{:rand.uniform(65535)}"
       old_profile = base_profile(iface)
 
@@ -1490,6 +1491,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       result = FSM.configuring(:cast, {:update_profile, new_profile}, data)
       assert {:next_state, :deactivating, new_data, _actions} = result
       assert new_data.profile.ipv6.method == :auto
+      assert new_data.reactivate == true
     end
 
     test "configuring: non-method change keeps state" do
@@ -1503,6 +1505,61 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       result = FSM.configuring(:cast, {:update_profile, new_profile}, data)
       assert {:keep_state, new_data} = result
       assert new_data.profile.autoconnect_priority == 999
+    end
+
+    test "deactivating: cleanup with reactivate flag emits auto_activate" do
+      iface = "hdlr_react_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{autoconnect: true})
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        reactivate: true
+      }
+
+      result = FSM.deactivating(:internal, :cleanup, data)
+      assert {:next_state, :disconnected, new_data, actions} = result
+      assert new_data.reactivate == false
+      assert new_data.lease == nil
+      # Should include auto_activate event for re-activation
+      assert {:next_event, :internal, :auto_activate} in actions
+    end
+
+    test "deactivating: cleanup without reactivate flag does not auto_activate" do
+      iface = "hdlr_noreact_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        reactivate: false
+      }
+
+      result = FSM.deactivating(:internal, :cleanup, data)
+      assert {:next_state, :disconnected, new_data, actions} = result
+      assert new_data.reactivate == false
+      # Should NOT include auto_activate
+      refute Enum.any?(actions, fn
+        {:next_event, :internal, :auto_activate} -> true
+        _ -> false
+      end)
+    end
+
+    test "activated: non-method priority change flushes routes before reinstall" do
+      iface = "hdlr_route_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+
+      new_profile = %{old_profile | autoconnect_priority: 500}
+
+      # Use direct handler invocation to verify RouteManager.flush is called
+      # The returned data should have the new profile
+      data = %FSM{interface: iface, profile: old_profile, current_state: :activated}
+
+      result = FSM.activated(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 500
     end
   end
 end

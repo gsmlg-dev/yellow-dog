@@ -2494,4 +2494,86 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  describe "method change reactivation" do
+    @tag :capture_log
+    test "activated: method change deactivates then auto-reactivates" do
+      interface = "fsm_react_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "react-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Change method — should deactivate then re-activate
+      new_profile = %{
+        profile
+        | ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []}
+      }
+
+      FSM.update_profile(pid, new_profile)
+      Process.sleep(500)
+
+      {:ok, state} = FSM.get_state(pid)
+      # With autoconnect=true, should have re-activated (possibly in configuring/ip_check/failed
+      # since static IP add is a no-op in mock, but NOT stuck in disconnected)
+      assert state.state != :disconnected
+      assert state.state in [:configuring, :ip_check, :activated, :failed, :prepare]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "normal deactivation does not auto-reactivate" do
+      interface = "fsm_noreact_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "noreact-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Normal deactivation — should stay disconnected
+      FSM.deactivate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end

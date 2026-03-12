@@ -45,7 +45,8 @@ defmodule YellowDog.Netman.Connection.FSM do
     current_state: :unavailable,
     error: nil,
     ip_check_retries: 0,
-    dhcp_retries: 0
+    dhcp_retries: 0,
+    reactivate: false
   ]
 
   ## Client API
@@ -330,7 +331,7 @@ defmodule YellowDog.Netman.Connection.FSM do
       Logger.info("Profile #{data.profile.id} method changed during configuring, restarting")
       release_dhcp(data)
 
-      transition(%{data | profile: new_profile}, :configuring, :deactivating, [
+      transition(%{data | profile: new_profile, reactivate: true}, :configuring, :deactivating, [
         {:next_event, :internal, :cleanup},
         {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
       ])
@@ -495,14 +496,16 @@ defmodule YellowDog.Netman.Connection.FSM do
       # IP method changed — must reconfigure: deactivate then re-activate
       Logger.info("Profile #{old.id} method changed, reconfiguring #{data.interface}")
 
-      transition(%{data | profile: new_profile}, :activated, :deactivating, [
+      transition(%{data | profile: new_profile, reactivate: true}, :activated, :deactivating, [
         {:next_event, :internal, :cleanup},
         {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
       ])
     else
       # Non-method change (DNS, priority, gateway, etc.) — update in-place
+      # Flush old routes first to avoid stale routes with wrong metrics
       data = %{data | profile: new_profile}
       push_dns(data)
+      RouteManager.flush(data.interface)
       install_routes(data)
       {:keep_state, data}
     end
@@ -529,8 +532,17 @@ defmodule YellowDog.Netman.Connection.FSM do
     AddressManager.flush(data.interface)
     RouteManager.flush(data.interface)
     EventBus.publish("netman:connection:#{data.profile.id}", {:deactivated, data.interface})
-    data = %{data | lease: nil}
-    transition(data, :deactivating, :disconnected)
+    reactivate? = data.reactivate
+    data = %{data | lease: nil, reactivate: false}
+
+    if reactivate? do
+      # Method change — immediately re-activate with the updated profile
+      transition(data, :deactivating, :disconnected, [
+        {:next_event, :internal, :auto_activate}
+      ])
+    else
+      transition(data, :deactivating, :disconnected)
+    end
   end
 
   def deactivating(:state_timeout, :cleanup_timeout, data) do

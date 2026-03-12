@@ -1,17 +1,17 @@
 # Session Continuity
 
-Updated: 2026-03-12T22:00:00Z
+Updated: 2026-03-12T23:00:00Z
 
 ## Current State
 
-- Iteration: 5
+- Iteration: 6
 - Phase: IMPLEMENTATION
 - Provider: claude
-- Elapsed: 74h 35m
+- Elapsed: 76h 00m
 
 ## Last Completed Task
 
-- Last commit: fix(netman/fsm): correct IPv6 SLAAC handling in configure_ip, ip_check, and activated
+- Last commit: fix(netman/fsm): auto-reactivate after method change and flush stale routes on priority update
 
 ## Fixes This Session
 
@@ -27,6 +27,8 @@ Updated: 2026-03-12T22:00:00Z
 10. `feat(netman)`: Implement compute_deactivation_diffs — auto-deactivate orphaned FSMs when profiles deleted
 11. `feat(netman)`: Add DNS search domain support to profiles, reconciliation, and FSM push_dns
 12. `fix(netman/fsm)`: Correct IPv6 SLAAC handling — configure_ip waits for SLAAC, ip_check validates both families, activated monitors IPv6 address removal
+13. `feat(netman)`: Profile hot-reload pushes updated profiles to running FSMs
+14. `fix(netman/fsm)`: Auto-reactivate after method change deactivation; flush stale routes on non-method profile update
 
 ## Active Blockers
 
@@ -34,9 +36,8 @@ Updated: 2026-03-12T22:00:00Z
 
 ## Next Up
 
-- Profile hot-reload → FSM re-evaluation when autoconnect/interface changes
-- SecretStore implementation (currently a stub)
-- API.CLI: implement remaining JSON-RPC methods
+- SecretStore implementation (currently a stub — Phase 1 PRD says file-based backend)
+- API.CLI: all PRD methods implemented, consider `connection.update` for profile modification
 
 ## Mistakes & Learnings
 
@@ -58,3 +59,10 @@ Updated: 2026-03-12T22:00:00Z
   even when IPv6 :auto expected a SLAAC address. Must check BOTH protocols.
 - Mock netlink `Netlink.command` is a no-op — addresses only enter ETS via events.
   Tests for static IPv6 must call `MockNetlink.address_added` to simulate kernel response.
+- Profile hot-reload architecture: don't compute update diffs in the stateless diff pipeline
+  (breaks idempotency). Instead push profiles directly via event-driven approach.
+- Method change deactivation must auto-reactivate: FSM process still exists in :disconnected,
+  so reconciliation won't spawn a new one. Use a `reactivate` flag in FSM data to trigger
+  auto_activate after cleanup completes.
+- Non-method profile changes (priority) in activated state must flush old routes before
+  installing new ones — otherwise stale routes with wrong metrics remain.
