@@ -569,8 +569,8 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert {:ok, %Profile{id: "id-change-old"}} = ProfileStore.get("id-change-old")
 
       # Drain events
-      assert_receive {:netman_event, "netman:profile:changed",
-                      {:reloaded, "id-change-old"}}, 500
+      assert_receive {:netman_event, "netman:profile:changed", {:reloaded, "id-change-old"}},
+                     500
 
       # Now change the ID in the file
       File.write!(tmp_file, """
@@ -594,10 +594,11 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert {:ok, %Profile{id: "id-change-new"}} = ProfileStore.get("id-change-new")
 
       # Should receive a :deleted event for old ID and :reloaded for new ID
-      assert_receive {:netman_event, "netman:profile:changed",
-                      {:deleted, "id-change-old"}}, 500
-      assert_receive {:netman_event, "netman:profile:changed",
-                      {:reloaded, "id-change-new"}}, 500
+      assert_receive {:netman_event, "netman:profile:changed", {:deleted, "id-change-old"}},
+                     500
+
+      assert_receive {:netman_event, "netman:profile:changed", {:reloaded, "id-change-new"}},
+                     500
     end
   end
 end
