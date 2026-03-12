@@ -284,6 +284,41 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
     end
   end
 
+  describe "handle_info/2 - OACK timeout retry" do
+    test "timeout during OACK wait retransmits OACK (not a DATA block)", %{file_path: file_path} do
+      {:ok, listener} = :gen_udp.open(0, [:binary, active: false])
+      {:ok, listener_port} = :inet.port(listener)
+
+      args = [
+        client_addr: @client_addr,
+        client_port: listener_port,
+        file_path: file_path,
+        block_size: 512,
+        options: %{"blksize" => "512"}
+      ]
+
+      {:ok, state, _timeout} = Transfer.init(args)
+      assert state.current_block == 0
+
+      # Consume initial OACK
+      {:ok, {_addr, _port, initial_oack}} = :gen_udp.recv(listener, 0, 1000)
+      {:ok, {:oack, _}} = Protocol.decode(initial_oack)
+
+      # Simulate timeout while waiting for ACK 0 — must NOT crash (previous bug:
+      # send_next_block with current_block=0 computed negative offset for binary_part)
+      assert {:noreply, new_state, 30_000} = Transfer.handle_info(:timeout, state)
+      assert new_state.retries == 1
+
+      # Must resend OACK, not a DATA block
+      {:ok, {_addr, _port, retransmit}} = :gen_udp.recv(listener, 0, 1000)
+      assert {:ok, {:oack, opts}} = Protocol.decode(retransmit)
+      assert opts["blksize"] == "512"
+
+      :gen_udp.close(state.socket)
+      :gen_udp.close(listener)
+    end
+  end
+
   describe "multi-block transfer" do
     test "transfers file larger than block size" do
       # Create large file (1.5 blocks)

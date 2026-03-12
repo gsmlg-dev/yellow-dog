@@ -24,7 +24,9 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     :current_block,
     :bytes_sent,
     :retries,
-    :started_at
+    :started_at,
+    # Negotiated options from the initial RRQ; kept so we can retransmit OACK on timeout.
+    negotiated_opts: %{}
   ]
 
   def start_link(args) do
@@ -54,7 +56,8 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
           current_block: 0,
           bytes_sent: 0,
           retries: 0,
-          started_at: System.monotonic_time(:millisecond)
+          started_at: System.monotonic_time(:millisecond),
+          negotiated_opts: opts
         }
 
         emit_telemetry(:start, state)
@@ -153,6 +156,13 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
       packet = Protocol.encode({:data, wire_block, chunk})
       Abyss.Transport.UDP.send(state.socket, state.client_addr, state.client_port, packet)
     end
+  end
+
+  # current_block == 0 means we sent OACK but haven't received ACK 0 yet.
+  # Retransmit the OACK rather than calling send_next_block (which would
+  # compute a negative offset and crash with binary_part/3).
+  defp resend_current_block(%{current_block: 0} = state) do
+    send_oack(state, state.negotiated_opts)
   end
 
   defp resend_current_block(state) do
