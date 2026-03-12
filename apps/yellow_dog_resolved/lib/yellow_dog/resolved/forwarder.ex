@@ -266,6 +266,10 @@ defmodule YellowDog.Resolved.Forwarder do
           _ -> {:timeout, txn_id}
         catch
           :throw, _ -> {:timeout, txn_id}
+          # GenServer.call to a crashed/absent Abyss.Client process raises an
+          # exit signal that rescue cannot catch.  Without this clause the Task
+          # dies silently and the backup timer (+500 ms) becomes the sole reply path.
+          :exit, _ -> {:timeout, txn_id}
         end
 
       send(forwarder, msg)
