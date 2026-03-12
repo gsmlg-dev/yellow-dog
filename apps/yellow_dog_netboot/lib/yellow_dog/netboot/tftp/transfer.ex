@@ -77,7 +77,30 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   end
 
   @impl true
-  def handle_info({:udp, _socket, _addr, _port, packet}, state) do
+  def handle_info({:udp, _socket, addr, port, packet}, state) do
+    # RFC 1350 §5: discard packets from unexpected sources without disturbing
+    # the transfer.  The transfer ID (TID) is the client's ephemeral port; both
+    # IP and port must match the originator of the RRQ that started this session.
+    if addr == state.client_addr and port == state.client_port do
+      handle_client_packet(packet, state)
+    else
+      {:noreply, state, @timeout_ms}
+    end
+  end
+
+  def handle_info(:timeout, %{retries: retries} = state) when retries >= @max_retries do
+    emit_telemetry(:exception, state, %{error_message: "timeout after #{@max_retries} retries"})
+    {:stop, :timeout, state}
+  end
+
+  def handle_info(:timeout, state) do
+    state = %{state | retries: state.retries + 1}
+    resend_current_block(state)
+    {:noreply, state, @timeout_ms}
+  end
+
+  # Dispatch a validated (correct-source) UDP packet.
+  defp handle_client_packet(packet, state) do
     case Protocol.decode(packet) do
       {:ok, {:ack, block}} when block == rem(state.current_block, 65536) ->
         if transfer_complete?(state) do
@@ -101,19 +124,6 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
       _ ->
         {:noreply, state, @timeout_ms}
     end
-  end
-
-  @impl true
-  def handle_info(:timeout, %{retries: retries} = state) when retries >= @max_retries do
-    emit_telemetry(:exception, state, %{error_message: "timeout after #{@max_retries} retries"})
-    {:stop, :timeout, state}
-  end
-
-  @impl true
-  def handle_info(:timeout, state) do
-    state = %{state | retries: state.retries + 1}
-    resend_current_block(state)
-    {:noreply, state, @timeout_ms}
   end
 
   @impl true

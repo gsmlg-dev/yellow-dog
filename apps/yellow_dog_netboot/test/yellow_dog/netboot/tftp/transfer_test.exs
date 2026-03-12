@@ -140,8 +140,8 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       ack_packet = Protocol.encode({:ack, 1})
       :gen_udp.send(listener, @client_addr, port, ack_packet)
 
-      # Simulate receiving the ACK
-      msg = {:udp, state.socket, @client_addr, port, ack_packet}
+      # Simulate receiving the ACK — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, ack_packet}
       assert {:stop, :normal, _state} = Transfer.handle_info(msg, state)
     end
 
@@ -150,8 +150,8 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       ack_packet = Protocol.encode({:ack, 99})
       :gen_udp.send(listener, @client_addr, port, ack_packet)
 
-      # Simulate receiving the wrong ACK
-      msg = {:udp, state.socket, @client_addr, port, ack_packet}
+      # Simulate receiving the wrong ACK — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, ack_packet}
       assert {:noreply, _state, 30_000} = Transfer.handle_info(msg, state)
     end
 
@@ -170,15 +170,15 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
 
       {:ok, state, _timeout} = Transfer.init(args)
 
-      # Consume OACK
-      {:ok, {_addr, port, _packet}} = :gen_udp.recv(listener, 0, 1000)
+      # Consume OACK — capture server_port (transfer socket's ephemeral port)
+      {:ok, {_addr, server_port, _packet}} = :gen_udp.recv(listener, 0, 1000)
 
-      # Send ACK 0
+      # Send ACK 0 to the transfer socket
       ack_packet = Protocol.encode({:ack, 0})
-      :gen_udp.send(listener, @client_addr, port, ack_packet)
+      :gen_udp.send(listener, @client_addr, server_port, ack_packet)
 
-      # Simulate receiving ACK 0
-      msg = {:udp, state.socket, @client_addr, port, ack_packet}
+      # Simulate receiving ACK 0 — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, ack_packet}
       assert {:noreply, new_state, 30_000} = Transfer.handle_info(msg, state)
       assert new_state.current_block == 1
       assert new_state.retries == 0
@@ -198,8 +198,8 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       error_packet = Protocol.encode({:error, 1, "Client error"})
       :gen_udp.send(listener, @client_addr, port, error_packet)
 
-      # Simulate receiving the ERROR
-      msg = {:udp, state.socket, @client_addr, port, error_packet}
+      # Simulate receiving the ERROR — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, error_packet}
 
       assert {:stop, {:client_error, 1, "Client error"}, _state} =
                Transfer.handle_info(msg, state)
@@ -294,15 +294,15 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
 
       {:ok, state, _timeout} = Transfer.init(args)
 
-      # Receive block 1
-      {:ok, {_addr, port, packet1}} = :gen_udp.recv(listener, 0, 1000)
+      # Receive block 1 — capture server_port (transfer socket's ephemeral port)
+      {:ok, {_addr, server_port, packet1}} = :gen_udp.recv(listener, 0, 1000)
       {:ok, {:data, 1, data1}} = Protocol.decode(packet1)
       assert byte_size(data1) == 512
 
-      # Send ACK for block 1
+      # Send ACK for block 1 to the transfer socket; simulate as coming from client_port (RFC 1350 §5)
       ack1 = Protocol.encode({:ack, 1})
-      :gen_udp.send(listener, @client_addr, port, ack1)
-      msg1 = {:udp, state.socket, @client_addr, port, ack1}
+      :gen_udp.send(listener, @client_addr, server_port, ack1)
+      msg1 = {:udp, state.socket, @client_addr, state.client_port, ack1}
       {:noreply, state2, _} = Transfer.handle_info(msg1, state)
 
       # Receive block 2 (last block, smaller)
@@ -310,10 +310,10 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       {:ok, {:data, 2, data2}} = Protocol.decode(packet2)
       assert byte_size(data2) == 256
 
-      # Send ACK for block 2 - should complete transfer
+      # Send ACK for block 2 to the transfer socket; simulate as coming from client_port
       ack2 = Protocol.encode({:ack, 2})
-      :gen_udp.send(listener, @client_addr, port, ack2)
-      msg2 = {:udp, state2.socket, @client_addr, port, ack2}
+      :gen_udp.send(listener, @client_addr, server_port, ack2)
+      msg2 = {:udp, state2.socket, @client_addr, state2.client_port, ack2}
       assert {:stop, :normal, _} = Transfer.handle_info(msg2, state2)
 
       # Verify full content
