@@ -22,15 +22,7 @@ defmodule YellowDogIdentity.IdentityApiTest do
 
     File.mkdir_p!(tmp_dir)
 
-    # Stop the identity supervisor (which manages Registry) if running
-    if sup = Process.whereis(YellowDogIdentity.Supervisor) do
-      Supervisor.stop(sup)
-    end
-
-    # Stop any pre-existing registry (started by yellow_dog app)
-    if pid = Process.whereis(YellowDogIdentity.Registry) do
-      GenServer.stop(pid)
-    end
+    YellowDogIdentity.TestHelper.stop_app_identity()
 
     {:ok, pid} = Registry.start_link(data_dir: tmp_dir, name: YellowDogIdentity.Registry)
 

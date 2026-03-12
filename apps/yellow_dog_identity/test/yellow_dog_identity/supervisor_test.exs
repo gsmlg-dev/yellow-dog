@@ -59,10 +59,15 @@ defmodule YellowDogIdentity.SupervisorTest do
   # ---------------------------------------------------------------------------
 
   describe "start_link/1" do
+    setup do
+      stop_identity_supervisor()
+      :ok
+    end
+
     test "starts successfully with running children" do
       tmp_dir = make_tmp_dir()
 
-      {:ok, pid} = IdentitySup.start_link(data_dir: tmp_dir)
+      {:ok, pid} = start_identity_sup(tmp_dir)
 
       try do
         # Supervisor is alive
@@ -92,7 +97,7 @@ defmodule YellowDogIdentity.SupervisorTest do
     test "creates data_dir structure for Registry" do
       tmp_dir = make_tmp_dir()
 
-      {:ok, pid} = IdentitySup.start_link(data_dir: tmp_dir)
+      {:ok, pid} = start_identity_sup(tmp_dir)
 
       try do
         # The Registry should have created its subdirectories
@@ -133,5 +138,40 @@ defmodule YellowDogIdentity.SupervisorTest do
     dir = Path.join(System.tmp_dir!(), "yd_sup_test_#{:erlang.unique_integer([:positive])}")
     File.mkdir_p!(dir)
     dir
+  end
+
+  defp stop_identity_supervisor do
+    # Terminate and delete identity from the core supervisor to prevent restart
+    if Process.whereis(YellowDog.Supervisor) do
+      Supervisor.terminate_child(YellowDog.Supervisor, YellowDogIdentity)
+      Supervisor.delete_child(YellowDog.Supervisor, YellowDogIdentity)
+    end
+
+    # Stop and wait for the supervisor process to fully exit
+    if sup = Process.whereis(YellowDogIdentity.Supervisor) do
+      ref = Process.monitor(sup)
+      Supervisor.stop(sup, :normal)
+
+      receive do
+        {:DOWN, ^ref, :process, ^sup, _} -> :ok
+      after
+        1000 -> :ok
+      end
+    end
+  end
+
+  # Starts the identity supervisor, retrying if the name is still registered
+  defp start_identity_sup(tmp_dir, retries \\ 5)
+  defp start_identity_sup(_tmp_dir, 0), do: raise("Could not start identity supervisor after retries")
+
+  defp start_identity_sup(tmp_dir, retries) do
+    case IdentitySup.start_link(data_dir: tmp_dir) do
+      {:ok, pid} ->
+        {:ok, pid}
+
+      {:error, {:already_started, _}} ->
+        stop_identity_supervisor()
+        start_identity_sup(tmp_dir, retries - 1)
+    end
   end
 end

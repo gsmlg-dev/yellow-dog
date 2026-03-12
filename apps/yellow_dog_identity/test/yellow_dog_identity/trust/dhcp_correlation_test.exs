@@ -9,11 +9,20 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
   setup do
     # Create the default-named ETS table so Correlation.verify/1 can find leases
     # via LeaseCache.lookup/1 (which uses __MODULE__ as the table name).
-    table = :ets.new(@default_table, [:set, :public, :named_table])
+    # The table may already exist if started by the app supervisor.
+    table =
+      case :ets.whereis(@default_table) do
+        :undefined ->
+          :ets.new(@default_table, [:set, :public, :named_table])
+
+        ref ->
+          :ets.delete_all_objects(ref)
+          ref
+      end
 
     on_exit(fn ->
       try do
-        :ets.delete(table)
+        :ets.delete_all_objects(table)
       rescue
         ArgumentError -> :ok
       end

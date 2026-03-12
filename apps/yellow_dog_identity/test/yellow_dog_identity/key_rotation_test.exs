@@ -19,6 +19,7 @@ defmodule YellowDogIdentity.KeyRotationTest do
   setup do
     tmp_dir = System.tmp_dir!() |> Path.join("yd_key_rotation_test_#{:rand.uniform(999_999)}")
     File.mkdir_p!(tmp_dir)
+    YellowDogIdentity.TestHelper.stop_app_identity()
     start_supervised!({YellowDogIdentity.Supervisor, data_dir: tmp_dir})
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
     %{tmp_dir: tmp_dir}
