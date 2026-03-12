@@ -712,7 +712,9 @@ defmodule YellowDog.Netman.Connection.FSM do
           %{servers: servers, search: [], priority: data.profile.autoconnect_priority}
         ])
       rescue
-        _ -> :ok
+        e ->
+          Logger.warning("Failed to push DNS for #{data.interface}: #{inspect(e)}")
+          :ok
       end
     else
       :ok
@@ -724,7 +726,9 @@ defmodule YellowDog.Netman.Connection.FSM do
       try do
         apply(YellowDog.Resolved, :reset_link_dns, [data.interface])
       rescue
-        _ -> :ok
+        e ->
+          Logger.warning("Failed to reset DNS for #{data.interface}: #{inspect(e)}")
+          :ok
       end
     else
       :ok

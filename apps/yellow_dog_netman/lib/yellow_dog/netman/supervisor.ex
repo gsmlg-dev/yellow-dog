@@ -29,6 +29,7 @@ defmodule YellowDog.Netman.Supervisor do
       {YellowDog.Netman.EventBus, []},
       {YellowDog.Netman.ProfileStore, []},
       {YellowDog.Netman.Connection.Supervisor, []},
+      {YellowDog.Netman.Connection.LeaseCoordinator, []},
       {YellowDog.Netman.ReconciliationEngine, []},
       {YellowDog.Netman.API.Supervisor, []}
     ]
