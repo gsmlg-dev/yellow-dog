@@ -72,15 +72,25 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       :gen_udp.close(listener)
     end
 
-    test "fails to start with non-existent file" do
+    test "fails to start with non-existent file and sends ERROR to client" do
+      # Use a real listener so we can verify the ERROR packet arrives
+      {:ok, listener} = :gen_udp.open(0, [:binary, active: false])
+      {:ok, listener_port} = :inet.port(listener)
+
       args = [
         client_addr: @client_addr,
-        client_port: @client_port,
+        client_port: listener_port,
         file_path: "/nonexistent/file.txt",
         block_size: 512
       ]
 
       assert {:stop, {:file_error, :enoent}} = Transfer.init(args)
+
+      # RFC 1350 §4: client must receive an ERROR packet (code 1 = File not found)
+      {:ok, {_addr, _port, packet}} = :gen_udp.recv(listener, 0, 1000)
+      assert {:ok, {:error, 1, _msg}} = Protocol.decode(packet)
+
+      :gen_udp.close(listener)
     end
 
     test "sends first data block when no options", %{file_path: file_path} do

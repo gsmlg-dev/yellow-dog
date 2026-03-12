@@ -39,10 +39,10 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     block_size = Keyword.get(args, :block_size, Protocol.default_block_size())
     opts = Keyword.get(args, :options, %{})
 
+    {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
+
     case File.read(file_path) do
       {:ok, data} ->
-        {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
-
         state = %__MODULE__{
           socket: socket,
           client_addr: client_addr,
@@ -72,6 +72,12 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
         {:ok, state, @timeout_ms}
 
       {:error, reason} ->
+        # RFC 1350 §4: send ERROR before closing — file was in the index but
+        # became unreadable between the server's lookup and this read.
+        error_code = if reason == :enoent, do: 1, else: 2
+        packet = Protocol.error_packet(error_code)
+        Abyss.Transport.UDP.send(socket, client_addr, client_port, packet)
+        Abyss.Transport.UDP.close(socket)
         {:stop, {:file_error, reason}}
     end
   end
