@@ -24,8 +24,8 @@
         </button>
       </div>
     </div>
-
-    <!-- Summary Stats -->
+    
+<!-- Summary Stats -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="card card-bordered bg-surface">
         <div class="card-body">
@@ -74,15 +74,17 @@
               <div class="text-2xl font-bold text-info">
                 {calculate_hit_rate(@stats.total_hits, @stats.total_misses)}%
               </div>
-              <div class="text-xs text-on-surface-variant">{@stats.total_cache} cached entries</div>
+              <div class="text-xs text-on-surface-variant">
+                {@stats.total_cache} cached entries
+              </div>
             </div>
             <.dm_mdi name="flash" class="w-8 h-8 text-info" />
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Views Summary Table -->
+    
+<!-- Views Summary Table -->
     <%= if @stats.views != [] do %>
       <.card title="Views Summary">
         <div class="overflow-x-auto">
@@ -129,8 +131,8 @@
         </div>
       </div>
     <% end %>
-
-    <!-- Cache Statistics -->
+    
+<!-- Cache Statistics -->
     <.card title="Cache Statistics">
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <!-- Cache Performance -->
@@ -156,8 +158,8 @@
             />
           </div>
         </div>
-
-        <!-- Cache Stats Grid -->
+        
+<!-- Cache Stats Grid -->
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-surface-container rounded-lg p-4">
             <div class="text-sm text-on-surface-variant text-xs">Cache Hits</div>
@@ -173,23 +175,23 @@
           </div>
           <div class="bg-surface-container rounded-lg p-4">
             <div class="text-sm text-on-surface-variant text-xs">Evictions</div>
-            <div class="text-2xl font-bold text-warning text-2xl">{@cache_stats.eviction_count}</div>
+            <div class="text-2xl font-bold text-warning text-2xl">
+              {@cache_stats.eviction_count}
+            </div>
           </div>
         </div>
       </div>
     </.card>
-
-    <!-- Quick Links -->
+    
+<!-- Quick Links -->
     <.card title="Quick Actions">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <.link navigate={~p"/dns/views"} class="btn btn-primary btn-lg gap-2">
-          <.dm_mdi name="eye" class="w-5 h-5" />
-          Manage Views
+          <.dm_mdi name="eye" class="w-5 h-5" /> Manage Views
         </.link>
 
         <.link navigate={~p"/dns/acl"} class="btn btn-secondary btn-lg gap-2">
-          <.dm_mdi name="shield-check" class="w-5 h-5" />
-          Configure ACLs
+          <.dm_mdi name="shield-check" class="w-5 h-5" /> Configure ACLs
         </.link>
       </div>
     </.card>

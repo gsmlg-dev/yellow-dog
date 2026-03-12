@@ -12,7 +12,10 @@
     </div>
     <!-- Service Stats Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 w-full">
-      <div :for={service <- @services} class="p-4 bg-surface-container rounded-lg flex flex-col gap-1">
+      <div
+        :for={service <- @services}
+        class="p-4 bg-surface-container rounded-lg flex flex-col gap-1"
+      >
         <div class="flex justify-between items-center">
           <span class="text-sm text-on-surface-variant">{service.description}</span>
           <.status_indicator
@@ -138,8 +141,7 @@
                 phx-value-service={service.key}
                 phx-disable-with="Stopping..."
               >
-                <.dm_mdi name="stop-circle-outline" class="h-4 w-4" />
-                Stop
+                <.dm_mdi name="stop-circle-outline" class="h-4 w-4" /> Stop
               </button>
             <% else %>
               <button
@@ -148,13 +150,11 @@
                 phx-value-service={service.key}
                 phx-disable-with="Starting..."
               >
-                <.dm_mdi name="play-circle-outline" class="h-4 w-4" />
-                Start
+                <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
               </button>
             <% end %>
             <.link navigate={"/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
-              <.dm_mdi name="cog" class="h-4 w-4" />
-              Configure
+              <.dm_mdi name="cog" class="h-4 w-4" /> Configure
             </.link>
           </:actions>
         </.card>
@@ -165,23 +165,19 @@
         <.card title="Quick Actions">
           <div class="space-y-2">
             <.link navigate={~p"/dns"} class="btn btn-outline w-full justify-start gap-2">
-              <.dm_mdi name="web" class="h-5 w-5" />
-              DNS Management
+              <.dm_mdi name="web" class="h-5 w-5" /> DNS Management
             </.link>
 
             <.link navigate={~p"/dhcpv4"} class="btn btn-outline w-full justify-start gap-2">
-              <.dm_mdi name="server-network" class="h-5 w-5" />
-              DHCPv4 Server
+              <.dm_mdi name="server-network" class="h-5 w-5" /> DHCPv4 Server
             </.link>
 
             <.link navigate={~p"/mdns"} class="btn btn-outline w-full justify-start gap-2">
-              <.dm_mdi name="wifi" class="h-5 w-5" />
-              mDNS Discovery
+              <.dm_mdi name="wifi" class="h-5 w-5" /> mDNS Discovery
             </.link>
 
             <.link navigate={~p"/settings"} class="btn btn-outline w-full justify-start gap-2">
-              <.dm_mdi name="cog" class="h-5 w-5" />
-              Configuration
+              <.dm_mdi name="cog" class="h-5 w-5" /> Configuration
             </.link>
           </div>
         </.card>

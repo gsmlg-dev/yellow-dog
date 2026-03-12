@@ -176,7 +176,13 @@ defmodule YellowDog.Netman.Types.Profile do
                :ok <- validate_dns_list(dns, "ipv4"),
                :ok <- validate_dns_search(dns_search, "ipv4") do
             {:ok,
-             %{method: method, address: address, gateway: gateway, dns: dns, dns_search: dns_search}}
+             %{
+               method: method,
+               address: address,
+               gateway: gateway,
+               dns: dns,
+               dns_search: dns_search
+             }}
           end
       end
     else

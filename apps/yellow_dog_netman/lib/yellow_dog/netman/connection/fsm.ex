@@ -432,10 +432,15 @@ defmodule YellowDog.Netman.Connection.FSM do
       Logger.info("Profile #{data.profile.id} method changed during ip_check, restarting")
       release_dhcp(data)
 
-      transition(%{data | profile: new_profile, ip_check_retries: 0, reactivate: true}, :ip_check, :deactivating, [
-        {:next_event, :internal, :cleanup},
-        {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
-      ])
+      transition(
+        %{data | profile: new_profile, ip_check_retries: 0, reactivate: true},
+        :ip_check,
+        :deactivating,
+        [
+          {:next_event, :internal, :cleanup},
+          {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+        ]
+      )
     else
       {:keep_state, %{data | profile: new_profile}}
     end

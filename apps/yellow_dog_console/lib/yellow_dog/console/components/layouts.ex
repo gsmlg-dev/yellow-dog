@@ -117,11 +117,11 @@ defmodule YellowDog.Console.Layouts do
               <span>Services</span>
             </.link>
           </li>
-
-          <!-- Services -->
+          
+    <!-- Services -->
           <li class="nested-menu-title mt-4">Services</li>
-
-          <!-- DNS -->
+          
+    <!-- DNS -->
           <li>
             <details open>
               <summary>
@@ -155,8 +155,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- DHCPv4 -->
+          
+    <!-- DHCPv4 -->
           <li>
             <details open>
               <summary>
@@ -190,8 +190,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- DHCPv6 -->
+          
+    <!-- DHCPv6 -->
           <li>
             <details open>
               <summary>
@@ -225,8 +225,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- DHCP Client -->
+          
+    <!-- DHCP Client -->
           <li>
             <details open>
               <summary>
@@ -261,8 +261,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- mDNS -->
+          
+    <!-- mDNS -->
           <li>
             <details open>
               <summary>
@@ -296,8 +296,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- Netboot -->
+          
+    <!-- Netboot -->
           <li>
             <details open>
               <summary>
@@ -339,8 +339,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- Tools -->
+          
+    <!-- Tools -->
           <li class="nested-menu-title mt-4">Tools</li>
           <li>
             <details open>
@@ -367,8 +367,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- Identity -->
+          
+    <!-- Identity -->
           <li class="nested-menu-title mt-4">Identity</li>
           <li>
             <details open>
@@ -425,8 +425,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- Fingerprint -->
+          
+    <!-- Fingerprint -->
           <li class="nested-menu-title mt-4">Fingerprint</li>
           <li>
             <details open>
@@ -454,8 +454,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- System -->
+          
+    <!-- System -->
           <li class="nested-menu-title mt-4">System</li>
           <li>
             <.link navigate="/settings" class={active?(@current_path, "/settings")}>
@@ -520,8 +520,7 @@ defmodule YellowDog.Console.Layouts do
         phx-connected={hide("#client-error")}
         hidden
       >
-        Attempting to reconnect
-        <.dm_mdi name="loading" class="ml-1 w-3 h-3 animate-spin" />
+        Attempting to reconnect <.dm_mdi name="loading" class="ml-1 w-3 h-3 animate-spin" />
       </.flash>
 
       <.flash

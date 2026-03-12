@@ -1045,6 +1045,7 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       Process.sleep(300)
 
       {:ok, state} = FSM.get_state(pid)
+
       # IPv4 disabled + IPv6 manual → static address applied → ip_check finds global → activated
       assert state.state in [:activated, :ip_check, :configuring]
 

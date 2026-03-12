@@ -253,8 +253,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                 Create your first address pool to start allocating IP addresses
               </p>
               <button class="btn btn-primary mt-4" phx-click="show_new_form">
-                <.dm_mdi name="plus" class="w-5 h-5" />
-                Add Pool
+                <.dm_mdi name="plus" class="w-5 h-5" /> Add Pool
               </button>
             </div>
           </div>

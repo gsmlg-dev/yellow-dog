@@ -95,7 +95,12 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
               phx-disable-with="Discovering..."
             >
               <%= if @tab.loading do %>
-                <span class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5" role="status"></span> Discovering...
+                <span
+                  class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+                  role="status"
+                >
+                </span>
+                Discovering...
               <% else %>
                 Send Query
               <% end %>

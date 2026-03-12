@@ -1542,9 +1542,9 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.reactivate == false
       # Should NOT include auto_activate
       refute Enum.any?(actions, fn
-        {:next_event, :internal, :auto_activate} -> true
-        _ -> false
-      end)
+               {:next_event, :internal, :auto_activate} -> true
+               _ -> false
+             end)
     end
 
     test "unavailable: update_profile caches new profile" do

@@ -135,7 +135,12 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
               phx-disable-with="Sending..."
             >
               <%= if @tab.loading do %>
-                <span class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5" role="status"></span> Sending...
+                <span
+                  class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+                  role="status"
+                >
+                </span>
+                Sending...
               <% else %>
                 Send Message
               <% end %>

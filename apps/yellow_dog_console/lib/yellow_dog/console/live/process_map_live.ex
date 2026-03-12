@@ -481,7 +481,11 @@ defmodule YellowDog.Console.ProcessMapLive do
 
         <%= if @loading do %>
           <div class="flex justify-center py-8">
-            <span class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-12 h-12" role="status"></span>
+            <span
+              class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-12 h-12"
+              role="status"
+            >
+            </span>
           </div>
         <% else %>
           <%= if @status[:alive] == false do %>

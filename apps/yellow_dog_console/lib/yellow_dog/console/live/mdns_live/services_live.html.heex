@@ -15,16 +15,14 @@
           class="btn btn-outline btn-sm"
           aria-label="Export CSV"
         >
-          <.dm_mdi name="download" class="h-5 w-5" />
-          Export CSV
+          <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
         </button>
         <button
           type="button"
           phx-click="show_new_form"
           class="btn btn-primary gap-2"
         >
-          <.dm_mdi name="plus" class="w-5 h-5" />
-          Register Service
+          <.dm_mdi name="plus" class="w-5 h-5" /> Register Service
         </button>
       </div>
     </div>
@@ -65,8 +63,7 @@
         </p>
         <div class="mt-6">
           <button type="button" phx-click="show_new_form" class="btn btn-primary gap-2">
-            <.dm_mdi name="plus" class="w-5 h-5" />
-            Register Service
+            <.dm_mdi name="plus" class="w-5 h-5" /> Register Service
           </button>
         </div>
       </.card>
@@ -173,7 +170,9 @@
               required
               class={["input w-full", @form_errors[:name] && "input-error"]}
             />
-            <span :if={@form_errors[:name]} class="helper-text text-error">{@form_errors[:name]}</span>
+            <span :if={@form_errors[:name]} class="helper-text text-error">
+              {@form_errors[:name]}
+            </span>
           </div>
 
           <div class="form-group">
@@ -187,8 +186,12 @@
               required
               class={["input w-full", @form_errors[:type] && "input-error"]}
             />
-            <span :if={@form_errors[:type]} class="helper-text text-error">{@form_errors[:type]}</span>
-            <span :if={!@form_errors[:type]} class="helper-text">Example: _http._tcp, _ssh._tcp, _printer._tcp</span>
+            <span :if={@form_errors[:type]} class="helper-text text-error">
+              {@form_errors[:type]}
+            </span>
+            <span :if={!@form_errors[:type]} class="helper-text">
+              Example: _http._tcp, _ssh._tcp, _printer._tcp
+            </span>
           </div>
 
           <div class="form-group">
@@ -203,7 +206,9 @@
               max="65535"
               class={["input w-full", @form_errors[:port] && "input-error"]}
             />
-            <span :if={@form_errors[:port]} class="helper-text text-error">{@form_errors[:port]}</span>
+            <span :if={@form_errors[:port]} class="helper-text text-error">
+              {@form_errors[:port]}
+            </span>
           </div>
 
           <div class="form-group">
@@ -228,8 +233,12 @@
                 @form_errors[:addresses] && "textarea-error"
               ]}
             ><%= if @editing_service && @editing_service.addresses, do: Enum.join(@editing_service.addresses, "\n") %></textarea>
-            <span :if={@form_errors[:addresses]} class="helper-text text-error">{@form_errors[:addresses]}</span>
-            <span :if={!@form_errors[:addresses]} class="helper-text">Enter IP addresses, one per line</span>
+            <span :if={@form_errors[:addresses]} class="helper-text text-error">
+              {@form_errors[:addresses]}
+            </span>
+            <span :if={!@form_errors[:addresses]} class="helper-text">
+              Enter IP addresses, one per line
+            </span>
           </div>
 
           <div class="form-group">
@@ -240,8 +249,7 @@
                 value="true"
                 checked={!@editing_service || @editing_service.enabled}
                 class="checkbox checkbox-primary"
-              />
-              Enable service
+              /> Enable service
             </label>
           </div>
 

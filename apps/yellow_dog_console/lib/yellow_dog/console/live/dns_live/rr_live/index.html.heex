@@ -11,8 +11,8 @@
     </div>
 
     <.service_alert :if={not @service_running} service="DNS" />
-
-    <!-- Header -->
+    
+<!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Resource Records</h1>
@@ -29,8 +29,7 @@
           title="Export CSV"
           aria-label="Export CSV"
         >
-          <.dm_mdi name="download" class="w-4 h-4" />
-          Export CSV
+          <.dm_mdi name="download" class="w-4 h-4" /> Export CSV
         </button>
         <%= if @zone_type == :auth do %>
           <button
@@ -39,8 +38,7 @@
             title="Export BIND Zone File"
             aria-label="Export BIND Zone File"
           >
-            <.dm_mdi name="file-document-outline" class="w-4 h-4" />
-            Export BIND
+            <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Export BIND
           </button>
         <% end %>
         <button
@@ -49,23 +47,20 @@
           title="Refresh"
           aria-label="Refresh"
         >
-          <.dm_mdi name="refresh" class="h-5 w-5" />
-          Refresh
+          <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </button>
         <.link
           patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"}
           class="btn btn-ghost btn-sm"
           title="Bulk Add"
         >
-          <.dm_mdi name="file-document-outline" class="w-4 h-4" />
-          Bulk Add
+          <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Bulk Add
         </.link>
         <.link
           patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"}
           class="btn btn-primary btn-sm"
         >
-          <.dm_mdi name="plus" class="w-4 h-4" />
-          Add Record
+          <.dm_mdi name="plus" class="w-4 h-4" /> Add Record
         </.link>
       </div>
     </div>
@@ -163,7 +158,10 @@
             <% else %>
               <div class="text-center py-12">
                 <div class="text-6xl mb-4">
-                  <.dm_mdi name="file-document-outline" class="w-16 h-16 mx-auto text-on-surface-variant" />
+                  <.dm_mdi
+                    name="file-document-outline"
+                    class="w-16 h-16 mx-auto text-on-surface-variant"
+                  />
                 </div>
                 <h3 class="text-lg font-semibold mb-2">No Records</h3>
                 <p class="text-on-surface-variant mb-4">This zone has no resource records.</p>
@@ -232,8 +230,8 @@
                 One record per line in zone file format: name ttl class type rdata
               </span>
             </div>
-
-            <!-- Live Preview -->
+            
+<!-- Live Preview -->
             <%= if @bulk_preview do %>
               <%= case @bulk_preview.status do %>
                 <% :ok -> %>
@@ -288,8 +286,8 @@
         </.card>
     <% end %>
   </div>
-
-  <!-- Delete Confirmation Modal -->
+  
+<!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal
       id="delete-modal"

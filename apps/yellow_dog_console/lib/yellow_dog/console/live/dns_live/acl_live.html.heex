@@ -1,8 +1,8 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="DNS" />
-
-    <!-- Header -->
+    
+<!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-4xl font-bold">DNS ACL</h1>
@@ -18,8 +18,7 @@
           class="btn btn-outline btn-sm"
           aria-label="Export CSV"
         >
-          <.dm_mdi name="download" class="h-5 w-5" />
-          Export CSV
+          <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
         </button>
         <button
           phx-click="refresh"
@@ -27,17 +26,15 @@
           title="Refresh"
           aria-label="Refresh"
         >
-          <.dm_mdi name="refresh" class="h-5 w-5" />
-          Refresh
+          <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </button>
         <button phx-click="show_create_form" class="btn btn-primary btn-sm">
-          <.dm_mdi name="plus" class="w-4 h-4" />
-          Add ACL
+          <.dm_mdi name="plus" class="w-4 h-4" /> Add ACL
         </button>
       </div>
     </div>
-
-    <!-- ACL Info -->
+    
+<!-- ACL Info -->
     <div class="alert alert-info">
       <.dm_mdi name="information" class="w-6 h-6" />
       <div>
@@ -52,8 +49,8 @@
         </div>
       </div>
     </div>
-
-    <!-- Filter Bar -->
+    
+<!-- Filter Bar -->
     <div class="flex flex-wrap gap-3 items-center">
       <div class="flex-1 min-w-[200px]">
         <input
@@ -82,13 +79,12 @@
         <% end %>
       </select>
     </div>
-
-    <!-- Named ACLs Section -->
+    
+<!-- Named ACLs Section -->
     <.card title="Named ACLs">
       <:actions>
         <button phx-click="show_create_form" class="btn btn-primary btn-sm">
-          <.dm_mdi name="plus" class="w-4 h-4" />
-          Add ACL
+          <.dm_mdi name="plus" class="w-4 h-4" /> Add ACL
         </button>
       </:actions>
       <% filtered_acls = filtered_named_acls(@named_acls, @filter, @type_filter) %>
@@ -197,8 +193,8 @@
         </div>
       <% end %>
     </.card>
-
-    <!-- Views ACL Table -->
+    
+<!-- Views ACL Table -->
     <% filtered_view_acls = filtered_views_acl(@views, @filter, @type_filter) %>
     <%= if filtered_view_acls != [] do %>
       <.card title="View ACL Configuration" class="overflow-x-auto">
@@ -254,8 +250,7 @@
                     phx-value-view={view.name}
                     class="btn btn-ghost btn-sm gap-1"
                   >
-                    <.dm_mdi name="pencil" class="w-4 h-4" />
-                    Edit
+                    <.dm_mdi name="pencil" class="w-4 h-4" /> Edit
                   </button>
                 </td>
               </tr>
@@ -288,8 +283,8 @@
         </div>
       </div>
     <% end %>
-
-    <!-- Built-in ACLs Reference -->
+    
+<!-- Built-in ACLs Reference -->
     <.card title="Built-in ACL Reference">
       <div class="overflow-x-auto">
         <table class="table">
@@ -335,8 +330,8 @@
       </div>
     </.card>
   </div>
-
-  <!-- Edit View ACL Modal -->
+  
+<!-- Edit View ACL Modal -->
   <%= if @editing_view do %>
     <.modal
       id="acl-modal"
@@ -373,14 +368,14 @@
             </option>
           </select>
         </div>
-
-        <!-- Geo Country Picker -->
+        
+<!-- Geo Country Picker -->
         <%= if @acl_form[:acl_type].value == "geo" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Allowed Countries</label>
             <span class="helper-text">{length(@selected_countries)} selected</span>
-
-            <!-- Selected countries badges -->
+            
+<!-- Selected countries badges -->
             <%= if @selected_countries != [] do %>
               <div class="flex flex-wrap gap-1 mb-2">
                 <%= for code <- @selected_countries do %>
@@ -400,8 +395,8 @@
                 <% end %>
               </div>
             <% end %>
-
-            <!-- Search input -->
+            
+<!-- Search input -->
             <div class="relative mb-2">
               <input
                 type="text"
@@ -425,8 +420,8 @@
                 </button>
               <% end %>
             </div>
-
-            <!-- Country grid -->
+            
+<!-- Country grid -->
             <div class="border border-outline rounded-lg p-2 max-h-48 overflow-y-auto">
               <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
                 <%= for country <- filtered_countries(@countries, @country_search) do %>
@@ -439,7 +434,9 @@
                       phx-value-code={country.code}
                     />
                     <span class="text-sm">
-                      <span class="font-mono text-xs text-on-surface-variant">{country.code}</span>
+                      <span class="font-mono text-xs text-on-surface-variant">
+                        {country.code}
+                      </span>
                       {country.name}
                     </span>
                   </label>
@@ -451,8 +448,8 @@
             </span>
           </div>
         <% end %>
-
-        <!-- Custom Rules -->
+        
+<!-- Custom Rules -->
         <%= if @acl_form[:acl_type].value == "custom" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Custom Rules</label>
@@ -463,7 +460,8 @@
               placeholder="allow 10.0.0.0/8\nallow 192.168.0.0/16\ndeny any"
             >{@acl_form[:rules].value}</textarea>
             <span class="helper-text">
-              Format: <code class="bg-surface-container-high px-1 rounded">allow|deny IP/prefix</code>
+              Format:
+              <code class="bg-surface-container-high px-1 rounded">allow|deny IP/prefix</code>
             </span>
           </div>
         <% end %>
@@ -479,8 +477,8 @@
       </.form>
     </.modal>
   <% end %>
-
-  <!-- Create/Edit Named ACL Modal -->
+  
+<!-- Create/Edit Named ACL Modal -->
   <%= if @show_create_form do %>
     <.modal
       id="create-acl-modal"
@@ -541,8 +539,8 @@
             </option>
           </select>
         </div>
-
-        <!-- Geo Country Picker for Create Form -->
+        
+<!-- Geo Country Picker for Create Form -->
         <%= if @create_form[:acl_type].value == "geo" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Allowed Countries</label>
@@ -601,7 +599,9 @@
                       phx-value-code={country.code}
                     />
                     <span class="text-sm">
-                      <span class="font-mono text-xs text-on-surface-variant">{country.code}</span>
+                      <span class="font-mono text-xs text-on-surface-variant">
+                        {country.code}
+                      </span>
                       {country.name}
                     </span>
                   </label>
@@ -610,8 +610,8 @@
             </div>
           </div>
         <% end %>
-
-        <!-- Custom Rules for Create Form -->
+        
+<!-- Custom Rules for Create Form -->
         <%= if @create_form[:acl_type].value == "custom" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Rules</label>
@@ -625,8 +625,10 @@
               <span class="helper-text text-error">{@form_errors[:rules]}</span>
             <% else %>
               <span class="helper-text">
-                Format: <code class="bg-surface-container-high px-1 rounded">allow|deny IP/prefix</code>
-                or <code class="bg-surface-container-high px-1 rounded">allow|deny geo US, CA</code>
+                Format:
+                <code class="bg-surface-container-high px-1 rounded">allow|deny IP/prefix</code>
+                or
+                <code class="bg-surface-container-high px-1 rounded">allow|deny geo US, CA</code>
               </span>
             <% end %>
           </div>
@@ -650,8 +652,8 @@
       </.form>
     </.modal>
   <% end %>
-
-  <!-- Delete Confirmation Modal -->
+  
+<!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal id="delete-acl-modal" title="Delete ACL" show on_cancel={JS.push("cancel_delete")}>
       <div class="py-4">

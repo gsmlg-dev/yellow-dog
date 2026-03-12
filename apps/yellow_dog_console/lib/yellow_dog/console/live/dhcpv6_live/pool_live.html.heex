@@ -51,8 +51,8 @@
           </div>
         </div>
       </div>
-
-      <!-- Pool Configuration -->
+      
+<!-- Pool Configuration -->
       <.card title="Pool Configuration">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -120,8 +120,8 @@
           </div>
         </div>
       </.card>
-
-      <!-- Lease State Distribution -->
+      
+<!-- Lease State Distribution -->
       <%= if map_size(@pool_stats.leases_by_state) > 0 do %>
         <.card title="Lease Distribution by State">
           <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -138,8 +138,8 @@
           </div>
         </.card>
       <% end %>
-
-      <!-- Active Leases for this Pool -->
+      
+<!-- Active Leases for this Pool -->
       <.card title="Recent Leases">
         <div class="overflow-x-auto">
           <table class="table table-sm">
