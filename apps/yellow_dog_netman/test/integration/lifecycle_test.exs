@@ -103,6 +103,10 @@ defmodule YellowDog.Netman.Integration.LifecycleTest do
     {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
     Process.sleep(50)
 
+    # Delete profile first so ReconciliationEngine doesn't re-spawn the FSM
+    # (autoconnect=true + link up + profile in store = reconciliation re-activates)
+    ProfileStore.delete(profile.id)
+
     assert :ok = Connection.Supervisor.stop_connection(iface)
     Process.sleep(50)
 
