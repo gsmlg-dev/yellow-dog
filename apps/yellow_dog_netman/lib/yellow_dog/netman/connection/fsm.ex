@@ -427,6 +427,13 @@ defmodule YellowDog.Netman.Connection.FSM do
     {:keep_state, data, [{:next_event, :internal, :check_ip}]}
   end
 
+  # Handle late DHCP lease arrival during ip_check (dual-stack: SLAAC triggered
+  # configuring→ip_check before DHCP completed)
+  def ip_check(:info, {:dhcp_lease_acquired, lease}, data) do
+    emit_dhcp_event(data, :lease_acquired, %{lease: lease})
+    {:keep_state, %{data | lease: lease, dhcp_retries: 0}}
+  end
+
   def ip_check(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
     Logger.warning("Carrier lost during ip_check for #{data.interface}")
 
@@ -515,6 +522,14 @@ defmodule YellowDog.Netman.Connection.FSM do
     else
       {:keep_state, data}
     end
+  end
+
+  # Handle late DHCP lease acquisition (dual-stack: IPv6 SLAAC arrived first)
+  def activated(:info, {:dhcp_lease_acquired, lease}, data) do
+    emit_dhcp_event(data, :lease_acquired, %{lease: lease})
+    data = %{data | lease: lease, dhcp_retries: 0}
+    push_dns(data)
+    {:keep_state, data}
   end
 
   def activated(:info, {:dhcp_lease_renewed, lease}, data) do

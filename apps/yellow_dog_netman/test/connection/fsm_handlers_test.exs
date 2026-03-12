@@ -1720,4 +1720,38 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.profile.autoconnect_priority == 500
     end
   end
+
+  # ----------------------------------------------------------------
+  # Late DHCP lease acquisition (dual-stack SLAAC-before-DHCP)
+  # ----------------------------------------------------------------
+
+  describe "late DHCP lease acquisition in activated state" do
+    test "dhcp_lease_acquired stores lease and pushes DNS" do
+      iface = "hdlr_late_dhcp_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :activated, dhcp_retries: 2}
+
+      lease = %{ip: "10.0.0.50", dns_servers: ["8.8.8.8"], lease_time_s: 3600}
+
+      result = FSM.activated(:info, {:dhcp_lease_acquired, lease}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.lease == lease
+      assert new_data.dhcp_retries == 0
+    end
+  end
+
+  describe "late DHCP lease acquisition in ip_check state" do
+    test "dhcp_lease_acquired stores lease during ip_check" do
+      iface = "hdlr_ipchk_dhcp_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :ip_check, dhcp_retries: 1}
+
+      lease = %{ip: "10.0.0.51", dns_servers: ["1.1.1.1"], lease_time_s: 7200}
+
+      result = FSM.ip_check(:info, {:dhcp_lease_acquired, lease}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.lease == lease
+      assert new_data.dhcp_retries == 0
+    end
+  end
 end
