@@ -610,6 +610,26 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.lease == nil
     end
 
+    test "deactivating cleanup_timeout clears reactivate flag and ip_check_retries" do
+      iface = "hdlr_deact_clean_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        lease: %{ip: "10.0.0.1"},
+        reactivate: true,
+        ip_check_retries: 3
+      }
+
+      result = FSM.deactivating(:state_timeout, :cleanup_timeout, data)
+      assert {:next_state, :disconnected, new_data, _actions} = result
+      assert new_data.lease == nil
+      assert new_data.reactivate == false
+      assert new_data.ip_check_retries == 0
+    end
+
     test "deactivating catch-all ignores unknown events" do
       iface = "hdlr_deact_unk_#{:rand.uniform(65535)}"
       profile = base_profile(iface)
@@ -617,6 +637,59 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
 
       result = FSM.deactivating(:info, :unknown_event, data)
       assert {:keep_state, ^data} = result
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # Failed state: stale data cleanup tests
+  # ----------------------------------------------------------------
+
+  describe "failed state stale data cleanup" do
+    test "failed :activate clears stale lease, retries, and transitions to disconnected" do
+      iface = "hdlr_fail_act_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :failed,
+        error: :dhcp_failed,
+        lease: %{ip: "10.0.0.5"},
+        dhcp_retries: 3,
+        ip_check_retries: 2
+      }
+
+      result = FSM.failed(:cast, :activate, data)
+      assert {:next_state, :disconnected, new_data, actions} = result
+      assert new_data.error == nil
+      assert new_data.lease == nil
+      assert new_data.dhcp_retries == 0
+      assert new_data.ip_check_retries == 0
+      assert {:next_event, :internal, :auto_activate} in actions
+    end
+
+    test "failed carrier-up clears stale lease and transitions to disconnected" do
+      iface = "hdlr_fail_carrier_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :failed,
+        error: :configuring_timeout,
+        lease: %{ip: "10.0.0.6"},
+        dhcp_retries: 2,
+        ip_check_retries: 1
+      }
+
+      event = {:netman_event, "netman:link:#{iface}", {:link_update, %{carrier: true}}}
+      result = FSM.failed(:info, event, data)
+      assert {:next_state, :disconnected, new_data, actions} = result
+      assert new_data.error == nil
+      assert new_data.lease == nil
+      assert new_data.dhcp_retries == 0
+      assert new_data.ip_check_retries == 0
+      assert {:next_event, :internal, :auto_activate} in actions
     end
   end
 
