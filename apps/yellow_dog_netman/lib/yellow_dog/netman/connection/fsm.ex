@@ -727,7 +727,11 @@ defmodule YellowDog.Netman.Connection.FSM do
       try do
         apply(YellowDog.Resolved, :set_link_dns, [
           data.interface,
-          %{servers: servers, search: [], priority: data.profile.autoconnect_priority}
+          %{
+            servers: servers,
+            search: collect_dns_search(data),
+            priority: data.profile.autoconnect_priority
+          }
         ])
       rescue
         e ->
@@ -782,6 +786,12 @@ defmodule YellowDog.Netman.Connection.FSM do
       end
 
     Enum.uniq(profile_dns ++ lease_dns)
+  end
+
+  defp collect_dns_search(data) do
+    ipv4_search = Map.get(data.profile.ipv4, :dns_search, []) || []
+    ipv6_search = Map.get(data.profile.ipv6, :dns_search, []) || []
+    Enum.uniq(ipv4_search ++ ipv6_search)
   end
 
   defp emit_dhcp_event(data, action, metadata) do

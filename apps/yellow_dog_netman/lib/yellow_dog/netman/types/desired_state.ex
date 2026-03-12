@@ -12,7 +12,8 @@ defmodule YellowDog.Netman.Types.DesiredState do
           ipv6: Profile.ipv6_config(),
           mtu: pos_integer() | nil,
           priority: integer(),
-          dns: [String.t()]
+          dns: [String.t()],
+          dns_search: [String.t()]
         }
 
   @type t :: %__MODULE__{
@@ -28,6 +29,10 @@ defmodule YellowDog.Netman.Types.DesiredState do
       for {profile, interface} <- profile_interface_pairs, into: %{} do
         dns = (profile.ipv4.dns || []) ++ (profile.ipv6.dns || [])
 
+        dns_search =
+          (Map.get(profile.ipv4, :dns_search, []) || []) ++
+            (Map.get(profile.ipv6, :dns_search, []) || [])
+
         connection = %{
           profile_id: profile.id,
           interface: interface,
@@ -35,7 +40,8 @@ defmodule YellowDog.Netman.Types.DesiredState do
           ipv6: profile.ipv6,
           mtu: profile.ethernet.mtu,
           priority: profile.autoconnect_priority,
-          dns: dns
+          dns: dns,
+          dns_search: dns_search
         }
 
         {profile.id, connection}

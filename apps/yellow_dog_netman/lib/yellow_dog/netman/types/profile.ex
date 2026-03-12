@@ -27,14 +27,16 @@ defmodule YellowDog.Netman.Types.Profile do
           method: ipv4_method(),
           address: String.t() | nil,
           gateway: String.t() | nil,
-          dns: [String.t()]
+          dns: [String.t()],
+          dns_search: [String.t()]
         }
 
   @type ipv6_config :: %{
           method: ipv6_method(),
           address: String.t() | nil,
           gateway: String.t() | nil,
-          dns: [String.t()]
+          dns: [String.t()],
+          dns_search: [String.t()]
         }
 
   @enforce_keys [:id, :type]
@@ -46,8 +48,8 @@ defmodule YellowDog.Netman.Types.Profile do
     autoconnect_priority: 0,
     zone: "default",
     ethernet: %{mtu: nil},
-    ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
-    ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+    ipv4: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []},
+    ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
   ]
 
   @valid_ipv4_methods ~w(auto manual disabled)
@@ -168,10 +170,13 @@ defmodule YellowDog.Netman.Types.Profile do
         true ->
           gateway = Map.get(ipv4, "gateway")
           dns = Map.get(ipv4, "dns", [])
+          dns_search = Map.get(ipv4, "dns_search", [])
 
           with :ok <- validate_gateway(gateway, "ipv4"),
-               :ok <- validate_dns_list(dns, "ipv4") do
-            {:ok, %{method: method, address: address, gateway: gateway, dns: dns}}
+               :ok <- validate_dns_list(dns, "ipv4"),
+               :ok <- validate_dns_search(dns_search, "ipv4") do
+            {:ok,
+             %{method: method, address: address, gateway: gateway, dns: dns, dns_search: dns_search}}
           end
       end
     else
@@ -190,14 +195,18 @@ defmodule YellowDog.Netman.Types.Profile do
       gateway = Map.get(ipv6, "gateway")
       dns = Map.get(ipv6, "dns", [])
 
+      dns_search = Map.get(ipv6, "dns_search", [])
+
       with :ok <- validate_gateway(gateway, "ipv6"),
-           :ok <- validate_dns_list(dns, "ipv6") do
+           :ok <- validate_dns_list(dns, "ipv6"),
+           :ok <- validate_dns_search(dns_search, "ipv6") do
         {:ok,
          %{
            method: method,
            address: Map.get(ipv6, "address"),
            gateway: gateway,
-           dns: dns
+           dns: dns,
+           dns_search: dns_search
          }}
       end
     else
@@ -268,6 +277,29 @@ defmodule YellowDog.Netman.Types.Profile do
 
   defp validate_dns_list(other, section) do
     {:error, "#{section}.dns must be a list, got: #{inspect(other)}"}
+  end
+
+  @domain_pattern ~r/^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*\.?$/
+
+  defp validate_dns_search(list, section) when is_list(list) do
+    invalid =
+      Enum.reject(list, fn
+        s when is_binary(s) and byte_size(s) > 0 and byte_size(s) <= 253 ->
+          Regex.match?(@domain_pattern, s)
+
+        _ ->
+          false
+      end)
+
+    if invalid == [] do
+      :ok
+    else
+      {:error, "#{section}.dns_search contains invalid domain names: #{inspect(invalid)}"}
+    end
+  end
+
+  defp validate_dns_search(other, section) do
+    {:error, "#{section}.dns_search must be a list, got: #{inspect(other)}"}
   end
 
   defp valid_cidr?(cidr) when is_binary(cidr) do
@@ -343,28 +375,36 @@ defmodule YellowDog.Netman.Types.Profile do
   defp put_ethernet(map, %{mtu: nil}), do: map
   defp put_ethernet(map, %{mtu: mtu}), do: Map.put(map, "ethernet", %{"mtu" => mtu})
 
-  defp put_ipv4(map, %{method: :auto, address: nil, gateway: nil, dns: []}), do: map
-
   defp put_ipv4(map, ipv4) do
-    section =
-      %{"method" => serialize_method(ipv4.method)}
-      |> maybe_put("address", ipv4.address)
-      |> maybe_put("gateway", ipv4.gateway)
-      |> maybe_put_list("dns", ipv4.dns)
+    if ipv4.method == :auto and ipv4.address == nil and ipv4.gateway == nil and
+         ipv4.dns == [] and Map.get(ipv4, :dns_search, []) == [] do
+      map
+    else
+      section =
+        %{"method" => serialize_method(ipv4.method)}
+        |> maybe_put("address", ipv4.address)
+        |> maybe_put("gateway", ipv4.gateway)
+        |> maybe_put_list("dns", ipv4.dns)
+        |> maybe_put_list("dns_search", Map.get(ipv4, :dns_search, []))
 
-    Map.put(map, "ipv4", section)
+      Map.put(map, "ipv4", section)
+    end
   end
 
-  defp put_ipv6(map, %{method: :auto, address: nil, gateway: nil, dns: []}), do: map
-
   defp put_ipv6(map, ipv6) do
-    section =
-      %{"method" => serialize_method(ipv6.method)}
-      |> maybe_put("address", ipv6.address)
-      |> maybe_put("gateway", ipv6.gateway)
-      |> maybe_put_list("dns", ipv6.dns)
+    if ipv6.method == :auto and ipv6.address == nil and ipv6.gateway == nil and
+         ipv6.dns == [] and Map.get(ipv6, :dns_search, []) == [] do
+      map
+    else
+      section =
+        %{"method" => serialize_method(ipv6.method)}
+        |> maybe_put("address", ipv6.address)
+        |> maybe_put("gateway", ipv6.gateway)
+        |> maybe_put_list("dns", ipv6.dns)
+        |> maybe_put_list("dns_search", Map.get(ipv6, :dns_search, []))
 
-    Map.put(map, "ipv6", section)
+      Map.put(map, "ipv6", section)
+    end
   end
 
   defp serialize_method(:link_local), do: "link-local"

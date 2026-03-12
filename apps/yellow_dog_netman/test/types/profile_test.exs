@@ -474,4 +474,72 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert profile.ipv6.dns == ["2001:4860:4860::8888"]
     end
   end
+
+  describe "dns_search" do
+    test "parses ipv4 dns_search domains" do
+      toml = %{
+        "connection" => %{"id" => "search-test", "type" => "ethernet"},
+        "ipv4" => %{
+          "method" => "auto",
+          "dns" => ["8.8.8.8"],
+          "dns_search" => ["example.com", "corp.internal"]
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4.dns_search == ["example.com", "corp.internal"]
+    end
+
+    test "parses ipv6 dns_search domains" do
+      toml = %{
+        "connection" => %{"id" => "search-test6", "type" => "ethernet"},
+        "ipv6" => %{
+          "method" => "auto",
+          "dns_search" => ["v6.example.com"]
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv6.dns_search == ["v6.example.com"]
+    end
+
+    test "defaults dns_search to empty list" do
+      toml = %{
+        "connection" => %{"id" => "no-search", "type" => "ethernet"}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4.dns_search == []
+      assert profile.ipv6.dns_search == []
+    end
+
+    test "rejects invalid dns_search domain names" do
+      toml = %{
+        "connection" => %{"id" => "bad-search", "type" => "ethernet"},
+        "ipv4" => %{
+          "method" => "auto",
+          "dns_search" => ["valid.com", "inv@lid..com"]
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "dns_search"
+    end
+
+    test "round-trips dns_search through to_toml" do
+      toml = %{
+        "connection" => %{"id" => "roundtrip", "type" => "ethernet"},
+        "ipv4" => %{
+          "method" => "manual",
+          "address" => "10.0.0.1/24",
+          "dns" => ["8.8.8.8"],
+          "dns_search" => ["example.com"]
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      serialized = Profile.to_toml(profile)
+      assert serialized["ipv4"]["dns_search"] == ["example.com"]
+    end
+  end
 end

@@ -449,7 +449,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
         servers != [] do
       Diff.new(:update_dns, conn.interface, %{
         servers: servers,
-        search: [],
+        search: Map.get(conn, :dns_search, []),
         priority: conn.priority
       })
     end
