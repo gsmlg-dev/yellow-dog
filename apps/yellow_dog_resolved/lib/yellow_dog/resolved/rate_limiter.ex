@@ -54,6 +54,7 @@ defmodule YellowDog.Resolved.RateLimiter do
   def init(config) do
     rate_config = Map.get(config, :rate_limit, %{})
 
+    try do: :ets.delete(@table), catch: (_, _ -> :ok)
     :ets.new(@table, [:named_table, :set, :public, write_concurrency: true])
 
     :persistent_term.put({__MODULE__, :burst}, Map.get(rate_config, :burst, @default_burst))
