@@ -376,9 +376,11 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   defp parse_desired_cidr(cidr) do
     case String.split(cidr, "/") do
       [addr, prefix] ->
+        max_prefix = default_prefix(addr)
+
         case Integer.parse(prefix) do
-          {n, ""} -> {addr, n}
-          _ -> {addr, default_prefix(addr)}
+          {n, ""} when n >= 0 and n <= max_prefix -> {addr, n}
+          _ -> {addr, max_prefix}
         end
 
       [addr] ->
