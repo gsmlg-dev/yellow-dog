@@ -87,6 +87,21 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     end
   end
 
+  defp dns_search_gen do
+    StreamData.one_of([
+      StreamData.constant([]),
+      gen all(
+            count <- StreamData.integer(1..3),
+            labels <-
+              StreamData.list_of(StreamData.string(:alphanumeric, min_length: 3, max_length: 8),
+                length: count
+              )
+          ) do
+        Enum.map(labels, &"#{&1}.example.com")
+      end
+    ])
+  end
+
   defp valid_toml_gen do
     gen all(
           id <- profile_id_gen(),
@@ -100,7 +115,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
           iface <- iface_gen(),
           zone <- zone_gen(),
           ipv4_gw <- gateway_gen(),
-          ipv4_dns <- dns_gen()
+          ipv4_dns <- dns_gen(),
+          ipv4_dns_search <- dns_search_gen(),
+          ipv6_dns_search <- dns_search_gen()
         ) do
       ipv4 =
         if ipv4_method == "manual" do
@@ -112,12 +129,18 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       ipv4 = if ipv4_gw, do: Map.put(ipv4, "gateway", ipv4_gw), else: ipv4
       ipv4 = if ipv4_dns != [], do: Map.put(ipv4, "dns", ipv4_dns), else: ipv4
 
+      ipv4 =
+        if ipv4_dns_search != [], do: Map.put(ipv4, "dns_search", ipv4_dns_search), else: ipv4
+
       ipv6 =
         if ipv6_method == "manual" do
           %{"method" => ipv6_method, "address" => ipv6_address}
         else
           %{"method" => ipv6_method}
         end
+
+      ipv6 =
+        if ipv6_dns_search != [], do: Map.put(ipv6, "dns_search", ipv6_dns_search), else: ipv6
 
       conn =
         %{
