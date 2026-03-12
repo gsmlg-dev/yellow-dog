@@ -327,9 +327,18 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     end
   end
 
-  defp compute_deactivation_diffs(_desired, _observed) do
-    # In Phase 1, we don't auto-deactivate — only explicit user action
-    []
+  defp compute_deactivation_diffs(desired, _observed) do
+    # Deactivate connections whose profile no longer exists (deleted profiles).
+    # Connections with existing profiles (even autoconnect=false) are left alone
+    # since they may have been manually activated.
+    active_connections = Connection.Supervisor.list_connections()
+
+    for conn <- active_connections,
+        conn.state not in [:disconnected, :failed],
+        not Map.has_key?(desired.connections, conn.profile_id),
+        ProfileStore.get(conn.profile_id) == {:error, :not_found} do
+      Diff.new(:deactivate_connection, conn.interface)
+    end
   end
 
   defp compute_address_diffs(desired, observed) do

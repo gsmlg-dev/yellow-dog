@@ -987,6 +987,172 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
   end
 
+  describe "compute_deactivation_diffs" do
+    @tag :capture_log
+    test "deleted profile produces deactivation diff for active connection" do
+      iface = "recon_deact_auto_#{:rand.uniform(65535)}"
+      profile_id = "deact-auto-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      # Delete the profile — FSM is now orphaned
+      ProfileStore.delete(profile_id)
+
+      # Compute diff with empty desired state (profile gone, so not in desired)
+      desired = %DesiredState{connections: %{}}
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      deact_diffs =
+        Enum.filter(diffs, &(&1.action == :deactivate_connection and &1.interface == iface))
+
+      assert length(deact_diffs) == 1, "Expected deactivation diff for orphaned connection"
+
+      # Cleanup
+      Connection.Supervisor.stop_connection(iface)
+      MockNetlink.link_removed(iface)
+    end
+
+    @tag :capture_log
+    test "manually activated connection with existing profile is NOT auto-deactivated" do
+      iface = "recon_manual_#{:rand.uniform(65535)}"
+      profile_id = "manual-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      # Profile exists but autoconnect=false, so not in desired state
+      desired = %DesiredState{connections: %{}}
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      deact_diffs =
+        Enum.filter(diffs, &(&1.action == :deactivate_connection and &1.interface == iface))
+
+      assert deact_diffs == [],
+             "Manually activated connection with existing profile should not be auto-deactivated"
+
+      # Cleanup
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    @tag :capture_log
+    test "disconnected FSM with deleted profile is NOT deactivated" do
+      iface = "recon_disc_deact_#{:rand.uniform(65535)}"
+      profile_id = "disc-deact-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      # Delete the profile
+      ProfileStore.delete(profile_id)
+
+      # FSM should be in disconnected state (carrier: false, autoconnect: false)
+      desired = %DesiredState{connections: %{}}
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      deact_diffs =
+        Enum.filter(diffs, &(&1.action == :deactivate_connection and &1.interface == iface))
+
+      assert deact_diffs == [],
+             "Disconnected FSM should not produce deactivation diff"
+
+      # Cleanup
+      Connection.Supervisor.stop_connection(iface)
+      MockNetlink.link_removed(iface)
+    end
+
+    @tag :capture_log
+    test "full cycle: delete profile triggers deactivation via reconciliation" do
+      iface = "recon_fullcyc_#{:rand.uniform(65535)}"
+      profile_id = "fullcyc-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      # Verify FSM is running
+      assert {:ok, _} = Connection.Supervisor.find_connection(iface)
+
+      # Delete the profile and trigger reconciliation
+      ProfileStore.delete(profile_id)
+      Process.sleep(50)
+
+      # Trigger a full reconciliation cycle
+      send(ReconciliationEngine, :debounced_reconcile)
+      Process.sleep(500)
+
+      # FSM should have been stopped by the reconciliation engine
+      assert Connection.Supervisor.find_connection(iface) == :error,
+             "Orphaned FSM should be deactivated after profile deletion"
+
+      MockNetlink.link_removed(iface)
+    end
+  end
+
   describe "failed FSM re-activation" do
     @tag :capture_log
     test "connection_active? returns false for failed FSMs, enabling re-activation" do

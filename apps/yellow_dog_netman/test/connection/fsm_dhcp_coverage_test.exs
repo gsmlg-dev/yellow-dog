@@ -52,9 +52,13 @@ defmodule YellowDog.Netman.Connection.FSMDhcpCoverageTest do
         ConnSupervisor.stop_connection(@loopback)
         YellowDog.DhcpClient.stop_interface(@loopback)
 
+        # Register profile so ReconciliationEngine does not auto-deactivate
+        YellowDog.Netman.ProfileStore.put(profile_id, profile)
+
         on_exit(fn ->
           ConnSupervisor.stop_connection(@loopback)
           YellowDog.DhcpClient.stop_interface(@loopback)
+          YellowDog.Netman.ProfileStore.delete(profile_id)
           MockNetlink.link_removed(@loopback)
         end)
 
