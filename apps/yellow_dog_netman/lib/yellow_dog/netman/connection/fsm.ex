@@ -858,11 +858,26 @@ defmodule YellowDog.Netman.Connection.FSM do
         end
       end)
 
-    # Include DHCP-provided DNS servers (already IP tuples)
+    # Include DHCP-provided DNS servers (strings from telemetry, parse to tuples)
     lease_dns =
       case data.lease do
-        %{dns_servers: servers} when is_list(servers) -> servers
-        _ -> []
+        %{dns_servers: servers} when is_list(servers) ->
+          Enum.flat_map(servers, fn
+            s when is_binary(s) ->
+              case :inet.parse_address(String.to_charlist(s)) do
+                {:ok, ip} -> [ip]
+                _ -> []
+              end
+
+            ip when is_tuple(ip) ->
+              [ip]
+
+            _ ->
+              []
+          end)
+
+        _ ->
+          []
       end
 
     # Profile DNS takes precedence, DHCP DNS is appended
