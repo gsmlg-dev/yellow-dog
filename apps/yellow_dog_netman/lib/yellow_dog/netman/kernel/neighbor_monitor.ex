@@ -13,7 +13,16 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitor do
           interface: String.t(),
           address: String.t(),
           mac: String.t() | nil,
-          state: :reachable | :stale | :delay | :probe | :failed | :permanent | :none
+          state:
+            :reachable
+            | :stale
+            | :delay
+            | :probe
+            | :failed
+            | :permanent
+            | :incomplete
+            | :noarp
+            | :none
         }
 
   @table :netman_neighbors
@@ -86,5 +95,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitor do
   defp parse_nud_state("probe"), do: :probe
   defp parse_nud_state("failed"), do: :failed
   defp parse_nud_state("permanent"), do: :permanent
+  defp parse_nud_state("incomplete"), do: :incomplete
+  defp parse_nud_state("noarp"), do: :noarp
   defp parse_nud_state(_), do: :none
 end

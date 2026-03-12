@@ -128,6 +128,8 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorTest do
       {"probe", :probe},
       {"failed", :failed},
       {"permanent", :permanent},
+      {"incomplete", :incomplete},
+      {"noarp", :noarp},
       {"unknown", :none}
     ]
 

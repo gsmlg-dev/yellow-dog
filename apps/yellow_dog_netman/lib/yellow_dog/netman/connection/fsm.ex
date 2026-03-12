@@ -412,6 +412,12 @@ defmodule YellowDog.Netman.Connection.FSM do
     {:keep_state, data, [{:next_event, :internal, :check_ip}]}
   end
 
+  # When a global address appears during ip_check, immediately re-check
+  # instead of waiting for the 2-second retry timeout
+  def ip_check(:info, {:netman_event, _, {:add, %{scope: :global}}}, data) do
+    {:keep_state, data, [{:next_event, :internal, :check_ip}]}
+  end
+
   def ip_check(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
     Logger.warning("Carrier lost during ip_check for #{data.interface}")
 

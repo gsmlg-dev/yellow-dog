@@ -30,7 +30,6 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
 
   defp nud_state_gen do
-    # includes known states + "incomplete" which triggers the catch-all (→ :none)
     StreamData.member_of([
       "reachable",
       "stale",
@@ -38,7 +37,9 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       "probe",
       "failed",
       "permanent",
-      "incomplete"
+      "incomplete",
+      "noarp",
+      "unknown_state"
     ])
   end
 
@@ -150,9 +151,18 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       entry = Enum.find(neighbors, &(&1.address == addr))
       assert entry != nil
 
-      # parse_nud_state/1 handles: reachable, stale, delay, probe, failed, permanent
-      # Everything else (including "noarp", "incomplete", etc.) → :none
-      assert entry.state in [:reachable, :stale, :delay, :probe, :failed, :permanent, :none],
+      # parse_nud_state/1 handles all Linux kernel NUD states
+      assert entry.state in [
+               :reachable,
+               :stale,
+               :delay,
+               :probe,
+               :failed,
+               :permanent,
+               :incomplete,
+               :noarp,
+               :none
+             ],
              "Unexpected state atom: #{entry.state}"
     end
   end
