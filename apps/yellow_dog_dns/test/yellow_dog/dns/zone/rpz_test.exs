@@ -19,41 +19,18 @@ defmodule YellowDog.Dns.Zone.RPZTest do
   alias DNS.Message
   alias DNS.Message.Header
 
-  # Start registry once for all tests in this module
-  setup_all do
-    registry_name = YellowDog.Dns.ZoneRegistry
-
-    # Start registry if not running
-    registry_pid =
-      case Process.whereis(registry_name) do
-        nil ->
-          {:ok, pid} = Registry.start_link(keys: :unique, name: registry_name)
-          pid
-
-        pid ->
-          pid
-      end
-
-    # Small delay to ensure registry is ready
-    Process.sleep(10)
-
-    {:ok, registry_pid: registry_pid}
-  end
-
   setup do
     # Generate unique view and zone names for test isolation
     test_ref = :erlang.unique_integer([:positive])
     view_name = "test_view_#{test_ref}"
     zone_name = "rpz#{test_ref}.local"
 
-    # Verify registry is available
+    # Start registry under ExUnit supervisor so it survives the full test
     registry_name = YellowDog.Dns.ZoneRegistry
 
     case Process.whereis(registry_name) do
       nil ->
-        # Re-start if needed (rare case where registry died)
-        {:ok, _} = Registry.start_link(keys: :unique, name: registry_name)
-        Process.sleep(10)
+        start_supervised!({Registry, keys: :unique, name: registry_name})
 
       _pid ->
         :ok
