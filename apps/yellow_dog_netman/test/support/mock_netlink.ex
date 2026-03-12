@@ -26,14 +26,15 @@ defmodule YellowDog.Netman.Test.MockNetlink do
   end
 
   @doc "Simulate a link going down."
-  def link_down(interface) do
+  def link_down(interface, opts \\ []) do
     event = %{
       "type" => "link_change",
       "action" => "change",
       "interface" => interface,
+      "index" => Keyword.get(opts, :index, 1),
       "state" => "down",
       "carrier" => false,
-      "mtu" => 1500
+      "mtu" => Keyword.get(opts, :mtu, 1500)
     }
 
     send_event(event)

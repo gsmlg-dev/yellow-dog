@@ -143,6 +143,7 @@ defmodule YellowDog.Netman.API.CLI do
         case data |> String.trim() |> Jason.decode() do
           {:ok, %{"method" => "monitor"}} ->
             handle_monitor(socket)
+            :gen_tcp.close(socket)
 
           {:ok, command} ->
             response = handle_command(command)
