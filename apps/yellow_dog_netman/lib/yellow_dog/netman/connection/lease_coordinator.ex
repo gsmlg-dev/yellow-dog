@@ -46,6 +46,9 @@ defmodule YellowDog.Netman.Connection.LeaseCoordinator do
   end
 
   @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
   def terminate(_reason, _state) do
     :telemetry.detach(@handler_id)
     :ok

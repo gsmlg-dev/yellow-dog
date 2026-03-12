@@ -78,6 +78,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
 
   @impl true
   def init(_opts) do
+    try do: :ets.delete(@table), catch: (_, _ -> :ok)
     table = :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
     Netlink.subscribe()
     {:ok, %{table: table}}

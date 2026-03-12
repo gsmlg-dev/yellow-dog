@@ -192,22 +192,32 @@ defmodule YellowDog.Netman.Types.Profile do
 
     if method_str in @valid_ipv6_methods do
       method = parse_ip_method(method_str)
-      gateway = Map.get(ipv6, "gateway")
-      dns = Map.get(ipv6, "dns", [])
+      address = Map.get(ipv6, "address")
 
-      dns_search = Map.get(ipv6, "dns_search", [])
+      cond do
+        method == :manual and (address == nil or address == "") ->
+          {:error, "ipv6.address is required when method is manual"}
 
-      with :ok <- validate_gateway(gateway, "ipv6"),
-           :ok <- validate_dns_list(dns, "ipv6"),
-           :ok <- validate_dns_search(dns_search, "ipv6") do
-        {:ok,
-         %{
-           method: method,
-           address: Map.get(ipv6, "address"),
-           gateway: gateway,
-           dns: dns,
-           dns_search: dns_search
-         }}
+        method == :manual and not valid_cidr?(address) ->
+          {:error, "ipv6.address must be valid CIDR (e.g. fd00::1/64)"}
+
+        true ->
+          gateway = Map.get(ipv6, "gateway")
+          dns = Map.get(ipv6, "dns", [])
+          dns_search = Map.get(ipv6, "dns_search", [])
+
+          with :ok <- validate_gateway(gateway, "ipv6"),
+               :ok <- validate_dns_list(dns, "ipv6"),
+               :ok <- validate_dns_search(dns_search, "ipv6") do
+            {:ok,
+             %{
+               method: method,
+               address: address,
+               gateway: gateway,
+               dns: dns,
+               dns_search: dns_search
+             }}
+          end
       end
     else
       {:error, "invalid ipv6.method: #{inspect(method_str)}"}
