@@ -1,5 +1,5 @@
 defmodule YellowDogIdentity.Trust.Token.VerifierTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDogIdentity.Trust.Token.Verifier
   alias YellowDogIdentity.Token
@@ -38,6 +38,16 @@ defmodule YellowDogIdentity.Trust.Token.VerifierTest do
         )
 
       File.mkdir_p!(tmp_dir)
+
+      # Stop the identity supervisor (which manages Registry) if running
+      if sup = Process.whereis(YellowDogIdentity.Supervisor) do
+        Supervisor.stop(sup)
+      end
+
+      # Stop any pre-existing registry (started by yellow_dog app)
+      if pid = Process.whereis(YellowDogIdentity.Registry) do
+        GenServer.stop(pid)
+      end
 
       {:ok, pid} = Registry.start_link(data_dir: tmp_dir, name: YellowDogIdentity.Registry)
 

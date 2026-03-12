@@ -19,6 +19,16 @@ defmodule YellowDogIdentity.IdentityControllerTest do
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "api_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
+    # Stop the identity supervisor (which manages Registry) if running
+    if sup = Process.whereis(YellowDogIdentity.Supervisor) do
+      Supervisor.stop(sup)
+    end
+
+    # Stop any pre-existing registry (started by yellow_dog app)
+    if pid = Process.whereis(YellowDogIdentity.Registry) do
+      GenServer.stop(pid)
+    end
+
     start_supervised!({YellowDogIdentity.Registry, data_dir: tmp_dir, name: YellowDogIdentity.Registry})
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
     %{tmp_dir: tmp_dir}
