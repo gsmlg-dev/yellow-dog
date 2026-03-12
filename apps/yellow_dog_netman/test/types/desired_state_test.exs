@@ -129,6 +129,63 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     assert conn.mtu == 9000
   end
 
+  test "from_profiles/1 concatenates dns_search from both IPv4 and IPv6" do
+    profile = %Profile{
+      id: "dual-search",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: ["v4.example.com"]},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: ["v6.example.com"]}
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["dual-search"]
+    assert conn.dns_search == ["v4.example.com", "v6.example.com"]
+  end
+
+  test "from_profiles/1 deduplicates dns_search domains" do
+    profile = %Profile{
+      id: "dedup-search",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{
+        method: :auto,
+        address: nil,
+        gateway: nil,
+        dns: [],
+        dns_search: ["example.com", "local"]
+      },
+      ipv6: %{
+        method: :auto,
+        address: nil,
+        gateway: nil,
+        dns: [],
+        dns_search: ["example.com", "v6.local"]
+      }
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["dedup-search"]
+    assert conn.dns_search == ["example.com", "local", "v6.local"]
+  end
+
+  test "from_profiles/1 handles nil and missing dns_search gracefully" do
+    profile = %Profile{
+      id: "nil-search",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: nil},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["nil-search"]
+    assert conn.dns_search == []
+  end
+
   test "from_profiles/1 preserves DNS ordering (IPv4 before IPv6)" do
     profile = %Profile{
       id: "dns-order",

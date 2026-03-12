@@ -30,8 +30,9 @@ defmodule YellowDog.Netman.Types.DesiredState do
         dns = (profile.ipv4.dns || []) ++ (profile.ipv6.dns || [])
 
         dns_search =
-          (Map.get(profile.ipv4, :dns_search, []) || []) ++
-            (Map.get(profile.ipv6, :dns_search, []) || [])
+          ((Map.get(profile.ipv4, :dns_search, []) || []) ++
+             (Map.get(profile.ipv6, :dns_search, []) || []))
+          |> Enum.uniq()
 
         connection = %{
           profile_id: profile.id,
