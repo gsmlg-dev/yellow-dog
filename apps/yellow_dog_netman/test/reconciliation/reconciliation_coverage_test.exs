@@ -1678,6 +1678,144 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       ProfileStore.delete(profile_id)
       MockNetlink.link_removed(iface)
     end
+
+    test "IPv6 address without slash defaults to /128 prefix (not /32)" do
+      iface = "cidr_v6_#{:rand.uniform(65535)}"
+      profile_id = "cidr-v6-#{iface}"
+
+      MockNetlink.link_up(iface, carrier: true)
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "2001:db8::1", gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} =
+        Connection.Supervisor.start_connection(iface, %{
+          profile
+          | ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        })
+
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :manual, address: "2001:db8::1", gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address and &1.interface == iface))
+      assert length(add_addr_diffs) == 1
+      # IPv6 should default to /128, not /32
+      assert hd(add_addr_diffs).params.prefix_len == 128
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "IPv6 address with invalid prefix defaults to /128 (not /32)" do
+      iface = "cidr_v6bad_#{:rand.uniform(65535)}"
+      profile_id = "cidr-v6bad-#{iface}"
+
+      MockNetlink.link_up(iface, carrier: true)
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "fd00::1/xyz", gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} =
+        Connection.Supervisor.start_connection(iface, %{
+          profile
+          | ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        })
+
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :manual, address: "fd00::1/xyz", gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address and &1.interface == iface))
+      assert length(add_addr_diffs) == 1
+      # IPv6 should default to /128
+      assert hd(add_addr_diffs).params.prefix_len == 128
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
   end
 
   describe "route drift detection" do

@@ -152,8 +152,9 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   end
 
   def handle_info(:debounced_reconcile, %{reconciling: true} = state) do
-    # Skip overlapping reconciliation
-    {:noreply, %{state | debounce_ref: nil}}
+    # Re-schedule instead of dropping — ensures events during reconciliation aren't lost
+    ref = Process.send_after(self(), :debounced_reconcile, @debounce_ms)
+    {:noreply, %{state | debounce_ref: ref}}
   end
 
   def handle_info(:debounced_reconcile, state) do
@@ -378,12 +379,16 @@ defmodule YellowDog.Netman.ReconciliationEngine do
       [addr, prefix] ->
         case Integer.parse(prefix) do
           {n, ""} -> {addr, n}
-          _ -> {addr, 32}
+          _ -> {addr, default_prefix(addr)}
         end
 
       [addr] ->
-        {addr, 32}
+        {addr, default_prefix(addr)}
     end
+  end
+
+  defp default_prefix(addr) do
+    if String.contains?(addr, ":"), do: 128, else: 32
   end
 
   defp address_present?(addresses, interface, addr) do

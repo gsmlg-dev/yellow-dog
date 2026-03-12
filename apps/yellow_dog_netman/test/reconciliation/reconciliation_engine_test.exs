@@ -631,7 +631,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
   end
 
   describe "debounced_reconcile while reconciling" do
-    test "debounced_reconcile during active reconciliation is skipped" do
+    test "debounced_reconcile during active reconciliation is rescheduled" do
       # Simulate state where reconciling=true and a debounce fires
       state = %ReconciliationEngine{
         timer_ref: nil,
@@ -639,8 +639,11 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
         reconciling: true
       }
 
-      assert {:noreply, %{debounce_ref: nil, reconciling: true}} =
+      assert {:noreply, %{debounce_ref: ref, reconciling: true}} =
                ReconciliationEngine.handle_info(:debounced_reconcile, state)
+
+      # Verify a new debounce timer was scheduled (not nil)
+      assert is_reference(ref)
     end
   end
 

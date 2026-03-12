@@ -769,7 +769,17 @@ defmodule YellowDog.Netman.Connection.FSM do
     should_release? = data.lease != nil or data.profile.ipv4.method == :auto
 
     if should_release? and Code.ensure_loaded?(YellowDog.DhcpClient) do
-      YellowDog.DhcpClient.release(data.interface)
+      try do
+        YellowDog.DhcpClient.release(data.interface)
+      rescue
+        e ->
+          Logger.warning(
+            "Failed to release DHCP lease for #{data.interface}: #{Exception.message(e)}"
+          )
+      catch
+        :exit, reason ->
+          Logger.warning("Failed to release DHCP lease for #{data.interface}: #{inspect(reason)}")
+      end
     end
   end
 

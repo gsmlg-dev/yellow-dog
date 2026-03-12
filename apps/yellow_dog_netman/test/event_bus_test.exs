@@ -154,4 +154,16 @@ defmodule YellowDog.Netman.EventBusTest do
     assert :ok = EventBus.publish(unique, :orphan)
     refute_receive {:netman_event, _, _}, 50
   end
+
+  test "broadcast also dispatches to wildcard subscribers" do
+    EventBus.subscribe("test:bcast_wc:*")
+    EventBus.broadcast("test:bcast_wc:", :broadcast_msg)
+    assert_receive {:netman_event, "test:bcast_wc:", :broadcast_msg}
+  end
+
+  test "broadcast to wildcard subscribers does not match unrelated prefixes" do
+    EventBus.subscribe("test:bcast_other:*")
+    EventBus.broadcast("test:bcast_wc:", :msg)
+    refute_receive {:netman_event, _, _}, 50
+  end
 end

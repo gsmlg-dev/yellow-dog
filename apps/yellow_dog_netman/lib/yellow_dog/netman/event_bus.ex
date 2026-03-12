@@ -74,9 +74,20 @@ defmodule YellowDog.Netman.EventBus do
   def broadcast(prefix, message) when is_binary(prefix) do
     # Get all registered keys and match prefix
     Registry.select(@registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.filter(fn {topic, _pid} -> String.starts_with?(topic, prefix) end)
+    |> Enum.filter(fn {topic, _pid} ->
+      topic != @wildcard_key and String.starts_with?(topic, prefix)
+    end)
     |> Enum.each(fn {topic, pid} ->
       send(pid, {:netman_event, topic, message})
+    end)
+
+    # Also dispatch to wildcard subscribers matching this prefix
+    Registry.dispatch(@registry, @wildcard_key, fn entries ->
+      for {pid, wildcard_prefix} <- entries,
+          String.starts_with?(wildcard_prefix, prefix) or
+            String.starts_with?(prefix, wildcard_prefix) do
+        send(pid, {:netman_event, prefix, message})
+      end
     end)
   end
 
