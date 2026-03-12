@@ -3,7 +3,34 @@ defmodule YellowDog.Resolved do
   DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery.
   """
 
-  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, RateLimiter}
+  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, LinkDns, RateLimiter}
+
+  @doc """
+  Set per-link DNS configuration for a network interface.
+
+  Called by YellowDog.Netman when a connection becomes activated.
+  Higher-priority links' DNS servers are prepended to the upstream list.
+
+  ## Parameters
+
+    * `interface` - Network interface name (e.g., "eth0")
+    * `config` - Map with `:servers` (IP tuples), `:search` (domain strings),
+      and `:priority` (integer)
+  """
+  @spec set_link_dns(String.t(), map()) :: :ok
+  def set_link_dns(interface, config) do
+    LinkDns.set_link_dns(interface, config)
+  end
+
+  @doc """
+  Remove per-link DNS configuration for a network interface.
+
+  Called by YellowDog.Netman when a connection is deactivated.
+  """
+  @spec reset_link_dns(String.t()) :: :ok
+  def reset_link_dns(interface) do
+    LinkDns.reset_link_dns(interface)
+  end
 
   @doc """
   Returns a diagnostic snapshot of the resolver's current state.

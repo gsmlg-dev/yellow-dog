@@ -8,7 +8,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   with 100ms debounce.
   """
 
-  @compile {:no_warn_undefined, [:telemetry]}
+  @compile {:no_warn_undefined, [:telemetry, YellowDog.Resolved]}
 
   use GenServer
 

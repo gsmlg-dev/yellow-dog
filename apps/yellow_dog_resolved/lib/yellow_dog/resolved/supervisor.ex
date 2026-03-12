@@ -15,6 +15,7 @@ defmodule YellowDog.Resolved.Supervisor do
       {YellowDog.Resolved.Counters, []},
       {YellowDog.Resolved.Cache, config.cache},
       {YellowDog.Resolved.Forwarder, config},
+      {YellowDog.Resolved.LinkDns, []},
       {YellowDog.Resolved.RateLimiter, config},
       {YellowDog.Resolved.Listener, config}
     ]
