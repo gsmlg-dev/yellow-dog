@@ -1730,6 +1730,25 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.profile.autoconnect_priority == 700
     end
 
+    test "activated: method change triggers deactivate with reactivate flag" do
+      iface = "hdlr_mchg_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      # Change ipv4 method from manual to auto (DHCP)
+      new_profile = %{old_profile | ipv4: %{old_profile.ipv4 | method: :auto}}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :activated}
+
+      result = FSM.activated(:cast, {:update_profile, new_profile}, data)
+      assert {:next_state, :deactivating, new_data, actions} = result
+      assert new_data.profile.ipv4.method == :auto
+      assert new_data.reactivate == true
+
+      assert Enum.any?(actions, fn
+               {:next_event, :internal, :cleanup} -> true
+               _ -> false
+             end)
+    end
+
     test "activated: non-method priority change flushes routes before reinstall" do
       iface = "hdlr_route_#{:rand.uniform(65535)}"
       old_profile = base_profile(iface)

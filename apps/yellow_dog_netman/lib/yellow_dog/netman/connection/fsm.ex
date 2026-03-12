@@ -952,6 +952,10 @@ defmodule YellowDog.Netman.Connection.FSM do
         e ->
           Logger.warning("Failed to push DNS for #{data.interface}: #{inspect(e)}")
           :ok
+      catch
+        :exit, reason ->
+          Logger.warning("Failed to push DNS for #{data.interface}: #{inspect(reason)}")
+          :ok
       end
     else
       :ok
@@ -965,6 +969,10 @@ defmodule YellowDog.Netman.Connection.FSM do
       rescue
         e ->
           Logger.warning("Failed to reset DNS for #{data.interface}: #{inspect(e)}")
+          :ok
+      catch
+        :exit, reason ->
+          Logger.warning("Failed to reset DNS for #{data.interface}: #{inspect(reason)}")
           :ok
       end
     else

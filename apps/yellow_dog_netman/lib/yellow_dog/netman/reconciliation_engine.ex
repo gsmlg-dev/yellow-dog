@@ -2,7 +2,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   @moduledoc """
   Core desired-state reconciliation loop.
 
-  Cycle: `observe() → diff(desired, observed) → plan(diffs) → apply(plan) → verify()`
+  Cycle: `observe() → diff(desired, observed) → apply(diffs)`
 
   Runs on a periodic timer (default 30s) plus event-triggered reconciliation
   with 100ms debounce.
@@ -542,7 +542,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   defp apply_diff(%Diff{action: action}) do
     Logger.warning("Unhandled diff action: #{action}")
-    :ok
+    {:error, {:unhandled_action, action}}
   end
 
   ## Helpers
