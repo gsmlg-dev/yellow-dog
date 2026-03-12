@@ -694,10 +694,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   defp do_allocate_lease(duid, iaid, requested_ip, pool) do
     lease_key = make_lease_key(duid, iaid)
 
+    now = System.system_time(:second)
+
     # Check for existing lease in ETS cache first
     case :ets.lookup(@table_name, lease_key) do
-      [{^lease_key, existing_lease}] ->
-        # Renew existing lease
+      [{^lease_key, existing_lease}] when existing_lease.expires_at > now ->
+        # Renew active (non-expired) lease
         renewed_lease = renew_lease(existing_lease)
 
         # Update in ETS cache
@@ -714,11 +716,11 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
         {:ok, renewed_lease}
 
-      [] ->
-        # Check Mnesia for existing lease (may not be in ETS cache)
+      _ ->
+        # Either no ETS entry or the cached lease is expired — check Mnesia
         case LeaseStorage.get(duid, iaid) do
-          {:ok, stored_lease} ->
-            # Lease exists in Mnesia but not in cache, renew it
+          {:ok, stored_lease} when stored_lease.expires_at > now ->
+            # Active lease in Mnesia (ETS cache miss or expired ETS entry) — renew it
             renewed_lease = renew_lease(stored_lease)
             :ets.insert(@table_name, {lease_key, renewed_lease})
             store_lease_to_mnesia(renewed_lease)
@@ -731,8 +733,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
             {:ok, renewed_lease}
 
-          {:error, :not_found} ->
-            # Allocate new lease
+          _ ->
+            # No active lease found (not found or expired) — allocate fresh
             allocate_new_lease(duid, iaid, lease_key, requested_ip, pool)
         end
     end
