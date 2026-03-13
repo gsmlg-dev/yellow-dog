@@ -710,6 +710,9 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def failed(:cast, :deactivate, data) do
     release_dhcp(data)
+    reset_dns(data)
+    AddressManager.flush(data.interface)
+    RouteManager.flush(data.interface)
 
     data = %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0}
     transition(data, :failed, :disconnected)

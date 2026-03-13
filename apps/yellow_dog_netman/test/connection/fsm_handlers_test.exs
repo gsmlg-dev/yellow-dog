@@ -774,6 +774,28 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.ip_check_retries == 0
       assert {:next_event, :internal, :auto_activate} in actions
     end
+
+    test "failed :deactivate clears stale data and transitions to disconnected" do
+      iface = "hdlr_fail_deact_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :failed,
+        error: :dhcp_failed,
+        lease: %{ip: "10.0.0.7"},
+        dhcp_retries: 3,
+        ip_check_retries: 2
+      }
+
+      result = FSM.failed(:cast, :deactivate, data)
+      assert {:next_state, :disconnected, new_data, _actions} = result
+      assert new_data.error == nil
+      assert new_data.lease == nil
+      assert new_data.dhcp_retries == 0
+      assert new_data.ip_check_retries == 0
+    end
   end
 
   # ----------------------------------------------------------------
