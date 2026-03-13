@@ -23,6 +23,15 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
     assert link.state == :up
   end
 
+  test "link_up stores mac and kind fields" do
+    MockNetlink.link_up("test_mac_eth", mac: "11:22:33:44:55:66", kind: "veth")
+    Process.sleep(50)
+
+    link = LinkMonitor.get_link("test_mac_eth")
+    assert link.mac == "11:22:33:44:55:66"
+    assert link.kind == "veth"
+  end
+
   test "link_down updates carrier to false" do
     MockNetlink.link_up("test_eth1")
     Process.sleep(50)
