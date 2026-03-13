@@ -3,13 +3,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   use ExUnitProperties
 
   alias YellowDog.Netman.Connection.Supervisor, as: ConnSupervisor
+  alias YellowDog.Netman.ProfileStore
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
   @moduletag :capture_log
 
   defp make_profile(iface) do
-    %Profile{
+    profile = %Profile{
       id: "csprop-#{iface}",
       type: :ethernet,
       interface: iface,
@@ -19,6 +20,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
       ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
     }
+
+    # Register with ProfileStore to prevent ReconciliationEngine from
+    # auto-deactivating the FSM as an orphan during debounced reconciliation
+    ProfileStore.put(profile.id, profile)
+    profile
   end
 
   # Properties

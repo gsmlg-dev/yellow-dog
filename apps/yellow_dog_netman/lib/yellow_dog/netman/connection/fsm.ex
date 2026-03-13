@@ -372,6 +372,7 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def configuring(:info, {:netman_event, _, {:removed, _}}, data) do
     release_dhcp(data)
+    AddressManager.flush(data.interface)
     transition(data, :configuring, :unavailable)
   end
 
@@ -719,7 +720,9 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def failed(:info, {:netman_event, _, {:removed, _}}, data) do
-    transition(%{data | error: nil}, :failed, :unavailable)
+    AddressManager.flush(data.interface)
+    RouteManager.flush(data.interface)
+    transition(%{data | error: nil, lease: nil}, :failed, :unavailable)
   end
 
   def failed({:call, from}, :get_state, data) do
