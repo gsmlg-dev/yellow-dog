@@ -627,10 +627,16 @@ defmodule YellowDog.Netman.Connection.FSM do
         {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
       ])
     else
-      # Non-method change (DNS, priority, gateway, etc.) — update in-place
-      # Flush old routes first to avoid stale routes with wrong metrics
+      # Non-method change (DNS, priority, gateway, MTU, etc.) — update in-place
       data = %{data | profile: new_profile}
+
+      # Apply MTU change if it differs from old profile
+      if old.ethernet.mtu != new_profile.ethernet.mtu do
+        maybe_set_mtu(data, LinkMonitor)
+      end
+
       push_dns(data)
+      # Flush old routes first to avoid stale routes with wrong metrics
       RouteManager.flush(data.interface)
       install_routes(data)
       {:keep_state, data}

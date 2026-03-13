@@ -1638,6 +1638,17 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.profile.ipv4.dns == ["8.8.8.8"]
     end
 
+    test "activated: MTU change in non-method update is applied in-place" do
+      iface = "hdlr_mtu_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | ethernet: %{mtu: 9000}}
+      data = %FSM{interface: iface, profile: old_profile, current_state: :activated}
+
+      result = FSM.activated(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.ethernet.mtu == 9000
+    end
+
     test "activated: method change triggers deactivation with reactivate flag" do
       iface = "hdlr_upd_m_#{:rand.uniform(65535)}"
       old_profile = base_profile(iface)
