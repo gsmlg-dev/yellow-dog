@@ -23,17 +23,28 @@ defmodule YellowDog.Netman.Supervisor do
 
   @impl true
   def init(_opts) do
-    children = [
-      {Registry, keys: :unique, name: YellowDog.Netman.Registry},
-      {YellowDog.Netman.Kernel.Supervisor, []},
-      {YellowDog.Netman.EventBus, []},
-      {YellowDog.Netman.ProfileStore, []},
-      {YellowDog.Netman.Connection.Supervisor, []},
-      {YellowDog.Netman.Connection.LeaseCoordinator, []},
-      {YellowDog.Netman.ReconciliationEngine, []},
-      {YellowDog.Netman.API.Supervisor, []}
-    ]
+    children =
+      [
+        {Registry, keys: :unique, name: YellowDog.Netman.Registry},
+        {YellowDog.Netman.Kernel.Supervisor, []},
+        {YellowDog.Netman.EventBus, []},
+        {YellowDog.Netman.ProfileStore, []},
+        {YellowDog.Netman.Connection.Supervisor, []},
+        {YellowDog.Netman.Connection.LeaseCoordinator, []},
+        {YellowDog.Netman.ReconciliationEngine, []},
+        {YellowDog.Netman.API.Supervisor, []}
+      ] ++ console_client_child()
 
     Supervisor.init(children, strategy: :rest_for_one)
+  end
+
+  defp console_client_child do
+    config = Application.get_env(:yellow_dog_netman, :console, [])
+
+    if Keyword.get(config, :enabled, false) do
+      [{YellowDog.Netman.Console.Client, []}]
+    else
+      []
+    end
   end
 end

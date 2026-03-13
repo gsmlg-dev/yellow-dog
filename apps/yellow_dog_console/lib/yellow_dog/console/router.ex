@@ -158,14 +158,15 @@ defmodule YellowDog.Console.Router do
     live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive
   end
 
-  # Netman section — network manager + DHCP client
+  # Netman section — central management of remote Netman instances
   scope "/netman", YellowDog.Console do
     pipe_through :browser
 
     live "/", NetmanLive.DashboardLive
-    live "/dhcp-client", DhcpClientLive.Index
-    live "/dhcp-client/interfaces", DhcpClientLive.InterfacesLive
-    live "/dhcp-client/activity", DhcpClientLive.ActivityLive
+    live "/:node_id", NetmanLive.NodeLive
+    live "/:node_id/interfaces", NetmanLive.InterfacesLive
+    live "/:node_id/resolved", NetmanLive.ResolvedLive
+    live "/:node_id/dhcp-client", NetmanLive.DhcpClientLive
   end
 
   # HTTP boot endpoints — no CSRF, no session (called by iPXE/installer)

@@ -187,17 +187,20 @@ defmodule YellowDog.Console.Layouts do
     </li>
     <li>
       <.link navigate="/server/dns/views" class={active?(@current_path, "/server/dns/views")}>
-        Views
+        <.dm_mdi name="eye" class="w-5 h-5" />
+        <span>Views</span>
       </.link>
     </li>
     <li>
       <.link navigate="/server/dns/acl" class={active?(@current_path, "/server/dns/acl")}>
-        ACL
+        <.dm_mdi name="shield-lock" class="w-5 h-5" />
+        <span>ACL</span>
       </.link>
     </li>
     <li>
       <.link navigate="/server/dns/metrics" class={active?(@current_path, "/server/dns/metrics")}>
-        Metrics
+        <.dm_mdi name="chart-line" class="w-5 h-5" />
+        <span>Metrics</span>
       </.link>
     </li>
     <!-- DHCPv4 -->
@@ -213,12 +216,14 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/dhcpv4/leases"
         class={active?(@current_path, "/server/dhcpv4/leases")}
       >
-        Leases
+        <.dm_mdi name="file-document" class="w-5 h-5" />
+        <span>Leases</span>
       </.link>
     </li>
     <li>
       <.link navigate="/server/dhcpv4/pools" class={active?(@current_path, "/server/dhcpv4/pools")}>
-        Pools
+        <.dm_mdi name="lan" class="w-5 h-5" />
+        <span>Pools</span>
       </.link>
     </li>
     <!-- DHCPv6 -->
@@ -234,12 +239,14 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/dhcpv6/leases"
         class={active?(@current_path, "/server/dhcpv6/leases")}
       >
-        Leases
+        <.dm_mdi name="file-document" class="w-5 h-5" />
+        <span>Leases</span>
       </.link>
     </li>
     <li>
       <.link navigate="/server/dhcpv6/pools" class={active?(@current_path, "/server/dhcpv6/pools")}>
-        Pools
+        <.dm_mdi name="lan" class="w-5 h-5" />
+        <span>Pools</span>
       </.link>
     </li>
     <!-- mDNS -->
@@ -255,7 +262,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/mdns/services"
         class={active?(@current_path, "/server/mdns/services")}
       >
-        Services
+        <.dm_mdi name="room-service" class="w-5 h-5" />
+        <span>Services</span>
       </.link>
     </li>
     <li>
@@ -263,7 +271,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/mdns/discovery"
         class={active?(@current_path, "/server/mdns/discovery")}
       >
-        Discovery
+        <.dm_mdi name="radar" class="w-5 h-5" />
+        <span>Discovery</span>
       </.link>
     </li>
     <li>
@@ -271,7 +280,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/mdns/monitor"
         class={active?(@current_path, "/server/mdns/monitor")}
       >
-        Monitor
+        <.dm_mdi name="monitor-eye" class="w-5 h-5" />
+        <span>Monitor</span>
       </.link>
     </li>
     <!-- Netboot -->
@@ -287,7 +297,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/netboot/devices"
         class={active?(@current_path, "/server/netboot/devices")}
       >
-        Devices
+        <.dm_mdi name="devices" class="w-5 h-5" />
+        <span>Devices</span>
       </.link>
     </li>
     <li>
@@ -295,7 +306,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/netboot/profiles"
         class={active?(@current_path, "/server/netboot/profiles")}
       >
-        Boot Profiles
+        <.dm_mdi name="playlist-check" class="w-5 h-5" />
+        <span>Boot Profiles</span>
       </.link>
     </li>
     <li>
@@ -303,7 +315,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/netboot/tftp"
         class={active?(@current_path, "/server/netboot/tftp")}
       >
-        TFTP Server
+        <.dm_mdi name="folder-network" class="w-5 h-5" />
+        <span>TFTP Server</span>
       </.link>
     </li>
     <!-- Identity -->
@@ -322,7 +335,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/identity/hosts"
         class={active?(@current_path, "/server/identity/hosts")}
       >
-        All Hosts
+        <.dm_mdi name="desktop-classic" class="w-5 h-5" />
+        <span>All Hosts</span>
       </.link>
     </li>
     <li>
@@ -330,7 +344,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/identity/approvals"
         class={active?(@current_path, "/server/identity/approvals")}
       >
-        Pending Approvals
+        <.dm_mdi name="check-decagram" class="w-5 h-5" />
+        <span>Pending Approvals</span>
       </.link>
     </li>
     <li>
@@ -338,7 +353,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/identity/tokens"
         class={active?(@current_path, "/server/identity/tokens")}
       >
-        Tokens
+        <.dm_mdi name="ticket-account" class="w-5 h-5" />
+        <span>Tokens</span>
       </.link>
     </li>
     <li>
@@ -346,7 +362,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/server/identity/policies"
         class={active?(@current_path, "/server/identity/policies")}
       >
-        Policies
+        <.dm_mdi name="shield-check" class="w-5 h-5" />
+        <span>Policies</span>
       </.link>
     </li>
     """
@@ -445,7 +462,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/system/logs/dns-query"
         class={active?(@current_path, "/system/logs/dns-query")}
       >
-        DNS Query Logs
+        <.dm_mdi name="web" class="w-5 h-5" />
+        <span>DNS Query Logs</span>
       </.link>
     </li>
     <li>
@@ -453,7 +471,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/system/logs/dhcpv4-activity"
         class={active?(@current_path, "/system/logs/dhcpv4-activity")}
       >
-        DHCPv4 Activity
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>DHCPv4 Activity</span>
       </.link>
     </li>
     <li>
@@ -461,7 +480,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/system/logs/dhcpv6-activity"
         class={active?(@current_path, "/system/logs/dhcpv6-activity")}
       >
-        DHCPv6 Activity
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>DHCPv6 Activity</span>
       </.link>
     </li>
     <li>
@@ -469,7 +489,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/system/logs/netboot"
         class={active?(@current_path, "/system/logs/netboot")}
       >
-        Netboot Log
+        <.dm_mdi name="flash" class="w-5 h-5" />
+        <span>Netboot Log</span>
       </.link>
     </li>
     <li>
@@ -477,7 +498,8 @@ defmodule YellowDog.Console.Layouts do
         navigate="/system/logs/identity-audit"
         class={active?(@current_path, "/system/logs/identity-audit")}
       >
-        Identity Audit
+        <.dm_mdi name="key-variant" class="w-5 h-5" />
+        <span>Identity Audit</span>
       </.link>
     </li>
     <!-- Provider Data -->
@@ -496,13 +518,17 @@ defmodule YellowDog.Console.Layouts do
         navigate="/system/fingerprint/fingerprints"
         class={active?(@current_path, "/system/fingerprint/fingerprints")}
       >
-        Fingerprints
+        <.dm_mdi name="database" class="w-5 h-5" />
+        <span>Fingerprints</span>
       </.link>
     </li>
     """
   end
 
   defp sidebar_netman(assigns) do
+    clients = YellowDog.Console.NetmanRegistry.list()
+    assigns = assign(assigns, :clients, clients)
+
     ~H"""
     <li class="nested-menu-title">Network Manager</li>
     <li>
@@ -511,33 +537,49 @@ defmodule YellowDog.Console.Layouts do
         <span>Dashboard</span>
       </.link>
     </li>
-    <!-- DHCP Client -->
-    <li class="nested-menu-title mt-4">DHCP Client</li>
-    <li>
-      <.link
-        navigate="/netman/dhcp-client"
-        class={active?(@current_path, "/netman/dhcp-client", :exact)}
-      >
-        <.dm_mdi name="chip" class="w-5 h-5" />
-        <span>Overview</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/netman/dhcp-client/interfaces"
-        class={active?(@current_path, "/netman/dhcp-client/interfaces")}
-      >
-        Interfaces
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/netman/dhcp-client/activity"
-        class={active?(@current_path, "/netman/dhcp-client/activity")}
-      >
-        Activity
-      </.link>
-    </li>
+    <!-- Connected Netman Instances -->
+    <%= for client <- @clients do %>
+      <li class="nested-menu-title mt-4">
+        <.dm_mdi name="circle" class="w-2 h-2 text-success inline-block" />
+        {client.hostname}
+      </li>
+      <li>
+        <.link
+          navigate={"/netman/#{client.node_id}"}
+          class={active?(@current_path, "/netman/#{client.node_id}", :exact)}
+        >
+          <.dm_mdi name="server-network" class="w-5 h-5" />
+          <span>Overview</span>
+        </.link>
+      </li>
+      <li>
+        <.link
+          navigate={"/netman/#{client.node_id}/interfaces"}
+          class={active?(@current_path, "/netman/#{client.node_id}/interfaces")}
+        >
+          <.dm_mdi name="ethernet" class="w-5 h-5" />
+          <span>Interfaces</span>
+        </.link>
+      </li>
+      <li>
+        <.link
+          navigate={"/netman/#{client.node_id}/resolved"}
+          class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
+        >
+          <.dm_mdi name="dns" class="w-5 h-5" />
+          <span>Resolved Server</span>
+        </.link>
+      </li>
+      <li>
+        <.link
+          navigate={"/netman/#{client.node_id}/dhcp-client"}
+          class={active?(@current_path, "/netman/#{client.node_id}/dhcp-client")}
+        >
+          <.dm_mdi name="chip" class="w-5 h-5" />
+          <span>DHCP Client</span>
+        </.link>
+      </li>
+    <% end %>
     """
   end
 

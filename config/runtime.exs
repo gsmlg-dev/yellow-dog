@@ -164,12 +164,26 @@ if socket_path = System.get_env("YELLOW_DOG_NETMAN_SOCKET") do
   config :yellow_dog_netman, :socket_path, socket_path
 end
 
-# Configure Tailwind CSS binary path from environment variable
-if tailwind_bin = System.get_env("TAILWINDCSS_BIN") do
-  config :tailwind, path: tailwind_bin
+# Netman console WebSocket client
+if console_url = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_URL") do
+  console_config =
+    Application.get_env(:yellow_dog_netman, :console, [])
+    |> Keyword.merge(
+      enabled: true,
+      url: console_url,
+      token: System.get_env("YELLOW_DOG_NETMAN_CONSOLE_TOKEN", ""),
+      node_id: System.get_env("YELLOW_DOG_NETMAN_NODE_ID"),
+      hostname: System.get_env("YELLOW_DOG_NETMAN_HOSTNAME")
+    )
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+  config :yellow_dog_netman, :console, console_config
 end
 
-# Configure Bun binary path from environment variable
-if bun_bin = System.get_env("BUN_BIN") do
-  config :bun, path: bun_bin
+if System.get_env("MIX_BUN_PATH") do
+  config :bun, path: System.get_env("MIX_BUN_PATH")
+end
+
+if System.get_env("MIX_TAILWIND_PATH") do
+  config :tailwind, path: System.get_env("MIX_TAILWIND_PATH")
 end

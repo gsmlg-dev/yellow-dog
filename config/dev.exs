@@ -103,3 +103,9 @@ config :abyss,
 # DHCP client NIF: skip Rust compilation in dev unless cargo is available.
 # In production, remove this config to enable NIF compilation.
 config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native, skip_compilation?: true
+
+# Netman: auto-connect to the local console in dev
+config :yellow_dog_netman, :console,
+  enabled: true,
+  url: "ws://localhost:4270/netman/ws/websocket",
+  token: "dev-token"
