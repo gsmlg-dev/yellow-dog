@@ -2,13 +2,15 @@ defmodule YellowDog.Netman.Connection.FSMTest do
   use ExUnit.Case
 
   alias YellowDog.Netman.Connection.FSM
+  alias YellowDog.Netman.ProfileStore
   alias YellowDog.Netman.Types.Profile
   alias YellowDog.Netman.Test.MockNetlink
 
   @moduletag :capture_log
 
   setup do
-    # Create a test profile
+    # Create a test profile and register with ProfileStore to prevent
+    # ReconciliationEngine from auto-deactivating the FSM as orphan
     profile = %Profile{
       id: "fsm-test-#{:rand.uniform(100_000)}",
       type: :ethernet,
@@ -19,6 +21,9 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       ipv4: %{method: :manual, address: "10.0.0.100/24", gateway: "10.0.0.1", dns: []},
       ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
     }
+
+    ProfileStore.put(profile.id, profile)
+    on_exit(fn -> ProfileStore.delete(profile.id) end)
 
     {:ok, profile: profile}
   end

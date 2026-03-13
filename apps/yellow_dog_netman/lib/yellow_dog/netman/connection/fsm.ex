@@ -79,7 +79,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   @doc "Get current state of a connection FSM."
   @spec get_state(pid()) :: {:ok, map()} | {:error, term()}
   def get_state(pid) do
-    :gen_statem.call(pid, :get_state)
+    :gen_statem.call(pid, :get_state, 2_000)
   catch
     :exit, _ -> {:error, :not_running}
   end
