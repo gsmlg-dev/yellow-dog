@@ -144,8 +144,7 @@ defmodule YellowDog.Console.LogsLive do
           Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
         end
 
-        {:noreply,
-         assign(socket, page_title: "Realtime Logs", connected: connected?(socket))}
+        {:noreply, assign(socket, page_title: "Realtime Logs", connected: connected?(socket))}
 
       _ ->
         {:noreply, assign(socket, page_title: "Logs")}

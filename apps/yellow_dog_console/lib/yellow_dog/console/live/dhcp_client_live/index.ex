@@ -61,231 +61,231 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-    <div class="space-y-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-4xl font-bold">DHCP Client</h1>
-          <p class="mt-2 text-on-surface-variant">
-            Manage DHCP client interfaces and monitor lease status
-          </p>
+      <div class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-4xl font-bold">DHCP Client</h1>
+            <p class="mt-2 text-on-surface-variant">
+              Manage DHCP client interfaces and monitor lease status
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <.card>
-          <div class="text-sm text-on-surface-variant">Interfaces</div>
-          <div class="text-2xl font-bold text-primary">{length(@interfaces)}</div>
-          <div class="text-xs text-on-surface-variant">Managed DHCP clients</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">Bound</div>
-          <div class="text-2xl font-bold text-success">{count_by_state(@interfaces, :bound)}</div>
-          <div class="text-xs text-on-surface-variant">With active leases</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">Requesting</div>
-          <div class="text-2xl font-bold text-warning">
-            {count_by_state(@interfaces, :init) + count_by_state(@interfaces, :selecting) +
-              count_by_state(@interfaces, :requesting)}
-          </div>
-          <div class="text-xs text-on-surface-variant">Acquiring addresses</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">Renewing</div>
-          <div class="text-2xl font-bold text-info">
-            {count_by_state(@interfaces, :renewing) + count_by_state(@interfaces, :rebinding)}
-          </div>
-          <div class="text-xs text-on-surface-variant">Extending leases</div>
-        </.card>
-      </div>
-
-      <div class="card bg-surface shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">Interface Status</h2>
-
-          <%= if @interfaces == [] do %>
-            <div class="text-center py-12 text-on-surface-variant">
-              <p class="text-lg">No DHCP client interfaces configured</p>
-              <p class="text-sm mt-2">
-                Configure interfaces in the TOML config under [dhcp_client]
-              </p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Interfaces</div>
+            <div class="text-2xl font-bold text-primary">{length(@interfaces)}</div>
+            <div class="text-xs text-on-surface-variant">Managed DHCP clients</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Bound</div>
+            <div class="text-2xl font-bold text-success">{count_by_state(@interfaces, :bound)}</div>
+            <div class="text-xs text-on-surface-variant">With active leases</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Requesting</div>
+            <div class="text-2xl font-bold text-warning">
+              {count_by_state(@interfaces, :init) + count_by_state(@interfaces, :selecting) +
+                count_by_state(@interfaces, :requesting)}
             </div>
-          <% else %>
-            <div class="overflow-x-auto">
-              <table class="table table-striped">
-                <thead>
-                  <tr>
-                    <th>Interface</th>
-                    <th>State</th>
-                    <th>IP Address</th>
-                    <th>Server</th>
-                    <th>Lease Time</th>
-                    <th>YellowDog</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <%= for iface <- @interfaces do %>
+            <div class="text-xs text-on-surface-variant">Acquiring addresses</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Renewing</div>
+            <div class="text-2xl font-bold text-info">
+              {count_by_state(@interfaces, :renewing) + count_by_state(@interfaces, :rebinding)}
+            </div>
+            <div class="text-xs text-on-surface-variant">Extending leases</div>
+          </.card>
+        </div>
+
+        <div class="card bg-surface shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Interface Status</h2>
+
+            <%= if @interfaces == [] do %>
+              <div class="text-center py-12 text-on-surface-variant">
+                <p class="text-lg">No DHCP client interfaces configured</p>
+                <p class="text-sm mt-2">
+                  Configure interfaces in the TOML config under [dhcp_client]
+                </p>
+              </div>
+            <% else %>
+              <div class="overflow-x-auto">
+                <table class="table table-striped">
+                  <thead>
                     <tr>
-                      <td class="font-mono font-semibold">{iface.interface}</td>
-                      <td>
-                        <span class={"badge #{state_badge_class(iface.state)}"}>
-                          {iface.state}
-                        </span>
-                      </td>
-                      <td class="font-mono">
-                        {if iface.lease, do: format_ip(iface.lease.ip), else: "-"}
-                      </td>
-                      <td class="font-mono text-sm">
-                        {if iface.lease, do: format_ip(iface.lease.server_ip), else: "-"}
-                      </td>
-                      <td>
-                        {if iface.lease, do: format_lease_time(iface.lease.lease_time), else: "-"}
-                      </td>
-                      <td>
-                        <%= if iface.lease && iface.lease.yellowdog_server do %>
-                          <span class="badge badge-success badge-sm">YD</span>
-                        <% else %>
-                          <span class="badge badge-ghost badge-sm">-</span>
-                        <% end %>
-                      </td>
-                      <td>
-                        <%= if iface.state in [:bound, :renewing, :rebinding] do %>
-                          <button
-                            phx-click="release"
-                            phx-value-interface={iface.interface}
-                            class="btn btn-error btn-xs"
-                            data-confirm="Release lease for this interface?"
-                          >
-                            Release
-                          </button>
-                        <% end %>
-                      </td>
+                      <th>Interface</th>
+                      <th>State</th>
+                      <th>IP Address</th>
+                      <th>Server</th>
+                      <th>Lease Time</th>
+                      <th>YellowDog</th>
+                      <th>Actions</th>
                     </tr>
-                  <% end %>
-                </tbody>
-              </table>
-            </div>
-          <% end %>
+                  </thead>
+                  <tbody>
+                    <%= for iface <- @interfaces do %>
+                      <tr>
+                        <td class="font-mono font-semibold">{iface.interface}</td>
+                        <td>
+                          <span class={"badge #{state_badge_class(iface.state)}"}>
+                            {iface.state}
+                          </span>
+                        </td>
+                        <td class="font-mono">
+                          {if iface.lease, do: format_ip(iface.lease.ip), else: "-"}
+                        </td>
+                        <td class="font-mono text-sm">
+                          {if iface.lease, do: format_ip(iface.lease.server_ip), else: "-"}
+                        </td>
+                        <td>
+                          {if iface.lease, do: format_lease_time(iface.lease.lease_time), else: "-"}
+                        </td>
+                        <td>
+                          <%= if iface.lease && iface.lease.yellowdog_server do %>
+                            <span class="badge badge-success badge-sm">YD</span>
+                          <% else %>
+                            <span class="badge badge-ghost badge-sm">-</span>
+                          <% end %>
+                        </td>
+                        <td>
+                          <%= if iface.state in [:bound, :renewing, :rebinding] do %>
+                            <button
+                              phx-click="release"
+                              phx-value-interface={iface.interface}
+                              class="btn btn-error btn-xs"
+                              data-confirm="Release lease for this interface?"
+                            >
+                              Release
+                            </button>
+                          <% end %>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% end %>
+          </div>
         </div>
-      </div>
 
-      <%= for iface <- @interfaces do %>
-        <%= if iface.lease do %>
-          <div class="card bg-surface shadow-xl">
-            <div class="card-body">
-              <h2 class="card-title">
-                Lease Details — {iface.interface}
-                <%= if iface.lease.yellowdog_server do %>
-                  <span class="badge badge-success">YellowDog Server</span>
-                <% end %>
-              </h2>
+        <%= for iface <- @interfaces do %>
+          <%= if iface.lease do %>
+            <div class="card bg-surface shadow-xl">
+              <div class="card-body">
+                <h2 class="card-title">
+                  Lease Details — {iface.interface}
+                  <%= if iface.lease.yellowdog_server do %>
+                    <span class="badge badge-success">YellowDog Server</span>
+                  <% end %>
+                </h2>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">IP Address</div>
-                  <div class="font-mono">{format_ip(iface.lease.ip)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">Subnet Mask</div>
-                  <div class="font-mono">{format_ip(iface.lease.subnet_mask)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">Router</div>
-                  <div class="font-mono">
-                    {if iface.lease.router, do: format_ip(iface.lease.router), else: "None"}
-                  </div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">DNS Servers</div>
-                  <div class="font-mono text-sm">
-                    {Enum.map_join(iface.lease.dns_servers, ", ", &format_ip/1)}
-                  </div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">DHCP Server</div>
-                  <div class="font-mono">{format_ip(iface.lease.server_ip)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">Domain</div>
-                  <div>{iface.lease.domain_name || "None"}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">Lease Time</div>
-                  <div>{format_lease_time(iface.lease.lease_time)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">T1 (Renew)</div>
-                  <div>{format_lease_time(iface.lease.t1)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">T2 (Rebind)</div>
-                  <div>{format_lease_time(iface.lease.t2)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">Time Remaining</div>
-                  <div>{format_lease_remaining(iface.lease)}</div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold text-on-surface-variant">Obtained At</div>
-                  <div class="text-sm">
-                    {if iface.lease.obtained_at,
-                      do: Calendar.strftime(iface.lease.obtained_at, "%Y-%m-%d %H:%M:%S UTC"),
-                      else: "-"}
-                  </div>
-                </div>
-
-                <%= if iface.lease.mtu do %>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <div class="text-sm font-semibold text-on-surface-variant">MTU</div>
-                    <div>{iface.lease.mtu}</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">IP Address</div>
+                    <div class="font-mono">{format_ip(iface.lease.ip)}</div>
                   </div>
-                <% end %>
-
-                <%= if iface.lease.ntp_servers != [] do %>
                   <div>
-                    <div class="text-sm font-semibold text-on-surface-variant">NTP Servers</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Subnet Mask</div>
+                    <div class="font-mono">{format_ip(iface.lease.subnet_mask)}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Router</div>
+                    <div class="font-mono">
+                      {if iface.lease.router, do: format_ip(iface.lease.router), else: "None"}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">DNS Servers</div>
                     <div class="font-mono text-sm">
-                      {Enum.map_join(iface.lease.ntp_servers, ", ", &format_ip/1)}
+                      {Enum.map_join(iface.lease.dns_servers, ", ", &format_ip/1)}
                     </div>
                   </div>
-                <% end %>
-
-                <%= if iface.lease.control_url do %>
-                  <div class="col-span-full">
-                    <div class="text-sm font-semibold text-on-surface-variant">Control URL</div>
-                    <div class="font-mono text-sm">{iface.lease.control_url}</div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">DHCP Server</div>
+                    <div class="font-mono">{format_ip(iface.lease.server_ip)}</div>
                   </div>
-                <% end %>
-
-                <%= if iface.lease.control_url_fallback do %>
-                  <div class="col-span-full">
-                    <div class="text-sm font-semibold text-on-surface-variant">
-                      Control URL (Fallback)
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Domain</div>
+                    <div>{iface.lease.domain_name || "None"}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Lease Time</div>
+                    <div>{format_lease_time(iface.lease.lease_time)}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">T1 (Renew)</div>
+                    <div>{format_lease_time(iface.lease.t1)}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">T2 (Rebind)</div>
+                    <div>{format_lease_time(iface.lease.t2)}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Time Remaining</div>
+                    <div>{format_lease_remaining(iface.lease)}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Obtained At</div>
+                    <div class="text-sm">
+                      {if iface.lease.obtained_at,
+                        do: Calendar.strftime(iface.lease.obtained_at, "%Y-%m-%d %H:%M:%S UTC"),
+                        else: "-"}
                     </div>
-                    <div class="font-mono text-sm">{iface.lease.control_url_fallback}</div>
                   </div>
-                <% end %>
 
-                <%= if iface.lease.cluster_id do %>
-                  <div>
-                    <div class="text-sm font-semibold text-on-surface-variant">Cluster ID</div>
-                    <div class="font-mono text-sm">{iface.lease.cluster_id}</div>
-                  </div>
-                <% end %>
+                  <%= if iface.lease.mtu do %>
+                    <div>
+                      <div class="text-sm font-semibold text-on-surface-variant">MTU</div>
+                      <div>{iface.lease.mtu}</div>
+                    </div>
+                  <% end %>
 
-                <%= if iface.lease.server_id do %>
-                  <div>
-                    <div class="text-sm font-semibold text-on-surface-variant">Server ID</div>
-                    <div class="font-mono text-sm">{iface.lease.server_id}</div>
-                  </div>
-                <% end %>
+                  <%= if iface.lease.ntp_servers != [] do %>
+                    <div>
+                      <div class="text-sm font-semibold text-on-surface-variant">NTP Servers</div>
+                      <div class="font-mono text-sm">
+                        {Enum.map_join(iface.lease.ntp_servers, ", ", &format_ip/1)}
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <%= if iface.lease.control_url do %>
+                    <div class="col-span-full">
+                      <div class="text-sm font-semibold text-on-surface-variant">Control URL</div>
+                      <div class="font-mono text-sm">{iface.lease.control_url}</div>
+                    </div>
+                  <% end %>
+
+                  <%= if iface.lease.control_url_fallback do %>
+                    <div class="col-span-full">
+                      <div class="text-sm font-semibold text-on-surface-variant">
+                        Control URL (Fallback)
+                      </div>
+                      <div class="font-mono text-sm">{iface.lease.control_url_fallback}</div>
+                    </div>
+                  <% end %>
+
+                  <%= if iface.lease.cluster_id do %>
+                    <div>
+                      <div class="text-sm font-semibold text-on-surface-variant">Cluster ID</div>
+                      <div class="font-mono text-sm">{iface.lease.cluster_id}</div>
+                    </div>
+                  <% end %>
+
+                  <%= if iface.lease.server_id do %>
+                    <div>
+                      <div class="text-sm font-semibold text-on-surface-variant">Server ID</div>
+                      <div class="font-mono text-sm">{iface.lease.server_id}</div>
+                    </div>
+                  <% end %>
+                </div>
               </div>
             </div>
-          </div>
+          <% end %>
         <% end %>
-      <% end %>
-    </div>
+      </div>
     </Layouts.app>
     """
   end

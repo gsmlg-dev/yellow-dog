@@ -94,139 +94,139 @@ defmodule YellowDog.Console.DhcpClientLive.ActivityLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-    <div class="space-y-4">
-      <div class="flex flex-wrap justify-between items-center gap-4">
-        <h1 class="text-2xl font-bold">DHCP Client Activity</h1>
-        <div class="flex">
-          <button
-            phx-click="toggle_pause"
-            class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
-          >
-            {if @paused, do: "Resume", else: "Pause"}
-          </button>
-          <button phx-click="clear" class="btn btn-sm btn-ghost">Clear</button>
-          <button
-            phx-click="export_csv"
-            class="btn btn-sm btn-ghost"
-            id="csv-export"
-            phx-hook="CsvDownload"
-          >
-            Export CSV
-          </button>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-3 sm:grid-cols-6 gap-4">
-        <.card>
-          <div class="text-sm text-on-surface-variant">Total</div>
-          <div class="text-lg font-bold">{@total_count}</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">State Changes</div>
-          <div class="text-lg font-bold text-info">{@stats.state}</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">TX</div>
-          <div class="text-lg font-bold text-warning">{@stats.tx}</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">RX</div>
-          <div class="text-lg font-bold text-success">{@stats.rx}</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">Bound/Renewed</div>
-          <div class="text-lg font-bold text-success">{@stats.bound + @stats.renewed}</div>
-        </.card>
-        <.card>
-          <div class="text-sm text-on-surface-variant">Expired</div>
-          <div class="text-lg font-bold text-error">{@stats.expired}</div>
-        </.card>
-      </div>
-
-      <div class="card bg-surface-container">
-        <div class="card-body py-3 px-4">
-          <div class="flex flex-wrap gap-4 items-center">
-            <div class="form-group">
-              <input
-                type="text"
-                placeholder="Search interface, IP, or details..."
-                aria-label="Search activity log"
-                class="input input-sm w-48"
-                phx-change="search"
-                phx-debounce="300"
-                name="search"
-                value={@search_query}
-              />
-            </div>
-            <div class="form-group">
-              <select
-                class="select select-sm"
-                phx-change="filter_type"
-                aria-label="Filter by event type"
-                name="type"
-              >
-                <option value="all" selected={@filter_type == "all"}>All Events</option>
-                <option value="state" selected={@filter_type == "state"}>State Changes</option>
-                <option value="tx" selected={@filter_type == "tx"}>Packet TX</option>
-                <option value="rx" selected={@filter_type == "rx"}>Packet RX</option>
-                <option value="lease" selected={@filter_type == "lease"}>Lease Events</option>
-                <option value="os" selected={@filter_type == "os"}>OS Integration</option>
-                <option value="dad" selected={@filter_type == "dad"}>DAD</option>
-              </select>
-            </div>
-            <span :if={@paused} class="badge badge-warning badge-sm">Paused</span>
+      <div class="space-y-4">
+        <div class="flex flex-wrap justify-between items-center gap-4">
+          <h1 class="text-2xl font-bold">DHCP Client Activity</h1>
+          <div class="flex">
+            <button
+              phx-click="toggle_pause"
+              class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
+            >
+              {if @paused, do: "Resume", else: "Pause"}
+            </button>
+            <button phx-click="clear" class="btn btn-sm btn-ghost">Clear</button>
+            <button
+              phx-click="export_csv"
+              class="btn btn-sm btn-ghost"
+              id="csv-export"
+              phx-hook="CsvDownload"
+            >
+              Export CSV
+            </button>
           </div>
         </div>
-      </div>
 
-      <div class="card bg-surface shadow">
-        <div class="card-body p-0">
-          <div class="overflow-x-auto">
-            <table class="table table-striped table-sm">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Type</th>
-                  <th>Interface</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% displayed = filtered_entries(@entries, @search_query, @filter_type) %>
-                <tr :if={displayed == []}>
-                  <td colspan="4" class="text-center text-on-surface-variant py-8">
-                    No DHCP client activity recorded yet
-                  </td>
-                </tr>
-                <tr :for={entry <- displayed} class="hover">
-                  <td class="font-mono text-xs whitespace-nowrap">
-                    {format_time_ms(entry.timestamp)}
-                  </td>
-                  <td>
-                    <span class={"badge badge-xs " <> type_badge(entry.type)}>
-                      {entry.type |> to_string() |> String.upcase()}
-                    </span>
-                  </td>
-                  <td class="font-mono text-xs">{entry.interface || "-"}</td>
-                  <td class="text-xs max-w-md truncate" title={entry.details}>
-                    {entry.details || "-"}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        <div class="grid grid-cols-3 sm:grid-cols-6 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total</div>
+            <div class="text-lg font-bold">{@total_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">State Changes</div>
+            <div class="text-lg font-bold text-info">{@stats.state}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">TX</div>
+            <div class="text-lg font-bold text-warning">{@stats.tx}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">RX</div>
+            <div class="text-lg font-bold text-success">{@stats.rx}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Bound/Renewed</div>
+            <div class="text-lg font-bold text-success">{@stats.bound + @stats.renewed}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Expired</div>
+            <div class="text-lg font-bold text-error">{@stats.expired}</div>
+          </.card>
+        </div>
+
+        <div class="card bg-surface-container">
+          <div class="card-body py-3 px-4">
+            <div class="flex flex-wrap gap-4 items-center">
+              <div class="form-group">
+                <input
+                  type="text"
+                  placeholder="Search interface, IP, or details..."
+                  aria-label="Search activity log"
+                  class="input input-sm w-48"
+                  phx-change="search"
+                  phx-debounce="300"
+                  name="search"
+                  value={@search_query}
+                />
+              </div>
+              <div class="form-group">
+                <select
+                  class="select select-sm"
+                  phx-change="filter_type"
+                  aria-label="Filter by event type"
+                  name="type"
+                >
+                  <option value="all" selected={@filter_type == "all"}>All Events</option>
+                  <option value="state" selected={@filter_type == "state"}>State Changes</option>
+                  <option value="tx" selected={@filter_type == "tx"}>Packet TX</option>
+                  <option value="rx" selected={@filter_type == "rx"}>Packet RX</option>
+                  <option value="lease" selected={@filter_type == "lease"}>Lease Events</option>
+                  <option value="os" selected={@filter_type == "os"}>OS Integration</option>
+                  <option value="dad" selected={@filter_type == "dad"}>DAD</option>
+                </select>
+              </div>
+              <span :if={@paused} class="badge badge-warning badge-sm">Paused</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="text-xs text-on-surface-variant flex justify-between">
-        <span>
-          Showing {length(filtered_entries(@entries, @search_query, @filter_type))} of {@total_count} events (buffer: {@max_entries})
-        </span>
-        <span :if={not @paused} class="flex items-center gap-1">
-          <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
-        </span>
+        <div class="card bg-surface shadow">
+          <div class="card-body p-0">
+            <div class="overflow-x-auto">
+              <table class="table table-striped table-sm">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Interface</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% displayed = filtered_entries(@entries, @search_query, @filter_type) %>
+                  <tr :if={displayed == []}>
+                    <td colspan="4" class="text-center text-on-surface-variant py-8">
+                      No DHCP client activity recorded yet
+                    </td>
+                  </tr>
+                  <tr :for={entry <- displayed} class="hover">
+                    <td class="font-mono text-xs whitespace-nowrap">
+                      {format_time_ms(entry.timestamp)}
+                    </td>
+                    <td>
+                      <span class={"badge badge-xs " <> type_badge(entry.type)}>
+                        {entry.type |> to_string() |> String.upcase()}
+                      </span>
+                    </td>
+                    <td class="font-mono text-xs">{entry.interface || "-"}</td>
+                    <td class="text-xs max-w-md truncate" title={entry.details}>
+                      {entry.details || "-"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-xs text-on-surface-variant flex justify-between">
+          <span>
+            Showing {length(filtered_entries(@entries, @search_query, @filter_type))} of {@total_count} events (buffer: {@max_entries})
+          </span>
+          <span :if={not @paused} class="flex items-center gap-1">
+            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
+          </span>
+        </div>
       </div>
-    </div>
     </Layouts.app>
     """
   end

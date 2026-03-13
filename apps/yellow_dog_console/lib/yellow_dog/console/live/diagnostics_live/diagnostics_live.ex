@@ -38,7 +38,9 @@ defmodule YellowDog.Console.DiagnosticsLive do
   @impl true
   def handle_params(_params, _uri, socket) do
     tab = socket.assigns.live_action
-    {:noreply, assign(socket, active_tab: tab, page_title: Map.get(@tab_titles, tab, "Service Diagnostics"))}
+
+    {:noreply,
+     assign(socket, active_tab: tab, page_title: Map.get(@tab_titles, tab, "Service Diagnostics"))}
   end
 
   @impl true

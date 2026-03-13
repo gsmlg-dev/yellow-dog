@@ -115,7 +115,6 @@ defmodule YellowDog.Console.Router do
     live "/identity/tokens", IdentityLive.TokensLive
     live "/identity/policies", IdentityLive.PoliciesLive
     live "/identity/audit", IdentityLive.AuditLive
-
   end
 
   # Tool section — network utilities
