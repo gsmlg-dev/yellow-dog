@@ -325,6 +325,22 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert {:keep_state, _data, [{:reply, _, {:ok, state}}]} = result
       assert state.state == :configuring
     end
+
+    test "dhcp_lease_expired during configuring transitions to failed", %{data: data} do
+      result = FSM.configuring(:info, {:dhcp_lease_expired, :timeout}, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :dhcp_lease_expired
+      assert new_data.lease == nil
+    end
+
+    test "global address removal during configuring stays in configuring", %{
+      data: data,
+      iface: iface
+    } do
+      event = {:netman_event, "netman:address:#{iface}", {:remove, %{scope: :global}}}
+      result = FSM.configuring(:info, event, data)
+      assert {:keep_state, ^data} = result
+    end
   end
 
   # ----------------------------------------------------------------

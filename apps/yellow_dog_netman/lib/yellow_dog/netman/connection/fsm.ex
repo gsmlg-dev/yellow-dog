@@ -331,6 +331,26 @@ defmodule YellowDog.Netman.Connection.FSM do
     {:keep_state, data}
   end
 
+  # Global address removed during configuring — if we already transitioned to
+  # configuring because of a prior address arrival, re-check whether we should
+  # still be here. In practice the configuring timeout catches this, but a
+  # timely re-evaluation avoids the 120s wait.
+  def configuring(:info, {:netman_event, _, {:remove, %{scope: :global}}}, data) do
+    {:keep_state, data}
+  end
+
+  # DHCP lease expired while still configuring — fail immediately instead of
+  # waiting for the 120-second configuring timeout
+  def configuring(:info, {:dhcp_lease_expired, reason}, data) do
+    Logger.warning(
+      "DHCP lease expired during configuring for #{data.interface}: #{inspect(reason)}"
+    )
+
+    emit_dhcp_event(data, :lease_expired, %{reason: reason})
+    release_dhcp(data)
+    transition(%{data | error: :dhcp_lease_expired, lease: nil}, :configuring, :failed)
+  end
+
   def configuring(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
     # Carrier lost during configuration
     Logger.warning("Carrier lost during configuring for #{data.interface}")
