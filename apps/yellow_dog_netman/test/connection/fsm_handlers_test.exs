@@ -362,6 +362,13 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert {:keep_state, ^data} = result
     end
 
+    test "carrier loss during configuring triggers deactivation", %{data: data, iface: iface} do
+      event = {:netman_event, "netman:link:#{iface}", {:link_update, %{carrier: false}}}
+      result = FSM.configuring(:info, event, data)
+      assert {:next_state, :deactivating, _new_data, actions} = result
+      assert {:next_event, :internal, :cleanup} in actions
+    end
+
     test "dhcp_lease_renewed during configuring updates lease data", %{data: data} do
       lease = %{ip: "10.0.0.50", dns: ["8.8.8.8"]}
       result = FSM.configuring(:info, {:dhcp_lease_renewed, lease}, data)
@@ -445,6 +452,14 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     test "dhcp_lease_failed in ip_check keeps state and logs warning", %{data: data} do
       result = FSM.ip_check(:info, {:dhcp_lease_failed, :renewal_timeout}, data)
       assert {:keep_state, ^data} = result
+    end
+
+    test "carrier loss during ip_check triggers deactivation", %{data: data, iface: iface} do
+      event = {:netman_event, "netman:link:#{iface}", {:link_update, %{carrier: false}}}
+      result = FSM.ip_check(:info, event, data)
+      assert {:next_state, :deactivating, new_data, actions} = result
+      assert new_data.ip_check_retries == 0
+      assert {:next_event, :internal, :cleanup} in actions
     end
 
     test "global address removal in ip_check triggers immediate re-check", %{data: data} do

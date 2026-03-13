@@ -407,6 +407,17 @@ defmodule YellowDog.Netman.Connection.FSM do
     end
   end
 
+  def configuring(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
+    Logger.info("Carrier lost during configuring for #{data.interface}")
+    release_dhcp(data)
+    AddressManager.flush(data.interface)
+
+    transition(data, :configuring, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
+  end
+
   def configuring(:cast, :deactivate, data) do
     transition(data, :configuring, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -542,6 +553,16 @@ defmodule YellowDog.Netman.Connection.FSM do
 
     emit_dhcp_event(data, :lease_failed, %{reason: reason})
     {:keep_state, data}
+  end
+
+  def ip_check(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
+    Logger.info("Carrier lost during ip_check for #{data.interface}")
+    release_dhcp(data)
+
+    transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def ip_check(:cast, :deactivate, data) do
