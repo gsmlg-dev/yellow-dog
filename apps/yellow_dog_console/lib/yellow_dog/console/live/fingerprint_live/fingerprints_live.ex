@@ -10,7 +10,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
 
   alias YellowDog.Console.Layouts
 
@@ -24,8 +24,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
        search_query: "",
        show_classify: false,
        selected_fp: nil,
-       profiles: [],
-       service_running: service_running?(YellowDog.Fingerprint)
+       profiles: []
      )
      |> load_data()}
   end
@@ -35,8 +34,6 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
-        <.service_alert :if={not @service_running} service="Fingerprint" />
-
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Fingerprints</h1>

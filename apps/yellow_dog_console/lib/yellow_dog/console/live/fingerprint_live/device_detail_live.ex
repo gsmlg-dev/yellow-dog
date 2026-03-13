@@ -9,7 +9,7 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
   """
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
 
   alias YellowDog.Console.Layouts
 
@@ -23,8 +23,7 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
      socket
      |> assign(
        page_title: "Device: #{mac}",
-       mac: mac,
-       service_running: service_running?(YellowDog.Fingerprint)
+       mac: mac
      )
      |> load_device(mac)}
   end
@@ -34,8 +33,6 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
-        <.service_alert :if={not @service_running} service="Fingerprint" />
-
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold font-mono">{@mac}</h1>
