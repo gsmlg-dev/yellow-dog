@@ -359,6 +359,14 @@ defmodule YellowDog.Netman.Types.Profile do
     {:error, "autoconnect_priority must be between -1000 and 10000"}
   end
 
+  defp validate_priority(priority) when is_float(priority) do
+    {:error, "autoconnect_priority must be an integer, got float: #{priority}"}
+  end
+
+  defp validate_priority(other) when not is_nil(other) do
+    {:error, "autoconnect_priority must be an integer, got: #{inspect(other)}"}
+  end
+
   defp validate_priority(_), do: {:ok, 0}
 
   @max_zone_length 64

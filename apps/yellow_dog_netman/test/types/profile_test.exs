@@ -378,12 +378,50 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert msg =~ "autoconnect_priority"
     end
 
-    test "defaults non-integer priority to 0" do
+    test "rejects string priority with error message" do
       toml = %{
         "connection" => %{
           "id" => "pri-str",
           "type" => "ethernet",
           "autoconnect_priority" => "high"
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect_priority must be an integer"
+    end
+
+    test "rejects float priority with error message" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-float",
+          "type" => "ethernet",
+          "autoconnect_priority" => 1.5
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect_priority must be an integer"
+    end
+
+    test "rejects boolean priority with error message" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-bool",
+          "type" => "ethernet",
+          "autoconnect_priority" => true
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect_priority must be an integer"
+    end
+
+    test "defaults nil priority to 0" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-nil",
+          "type" => "ethernet"
         }
       }
 
