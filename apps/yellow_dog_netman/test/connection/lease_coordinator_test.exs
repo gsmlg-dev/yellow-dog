@@ -121,6 +121,41 @@ defmodule YellowDog.Netman.Connection.LeaseCoordinatorTest do
     end
   end
 
+  describe "gateway passthrough" do
+    test ":bound event includes gateway in lease info" do
+      interface = "eth_gw_#{:erlang.unique_integer([:positive])}"
+      register_self_as_fsm(interface)
+
+      :telemetry.execute(
+        [:yellow_dog, :dhcp_client, :lease, :bound],
+        %{lease_time_s: 3600},
+        %{
+          interface: interface,
+          ip: "10.0.0.10",
+          server: "10.0.0.1",
+          gateway: "10.0.0.1"
+        }
+      )
+
+      assert_receive {:dhcp_lease_acquired, lease_info}, 1000
+      assert lease_info.gateway == "10.0.0.1"
+    end
+
+    test ":bound event without gateway defaults to nil" do
+      interface = "eth_gw_nil_#{:erlang.unique_integer([:positive])}"
+      register_self_as_fsm(interface)
+
+      :telemetry.execute(
+        [:yellow_dog, :dhcp_client, :lease, :bound],
+        %{lease_time_s: 3600},
+        %{interface: interface, ip: "10.0.0.10", server: "10.0.0.1"}
+      )
+
+      assert_receive {:dhcp_lease_acquired, lease_info}, 1000
+      assert lease_info.gateway == nil
+    end
+  end
+
   describe "unknown event type" do
     test "unknown telemetry event type is forwarded as dhcp_unknown_event" do
       interface = "eth_unk_#{:erlang.unique_integer([:positive])}"

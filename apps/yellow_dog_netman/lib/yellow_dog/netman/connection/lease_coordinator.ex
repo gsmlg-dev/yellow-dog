@@ -80,6 +80,7 @@ defmodule YellowDog.Netman.Connection.LeaseCoordinator do
     %{
       ip: Map.get(metadata, :ip),
       server: Map.get(metadata, :server),
+      gateway: Map.get(metadata, :gateway),
       lease_time_s: Map.get(measurements, :lease_time_s),
       dns_servers: Map.get(metadata, :dns_servers, []),
       domain_name: Map.get(metadata, :domain_name)
