@@ -159,4 +159,34 @@ defmodule YellowDog.Netman.Integration.MethodChangeTest do
     assert new_state.state in [:activated, :configuring, :ip_check, :failed, :disconnected],
            "FSM should have attempted reconfiguration, got: #{new_state.state}"
   end
+
+  test "method change with autoconnect=false still reactivates (bypass autoconnect check)", %{
+    iface: iface,
+    profile: profile
+  } do
+    # Override autoconnect to false — reactivation should STILL happen because
+    # the reactivate flag bypasses the autoconnect check (goes directly to :prepare)
+    profile = %{profile | autoconnect: false}
+    ProfileStore.put(profile.id, profile)
+
+    {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+    # Must manually activate since autoconnect is false
+    Connection.FSM.activate(pid)
+    Process.sleep(300)
+
+    {:ok, state} = Connection.FSM.get_state(pid)
+    assert state.state == :activated
+
+    # Change IPv4 method — triggers reconfiguration even with autoconnect=false
+    updated = %{profile | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}}
+    ProfileStore.put(profile.id, updated)
+    Connection.FSM.update_profile(pid, updated)
+    Process.sleep(500)
+
+    {:ok, new_state} = Connection.FSM.get_state(pid)
+    # Should NOT be stuck in disconnected (which was the old bug behavior)
+    # With both IPv4=disabled and IPv6=disabled, ip_check bypasses and goes to activated
+    assert new_state.state in [:activated, :configuring, :ip_check],
+           "FSM should have reactivated despite autoconnect=false, got: #{new_state.state}"
+  end
 end
