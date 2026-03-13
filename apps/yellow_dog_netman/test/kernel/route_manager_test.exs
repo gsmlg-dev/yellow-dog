@@ -388,4 +388,45 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
     Process.sleep(50)
     refute Enum.any?(RouteManager.get_routes(iface), &(&1.gateway == "10.51.0.1"))
   end
+
+  test "route_change event is published to EventBus on remove" do
+    iface = "test_rt_del_event_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.60.0.0/24",
+      gateway: "10.60.0.1",
+      interface: iface
+    )
+
+    Process.sleep(50)
+
+    YellowDog.Netman.EventBus.subscribe("netman:route:254")
+
+    MockNetlink.route_removed(
+      destination: "10.60.0.0/24",
+      gateway: "10.60.0.1",
+      interface: iface
+    )
+
+    assert_receive {:netman_event, "netman:route:254",
+                    {:remove, %{destination: "10.60.0.0/24"}}},
+                   500
+  end
+
+  test "IPv6 ::/0 destination is normalized to 'default'" do
+    iface = "test_rt_v6norm_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "::/0",
+      gateway: "fe80::1",
+      interface: iface,
+      family: "inet6"
+    )
+
+    Process.sleep(50)
+
+    routes = RouteManager.get_routes(iface)
+    assert Enum.any?(routes, &(&1.destination == "default" and &1.family == :inet6))
+    refute Enum.any?(routes, &(&1.destination == "::/0"))
+  end
 end

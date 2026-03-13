@@ -569,7 +569,8 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def activated(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
-    # Carrier lost
+    Logger.info("Carrier lost while activated for #{data.interface}")
+
     transition(data, :activated, :deactivating, [
       {:next_event, :internal, :cleanup},
       {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}

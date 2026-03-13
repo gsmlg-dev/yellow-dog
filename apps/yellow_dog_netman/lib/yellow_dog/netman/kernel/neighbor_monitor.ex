@@ -44,8 +44,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitor do
 
   @spec get_neighbors(String.t()) :: [neighbor()]
   def get_neighbors(interface) do
-    list_neighbors()
-    |> Enum.filter(&(&1.interface == interface))
+    try do
+      :ets.match_object(@table, {{interface, :_}, :_})
+      |> Enum.map(fn {_key, neighbor} -> neighbor end)
+    rescue
+      ArgumentError -> []
+    end
   end
 
   @impl true

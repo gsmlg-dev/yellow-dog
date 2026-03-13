@@ -159,4 +159,36 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorTest do
     Process.sleep(20)
     assert Process.alive?(pid)
   end
+
+  test "malformed neighbor event payload is handled gracefully" do
+    pid = Process.whereis(NeighborMonitor)
+    send(pid, {:netlink_event, {:neighbor_change, "not_a_map"}})
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "neighbor event with missing fields uses defaults" do
+    send_neighbor_event(%{
+      "action" => "add",
+      "interface" => "neigh_missing_fields"
+    })
+
+    neighbors = NeighborMonitor.get_neighbors("neigh_missing_fields")
+    assert length(neighbors) >= 1
+    neigh = hd(neighbors)
+    assert neigh.address == ""
+    assert neigh.mac == nil
+    assert neigh.state == :none
+  end
+
+  test "get_neighbors returns empty list for unknown interface" do
+    assert NeighborMonitor.get_neighbors("nonexistent_neigh") == []
+  end
+
+  test "handle_info with unknown message is silently ignored" do
+    pid = Process.whereis(NeighborMonitor)
+    send(pid, :unexpected_message_xyz)
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
 end
