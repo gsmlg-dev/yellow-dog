@@ -74,6 +74,7 @@ defmodule YellowDog.Netman.Connection.LeaseCoordinator do
   defp telemetry_to_fsm_message(:bound, lease_info), do: {:dhcp_lease_acquired, lease_info}
   defp telemetry_to_fsm_message(:renewed, lease_info), do: {:dhcp_lease_renewed, lease_info}
   defp telemetry_to_fsm_message(:expired, _lease_info), do: {:dhcp_lease_expired, :expired}
+  defp telemetry_to_fsm_message(unknown, _lease_info), do: {:dhcp_unknown_event, unknown}
 
   defp build_lease_info(_event_type, measurements, metadata) do
     %{

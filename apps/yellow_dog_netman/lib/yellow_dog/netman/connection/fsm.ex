@@ -535,6 +535,15 @@ defmodule YellowDog.Netman.Connection.FSM do
     )
   end
 
+  def ip_check(:info, {:dhcp_lease_failed, reason}, data) do
+    Logger.warning(
+      "DHCP renewal failed during ip_check for #{data.interface}: #{inspect(reason)}"
+    )
+
+    emit_dhcp_event(data, :lease_failed, %{reason: reason})
+    {:keep_state, data}
+  end
+
   def ip_check(:cast, :deactivate, data) do
     transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -604,6 +613,13 @@ defmodule YellowDog.Netman.Connection.FSM do
     data = %{data | lease: lease}
     # Re-push DNS in case the DHCP server provided updated servers on renewal
     push_dns(data)
+    {:keep_state, data}
+  end
+
+  def activated(:info, {:dhcp_lease_failed, reason}, data) do
+    Logger.warning("DHCP renewal failed for #{data.interface}: #{inspect(reason)}")
+    emit_dhcp_event(data, :lease_failed, %{reason: reason})
+    # Lease still valid (not expired) — keep operating with current config
     {:keep_state, data}
   end
 
@@ -678,9 +694,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     data = %{data | lease: nil, reactivate: false}
 
     if reactivate? do
-      # Method change — immediately re-activate with the updated profile
-      transition(data, :deactivating, :disconnected, [
-        {:next_event, :internal, :auto_activate}
+      # Method change — unconditionally re-activate (bypass autoconnect check)
+      transition(data, :deactivating, :prepare, [
+        {:next_event, :internal, :setup_link},
+        {:state_timeout, @prepare_timeout_ms, :setup_timeout}
       ])
     else
       transition(data, :deactivating, :disconnected)
@@ -706,8 +723,9 @@ defmodule YellowDog.Netman.Connection.FSM do
     data = %{data | lease: nil, reactivate: false, ip_check_retries: 0}
 
     if reactivate? do
-      transition(data, :deactivating, :disconnected, [
-        {:next_event, :internal, :auto_activate}
+      transition(data, :deactivating, :prepare, [
+        {:next_event, :internal, :setup_link},
+        {:state_timeout, @prepare_timeout_ms, :setup_timeout}
       ])
     else
       transition(data, :deactivating, :disconnected)

@@ -54,12 +54,12 @@ defmodule YellowDog.Netman.Kernel.RuleManager do
 
   defp handle_rule_event(%{"action" => "add"} = event) do
     rule = parse_rule(event)
-    :ets.insert(@table, {rule.priority, rule})
+    :ets.insert(@table, {rule_key(rule), rule})
   end
 
   defp handle_rule_event(%{"action" => "del"} = event) do
     rule = parse_rule(event)
-    :ets.delete(@table, rule.priority)
+    :ets.delete(@table, rule_key(rule))
   end
 
   defp handle_rule_event(_), do: :ok
@@ -72,5 +72,9 @@ defmodule YellowDog.Netman.Kernel.RuleManager do
       destination: Map.get(event, "destination"),
       interface: Map.get(event, "interface")
     }
+  end
+
+  defp rule_key(rule) do
+    {rule.priority, rule.table, rule.source, rule.destination, rule.interface}
   end
 end

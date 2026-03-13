@@ -442,6 +442,11 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.lease == lease
     end
 
+    test "dhcp_lease_failed in ip_check keeps state and logs warning", %{data: data} do
+      result = FSM.ip_check(:info, {:dhcp_lease_failed, :renewal_timeout}, data)
+      assert {:keep_state, ^data} = result
+    end
+
     test "global address removal in ip_check triggers immediate re-check", %{data: data} do
       event = {:netman_event, "netman:address:test0", {:remove, %{scope: :global}}}
       result = FSM.ip_check(:info, event, data)
@@ -542,6 +547,23 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert state.lease == lease
       assert state.state == :activated
       :gen_statem.stop(pid)
+    end
+  end
+
+  describe "activated dhcp_lease_failed (direct)" do
+    test "dhcp_lease_failed in activated keeps state" do
+      iface = "hdlr_act_fail_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :activated,
+        lease: %{ip: "10.0.0.50"}
+      }
+
+      result = FSM.activated(:info, {:dhcp_lease_failed, :renewal_timeout}, data)
+      assert {:keep_state, ^data} = result
     end
   end
 
@@ -706,11 +728,11 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       }
 
       result = FSM.deactivating(:state_timeout, :cleanup_timeout, data)
-      assert {:next_state, :disconnected, new_data, actions} = result
+      assert {:next_state, :prepare, new_data, actions} = result
       assert new_data.lease == nil
       assert new_data.reactivate == false
       assert new_data.ip_check_retries == 0
-      assert {:next_event, :internal, :auto_activate} in actions
+      assert {:next_event, :internal, :setup_link} in actions
     end
 
     test "deactivating cleanup_timeout without reactivate goes to disconnected" do
@@ -1742,11 +1764,11 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       }
 
       result = FSM.deactivating(:internal, :cleanup, data)
-      assert {:next_state, :disconnected, new_data, actions} = result
+      assert {:next_state, :prepare, new_data, actions} = result
       assert new_data.reactivate == false
       assert new_data.lease == nil
-      # Should include auto_activate event for re-activation
-      assert {:next_event, :internal, :auto_activate} in actions
+      # Should go directly to prepare with setup_link (bypass autoconnect check)
+      assert {:next_event, :internal, :setup_link} in actions
     end
 
     test "deactivating: cleanup without reactivate flag does not auto_activate" do
@@ -1768,6 +1790,24 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
                {:next_event, :internal, :auto_activate} -> true
                _ -> false
              end)
+    end
+
+    test "deactivating: cleanup with reactivate bypasses autoconnect=false" do
+      iface = "hdlr_react_noac_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{autoconnect: false})
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        reactivate: true
+      }
+
+      result = FSM.deactivating(:internal, :cleanup, data)
+      # Must go to :prepare even with autoconnect: false (method change reactivation)
+      assert {:next_state, :prepare, new_data, actions} = result
+      assert new_data.reactivate == false
+      assert {:next_event, :internal, :setup_link} in actions
     end
 
     test "unavailable: update_profile caches new profile" do
