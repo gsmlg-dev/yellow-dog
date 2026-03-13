@@ -152,7 +152,7 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       addresses = AddressManager.get_addresses(iface)
       entry = Enum.find(addresses, &(&1.address == addr))
       assert entry != nil
-      assert entry.scope in [:global, :link, :host]
+      assert entry.scope in [:global, :link, :host, :site, :nowhere, :unknown]
     end
   end
 

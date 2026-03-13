@@ -66,7 +66,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerTest do
     assert rule.destination == nil
   end
 
-  test "two rules with same priority but different source coexist" do
+  test "same priority overwrites previous rule (last write wins)" do
     send_rule_event(%{
       "action" => "add",
       "priority" => 32_010,
@@ -84,22 +84,21 @@ defmodule YellowDog.Netman.Kernel.RuleManagerTest do
     })
 
     rules = Enum.filter(RuleManager.list_rules(), &(&1.priority == 32_010))
-    assert length(rules) == 2
-    sources = Enum.map(rules, & &1.source) |> Enum.sort()
-    assert sources == ["10.0.0.0/24", "192.168.1.0/24"]
+    assert length(rules) == 1
+    assert hd(rules).table == 200
+    assert hd(rules).source == "192.168.1.0/24"
 
-    # Delete only one
+    # Delete the rule
     send_rule_event(%{
       "action" => "del",
       "priority" => 32_010,
-      "table" => 100,
-      "source" => "10.0.0.0/24",
-      "interface" => "rule_dup_eth0"
+      "table" => 200,
+      "source" => "192.168.1.0/24",
+      "interface" => "rule_dup_eth1"
     })
 
     remaining = Enum.filter(RuleManager.list_rules(), &(&1.priority == 32_010))
-    assert length(remaining) == 1
-    assert hd(remaining).source == "192.168.1.0/24"
+    assert length(remaining) == 0
   end
 
   test "unknown action in rule event is handled gracefully" do

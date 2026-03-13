@@ -75,6 +75,6 @@ defmodule YellowDog.Netman.Kernel.RuleManager do
   end
 
   defp rule_key(rule) do
-    {rule.priority, rule.table, rule.source, rule.destination, rule.interface}
+    rule.priority
   end
 end
