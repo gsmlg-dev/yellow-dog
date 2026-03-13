@@ -2629,4 +2629,47 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  describe "carrier loss during configuring (SLAAC profile)" do
+    @tag :capture_log
+    test "carrier loss while waiting for SLAAC triggers deactivation" do
+      interface = "fsm_closs_#{:rand.uniform(100_000)}"
+
+      slaac_profile = %Profile{
+        id: "closs-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(slaac_profile.id, slaac_profile)
+      on_exit(fn -> ProfileStore.delete(slaac_profile.id) end)
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: slaac_profile)
+      Process.sleep(30)
+      FSM.activate(pid)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      # SLAAC profile: FSM should be stuck in configuring waiting for kernel address
+      assert state.state == :configuring
+
+      # Now lose carrier
+      MockNetlink.carrier_change(interface, false)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      # Should have deactivated and gone to disconnected (not stuck in configuring)
+      assert state.state == :disconnected
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end
