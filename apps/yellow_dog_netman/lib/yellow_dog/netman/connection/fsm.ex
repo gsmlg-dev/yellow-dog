@@ -430,6 +430,12 @@ defmodule YellowDog.Netman.Connection.FSM do
     {:keep_state, data, [{:next_event, :internal, :check_ip}]}
   end
 
+  # When a global address is removed during ip_check, re-check immediately
+  # so the FSM discovers the loss instead of waiting for the retry timeout
+  def ip_check(:info, {:netman_event, _, {:remove, %{scope: :global}}}, data) do
+    {:keep_state, data, [{:next_event, :internal, :check_ip}]}
+  end
+
   # Handle late DHCP lease arrival during ip_check (dual-stack: SLAAC triggered
   # configuring→ip_check before DHCP completed)
   def ip_check(:info, {:dhcp_lease_acquired, lease}, data) do

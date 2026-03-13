@@ -392,6 +392,13 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.lease == nil
     end
 
+    test "global address removal in ip_check triggers immediate re-check", %{data: data} do
+      event = {:netman_event, "netman:address:test0", {:remove, %{scope: :global}}}
+      result = FSM.ip_check(:info, event, data)
+      assert {:keep_state, ^data, actions} = result
+      assert {:next_event, :internal, :check_ip} in actions
+    end
+
     test "ip_check with disabled ipv4 method passes without address", %{iface: iface} do
       disabled_profile = %Profile{
         id: "ipc-disabled-#{iface}",
