@@ -150,7 +150,10 @@ defmodule YellowDog.Netman.Test.MockNetlink do
       "type" => "rule_change",
       "action" => "del",
       "priority" => Keyword.get(opts, :priority, 0),
-      "table" => Keyword.get(opts, :table, 254)
+      "table" => Keyword.get(opts, :table, 254),
+      "source" => Keyword.get(opts, :source),
+      "destination" => Keyword.get(opts, :destination),
+      "interface" => Keyword.get(opts, :interface)
     }
 
     send_event(event)

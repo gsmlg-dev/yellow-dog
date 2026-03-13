@@ -115,4 +115,28 @@ defmodule YellowDog.Netman.Kernel.RuleManagerTest do
     Process.sleep(20)
     assert Process.alive?(pid)
   end
+
+  test "MockNetlink.rule_removed with source/interface matches composite key" do
+    alias YellowDog.Netman.Test.MockNetlink
+
+    MockNetlink.rule_added(
+      priority: 32_020,
+      table: 100,
+      source: "172.16.0.0/16",
+      interface: "rule_mock_eth0"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RuleManager.list_rules(), &(&1.priority == 32_020))
+
+    MockNetlink.rule_removed(
+      priority: 32_020,
+      table: 100,
+      source: "172.16.0.0/16",
+      interface: "rule_mock_eth0"
+    )
+
+    Process.sleep(50)
+    refute Enum.any?(RuleManager.list_rules(), &(&1.priority == 32_020))
+  end
 end
