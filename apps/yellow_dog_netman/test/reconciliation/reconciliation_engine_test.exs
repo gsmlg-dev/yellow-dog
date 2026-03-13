@@ -1225,4 +1225,112 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       MockNetlink.link_removed(iface)
     end
   end
+
+  describe "compute_mtu_diffs" do
+    test "MTU mismatch for active connection produces set_mtu diff" do
+      iface = "recon_mtu_#{:rand.uniform(65535)}"
+      profile_id = "mtu-recon-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: 9000},
+        ipv4: %{method: :manual, address: "10.99.0.1/24", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true, mtu: 1500)
+      MockNetlink.address_added(iface, "10.99.0.1/24")
+      Process.sleep(50)
+
+      {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+      Connection.FSM.activate(pid)
+      Process.sleep(300)
+
+      desired = ReconciliationEngine.compute_desired()
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      mtu_diffs = Enum.filter(diffs, &(&1.action == :set_mtu and &1.interface == iface))
+      assert length(mtu_diffs) == 1
+      assert hd(mtu_diffs).params.mtu == 9000
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+    end
+
+    test "matching MTU produces no diff" do
+      iface = "recon_mtu_ok_#{:rand.uniform(65535)}"
+      profile_id = "mtu-ok-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: 1500},
+        ipv4: %{method: :manual, address: "10.98.0.1/24", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true, mtu: 1500)
+      MockNetlink.address_added(iface, "10.98.0.1/24")
+      Process.sleep(50)
+
+      {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+      Connection.FSM.activate(pid)
+      Process.sleep(300)
+
+      desired = ReconciliationEngine.compute_desired()
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      mtu_diffs = Enum.filter(diffs, &(&1.action == :set_mtu and &1.interface == iface))
+      assert mtu_diffs == []
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+    end
+
+    test "nil MTU in profile produces no diff" do
+      iface = "recon_mtu_nil_#{:rand.uniform(65535)}"
+      profile_id = "mtu-nil-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.97.0.1/24", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true, mtu: 9000)
+      MockNetlink.address_added(iface, "10.97.0.1/24")
+      Process.sleep(50)
+
+      {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+      Connection.FSM.activate(pid)
+      Process.sleep(300)
+
+      desired = ReconciliationEngine.compute_desired()
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      mtu_diffs = Enum.filter(diffs, &(&1.action == :set_mtu and &1.interface == iface))
+      assert mtu_diffs == []
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+    end
+  end
 end
