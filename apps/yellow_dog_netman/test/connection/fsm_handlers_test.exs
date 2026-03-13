@@ -642,7 +642,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.lease == nil
     end
 
-    test "deactivating cleanup_timeout clears reactivate flag and ip_check_retries" do
+    test "deactivating cleanup_timeout with reactivate flag re-activates" do
       iface = "hdlr_deact_clean_#{:rand.uniform(65535)}"
       profile = base_profile(iface)
 
@@ -656,10 +656,45 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       }
 
       result = FSM.deactivating(:state_timeout, :cleanup_timeout, data)
-      assert {:next_state, :disconnected, new_data, _actions} = result
+      assert {:next_state, :disconnected, new_data, actions} = result
       assert new_data.lease == nil
       assert new_data.reactivate == false
       assert new_data.ip_check_retries == 0
+      assert {:next_event, :internal, :auto_activate} in actions
+    end
+
+    test "deactivating cleanup_timeout without reactivate goes to disconnected" do
+      iface = "hdlr_deact_noreact_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        lease: nil,
+        reactivate: false
+      }
+
+      result = FSM.deactivating(:state_timeout, :cleanup_timeout, data)
+      assert {:next_state, :disconnected, new_data, actions} = result
+      assert new_data.reactivate == false
+      refute Enum.any?(actions, &match?({:next_event, :internal, :auto_activate}, &1))
+    end
+
+    test "deactivating activate sets reactivate flag" do
+      iface = "hdlr_deact_act_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        reactivate: false
+      }
+
+      result = FSM.deactivating(:cast, :activate, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.reactivate == true
     end
 
     test "deactivating catch-all ignores unknown events" do

@@ -637,6 +637,12 @@ defmodule YellowDog.Netman.Connection.FSM do
     end
   end
 
+  # Activation requested while deactivating — set reactivate flag so the
+  # cleanup completion path re-activates once cleanup finishes
+  def deactivating(:cast, :activate, data) do
+    {:keep_state, %{data | reactivate: true}}
+  end
+
   def deactivating(:cast, {:update_profile, new_profile}, data) do
     {:keep_state, %{data | profile: new_profile}}
   end
@@ -646,8 +652,16 @@ defmodule YellowDog.Netman.Connection.FSM do
       "Deactivation timed out for #{data.interface}, forcing transition to disconnected"
     )
 
+    reactivate? = data.reactivate
     data = %{data | lease: nil, reactivate: false, ip_check_retries: 0}
-    transition(data, :deactivating, :disconnected)
+
+    if reactivate? do
+      transition(data, :deactivating, :disconnected, [
+        {:next_event, :internal, :auto_activate}
+      ])
+    else
+      transition(data, :deactivating, :disconnected)
+    end
   end
 
   def deactivating({:call, from}, :get_state, data) do
