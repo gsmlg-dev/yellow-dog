@@ -133,8 +133,9 @@ defmodule YellowDog.Netman.ProfileStore do
       case parse_toml_file(path) do
         {:ok, profile} ->
           profiles = Map.put(state.profiles, profile.id, profile)
+          path_ids = Map.put(state.path_ids, path, profile.id)
           EventBus.publish("netman:profile:changed", {:added, profile.id})
-          {:reply, {:ok, profile}, %{state | profiles: profiles}}
+          {:reply, {:ok, profile}, %{state | profiles: profiles, path_ids: path_ids}}
 
         {:error, _} = error ->
           {:reply, error, state}

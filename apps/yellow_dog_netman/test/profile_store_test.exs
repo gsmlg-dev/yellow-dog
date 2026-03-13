@@ -372,6 +372,48 @@ defmodule YellowDog.Netman.ProfileStoreTest do
   end
 
   describe "import_file edge cases" do
+    test "import_file tracks path_ids so reload detects profile ID changes" do
+      # Import a profile, then simulate a file edit that changes the profile ID.
+      # Without path_ids tracking, the old profile would remain as a ghost entry.
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      toml_v1 = """
+      [connection]
+      id = "pathids-v1-#{:rand.uniform(65535)}"
+      type = "ethernet"
+      interface = "eth0"
+
+      [ipv4]
+      method = "auto"
+
+      [ipv6]
+      method = "auto"
+      """
+
+      tmp_path = System.tmp_dir!() |> Path.join("pathids_test_#{:rand.uniform(65535)}.toml")
+      File.write!(tmp_path, toml_v1)
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      {:ok, profile} = ProfileStore.import_file(tmp_path)
+      id_v1 = profile.id
+
+      assert_receive {:netman_event, "netman:profile:changed", {:added, ^id_v1}}, 500
+
+      # Now simulate hot-reload by sending file_event (as if inotify triggered)
+      toml_v2 = String.replace(toml_v1, id_v1, "pathids-v2-#{:rand.uniform(65535)}")
+      File.write!(tmp_path, toml_v2)
+
+      send(ProfileStore, {:file_event, self(), {tmp_path, [:modified]}})
+      # Wait for debounce (200ms) + processing
+      Process.sleep(350)
+
+      # Old profile should be cleaned up (deleted event emitted)
+      assert_receive {:netman_event, "netman:profile:changed", {:deleted, ^id_v1}}, 500
+
+      # Old profile should no longer exist
+      assert {:error, :not_found} = ProfileStore.get(id_v1)
+    end
+
     test "import_file with valid TOML but invalid profile returns error" do
       # TOML that parses but fails Profile.from_toml validation (missing id)
       toml = """
