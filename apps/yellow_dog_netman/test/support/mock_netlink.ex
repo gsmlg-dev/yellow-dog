@@ -80,14 +80,14 @@ defmodule YellowDog.Netman.Test.MockNetlink do
   end
 
   @doc "Simulate an address being removed."
-  def address_removed(interface, address) do
+  def address_removed(interface, address, opts \\ []) do
     event = %{
       "type" => "address_change",
       "action" => "del",
       "interface" => interface,
       "address" => address,
-      "family" => "inet",
-      "scope" => "global"
+      "family" => Keyword.get(opts, :family, "inet"),
+      "scope" => Keyword.get(opts, :scope, "global")
     }
 
     send_event(event)
@@ -119,7 +119,11 @@ defmodule YellowDog.Netman.Test.MockNetlink do
       "destination" => Keyword.get(opts, :destination, "default"),
       "gateway" => Keyword.get(opts, :gateway),
       "interface" => Keyword.get(opts, :interface, "eth0"),
-      "family" => Keyword.get(opts, :family, "inet")
+      "metric" => Keyword.get(opts, :metric, 100),
+      "table" => Keyword.get(opts, :table, 254),
+      "family" => Keyword.get(opts, :family, "inet"),
+      "protocol" => Keyword.get(opts, :protocol, "dhcp"),
+      "scope" => Keyword.get(opts, :scope, "universe")
     }
 
     send_event(event)
