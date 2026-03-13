@@ -430,6 +430,60 @@ defmodule YellowDog.Netman.Types.ProfileTest do
     end
   end
 
+  describe "autoconnect validation" do
+    test "rejects string autoconnect with error message" do
+      toml = %{
+        "connection" => %{
+          "id" => "ac-str",
+          "type" => "ethernet",
+          "autoconnect" => "yes"
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect must be a boolean"
+    end
+
+    test "rejects integer autoconnect with error message" do
+      toml = %{
+        "connection" => %{
+          "id" => "ac-int",
+          "type" => "ethernet",
+          "autoconnect" => 1
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect must be a boolean"
+    end
+
+    test "accepts boolean true autoconnect" do
+      toml = %{
+        "connection" => %{"id" => "ac-true", "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto"},
+        "ipv6" => %{"method" => "auto"}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.autoconnect == true
+    end
+
+    test "accepts boolean false autoconnect" do
+      toml = %{
+        "connection" => %{
+          "id" => "ac-false",
+          "type" => "ethernet",
+          "autoconnect" => false
+        },
+        "ipv4" => %{"method" => "auto"},
+        "ipv6" => %{"method" => "auto"}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.autoconnect == false
+    end
+  end
+
   describe "zone validation" do
     test "rejects zone longer than 64 characters" do
       long_zone = String.duplicate("a", 65)

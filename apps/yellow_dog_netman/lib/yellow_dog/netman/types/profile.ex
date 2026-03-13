@@ -113,6 +113,7 @@ defmodule YellowDog.Netman.Types.Profile do
          :ok <- validate_id(id),
          {:ok, type} <- parse_type(conn),
          {:ok, interface} <- validate_interface(Map.get(conn, "interface")),
+         {:ok, autoconnect} <- validate_autoconnect(Map.get(conn, "autoconnect", true)),
          {:ok, priority} <- validate_priority(Map.get(conn, "autoconnect_priority", 0)),
          {:ok, zone} <- validate_zone(Map.get(conn, "zone", "default")) do
       {:ok,
@@ -120,7 +121,7 @@ defmodule YellowDog.Netman.Types.Profile do
          id: id,
          type: type,
          interface: interface,
-         autoconnect: Map.get(conn, "autoconnect", true),
+         autoconnect: autoconnect,
          autoconnect_priority: priority,
          zone: zone
        }}
@@ -348,6 +349,12 @@ defmodule YellowDog.Netman.Types.Profile do
       true ->
         :ok
     end
+  end
+
+  defp validate_autoconnect(val) when is_boolean(val), do: {:ok, val}
+
+  defp validate_autoconnect(other) do
+    {:error, "connection.autoconnect must be a boolean, got: #{inspect(other)}"}
   end
 
   defp validate_priority(priority)
