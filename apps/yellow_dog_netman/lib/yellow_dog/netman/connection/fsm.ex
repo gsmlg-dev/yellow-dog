@@ -167,7 +167,15 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def disconnected(:cast, {:update_profile, new_profile}, data) do
-    {:keep_state, %{data | profile: new_profile}}
+    old_autoconnect = data.profile.autoconnect
+    data = %{data | profile: new_profile}
+
+    if not old_autoconnect and new_profile.autoconnect do
+      # Autoconnect was just enabled — try to auto-activate if carrier is present
+      {:keep_state, data, [{:next_event, :internal, :auto_activate}]}
+    else
+      {:keep_state, data}
+    end
   end
 
   def disconnected(:cast, :activate, data) do

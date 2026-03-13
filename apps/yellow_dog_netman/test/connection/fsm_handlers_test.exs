@@ -2187,4 +2187,41 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert FSM.terminate(:normal, :unavailable, data) == :ok
     end
   end
+
+  describe "disconnected update_profile autoconnect change" do
+    test "autoconnect false→true in disconnected triggers auto_activate" do
+      iface = "hdlr_ac_enable_#{:rand.uniform(65535)}"
+      profile = %{base_profile(iface) | autoconnect: false}
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      new_profile = %{profile | autoconnect: true}
+
+      result = FSM.disconnected(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data, actions} = result
+      assert new_data.profile.autoconnect == true
+      assert {:next_event, :internal, :auto_activate} in actions
+    end
+
+    test "autoconnect true→true in disconnected does not trigger auto_activate" do
+      iface = "hdlr_ac_same_#{:rand.uniform(65535)}"
+      profile = %{base_profile(iface) | autoconnect: true}
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      new_profile = %{profile | autoconnect: true}
+
+      result = FSM.disconnected(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, _data} = result
+    end
+
+    test "autoconnect true→false in disconnected does not trigger auto_activate" do
+      iface = "hdlr_ac_disable_#{:rand.uniform(65535)}"
+      profile = %{base_profile(iface) | autoconnect: true}
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      new_profile = %{profile | autoconnect: false}
+
+      result = FSM.disconnected(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, _data} = result
+    end
+  end
 end
