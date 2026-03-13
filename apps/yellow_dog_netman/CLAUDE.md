@@ -99,6 +99,7 @@ cd apps/yellow_dog_netman && mix credo --strict
 
 - `install_ipv4_route` uses profile gateway, falling back to DHCP lease gateway for `:auto` method
 - DHCP connections get default routes from `data.lease.gateway` when profile gateway is nil
+- DHCP gateway flows through: StateMachine telemetry (`:gateway` metadata) → LeaseCoordinator → FSM `data.lease.gateway`
 
 ## Profile Hot-Reload
 
