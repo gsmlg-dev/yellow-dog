@@ -89,10 +89,22 @@ cd apps/yellow_dog_netman && mix credo --strict
 - FSM handles `dhcp_lease_acquired` in both `:ip_check` and `:activated` states
 - Late lease stored in FSM data + DNS re-pushed to merge DHCP DNS with profile DNS
 
+## Carrier Loss Handling
+
+- All active states (prepare, configuring, ip_check, activated) handle carrier loss explicitly
+- Carrier loss in configuring/ip_check releases DHCP and flushes addresses before deactivating
+- No carrier loss event is silently swallowed by catch-all handlers
+
+## Route Installation
+
+- `install_ipv4_route` uses profile gateway, falling back to DHCP lease gateway for `:auto` method
+- DHCP connections get default routes from `data.lease.gateway` when profile gateway is nil
+
 ## Profile Hot-Reload
 
 - ProfileStore watches TOML files (200ms debounce) → publishes `:reloaded` event; tracks path→ID mapping to clean up stale entries when profile ID changes
 - ReconciliationEngine intercepts profile events and pushes new profile to FSM via `FSM.update_profile/2`
-- Non-method changes (DNS, priority, MTU): applied in-place, DNS re-pushed
+- Non-method changes (DNS, priority, MTU): applied in-place, DNS re-pushed, MTU updated
 - IP method changes (e.g., auto→manual): FSM deactivates then re-activates with new config
-- FSM `update_profile` handler exists in ALL states — caches profile immediately, method changes trigger reactivation in active states
+- FSM `update_profile` handler exists in ALL states — caches profile immediately, method changes trigger reactivation in active states (including deactivating state)
+- Reactivation bypasses autoconnect check — goes directly to :prepare
