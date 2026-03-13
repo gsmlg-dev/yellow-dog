@@ -255,7 +255,7 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def configuring(:internal, :configure_ip, data) do
     # Apply IPv6 static address if configured (independent of IPv4 method)
-    apply_static_ipv6(data)
+    ipv6_result = apply_static_ipv6(data)
 
     case data.profile.ipv4.method do
       :auto ->
@@ -272,8 +272,18 @@ defmodule YellowDog.Netman.Connection.FSM do
             # Wait for kernel SLAAC to provide a global address via netlink
             {:keep_state, data}
 
+          :manual ->
+            # Manual IPv6 was attempted above — fail if CIDR was invalid
+            case ipv6_result do
+              :ok ->
+                transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
+
+              {:error, reason} ->
+                transition(%{data | error: reason}, :configuring, :failed)
+            end
+
           _ ->
-            # :manual (already applied above), :disabled, :link_local — proceed
+            # :disabled, :link_local — proceed
             transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
         end
     end
@@ -869,10 +879,13 @@ defmodule YellowDog.Netman.Connection.FSM do
                 Logger.warning(
                   "Failed to add static IPv6 address for #{data.interface}: #{inspect(reason)}"
                 )
+
+                {:error, {:ipv6_address_failed, reason}}
             end
 
           {:error, {:invalid_cidr, invalid}} ->
             Logger.warning("Invalid static IPv6 CIDR for #{data.interface}: #{inspect(invalid)}")
+            {:error, {:invalid_cidr, invalid}}
         end
 
       _ ->

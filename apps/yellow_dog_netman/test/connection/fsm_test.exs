@@ -1076,8 +1076,8 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       Process.sleep(300)
 
       {:ok, state} = FSM.get_state(pid)
-      # Bad IPv6 CIDR → apply_static_ipv6 fails → ip_check retries (no global address)
-      assert state.state in [:ip_check, :configuring]
+      # Bad IPv6 CIDR with ipv4=disabled → apply_static_ipv6 returns error → failed
+      assert state.state == :failed
 
       GenServer.stop(pid, :normal)
     end

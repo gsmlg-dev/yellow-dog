@@ -320,6 +320,26 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.error == {:invalid_cidr, "10.0.0.100/24/1"}
     end
 
+    test "invalid IPv6 manual CIDR with IPv4 disabled transitions to failed" do
+      iface = "hdlr_badv6_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "badv6-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "2001:db8::1/64/extra", gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert match?({:invalid_cidr, _}, new_data.error)
+    end
+
     test "get_state in configuring returns configuring state info", %{data: data} do
       result = FSM.configuring({:call, {self(), make_ref()}}, :get_state, data)
       assert {:keep_state, _data, [{:reply, _, {:ok, state}}]} = result
