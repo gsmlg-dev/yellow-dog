@@ -38,8 +38,13 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   @doc "Get routes for a specific interface."
   @spec get_routes(String.t()) :: [route()]
   def get_routes(interface) do
-    list_all()
-    |> Enum.filter(&(&1.interface == interface))
+    try do
+      :ets.match_object(@table, {{:_, :_, :_, interface}, :_})
+      |> Enum.map(fn {_key, route} -> route end)
+      |> Enum.sort_by(& &1.metric)
+    rescue
+      ArgumentError -> []
+    end
   end
 
   @doc "List all routes."
