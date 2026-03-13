@@ -351,7 +351,7 @@ defmodule YellowDog.Netman.Connection.FSMTimeoutTest do
       assert state.state == :activated
 
       # Address removal should be ignored since ipv4 is disabled
-      MockNetlink.address_removed(iface, "fe80::1/64")
+      MockNetlink.address_removed(iface, "fe80::1/64", family: "inet6", scope: "link")
       Process.sleep(100)
 
       {:ok, state} = FSM.get_state(pid)

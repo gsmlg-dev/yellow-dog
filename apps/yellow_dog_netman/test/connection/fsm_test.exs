@@ -2500,8 +2500,8 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       assert state.state in [:activated, :ip_check]
 
       if state.state == :activated do
-        # Remove the SLAAC address
-        MockNetlink.address_removed(interface, "2001:db8::abcd/64")
+        # Remove the SLAAC address (IPv6 global scope, matching kernel behavior)
+        MockNetlink.address_removed(interface, "2001:db8::abcd/64", family: "inet6")
         Process.sleep(200)
 
         {:ok, state} = FSM.get_state(pid)
