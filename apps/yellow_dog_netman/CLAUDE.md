@@ -108,3 +108,10 @@ cd apps/yellow_dog_netman && mix credo --strict
 - IP method changes (e.g., auto→manual): FSM deactivates then re-activates with new config
 - FSM `update_profile` handler exists in ALL states — caches profile immediately, method changes trigger reactivation in active states (including deactivating state)
 - Reactivation bypasses autoconnect check — goes directly to :prepare
+- In disconnected state, autoconnect false→true triggers auto_activate (checks carrier)
+
+## Profile Validation
+
+- `autoconnect_priority` must be an integer; string/float/boolean values return error (not silent coercion)
+- `autoconnect_priority` range: -1000 to 10000; nil defaults to 0
+- Interface names: max 15 chars, no spaces/slashes/colons/tabs/newlines (IFNAMSIZ constraint)
