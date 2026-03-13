@@ -28,6 +28,16 @@ defmodule YellowDog.Netman.PolicyEngineTest do
       conn = %{type: :ethernet}
       assert PolicyEngine.effective_priority(conn) == 100
     end
+
+    test "falls back to :priority when :autoconnect_priority is absent" do
+      conn = %{type: :ethernet, priority: 75}
+      assert PolicyEngine.effective_priority(conn) == 175
+    end
+
+    test "autoconnect_priority takes precedence over priority" do
+      conn = %{type: :ethernet, autoconnect_priority: 50, priority: 200}
+      assert PolicyEngine.effective_priority(conn) == 150
+    end
   end
 
   describe "default_route/1" do
@@ -80,6 +90,16 @@ defmodule YellowDog.Netman.PolicyEngineTest do
       assert {:ok, "alpha"} = PolicyEngine.default_route(connections_order1)
     end
 
+    test "three-way tie breaks alphabetically by id" do
+      connections = [
+        %{id: "charlie", type: :ethernet, autoconnect_priority: 0},
+        %{id: "alpha", type: :ethernet, autoconnect_priority: 0},
+        %{id: "bravo", type: :ethernet, autoconnect_priority: 0}
+      ]
+
+      assert {:ok, "alpha"} = PolicyEngine.default_route(connections)
+    end
+
     test "returns :none when connections have no profile_id or id" do
       connections = [%{type: :ethernet, autoconnect_priority: 0}]
       assert PolicyEngine.default_route(connections) == :none
@@ -104,6 +124,16 @@ defmodule YellowDog.Netman.PolicyEngineTest do
 
       metrics = PolicyEngine.route_metrics(connections)
       assert metrics["very-high"] >= 1
+    end
+
+    test "equal priority connections get the same metric" do
+      connections = [
+        %{id: "eth0", type: :ethernet, autoconnect_priority: 0},
+        %{id: "eth1", type: :ethernet, autoconnect_priority: 0}
+      ]
+
+      metrics = PolicyEngine.route_metrics(connections)
+      assert metrics["eth0"] == metrics["eth1"]
     end
 
     test "empty list returns empty map" do
@@ -140,6 +170,30 @@ defmodule YellowDog.Netman.PolicyEngineTest do
       ]
 
       assert PolicyEngine.dns_priority(connections) == []
+    end
+
+    test "equal priority connections sort DNS by profile_id" do
+      connections = [
+        %{
+          id: "z-conn",
+          type: :ethernet,
+          autoconnect_priority: 0,
+          dns: ["9.9.9.9"],
+          interface: "eth1"
+        },
+        %{
+          id: "a-conn",
+          type: :ethernet,
+          autoconnect_priority: 0,
+          dns: ["1.1.1.1"],
+          interface: "eth0"
+        }
+      ]
+
+      result = PolicyEngine.dns_priority(connections)
+      assert length(result) == 2
+      # Alphabetically first profile_id/id wins
+      assert hd(result).server == "1.1.1.1"
     end
 
     test "connection with nil dns key uses empty list fallback" do
