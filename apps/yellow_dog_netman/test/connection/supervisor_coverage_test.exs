@@ -8,6 +8,7 @@ defmodule YellowDog.Netman.Connection.SupervisorCoverageTest do
 
   alias YellowDog.Netman.Connection.Supervisor, as: ConnSupervisor
   alias YellowDog.Netman.Connection.FSM
+  alias YellowDog.Netman.ProfileStore
   alias YellowDog.Netman.Types.Profile
   alias YellowDog.Netman.Test.MockNetlink
 
@@ -28,6 +29,7 @@ defmodule YellowDog.Netman.Connection.SupervisorCoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
+      ProfileStore.put(profile.id, profile)
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(30)
 
@@ -57,6 +59,7 @@ defmodule YellowDog.Netman.Connection.SupervisorCoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
+      ProfileStore.put(profile.id, profile)
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(30)
 
@@ -91,6 +94,7 @@ defmodule YellowDog.Netman.Connection.SupervisorCoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
+      ProfileStore.put(profile_id, profile)
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(30)
 
