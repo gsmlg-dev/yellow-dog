@@ -2010,4 +2010,42 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert {:next_state, :ip_check, _data, _actions} = result
     end
   end
+
+  # ----------------------------------------------------------------
+  # terminate/2 handler tests
+  # ----------------------------------------------------------------
+
+  describe "terminate handler (direct)" do
+    test "terminate in activated state does not crash" do
+      iface = "hdlr_term_act_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :activated}
+
+      assert FSM.terminate(:shutdown, :activated, data) == :ok
+    end
+
+    test "terminate in configuring state does not crash" do
+      iface = "hdlr_term_cfg_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+
+      assert FSM.terminate(:normal, :configuring, data) == :ok
+    end
+
+    test "terminate in disconnected state does not crash" do
+      iface = "hdlr_term_disc_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      assert FSM.terminate(:normal, :disconnected, data) == :ok
+    end
+
+    test "terminate in unavailable state does not crash" do
+      iface = "hdlr_term_unavail_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :unavailable}
+
+      assert FSM.terminate(:normal, :unavailable, data) == :ok
+    end
+  end
 end
