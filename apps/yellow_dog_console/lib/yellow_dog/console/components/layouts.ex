@@ -36,18 +36,21 @@ defmodule YellowDog.Console.Layouts do
 
     ~H"""
     <div id="yd-layout" class="yd-layout h-full">
-      <.sidebar current_path={@current_path} />
+      <.navbar current_user={@current_user} current_path={@current_path} />
 
-      <div class="yd-main flex flex-col h-full min-w-0">
-        <.navbar current_user={@current_user} />
-        <div class="flex-1 overflow-auto">
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
-            <.flash_group flash={@flash} />
-            <%= if @content do %>
-              {@content}
-            <% else %>
-              {render_slot(@inner_block)}
-            <% end %>
+      <div class="yd-body">
+        <.sidebar current_path={@current_path} />
+
+        <div class="yd-main flex flex-col min-w-0">
+          <div class="flex-1 overflow-auto">
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
+              <.flash_group flash={@flash} />
+              <%= if @content do %>
+                {@content}
+              <% else %>
+                {render_slot(@inner_block)}
+              <% end %>
+            </div>
           </div>
         </div>
       </div>
@@ -55,9 +58,26 @@ defmodule YellowDog.Console.Layouts do
     """
   end
 
+  @nav_sections [
+    %{label: "Servers", icon: "server-network", path: "/server/dashboard"},
+    %{label: "Tools", icon: "wrench", path: "/tool/geoip"},
+    %{label: "System", icon: "cog", path: "/system/settings"},
+    %{label: "Netman", icon: "lan", path: "/netman"}
+  ]
+
+  @section_prefixes %{
+    "Servers" => ["/server/"],
+    "Tools" => ["/tool/"],
+    "System" => ["/system/"],
+    "Netman" => ["/netman"],
+    nil => ["/"]
+  }
+
   defp navbar(assigns) do
+    assigns = assign(assigns, :nav_sections, @nav_sections)
+
     ~H"""
-    <.dm_navbar>
+    <.dm_navbar class="border-b border-outline-variant">
       <:start_part>
         <button
           class="btn btn-ghost lg:hidden"
@@ -71,6 +91,19 @@ defmodule YellowDog.Console.Layouts do
           <span class="text-warning">Dog</span>
         </.link>
       </:start_part>
+      <:center_part>
+        <ul class="hidden lg:flex gap-1">
+          <li :for={section <- @nav_sections}>
+            <.link
+              navigate={section.path}
+              class={["btn btn-ghost btn-sm", nav_active?(@current_path, section.label)]}
+            >
+              <.dm_mdi name={section.icon} class="w-5 h-5" />
+              <span>{section.label}</span>
+            </.link>
+          </li>
+        </ul>
+      </:center_part>
       <:end_part>
         <.dm_theme_switcher id="theme-toggle" />
         <.dm_dropdown id="notifications-dropdown">
@@ -91,9 +124,30 @@ defmodule YellowDog.Console.Layouts do
     """
   end
 
+  defp nav_active?(nil, _section), do: nil
+
+  defp nav_active?(current_path, section) do
+    prefixes = Map.get(@section_prefixes, section, [])
+
+    if Enum.any?(prefixes, &String.starts_with?(current_path, &1)) do
+      "btn-active"
+    end
+  end
+
+  defp active_section(nil), do: nil
+  defp active_section("/"), do: nil
+
+  defp active_section(path) do
+    Enum.find_value(@section_prefixes, nil, fn {section, prefixes} ->
+      if section && Enum.any?(prefixes, &String.starts_with?(path, &1)), do: section
+    end)
+  end
+
   defp sidebar(assigns) do
+    assigns = assign(assigns, :section, active_section(assigns.current_path))
+
     ~H"""
-    <div class="yd-sidebar">
+    <div :if={@section} class="yd-sidebar">
       <div
         class="yd-sidebar-overlay"
         aria-label="close sidebar"
@@ -101,389 +155,378 @@ defmodule YellowDog.Console.Layouts do
       >
       </div>
 
-      <div class="bg-surface min-h-full w-80 max-h-screen overflow-y-auto">
+      <div class="bg-surface w-80 overflow-y-auto">
         <ul class="nested-menu nested-menu-bordered p-4">
-          <!-- Dashboard -->
-          <li class="nested-menu-title">Dashboard</li>
-          <li>
-            <.link navigate="/" class={active?(@current_path, "/", :exact)}>
-              <.dm_mdi name="home" class="w-5 h-5" />
-              <span>Overview</span>
-            </.link>
-          </li>
-          <li>
-            <.link navigate="/dashboard" class={active?(@current_path, "/dashboard")}>
-              <.dm_mdi name="view-dashboard" class="w-5 h-5" />
-              <span>Services</span>
-            </.link>
-          </li>
-          
-    <!-- Services -->
-          <li class="nested-menu-title mt-4">Services</li>
-          
-    <!-- DNS -->
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="web" class="w-5 h-5" />
-                <span>DNS</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/dns" class={active?(@current_path, "/dns", :exact)}>
-                    Overview
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dns/views" class={active?(@current_path, "/dns/views")}>
-                    Views
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dns/acl" class={active?(@current_path, "/dns/acl")}>ACL</.link>
-                </li>
-                <li>
-                  <.link navigate="/dns/logs" class={active?(@current_path, "/dns/logs")}>
-                    Query Logs
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dns/metrics" class={active?(@current_path, "/dns/metrics")}>
-                    Metrics
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- DHCPv4 -->
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="server-network" class="w-5 h-5" />
-                <span>DHCPv4</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/dhcpv4" class={active?(@current_path, "/dhcpv4", :exact)}>
-                    Overview
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dhcpv4/leases" class={active?(@current_path, "/dhcpv4/leases")}>
-                    Leases
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dhcpv4/pools" class={active?(@current_path, "/dhcpv4/pools")}>
-                    Pools
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/dhcpv4/activity"
-                    class={active?(@current_path, "/dhcpv4/activity")}
-                  >
-                    Activity
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- DHCPv6 -->
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="server-network" class="w-5 h-5" />
-                <span>DHCPv6</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/dhcpv6" class={active?(@current_path, "/dhcpv6", :exact)}>
-                    Overview
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dhcpv6/leases" class={active?(@current_path, "/dhcpv6/leases")}>
-                    Leases
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/dhcpv6/pools" class={active?(@current_path, "/dhcpv6/pools")}>
-                    Pools
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/dhcpv6/activity"
-                    class={active?(@current_path, "/dhcpv6/activity")}
-                  >
-                    Activity
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- DHCP Client -->
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="chip" class="w-5 h-5" />
-                <span>DHCP Client</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link
-                    navigate="/dhcp-client"
-                    class={active?(@current_path, "/dhcp-client", :exact)}
-                  >
-                    Overview
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/dhcp-client/interfaces"
-                    class={active?(@current_path, "/dhcp-client/interfaces")}
-                  >
-                    Interfaces
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/dhcp-client/activity"
-                    class={active?(@current_path, "/dhcp-client/activity")}
-                  >
-                    Activity
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- mDNS -->
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="wifi" class="w-5 h-5" />
-                <span>mDNS</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/mdns" class={active?(@current_path, "/mdns", :exact)}>
-                    Overview
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/mdns/services" class={active?(@current_path, "/mdns/services")}>
-                    Services
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/mdns/discovery"
-                    class={active?(@current_path, "/mdns/discovery")}
-                  >
-                    Discovery
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/mdns/monitor" class={active?(@current_path, "/mdns/monitor")}>
-                    Monitor
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- Netboot -->
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="flash" class="w-5 h-5" />
-                <span>Netboot</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/netboot" class={active?(@current_path, "/netboot", :exact)}>
-                    Dashboard
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/netboot/devices"
-                    class={active?(@current_path, "/netboot/devices")}
-                  >
-                    Devices
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/netboot/profiles"
-                    class={active?(@current_path, "/netboot/profiles")}
-                  >
-                    Boot Profiles
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/netboot/tftp" class={active?(@current_path, "/netboot/tftp")}>
-                    TFTP Server
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/netboot/log" class={active?(@current_path, "/netboot/log")}>
-                    Boot Log
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- Tools -->
-          <li class="nested-menu-title mt-4">Tools</li>
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="wrench" class="w-5 h-5" />
-                <span>Network</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/tools/geoip" class={active?(@current_path, "/tools/geoip")}>
-                    GeoIP Lookup
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/tools/whois" class={active?(@current_path, "/tools/whois")}>
-                    Whois Lookup
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate="/tools/mac" class={active?(@current_path, "/tools/mac")}>
-                    MAC Lookup
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- Identity -->
-          <li class="nested-menu-title mt-4">Identity</li>
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="key-variant" class="w-5 h-5" />
-                <span>Host Registry</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link navigate="/identity" class={active?(@current_path, "/identity")}>
-                    Overview
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/identity/hosts"
-                    class={active?(@current_path, "/identity/hosts")}
-                  >
-                    All Hosts
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/identity/approvals"
-                    class={active?(@current_path, "/identity/approvals")}
-                  >
-                    Pending Approvals
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/identity/tokens"
-                    class={active?(@current_path, "/identity/tokens")}
-                  >
-                    Tokens
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/identity/policies"
-                    class={active?(@current_path, "/identity/policies")}
-                  >
-                    Policies
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/identity/audit"
-                    class={active?(@current_path, "/identity/audit")}
-                  >
-                    Audit Log
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- Fingerprint -->
-          <li class="nested-menu-title mt-4">Fingerprint</li>
-          <li>
-            <details open>
-              <summary>
-                <.dm_mdi name="fingerprint" class="w-5 h-5" />
-                <span>Devices</span>
-              </summary>
-              <ul>
-                <li>
-                  <.link
-                    navigate="/fingerprint/devices"
-                    class={active?(@current_path, "/fingerprint/devices")}
-                  >
-                    Device Inventory
-                  </.link>
-                </li>
-                <li>
-                  <.link
-                    navigate="/fingerprint/fingerprints"
-                    class={active?(@current_path, "/fingerprint/fingerprints")}
-                  >
-                    Fingerprints
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          
-    <!-- System -->
-          <li class="nested-menu-title mt-4">System</li>
-          <li>
-            <.link navigate="/settings" class={active?(@current_path, "/settings")}>
-              <.dm_mdi name="cog" class="w-5 h-5" />
-              <span>Settings</span>
-            </.link>
-          </li>
-          <li>
-            <.link navigate="/logs" class={active?(@current_path, "/logs")}>
-              <.dm_mdi name="file-document-outline" class="w-5 h-5" />
-              <span>Logs</span>
-            </.link>
-          </li>
-          <li>
-            <.link navigate="/diagnostics" class={active?(@current_path, "/diagnostics")}>
-              <.dm_mdi name="stethoscope" class="w-5 h-5" />
-              <span>Service Diagnostics</span>
-            </.link>
-          </li>
-          <li>
-            <.link navigate="/process-map" class={active?(@current_path, "/process-map")}>
-              <.dm_mdi name="sitemap" class="w-5 h-5" />
-              <span>Process Map</span>
-            </.link>
-          </li>
+          <.sidebar_servers :if={@section == "Servers"} current_path={@current_path} />
+          <.sidebar_tools :if={@section == "Tools"} current_path={@current_path} />
+          <.sidebar_system :if={@section == "System"} current_path={@current_path} />
+          <.sidebar_netman :if={@section == "Netman"} current_path={@current_path} />
         </ul>
       </div>
     </div>
+    """
+  end
+
+  defp sidebar_servers(assigns) do
+    ~H"""
+    <!-- Dashboard -->
+    <li class="nested-menu-title">Dashboard</li>
+    <li>
+      <.link navigate="/server/dashboard" class={active?(@current_path, "/server/dashboard")}>
+        <.dm_mdi name="view-dashboard" class="w-5 h-5" />
+        <span>Services</span>
+      </.link>
+    </li>
+    <!-- DNS -->
+    <li class="nested-menu-title mt-4">DNS</li>
+    <li>
+      <.link navigate="/server/dns" class={active?(@current_path, "/server/dns", :exact)}>
+        <.dm_mdi name="web" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/dns/views" class={active?(@current_path, "/server/dns/views")}>
+        Views
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/dns/acl" class={active?(@current_path, "/server/dns/acl")}>
+        ACL
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/dns/logs" class={active?(@current_path, "/server/dns/logs")}>
+        Query Logs
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/dns/metrics" class={active?(@current_path, "/server/dns/metrics")}>
+        Metrics
+      </.link>
+    </li>
+    <!-- DHCPv4 -->
+    <li class="nested-menu-title mt-4">DHCPv4</li>
+    <li>
+      <.link navigate="/server/dhcpv4" class={active?(@current_path, "/server/dhcpv4", :exact)}>
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/dhcpv4/leases"
+        class={active?(@current_path, "/server/dhcpv4/leases")}
+      >
+        Leases
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/dhcpv4/pools" class={active?(@current_path, "/server/dhcpv4/pools")}>
+        Pools
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/dhcpv4/activity"
+        class={active?(@current_path, "/server/dhcpv4/activity")}
+      >
+        Activity
+      </.link>
+    </li>
+    <!-- DHCPv6 -->
+    <li class="nested-menu-title mt-4">DHCPv6</li>
+    <li>
+      <.link navigate="/server/dhcpv6" class={active?(@current_path, "/server/dhcpv6", :exact)}>
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/dhcpv6/leases"
+        class={active?(@current_path, "/server/dhcpv6/leases")}
+      >
+        Leases
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/dhcpv6/pools" class={active?(@current_path, "/server/dhcpv6/pools")}>
+        Pools
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/dhcpv6/activity"
+        class={active?(@current_path, "/server/dhcpv6/activity")}
+      >
+        Activity
+      </.link>
+    </li>
+    <!-- mDNS -->
+    <li class="nested-menu-title mt-4">mDNS</li>
+    <li>
+      <.link navigate="/server/mdns" class={active?(@current_path, "/server/mdns", :exact)}>
+        <.dm_mdi name="wifi" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/mdns/services"
+        class={active?(@current_path, "/server/mdns/services")}
+      >
+        Services
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/mdns/discovery"
+        class={active?(@current_path, "/server/mdns/discovery")}
+      >
+        Discovery
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/mdns/monitor"
+        class={active?(@current_path, "/server/mdns/monitor")}
+      >
+        Monitor
+      </.link>
+    </li>
+    <!-- Netboot -->
+    <li class="nested-menu-title mt-4">Netboot</li>
+    <li>
+      <.link navigate="/server/netboot" class={active?(@current_path, "/server/netboot", :exact)}>
+        <.dm_mdi name="flash" class="w-5 h-5" />
+        <span>Dashboard</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/netboot/devices"
+        class={active?(@current_path, "/server/netboot/devices")}
+      >
+        Devices
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/netboot/profiles"
+        class={active?(@current_path, "/server/netboot/profiles")}
+      >
+        Boot Profiles
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/netboot/tftp"
+        class={active?(@current_path, "/server/netboot/tftp")}
+      >
+        TFTP Server
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/netboot/log" class={active?(@current_path, "/server/netboot/log")}>
+        Boot Log
+      </.link>
+    </li>
+    <!-- Identity -->
+    <li class="nested-menu-title mt-4">Identity</li>
+    <li>
+      <.link
+        navigate="/server/identity"
+        class={active?(@current_path, "/server/identity", :exact)}
+      >
+        <.dm_mdi name="key-variant" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/identity/hosts"
+        class={active?(@current_path, "/server/identity/hosts")}
+      >
+        All Hosts
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/identity/approvals"
+        class={active?(@current_path, "/server/identity/approvals")}
+      >
+        Pending Approvals
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/identity/tokens"
+        class={active?(@current_path, "/server/identity/tokens")}
+      >
+        Tokens
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/identity/policies"
+        class={active?(@current_path, "/server/identity/policies")}
+      >
+        Policies
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/server/identity/audit"
+        class={active?(@current_path, "/server/identity/audit")}
+      >
+        Audit Log
+      </.link>
+    </li>
+    """
+  end
+
+  defp sidebar_tools(assigns) do
+    ~H"""
+    <li class="nested-menu-title">Network Tools</li>
+    <li>
+      <.link navigate="/tool/geoip" class={active?(@current_path, "/tool/geoip")}>
+        <.dm_mdi name="earth" class="w-5 h-5" />
+        <span>GeoIP Lookup</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/tool/whois" class={active?(@current_path, "/tool/whois")}>
+        <.dm_mdi name="magnify" class="w-5 h-5" />
+        <span>Whois Lookup</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/tool/mac" class={active?(@current_path, "/tool/mac")}>
+        <.dm_mdi name="ethernet" class="w-5 h-5" />
+        <span>MAC Lookup</span>
+      </.link>
+    </li>
+    <!-- Service Diagnostics -->
+    <li class="nested-menu-title mt-4">Diagnostics</li>
+    <li>
+      <.link
+        navigate="/tool/diagnostics/dns"
+        class={active?(@current_path, "/tool/diagnostics/dns")}
+      >
+        <.dm_mdi name="web" class="w-5 h-5" />
+        <span>DNS</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/tool/diagnostics/mdns"
+        class={active?(@current_path, "/tool/diagnostics/mdns")}
+      >
+        <.dm_mdi name="wifi" class="w-5 h-5" />
+        <span>mDNS</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/tool/diagnostics/dhcpv4"
+        class={active?(@current_path, "/tool/diagnostics/dhcpv4")}
+      >
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>DHCPv4</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/tool/diagnostics/dhcpv6"
+        class={active?(@current_path, "/tool/diagnostics/dhcpv6")}
+      >
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>DHCPv6</span>
+      </.link>
+    </li>
+    """
+  end
+
+  defp sidebar_system(assigns) do
+    ~H"""
+    <li class="nested-menu-title">System</li>
+    <li>
+      <.link navigate="/system/settings" class={active?(@current_path, "/system/settings")}>
+        <.dm_mdi name="cog" class="w-5 h-5" />
+        <span>Settings</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/system/logs" class={active?(@current_path, "/system/logs")}>
+        <.dm_mdi name="file-document-outline" class="w-5 h-5" />
+        <span>Logs</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/system/process-map" class={active?(@current_path, "/system/process-map")}>
+        <.dm_mdi name="sitemap" class="w-5 h-5" />
+        <span>Process Map</span>
+      </.link>
+    </li>
+    <!-- Provider Data -->
+    <li class="nested-menu-title mt-4">Provider</li>
+    <li>
+      <.link
+        navigate="/system/fingerprint/devices"
+        class={active?(@current_path, "/system/fingerprint/devices")}
+      >
+        <.dm_mdi name="fingerprint" class="w-5 h-5" />
+        <span>Device Inventory</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/fingerprint/fingerprints"
+        class={active?(@current_path, "/system/fingerprint/fingerprints")}
+      >
+        Fingerprints
+      </.link>
+    </li>
+    """
+  end
+
+  defp sidebar_netman(assigns) do
+    ~H"""
+    <li class="nested-menu-title">Network Manager</li>
+    <li>
+      <.link navigate="/netman" class={active?(@current_path, "/netman", :exact)}>
+        <.dm_mdi name="view-dashboard" class="w-5 h-5" />
+        <span>Dashboard</span>
+      </.link>
+    </li>
+    <!-- DHCP Client -->
+    <li class="nested-menu-title mt-4">DHCP Client</li>
+    <li>
+      <.link
+        navigate="/netman/dhcp-client"
+        class={active?(@current_path, "/netman/dhcp-client", :exact)}
+      >
+        <.dm_mdi name="chip" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/netman/dhcp-client/interfaces"
+        class={active?(@current_path, "/netman/dhcp-client/interfaces")}
+      >
+        Interfaces
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/netman/dhcp-client/activity"
+        class={active?(@current_path, "/netman/dhcp-client/activity")}
+      >
+        Activity
+      </.link>
+    </li>
     """
   end
 

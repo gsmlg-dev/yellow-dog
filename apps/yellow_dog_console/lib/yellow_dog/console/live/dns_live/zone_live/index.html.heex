@@ -3,8 +3,8 @@
     <!-- Breadcrumb -->
     <div class="breadcrumbs text-sm">
       <ul>
-        <li><.link navigate={~p"/dns"}>DNS</.link></li>
-        <li><.link navigate={~p"/dns/views"}>Views</.link></li>
+        <li><.link navigate={~p"/server/dns"}>DNS</.link></li>
+        <li><.link navigate={~p"/server/dns/views"}>Views</.link></li>
         <li class="font-semibold">{@view_name}</li>
       </ul>
     </div>
@@ -39,13 +39,16 @@
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </button>
         <.link
-          patch={~p"/dns/views/#{@view_name}/zones/import"}
+          patch={~p"/server/dns/views/#{@view_name}/zones/import"}
           class="btn btn-ghost btn-sm"
           title="Import Zone"
         >
           <.dm_mdi name="upload" class="w-4 h-4" /> Import
         </.link>
-        <.link patch={~p"/dns/views/#{@view_name}/zones/new"} class="btn btn-primary btn-sm">
+        <.link
+          patch={~p"/server/dns/views/#{@view_name}/zones/new"}
+          class="btn btn-primary btn-sm"
+        >
           <.dm_mdi name="plus" class="w-4 h-4" /> Add Zone
         </.link>
       </div>
@@ -101,7 +104,7 @@
                           <%= if zone.type == :auth do %>
                             <.link
                               navigate={
-                                ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
+                                ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
                               }
                               class="link link-hover font-mono font-semibold"
                             >
@@ -120,7 +123,7 @@
                           <%= if zone.type == :auth do %>
                             <.link
                               navigate={
-                                ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
+                                ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
                               }
                               class="link link-hover"
                             >
@@ -136,7 +139,7 @@
                             <%= if zone.type == :auth do %>
                               <.link
                                 navigate={
-                                  ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
+                                  ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
                                 }
                                 class="btn btn-ghost btn-sm"
                                 title="View Records"
@@ -147,7 +150,7 @@
                             <% end %>
                             <.link
                               patch={
-                                ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/edit"
+                                ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/edit"
                               }
                               class="btn btn-ghost btn-sm"
                               title="Edit"
@@ -188,10 +191,16 @@
                 <h3 class="text-lg font-semibold mb-2">No Zones</h3>
                 <p class="text-on-surface-variant mb-4">This view has no zones configured.</p>
                 <div class="flex justify-center gap-2">
-                  <.link patch={~p"/dns/views/#{@view_name}/zones/new"} class="btn btn-primary">
+                  <.link
+                    patch={~p"/server/dns/views/#{@view_name}/zones/new"}
+                    class="btn btn-primary"
+                  >
                     Create Zone
                   </.link>
-                  <.link patch={~p"/dns/views/#{@view_name}/zones/import"} class="btn btn-ghost">
+                  <.link
+                    patch={~p"/server/dns/views/#{@view_name}/zones/import"}
+                    class="btn btn-ghost"
+                  >
                     Import Zone
                   </.link>
                 </div>

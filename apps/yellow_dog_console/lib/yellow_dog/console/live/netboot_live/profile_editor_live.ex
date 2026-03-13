@@ -58,8 +58,8 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
-            <li><.link navigate="/netboot/profiles">Profiles</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot/profiles">Profiles</.link></li>
             <li>{if @mode == :new, do: "New", else: @profile_id}</li>
           </ul>
         </div>
@@ -123,7 +123,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 <span :if={@errors[:kernel]} class="helper-text text-error">{@errors[:kernel]}</span>
                 <span :if={@file_warnings[:kernel]} class="helper-text text-warning">
                   {@file_warnings[:kernel]} —
-                  <.link navigate="/netboot/tftp" class="link link-primary">upload</.link>
+                  <.link navigate="/server/netboot/tftp" class="link link-primary">upload</.link>
                 </span>
               </div>
 
@@ -140,7 +140,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 <span :if={@errors[:initrd]} class="helper-text text-error">{@errors[:initrd]}</span>
                 <span :if={@file_warnings[:initrd]} class="helper-text text-warning">
                   {@file_warnings[:initrd]} —
-                  <.link navigate="/netboot/tftp" class="link link-primary">upload</.link>
+                  <.link navigate="/server/netboot/tftp" class="link link-primary">upload</.link>
                 </span>
               </div>
             </div>
@@ -249,7 +249,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 </button>
               </div>
               <div class="flex gap-2">
-                <.link navigate="/netboot/profiles" class="btn btn-ghost">Cancel</.link>
+                <.link navigate="/server/netboot/profiles" class="btn btn-ghost">Cancel</.link>
                 <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
                   {if @mode == :new, do: "Create Profile", else: "Save Changes"}
                 </button>
@@ -303,7 +303,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
           {:noreply,
            socket
            |> put_flash(:info, "Profile #{profile.id} saved successfully")
-           |> push_navigate(to: "/netboot/profiles")}
+           |> push_navigate(to: "/server/netboot/profiles")}
 
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
@@ -329,7 +329,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
         :ok ->
           socket
           |> put_flash(:info, "Profile '#{id}' deleted successfully")
-          |> push_navigate(to: "/netboot/profiles")
+          |> push_navigate(to: "/server/netboot/profiles")
 
         {:error, _reason} ->
           put_flash(socket, :error, "Failed to delete profile '#{id}'")

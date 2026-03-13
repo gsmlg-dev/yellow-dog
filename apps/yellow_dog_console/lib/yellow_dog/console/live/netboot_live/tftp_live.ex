@@ -51,12 +51,12 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>TFTP Server</li>
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot TFTP" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot TFTP" navigate="/system/settings" />
 
         <div>
           <h1 class="text-4xl font-bold">TFTP Server</h1>

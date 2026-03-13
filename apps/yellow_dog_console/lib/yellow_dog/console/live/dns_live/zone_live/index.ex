@@ -117,14 +117,14 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       :error ->
         socket
         |> put_flash(:error, "Zone '#{zone_name}' not found")
-        |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")
+        |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")
     end
   end
 
   defp apply_action(socket, :edit, %{"view_name" => view_name}) do
     socket
     |> put_flash(:error, "Invalid zone type")
-    |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")
+    |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")
   end
 
   defp apply_action(socket, :import, %{"view_name" => view_name}) do
@@ -276,7 +276,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   @impl true
   def handle_event("cancel", _params, socket) do
     view_name = socket.assigns.view_name
-    {:noreply, push_navigate(socket, to: ~p"/dns/views/#{view_name}/zones")}
+    {:noreply, push_navigate(socket, to: ~p"/server/dns/views/#{view_name}/zones")}
   end
 
   # ============================================================================
@@ -349,7 +349,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         {:noreply,
          socket
          |> put_flash(:info, "Zone '#{zone_name}' #{action} successfully")
-         |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+         |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to save zone: #{inspect(reason)}")}
@@ -468,7 +468,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
                    :info,
                    "Zone '#{zone_name}' imported with #{stats.records_imported} records"
                  )
-                 |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+                 |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")}
 
               {:error, reason} ->
                 {:noreply,
@@ -494,7 +494,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
                    :info,
                    "Imported #{stats.records_imported} records into existing zone '#{zone_name}'"
                  )
-                 |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+                 |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")}
 
               {:error, reason} ->
                 {:noreply,

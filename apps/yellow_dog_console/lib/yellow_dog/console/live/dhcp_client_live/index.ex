@@ -60,6 +60,7 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <div>
@@ -285,6 +286,7 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
         <% end %>
       <% end %>
     </div>
+    </Layouts.app>
     """
   end
 

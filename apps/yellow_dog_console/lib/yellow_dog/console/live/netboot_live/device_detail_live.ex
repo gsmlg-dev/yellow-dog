@@ -47,8 +47,8 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
-            <li><.link navigate="/netboot/devices">Devices</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot/devices">Devices</.link></li>
             <li class="font-mono">{@mac}</li>
           </ul>
         </div>
@@ -93,7 +93,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                 <span class="text-on-surface-variant">Profile</span>
                 <.link
                   :if={@device.profile_id}
-                  navigate={"/netboot/profiles/#{@device.profile_id}/edit"}
+                  navigate={"/server/netboot/profiles/#{@device.profile_id}/edit"}
                   class="link link-primary font-medium"
                 >
                   {@device.profile_id}
@@ -399,7 +399,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
         :ok ->
           socket
           |> put_flash(:info, "Device '#{mac}' deleted successfully")
-          |> push_navigate(to: "/netboot/devices")
+          |> push_navigate(to: "/server/netboot/devices")
 
         {:error, _reason} ->
           put_flash(socket, :error, "Failed to delete device '#{mac}'")

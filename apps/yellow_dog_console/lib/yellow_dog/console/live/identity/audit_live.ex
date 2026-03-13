@@ -123,7 +123,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
                 </td>
                 <td>
                   <.link
-                    navigate={~p"/identity/hosts/#{entry.host_id}"}
+                    navigate={~p"/server/identity/hosts/#{entry.host_id}"}
                     class="link link-primary font-mono text-xs"
                   >
                     {String.slice(entry.host_id, 0, 8)}...

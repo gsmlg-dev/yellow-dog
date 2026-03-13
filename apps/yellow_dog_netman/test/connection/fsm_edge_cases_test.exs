@@ -61,14 +61,18 @@ defmodule YellowDog.Netman.Connection.FSMEdgeCasesTest do
       assert {:next_event, :internal, :auto_activate} in actions
     end
 
-    test "carrier false in failed state keeps state (catch-all)" do
+    test "carrier false in failed state cleans up and transitions to disconnected" do
       data = make_data(%{state: :failed})
-      data = %{data | error: :dhcp_failed}
+      data = %{data | error: :dhcp_failed, dhcp_retries: 3, ip_check_retries: 2}
 
       event = {:netman_event, "netman:link:#{data.interface}", {:link_update, %{carrier: false}}}
       result = FSM.failed(:info, event, data)
 
-      assert {:keep_state, ^data} = result
+      assert {:next_state, :disconnected, new_data, _} = result
+      assert new_data.error == nil
+      assert new_data.lease == nil
+      assert new_data.dhcp_retries == 0
+      assert new_data.ip_check_retries == 0
     end
   end
 
@@ -186,6 +190,44 @@ defmodule YellowDog.Netman.Connection.FSMEdgeCasesTest do
       assert {:next_state, :deactivating, new_data, actions} = result
       assert new_data.ip_check_retries == 0
       assert {:next_event, :internal, :cleanup} in actions
+    end
+  end
+
+  describe "parse_cidr IP validation" do
+    test "rejects invalid IPv4 address in static config" do
+      data = make_data(%{state: :configuring})
+
+      data =
+        put_in(data.profile.ipv4, %{
+          method: :manual,
+          address: "not-an-ip/24",
+          gateway: nil,
+          dns: []
+        })
+
+      result = FSM.configuring(:internal, :configure_ip, data)
+      assert {:next_state, :failed, new_data, _} = result
+      assert {:invalid_cidr, _} = new_data.error
+    end
+
+    test "rejects invalid IPv6 address in static config" do
+      data = make_data(%{state: :configuring})
+      data = put_in(data.profile.ipv4, %{method: :disabled, address: nil, gateway: nil, dns: []})
+
+      data =
+        put_in(data.profile.ipv6, %{
+          method: :manual,
+          address: "zzz::badaddr/64",
+          gateway: nil,
+          dns: []
+        })
+
+      result = FSM.configuring(:internal, :configure_ip, data)
+      # IPv4 disabled goes to ip_check, then static IPv6 would be applied
+      # Since IPv4 is disabled, configure_ip skips IPv4 and applies IPv6
+      # The invalid IPv6 should result in :failed
+      assert {:next_state, :failed, new_data, _} = result
+      assert match?({:invalid_cidr, _}, new_data.error)
     end
   end
 

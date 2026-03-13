@@ -397,7 +397,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   defp records_path(view_name, zone_type, zone_name) do
-    ~p"/dns/views/#{view_name}/zones/#{zone_type}/#{zone_name}/records"
+    ~p"/server/dns/views/#{view_name}/zones/#{zone_type}/#{zone_name}/records"
   end
 
   defp load_records(socket) do

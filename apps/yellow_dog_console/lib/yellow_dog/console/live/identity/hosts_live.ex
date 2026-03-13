@@ -125,7 +125,7 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
                 <td class="font-mono text-xs max-w-[200px] truncate">{host.age_recipient}</td>
                 <td class="text-sm">{format_time(host.created_at)}</td>
                 <td>
-                  <.link navigate={~p"/identity/hosts/#{host.id}"} class="btn btn-xs btn-ghost">
+                  <.link navigate={~p"/server/identity/hosts/#{host.id}"} class="btn btn-xs btn-ghost">
                     Details
                   </.link>
                 </td>

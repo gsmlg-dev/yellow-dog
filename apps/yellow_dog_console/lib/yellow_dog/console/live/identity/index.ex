@@ -162,22 +162,22 @@ defmodule YellowDog.Console.IdentityLive.Index do
             <div class="card-body">
               <h2 class="card-title">Quick Actions</h2>
               <div class="space-y-2">
-                <.link navigate={~p"/identity/hosts"} class="btn btn-sm btn-outline w-full">
+                <.link navigate={~p"/server/identity/hosts"} class="btn btn-sm btn-outline w-full">
                   View All Hosts
                 </.link>
                 <.link
-                  navigate={~p"/identity/approvals"}
+                  navigate={~p"/server/identity/approvals"}
                   class="btn btn-sm btn-warning btn-outline w-full"
                 >
                   Pending Approvals ({@stats.pending})
                 </.link>
-                <.link navigate={~p"/identity/tokens"} class="btn btn-sm btn-outline w-full">
+                <.link navigate={~p"/server/identity/tokens"} class="btn btn-sm btn-outline w-full">
                   Provisioning Tokens
                 </.link>
-                <.link navigate={~p"/identity/policies"} class="btn btn-sm btn-outline w-full">
+                <.link navigate={~p"/server/identity/policies"} class="btn btn-sm btn-outline w-full">
                   Approval Policies
                 </.link>
-                <.link navigate={~p"/identity/audit"} class="btn btn-sm btn-outline w-full">
+                <.link navigate={~p"/server/identity/audit"} class="btn btn-sm btn-outline w-full">
                   Audit Log
                 </.link>
                 <div class="flex gap-1">

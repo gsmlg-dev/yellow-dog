@@ -156,7 +156,10 @@
             <% end %>
 
             <:actions>
-              <.link navigate={~p"/dhcpv4/pools/#{pool_name}"} class="btn btn-sm btn-ghost gap-2">
+              <.link
+                navigate={~p"/server/dhcpv4/pools/#{pool_name}"}
+                class="btn btn-sm btn-ghost gap-2"
+              >
                 <.dm_mdi name="eye" class="h-4 w-4" /> View Details
               </.link>
             </:actions>

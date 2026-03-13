@@ -276,7 +276,10 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                 <%= for pool <- filtered_pools(@pools, @filter) do %>
                   <tr>
                     <td class="font-medium">
-                      <.link navigate={~p"/dhcpv4/pools/#{pool.name}"} class="link link-primary">
+                      <.link
+                        navigate={~p"/server/dhcpv4/pools/#{pool.name}"}
+                        class="link link-primary"
+                      >
                         {pool.name}
                       </.link>
                     </td>

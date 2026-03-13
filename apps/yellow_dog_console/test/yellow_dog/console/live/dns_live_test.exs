@@ -12,7 +12,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Overview /dns" do
     test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns")
+      {:ok, _view, html} = live(conn, "/server/dns")
       assert html =~ "DNS"
     end
   end
@@ -23,26 +23,26 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Views /dns/views" do
     test "mounts with empty views list", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views")
+      {:ok, _view, html} = live(conn, "/server/dns/views")
       assert html =~ "DNS Views"
     end
 
     test "renders filter bar when views exist or shows empty state", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views")
+      {:ok, _view, html} = live(conn, "/server/dns/views")
       # Page should render without errors
       assert html =~ "DNS Views"
     end
 
     test "navigates to new view form", %{conn: conn} do
-      {:ok, _view, _html} = live(conn, "/dns/views")
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, _html} = live(conn, "/server/dns/views")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ "Create New View"
       assert html =~ "View Name"
       assert html =~ "Priority"
     end
 
     test "new view form has all required fields", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ "Recursion"
       assert html =~ "ECS"
       assert html =~ "ACL Type"
@@ -50,7 +50,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "new view form renders ACL type options", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ "Allow All (any)"
       assert html =~ "Deny All (none)"
       assert html =~ "Localhost Only"
@@ -59,11 +59,11 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "cancel navigates back to views list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
 
-      assert_redirect(view, "/dns/views")
+      assert_redirect(view, "/server/dns/views")
     end
   end
 
@@ -73,47 +73,47 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Zones /dns/views/:view_name/zones" do
     test "mounts with view name from params", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones")
       assert html =~ "Zones"
       assert html =~ "default"
     end
 
     test "navigates to new zone form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/new")
       assert html =~ "Add Zone"
       assert html =~ "Zone Name"
       assert html =~ "Zone Type"
     end
 
     test "new zone form shows zone type options", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/new")
       assert html =~ "Authoritative"
       assert html =~ "Forward"
       assert html =~ "Stub"
     end
 
     test "navigates to import zone form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/import")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
       assert html =~ "Import Zone"
       assert html =~ "BIND Zone File Format"
     end
 
     test "import form has zone data textarea", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/import")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
       assert html =~ "Zone Data"
       assert html =~ "$ORIGIN"
     end
 
     test "cancel navigates back to zones list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
 
-      assert_redirect(view, "/dns/views/default/zones")
+      assert_redirect(view, "/server/dns/views/default/zones")
     end
 
     test "breadcrumb navigation is present", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones")
       assert html =~ "breadcrumbs"
       assert html =~ "DNS"
       assert html =~ "Views"
@@ -126,12 +126,12 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS ACL /dns/acl" do
     test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/acl")
+      {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "ACL"
     end
 
     test "has export button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/acl")
+      {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "Export"
     end
   end
@@ -142,7 +142,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Query Logs /dns/logs" do
     test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/logs")
+      {:ok, _view, html} = live(conn, "/server/dns/logs")
       assert html =~ "Query Logs" or html =~ "Logs"
     end
   end
@@ -153,23 +153,23 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Metrics /dns/metrics" do
     test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/metrics")
+      {:ok, _view, html} = live(conn, "/server/dns/metrics")
       assert html =~ "Metrics" or html =~ "DNS"
     end
 
     test "has export CSV button with CsvDownload hook", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/metrics")
+      {:ok, _view, html} = live(conn, "/server/dns/metrics")
       assert html =~ "Export CSV"
       assert html =~ "CsvDownload"
     end
 
     test "has reset button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/metrics")
+      {:ok, _view, html} = live(conn, "/server/dns/metrics")
       assert html =~ "Reset"
     end
 
     test "shows summary stats section", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/metrics")
+      {:ok, _view, html} = live(conn, "/server/dns/metrics")
       assert html =~ "Total Queries"
       assert html =~ "Cache Hit Rate"
     end
@@ -181,28 +181,28 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Overview /dns handle_info" do
     test "view_updated refreshes stats", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns")
+      {:ok, view, _html} = live(conn, "/server/dns")
       send(view.pid, {:view_updated, "default"})
       html = render(view)
       assert html =~ "DNS"
     end
 
     test "zone_updated refreshes stats", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns")
+      {:ok, view, _html} = live(conn, "/server/dns")
       send(view.pid, {:zone_updated, "example.com"})
       html = render(view)
       assert html =~ "DNS"
     end
 
     test "cache_updated refreshes cache stats", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns")
+      {:ok, view, _html} = live(conn, "/server/dns")
       send(view.pid, {:cache_updated, %{name: "example.com"}})
       html = render(view)
       assert html =~ "DNS"
     end
 
     test "unknown messages are silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns")
+      {:ok, view, _html} = live(conn, "/server/dns")
       send(view.pid, {:random_event, :data})
       html = render(view)
       assert html =~ "DNS"
@@ -215,14 +215,14 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Metrics /dns/metrics handle_info" do
     test "refresh updates metrics data", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/metrics")
+      {:ok, view, _html} = live(conn, "/server/dns/metrics")
       send(view.pid, :refresh)
       html = render(view)
       assert html =~ "Total Queries" or html =~ "Metrics"
     end
 
     test "unknown messages are silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/metrics")
+      {:ok, view, _html} = live(conn, "/server/dns/metrics")
       send(view.pid, {:some_event, :data})
       html = render(view)
       assert html =~ "Metrics" or html =~ "DNS"
@@ -235,14 +235,14 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS ACL /dns/acl handle_info" do
     test "view_updated refreshes views list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       send(view.pid, {:view_updated, "default"})
       html = render(view)
       assert html =~ "ACL"
     end
 
     test "unknown messages are silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       send(view.pid, {:unknown_event, :data})
       html = render(view)
       assert html =~ "ACL"
@@ -498,17 +498,17 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS ACL /dns/acl search and filter" do
     test "has search/filter input", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/acl")
+      {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "Search" or html =~ "search"
     end
 
     test "has create ACL button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/acl")
+      {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "Add ACL"
     end
 
     test "shows built-in ACL reference", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/acl")
+      {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "Built-in ACL Reference"
     end
   end
@@ -519,7 +519,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Views CRUD" do
     test "create view form submits with valid data", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       # Submit the form with view data (only include checkbox if "true")
       # Since ViewManager is not running, the save will fail gracefully
@@ -543,40 +543,40 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "create view form requires name field", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       # The form should have a name input field
       assert html =~ ~s(name="view[name]")
     end
 
     test "create view form has priority field with default 100", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ ~s(name="view[priority]")
       assert html =~ "100"
     end
 
     test "create view form has recursion checkbox", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ ~s(name="view[recursion_enabled]")
     end
 
     test "create view form has ECS checkbox", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ ~s(name="view[ecs_enabled]")
     end
 
     test "create view form has fallback forwarders textarea", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ ~s(name="view[fallback_forwarders]")
     end
 
     test "create view form has timeout and retries fields", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/new")
+      {:ok, _view, html} = live(conn, "/server/dns/views/new")
       assert html =~ ~s(name="view[fallback_timeout]")
       assert html =~ ~s(name="view[fallback_retries]")
     end
 
     test "ACL type change updates form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       html =
         view
@@ -589,27 +589,27 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "edit view redirects to views list for nonexistent view", %{conn: conn} do
       # View doesn't exist, so apply_action redirects with flash error
-      assert {:error, {:live_redirect, %{to: "/dns/views", flash: flash}}} =
-               live(conn, "/dns/views/nonexistent-view/edit")
+      assert {:error, {:live_redirect, %{to: "/server/dns/views", flash: flash}}} =
+               live(conn, "/server/dns/views/nonexistent-view/edit")
 
       assert flash["error"] =~ "not found"
     end
 
     test "delete confirm modal can be closed", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views")
+      {:ok, view, _html} = live(conn, "/server/dns/views")
       # close_modal should work even without a delete target
       html = view |> render_click("close_modal")
       assert html =~ "DNS Views"
     end
 
     test "refresh button reloads views", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views")
+      {:ok, view, _html} = live(conn, "/server/dns/views")
       html = view |> render_click("refresh")
       assert html =~ "DNS Views"
     end
 
     test "export CSV generates file download", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/dns/views")
+      {:ok, view, html} = live(conn, "/server/dns/views")
       assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       # The push_event is fired, which we can't directly assert in tests,
@@ -618,13 +618,13 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "filter by name works via event", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views")
+      {:ok, view, _html} = live(conn, "/server/dns/views")
       html = view |> render_change("filter", %{"filter" => "test"})
       assert html =~ "DNS Views"
     end
 
     test "filter by status works via event", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views")
+      {:ok, view, _html} = live(conn, "/server/dns/views")
       html = view |> render_change("filter_status", %{"status" => "active"})
       assert html =~ "DNS Views"
     end
@@ -636,7 +636,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Zones CRUD" do
     test "create zone form submits auth zone", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       # Auth zone form only has name and type fields (no upstreams/ns_records)
       result =
@@ -654,7 +654,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "create zone form submits forward zone with upstreams", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       # First change type to forward to reveal upstreams textarea
       view
@@ -686,7 +686,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "create zone form submits stub zone with NS records", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       # First change type to stub to reveal ns_records textarea
       view
@@ -718,7 +718,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone event updates form type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       html =
         view
@@ -736,13 +736,13 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "import zone form renders BIND format textarea", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/import")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
       assert html =~ ~s(name="import[zone_data]")
       assert html =~ ~s(name="import[format]")
     end
 
     test "import zone form submits zone data", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/import")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/import")
 
       zone_data = """
       $ORIGIN example.com.
@@ -766,44 +766,44 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "cancel navigates back from new zone form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
-      assert_redirect(view, "/dns/views/default/zones")
+      assert_redirect(view, "/server/dns/views/default/zones")
     end
 
     test "cancel navigates back from import form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/import")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/import")
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
-      assert_redirect(view, "/dns/views/default/zones")
+      assert_redirect(view, "/server/dns/views/default/zones")
     end
 
     test "refresh button reloads zones", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
       html = view |> render_click("refresh")
       assert html =~ "Zones" or html =~ "default"
     end
 
     test "export CSV generates zones file download", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/dns/views/default/zones")
+      {:ok, view, html} = live(conn, "/server/dns/views/default/zones")
       assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       assert render(view) =~ "Zones" or render(view) =~ "default"
     end
 
     test "filter zones by name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
       html = view |> render_change("filter", %{"filter" => "example"})
       assert html =~ "Zones" or html =~ "default"
     end
 
     test "filter zones by type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
       html = view |> render_change("filter_type", %{"type" => "all"})
       assert html =~ "Zones" or html =~ "default"
     end
 
     test "close_modal event clears delete confirmation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
       html = view |> render_click("close_modal")
       assert html =~ "Zones" or html =~ "default"
     end
@@ -815,14 +815,14 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS ACL CRUD" do
     test "show_create_form opens named ACL form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_click("show_create_form")
       # Should show the create form with name, description, acl_type fields
       assert html =~ ~s(name="acl[name]") or html =~ "Create" or html =~ "ACL"
     end
 
     test "close_create_form hides the form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
       html = view |> render_click("close_create_form")
       # Form should be hidden again
@@ -830,7 +830,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "save_named_acl with empty name shows error", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       result =
@@ -849,7 +849,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "save_named_acl with valid custom ACL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       result =
@@ -869,7 +869,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "create_type_changed updates ACL form type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       html =
@@ -883,19 +883,19 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "cancel_delete clears delete confirmation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_click("cancel_delete")
       assert html =~ "ACL"
     end
 
     test "close_modal clears editing view", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_click("close_modal")
       assert html =~ "ACL"
     end
 
     test "toggle_country adds and removes countries", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       # Toggle a country code
       html = view |> render_click("toggle_country", %{"code" => "US"})
       assert html =~ "ACL"
@@ -906,65 +906,65 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "search_country filters country list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_change("search_country", %{"search" => "United"})
       assert html =~ "ACL"
     end
 
     test "clear_country_search resets search", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_change("search_country", %{"search" => "test"})
       html = view |> render_click("clear_country_search")
       assert html =~ "ACL"
     end
 
     test "refresh reloads ACL data", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_click("refresh")
       assert html =~ "ACL"
     end
 
     test "acl_type_changed updates view ACL form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_change("acl_type_changed", %{"acl" => %{"acl_type" => "none"}})
       assert html =~ "ACL"
     end
 
     test "filter named ACLs by search text", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_change("filter", %{"filter" => "internal"})
       assert html =~ "ACL"
     end
 
     test "filter views by ACL type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_change("filter_type", %{"type" => "any"})
       assert html =~ "ACL"
     end
 
     test "export CSV generates ACL file download", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/dns/acl")
+      {:ok, view, html} = live(conn, "/server/dns/acl")
       assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       assert render(view) =~ "ACL"
     end
 
     test "edit_named_acl shows error when ACL not found", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       # AclRegistry is not running in test, so this triggers the catch path
       html = view |> render_click("edit_named_acl", %{"name" => "nonexistent"})
       assert html =~ "ACL not found" or html =~ "ACL"
     end
 
     test "confirm_delete_acl sets delete confirmation state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       html = view |> render_click("confirm_delete_acl", %{"name" => "test-acl"})
       # Should show the delete confirmation modal with ACL name
       assert html =~ "test-acl" or html =~ "Delete ACL"
     end
 
     test "delete_named_acl handles service unavailable gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       # First set the delete_confirm assign
       view |> render_click("confirm_delete_acl", %{"name" => "test-acl"})
       # Then trigger the actual delete (AclRegistry not running)
@@ -973,14 +973,14 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "edit_acl with nonexistent view shows error", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       # Views list is likely empty in test, so view won't be found
       html = view |> render_click("edit_acl", %{"view" => "nonexistent"})
       assert html =~ "View not found" or html =~ "ACL"
     end
 
     test "save_acl handles missing view gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       # First we need editing_view to be set — use edit_acl which sets it
       # Since views may exist in test, try the save_acl path via form submission
       # We can't easily trigger save_acl without editing_view being set,
@@ -997,22 +997,27 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Resource Records /dns/views/:view_name/zones/:zone_type/:zone_name/records" do
     test "mounts with zone context from params", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "navigates to new record form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, _view, html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+
       assert html =~ "Add" or html =~ "Record" or html =~ "record"
     end
 
     test "navigates to bulk import form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+      {:ok, _view, html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/bulk")
+
       assert html =~ "Bulk" or html =~ "Import" or html =~ "record"
     end
 
     test "bulk form shows preview on text change", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/bulk")
 
       html =
         view
@@ -1024,61 +1029,65 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "bulk form submit button disabled until valid preview", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+      {:ok, _view, html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/bulk")
+
       assert html =~ "disabled"
     end
 
     test "shows Export BIND button for auth zones", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       assert html =~ "Export BIND"
     end
 
     test "export_bind handles missing zone gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       html = view |> render_click("export_bind")
       # Should show an error flash or still render the page
       assert html =~ "Records" or html =~ "example.com" or html =~ "Export failed"
     end
 
     test "shows CsvDownload hook on export button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       assert html =~ "CsvDownload"
     end
 
     test "refresh reloads records", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       html = view |> render_click("refresh")
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "filter records by name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       html = view |> render_change("filter", %{"filter" => "www"})
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "filter records by type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       html = view |> render_change("filter_type", %{"type" => "all"})
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "export CSV generates records file download", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       view |> render_click("export_csv")
       assert render(view) =~ "Records" or render(view) =~ "example.com"
     end
 
     test "close_modal clears delete confirmation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
       html = view |> render_click("close_modal")
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "cancel navigates back from new record form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
-      assert_redirect(view, "/dns/views/default/zones/auth/example.com/records")
+      assert_redirect(view, "/server/dns/views/default/zones/auth/example.com/records")
     end
   end
 
@@ -1088,7 +1097,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "Zone form inline validation" do
     test "validate_zone shows error for invalid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       html =
         view
@@ -1105,7 +1114,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone clears error for valid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       # First trigger an error
       view
@@ -1134,7 +1143,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone shows error for invalid upstream IP in forward zone", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       html =
         view
@@ -1151,7 +1160,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone accepts valid upstream IPs", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       html =
         view
@@ -1168,7 +1177,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone shows error for invalid NS in stub zone", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       html =
         view
@@ -1185,7 +1194,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "save_zone rejects invalid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
       html =
         view
@@ -1204,7 +1213,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "View form inline validation" do
     test "validate_view shows error for invalid view name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       html =
         view
@@ -1219,7 +1228,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_view clears error for valid view name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       # Trigger error first
       view
@@ -1244,7 +1253,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_view shows error for invalid forwarder IP", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       html =
         view
@@ -1259,7 +1268,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_view accepts valid forwarder IPs with port", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       html =
         view
@@ -1274,7 +1283,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "save_view rejects invalid view name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/new")
+      {:ok, view, _html} = live(conn, "/server/dns/views/new")
 
       html =
         view
@@ -1297,7 +1306,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "ACL form inline validation" do
     test "validate_named_acl shows error for invalid ACL name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       html =
@@ -1315,7 +1324,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_named_acl shows error for invalid CIDR in rules", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       html =
@@ -1333,7 +1342,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_named_acl accepts valid custom rules", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       html =
@@ -1351,7 +1360,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "save_named_acl rejects invalid ACL name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, _html} = live(conn, "/server/dns/acl")
       view |> render_click("show_create_form")
 
       html =
@@ -1496,18 +1505,18 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "ARIA accessibility on DNS pages" do
     test "DNS views page has aria-label on action buttons", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views")
+      {:ok, _view, html} = live(conn, "/server/dns/views")
       # When empty, no action buttons shown — but aria-labels exist in template
       assert html =~ "aria-label" or html =~ "No DNS Views"
     end
 
     test "DNS ACL page has aria-label on action buttons", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/acl")
+      {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "aria-label" or html =~ "No custom ACLs"
     end
 
     test "DNS overview refresh button has aria-label", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns")
+      {:ok, _view, html} = live(conn, "/server/dns")
       assert html =~ "aria-label=\"Refresh\""
     end
   end
@@ -1518,8 +1527,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "service status alert on DNS sub-pages" do
     @dns_sub_pages [
-      {"/dns/views", "Views"},
-      {"/dns/acl", "ACL"}
+      {"/server/dns/views", "Views"},
+      {"/server/dns/acl", "ACL"}
     ]
 
     for {path, name} <- @dns_sub_pages do
@@ -1534,11 +1543,11 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "service alert component renders link to dashboard when shown", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dns/views")
+      {:ok, _view, html} = live(conn, "/server/dns/views")
 
       # When service is not running, alert should have dashboard link
       if html =~ "DNS service is not running" do
-        assert html =~ "/dashboard"
+        assert html =~ "/server/dashboard"
         assert html =~ "Go to Dashboard"
       end
     end
@@ -1647,7 +1656,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - domain name" do
     test "shows error for invalid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1665,7 +1675,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "shows no error for valid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1683,7 +1694,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts @ for zone apex", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1703,7 +1715,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - TTL" do
     test "shows error for non-numeric TTL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1721,7 +1734,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "shows error for negative TTL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1739,7 +1753,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid TTL within RFC 2181 limits", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1759,7 +1774,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - A record rdata" do
     test "shows error for invalid IPv4 address", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1777,7 +1793,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid IPv4 address for A record", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -1797,7 +1814,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - AAAA record rdata" do
     test "shows error for invalid IPv6 address", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       # First switch to AAAA type
       view
@@ -1820,7 +1838,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid IPv6 address for AAAA record", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1844,7 +1863,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - MX record" do
     test "shows error for invalid MX target", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1867,7 +1887,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid MX record", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1892,7 +1913,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - SRV record" do
     test "shows error for invalid SRV target", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1917,7 +1939,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid SRV record", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1944,7 +1967,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - CNAME/NS record rdata" do
     test "shows error for invalid CNAME target", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1966,7 +1990,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid CNAME target", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -1988,7 +2013,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "shows error for invalid NS target", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -2010,7 +2036,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "accepts valid NS target", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -2034,7 +2061,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm validation - TXT record" do
     test "accepts arbitrary rdata for TXT records", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       view
       |> element("select[name='record[type]']")
@@ -2062,7 +2090,8 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "RecordForm submission" do
     test "rejects record with invalid domain name on submit", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -2080,7 +2109,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "rejects A record with invalid IPv4 on submit", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       html =
         view
@@ -2098,7 +2128,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "valid A record submission proceeds (shows error or navigates)", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      {:ok, view, _html} =
+        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
 
       result =
         view

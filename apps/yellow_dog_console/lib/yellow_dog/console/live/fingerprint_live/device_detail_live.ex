@@ -45,7 +45,7 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
                 else: "no hostname"}
             </p>
           </div>
-          <.link navigate="/fingerprint/devices" class="btn btn-ghost btn-sm">
+          <.link navigate="/system/fingerprint/devices" class="btn btn-ghost btn-sm">
             ← Back to Devices
           </.link>
         </div>

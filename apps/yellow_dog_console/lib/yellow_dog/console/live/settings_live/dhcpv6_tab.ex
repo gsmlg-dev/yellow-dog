@@ -120,7 +120,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv6Tab do
           <p class="text-on-surface-variant">
             Manage DHCPv6 address pools including IPv6 ranges, lifetimes, and DNS settings.
           </p>
-          <.link navigate="/dhcpv6/pools" class="btn btn-primary gap-2">
+          <.link navigate="/server/dhcpv6/pools" class="btn btn-primary gap-2">
             <.dm_mdi name="server-network" class="h-5 w-5" /> Manage Pools
           </.link>
         </div>

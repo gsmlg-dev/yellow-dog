@@ -39,7 +39,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/system/settings" />
 
         <div class="flex items-center justify-between">
           <div>
@@ -49,7 +49,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
             </p>
           </div>
           <div class="flex gap-2">
-            <.link navigate="/netboot/log" class="btn btn-ghost btn-sm">
+            <.link navigate="/server/netboot/log" class="btn btn-ghost btn-sm">
               Boot Log
             </.link>
             <button phx-click="refresh" class="btn btn-outline btn-sm">
@@ -60,7 +60,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
 
         <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <.link
-            navigate="/netboot/devices?state=discovered"
+            navigate="/server/netboot/devices?state=discovered"
             class="hover:shadow-lg transition-shadow"
           >
             <.card>
@@ -68,14 +68,17 @@ defmodule YellowDog.Console.NetbootLive.Index do
               <div class="text-2xl font-bold">{Map.get(@state_counts, :discovered, 0)}</div>
             </.card>
           </.link>
-          <.link navigate="/netboot/devices?state=booting" class="hover:shadow-lg transition-shadow">
+          <.link
+            navigate="/server/netboot/devices?state=booting"
+            class="hover:shadow-lg transition-shadow"
+          >
             <.card>
               <div class="text-sm text-on-surface-variant">Booting</div>
               <div class="text-2xl font-bold text-warning">{Map.get(@state_counts, :booting, 0)}</div>
             </.card>
           </.link>
           <.link
-            navigate="/netboot/devices?state=installing"
+            navigate="/server/netboot/devices?state=installing"
             class="hover:shadow-lg transition-shadow"
           >
             <.card>
@@ -83,7 +86,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
               <div class="text-2xl font-bold text-info">{Map.get(@state_counts, :installing, 0)}</div>
             </.card>
           </.link>
-          <.link navigate="/netboot/devices?state=installed" class="hover:shadow-lg transition-shadow">
+          <.link
+            navigate="/server/netboot/devices?state=installed"
+            class="hover:shadow-lg transition-shadow"
+          >
             <.card>
               <div class="text-sm text-on-surface-variant">Installed</div>
               <div class="text-2xl font-bold text-success">
@@ -91,7 +97,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
               </div>
             </.card>
           </.link>
-          <.link navigate="/netboot/devices?state=failed" class="hover:shadow-lg transition-shadow">
+          <.link
+            navigate="/server/netboot/devices?state=failed"
+            class="hover:shadow-lg transition-shadow"
+          >
             <.card>
               <div class="text-sm text-on-surface-variant">Failed</div>
               <div class="text-2xl font-bold text-error">{Map.get(@state_counts, :failed, 0)}</div>
@@ -138,7 +147,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
           <.card>
             <div class="flex items-center justify-between mb-4">
               <h2 class="card-title">TFTP Server</h2>
-              <.link navigate="/netboot/tftp" class="link link-primary text-sm">Details</.link>
+              <.link navigate="/server/netboot/tftp" class="link link-primary text-sm">Details</.link>
             </div>
             <div class="space-y-2">
               <div class="flex justify-between">
@@ -164,16 +173,20 @@ defmodule YellowDog.Console.NetbootLive.Index do
           <.card>
             <div class="flex items-center justify-between mb-4">
               <h2 class="card-title">Boot Profiles</h2>
-              <.link navigate="/netboot/profiles" class="link link-primary text-sm">View all</.link>
+              <.link navigate="/server/netboot/profiles" class="link link-primary text-sm">
+                View all
+              </.link>
             </div>
             <div :if={@profiles == []} class="text-on-surface-variant">
               No profiles configured —
-              <.link navigate="/netboot/profiles/new" class="link link-primary">create one</.link>
+              <.link navigate="/server/netboot/profiles/new" class="link link-primary">
+                create one
+              </.link>
             </div>
             <div :for={profile <- @profiles} class="flex justify-between items-center py-1">
               <div>
                 <.link
-                  navigate={"/netboot/profiles/#{profile.id}/edit"}
+                  navigate={"/server/netboot/profiles/#{profile.id}/edit"}
                   class="link link-primary font-medium"
                 >
                   {profile.id}
@@ -192,7 +205,9 @@ defmodule YellowDog.Console.NetbootLive.Index do
         <.card>
           <div class="flex items-center justify-between mb-4">
             <h2 class="card-title">Recent Devices</h2>
-            <.link navigate="/netboot/devices" class="link link-primary text-sm">View all</.link>
+            <.link navigate="/server/netboot/devices" class="link link-primary text-sm">
+              View all
+            </.link>
           </div>
           <div class="overflow-x-auto">
             <table class="table table-striped">
@@ -213,7 +228,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
                 </tr>
                 <tr :for={device <- @recent_devices}>
                   <td class="font-mono text-sm">
-                    <.link navigate={"/netboot/devices/#{device.mac}"} class="link link-primary">
+                    <.link
+                      navigate={"/server/netboot/devices/#{device.mac}"}
+                      class="link link-primary"
+                    >
                       {device.mac}
                     </.link>
                   </td>
@@ -222,7 +240,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
                   <td>
                     <.link
                       :if={device.profile_id}
-                      navigate={"/netboot/profiles/#{device.profile_id}/edit"}
+                      navigate={"/server/netboot/profiles/#{device.profile_id}/edit"}
                       class="link link-primary"
                     >
                       {device.profile_id}

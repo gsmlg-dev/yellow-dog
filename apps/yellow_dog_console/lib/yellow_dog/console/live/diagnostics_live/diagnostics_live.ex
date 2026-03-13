@@ -16,6 +16,13 @@ defmodule YellowDog.Console.DiagnosticsLive do
   alias YellowDog.Console.Diagnostics.Dhcpv4Client
   alias YellowDog.Console.Diagnostics.Dhcpv6Client
 
+  @tab_titles %{
+    dns: "DNS Diagnostics",
+    mdns: "mDNS Diagnostics",
+    dhcpv4: "DHCPv4 Diagnostics",
+    dhcpv6: "DHCPv6 Diagnostics"
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -29,47 +36,17 @@ defmodule YellowDog.Console.DiagnosticsLive do
   end
 
   @impl true
+  def handle_params(_params, _uri, socket) do
+    tab = socket.assigns.live_action
+    {:noreply, assign(socket, active_tab: tab, page_title: Map.get(@tab_titles, tab, "Service Diagnostics"))}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="max-w-7xl">
-        <h1 class="text-2xl font-bold mb-4">Service Diagnostics</h1>
-
-        <%!-- Tab Navigation --%>
-        <div role="tablist" class="tabs mb-4">
-          <button
-            role="tab"
-            class={["tab", @active_tab == :dns && "tab-active"]}
-            phx-click="select_tab"
-            phx-value-tab="dns"
-          >
-            DNS
-          </button>
-          <button
-            role="tab"
-            class={["tab", @active_tab == :mdns && "tab-active"]}
-            phx-click="select_tab"
-            phx-value-tab="mdns"
-          >
-            mDNS
-          </button>
-          <button
-            role="tab"
-            class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
-            phx-click="select_tab"
-            phx-value-tab="dhcpv4"
-          >
-            DHCPv4
-          </button>
-          <button
-            role="tab"
-            class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
-            phx-click="select_tab"
-            phx-value-tab="dhcpv6"
-          >
-            DHCPv6
-          </button>
-        </div>
+        <h1 class="text-2xl font-bold mb-4">{@page_title}</h1>
 
         <%!-- Display Mode Toggle --%>
         <div class="flex justify-end mb-4">
@@ -127,18 +104,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
   # Event Handlers
 
-  @valid_tabs ~w(dns mdns dhcpv4 dhcpv6)
   @valid_display_modes ~w(struct raw)
-
-  @impl true
-  def handle_event("select_tab", %{"tab" => tab}, socket) when tab in @valid_tabs do
-    {:noreply, assign(socket, :active_tab, String.to_existing_atom(tab))}
-  end
-
-  @impl true
-  def handle_event("select_tab", _params, socket) do
-    {:noreply, socket}
-  end
 
   @impl true
   def handle_event("toggle_display_mode", %{"mode" => mode}, socket)

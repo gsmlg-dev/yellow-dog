@@ -3,7 +3,7 @@
     <!-- Breadcrumb -->
     <div class="breadcrumbs text-sm">
       <ul>
-        <li><.link navigate={~p"/dns"}>DNS</.link></li>
+        <li><.link navigate={~p"/server/dns"}>DNS</.link></li>
         <li class="font-semibold">Views</li>
       </ul>
     </div>
@@ -37,7 +37,7 @@
         >
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </button>
-        <.link patch={~p"/dns/views/new"} class="btn btn-primary btn-sm">
+        <.link patch={~p"/server/dns/views/new"} class="btn btn-primary btn-sm">
           <.dm_mdi name="plus" class="w-4 h-4" /> Add View
         </.link>
       </div>
@@ -93,7 +93,7 @@
                       <tr class="hover">
                         <td>
                           <.link
-                            navigate={~p"/dns/views/#{view.name}/zones"}
+                            navigate={~p"/server/dns/views/#{view.name}/zones"}
                             class="link link-hover font-mono font-semibold"
                           >
                             {view.name}
@@ -143,7 +143,7 @@
                         </td>
                         <td>
                           <.link
-                            navigate={~p"/dns/views/#{view.name}/zones"}
+                            navigate={~p"/server/dns/views/#{view.name}/zones"}
                             class="link link-hover"
                           >
                             {view.zone_count} zones
@@ -153,7 +153,7 @@
                         <td class="text-right">
                           <div class="flex items-center justify-end gap-1">
                             <.link
-                              navigate={~p"/dns/views/#{view.name}/zones"}
+                              navigate={~p"/server/dns/views/#{view.name}/zones"}
                               class="btn btn-ghost btn-sm"
                               title="View Zones"
                               aria-label="View Zones"
@@ -161,7 +161,7 @@
                               <.dm_mdi name="arrow-right" class="w-4 h-4" />
                             </.link>
                             <.link
-                              patch={~p"/dns/views/#{view.name}/edit"}
+                              patch={~p"/server/dns/views/#{view.name}/edit"}
                               class="btn btn-ghost btn-sm"
                               title="Edit"
                               aria-label="Edit"
@@ -203,7 +203,7 @@
                 <p class="text-on-surface-variant mb-4">
                   Get started by creating your first DNS view.
                 </p>
-                <.link patch={~p"/dns/views/new"} class="btn btn-primary">
+                <.link patch={~p"/server/dns/views/new"} class="btn btn-primary">
                   Create First View
                 </.link>
               </div>

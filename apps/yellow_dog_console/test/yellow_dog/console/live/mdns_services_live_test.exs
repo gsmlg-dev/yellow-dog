@@ -14,30 +14,30 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
 
   describe "mDNS Services /mdns/services mounting" do
     test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/mdns/services")
+      {:ok, _view, html} = live(conn, "/server/mdns/services")
       assert html =~ "Registered Services"
     end
 
     test "shows filter tabs", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/mdns/services")
+      {:ok, _view, html} = live(conn, "/server/mdns/services")
       assert html =~ "All Services"
       assert html =~ "Enabled"
       assert html =~ "Disabled"
     end
 
     test "shows register service button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/mdns/services")
+      {:ok, _view, html} = live(conn, "/server/mdns/services")
       assert html =~ "Register Service"
     end
 
     test "shows export CSV button with hook", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/mdns/services")
+      {:ok, _view, html} = live(conn, "/server/mdns/services")
       assert html =~ ~s(phx-hook="CsvDownload")
       assert html =~ ~s(id="export-csv")
     end
 
     test "shows empty state when no services", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/mdns/services")
+      {:ok, _view, html} = live(conn, "/server/mdns/services")
       assert html =~ "No services found"
     end
   end
@@ -48,7 +48,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
 
   describe "mDNS Services /mdns/services form" do
     test "show_new_form opens modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "show_new_form")
       assert html =~ "Register New Service"
       assert html =~ "Service Name"
@@ -59,20 +59,20 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "hide_form closes modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
       html = render_click(view, "hide_form")
       refute html =~ "Register New Service"
     end
 
     test "form has phx-change for validation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "show_new_form")
       assert html =~ ~s(phx-change="validate_service")
     end
 
     test "port field has min/max attributes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "show_new_form")
       assert html =~ ~s(min="1")
       assert html =~ ~s(max="65535")
@@ -85,7 +85,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
 
   describe "mDNS Services /mdns/services validation" do
     test "validates empty service name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -101,7 +101,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "validates empty service type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -117,7 +117,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "validates invalid service type format", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -133,7 +133,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "validates invalid port", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -149,7 +149,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "validates empty port", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -165,7 +165,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "validates invalid IP address", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -181,7 +181,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "accepts valid form data without errors", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -197,7 +197,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "accepts valid IPv6 addresses", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -299,19 +299,19 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
 
   describe "mDNS Services /mdns/services filter events" do
     test "filter all shows all services tab active", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "filter", %{"filter" => "all"})
       assert html =~ "Registered Services"
     end
 
     test "filter enabled shows enabled tab", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "filter", %{"filter" => "enabled"})
       assert html =~ "Registered Services"
     end
 
     test "filter with invalid value defaults to all", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "filter", %{"filter" => "evil"})
       assert html =~ "Registered Services"
     end
@@ -323,28 +323,28 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
 
   describe "mDNS Services /mdns/services CRUD events" do
     test "toggle_service handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "toggle_service", %{"id" => "nonexistent-service"})
       # Should show error flash since mDNS is not running
       assert html =~ "Failed to toggle service" or html =~ "Registered Services"
     end
 
     test "delete_service handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "delete_service", %{"id" => "nonexistent-service"})
       # Should show error flash since mDNS is not running
       assert html =~ "Failed to delete service" or html =~ "Registered Services"
     end
 
     test "show_edit_form opens form in edit mode", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       html = render_click(view, "show_edit_form", %{"id" => "test-service"})
       # Form should be visible (edit mode, service may be nil since mDNS not running)
       assert html =~ "Edit Service" or html =~ "Service Name"
     end
 
     test "save_service with validation errors shows errors", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -362,7 +362,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
     end
 
     test "save_service with valid params handles service unavailable", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "show_new_form")
 
       html =
@@ -386,7 +386,7 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
 
   describe "mDNS Services /mdns/services CSV export" do
     test "export_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/mdns/services")
+      {:ok, view, _html} = live(conn, "/server/mdns/services")
       render_click(view, "export_csv")
       assert render(view) =~ "Registered Services"
     end

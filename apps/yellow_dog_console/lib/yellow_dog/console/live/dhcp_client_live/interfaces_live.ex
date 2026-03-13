@@ -47,6 +47,7 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
     <div class="space-y-6">
       <div>
         <h1 class="text-4xl font-bold">DHCP Client Interfaces</h1>
@@ -163,6 +164,7 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
         </div>
       <% end %>
     </div>
+    </Layouts.app>
     """
   end
 

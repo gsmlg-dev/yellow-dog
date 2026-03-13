@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumbs text-sm">
       <ul>
-        <li><.link navigate={~p"/dns"}>DNS</.link></li>
-        <li><.link navigate={~p"/dns/views"}>Views</.link></li>
-        <li><.link navigate={~p"/dns/views/#{@view_name}/zones"}>{@view_name}</.link></li>
+        <li><.link navigate={~p"/server/dns"}>DNS</.link></li>
+        <li><.link navigate={~p"/server/dns/views"}>Views</.link></li>
+        <li><.link navigate={~p"/server/dns/views/#{@view_name}/zones"}>{@view_name}</.link></li>
         <li class="font-semibold">{@zone_name}</li>
       </ul>
     </div>
@@ -50,14 +50,18 @@
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </button>
         <.link
-          patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"}
+          patch={
+            ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
+          }
           class="btn btn-ghost btn-sm"
           title="Bulk Add"
         >
           <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Bulk Add
         </.link>
         <.link
-          patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"}
+          patch={
+            ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
+          }
           class="btn btn-primary btn-sm"
         >
           <.dm_mdi name="plus" class="w-4 h-4" /> Add Record
@@ -128,7 +132,7 @@
                           <div class="flex items-center justify-end gap-1">
                             <.link
                               patch={
-                                ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/#{idx}/edit"
+                                ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/#{idx}/edit"
                               }
                               class="btn btn-ghost btn-sm"
                               title="Edit"
@@ -168,7 +172,7 @@
                 <div class="flex justify-center gap-2">
                   <.link
                     patch={
-                      ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
+                      ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
                     }
                     class="btn btn-primary"
                   >
@@ -176,7 +180,7 @@
                   </.link>
                   <.link
                     patch={
-                      ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
+                      ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
                     }
                     class="btn btn-ghost"
                   >

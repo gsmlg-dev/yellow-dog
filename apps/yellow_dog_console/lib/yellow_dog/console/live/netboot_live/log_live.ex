@@ -44,7 +44,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>Boot Log</li>
           </ul>
         </div>

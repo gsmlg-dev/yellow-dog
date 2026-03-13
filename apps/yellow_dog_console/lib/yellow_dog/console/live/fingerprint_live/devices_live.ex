@@ -128,7 +128,10 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
                 </tr>
                 <tr :for={device <- @filtered_devices}>
                   <td class="font-mono text-sm">
-                    <.link navigate={"/fingerprint/devices/#{device.mac}"} class="link link-primary">
+                    <.link
+                      navigate={"/system/fingerprint/devices/#{device.mac}"}
+                      class="link link-primary"
+                    >
                       {device.mac}
                     </.link>
                   </td>

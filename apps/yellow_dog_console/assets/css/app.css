@@ -16,10 +16,18 @@
 
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
-/* App layout: sidebar + main content */
+/* App layout: appbar on top, sidebar + main below */
 .yd-layout {
   display: flex;
+  flex-direction: column;
+}
+
+/* Body area below appbar: sidebar + main content side by side */
+.yd-body {
+  display: flex;
   flex-direction: row;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Sidebar container — hidden on mobile, shown on lg+ */
@@ -27,7 +35,6 @@
   display: none;
   flex-shrink: 0;
   width: 20rem;
-  height: 100%;
   overflow-y: auto;
   border-right: 1px solid var(--color-outline-variant);
 }
@@ -39,7 +46,7 @@
 }
 
 /* Mobile sidebar — triggered by JS class on parent .yd-layout */
-.yd-sidebar-open > .yd-sidebar {
+.yd-sidebar-open .yd-sidebar {
   display: block;
   position: fixed;
   top: 0;
@@ -51,7 +58,7 @@
 }
 
 @media (min-width: 1024px) {
-  .yd-sidebar-open > .yd-sidebar {
+  .yd-sidebar-open .yd-sidebar {
     position: static;
     box-shadow: none;
     border-right: 1px solid var(--color-outline-variant);
@@ -63,7 +70,7 @@
   display: none;
 }
 
-.yd-sidebar-open > .yd-sidebar .yd-sidebar-overlay {
+.yd-sidebar-open .yd-sidebar .yd-sidebar-overlay {
   display: block;
   position: fixed;
   inset: 0;
@@ -73,9 +80,20 @@
 }
 
 @media (min-width: 1024px) {
-  .yd-sidebar-open > .yd-sidebar .yd-sidebar-overlay {
+  .yd-sidebar-open .yd-sidebar .yd-sidebar-overlay {
     display: none;
   }
+}
+
+/* Navbar appbar — spans full width at top */
+.yd-layout > .navbar {
+  flex-shrink: 0;
+}
+
+/* Active nav menu item in appbar */
+.btn-active {
+  background-color: var(--color-surface-container);
+  color: var(--color-primary);
 }
 
 /* Main content fills remaining width */

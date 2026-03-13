@@ -34,12 +34,12 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>Profiles</li>
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/system/settings" />
 
         <div class="flex items-center justify-between">
           <div>
@@ -49,7 +49,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
             </p>
           </div>
           <div class="flex gap-2">
-            <.link navigate="/netboot/profiles/new" class="btn btn-primary btn-sm">
+            <.link navigate="/server/netboot/profiles/new" class="btn btn-primary btn-sm">
               New Profile
             </.link>
             <button
@@ -124,14 +124,17 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                 <tr :if={@filtered_profiles == []}>
                   <td colspan="7" class="text-center text-on-surface-variant py-8">
                     No boot profiles configured —
-                    <.link navigate="/netboot/profiles/new" class="link link-primary">
+                    <.link navigate="/server/netboot/profiles/new" class="link link-primary">
                       create one
                     </.link>
                   </td>
                 </tr>
                 <tr :for={p <- @filtered_profiles}>
                   <td class="font-mono font-medium">
-                    <.link navigate={"/netboot/profiles/#{p.id}/edit"} class="link link-primary">
+                    <.link
+                      navigate={"/server/netboot/profiles/#{p.id}/edit"}
+                      class="link link-primary"
+                    >
                       {p.id}
                     </.link>
                     <.badge :if={p.id == @default_profile} color="primary" size="sm" class="ml-1">
@@ -157,13 +160,13 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                   <td>
                     <div class="flex gap-1">
                       <.link
-                        navigate={"/netboot/profiles/#{p.id}/edit"}
+                        navigate={"/server/netboot/profiles/#{p.id}/edit"}
                         class="btn btn-ghost btn-xs"
                       >
                         Edit
                       </.link>
                       <.link
-                        navigate={"/netboot/profiles/new?clone=#{p.id}"}
+                        navigate={"/server/netboot/profiles/new?clone=#{p.id}"}
                         class="btn btn-ghost btn-xs"
                       >
                         Clone

@@ -8,14 +8,14 @@ defmodule YellowDog.Console.ToolsLiveTest do
 
   describe "GeoIP Lookup page" do
     test "mounts with input form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/geoip")
+      {:ok, _view, html} = live(conn, "/tool/geoip")
 
       assert html =~ "GeoIP Lookup"
       assert html =~ "Enter IP address"
     end
 
     test "performs lookup with valid IP", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/geoip")
+      {:ok, view, _html} = live(conn, "/tool/geoip")
 
       html = view |> form("form", ip: "8.8.8.8") |> render_submit()
 
@@ -26,7 +26,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "shows error for invalid IP", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/geoip")
+      {:ok, view, _html} = live(conn, "/tool/geoip")
 
       html = view |> form("form", ip: "not-an-ip") |> render_submit()
 
@@ -34,7 +34,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "empty input clears results", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/geoip")
+      {:ok, view, _html} = live(conn, "/tool/geoip")
 
       # First do a lookup
       view |> form("form", ip: "8.8.8.8") |> render_submit()
@@ -47,14 +47,14 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "shows database info section", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/geoip")
+      {:ok, _view, html} = live(conn, "/tool/geoip")
 
       # Database info may or may not show depending on whether GeoIP DB is loaded
       assert html =~ "GeoIP Lookup"
     end
 
     test "whitespace-only input is treated as empty", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/geoip")
+      {:ok, view, _html} = live(conn, "/tool/geoip")
 
       html = view |> form("form", ip: "   ") |> render_submit()
 
@@ -70,20 +70,20 @@ defmodule YellowDog.Console.ToolsLiveTest do
 
   describe "Whois Lookup page" do
     test "mounts with input form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/whois")
+      {:ok, _view, html} = live(conn, "/tool/whois")
 
       assert html =~ "Whois Lookup"
       assert html =~ "Enter domain or IP"
     end
 
     test "shows placeholder text on initial load", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/whois")
+      {:ok, _view, html} = live(conn, "/tool/whois")
 
       assert html =~ "Enter a domain or IP address to query WHOIS records"
     end
 
     test "empty input clears state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/whois")
+      {:ok, view, _html} = live(conn, "/tool/whois")
 
       html = view |> form("form", query: "") |> render_submit()
 
@@ -92,7 +92,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "lookup with valid domain triggers async task", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/whois")
+      {:ok, view, _html} = live(conn, "/tool/whois")
 
       html = view |> form("form", query: "example.com") |> render_submit()
 
@@ -101,7 +101,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "whitespace-only input is treated as empty", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/whois")
+      {:ok, view, _html} = live(conn, "/tool/whois")
 
       html = view |> form("form", query: "   ") |> render_submit()
 
@@ -109,14 +109,14 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "input is disabled during loading", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/whois")
+      {:ok, _view, html} = live(conn, "/tool/whois")
 
       # Initially not loading, so input should not be disabled
       assert html =~ "Whois Lookup"
     end
 
     test "has phx-disable-with on submit button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/whois")
+      {:ok, _view, html} = live(conn, "/tool/whois")
 
       assert html =~ "phx-disable-with"
       assert html =~ "Looking up..."
@@ -129,7 +129,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
 
   describe "Whois Lookup /tools/whois handle_info" do
     test "task result with ok entries shows results", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/whois")
+      {:ok, view, _html} = live(conn, "/tool/whois")
 
       # Start a lookup to get a task_ref assigned
       view |> form("form", query: "example.com") |> render_submit()
@@ -143,14 +143,14 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "DOWN message with unknown ref is silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/whois")
+      {:ok, view, _html} = live(conn, "/tool/whois")
       send(view.pid, {:DOWN, make_ref(), :process, self(), :normal})
       html = render(view)
       assert html =~ "Whois Lookup"
     end
 
     test "unknown messages are silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/whois")
+      {:ok, view, _html} = live(conn, "/tool/whois")
       send(view.pid, {:random_message, :data})
       html = render(view)
       assert html =~ "Whois Lookup"
@@ -163,14 +163,14 @@ defmodule YellowDog.Console.ToolsLiveTest do
 
   describe "MAC Lookup page" do
     test "mounts with input form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/mac")
+      {:ok, _view, html} = live(conn, "/tool/mac")
 
       assert html =~ "MAC Address Lookup"
       assert html =~ "Enter MAC address"
     end
 
     test "looks up known MAC address vendor", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/mac")
+      {:ok, view, _html} = live(conn, "/tool/mac")
 
       html = view |> form("form", mac: "00:00:0A:BB:28:FC") |> render_submit()
 
@@ -178,7 +178,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "shows error for unknown MAC", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/mac")
+      {:ok, view, _html} = live(conn, "/tool/mac")
 
       html = view |> form("form", mac: "FF:FF:FF:FF:FF:FF") |> render_submit()
 
@@ -186,7 +186,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "empty input clears results", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/mac")
+      {:ok, view, _html} = live(conn, "/tool/mac")
 
       # First do a lookup
       view |> form("form", mac: "00:00:0A:BB:28:FC") |> render_submit()
@@ -199,7 +199,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "whitespace-only input is treated as empty", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/mac")
+      {:ok, view, _html} = live(conn, "/tool/mac")
 
       html = view |> form("form", mac: "   ") |> render_submit()
 
@@ -209,7 +209,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "shows result cards with vendor info", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/tools/mac")
+      {:ok, view, _html} = live(conn, "/tool/mac")
 
       html = view |> form("form", mac: "00:00:0A:BB:28:FC") |> render_submit()
 
@@ -219,7 +219,7 @@ defmodule YellowDog.Console.ToolsLiveTest do
     end
 
     test "has phx-disable-with on submit button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/tools/mac")
+      {:ok, _view, html} = live(conn, "/tool/mac")
 
       assert html =~ "phx-disable-with"
       assert html =~ "Looking up..."

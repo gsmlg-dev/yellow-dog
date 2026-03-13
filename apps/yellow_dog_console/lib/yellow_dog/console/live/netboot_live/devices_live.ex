@@ -53,12 +53,12 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>Devices</li>
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/system/settings" />
 
         <div class="flex items-center justify-between">
           <div>
@@ -263,7 +263,10 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                     />
                   </td>
                   <td class="font-mono text-sm">
-                    <.link navigate={"/netboot/devices/#{device.mac}"} class="link link-primary">
+                    <.link
+                      navigate={"/server/netboot/devices/#{device.mac}"}
+                      class="link link-primary"
+                    >
                       {device.mac}
                     </.link>
                   </td>
@@ -275,7 +278,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                   <td>
                     <.link
                       :if={device.profile_id}
-                      navigate={"/netboot/profiles/#{device.profile_id}/edit"}
+                      navigate={"/server/netboot/profiles/#{device.profile_id}/edit"}
                       class="link link-primary"
                     >
                       {device.profile_id}

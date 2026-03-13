@@ -153,7 +153,7 @@
                 <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
               </button>
             <% end %>
-            <.link navigate={"/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
+            <.link navigate={"/system/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
               <.dm_mdi name="cog" class="h-4 w-4" /> Configure
             </.link>
           </:actions>
@@ -164,19 +164,25 @@
         <!-- Quick Actions Card -->
         <.card title="Quick Actions">
           <div class="space-y-2">
-            <.link navigate={~p"/dns"} class="btn btn-outline w-full justify-start gap-2">
+            <.link navigate={~p"/server/dns"} class="btn btn-outline w-full justify-start gap-2">
               <.dm_mdi name="web" class="h-5 w-5" /> DNS Management
             </.link>
 
-            <.link navigate={~p"/dhcpv4"} class="btn btn-outline w-full justify-start gap-2">
+            <.link
+              navigate={~p"/server/dhcpv4"}
+              class="btn btn-outline w-full justify-start gap-2"
+            >
               <.dm_mdi name="server-network" class="h-5 w-5" /> DHCPv4 Server
             </.link>
 
-            <.link navigate={~p"/mdns"} class="btn btn-outline w-full justify-start gap-2">
+            <.link navigate={~p"/server/mdns"} class="btn btn-outline w-full justify-start gap-2">
               <.dm_mdi name="wifi" class="h-5 w-5" /> mDNS Discovery
             </.link>
 
-            <.link navigate={~p"/settings"} class="btn btn-outline w-full justify-start gap-2">
+            <.link
+              navigate={~p"/system/settings"}
+              class="btn btn-outline w-full justify-start gap-2"
+            >
               <.dm_mdi name="cog" class="h-5 w-5" /> Configuration
             </.link>
           </div>

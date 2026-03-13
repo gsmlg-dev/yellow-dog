@@ -65,7 +65,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
         {:noreply,
          socket
          |> put_flash(:info, "Host deleted")
-         |> push_navigate(to: ~p"/identity/hosts")}
+         |> push_navigate(to: ~p"/server/identity/hosts")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to delete host")}
@@ -110,7 +110,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
         <div class="flex items-center gap-2">
-          <.link navigate={~p"/identity/hosts"} class="btn btn-sm btn-ghost">
+          <.link navigate={~p"/server/identity/hosts"} class="btn btn-sm btn-ghost">
             ← Back
           </.link>
           <h1 class="text-2xl font-bold">{@page_title}</h1>

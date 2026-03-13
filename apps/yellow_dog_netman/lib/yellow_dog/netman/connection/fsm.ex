@@ -782,6 +782,17 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :failed, :disconnected)
   end
 
+  def failed(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
+    Logger.info("Carrier lost in failed state for #{data.interface}")
+    release_dhcp(data)
+    reset_dns(data)
+    AddressManager.flush(data.interface)
+    RouteManager.flush(data.interface)
+
+    data = %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0}
+    transition(data, :failed, :disconnected)
+  end
+
   def failed(:info, {:netman_event, _, {:removed, _}}, data) do
     AddressManager.flush(data.interface)
     RouteManager.flush(data.interface)
@@ -1162,35 +1173,46 @@ defmodule YellowDog.Netman.Connection.FSM do
   defp parse_cidr(cidr) do
     case String.split(cidr, "/") do
       [addr, prefix] ->
-        max_prefix = if String.contains?(addr, ":"), do: 128, else: 32
+        with {:ok, _} <- validate_ip_string(addr) do
+          max_prefix = if String.contains?(addr, ":"), do: 128, else: 32
 
-        case Integer.parse(prefix) do
-          {n, ""} when n >= 0 ->
-            if n <= max_prefix do
-              {:ok, addr, n}
-            else
+          case Integer.parse(prefix) do
+            {n, ""} when n >= 0 ->
+              if n <= max_prefix do
+                {:ok, addr, n}
+              else
+                Logger.warning(
+                  "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{max_prefix}"
+                )
+
+                {:ok, addr, max_prefix}
+              end
+
+            _ ->
               Logger.warning(
                 "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{max_prefix}"
               )
 
               {:ok, addr, max_prefix}
-            end
-
-          _ ->
-            Logger.warning(
-              "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{max_prefix}"
-            )
-
-            {:ok, addr, max_prefix}
+          end
         end
 
       [addr] ->
-        default = default_prefix(addr)
-        Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /#{default}")
-        {:ok, addr, default}
+        with {:ok, _} <- validate_ip_string(addr) do
+          default = default_prefix(addr)
+          Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /#{default}")
+          {:ok, addr, default}
+        end
 
       _ ->
         {:error, {:invalid_cidr, cidr}}
+    end
+  end
+
+  defp validate_ip_string(addr) do
+    case :inet.parse_address(String.to_charlist(addr)) do
+      {:ok, _} -> {:ok, addr}
+      {:error, _} -> {:error, {:invalid_cidr, addr}}
     end
   end
 

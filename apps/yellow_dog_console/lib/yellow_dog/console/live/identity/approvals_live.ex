@@ -207,7 +207,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                 >
                   Reject
                 </button>
-                <.link navigate={~p"/identity/hosts/#{host.id}"} class="btn btn-sm btn-ghost">
+                <.link navigate={~p"/server/identity/hosts/#{host.id}"} class="btn btn-sm btn-ghost">
                   Details
                 </.link>
               </div>

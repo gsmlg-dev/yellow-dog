@@ -131,7 +131,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       :error ->
         socket
         |> put_flash(:error, "View '#{view_name}' not found")
-        |> push_navigate(to: ~p"/dns/views")
+        |> push_navigate(to: ~p"/server/dns/views")
     end
   end
 
@@ -266,7 +266,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
      socket
      |> assign(:selected_countries, [])
      |> assign(:country_search, "")
-     |> push_navigate(to: ~p"/dns/views")}
+     |> push_navigate(to: ~p"/server/dns/views")}
   end
 
   @impl true
@@ -404,7 +404,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         {:noreply,
          socket
          |> put_flash(:info, "View '#{config.name}' #{action} successfully")
-         |> push_navigate(to: ~p"/dns/views")}
+         |> push_navigate(to: ~p"/server/dns/views")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to save view: #{inspect(reason)}")}

@@ -1,6 +1,6 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
-    <.service_alert :if={not @service_running} service="mDNS" navigate="/settings" />
+    <.service_alert :if={not @service_running} service="mDNS" navigate="/system/settings" />
     <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
@@ -38,7 +38,7 @@
           <h2 class="card-title">Registered Services</h2>
           <div class="text-2xl font-bold text-success">{@status.registered_services}</div>
           <div class="mt-2">
-            <.link navigate={~p"/mdns/services"} class="btn btn-sm btn-success">
+            <.link navigate={~p"/server/mdns/services"} class="btn btn-sm btn-success">
               Manage
             </.link>
           </div>
@@ -50,7 +50,7 @@
           <h2 class="card-title">Discovered Services</h2>
           <div class="text-2xl font-bold text-secondary">{@status.discovered_services}</div>
           <div class="mt-2">
-            <.link navigate={~p"/mdns/discovery"} class="btn btn-sm btn-secondary">
+            <.link navigate={~p"/server/mdns/discovery"} class="btn btn-sm btn-secondary">
               Browse
             </.link>
           </div>
@@ -62,7 +62,7 @@
           <h2 class="card-title">Network Hosts</h2>
           <div class="text-2xl font-bold text-accent">{@network_stats.unique_hosts}</div>
           <div class="mt-2">
-            <.link navigate={~p"/mdns/monitor"} class="btn btn-sm btn-accent">
+            <.link navigate={~p"/server/mdns/monitor"} class="btn btn-sm btn-accent">
               Activity
             </.link>
           </div>
@@ -172,15 +172,15 @@
     <!-- Quick Actions -->
     <.card title="Quick Actions">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <.link navigate={~p"/mdns/services"} class="btn btn-primary btn-lg gap-2">
+        <.link navigate={~p"/server/mdns/services"} class="btn btn-primary btn-lg gap-2">
           <.dm_mdi name="plus" class="w-5 h-5" /> Register Service
         </.link>
 
-        <.link navigate={~p"/mdns/discovery"} class="btn btn-secondary btn-lg gap-2">
+        <.link navigate={~p"/server/mdns/discovery"} class="btn btn-secondary btn-lg gap-2">
           <.dm_mdi name="magnify" class="w-5 h-5" /> Discover Services
         </.link>
 
-        <.link navigate={~p"/mdns/monitor"} class="btn btn-accent btn-lg gap-2">
+        <.link navigate={~p"/server/mdns/monitor"} class="btn btn-accent btn-lg gap-2">
           <.dm_mdi name="chart-bar" class="w-5 h-5" /> Monitor Network
         </.link>
       </div>
