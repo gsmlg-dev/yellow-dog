@@ -196,11 +196,6 @@ defmodule YellowDog.Console.Layouts do
       </.link>
     </li>
     <li>
-      <.link navigate="/server/dns/logs" class={active?(@current_path, "/server/dns/logs")}>
-        Query Logs
-      </.link>
-    </li>
-    <li>
       <.link navigate="/server/dns/metrics" class={active?(@current_path, "/server/dns/metrics")}>
         Metrics
       </.link>
@@ -226,14 +221,6 @@ defmodule YellowDog.Console.Layouts do
         Pools
       </.link>
     </li>
-    <li>
-      <.link
-        navigate="/server/dhcpv4/activity"
-        class={active?(@current_path, "/server/dhcpv4/activity")}
-      >
-        Activity
-      </.link>
-    </li>
     <!-- DHCPv6 -->
     <li class="nested-menu-title mt-4">DHCPv6</li>
     <li>
@@ -253,14 +240,6 @@ defmodule YellowDog.Console.Layouts do
     <li>
       <.link navigate="/server/dhcpv6/pools" class={active?(@current_path, "/server/dhcpv6/pools")}>
         Pools
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/dhcpv6/activity"
-        class={active?(@current_path, "/server/dhcpv6/activity")}
-      >
-        Activity
       </.link>
     </li>
     <!-- mDNS -->
@@ -327,11 +306,6 @@ defmodule YellowDog.Console.Layouts do
         TFTP Server
       </.link>
     </li>
-    <li>
-      <.link navigate="/server/netboot/log" class={active?(@current_path, "/server/netboot/log")}>
-        Boot Log
-      </.link>
-    </li>
     <!-- Identity -->
     <li class="nested-menu-title mt-4">Identity</li>
     <li>
@@ -373,14 +347,6 @@ defmodule YellowDog.Console.Layouts do
         class={active?(@current_path, "/server/identity/policies")}
       >
         Policies
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/identity/audit"
-        class={active?(@current_path, "/server/identity/audit")}
-      >
-        Audit Log
       </.link>
     </li>
     """
@@ -458,15 +424,60 @@ defmodule YellowDog.Console.Layouts do
       </.link>
     </li>
     <li>
-      <.link navigate="/system/logs" class={active?(@current_path, "/system/logs")}>
-        <.dm_mdi name="file-document-outline" class="w-5 h-5" />
-        <span>Logs</span>
-      </.link>
-    </li>
-    <li>
       <.link navigate="/system/process-map" class={active?(@current_path, "/system/process-map")}>
         <.dm_mdi name="sitemap" class="w-5 h-5" />
         <span>Process Map</span>
+      </.link>
+    </li>
+    <!-- Logs -->
+    <li class="nested-menu-title mt-4">Log</li>
+    <li>
+      <.link
+        navigate="/system/logs/realtime"
+        class={active?(@current_path, "/system/logs/realtime")}
+      >
+        <.dm_mdi name="pulse" class="w-5 h-5" />
+        <span>Realtime Logs</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/logs/dns-query"
+        class={active?(@current_path, "/system/logs/dns-query")}
+      >
+        DNS Query Logs
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/logs/dhcpv4-activity"
+        class={active?(@current_path, "/system/logs/dhcpv4-activity")}
+      >
+        DHCPv4 Activity
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/logs/dhcpv6-activity"
+        class={active?(@current_path, "/system/logs/dhcpv6-activity")}
+      >
+        DHCPv6 Activity
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/logs/netboot"
+        class={active?(@current_path, "/system/logs/netboot")}
+      >
+        Netboot Log
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/logs/identity-audit"
+        class={active?(@current_path, "/system/logs/identity-audit")}
+      >
+        Identity Audit
       </.link>
     </li>
     <!-- Provider Data -->

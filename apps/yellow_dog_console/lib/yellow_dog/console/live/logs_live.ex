@@ -69,16 +69,58 @@ defmodule YellowDog.Console.LogsLive do
     yellow_dog_telemetry: "badge-neutral"
   }
 
+  @log_pages [
+    %{
+      path: "/system/logs/realtime",
+      title: "Realtime Logs",
+      description: "Live-streaming system logs from all applications",
+      icon: "pulse",
+      color: "text-success"
+    },
+    %{
+      path: "/system/logs/dns-query",
+      title: "DNS Query Logs",
+      description: "DNS query and response log entries",
+      icon: "web",
+      color: "text-primary"
+    },
+    %{
+      path: "/system/logs/dhcpv4-activity",
+      title: "DHCPv4 Activity",
+      description: "DHCPv4 DORA handshake and lease activity",
+      icon: "server-network",
+      color: "text-secondary"
+    },
+    %{
+      path: "/system/logs/dhcpv6-activity",
+      title: "DHCPv6 Activity",
+      description: "DHCPv6 lease and prefix delegation activity",
+      icon: "server-network",
+      color: "text-info"
+    },
+    %{
+      path: "/system/logs/netboot",
+      title: "Netboot Log",
+      description: "PXE/iPXE boot events and TFTP transfers",
+      icon: "flash",
+      color: "text-warning"
+    },
+    %{
+      path: "/system/logs/identity-audit",
+      title: "Identity Audit",
+      description: "Host registration, approval, and trust events",
+      icon: "key-variant",
+      color: "text-error"
+    }
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
-    end
-
     {:ok,
      assign(socket,
        page_title: "Logs",
-       connected: connected?(socket),
+       live_action: nil,
+       connected: false,
        logs: [],
        pending_logs: [],
        pending_count: 0,
@@ -89,9 +131,28 @@ defmodule YellowDog.Console.LogsLive do
        expanded_log_id: nil,
        available_apps: @available_apps,
        available_levels: @available_levels,
-       max_logs: @max_logs
+       max_logs: @max_logs,
+       log_pages: @log_pages
      )}
   end
+
+  @impl true
+  def handle_params(_params, _uri, socket) do
+    case socket.assigns.live_action do
+      :realtime ->
+        if connected?(socket) and not subscribed?(socket) do
+          Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
+        end
+
+        {:noreply,
+         assign(socket, page_title: "Realtime Logs", connected: connected?(socket))}
+
+      _ ->
+        {:noreply, assign(socket, page_title: "Logs")}
+    end
+  end
+
+  defp subscribed?(socket), do: socket.assigns[:connected] == true
 
   @impl true
   def handle_info({:log_event, level, measurements, metadata}, socket) do
@@ -293,13 +354,42 @@ defmodule YellowDog.Console.LogsLive do
   defp format_csv_timestamp(_), do: ""
 
   @impl true
+  def render(%{live_action: :index} = assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <div class="space-y-6">
+        <div>
+          <h1 class="text-4xl font-bold">Logs</h1>
+          <p class="mt-2 text-on-surface-variant">
+            View logs and activity across all services
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <.link :for={page <- @log_pages} navigate={page.path} class="group">
+            <.card>
+              <div class="flex items-start gap-3">
+                <.dm_mdi name={page.icon} class={"w-8 h-8 #{page.color}"} />
+                <div>
+                  <div class="font-semibold group-hover:text-primary">{page.title}</div>
+                  <div class="text-sm text-on-surface-variant mt-1">{page.description}</div>
+                </div>
+              </div>
+            </.card>
+          </.link>
+        </div>
+      </div>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-4">
         <%!-- Header --%>
         <div class="flex flex-wrap justify-between items-center gap-4">
-          <h1 class="text-2xl font-bold">Real-time Logs</h1>
+          <h1 class="text-2xl font-bold">Realtime Logs</h1>
 
           <%!-- Stream Controls --%>
           <div class="flex items-center gap-2">

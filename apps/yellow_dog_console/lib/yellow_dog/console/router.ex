@@ -144,7 +144,13 @@ defmodule YellowDog.Console.Router do
     live "/settings/dhcpv4", SettingsLive, :dhcpv4
     live "/settings/dhcpv6", SettingsLive, :dhcpv6
     live "/settings/netboot", SettingsLive, :netboot
-    live "/logs", LogsLive
+    live "/logs", LogsLive, :index
+    live "/logs/realtime", LogsLive, :realtime
+    live "/logs/dns-query", DnsLive.QueryLogsLive
+    live "/logs/dhcpv4-activity", Dhcpv4Live.ActivityLive
+    live "/logs/dhcpv6-activity", Dhcpv6Live.ActivityLive
+    live "/logs/netboot", NetbootLive.LogLive
+    live "/logs/identity-audit", IdentityLive.AuditLive
     live "/process-map", ProcessMapLive
 
     # Fingerprint (provider data)
