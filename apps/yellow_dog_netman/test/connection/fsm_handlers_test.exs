@@ -341,6 +341,13 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       result = FSM.configuring(:info, event, data)
       assert {:keep_state, ^data} = result
     end
+
+    test "dhcp_lease_renewed during configuring updates lease data", %{data: data} do
+      lease = %{ip: "10.0.0.50", dns: ["8.8.8.8"]}
+      result = FSM.configuring(:info, {:dhcp_lease_renewed, lease}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.lease == lease
+    end
   end
 
   # ----------------------------------------------------------------
@@ -406,6 +413,13 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.error == :dhcp_lease_expired
       assert new_data.ip_check_retries == 0
       assert new_data.lease == nil
+    end
+
+    test "dhcp_lease_renewed in ip_check updates lease data", %{data: data} do
+      lease = %{ip: "10.0.0.51", dns: ["1.1.1.1"]}
+      result = FSM.ip_check(:info, {:dhcp_lease_renewed, lease}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.lease == lease
     end
 
     test "global address removal in ip_check triggers immediate re-check", %{data: data} do

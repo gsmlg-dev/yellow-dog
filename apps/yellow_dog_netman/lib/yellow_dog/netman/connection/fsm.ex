@@ -290,6 +290,13 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
   end
 
+  # DHCP server may renew an existing lease while we're still configuring
+  # (e.g., dual-stack: DHCP renewal arrives before IPv6 SLAAC completes)
+  def configuring(:info, {:dhcp_lease_renewed, lease}, data) do
+    emit_dhcp_event(data, :lease_renewed, %{lease: lease})
+    {:keep_state, %{data | lease: lease}}
+  end
+
   def configuring(:info, {:dhcp_lease_failed, reason}, data) do
     emit_dhcp_event(data, :lease_failed, %{reason: reason})
 
@@ -462,6 +469,12 @@ defmodule YellowDog.Netman.Connection.FSM do
   def ip_check(:info, {:dhcp_lease_acquired, lease}, data) do
     emit_dhcp_event(data, :lease_acquired, %{lease: lease})
     {:keep_state, %{data | lease: lease, dhcp_retries: 0}}
+  end
+
+  # DHCP renewal during ip_check — update lease data
+  def ip_check(:info, {:dhcp_lease_renewed, lease}, data) do
+    emit_dhcp_event(data, :lease_renewed, %{lease: lease})
+    {:keep_state, %{data | lease: lease}}
   end
 
   def ip_check(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
