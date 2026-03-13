@@ -9,22 +9,11 @@ defmodule YellowDogIdentity.Trust.Cloud.AttestationTest do
 
   setup do
     # Ensure JWKS cache is in degraded mode (empty keys) so GCP tests fall back
-    # to unverified decode without hitting the network
-    try do
-      :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
-    rescue
-      ArgumentError -> :ok
-    end
-
+    # to unverified decode without hitting the network.
+    # Delete-then-recreate avoids race with on_exit from a prior test.
+    try do: :ets.delete(:gcp_jwks_cache), rescue: (ArgumentError -> :ok)
+    :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
     :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => []}, System.monotonic_time(:second)})
-
-    on_exit(fn ->
-      try do
-        :ets.delete(:gcp_jwks_cache)
-      rescue
-        ArgumentError -> :ok
-      end
-    end)
 
     :ok
   end
