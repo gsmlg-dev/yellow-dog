@@ -219,7 +219,10 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   defp parse_family(_), do: :inet
 
   defp parse_scope("global"), do: :global
+  defp parse_scope("universe"), do: :global
   defp parse_scope("link"), do: :link
   defp parse_scope("host"), do: :host
-  defp parse_scope(_), do: :global
+  defp parse_scope("site"), do: :site
+  defp parse_scope("nowhere"), do: :nowhere
+  defp parse_scope(_), do: :unknown
 end

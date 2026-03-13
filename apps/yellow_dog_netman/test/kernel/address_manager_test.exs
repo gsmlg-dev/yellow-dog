@@ -196,7 +196,7 @@ defmodule YellowDog.Netman.Kernel.AddressManagerTest do
 
     Process.sleep(50)
     addresses = AddressManager.get_addresses(iface)
-    assert Enum.any?(addresses, &(&1.scope == :global))
+    assert Enum.any?(addresses, &(&1.scope == :unknown))
   end
 
   test "address with invalid CIDR prefix defaults to /32" do

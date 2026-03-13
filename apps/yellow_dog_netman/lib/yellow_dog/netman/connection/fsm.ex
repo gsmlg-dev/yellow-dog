@@ -939,28 +939,35 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   defp install_ipv4_route(data, metric) do
-    case data.profile.ipv4 do
-      %{gateway: gw} when is_binary(gw) ->
-        case RouteManager.add_route(%{
-               destination: "default",
-               gateway: gw,
-               interface: data.interface,
-               metric: metric,
-               family: :inet
-             }) do
-          :ok ->
-            :ok
+    # Use profile gateway, falling back to DHCP lease gateway for :auto method
+    gateway =
+      case data.profile.ipv4 do
+        %{gateway: gw} when is_binary(gw) -> gw
+        _ -> lease_gateway(data.lease)
+      end
 
-          {:error, reason} ->
-            Logger.warning(
-              "Failed to install IPv4 route on #{data.interface}: #{inspect(reason)}"
-            )
-        end
+    if is_binary(gateway) do
+      case RouteManager.add_route(%{
+             destination: "default",
+             gateway: gateway,
+             interface: data.interface,
+             metric: metric,
+             family: :inet
+           }) do
+        :ok ->
+          :ok
 
-      _ ->
-        :ok
+        {:error, reason} ->
+          Logger.warning("Failed to install IPv4 route on #{data.interface}: #{inspect(reason)}")
+      end
+    else
+      :ok
     end
   end
+
+  defp lease_gateway(nil), do: nil
+  defp lease_gateway(%{gateway: gw}) when is_binary(gw), do: gw
+  defp lease_gateway(_), do: nil
 
   defp install_ipv6_route(data, metric) do
     case data.profile.ipv6 do

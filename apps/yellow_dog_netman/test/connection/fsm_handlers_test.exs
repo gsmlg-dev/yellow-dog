@@ -550,6 +550,34 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     end
   end
 
+  describe "activated post_activate route installation (direct)" do
+    test "post_activate installs DHCP lease gateway as default route" do
+      iface = "hdlr_route_dhcp_#{:rand.uniform(65535)}"
+
+      dhcp_profile = %Profile{
+        id: "route-dhcp-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{
+        interface: iface,
+        profile: dhcp_profile,
+        current_state: :activated,
+        lease: %{ip: "10.0.0.50", gateway: "10.0.0.1", dns_servers: []}
+      }
+
+      # Should not crash — installs route using lease gateway
+      result = FSM.activated(:internal, :post_activate, data)
+      assert {:keep_state, ^data} = result
+    end
+  end
+
   describe "activated dhcp_lease_failed (direct)" do
     test "dhcp_lease_failed in activated keeps state" do
       iface = "hdlr_act_fail_#{:rand.uniform(65535)}"
