@@ -408,8 +408,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
       interface: iface
     )
 
-    assert_receive {:netman_event, "netman:route:254",
-                    {:remove, %{destination: "10.60.0.0/24"}}},
+    assert_receive {:netman_event, "netman:route:254", {:remove, %{destination: "10.60.0.0/24"}}},
                    500
   end
 
