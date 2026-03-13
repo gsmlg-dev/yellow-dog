@@ -487,13 +487,17 @@ defmodule YellowDog.Netman.Connection.FSM do
   # configuring→ip_check before DHCP completed)
   def ip_check(:info, {:dhcp_lease_acquired, lease}, data) do
     emit_dhcp_event(data, :lease_acquired, %{lease: lease})
-    {:keep_state, %{data | lease: lease, dhcp_retries: 0}}
+    data = %{data | lease: lease, dhcp_retries: 0}
+    push_dns(data)
+    {:keep_state, data}
   end
 
-  # DHCP renewal during ip_check — update lease data
+  # DHCP renewal during ip_check — update lease data and re-push DNS
   def ip_check(:info, {:dhcp_lease_renewed, lease}, data) do
     emit_dhcp_event(data, :lease_renewed, %{lease: lease})
-    {:keep_state, %{data | lease: lease}}
+    data = %{data | lease: lease}
+    push_dns(data)
+    {:keep_state, data}
   end
 
   def ip_check(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
