@@ -769,6 +769,42 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.reactivate == true
     end
 
+    test "deactivating update_profile with method change sets reactivate" do
+      iface = "hdlr_deact_upd_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      new_profile = %{profile | ipv4: %{profile.ipv4 | method: :auto}}
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        reactivate: false
+      }
+
+      result = FSM.deactivating(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile == new_profile
+      assert new_data.reactivate == true
+    end
+
+    test "deactivating update_profile without method change preserves reactivate" do
+      iface = "hdlr_deact_upd2_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      new_profile = %{profile | autoconnect_priority: 500}
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        reactivate: false
+      }
+
+      result = FSM.deactivating(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile == new_profile
+      assert new_data.reactivate == false
+    end
+
     test "deactivating catch-all ignores unknown events" do
       iface = "hdlr_deact_unk_#{:rand.uniform(65535)}"
       profile = base_profile(iface)

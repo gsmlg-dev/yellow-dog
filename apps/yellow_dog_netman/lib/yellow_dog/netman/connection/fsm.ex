@@ -711,7 +711,8 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def deactivating(:cast, {:update_profile, new_profile}, data) do
-    {:keep_state, %{data | profile: new_profile}}
+    reactivate? = data.reactivate or methods_changed?(data.profile, new_profile)
+    {:keep_state, %{data | profile: new_profile, reactivate: reactivate?}}
   end
 
   def deactivating(:state_timeout, :cleanup_timeout, data) do
