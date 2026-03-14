@@ -537,6 +537,12 @@ defmodule YellowDog.Console.Layouts do
         <span>Dashboard</span>
       </.link>
     </li>
+    <li>
+      <.link navigate="/netman/config" class={active?(@current_path, "/netman/config")}>
+        <.dm_mdi name="cog" class="w-5 h-5" />
+        <span>Configuration</span>
+      </.link>
+    </li>
     <!-- Connected Netman Instances -->
     <%= for client <- @clients do %>
       <li class="nested-menu-title mt-4">

@@ -163,6 +163,7 @@ defmodule YellowDog.Console.Router do
     pipe_through :browser
 
     live "/", NetmanLive.DashboardLive
+    live "/config", NetmanLive.ConfigLive
     live "/:node_id", NetmanLive.NodeLive
     live "/:node_id/interfaces", NetmanLive.InterfacesLive
     live "/:node_id/resolved", NetmanLive.ResolvedLive
