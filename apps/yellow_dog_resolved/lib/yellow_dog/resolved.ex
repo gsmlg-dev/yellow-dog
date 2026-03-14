@@ -3,7 +3,7 @@ defmodule YellowDog.Resolved do
   DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery.
   """
 
-  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, LinkDns, RateLimiter}
+  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, LinkDns, QueryLogger, RateLimiter}
 
   @doc """
   Set per-link DNS configuration for a network interface.
@@ -30,6 +30,12 @@ defmodule YellowDog.Resolved do
   @spec reset_link_dns(String.t()) :: :ok
   def reset_link_dns(interface) do
     LinkDns.reset_link_dns(interface)
+  end
+
+  @doc "Returns recent query log entries (newest first)."
+  @spec recent_queries(non_neg_integer()) :: [map()]
+  def recent_queries(limit \\ 50) do
+    QueryLogger.recent(limit)
   end
 
   @doc """
