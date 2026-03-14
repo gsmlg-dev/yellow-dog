@@ -567,20 +567,20 @@ defmodule YellowDog.Console.Layouts do
           <span>Interfaces</span>
         </.link>
       </li>
-      <%= if client[:resolved] do %>
-        <li>
-          <.link
-            navigate={"/netman/#{client.node_id}/resolved"}
-            class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
-          >
-            <.dm_mdi name="dns" class="w-5 h-5" />
-            <span>Resolved</span>
+      <li>
+        <.link
+          navigate={"/netman/#{client.node_id}/resolved"}
+          class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
+        >
+          <.dm_mdi name="dns" class="w-5 h-5" />
+          <span>Resolved</span>
+          <%= if resolved = client[:resolved] do %>
             <span class="ml-auto text-xs font-mono text-on-surface-variant">
-              {client.resolved["counters"]["total"] || 0}q
+              {resolved["counters"]["total"] || 0}q
             </span>
-          </.link>
-        </li>
-      <% end %>
+          <% end %>
+        </.link>
+      </li>
       <li>
         <.link
           navigate={"/netman/#{client.node_id}/dhcp-client"}

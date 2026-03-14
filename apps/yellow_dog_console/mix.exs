@@ -69,6 +69,7 @@ defmodule YellowDog.Console.MixProject do
       {:yellow_dog_netboot, in_umbrella: true},
       {:yellow_dog_identity, in_umbrella: true},
       {:yellow_dog_dhcp_client, in_umbrella: true},
+      {:yellow_dog_netman, in_umbrella: true},
       {:gsmlg_whois, "~> 0.5"},
       {:gsmlg_mac, "~> 0.1"},
 

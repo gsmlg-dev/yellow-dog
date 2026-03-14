@@ -41,7 +41,17 @@ defmodule YellowDog.Console.NetmanChannel do
       |> assign(:resolved, payload["resolved"] || socket.assigns.resolved)
 
     NetmanRegistry.update(client_info(socket))
-    {:reply, :ok, socket}
+    {:noreply, socket}
+  end
+
+  def handle_in("query_log", payload, socket) do
+    Phoenix.PubSub.broadcast(
+      YellowDog.Console.PubSub,
+      "netman:query_log:#{socket.assigns.node_id}",
+      {:query_log_entry, payload}
+    )
+
+    {:noreply, socket}
   end
 
   def handle_in("heartbeat", _payload, socket) do
