@@ -259,27 +259,71 @@ defmodule YellowDog.Netman.Console.Client do
   defp list_connections do
     YellowDog.Netman.list_connections()
     |> Enum.map(fn conn ->
+      lease = conn[:lease]
+
+      lease_info =
+        if lease && lease.ip do
+          %{
+            "ip" => format_ip(lease.ip),
+            "subnet_mask" => format_ip(lease.subnet_mask),
+            "gateway" => format_ip(lease.router),
+            "dns_servers" => Enum.map(lease.dns_servers || [], &format_ip/1),
+            "domain_name" => lease.domain_name,
+            "lease_time" => lease.lease_time,
+            "obtained_at" => format_datetime(lease.obtained_at),
+            "expires_at" => format_datetime(YellowDog.DhcpClient.Lease.expires_at(lease)),
+            "time_remaining" => YellowDog.DhcpClient.Lease.time_remaining(lease),
+            "server_ip" => format_ip(lease.server_ip)
+          }
+        end
+
       %{
         "interface" => conn[:interface],
         "profile_id" => conn[:profile_id],
         "state" => to_string(conn[:state] || "unknown"),
-        "ip" => format_conn_ip(conn)
+        "ip" => format_conn_ip(lease),
+        "lease" => lease_info
       }
     end)
   rescue
     _ -> []
   end
 
-  defp format_conn_ip(conn) do
-    case conn[:lease] do
-      %{ip: ip} when not is_nil(ip) -> format_ip(ip)
-      _ -> nil
-    end
-  end
+  defp format_conn_ip(%{ip: ip}) when not is_nil(ip), do: format_ip(ip)
+  defp format_conn_ip(_), do: nil
 
   defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
   defp format_ip(ip) when is_binary(ip), do: ip
   defp format_ip(_), do: nil
+
+  defp resolved_status do
+    if Code.ensure_loaded?(YellowDog.Resolved) and
+         function_exported?(YellowDog.Resolved, :status, 0) do
+      status = apply(YellowDog.Resolved, :status, [])
+
+      %{
+        "listen" => status.config.listen,
+        "port" => status.config.port,
+        "upstreams" =>
+          Enum.map(status.config.upstreams || [], fn ip ->
+            ip |> :inet.ntoa() |> to_string()
+          end),
+        "cache_enabled" => status.config.cache_enabled,
+        "counters" => %{
+          "total" => status.counters.total,
+          "cached" => status.counters.cached,
+          "forwarded" => status.counters.forwarded,
+          "intercepted" => status.counters.intercepted,
+          "error" => status.counters.error
+        }
+      }
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp format_datetime(_), do: nil
 
   defp default_route do
     case YellowDog.Netman.default_route() do

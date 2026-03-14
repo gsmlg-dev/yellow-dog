@@ -21,6 +21,7 @@ defmodule YellowDog.Console.NetmanChannel do
       |> assign(:interfaces, payload["interfaces"] || [])
       |> assign(:connections, payload["connections"] || [])
       |> assign(:default_route, payload["default_route"])
+      |> assign(:resolved, payload["resolved"])
       |> assign(:joined_at, DateTime.utc_now())
 
     info = client_info(socket)
@@ -37,6 +38,7 @@ defmodule YellowDog.Console.NetmanChannel do
       |> assign(:interfaces, payload["interfaces"] || socket.assigns.interfaces)
       |> assign(:connections, payload["connections"] || socket.assigns.connections)
       |> assign(:default_route, payload["default_route"] || socket.assigns.default_route)
+      |> assign(:resolved, payload["resolved"] || socket.assigns.resolved)
 
     NetmanRegistry.update(client_info(socket))
     {:reply, :ok, socket}
@@ -62,6 +64,7 @@ defmodule YellowDog.Console.NetmanChannel do
       interfaces: socket.assigns.interfaces,
       connections: socket.assigns.connections,
       default_route: socket.assigns.default_route,
+      resolved: socket.assigns.resolved,
       joined_at: socket.assigns.joined_at,
       last_seen: DateTime.utc_now()
     }

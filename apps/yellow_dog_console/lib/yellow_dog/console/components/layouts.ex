@@ -561,15 +561,20 @@ defmodule YellowDog.Console.Layouts do
           <span>Interfaces</span>
         </.link>
       </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/resolved"}
-          class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
-        >
-          <.dm_mdi name="dns" class="w-5 h-5" />
-          <span>Resolved Server</span>
-        </.link>
-      </li>
+      <%= if client[:resolved] do %>
+        <li>
+          <.link
+            navigate={"/netman/#{client.node_id}/resolved"}
+            class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
+          >
+            <.dm_mdi name="dns" class="w-5 h-5" />
+            <span>Resolved</span>
+            <span class="ml-auto text-xs font-mono text-on-surface-variant">
+              {client.resolved["counters"]["total"] || 0}q
+            </span>
+          </.link>
+        </li>
+      <% end %>
       <li>
         <.link
           navigate={"/netman/#{client.node_id}/dhcp-client"}
@@ -579,9 +584,35 @@ defmodule YellowDog.Console.Layouts do
           <span>DHCP Client</span>
         </.link>
       </li>
+      <%= for conn <- client.connections, conn["lease"] != nil do %>
+        <li class="pl-4">
+          <div class="flex flex-col py-1 text-xs text-on-surface-variant">
+            <span class="font-mono font-semibold text-on-surface">{conn["lease"]["ip"]}</span>
+            <span>
+              {conn["interface"]} · {format_remaining(conn["lease"]["time_remaining"])}
+            </span>
+          </div>
+        </li>
+      <% end %>
     <% end %>
     """
   end
+
+  defp format_remaining(nil), do: "—"
+  defp format_remaining(seconds) when is_number(seconds) and seconds <= 0, do: "expired"
+
+  defp format_remaining(seconds) when is_number(seconds) do
+    hours = div(seconds, 3600)
+    mins = div(rem(seconds, 3600), 60)
+
+    cond do
+      hours > 24 -> "#{div(hours, 24)}d #{rem(hours, 24)}h"
+      hours > 0 -> "#{hours}h #{mins}m"
+      true -> "#{mins}m"
+    end
+  end
+
+  defp format_remaining(_), do: "—"
 
   # Returns "active" class when current_path matches the target path.
   # :exact mode requires exact match (for overview pages that share a prefix).
