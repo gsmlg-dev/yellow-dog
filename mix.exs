@@ -74,7 +74,7 @@ defmodule YellowDog.Umbrella.MixProject do
   end
 
   defp phoenix_listeners do
-    if Code.ensure_loaded?(Phoenix.CodeReloader) do
+    if Mix.env() in [:dev, :test] do
       [listeners: [Phoenix.CodeReloader]]
     else
       []
