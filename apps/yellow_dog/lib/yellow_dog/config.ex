@@ -441,17 +441,20 @@ defmodule YellowDog.Config do
   @spec get_data_dir() :: String.t()
   def get_data_dir do
     # Priority: CLI/ENV (set in runtime.exs) > config file > default
-    case Application.get_env(:yellow_dog, :data_dir) do
-      nil ->
-        # Fall back to config file or default
-        case get("data_dir") do
-          nil -> "data"
-          dir -> dir
-        end
+    dir =
+      case Application.get_env(:yellow_dog, :data_dir) do
+        nil ->
+          # Fall back to config file or default
+          case get("data_dir") do
+            nil -> "data"
+            dir -> dir
+          end
 
-      dir ->
-        dir
-    end
+        dir ->
+          dir
+      end
+
+    resolve_data_dir(dir)
   end
 
   @doc """
@@ -515,5 +518,19 @@ defmodule YellowDog.Config do
   @spec ensure_mnesia_dir() :: :ok | {:error, term()}
   def ensure_mnesia_dir do
     get_mnesia_dir() |> File.mkdir_p()
+  end
+
+  # Resolves a relative data_dir to the umbrella root so that all apps
+  # share a single data directory instead of each creating their own
+  # under apps/<app_name>/data/.
+  defp resolve_data_dir("/" <> _ = absolute), do: absolute
+
+  defp resolve_data_dir(relative) do
+    umbrella_root =
+      Application.app_dir(:yellow_dog)
+      |> Path.join("../..")
+      |> Path.expand()
+
+    Path.join(umbrella_root, relative)
   end
 end

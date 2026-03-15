@@ -510,17 +510,32 @@ defmodule YellowDog.Application do
     end
   end
 
-  # Gets the data directory from config or CLI/ENV override
+  # Gets the data directory from config or CLI/ENV override.
+  # Relative paths are resolved against the umbrella root so all apps
+  # share a single data directory (not per-app data/ folders).
   defp get_data_dir(config) do
-    # Priority: CLI/ENV (set in runtime.exs) > config file > default
-    case Application.get_env(:yellow_dog, :data_dir) do
-      nil ->
-        # Fall back to config file or default
-        Map.get(config, "data_dir", "data")
+    dir =
+      case Application.get_env(:yellow_dog, :data_dir) do
+        nil ->
+          # Fall back to config file or default
+          Map.get(config, "data_dir", "data")
 
-      dir ->
-        dir
-    end
+        dir ->
+          dir
+      end
+
+    resolve_data_dir(dir)
+  end
+
+  defp resolve_data_dir("/" <> _ = absolute), do: absolute
+
+  defp resolve_data_dir(relative) do
+    umbrella_root =
+      Application.app_dir(:yellow_dog)
+      |> Path.join("../..")
+      |> Path.expand()
+
+    Path.join(umbrella_root, relative)
   end
 
   @valid_mdns_modes ~w(hybrid responder browser)
