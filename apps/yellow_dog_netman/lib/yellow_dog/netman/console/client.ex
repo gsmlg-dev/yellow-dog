@@ -30,6 +30,7 @@ defmodule YellowDog.Netman.Console.Client do
   @default_status_interval 30_000
   @initial_check_interval 3_000
   @max_check_interval 30_000
+  @min_reconnect_gap_ms 5_000
   @telemetry_id {__MODULE__, :resolved_queries}
   @socket_name __MODULE__.Socket
 
@@ -56,7 +57,8 @@ defmodule YellowDog.Netman.Console.Client do
       config: config,
       status_interval: config[:status_interval] || @default_status_interval,
       connected: false,
-      check_interval: @initial_check_interval
+      check_interval: @initial_check_interval,
+      last_connect_at: System.monotonic_time(:millisecond) - @min_reconnect_gap_ms
     }
 
     attach_telemetry()
@@ -65,6 +67,22 @@ defmodule YellowDog.Netman.Console.Client do
 
   @impl true
   def handle_continue(:connect, state) do
+    # Throttle reconnections to prevent tight loops when the server
+    # disconnects us immediately (e.g., duplicate socket ID eviction)
+    now = System.monotonic_time(:millisecond)
+    elapsed = now - state.last_connect_at
+
+    if elapsed < @min_reconnect_gap_ms do
+      delay = @min_reconnect_gap_ms - elapsed
+      Logger.debug("[Netman.Console.Client] Throttling reconnect, waiting #{delay}ms")
+      Process.send_after(self(), :restart_socket, delay)
+      {:noreply, state}
+    else
+      do_connect(%{state | last_connect_at: now})
+    end
+  end
+
+  defp do_connect(state) do
     case start_socket(state.config) do
       {:ok, socket} ->
         Logger.info("[Netman.Console.Client] Socket started, waiting for connection...")
@@ -263,7 +281,7 @@ defmodule YellowDog.Netman.Console.Client do
       params: params,
       name: @socket_name,
       reconnect?: true,
-      reconnect_interval: 10_000,
+      reconnect_interval: 30_000,
       heartbeat_interval: 30_000
     )
   end
