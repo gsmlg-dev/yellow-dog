@@ -82,6 +82,15 @@ defmodule YellowDog.Application do
     # Get the app module for this service
     app_module = service_app_module(service)
 
+    # Guard: module may not be available in all releases
+    if not Code.ensure_loaded?(app_module) do
+      {:error, :module_not_available}
+    else
+      start_service_supervisor_impl(service, app_module)
+    end
+  end
+
+  defp start_service_supervisor_impl(service, app_module) do
     # Get server options from current config
     config = YellowDog.Config.get_all()
     server_options = build_server_options(config, service)
@@ -213,6 +222,7 @@ defmodule YellowDog.Application do
   defp service_app_module(:dhcpv4), do: YellowDog.Dhcpv4
   defp service_app_module(:dhcpv6), do: YellowDog.Dhcpv6
   defp service_app_module(:identity), do: YellowDogIdentity
+  defp service_app_module(:netman), do: YellowDog.Netman
 
   # Note: config_change is not needed in the main YellowDog app
   # The console app handles its own config changes through YellowDog.Console.Application
@@ -311,8 +321,17 @@ defmodule YellowDog.Application do
 
     # Log enabled services
     case Map.get(config, "core") do
-      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
-        services = [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
+      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
+        netman = Map.get(core, "netman", true)
+
+        services = [
+          {"DNS", dns},
+          {"mDNS", mdns},
+          {"DHCPv4", dhcpv4},
+          {"DHCPv6", dhcpv6},
+          {"NetMan", netman}
+        ]
+
         enabled_services = for({name, true} <- services, do: name)
         disabled_services = for({name, false} <- services, do: name)
 
@@ -353,6 +372,7 @@ defmodule YellowDog.Application do
     # Filter services based on configuration and pass server options
     enabled_services =
       for {module, service_name} <- services,
+          Code.ensure_loaded?(module),
           service_enabled?(config, service_name) do
         server_options = build_server_options(config, service_name)
         {module, server_options: server_options}
@@ -490,17 +510,32 @@ defmodule YellowDog.Application do
     end
   end
 
-  # Gets the data directory from config or CLI/ENV override
+  # Gets the data directory from config or CLI/ENV override.
+  # Relative paths are resolved against the umbrella root so all apps
+  # share a single data directory (not per-app data/ folders).
   defp get_data_dir(config) do
-    # Priority: CLI/ENV (set in runtime.exs) > config file > default
-    case Application.get_env(:yellow_dog, :data_dir) do
-      nil ->
-        # Fall back to config file or default
-        Map.get(config, "data_dir", "data")
+    dir =
+      case Application.get_env(:yellow_dog, :data_dir) do
+        nil ->
+          # Fall back to config file or default
+          Map.get(config, "data_dir", "data")
 
-      dir ->
-        dir
-    end
+        dir ->
+          dir
+      end
+
+    resolve_data_dir(dir)
+  end
+
+  defp resolve_data_dir("/" <> _ = absolute), do: absolute
+
+  defp resolve_data_dir(relative) do
+    umbrella_root =
+      Application.app_dir(:yellow_dog)
+      |> Path.join("../..")
+      |> Path.expand()
+
+    Path.join(umbrella_root, relative)
   end
 
   @valid_mdns_modes ~w(hybrid responder browser)
@@ -540,13 +575,13 @@ defmodule YellowDog.Application do
   # Checks if a service is enabled in the configuration.
   defp service_enabled?(config, service_name) do
     case Map.get(config, "core") do
-      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
+      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
         case service_name do
           :dns -> dns
           :mdns -> mdns
           :dhcpv4 -> dhcpv4
           :dhcpv6 -> dhcpv6
-          _ -> false
+          other -> Map.get(core, to_string(other), true)
         end
 
       core_config when is_map(core_config) ->

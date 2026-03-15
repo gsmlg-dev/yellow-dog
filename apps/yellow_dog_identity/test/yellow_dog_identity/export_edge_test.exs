@@ -14,6 +14,8 @@ defmodule YellowDogIdentity.ExportEdgeTest do
 
     File.mkdir_p!(tmp_dir)
 
+    YellowDogIdentity.TestHelper.stop_app_identity()
+
     start_supervised!(
       {YellowDogIdentity.Registry, data_dir: tmp_dir, name: YellowDogIdentity.Registry}
     )

@@ -55,11 +55,10 @@ config :yellow_dog_telemetry,
 # Disable Swoosh API client during tests
 config :yellow_dog_console, :swoosh_api_client, false
 
-# Disable basic authentication during tests by default
-config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth, enabled: false
-
-# YellowDog Resolved: don't auto-start services in test — tests start components individually
-config :yellow_dog_resolved, start_services: false
+# YellowDog Netman: use a writable temp path for the CLI Unix socket in tests
+config :yellow_dog_netman,
+  socket_path: "/tmp/yellow_dog_netman_test.sock",
+  netlink_backend: :mock
 
 # DHCP client NIF: skip Rust compilation in test (cargo may not be available).
 # Tests use DhcpSocket.UdpFallback configured via :socket_impl env key.

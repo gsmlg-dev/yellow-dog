@@ -65,8 +65,13 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
     assigns = assign(assigns, :mode, mode)
 
     ~H"""
-    <div class="modal modal-open" phx-window-keydown="close" phx-key="Escape" phx-target={@myself}>
-      <div class="modal-box w-11/12 max-w-2xl">
+    <div
+      class="dialog-backdrop dialog-backdrop-show"
+      phx-window-keydown="close"
+      phx-key="Escape"
+      phx-target={@myself}
+    >
+      <div class="dialog dialog-md w-11/12 max-w-2xl">
         <h3 class="font-bold text-lg mb-4">
           {if @mode == :create, do: "Add", else: "Edit"} {protocol_name(@protocol)} Pool
         </h3>
@@ -90,10 +95,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
           <% end %>
           
     <!-- Pool Name -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Pool Name</span>
-            </label>
+          <div class="form-group">
+            <label class="form-label">Pool Name</label>
             <input
               type="text"
               name="address_pool[name]"
@@ -101,53 +104,46 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               placeholder="e.g., office-network"
               disabled={@mode == :edit}
               class={[
-                "input input-bordered w-full",
-                @mode == :edit && "input-disabled",
+                "input w-full",
                 Keyword.has_key?(@changeset.errors, :name) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:name} />
             <%= if @mode == :edit do %>
-              <label class="label">
-                <span class="label-text-alt text-base-content/50">Pool name cannot be changed</span>
-              </label>
+              <span class="helper-text text-on-surface-variant">
+                Pool name cannot be changed
+              </span>
             <% end %>
           </div>
           
     <!-- Network (CIDR) -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Network (CIDR notation)</span>
-            </label>
+          <div class="form-group">
+            <label class="form-label">Network (CIDR notation)</label>
             <input
               type="text"
               name="address_pool[network]"
               value={Ecto.Changeset.get_field(@changeset, :network)}
               placeholder={network_placeholder(@protocol)}
               class={[
-                "input input-bordered w-full",
+                "input w-full",
                 Keyword.has_key?(@changeset.errors, :network) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:network} />
-            <label class="label">
-              <span class="label-text-alt">The subnet this pool belongs to (optional)</span>
-            </label>
+            <span class="helper-text">The subnet this pool belongs to (optional)</span>
           </div>
           
     <!-- IP Range -->
           <div class="grid grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-medium">Range Start</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Range Start</label>
               <input
                 type="text"
                 name="address_pool[range_start]"
                 value={Ecto.Changeset.get_field(@changeset, :range_start)}
                 placeholder={range_placeholder(@protocol, :start)}
                 class={[
-                  "input input-bordered w-full",
+                  "input w-full",
                   Keyword.has_key?(@changeset.errors, :range_start) &&
                     "input-error"
                 ]}
@@ -155,17 +151,15 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               <.input_error changeset={@changeset} field={:range_start} />
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-medium">Range End</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Range End</label>
               <input
                 type="text"
                 name="address_pool[range_end]"
                 value={Ecto.Changeset.get_field(@changeset, :range_end)}
                 placeholder={range_placeholder(@protocol, :end)}
                 class={[
-                  "input input-bordered w-full",
+                  "input w-full",
                   Keyword.has_key?(@changeset.errors, :range_end) && "input-error"
                 ]}
               />
@@ -175,10 +169,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
 
           <%= if @protocol == :ipv4 do %>
             <!-- DHCPv4 Fields -->
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-medium">Lease Time (seconds)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Lease Time (seconds)</label>
               <input
                 type="number"
                 name="address_pool[lease_time]"
@@ -186,27 +178,23 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                 placeholder="3600"
                 min="60"
                 class={[
-                  "input input-bordered w-full",
+                  "input w-full",
                   Keyword.has_key?(@changeset.errors, :lease_time) && "input-error"
                 ]}
               />
               <.input_error changeset={@changeset} field={:lease_time} />
-              <label class="label">
-                <span class="label-text-alt">Minimum 60 seconds. Common: 3600 (1h), 86400 (1d)</span>
-              </label>
+              <span class="helper-text">Minimum 60 seconds. Common: 3600 (1h), 86400 (1d)</span>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-medium">Gateway (Optional)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Gateway (Optional)</label>
               <input
                 type="text"
                 name="address_pool[gateway]"
                 value={Ecto.Changeset.get_field(@changeset, :gateway)}
                 placeholder="192.168.1.1"
                 class={[
-                  "input input-bordered w-full",
+                  "input w-full",
                   Keyword.has_key?(@changeset.errors, :gateway) && "input-error"
                 ]}
               />
@@ -215,10 +203,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
           <% else %>
             <!-- DHCPv6 Fields -->
             <div class="grid grid-cols-2 gap-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">Preferred Lifetime (s)</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label">Preferred Lifetime (s)</label>
                 <input
                   type="number"
                   name="address_pool[preferred_lifetime]"
@@ -226,7 +212,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                   placeholder="3600"
                   min="60"
                   class={[
-                    "input input-bordered w-full",
+                    "input w-full",
                     Keyword.has_key?(@changeset.errors, :preferred_lifetime) &&
                       "input-error"
                   ]}
@@ -234,10 +220,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                 <.input_error changeset={@changeset} field={:preferred_lifetime} />
               </div>
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">Valid Lifetime (s)</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label">Valid Lifetime (s)</label>
                 <input
                   type="number"
                   name="address_pool[valid_lifetime]"
@@ -245,7 +229,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                   placeholder="7200"
                   min="60"
                   class={[
-                    "input input-bordered w-full",
+                    "input w-full",
                     Keyword.has_key?(@changeset.errors, :valid_lifetime) &&
                       "input-error"
                   ]}
@@ -256,17 +240,15 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
           <% end %>
           
     <!-- DNS Servers (comma-separated) -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">DNS Servers (Optional, comma-separated)</span>
-            </label>
+          <div class="form-group">
+            <label class="form-label">DNS Servers (Optional, comma-separated)</label>
             <input
               type="text"
               name="address_pool[dns_servers_str]"
               value={format_dns_servers(Ecto.Changeset.get_field(@changeset, :dns_servers))}
               placeholder={dns_placeholder(@protocol)}
               class={[
-                "input input-bordered w-full",
+                "input w-full",
                 Keyword.has_key?(@changeset.errors, :dns_servers) && "input-error"
               ]}
               phx-debounce="300"
@@ -274,14 +256,14 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
             <.input_error changeset={@changeset} field={:dns_servers} />
           </div>
 
-          <div class="modal-action">
+          <div class="dialog-actions">
             <button type="button" phx-click="close" phx-target={@myself} class="btn btn-ghost">
               Cancel
             </button>
             <button
               type="submit"
               phx-disable-with="Saving..."
-              class={["btn btn-primary", !@changeset.valid? && "btn-disabled"]}
+              class={["btn btn-primary", false]}
               disabled={!@changeset.valid?}
             >
               {if @mode == :create, do: "Add Pool", else: "Save Changes"}

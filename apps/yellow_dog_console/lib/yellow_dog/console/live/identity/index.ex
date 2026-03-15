@@ -97,27 +97,27 @@ defmodule YellowDog.Console.IdentityLive.Index do
           </div>
         </div>
 
-        <div class="stats stats-vertical lg:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Hosts</div>
-            <div class="stat-value">{@stats.total}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Pending</div>
-            <div class="stat-value text-warning">{@stats.pending}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Approved</div>
-            <div class="stat-value text-success">{@stats.approved}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Revoked</div>
-            <div class="stat-value text-error">{@stats.revoked}</div>
-          </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total Hosts</div>
+            <div class="text-2xl font-bold">{@stats.total}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Pending</div>
+            <div class="text-2xl font-bold text-warning">{@stats.pending}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Approved</div>
+            <div class="text-2xl font-bold text-success">{@stats.approved}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Revoked</div>
+            <div class="text-2xl font-bold text-error">{@stats.revoked}</div>
+          </.card>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Trust Level Distribution</h2>
               <div class="space-y-2">
@@ -128,14 +128,14 @@ defmodule YellowDog.Console.IdentityLive.Index do
                   <span class="badge badge-outline">{level}</span>
                   <span class="font-mono">{count}</span>
                 </div>
-                <p :if={@stats.trust_levels == %{}} class="text-base-content/50">
+                <p :if={@stats.trust_levels == %{}} class="text-on-surface-variant">
                   No hosts registered
                 </p>
               </div>
             </div>
           </div>
 
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Trust Providers</h2>
               <div class="space-y-2">
@@ -146,38 +146,38 @@ defmodule YellowDog.Console.IdentityLive.Index do
                   <span class="badge badge-outline">{provider}</span>
                   <span class="font-mono">{count}</span>
                 </div>
-                <p :if={@stats.providers == %{}} class="text-base-content/50">
+                <p :if={@stats.providers == %{}} class="text-on-surface-variant">
                   No hosts registered
                 </p>
                 <div class="divider my-1"></div>
                 <div class="flex justify-between items-center text-sm">
-                  <span class="text-base-content/70">Active Tokens</span>
+                  <span class="text-on-surface-variant">Active Tokens</span>
                   <span class="font-mono">{@stats.active_tokens}/{@stats.total_tokens}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Quick Actions</h2>
               <div class="space-y-2">
-                <.link navigate={~p"/identity/hosts"} class="btn btn-sm btn-outline btn-block">
+                <.link navigate={~p"/server/identity/hosts"} class="btn btn-sm btn-outline w-full">
                   View All Hosts
                 </.link>
                 <.link
-                  navigate={~p"/identity/approvals"}
-                  class="btn btn-sm btn-warning btn-outline btn-block"
+                  navigate={~p"/server/identity/approvals"}
+                  class="btn btn-sm btn-warning btn-outline w-full"
                 >
                   Pending Approvals ({@stats.pending})
                 </.link>
-                <.link navigate={~p"/identity/tokens"} class="btn btn-sm btn-outline btn-block">
+                <.link navigate={~p"/server/identity/tokens"} class="btn btn-sm btn-outline w-full">
                   Provisioning Tokens
                 </.link>
-                <.link navigate={~p"/identity/policies"} class="btn btn-sm btn-outline btn-block">
+                <.link navigate={~p"/server/identity/policies"} class="btn btn-sm btn-outline w-full">
                   Approval Policies
                 </.link>
-                <.link navigate={~p"/identity/audit"} class="btn btn-sm btn-outline btn-block">
+                <.link navigate={~p"/server/identity/audit"} class="btn btn-sm btn-outline w-full">
                   Audit Log
                 </.link>
                 <div class="flex gap-1">
@@ -201,7 +201,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
           </div>
         </div>
 
-        <div :if={@export_preview} class="card bg-base-100 shadow">
+        <div :if={@export_preview} class="card bg-surface shadow">
           <div class="card-body">
             <div class="flex items-center justify-between">
               <h2 class="card-title">
@@ -209,7 +209,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
               </h2>
               <button class="btn btn-sm btn-ghost" phx-click="close_export">Close</button>
             </div>
-            <pre class="bg-base-200 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{@export_preview}</pre>
+            <pre class="bg-surface-container p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{@export_preview}</pre>
           </div>
         </div>
       </div>

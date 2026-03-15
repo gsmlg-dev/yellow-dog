@@ -1,5 +1,5 @@
 defmodule YellowDogIdentity.Trust.Token.VerifierTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDogIdentity.Trust.Token.Verifier
   alias YellowDogIdentity.Token
@@ -38,6 +38,8 @@ defmodule YellowDogIdentity.Trust.Token.VerifierTest do
         )
 
       File.mkdir_p!(tmp_dir)
+
+      YellowDogIdentity.TestHelper.stop_app_identity()
 
       {:ok, pid} = Registry.start_link(data_dir: tmp_dir, name: YellowDogIdentity.Registry)
 

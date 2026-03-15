@@ -42,56 +42,23 @@ defmodule YellowDog.Console.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  # Server section — protocol services, identity, fingerprint
+  scope "/server", YellowDog.Console do
+    pipe_through :browser
+
     live "/dashboard", DashboardLive
 
-    # Settings routes with tab parameter
-    live "/settings", SettingsLive, :dns
-    live "/settings/dns", SettingsLive, :dns
-    live "/settings/mdns", SettingsLive, :mdns
-    live "/settings/dhcpv4", SettingsLive, :dhcpv4
-    live "/settings/dhcpv6", SettingsLive, :dhcpv6
-    live "/settings/netboot", SettingsLive, :netboot
-
-    # mDNS Management Routes
-    live "/mdns", MdnsLive.Index
-    live "/mdns/services", MdnsLive.ServicesLive
-    live "/mdns/discovery", MdnsLive.DiscoveryLive
-    live "/mdns/monitor", MdnsLive.MonitorLive
-
-    # DHCPv4 Management Routes
-    live "/dhcpv4", Dhcpv4Live.Index
-    live "/dhcpv4/leases", Dhcpv4Live.LeasesLive
-    live "/dhcpv4/pools", Dhcpv4Live.PoolsLive
-    live "/dhcpv4/pools/:pool_name", Dhcpv4Live.PoolLive
-    live "/dhcpv4/activity", Dhcpv4Live.ActivityLive
-
-    # DHCPv6 Management Routes
-    live "/dhcpv6", Dhcpv6Live.Index
-    live "/dhcpv6/leases", Dhcpv6Live.LeasesLive
-    live "/dhcpv6/pools", Dhcpv6Live.PoolsLive
-    live "/dhcpv6/pools/:pool_name", Dhcpv6Live.PoolLive
-    live "/dhcpv6/activity", Dhcpv6Live.ActivityLive
-
-    # DHCP Client Management Routes
-    live "/dhcp-client", DhcpClientLive.Index
-    live "/dhcp-client/interfaces", DhcpClientLive.InterfacesLive
-    live "/dhcp-client/activity", DhcpClientLive.ActivityLive
-
-    # DNS Management Routes (sidebar: Overview, Data, ACL)
+    # DNS
     live "/dns", DnsLive.Index
-
-    # DNS Views (first level of hierarchy)
     live "/dns/views", DnsLive.ViewLive.Index, :index
     live "/dns/views/new", DnsLive.ViewLive.Index, :new
     live "/dns/views/:view_name/edit", DnsLive.ViewLive.Index, :edit
-
-    # DNS Zones (second level - drill-down from view)
     live "/dns/views/:view_name/zones", DnsLive.ZoneLive.Index, :index
     live "/dns/views/:view_name/zones/new", DnsLive.ZoneLive.Index, :new
     live "/dns/views/:view_name/zones/import", DnsLive.ZoneLive.Index, :import
     live "/dns/views/:view_name/zones/:zone_type/:zone_name/edit", DnsLive.ZoneLive.Index, :edit
-
-    # DNS Resource Records (third level - drill-down from zone)
     live "/dns/views/:view_name/zones/:zone_type/:zone_name/records", DnsLive.RrLive.Index, :index
 
     live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/new",
@@ -109,6 +76,26 @@ defmodule YellowDog.Console.Router do
     live "/dns/acl", DnsLive.AclLive
     live "/dns/logs", DnsLive.QueryLogsLive
     live "/dns/metrics", DnsLive.MetricsLive
+
+    # DHCPv4
+    live "/dhcpv4", Dhcpv4Live.Index
+    live "/dhcpv4/leases", Dhcpv4Live.LeasesLive
+    live "/dhcpv4/pools", Dhcpv4Live.PoolsLive
+    live "/dhcpv4/pools/:pool_name", Dhcpv4Live.PoolLive
+    live "/dhcpv4/activity", Dhcpv4Live.ActivityLive
+
+    # DHCPv6
+    live "/dhcpv6", Dhcpv6Live.Index
+    live "/dhcpv6/leases", Dhcpv6Live.LeasesLive
+    live "/dhcpv6/pools", Dhcpv6Live.PoolsLive
+    live "/dhcpv6/pools/:pool_name", Dhcpv6Live.PoolLive
+    live "/dhcpv6/activity", Dhcpv6Live.ActivityLive
+
+    # mDNS
+    live "/mdns", MdnsLive.Index
+    live "/mdns/services", MdnsLive.ServicesLive
+    live "/mdns/discovery", MdnsLive.DiscoveryLive
+    live "/mdns/monitor", MdnsLive.MonitorLive
 
     # Netboot
     live "/netboot", NetbootLive.Index
@@ -128,25 +115,59 @@ defmodule YellowDog.Console.Router do
     live "/identity/tokens", IdentityLive.TokensLive
     live "/identity/policies", IdentityLive.PoliciesLive
     live "/identity/audit", IdentityLive.AuditLive
+  end
 
-    # Fingerprint
+  # Tool section — network utilities
+  scope "/tool", YellowDog.Console do
+    pipe_through :browser
+
+    live "/geoip", ToolsLive.GeoipLive
+    live "/whois", ToolsLive.WhoisLive
+    live "/mac", ToolsLive.MacLive
+
+    # Service Diagnostics
+    live "/diagnostics", DiagnosticsLive, :dns
+    live "/diagnostics/dns", DiagnosticsLive, :dns
+    live "/diagnostics/mdns", DiagnosticsLive, :mdns
+    live "/diagnostics/dhcpv4", DiagnosticsLive, :dhcpv4
+    live "/diagnostics/dhcpv6", DiagnosticsLive, :dhcpv6
+  end
+
+  # System section — configuration, diagnostics, logs
+  scope "/system", YellowDog.Console do
+    pipe_through :browser
+
+    live "/settings", SettingsLive, :dns
+    live "/settings/dns", SettingsLive, :dns
+    live "/settings/mdns", SettingsLive, :mdns
+    live "/settings/dhcpv4", SettingsLive, :dhcpv4
+    live "/settings/dhcpv6", SettingsLive, :dhcpv6
+    live "/settings/netboot", SettingsLive, :netboot
+    live "/logs", LogsLive, :index
+    live "/logs/realtime", LogsLive, :realtime
+    live "/logs/dns-query", DnsLive.QueryLogsLive
+    live "/logs/dhcpv4-activity", Dhcpv4Live.ActivityLive
+    live "/logs/dhcpv6-activity", Dhcpv6Live.ActivityLive
+    live "/logs/netboot", NetbootLive.LogLive
+    live "/logs/identity-audit", IdentityLive.AuditLive
+    live "/process-map", ProcessMapLive
+
+    # Fingerprint (provider data)
     live "/fingerprint/devices", FingerprintLive.DevicesLive
     live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
     live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive
+  end
 
-    # Tools
-    live "/tools/geoip", ToolsLive.GeoipLive
-    live "/tools/whois", ToolsLive.WhoisLive
-    live "/tools/mac", ToolsLive.MacLive
+  # Netman section — central management of remote Netman instances
+  scope "/netman", YellowDog.Console do
+    pipe_through :browser
 
-    # Service Diagnostics
-    live "/diagnostics", DiagnosticsLive
-
-    # Real-time Logs
-    live "/logs", LogsLive
-
-    # Process Map
-    live "/process-map", ProcessMapLive
+    live "/", NetmanLive.DashboardLive
+    live "/config", NetmanLive.ConfigLive
+    live "/:node_id", NetmanLive.NodeLive
+    live "/:node_id/interfaces", NetmanLive.InterfacesLive
+    live "/:node_id/resolved", NetmanLive.ResolvedLive
+    live "/:node_id/dhcp-client", NetmanLive.DhcpClientLive
   end
 
   # HTTP boot endpoints — no CSRF, no session (called by iPXE/installer)

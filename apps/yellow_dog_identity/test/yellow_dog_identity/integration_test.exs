@@ -27,6 +27,8 @@ defmodule YellowDogIdentity.IntegrationTest do
 
     File.mkdir_p!(tmp_dir)
 
+    YellowDogIdentity.TestHelper.stop_app_identity()
+
     # Start the Registry under its default name so the public API functions work
     {:ok, pid} = Registry.start_link(data_dir: tmp_dir, name: YellowDogIdentity.Registry)
 

@@ -335,9 +335,8 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
   defp init_tables do
     for table <- [@response_table, @query_table, @services_table] do
-      if :ets.whereis(table) == :undefined do
-        :ets.new(table, @ets_options)
-      end
+      try do: :ets.delete(table), catch: (_, _ -> :ok)
+      :ets.new(table, @ets_options)
     end
 
     :ok

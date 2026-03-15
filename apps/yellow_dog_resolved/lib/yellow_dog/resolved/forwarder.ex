@@ -101,6 +101,11 @@ defmodule YellowDog.Resolved.Forwarder do
      }}
   end
 
+  def handle_cast({:update_upstreams, upstreams}, state) when is_list(upstreams) do
+    Logger.info("[Resolved] Forwarder upstreams updated (#{length(upstreams)} servers)")
+    {:noreply, %{state | upstreams: upstreams}}
+  end
+
   @impl true
   def handle_info({:forward_response, txn_id, response_data, upstream}, state) do
     try do

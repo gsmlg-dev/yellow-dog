@@ -6,8 +6,33 @@ defmodule YellowDog.Umbrella.MixProject do
       apps_path: "apps",
       version: "1.1.1",
       start_permanent: Mix.env() == :prod,
-      description: "YellowDog is a Domain Name Server and DHCP Server",
+      description: "YellowDog DNS/DHCP server and network manager",
       releases: [
+        yellow_dog_server: [
+          include_executables_for: [:unix],
+          applications: [
+            yellow_dog: :permanent,
+            yellow_dog_telemetry: :permanent,
+            yellow_dog_dns: :permanent,
+            yellow_dog_mdns: :permanent,
+            yellow_dog_dhcpv4: :permanent,
+            yellow_dog_dhcpv6: :permanent,
+            yellow_dog_netboot: :permanent,
+            yellow_dog_identity: :permanent,
+            yellow_dog_fingerprint: :permanent,
+            yellow_dog_console: :permanent
+          ]
+        ],
+        yellow_dog_netman: [
+          include_executables_for: [:unix],
+          applications: [
+            yellow_dog: :permanent,
+            yellow_dog_telemetry: :permanent,
+            yellow_dog_dhcp_client: :permanent,
+            yellow_dog_mdns: :permanent,
+            yellow_dog_netman: :permanent
+          ]
+        ],
         yellow_dog: [
           include_executables_for: [:unix],
           applications: [
@@ -18,8 +43,10 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_dhcpv4: :permanent,
             yellow_dog_dhcpv6: :permanent,
             yellow_dog_dhcp_client: :permanent,
+            yellow_dog_netman: :permanent,
             yellow_dog_netboot: :permanent,
             yellow_dog_identity: :permanent,
+            yellow_dog_fingerprint: :permanent,
             yellow_dog_console: :permanent
           ]
         ]
@@ -27,9 +54,8 @@ defmodule YellowDog.Umbrella.MixProject do
       dialyzer: dialyzer(),
       aliases: aliases(),
       docs: docs(),
-      deps: deps(),
-      listeners: [Phoenix.CodeReloader]
-    ]
+      deps: deps()
+    ] ++ phoenix_listeners()
   end
 
   # Dependencies listed here are available only for this
@@ -45,6 +71,14 @@ defmodule YellowDog.Umbrella.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  defp phoenix_listeners do
+    if Mix.env() in [:dev, :test] do
+      [listeners: [Phoenix.CodeReloader]]
+    else
+      []
+    end
   end
 
   defp dialyzer do

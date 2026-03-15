@@ -27,6 +27,7 @@ Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using
 | **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
 | **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
 | **YellowDog.Identity** | `apps/yellow_dog_identity/` | Host identity: registry, SSH key validation, trust verification, approval policies |
+| **YellowDog.Netman** | `apps/yellow_dog_netman/` | Network manager: wired ethernet, DHCP/static IP, reconciliation engine, netlink |
 | **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DaisyUI, Bun) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
@@ -109,6 +110,7 @@ YellowDog (core: config, orchestration)
 ├── YellowDog.Netboot     → abyss + yellow_dog_telemetry
 ├── YellowDog.Fingerprint → ex_dhcp + yellow_dog_telemetry
 ├── YellowDog.DhcpClient  → ex_dhcp + yellow_dog_telemetry
+├── YellowDog.Netman      → yellow_dog + yellow_dog_dhcp_client + yellow_dog_telemetry
 ├── YellowDog.Identity    → yellow_dog + yellow_dog_telemetry
 └── YellowDogConsole      → phoenix + all service apps + geo_ip_db (read-only status/stats)
 ```
@@ -214,3 +216,44 @@ GitHub Actions workflows:
 
 - Conventional commits: `feat|fix|refactor|test|docs|chore(scope): description`
 - Omit "Generated with Claude Code" and Co-Authored-By trailer
+
+## UI System
+
+### Stack
+
+Two dependencies only:
+- `@duskmoon-dev/core` — TailwindCSS plugin (design tokens, utilities)
+- `phoenix_duskmoon` — Phoenix component module (HEEx components)
+
+`phoenix_duskmoon` wraps `duskmoon-elements` internally. Treat both as black boxes consumed via their published APIs only.
+
+### Skills
+
+Load before any UI task:
+- CSS/tokens → `.claude/skills/duskmoon-dev-core/SKILL.md`
+- Web components → `.claude/skills/duskmoon-elements/SKILL.md`
+- Phoenix components → `.claude/skills/elixir-phoenix/SKILL.md` + `.claude/skills/phoenix-duskmoon-ui/SKILL.md`
+
+### Constraints
+
+- NEVER vendor or replicate component internals
+- NEVER override `@duskmoon-dev/core` tokens locally — propose changes upstream instead
+- NEVER patch `phoenix_duskmoon` component logic inline — wrap or compose only
+- Raw Tailwind classes not provided by `@duskmoon-dev/core` are PROHIBITED in templates
+
+### Upstream Issue Protocol
+
+When you encounter a bug, missing feature, or API gap:
+
+1. Identify the correct repo:
+   - Token/CSS/plugin issue → `duskmoon-dev/duskmoonui` (`@duskmoon-dev/core`)
+   - Web component/element issue → `duskmoon-dev/duskmoon-elements`
+   - Phoenix component issue → `duskmoon-dev/phoenix-duskmoon-ui`
+
+2. Create a GitHub issue in that repo with:
+   - Label: `internal request`
+   - Expected vs actual behavior
+   - Minimal reproduction
+
+3. Add a comment at the workaround site: `# TODO: upstream duskmoon-dev/<repo>#<issue>`
+   Do NOT silently absorb upstream bugs.

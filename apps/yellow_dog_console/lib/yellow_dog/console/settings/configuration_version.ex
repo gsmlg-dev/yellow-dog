@@ -27,6 +27,7 @@ defmodule YellowDog.Console.Settings.ConfigurationVersion do
   def start_link(_opts) do
     Agent.start_link(
       fn ->
+        try do: :ets.delete(@table_name), catch: (_, _ -> :ok)
         :ets.new(@table_name, [:set, :public, :named_table])
         %{current_version: 0}
       end,

@@ -34,22 +34,22 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>Profiles</li>
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/system/settings" />
 
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Boot Profiles</h1>
-            <p class="mt-2 text-base-content/70">
+            <p class="mt-2 text-on-surface-variant">
               Configured netboot profiles for PXE provisioning
             </p>
           </div>
           <div class="flex gap-2">
-            <.link navigate="/netboot/profiles/new" class="btn btn-primary btn-sm">
+            <.link navigate="/server/netboot/profiles/new" class="btn btn-primary btn-sm">
               New Profile
             </.link>
             <button
@@ -63,32 +63,21 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
           </div>
         </div>
 
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Profiles</div>
-            <div class="stat-value text-primary">{length(@all_profiles)}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Default Profile</div>
-            <div class="stat-value text-sm">{@default_profile || "None"}</div>
-          </div>
+        <div class="grid grid-cols-2 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total Profiles</div>
+            <div class="text-2xl font-bold text-primary">{length(@all_profiles)}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Default Profile</div>
+            <div class="text-2xl font-bold">{@default_profile || "None"}</div>
+          </.card>
         </div>
 
         <.card>
           <div class="flex-1">
-            <label class="input input-bordered flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                class="h-4 w-4 opacity-70"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
+            <label class="input flex items-center gap-2">
+              <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
               <input
                 type="text"
                 class="grow"
@@ -104,7 +93,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
 
         <.card>
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-striped">
               <thead>
                 <tr>
                   <.sort_header
@@ -133,16 +122,19 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
               </thead>
               <tbody>
                 <tr :if={@filtered_profiles == []}>
-                  <td colspan="7" class="text-center text-base-content/50 py-8">
+                  <td colspan="7" class="text-center text-on-surface-variant py-8">
                     No boot profiles configured —
-                    <.link navigate="/netboot/profiles/new" class="link link-primary">
+                    <.link navigate="/server/netboot/profiles/new" class="link link-primary">
                       create one
                     </.link>
                   </td>
                 </tr>
                 <tr :for={p <- @filtered_profiles}>
                   <td class="font-mono font-medium">
-                    <.link navigate={"/netboot/profiles/#{p.id}/edit"} class="link link-primary">
+                    <.link
+                      navigate={"/server/netboot/profiles/#{p.id}/edit"}
+                      class="link link-primary"
+                    >
                       {p.id}
                     </.link>
                     <.badge :if={p.id == @default_profile} color="primary" size="sm" class="ml-1">
@@ -168,13 +160,13 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                   <td>
                     <div class="flex gap-1">
                       <.link
-                        navigate={"/netboot/profiles/#{p.id}/edit"}
+                        navigate={"/server/netboot/profiles/#{p.id}/edit"}
                         class="btn btn-ghost btn-xs"
                       >
                         Edit
                       </.link>
                       <.link
-                        navigate={"/netboot/profiles/new?clone=#{p.id}"}
+                        navigate={"/server/netboot/profiles/new?clone=#{p.id}"}
                         class="btn btn-ghost btn-xs"
                       >
                         Clone
@@ -349,7 +341,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     <th
       phx-click="sort"
       phx-value-field={@field}
-      class="cursor-pointer select-none hover:bg-base-200"
+      class="cursor-pointer select-none hover:bg-surface-container"
     >
       <div class="flex items-center gap-1">
         {@label}

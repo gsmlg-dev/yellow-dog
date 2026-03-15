@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_real_docker() {
+  if [ -n "${LOKI_REAL_DOCKER:-}" ] && [ -x "${LOKI_REAL_DOCKER}" ]; then
+    printf '%s\n' "${LOKI_REAL_DOCKER}"
+    return 0
+  fi
+
+  local self_path
+  self_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+  while IFS= read -r candidate; do
+    if [ -n "$candidate" ] && [ "$candidate" != "$self_path" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(which -a docker 2>/dev/null || true)
+
+  return 1
+}
+
+REAL_DOCKER="$(resolve_real_docker)"
+
+if [ "${1:-}" = "run" ]; then
+  shift
+  args=("$@")
+
+  for ((i=0; i<${#args[@]}; i++)); do
+    if [ "${args[$i]}" = "--name" ] && [ $((i + 1)) -lt ${#args[@]} ] && [ "${args[$((i + 1))]}" = "loki-app-container" ]; then
+      "$REAL_DOCKER" rm -f loki-app-container >/dev/null 2>&1 || true
+      break
+    fi
+  done
+
+  exec "$REAL_DOCKER" run "${args[@]}"
+fi
+
+exec "$REAL_DOCKER" "$@"

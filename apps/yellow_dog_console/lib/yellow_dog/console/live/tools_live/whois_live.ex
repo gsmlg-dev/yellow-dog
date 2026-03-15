@@ -32,7 +32,7 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
             name="query"
             value={@query}
             placeholder="Enter domain or IP (e.g. example.com)"
-            class="input input-bordered flex-1"
+            class="input flex-1"
             disabled={@loading}
             autofocus
           />
@@ -42,7 +42,13 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
             disabled={@loading}
             phx-disable-with="Looking up..."
           >
-            <span :if={@loading} class="loading loading-spinner loading-sm"></span> Lookup
+            <span
+              :if={@loading}
+              class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+              role="status"
+            >
+            </span>
+            Lookup
           </button>
         </form>
 
@@ -52,7 +58,7 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
 
         <div
           :if={!@results && !@error && !@loading && @query == ""}
-          class="text-center py-12 text-base-content/50"
+          class="text-center py-12 text-on-surface-variant"
         >
           Enter a domain or IP address to query WHOIS records
         </div>
@@ -62,8 +68,8 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
             <div class="mb-2">
               <span class="badge badge-info">{server}</span>
             </div>
-            <div class="mockup-code bg-base-200 overflow-x-auto">
-              <pre class="px-4 py-2 text-sm whitespace-pre-wrap">{raw}</pre>
+            <div class="bg-surface-container rounded-lg p-4 overflow-x-auto font-mono text-sm">
+              <pre class="whitespace-pre-wrap">{raw}</pre>
             </div>
           </div>
         </div>

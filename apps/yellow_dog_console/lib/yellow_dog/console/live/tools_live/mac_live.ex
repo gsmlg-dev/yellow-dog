@@ -30,7 +30,7 @@ defmodule YellowDog.Console.ToolsLive.MacLive do
             name="mac"
             value={@query}
             placeholder="Enter MAC address (e.g. 00:00:0A:BB:28:FC)"
-            class="input input-bordered flex-1"
+            class="input flex-1"
             autofocus
           />
           <button type="submit" phx-disable-with="Looking up..." class="btn btn-primary">
@@ -42,22 +42,28 @@ defmodule YellowDog.Console.ToolsLive.MacLive do
           <span>{@error}</span>
         </div>
 
-        <div :if={!@result && !@error && @query == ""} class="text-center py-12 text-base-content/50">
+        <div
+          :if={!@result && !@error && @query == ""}
+          class="text-center py-12 text-on-surface-variant"
+        >
           Enter a MAC address to identify its manufacturer
         </div>
 
         <div :if={@result} class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div class="stat bg-base-200 rounded-box">
-            <div class="stat-title">Manufacturer</div>
-            <div class="stat-value text-lg">{@result.full_name}</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-lg font-bold">{@result.full_name}</div>
+            </div>
           </div>
-          <div class="stat bg-base-200 rounded-box">
-            <div class="stat-title">Short Name</div>
-            <div class="stat-value text-lg">{@result.short_name}</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-lg font-bold">{@result.short_name}</div>
+            </div>
           </div>
-          <div class="stat bg-base-200 rounded-box">
-            <div class="stat-title">MAC Address</div>
-            <div class="stat-value text-lg font-mono">{@result.mac}</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-lg font-bold font-mono">{@result.mac}</div>
+            </div>
           </div>
         </div>
       </div>

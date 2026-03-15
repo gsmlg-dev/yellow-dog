@@ -6,6 +6,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
   with copy-to-clipboard functionality for both request and response.
   """
   use Phoenix.Component
+  use PhoenixDuskmoon.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.HexDump
   import YellowDog.Console.FormatHelper, only: [format_time: 1, format_ip: 1]
@@ -36,10 +37,10 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
         ]}>
           {status_text(@result.status)}
         </span>
-        <span class="text-sm text-base-content/70">
+        <span class="text-sm text-on-surface-variant">
           {format_latency(@result.latency_ms)}
         </span>
-        <span class="text-sm text-base-content/50">
+        <span class="text-sm text-on-surface-variant">
           {format_time(@result.timestamp)}
         </span>
       </div>
@@ -47,25 +48,13 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
       <%!-- Error Message --%>
       <%= if @result.error do %>
         <div class="alert alert-error">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6 shrink-0 stroke-current"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <.dm_mdi name="close-circle" class="h-6 w-6 shrink-0 stroke-current" />
           <span>{@result.error}</span>
         </div>
       <% end %>
 
       <%!-- Request Section --%>
-      <div class="card bg-base-200">
+      <div class="card bg-surface-container">
         <div class="card-body p-4">
           <div class="flex justify-between items-center">
             <h3 class="card-title text-sm">Request</h3>
@@ -76,21 +65,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
               id="copy-request-btn"
               data-target="request-content"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                />
-              </svg>
-              Copy
+              <.dm_mdi name="content-copy" class="h-4 w-4" /> Copy
             </button>
           </div>
           <div id="request-content" class="overflow-x-auto">
@@ -105,7 +80,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
 
       <%!-- Response Section --%>
       <%= if @result.response_struct || @result.response_binary || @result.sources != [] do %>
-        <div class="card bg-base-200">
+        <div class="card bg-surface-container">
           <div class="card-body p-4">
             <div class="flex justify-between items-center">
               <h3 class="card-title text-sm">Response</h3>
@@ -116,21 +91,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
                 id="copy-response-btn"
                 data-target="response-content"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-                Copy
+                <.dm_mdi name="content-copy" class="h-4 w-4" /> Copy
               </button>
             </div>
             <div id="response-content" class="overflow-x-auto">
@@ -163,7 +124,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
     <div class="space-y-4">
       <%= for {source, idx} <- Enum.with_index(@sources) do %>
         <div class="border-l-2 border-primary pl-3">
-          <div class="text-xs text-base-content/70 mb-1">
+          <div class="text-xs text-on-surface-variant mb-1">
             Source {idx + 1}: {format_address(source.address)}:{source.port}
           </div>
           <%= if @mode == :struct do %>
@@ -174,7 +135,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
         </div>
       <% end %>
       <%= if @sources == [] do %>
-        <div class="text-base-content/50 italic">No responses received</div>
+        <div class="text-on-surface-variant italic">No responses received</div>
       <% end %>
     </div>
     """

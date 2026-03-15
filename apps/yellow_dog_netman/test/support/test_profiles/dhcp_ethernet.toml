@@ -1,0 +1,16 @@
+[connection]
+id = "test-dhcp"
+type = "ethernet"
+interface = "eth0"
+autoconnect = true
+autoconnect_priority = 100
+zone = "trusted"
+
+[ethernet]
+mtu = 1500
+
+[ipv4]
+method = "auto"
+
+[ipv6]
+method = "auto"

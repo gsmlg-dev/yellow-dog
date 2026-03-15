@@ -4,20 +4,19 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
 
   describe "mount/3" do
     test "mounts with default state", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dns")
 
       # Should render the page title
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
 
-      # Should have tab navigation
-      assert html =~ "DNS"
-      assert html =~ "mDNS"
-      assert html =~ "DHCPv4"
-      assert html =~ "DHCPv6"
+      # Should have DNS form fields
+      assert html =~ "Domain Name"
+      assert html =~ "Record Type"
+      assert html =~ "DNS Server"
     end
 
-    test "defaults to DNS tab", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+    test "defaults to DNS tab via /tool/diagnostics", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/tool/diagnostics")
 
       # DNS tab should be active by default
       assert html =~ "Domain Name"
@@ -26,57 +25,37 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
     end
   end
 
-  describe "tab navigation" do
-    test "switches to mDNS tab", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+  describe "URL-driven tab navigation" do
+    test "navigates to mDNS tab", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/mdns")
 
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="mdns"])) |> render_click()
-
+      assert html =~ "mDNS Diagnostics"
       assert html =~ "Service Type"
       assert html =~ "224.0.0.251:5353"
     end
 
-    test "switches to DHCPv4 tab", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+    test "navigates to DHCPv4 tab", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dhcpv4")
 
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv4"])) |> render_click()
-
+      assert html =~ "DHCPv4 Diagnostics"
       assert html =~ "Message Type"
       assert html =~ "Client MAC"
       assert html =~ "Port 68 requires root"
     end
 
-    test "switches to DHCPv6 tab", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+    test "navigates to DHCPv6 tab", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dhcpv6")
 
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv6"])) |> render_click()
-
+      assert html =~ "DHCPv6 Diagnostics"
       assert html =~ "Message Type"
       assert html =~ "DUID"
       assert html =~ "Port 546 requires root"
-    end
-
-    test "switches back to DNS tab", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-
-      # Switch to mDNS first
-      view |> element(~s([phx-click="select_tab"][phx-value-tab="mdns"])) |> render_click()
-
-      # Switch back to DNS
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="dns"])) |> render_click()
-
-      assert html =~ "Domain Name"
-      assert html =~ "DNS Server"
     end
   end
 
   describe "display mode toggle" do
     test "toggles between struct and raw mode", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/diagnostics")
+      {:ok, view, html} = live(conn, "/tool/diagnostics/dns")
 
       # Default should be struct mode
       assert html =~ "Struct" or html =~ "Raw"
@@ -88,13 +67,13 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
         |> render_click()
 
       # The toggle should work (no error)
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
   end
 
   describe "form validation" do
     test "DNS tab has required fields", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dns")
 
       # Check for form fields
       assert html =~ ~s(dns_query[query_name])
@@ -103,30 +82,21 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
     end
 
     test "mDNS tab has required fields", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="mdns"])) |> render_click()
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/mdns")
 
       assert html =~ ~s(mdns_query[service_type])
       assert html =~ ~s(mdns_query[query_type])
     end
 
     test "DHCPv4 tab has required fields", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv4"])) |> render_click()
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dhcpv4")
 
       assert html =~ ~s(dhcpv4_query[message_type])
       assert html =~ ~s(dhcpv4_query[client_mac])
     end
 
     test "DHCPv6 tab has required fields", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-
-      html =
-        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv6"])) |> render_click()
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dhcpv6")
 
       assert html =~ ~s(dhcpv6_query[message_type])
       assert html =~ ~s(dhcpv6_query[duid])
@@ -135,7 +105,7 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
 
   describe "query history" do
     test "history starts empty", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dns")
 
       # History should be empty initially
       assert html =~ "Query History"
@@ -147,27 +117,22 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
   # ============================================================================
 
   describe "atom safety guards" do
-    test "select_tab with invalid tab name is silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      html = render_click(view, "select_tab", %{"tab" => "nonexistent_evil_tab"})
-      # Should still show DNS tab (the default), no crash
-      assert html =~ "Service Diagnostics"
-      assert html =~ "Domain Name"
-    end
-
     test "toggle_display_mode with invalid mode is silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "toggle_display_mode", %{"mode" => "evil_mode"})
       # Should still render, no crash
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
-    test "valid tabs still work after guard addition", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-
-      for tab <- ~w(dns mdns dhcpv4 dhcpv6) do
-        html = render_click(view, "select_tab", %{"tab" => tab})
-        assert html =~ "Service Diagnostics"
+    test "all tabs render via direct URL navigation", %{conn: conn} do
+      for {tab, title} <- [
+            {"dns", "DNS Diagnostics"},
+            {"mdns", "mDNS Diagnostics"},
+            {"dhcpv4", "DHCPv4 Diagnostics"},
+            {"dhcpv6", "DHCPv6 Diagnostics"}
+          ] do
+        {:ok, _view, html} = live(conn, "/tool/diagnostics/#{tab}")
+        assert html =~ title
       end
     end
   end

@@ -125,6 +125,10 @@ defmodule YellowDog.Resolved.Cache do
 
   @impl true
   def init(config) do
+    for t <- [@table, @stats_table, @lru_table] do
+      try do: :ets.delete(t), catch: (_, _ -> :ok)
+    end
+
     table = :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
     stats = :ets.new(@stats_table, [:named_table, :set, :public])
     :ets.new(@lru_table, [:named_table, :ordered_set, :public])

@@ -142,7 +142,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
         </div>
 
         <div :if={@pending != [] && MapSet.size(@selected) > 0} class="flex gap-2 items-center">
-          <span class="text-sm text-base-content/70">
+          <span class="text-sm text-on-surface-variant">
             {MapSet.size(@selected)} selected
           </span>
           <button
@@ -169,11 +169,11 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
           <button class="btn btn-xs btn-ghost" phx-click="select_none">Select None</button>
         </div>
 
-        <div :if={@pending == []} class="text-center py-12 text-base-content/50">
+        <div :if={@pending == []} class="text-center py-12 text-on-surface-variant">
           No pending approvals
         </div>
 
-        <div :for={host <- @pending} class="card bg-base-100 shadow">
+        <div :for={host <- @pending} class="card bg-surface shadow">
           <div class="card-body">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
@@ -186,7 +186,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                 />
                 <div>
                   <h3 class="font-bold text-lg">{host.hostname}</h3>
-                  <p class="text-sm text-base-content/70">
+                  <p class="text-sm text-on-surface-variant">
                     Trust: <span class="badge badge-outline badge-sm">{host.trust_level}</span>
                     via {host.trust_provider}
                   </p>
@@ -207,26 +207,26 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                 >
                   Reject
                 </button>
-                <.link navigate={~p"/identity/hosts/#{host.id}"} class="btn btn-sm btn-ghost">
+                <.link navigate={~p"/server/identity/hosts/#{host.id}"} class="btn btn-sm btn-ghost">
                   Details
                 </.link>
               </div>
             </div>
             <div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
               <div>
-                <span class="text-base-content/50">Fingerprint:</span>
+                <span class="text-on-surface-variant">Fingerprint:</span>
                 <span class="font-mono text-xs">{host.key_fingerprint}</span>
               </div>
               <div>
-                <span class="text-base-content/50">Role:</span>
+                <span class="text-on-surface-variant">Role:</span>
                 {host.role || "-"}
               </div>
               <div>
-                <span class="text-base-content/50">Datacenter:</span>
+                <span class="text-on-surface-variant">Datacenter:</span>
                 {host.datacenter || "-"}
               </div>
               <div>
-                <span class="text-base-content/50">Registered:</span>
+                <span class="text-on-surface-variant">Registered:</span>
                 {format_time(host.created_at)}
               </div>
             </div>

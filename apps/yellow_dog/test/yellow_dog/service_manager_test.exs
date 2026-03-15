@@ -337,8 +337,8 @@ defmodule YellowDog.ServiceManagerTest do
           :exit, _ -> {:error, :supervisor_not_running}
         end
 
-      # Either succeeds, or fails due to supervisor not running
-      assert result in [:ok, {:error, :supervisor_not_running}]
+      # Either succeeds, or fails due to supervisor not running or module not available in release
+      assert result in [:ok, {:error, :supervisor_not_running}, {:error, :module_not_available}]
     end
 
     test "stop_service accepts valid service atoms" do

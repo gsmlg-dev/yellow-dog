@@ -81,6 +81,8 @@ defmodule YellowDog.Console do
     quote do
       # HTML escaping functionality
       import Phoenix.HTML
+      # Duskmoon UI components
+      use PhoenixDuskmoon.Component
       # Core UI components and translation
       import YellowDog.Console.CoreComponents
       import YellowDog.Console.Gettext

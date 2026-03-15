@@ -1,12 +1,11 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="mDNS" />
-    
-<!-- Header -->
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Network Discovery</h1>
-        <p class="mt-2 text-base-content/60">
+        <p class="mt-2 text-on-surface-variant">
           Browse mDNS services discovered on your local network
         </p>
       </div>
@@ -17,21 +16,7 @@
         class="btn btn-outline btn-sm"
         aria-label="Export CSV"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-          />
-        </svg>
-        Export CSV
+        <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
       </button>
     </div>
     <!-- Search and Filter -->
@@ -45,14 +30,14 @@
           value={@search}
           placeholder="Search services by name or type..."
           aria-label="Search discovered services"
-          class="input input-bordered w-full"
+          class="input w-full"
         />
       </div>
       <select
         phx-change="filter_by_type"
         aria-label="Filter by service type"
         name="type"
-        class="select select-bordered"
+        class="select"
       >
         <option value="all">All Types</option>
         <option :for={type <- get_service_types(@services)} value={type}>
@@ -61,46 +46,42 @@
       </select>
     </div>
     <!-- Statistics Bar -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Total Services</p>
-        <p class="mt-1 text-2xl font-semibold">{length(@services)}</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Total Services</h2>
+          <div class="text-2xl font-semibold">{length(@services)}</div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Service Types</p>
-        <p class="mt-1 text-2xl font-semibold">
-          {length(get_service_types(@services))}
-        </p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Service Types</h2>
+          <div class="text-2xl font-semibold">
+            {length(get_service_types(@services))}
+          </div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Active Hosts</p>
-        <p class="mt-1 text-2xl font-semibold">{count_unique_hosts(@services)}</p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Active Hosts</h2>
+          <div class="text-2xl font-semibold">{count_unique_hosts(@services)}</div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Last Updated</p>
-        <p class="mt-1 text-sm font-semibold">
-          {format_expiration(get_most_recent_update(@services))}
-        </p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Last Updated</h2>
+          <div class="text-sm font-semibold">
+            {format_expiration(get_most_recent_update(@services))}
+          </div>
+        </div>
       </div>
     </div>
     <!-- Services Grid -->
     <%= if Enum.empty?(@services) do %>
-      <div class="card bg-base-100 shadow-sm p-12 text-center">
-        <svg
-          class="mx-auto h-12 w-12 text-base-content/30"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
+      <div class="card bg-surface shadow-sm p-12 text-center">
+        <.dm_mdi name="magnify" class="mx-auto h-12 w-12 text-on-surface-variant" />
         <h3 class="mt-2 text-sm font-medium">No services discovered</h3>
-        <p class="mt-1 text-sm text-base-content/50">
+        <p class="mt-1 text-sm text-on-surface-variant">
           Waiting for mDNS services to appear on your local network...
         </p>
       </div>
@@ -108,7 +89,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
           :for={service <- @services}
-          class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+          class="card bg-surface shadow-sm hover:shadow-md transition-shadow cursor-pointer"
           phx-click="view_details"
           phx-keydown="view_details"
           phx-key="Enter"
@@ -121,7 +102,7 @@
             <div class="flex items-start justify-between">
               <div class="flex-1">
                 <h3 class="text-lg font-medium truncate">{service.name}</h3>
-                <p class="mt-1 text-sm text-base-content/60">{service.type}</p>
+                <p class="mt-1 text-sm text-on-surface-variant">{service.type}</p>
               </div>
               <div class="ml-2 flex-shrink-0">
                 <span class="badge badge-success badge-sm">Active</span>
@@ -131,58 +112,22 @@
             <div class="mt-4 space-y-2">
               <%= if service.host do %>
                 <div class="flex items-center text-sm">
-                  <svg
-                    class="w-4 h-4 mr-2 text-base-content/40"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
-                    />
-                  </svg>
-                  <span class="text-base-content/70 truncate">{service.host}</span>
+                  <.dm_mdi name="server-network" class="w-4 h-4 mr-2 text-on-surface-variant" />
+                  <span class="text-on-surface-variant truncate">{service.host}</span>
                 </div>
               <% end %>
 
               <%= if service.port do %>
                 <div class="flex items-center text-sm">
-                  <svg
-                    class="w-4 h-4 mr-2 text-base-content/40"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <span class="text-base-content/70">Port {service.port}</span>
+                  <.dm_mdi name="flash" class="w-4 h-4 mr-2 text-on-surface-variant" />
+                  <span class="text-on-surface-variant">Port {service.port}</span>
                 </div>
               <% end %>
 
               <%= if service.addresses && service.addresses != [] do %>
                 <div class="flex items-center text-sm">
-                  <svg
-                    class="w-4 h-4 mr-2 text-base-content/40"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span class="text-base-content/70 truncate">{hd(service.addresses)}</span>
+                  <.dm_mdi name="web" class="w-4 h-4 mr-2 text-on-surface-variant" />
+                  <span class="text-on-surface-variant truncate">{hd(service.addresses)}</span>
                 </div>
               <% end %>
             </div>
@@ -205,7 +150,7 @@
               </div>
             <% end %>
 
-            <div class="mt-4 text-xs text-base-content/40">
+            <div class="mt-4 text-xs text-on-surface-variant">
               Last seen {format_time_ago(service.last_seen)}
             </div>
           </div>
@@ -215,7 +160,7 @@
     <!-- Service Details Modal -->
     <%= if @selected_service do %>
       <div
-        class="modal modal-open"
+        class="dialog-backdrop dialog-backdrop-show"
         role="dialog"
         aria-modal="true"
         aria-label="Service details"
@@ -223,12 +168,12 @@
         phx-key="Escape"
       >
         <div
-          class="modal-backdrop"
+          class="dialog-backdrop"
           phx-click="close_details"
           aria-hidden="true"
         >
         </div>
-        <div class="modal-box max-w-3xl">
+        <div class="dialog dialog-md max-w-3xl">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold">{@selected_service.name}</h3>
             <button
@@ -237,14 +182,7 @@
               class="btn btn-sm btn-circle btn-ghost"
               aria-label="Close"
             >
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <.dm_mdi name="close" class="h-5 w-5" />
             </button>
           </div>
 
@@ -254,25 +192,25 @@
               <h4 class="text-sm font-medium mb-4">Basic Information</h4>
               <dl class="grid grid-cols-2 gap-4">
                 <div>
-                  <dt class="text-sm text-base-content/60">Service Type</dt>
+                  <dt class="text-sm text-on-surface-variant">Service Type</dt>
                   <dd class="mt-1 text-sm font-medium">
                     {@selected_service.type}
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-sm text-base-content/60">Port</dt>
+                  <dt class="text-sm text-on-surface-variant">Port</dt>
                   <dd class="mt-1 text-sm font-medium">
                     {@selected_service.port}
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-sm text-base-content/60">Hostname</dt>
+                  <dt class="text-sm text-on-surface-variant">Hostname</dt>
                   <dd class="mt-1 text-sm font-medium">
                     {@selected_service.host}
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-sm text-base-content/60">Last Seen</dt>
+                  <dt class="text-sm text-on-surface-variant">Last Seen</dt>
                   <dd class="mt-1 text-sm font-medium">
                     {format_expiration(@selected_service.last_seen)}
                   </dd>
@@ -297,13 +235,13 @@
             <%= if @selected_service.txt && map_size(@selected_service.txt) > 0 do %>
               <div>
                 <h4 class="text-sm font-medium mb-4">TXT Records</h4>
-                <div class="bg-base-200 rounded-lg p-4">
+                <div class="bg-surface-container rounded-lg p-4">
                   <dl class="space-y-2">
                     <div
                       :for={{key, value} <- @selected_service.txt}
                       class="flex justify-between"
                     >
-                      <dt class="text-sm font-medium text-base-content/70">{key}</dt>
+                      <dt class="text-sm font-medium text-on-surface-variant">{key}</dt>
                       <dd class="text-sm">{value}</dd>
                     </div>
                   </dl>
@@ -312,7 +250,7 @@
             <% end %>
           </div>
 
-          <div class="modal-action">
+          <div class="dialog-actions">
             <button
               type="button"
               phx-click="close_details"

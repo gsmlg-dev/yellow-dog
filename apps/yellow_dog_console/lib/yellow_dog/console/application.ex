@@ -20,6 +20,8 @@ defmodule YellowDog.Console.Application do
       YellowDog.Console.LogBroadcaster,
       # Rate limiter for authentication attempts (brute-force protection)
       YellowDog.Console.Plugs.AuthRateLimiter,
+      # Registry for connected remote Netman service instances
+      YellowDog.Console.NetmanRegistry,
       # Note: DHCP LeaseManagers are started by their respective service supervisors
       # (YellowDog.Dhcpv4.Supervisor and YellowDog.Dhcpv6.Supervisor)
       # Do NOT start them here as it causes conflicts when starting services from dashboard

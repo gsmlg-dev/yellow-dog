@@ -92,6 +92,67 @@ jobs:
       - name: Run Credo strict
         run: mix credo --strict
 
+  rust-test:
+    name: Rust Tests (netlink_helper)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/yellow_dog_netman/native/netlink_helper/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('apps/yellow_dog_netman/native/netlink_helper/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run Rust tests
+        working-directory: apps/yellow_dog_netman/native/netlink_helper
+        run: cargo test
+
+      - name: Run Clippy
+        working-directory: apps/yellow_dog_netman/native/netlink_helper
+        run: cargo clippy -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y inotify-tools
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-test-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-test-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Run tests
+        run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration
+
   # NOTE: Dialyzer is disabled in CI due to resource constraints
   # PLT building requires more memory than GitHub free runners provide
   # Run dialyzer locally with: mix dialyzer

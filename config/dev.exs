@@ -32,7 +32,7 @@ import Config
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   # Binding to all interfaces to allow access from other machines.
   # Use `ip: {127, 0, 0, 1}` to bind only to localhost.
-  http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4270")],
+  http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4270")],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
@@ -103,3 +103,9 @@ config :abyss,
 # DHCP client NIF: skip Rust compilation in dev unless cargo is available.
 # In production, remove this config to enable NIF compilation.
 config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native, skip_compilation?: true
+
+# Netman: auto-connect to the local console in dev
+config :yellow_dog_netman, :console,
+  enabled: true,
+  url: "ws://localhost:4270/netman/ws/websocket",
+  token: "dev-token"

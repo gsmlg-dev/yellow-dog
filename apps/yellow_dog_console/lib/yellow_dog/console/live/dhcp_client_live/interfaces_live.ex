@@ -47,118 +47,126 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div>
-        <h1 class="text-4xl font-bold">DHCP Client Interfaces</h1>
-        <p class="mt-2 text-base-content/70">Manage per-interface DHCP client instances</p>
-      </div>
-
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">Configuration</h2>
-          <p class="text-sm text-base-content/70">
-            Interfaces are configured in the TOML config file under [dhcp_client].
-          </p>
-
-          <%= if @config == %{} do %>
-            <div class="alert alert-warning">
-              <span>No DHCP client configuration found.</span>
-            </div>
-          <% else %>
-            <div class="overflow-x-auto">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Interface</th>
-                    <th>Mode</th>
-                    <th>DAD</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <%= for {iface_name, cfg} <- @config do %>
-                    <tr>
-                      <td class="font-mono">{iface_name}</td>
-                      <td>
-                        <span class="badge badge-outline">
-                          {Map.get(cfg, :mode, :standalone)}
-                        </span>
-                      </td>
-                      <td>
-                        <%= if Map.get(cfg, :dad_enabled, true) do %>
-                          <span class="badge badge-success badge-sm">Enabled</span>
-                        <% else %>
-                          <span class="badge badge-ghost badge-sm">Disabled</span>
-                        <% end %>
-                      </td>
-                      <td>
-                        <%= if interface_running?(iface_name, @interfaces) do %>
-                          <span class="badge badge-success">Running</span>
-                        <% else %>
-                          <span class="badge badge-ghost">Stopped</span>
-                        <% end %>
-                      </td>
-                    </tr>
-                  <% end %>
-                </tbody>
-              </table>
-            </div>
-          <% end %>
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <div class="space-y-6">
+        <div>
+          <h1 class="text-4xl font-bold">DHCP Client Interfaces</h1>
+          <p class="mt-2 text-on-surface-variant">Manage per-interface DHCP client instances</p>
         </div>
-      </div>
 
-      <%= for iface <- @interfaces do %>
-        <div class="card bg-base-100 shadow-xl">
+        <div class="card bg-surface shadow-xl">
           <div class="card-body">
-            <div class="flex items-center justify-between">
-              <h2 class="card-title font-mono">{iface.interface}</h2>
-              <span class={"badge #{state_badge(iface.state)}"}>{iface.state}</span>
-            </div>
+            <h2 class="card-title">Configuration</h2>
+            <p class="text-sm text-on-surface-variant">
+              Interfaces are configured in the TOML config file under [dhcp_client].
+            </p>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-              <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">State</div>
-                <div class="text-lg font-bold">{iface.state}</div>
+            <%= if @config == %{} do %>
+              <div class="alert alert-warning">
+                <span>No DHCP client configuration found.</span>
               </div>
-              <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">IP</div>
-                <div class="font-mono">
-                  {if iface.lease, do: format_ip(iface.lease.ip), else: "Pending"}
-                </div>
+            <% else %>
+              <div class="overflow-x-auto">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Interface</th>
+                      <th>Mode</th>
+                      <th>DAD</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for {iface_name, cfg} <- @config do %>
+                      <tr>
+                        <td class="font-mono">{iface_name}</td>
+                        <td>
+                          <span class="badge badge-outline">
+                            {Map.get(cfg, :mode, :standalone)}
+                          </span>
+                        </td>
+                        <td>
+                          <%= if Map.get(cfg, :dad_enabled, true) do %>
+                            <span class="badge badge-success badge-sm">Enabled</span>
+                          <% else %>
+                            <span class="badge badge-ghost badge-sm">Disabled</span>
+                          <% end %>
+                        </td>
+                        <td>
+                          <%= if interface_running?(iface_name, @interfaces) do %>
+                            <span class="badge badge-success">Running</span>
+                          <% else %>
+                            <span class="badge badge-ghost">Stopped</span>
+                          <% end %>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">Server</div>
-                <div class="font-mono text-sm">
-                  {if iface.lease, do: format_ip(iface.lease.server_ip), else: "-"}
-                </div>
-              </div>
-              <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">XID</div>
-                <div class="font-mono text-sm">
-                  {if iface.lease, do: "0x#{Integer.to_string(iface.lease.xid, 16)}", else: "-"}
-                </div>
-              </div>
-              <%= if iface.lease do %>
-                <div>
-                  <div class="text-xs font-semibold text-base-content/50 uppercase">Lease Time</div>
-                  <div class="text-sm">{format_lease_time(iface.lease.lease_time)}</div>
-                </div>
-                <div>
-                  <div class="text-xs font-semibold text-base-content/50 uppercase">Remaining</div>
-                  <div class="text-sm">{format_lease_remaining(iface.lease)}</div>
-                </div>
-                <%= if iface.lease.yellowdog_server do %>
-                  <div>
-                    <div class="text-xs font-semibold text-base-content/50 uppercase">YellowDog</div>
-                    <div><span class="badge badge-success badge-sm">YD Server</span></div>
-                  </div>
-                <% end %>
-              <% end %>
-            </div>
+            <% end %>
           </div>
         </div>
-      <% end %>
-    </div>
+
+        <%= for iface <- @interfaces do %>
+          <div class="card bg-surface shadow-xl">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <h2 class="card-title font-mono">{iface.interface}</h2>
+                <span class={"badge #{state_badge(iface.state)}"}>{iface.state}</span>
+              </div>
+
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div>
+                  <div class="text-xs font-semibold text-on-surface-variant uppercase">State</div>
+                  <div class="text-lg font-bold">{iface.state}</div>
+                </div>
+                <div>
+                  <div class="text-xs font-semibold text-on-surface-variant uppercase">IP</div>
+                  <div class="font-mono">
+                    {if iface.lease, do: format_ip(iface.lease.ip), else: "Pending"}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs font-semibold text-on-surface-variant uppercase">Server</div>
+                  <div class="font-mono text-sm">
+                    {if iface.lease, do: format_ip(iface.lease.server_ip), else: "-"}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs font-semibold text-on-surface-variant uppercase">XID</div>
+                  <div class="font-mono text-sm">
+                    {if iface.lease, do: "0x#{Integer.to_string(iface.lease.xid, 16)}", else: "-"}
+                  </div>
+                </div>
+                <%= if iface.lease do %>
+                  <div>
+                    <div class="text-xs font-semibold text-on-surface-variant uppercase">
+                      Lease Time
+                    </div>
+                    <div class="text-sm">{format_lease_time(iface.lease.lease_time)}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs font-semibold text-on-surface-variant uppercase">
+                      Remaining
+                    </div>
+                    <div class="text-sm">{format_lease_remaining(iface.lease)}</div>
+                  </div>
+                  <%= if iface.lease.yellowdog_server do %>
+                    <div>
+                      <div class="text-xs font-semibold text-on-surface-variant uppercase">
+                        YellowDog
+                      </div>
+                      <div><span class="badge badge-success badge-sm">YD Server</span></div>
+                    </div>
+                  <% end %>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </Layouts.app>
     """
   end
 

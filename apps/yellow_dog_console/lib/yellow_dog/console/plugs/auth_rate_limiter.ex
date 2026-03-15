@@ -176,7 +176,8 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
 
   @impl GenServer
   def init(_opts) do
-    # Create ETS table for tracking attempts
+    # Delete stale table if it exists (e.g. after :kill restart)
+    try do: :ets.delete(@table_name), catch: (_, _ -> :ok)
     :ets.new(@table_name, [:named_table, :public, :set, read_concurrency: true])
 
     # Schedule periodic cleanup

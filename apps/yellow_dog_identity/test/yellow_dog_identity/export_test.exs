@@ -10,6 +10,8 @@ defmodule YellowDogIdentity.ExportTest do
     tmp_dir = Path.join(System.tmp_dir!(), "yd_export_test_#{:erlang.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
 
+    YellowDogIdentity.TestHelper.stop_app_identity()
+
     # Start registry with the default name so Export module can find it
     {:ok, pid} = Registry.start_link(data_dir: tmp_dir)
 

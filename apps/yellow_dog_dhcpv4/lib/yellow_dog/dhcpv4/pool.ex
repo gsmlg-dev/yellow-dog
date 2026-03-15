@@ -339,7 +339,7 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp validate_range_in_subnet({start_ip, end_ip}, {subnet_ip, prefix}) do
     mask = (1 <<< (32 - prefix)) - 1
-    subnet_int = Ipv4Util.to_integer(subnet_ip) &&& ~~~mask
+    subnet_int = Ipv4Util.to_integer(subnet_ip) &&& bnot(mask)
     start_int = Ipv4Util.to_integer(start_ip)
     end_int = Ipv4Util.to_integer(end_ip)
 
@@ -354,7 +354,7 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp validate_reservations(reservations, {subnet_ip, prefix}) do
     mask = (1 <<< (32 - prefix)) - 1
-    subnet_int = Ipv4Util.to_integer(subnet_ip) &&& ~~~mask
+    subnet_int = Ipv4Util.to_integer(subnet_ip) &&& bnot(mask)
     network_end = subnet_int ||| mask
 
     invalid =

@@ -3,14 +3,100 @@
 @source "../js";
 @source "../../lib/yellow_dog/console";
 
-@plugin "daisyui" {
-  themes: dracula --default, abyss --prefersdark;
-}
+@plugin "@duskmoon-dev/core/plugin";
+@import "@duskmoon-dev/core/themes/sunshine";
+@import "@duskmoon-dev/core/themes/moonlight";
+@import "@duskmoon-dev/core/components";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@custom-variant dark (&:where([data-theme=moonlight], [data-theme=moonlight] *));
 
 [data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* App layout: appbar on top, sidebar + main below */
+.yd-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Body area below appbar: sidebar + main content side by side */
+.yd-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Sidebar container — hidden on mobile, shown on lg+ */
+.yd-sidebar {
+  display: none;
+  flex-shrink: 0;
+  width: 20rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-outline-variant);
+}
+
+@media (min-width: 1024px) {
+  .yd-sidebar {
+    display: block;
+  }
+}
+
+/* Mobile sidebar — triggered by JS class on parent .yd-layout */
+.yd-sidebar-open .yd-sidebar {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 1200;
+  border-right: none;
+  box-shadow: var(--shadow-2xl);
+}
+
+@media (min-width: 1024px) {
+  .yd-sidebar-open .yd-sidebar {
+    position: static;
+    box-shadow: none;
+    border-right: 1px solid var(--color-outline-variant);
+  }
+}
+
+/* Sidebar overlay backdrop for mobile */
+.yd-sidebar-overlay {
+  display: none;
+}
+
+.yd-sidebar-open .yd-sidebar .yd-sidebar-overlay {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: rgb(0 0 0 / 0.5);
+  cursor: pointer;
+}
+
+@media (min-width: 1024px) {
+  .yd-sidebar-open .yd-sidebar .yd-sidebar-overlay {
+    display: none;
+  }
+}
+
+/* Navbar appbar — spans full width at top */
+.yd-layout > .navbar {
+  flex-shrink: 0;
+}
+
+/* Active nav menu item in appbar */
+.btn-active {
+  background-color: var(--color-surface-container);
+  color: var(--color-primary);
+}
+
+/* Main content fills remaining width */
+.yd-main {
+  flex: 1;
+}

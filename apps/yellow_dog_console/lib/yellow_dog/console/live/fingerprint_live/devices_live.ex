@@ -10,7 +10,7 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
 
   alias YellowDog.Console.Layouts
 
@@ -26,8 +26,7 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
        page_title: "Device Inventory",
        search_query: "",
        filter_type: "all",
-       filter_vendor: "all",
-       service_running: service_running?(YellowDog.Fingerprint)
+       filter_vendor: "all"
      )
      |> load_devices()}
   end
@@ -37,12 +36,10 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
-        <.service_alert :if={not @service_running} service="Fingerprint" />
-
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Device Inventory</h1>
-            <p class="mt-2 text-base-content/70">
+            <p class="mt-2 text-on-surface-variant">
               Observed network devices identified via DHCP fingerprinting
             </p>
           </div>
@@ -58,41 +55,30 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
           </div>
         </div>
 
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Devices</div>
-            <div class="stat-value text-primary">{length(@all_devices)}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Identified</div>
-            <div class="stat-value text-success">{@identified_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Unknown</div>
-            <div class="stat-value text-warning">{@unknown_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Showing</div>
-            <div class="stat-value text-sm">{length(@filtered_devices)}</div>
-          </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total Devices</div>
+            <div class="text-2xl font-bold text-primary">{length(@all_devices)}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Identified</div>
+            <div class="text-2xl font-bold text-success">{@identified_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Unknown</div>
+            <div class="text-2xl font-bold text-warning">{@unknown_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Showing</div>
+            <div class="text-2xl font-bold">{length(@filtered_devices)}</div>
+          </.card>
         </div>
 
         <.card>
           <div class="flex flex-col md:flex-row gap-4">
             <div class="flex-1">
-              <label class="input input-bordered flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  class="h-4 w-4 opacity-70"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
+              <label class="input flex items-center gap-2">
+                <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
                 <input
                   type="text"
                   class="grow"
@@ -105,7 +91,7 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
               </label>
             </div>
             <select
-              class="select select-bordered"
+              class="select"
               phx-change="filter_type"
               name="type"
               value={@filter_type}
@@ -118,7 +104,7 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
 
         <.card>
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-striped">
               <thead>
                 <tr>
                   <th>MAC Address</th>
@@ -133,13 +119,16 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
               </thead>
               <tbody>
                 <tr :if={@filtered_devices == []}>
-                  <td colspan="8" class="text-center text-base-content/50 py-8">
+                  <td colspan="8" class="text-center text-on-surface-variant py-8">
                     No devices found matching your criteria
                   </td>
                 </tr>
                 <tr :for={device <- @filtered_devices}>
                   <td class="font-mono text-sm">
-                    <.link navigate={"/fingerprint/devices/#{device.mac}"} class="link link-primary">
+                    <.link
+                      navigate={"/system/fingerprint/devices/#{device.mac}"}
+                      class="link link-primary"
+                    >
                       {device.mac}
                     </.link>
                   </td>
@@ -261,7 +250,7 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
 
   defp confidence_color(c) when c >= 80, do: "text-success font-bold"
   defp confidence_color(c) when c >= 50, do: "text-warning"
-  defp confidence_color(_), do: "text-base-content/50"
+  defp confidence_color(_), do: "text-on-surface-variant"
 
   defp build_csv(devices) do
     header = "MAC,IPv4,IPv6,Hostname,Vendor,Profile,Confidence,First Seen,Last Seen,Count\r\n"

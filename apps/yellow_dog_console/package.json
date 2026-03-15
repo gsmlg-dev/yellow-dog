@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "dependencies": {},
-  "devDependencies": {
-    "daisyui": "^5.4.4"
+  "dependencies": {
+    "@duskmoon-dev/core": "^1.11.0",
+    "@duskmoon-dev/elements": "^0.7.0"
   }
 }

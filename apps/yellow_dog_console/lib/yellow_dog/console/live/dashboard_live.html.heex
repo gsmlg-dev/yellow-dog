@@ -4,29 +4,20 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-4xl font-bold">Service Dashboard</h1>
-        <p class="mt-2 text-base-content/70">Monitor and manage your Yellow Dog services</p>
+        <p class="mt-2 text-on-surface-variant">Monitor and manage your Yellow Dog services</p>
       </div>
       <button phx-click="refresh" class="btn btn-ghost btn-circle" aria-label="Refresh">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-6 w-6"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
-        </svg>
+        <.dm_mdi name="refresh" class="h-6 w-6" />
       </button>
     </div>
     <!-- Service Stats Grid -->
-    <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
-      <div :for={service <- @services} class="stat">
-        <div class="stat-figure">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 w-full">
+      <div
+        :for={service <- @services}
+        class="p-4 bg-surface-container rounded-lg flex flex-col gap-1"
+      >
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-on-surface-variant">{service.description}</span>
           <.status_indicator
             status={
               cond do
@@ -38,19 +29,18 @@
             pulse
           />
         </div>
-        <div class="stat-title">{service.description}</div>
-        <div class="stat-value text-2xl">
+        <div class="text-2xl font-bold text-on-surface">
           <span class={
             cond do
               service.status == "Running" -> "text-success"
               service.status == "Error" -> "text-error"
-              true -> "text-base-content/50"
+              true -> "text-on-surface-variant"
             end
           }>
             {service.name}
           </span>
         </div>
-        <div class="stat-desc">
+        <div class="text-xs text-on-surface-variant">
           Port {service.port} · {service.status}
         </div>
       </div>
@@ -77,24 +67,12 @@
                   {service.status}
                 </.badge>
               </h3>
-              <p class="text-sm text-base-content/70 mb-4">
+              <p class="text-sm text-on-surface-variant mb-4">
                 {service.description}
               </p>
               <%= if service.error do %>
                 <div class="alert alert-error text-sm py-2 px-3">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="stroke-current shrink-0 h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  <.dm_mdi name="close-circle-outline" class="stroke-current shrink-0 h-4 w-4" />
                   <span>{service.error}</span>
                 </div>
               <% end %>
@@ -105,12 +83,12 @@
 
           <div class="space-y-2">
             <div class="flex items-center justify-between text-sm">
-              <span class="text-base-content/60">Port</span>
+              <span class="text-on-surface-variant">Port</span>
               <span class="font-mono font-semibold">{service.port}</span>
             </div>
 
             <div class="flex items-center justify-between text-sm">
-              <span class="text-base-content/60">Status</span>
+              <span class="text-on-surface-variant">Status</span>
               <.status_indicator
                 status={
                   cond do
@@ -125,18 +103,18 @@
 
             <%= if service.status == "Running" do %>
               <div class="flex items-center justify-between text-sm">
-                <span class="text-base-content/60">Supervisor PID</span>
+                <span class="text-on-surface-variant">Supervisor PID</span>
                 <span class="font-mono font-semibold text-xs">{service.pid}</span>
               </div>
 
               <div class="flex items-center justify-between text-sm">
-                <span class="text-base-content/60">Memory</span>
+                <span class="text-on-surface-variant">Memory</span>
                 <span class="font-mono font-semibold">{service.memory}</span>
               </div>
 
               <%= if service.uptime do %>
                 <div class="flex items-center justify-between text-sm">
-                  <span class="text-base-content/60">Uptime</span>
+                  <span class="text-on-surface-variant">Uptime</span>
                   <span class="font-mono font-semibold">{service.uptime}</span>
                 </div>
               <% end %>
@@ -163,27 +141,7 @@
                 phx-value-service={service.key}
                 phx-disable-with="Stopping..."
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
-                  />
-                </svg>
-                Stop
+                <.dm_mdi name="stop-circle-outline" class="h-4 w-4" /> Stop
               </button>
             <% else %>
               <button
@@ -192,51 +150,11 @@
                 phx-value-service={service.key}
                 phx-disable-with="Starting..."
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Start
+                <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
               </button>
             <% end %>
-            <.link navigate={"/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-              Configure
+            <.link navigate={"/system/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
+              <.dm_mdi name="cog" class="h-4 w-4" /> Configure
             </.link>
           </:actions>
         </.card>
@@ -246,82 +164,26 @@
         <!-- Quick Actions Card -->
         <.card title="Quick Actions">
           <div class="space-y-2">
-            <.link navigate={~p"/dns"} class="btn btn-outline btn-block justify-start gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-                />
-              </svg>
-              DNS Management
+            <.link navigate={~p"/server/dns"} class="btn btn-outline w-full justify-start gap-2">
+              <.dm_mdi name="web" class="h-5 w-5" /> DNS Management
             </.link>
 
-            <.link navigate={~p"/dhcpv4"} class="btn btn-outline btn-block justify-start gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              DHCPv4 Server
+            <.link
+              navigate={~p"/server/dhcpv4"}
+              class="btn btn-outline w-full justify-start gap-2"
+            >
+              <.dm_mdi name="server-network" class="h-5 w-5" /> DHCPv4 Server
             </.link>
 
-            <.link navigate={~p"/mdns"} class="btn btn-outline btn-block justify-start gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"
-                />
-              </svg>
-              mDNS Discovery
+            <.link navigate={~p"/server/mdns"} class="btn btn-outline w-full justify-start gap-2">
+              <.dm_mdi name="wifi" class="h-5 w-5" /> mDNS Discovery
             </.link>
 
-            <.link navigate={~p"/settings"} class="btn btn-outline btn-block justify-start gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-              Configuration
+            <.link
+              navigate={~p"/system/settings"}
+              class="btn btn-outline w-full justify-start gap-2"
+            >
+              <.dm_mdi name="cog" class="h-5 w-5" /> Configuration
             </.link>
           </div>
         </.card>
@@ -341,7 +203,7 @@
                     else: if(@system_health.memory_pct > 60, do: "warning", else: "info")
                 }
               />
-              <div class="text-xs text-base-content/50 mt-1">
+              <div class="text-xs text-on-surface-variant mt-1">
                 {@system_health.memory_processes} of {@system_health.memory_total}
               </div>
             </div>
@@ -355,7 +217,7 @@
                 value={@system_health.process_pct}
                 color={if @system_health.process_pct > 80, do: "error", else: "success"}
               />
-              <div class="text-xs text-base-content/50 mt-1">
+              <div class="text-xs text-on-surface-variant mt-1">
                 {@system_health.process_count} / {@system_health.process_limit}
               </div>
             </div>

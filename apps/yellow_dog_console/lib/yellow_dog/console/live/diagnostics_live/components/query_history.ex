@@ -24,19 +24,19 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
 
   def render(assigns) do
     ~H"""
-    <div class="collapse collapse-arrow bg-base-200 mt-4">
+    <div class="collapse collapse-arrow bg-surface-container mt-4">
       <input type="checkbox" checked={@visible} phx-click="toggle_history" />
       <div class="collapse-title text-sm font-medium">
         Query History <span class="badge badge-sm badge-neutral ml-2">{length(@history)}</span>
       </div>
       <div class="collapse-content">
         <%= if @history == [] do %>
-          <p class="text-base-content/50 text-sm italic py-2">No queries yet</p>
+          <p class="text-on-surface-variant text-sm italic py-2">No queries yet</p>
         <% else %>
           <div class="space-y-2">
             <%= for entry <- @history do %>
               <div
-                class="flex items-center justify-between p-2 rounded bg-base-100 hover:bg-base-300 cursor-pointer"
+                class="flex items-center justify-between p-2 rounded bg-surface hover:bg-surface-container-high cursor-pointer"
                 phx-click="select_history"
                 phx-value-id={entry.id}
               >
@@ -52,7 +52,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
                     {format_entry_summary(entry, @protocol)}
                   </span>
                 </div>
-                <div class="flex items-center gap-2 text-xs text-base-content/50">
+                <div class="flex items-center gap-2 text-xs text-on-surface-variant">
                   <span>{format_latency(entry.latency_ms)}</span>
                   <span>{format_time(entry.timestamp)}</span>
                 </div>

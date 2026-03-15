@@ -12,7 +12,7 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
   describe "DiagnosticsLive form validation events" do
     test "validate_dns updates DNS form state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
 
       html =
         render_change(view, "validate_dns", %{
@@ -27,12 +27,11 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
           }
         })
 
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
     test "validate_mdns updates mDNS form state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      render_click(view, "select_tab", %{"tab" => "mdns"})
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/mdns")
 
       html =
         render_change(view, "validate_mdns", %{
@@ -43,12 +42,11 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
           }
         })
 
-      assert html =~ "Service Diagnostics"
+      assert html =~ "mDNS Diagnostics"
     end
 
     test "validate_dhcpv4 updates DHCPv4 form state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      render_click(view, "select_tab", %{"tab" => "dhcpv4"})
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dhcpv4")
 
       html =
         render_change(view, "validate_dhcpv4", %{
@@ -61,12 +59,11 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
           }
         })
 
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DHCPv4 Diagnostics"
     end
 
     test "validate_dhcpv6 updates DHCPv6 form state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      render_click(view, "select_tab", %{"tab" => "dhcpv6"})
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dhcpv6")
 
       html =
         render_change(view, "validate_dhcpv6", %{
@@ -80,7 +77,7 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
           }
         })
 
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DHCPv6 Diagnostics"
     end
   end
 
@@ -90,31 +87,31 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
   describe "DiagnosticsLive history and clipboard events" do
     test "toggle_history toggles history visibility", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "toggle_history")
       assert html =~ "Query History"
     end
 
     test "clear_history empties history", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "clear_history")
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
     test "select_history with non-existent ID is ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "select_history", %{"id" => "nonexistent"})
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
     test "copied event shows success flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "copied")
       assert html =~ "Copied to clipboard"
     end
 
     test "copy_failed event shows error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "copy_failed", %{"error" => "Permission denied"})
       assert html =~ "Copy failed: Permission denied"
     end
@@ -126,22 +123,22 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
   describe "DiagnosticsLive display mode" do
     test "toggle to raw mode works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "toggle_display_mode", %{"mode" => "raw"})
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
     test "toggle to struct mode works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       render_click(view, "toggle_display_mode", %{"mode" => "raw"})
       html = render_click(view, "toggle_display_mode", %{"mode" => "struct"})
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
     test "toggle with invalid mode is ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
       html = render_click(view, "toggle_display_mode", %{"mode" => "evil_mode"})
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
   end
 
@@ -151,17 +148,17 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
   describe "DiagnosticsLive DNS form defaults" do
     test "DNS form has default server 127.0.0.1", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dns")
       assert html =~ "127.0.0.1"
     end
 
     test "DNS form has record type select", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dns")
       assert html =~ ~s(dns_query[record_type])
     end
 
     test "DNS form has protocol select", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/diagnostics")
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dns")
       assert html =~ ~s(dns_query[protocol]) or html =~ "udp"
     end
   end
@@ -172,29 +169,29 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
   describe "DiagnosticsLive cross-tab form fields" do
     test "mDNS tab shows default service type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      html = render_click(view, "select_tab", %{"tab" => "mdns"})
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/mdns")
       assert html =~ "_http._tcp.local"
     end
 
     test "DHCPv4 tab shows port warning", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      html = render_click(view, "select_tab", %{"tab" => "dhcpv4"})
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dhcpv4")
       assert html =~ "Port 68 requires root"
     end
 
     test "DHCPv6 tab shows port warning", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      html = render_click(view, "select_tab", %{"tab" => "dhcpv6"})
+      {:ok, _view, html} = live(conn, "/tool/diagnostics/dhcpv6")
       assert html =~ "Port 546 requires root"
     end
 
     test "all tabs render without crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-
-      for tab <- ~w(dns mdns dhcpv4 dhcpv6) do
-        html = render_click(view, "select_tab", %{"tab" => tab})
-        assert html =~ "Service Diagnostics"
+      for {tab, title} <- [
+            {"dns", "DNS Diagnostics"},
+            {"mdns", "mDNS Diagnostics"},
+            {"dhcpv4", "DHCPv4 Diagnostics"},
+            {"dhcpv6", "DHCPv6 Diagnostics"}
+          ] do
+        {:ok, _view, html} = live(conn, "/tool/diagnostics/#{tab}")
+        assert html =~ title
       end
     end
   end
@@ -205,7 +202,7 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
   describe "Diagnostics /diagnostics query submission" do
     test "send_dns_query sets loading state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dns")
 
       render_submit(view, "send_dns_query", %{
         "dns_query" => %{
@@ -221,12 +218,11 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
 
       # After submit, the async query runs — page should not crash
       html = render(view)
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DNS Diagnostics"
     end
 
     test "send_mdns_query submits without crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      render_click(view, "select_tab", %{"tab" => "mdns"})
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/mdns")
 
       render_submit(view, "send_mdns_query", %{
         "mdns_query" => %{
@@ -237,12 +233,11 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
       })
 
       html = render(view)
-      assert html =~ "Service Diagnostics"
+      assert html =~ "mDNS Diagnostics"
     end
 
     test "send_dhcpv4_query submits without crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      render_click(view, "select_tab", %{"tab" => "dhcpv4"})
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dhcpv4")
 
       render_submit(view, "send_dhcpv4_query", %{
         "dhcpv4_query" => %{
@@ -253,12 +248,11 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
       })
 
       html = render(view)
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DHCPv4 Diagnostics"
     end
 
     test "send_dhcpv6_query submits without crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/diagnostics")
-      render_click(view, "select_tab", %{"tab" => "dhcpv6"})
+      {:ok, view, _html} = live(conn, "/tool/diagnostics/dhcpv6")
 
       render_submit(view, "send_dhcpv6_query", %{
         "dhcpv6_query" => %{
@@ -269,7 +263,7 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
       })
 
       html = render(view)
-      assert html =~ "Service Diagnostics"
+      assert html =~ "DHCPv6 Diagnostics"
     end
   end
 end

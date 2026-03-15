@@ -72,11 +72,11 @@ defmodule YellowDog.Console.FormatHelper do
     cond do
       remaining < @seconds_per_hour -> "text-error"
       remaining < @seconds_per_two_hours -> "text-warning"
-      true -> "text-base-content/50"
+      true -> "text-on-surface-variant"
     end
   end
 
-  def expiration_color(_), do: "text-base-content/50"
+  def expiration_color(_), do: "text-on-surface-variant"
 
   @doc "Formats an IPv6 prefix tuple as address/length."
   @spec format_prefix({tuple(), non_neg_integer()}) :: String.t()

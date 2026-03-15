@@ -36,7 +36,7 @@ defmodule YellowDog.Console.LogsLive do
   @available_levels [:debug, :info, :warning, :error]
 
   @level_colors %{
-    debug: "text-base-content/60",
+    debug: "text-on-surface-variant",
     info: "text-info",
     warning: "text-warning",
     error: "text-error"
@@ -69,16 +69,58 @@ defmodule YellowDog.Console.LogsLive do
     yellow_dog_telemetry: "badge-neutral"
   }
 
+  @log_pages [
+    %{
+      path: "/system/logs/realtime",
+      title: "Realtime Logs",
+      description: "Live-streaming system logs from all applications",
+      icon: "pulse",
+      color: "text-success"
+    },
+    %{
+      path: "/system/logs/dns-query",
+      title: "DNS Query Logs",
+      description: "DNS query and response log entries",
+      icon: "web",
+      color: "text-primary"
+    },
+    %{
+      path: "/system/logs/dhcpv4-activity",
+      title: "DHCPv4 Activity",
+      description: "DHCPv4 DORA handshake and lease activity",
+      icon: "server-network",
+      color: "text-secondary"
+    },
+    %{
+      path: "/system/logs/dhcpv6-activity",
+      title: "DHCPv6 Activity",
+      description: "DHCPv6 lease and prefix delegation activity",
+      icon: "server-network",
+      color: "text-info"
+    },
+    %{
+      path: "/system/logs/netboot",
+      title: "Netboot Log",
+      description: "PXE/iPXE boot events and TFTP transfers",
+      icon: "flash",
+      color: "text-warning"
+    },
+    %{
+      path: "/system/logs/identity-audit",
+      title: "Identity Audit",
+      description: "Host registration, approval, and trust events",
+      icon: "key-variant",
+      color: "text-error"
+    }
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
-    end
-
     {:ok,
      assign(socket,
        page_title: "Logs",
-       connected: connected?(socket),
+       live_action: nil,
+       connected: false,
        logs: [],
        pending_logs: [],
        pending_count: 0,
@@ -89,9 +131,27 @@ defmodule YellowDog.Console.LogsLive do
        expanded_log_id: nil,
        available_apps: @available_apps,
        available_levels: @available_levels,
-       max_logs: @max_logs
+       max_logs: @max_logs,
+       log_pages: @log_pages
      )}
   end
+
+  @impl true
+  def handle_params(_params, _uri, socket) do
+    case socket.assigns.live_action do
+      :realtime ->
+        if connected?(socket) and not subscribed?(socket) do
+          Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
+        end
+
+        {:noreply, assign(socket, page_title: "Realtime Logs", connected: connected?(socket))}
+
+      _ ->
+        {:noreply, assign(socket, page_title: "Logs")}
+    end
+  end
+
+  defp subscribed?(socket), do: socket.assigns[:connected] == true
 
   @impl true
   def handle_info({:log_event, level, measurements, metadata}, socket) do
@@ -241,7 +301,7 @@ defmodule YellowDog.Console.LogsLive do
     Enum.take(merged, @max_logs)
   end
 
-  defp level_color(level), do: Map.get(@level_colors, level, "text-base-content")
+  defp level_color(level), do: Map.get(@level_colors, level, "text-on-surface")
 
   defp level_badge(level), do: Map.get(@level_badges, level, "badge-ghost")
 
@@ -293,13 +353,42 @@ defmodule YellowDog.Console.LogsLive do
   defp format_csv_timestamp(_), do: ""
 
   @impl true
+  def render(%{live_action: :index} = assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <div class="space-y-6">
+        <div>
+          <h1 class="text-4xl font-bold">Logs</h1>
+          <p class="mt-2 text-on-surface-variant">
+            View logs and activity across all services
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <.link :for={page <- @log_pages} navigate={page.path} class="group">
+            <.card>
+              <div class="flex items-start gap-3">
+                <.dm_mdi name={page.icon} class={"w-8 h-8 #{page.color}"} />
+                <div>
+                  <div class="font-semibold group-hover:text-primary">{page.title}</div>
+                  <div class="text-sm text-on-surface-variant mt-1">{page.description}</div>
+                </div>
+              </div>
+            </.card>
+          </.link>
+        </div>
+      </div>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-4">
         <%!-- Header --%>
         <div class="flex flex-wrap justify-between items-center gap-4">
-          <h1 class="text-2xl font-bold">Real-time Logs</h1>
+          <h1 class="text-2xl font-bold">Realtime Logs</h1>
 
           <%!-- Stream Controls --%>
           <div class="flex items-center gap-2">
@@ -311,67 +400,19 @@ defmodule YellowDog.Console.LogsLive do
             >
               Export CSV
             </button>
-            <div class="join">
+            <div class="flex">
               <button
                 phx-click="toggle_pause"
-                class={"btn btn-sm join-item " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
+                class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
               >
                 <%= if @paused do %>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                    />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Resume
+                  <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Resume
                 <% else %>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Pause
+                  <.dm_mdi name="pause-circle-outline" class="h-4 w-4" /> Pause
                 <% end %>
               </button>
-              <button phx-click="clear" class="btn btn-sm btn-ghost join-item">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-                Clear
+              <button phx-click="clear" class="btn btn-sm btn-ghost">
+                <.dm_mdi name="delete" class="h-4 w-4" /> Clear
               </button>
             </div>
           </div>
@@ -387,43 +428,31 @@ defmodule YellowDog.Console.LogsLive do
             phx-change="search"
             phx-debounce="300"
             name="search"
-            class="input input-bordered input-sm flex-1"
+            class="input input-sm flex-1"
           />
         </div>
 
         <%!-- Pending Badge --%>
         <%= if @paused and @pending_count > 0 do %>
           <div class="alert alert-warning py-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="stroke-current shrink-0 h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
+            <.dm_mdi name="alert" class="stroke-current shrink-0 h-5 w-5" />
             <span>Paused - {@pending_count} pending log(s)</span>
           </div>
         <% end %>
 
         <%!-- Filters --%>
-        <div class="card bg-base-200">
+        <div class="card bg-surface-container">
           <div class="card-body py-3 px-4">
             <div class="flex flex-wrap gap-4 items-center">
               <%!-- Level Filter --%>
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium">Level:</span>
-                <div class="join">
+                <div class="flex">
                   <%= for level <- @available_levels do %>
                     <button
                       phx-click="set_level"
                       phx-value-level={level}
-                      class={"btn btn-xs join-item " <> if(@min_level == level, do: "btn-primary", else: "btn-ghost")}
+                      class={"btn btn-xs " <> if(@min_level == level, do: "btn-primary", else: "btn-ghost")}
                     >
                       {level}
                     </button>
@@ -452,11 +481,11 @@ defmodule YellowDog.Console.LogsLive do
                     </label>
                   <% end %>
                 </div>
-                <div class="join ml-2">
-                  <button phx-click="select_all_apps" class="btn btn-xs btn-ghost join-item">
+                <div class="flex ml-2">
+                  <button phx-click="select_all_apps" class="btn btn-xs btn-ghost">
                     All
                   </button>
-                  <button phx-click="select_no_apps" class="btn btn-xs btn-ghost join-item">
+                  <button phx-click="select_no_apps" class="btn btn-xs btn-ghost">
                     None
                   </button>
                 </div>
@@ -467,7 +496,7 @@ defmodule YellowDog.Console.LogsLive do
 
         <%!-- Filter Status --%>
         <%= unless Enum.empty?(@selected_apps) do %>
-          <div class="text-sm text-base-content/60">
+          <div class="text-sm text-on-surface-variant">
             Showing: {MapSet.size(@selected_apps)} of {length(@available_apps)} modules
             | Min level: {@min_level}
           </div>
@@ -477,25 +506,12 @@ defmodule YellowDog.Console.LogsLive do
         <div
           id="log-container"
           phx-hook="LogAutoScroll"
-          class="bg-base-200 rounded-lg p-2 font-mono text-sm h-[600px] overflow-y-auto"
+          class="bg-surface-container rounded-lg p-2 font-mono text-sm h-[600px] overflow-y-auto"
         >
           <%= if Enum.empty?(@logs) do %>
-            <div class="flex items-center justify-center h-full text-base-content/50">
+            <div class="flex items-center justify-center h-full text-on-surface-variant">
               <div class="text-center">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-12 w-12 mx-auto mb-2 opacity-50"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
+                <.dm_mdi name="file-document-outline" class="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>Waiting for log events...</p>
                 <p class="text-xs mt-1">Logs will appear here in real-time</p>
               </div>
@@ -503,13 +519,13 @@ defmodule YellowDog.Console.LogsLive do
           <% else %>
             <%= for log <- Enum.reverse(filtered_logs(@logs, @search)) do %>
               <div
-                class={"py-1 px-2 border-b border-base-300 hover:bg-base-300/50 cursor-pointer " <> level_color(log.level)}
+                class={"py-1 px-2 border-b border-outline hover:bg-surface-container-high/50 cursor-pointer " <> level_color(log.level)}
                 phx-click="toggle_expand"
                 phx-value-id={log.id}
               >
                 <%!-- Log Entry Row --%>
                 <div class="flex items-start gap-2">
-                  <span class="text-base-content/50 shrink-0">
+                  <span class="text-on-surface-variant shrink-0">
                     {format_time_ms(log.timestamp)}
                   </span>
                   <span class={"badge badge-xs " <> level_badge(log.level)}>
@@ -523,22 +539,22 @@ defmodule YellowDog.Console.LogsLive do
 
                 <%!-- Expanded Metadata --%>
                 <%= if @expanded_log_id == log.id do %>
-                  <div class="mt-2 ml-4 p-2 bg-base-300 rounded text-xs">
+                  <div class="mt-2 ml-4 p-2 bg-surface-container-high rounded text-xs">
                     <div class="grid grid-cols-2 gap-x-4 gap-y-1">
                       <%= if log.module do %>
-                        <div class="text-base-content/60">Module:</div>
+                        <div class="text-on-surface-variant">Module:</div>
                         <div>{inspect(log.module)}</div>
                       <% end %>
                       <%= if log.function do %>
-                        <div class="text-base-content/60">Function:</div>
+                        <div class="text-on-surface-variant">Function:</div>
                         <div>{log.function}</div>
                       <% end %>
                       <%= if log.line do %>
-                        <div class="text-base-content/60">Line:</div>
+                        <div class="text-on-surface-variant">Line:</div>
                         <div>{log.line}</div>
                       <% end %>
                       <%= for {key, value} <- log.metadata do %>
-                        <div class="text-base-content/60">{key}:</div>
+                        <div class="text-on-surface-variant">{key}:</div>
                         <div class="break-all">{inspect(value)}</div>
                       <% end %>
                     </div>
@@ -550,7 +566,7 @@ defmodule YellowDog.Console.LogsLive do
         </div>
 
         <%!-- Stats Bar --%>
-        <div class="text-xs text-base-content/50 flex justify-between">
+        <div class="text-xs text-on-surface-variant flex justify-between">
           <span>
             Showing {length(filtered_logs(@logs, @search))} of {length(@logs)} log entries (max {@max_logs})
           </span>

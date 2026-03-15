@@ -4,7 +4,7 @@
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-4xl font-bold">DNS Service</h1>
-        <p class="mt-2 text-base-content/70">
+        <p class="mt-2 text-on-surface-variant">
           Domain Name System management
         </p>
       </div>
@@ -20,96 +20,67 @@
           title="Refresh"
           aria-label="Refresh"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <.dm_mdi name="refresh" class="h-5 w-5" />
         </button>
       </div>
     </div>
     
 <!-- Summary Stats -->
-    <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
-      <div class="stat">
-        <div class="stat-figure text-primary">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-            />
-          </svg>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Views</div>
+              <div class="text-2xl font-bold text-primary">{@stats.view_count}</div>
+              <div class="text-xs text-on-surface-variant">Client perspectives</div>
+            </div>
+            <.dm_mdi name="eye" class="w-8 h-8 text-primary" />
+          </div>
         </div>
-        <div class="stat-title">Views</div>
-        <div class="stat-value text-primary">{@stats.view_count}</div>
-        <div class="stat-desc">Client perspectives</div>
       </div>
 
-      <div class="stat">
-        <div class="stat-figure text-success">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-            />
-          </svg>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Total Zones</div>
+              <div class="text-2xl font-bold text-success">{@stats.total_zones}</div>
+              <div class="text-xs text-on-surface-variant">Across all views</div>
+            </div>
+            <.dm_mdi name="folder-outline" class="w-8 h-8 text-success" />
+          </div>
         </div>
-        <div class="stat-title">Total Zones</div>
-        <div class="stat-value text-success">{@stats.total_zones}</div>
-        <div class="stat-desc">Across all views</div>
       </div>
 
-      <div class="stat">
-        <div class="stat-figure text-secondary">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Total Queries</div>
+              <div class="text-2xl font-bold text-secondary">{@stats.total_queries}</div>
+              <div class="text-xs text-on-surface-variant">All time</div>
+            </div>
+            <.dm_mdi name="help-circle-outline" class="w-8 h-8 text-secondary" />
+          </div>
         </div>
-        <div class="stat-title">Total Queries</div>
-        <div class="stat-value text-secondary">{@stats.total_queries}</div>
-        <div class="stat-desc">All time</div>
       </div>
 
-      <div class="stat">
-        <div class="stat-figure text-info">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            />
-          </svg>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Hit Rate</div>
+              <div class="text-2xl font-bold text-info">
+                {calculate_hit_rate(@stats.total_hits, @stats.total_misses)}%
+              </div>
+              <div class="text-xs text-on-surface-variant">
+                {@stats.total_cache} cached entries
+              </div>
+            </div>
+            <.dm_mdi name="flash" class="w-8 h-8 text-info" />
+          </div>
         </div>
-        <div class="stat-title">Hit Rate</div>
-        <div class="stat-value text-info">
-          {calculate_hit_rate(@stats.total_hits, @stats.total_misses)}%
-        </div>
-        <div class="stat-desc">{@stats.total_cache} cached entries</div>
       </div>
     </div>
     
@@ -117,7 +88,7 @@
     <%= if @stats.views != [] do %>
       <.card title="Views Summary">
         <div class="overflow-x-auto">
-          <table class="table table-zebra">
+          <table class="table table-striped">
             <thead>
               <tr>
                 <th scope="col">View Name</th>
@@ -150,29 +121,11 @@
         </div>
       </.card>
     <% else %>
-      <div class="card bg-base-100 shadow-xl">
+      <div class="card bg-surface shadow-xl">
         <div class="card-body text-center py-12">
-          <svg
-            class="mx-auto h-16 w-16 text-base-content/30"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-            />
-          </svg>
+          <.dm_mdi name="eye" class="mx-auto h-16 w-16 text-on-surface-variant" />
           <h3 class="mt-4 text-xl font-semibold">No DNS Views Configured</h3>
-          <p class="mt-2 text-base-content/60">
+          <p class="mt-2 text-on-surface-variant">
             DNS service may not be running or no views have been created yet.
           </p>
         </div>
@@ -208,21 +161,23 @@
         
 <!-- Cache Stats Grid -->
         <div class="grid grid-cols-2 gap-3">
-          <div class="stat bg-base-200 rounded-lg p-4">
-            <div class="stat-title text-xs">Cache Hits</div>
-            <div class="stat-value text-success text-2xl">{@cache_stats.hit_count}</div>
+          <div class="bg-surface-container rounded-lg p-4">
+            <div class="text-sm text-on-surface-variant text-xs">Cache Hits</div>
+            <div class="text-2xl font-bold text-success text-2xl">{@cache_stats.hit_count}</div>
           </div>
-          <div class="stat bg-base-200 rounded-lg p-4">
-            <div class="stat-title text-xs">Cache Misses</div>
-            <div class="stat-value text-error text-2xl">{@cache_stats.miss_count}</div>
+          <div class="bg-surface-container rounded-lg p-4">
+            <div class="text-sm text-on-surface-variant text-xs">Cache Misses</div>
+            <div class="text-2xl font-bold text-error text-2xl">{@cache_stats.miss_count}</div>
           </div>
-          <div class="stat bg-base-200 rounded-lg p-4">
-            <div class="stat-title text-xs">Insertions</div>
-            <div class="stat-value text-info text-2xl">{@cache_stats.insert_count}</div>
+          <div class="bg-surface-container rounded-lg p-4">
+            <div class="text-sm text-on-surface-variant text-xs">Insertions</div>
+            <div class="text-2xl font-bold text-info text-2xl">{@cache_stats.insert_count}</div>
           </div>
-          <div class="stat bg-base-200 rounded-lg p-4">
-            <div class="stat-title text-xs">Evictions</div>
-            <div class="stat-value text-warning text-2xl">{@cache_stats.eviction_count}</div>
+          <div class="bg-surface-container rounded-lg p-4">
+            <div class="text-sm text-on-surface-variant text-xs">Evictions</div>
+            <div class="text-2xl font-bold text-warning text-2xl">
+              {@cache_stats.eviction_count}
+            </div>
           </div>
         </div>
       </div>
@@ -231,34 +186,12 @@
 <!-- Quick Links -->
     <.card title="Quick Actions">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <.link navigate={~p"/dns/views"} class="btn btn-primary btn-lg gap-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-            />
-          </svg>
-          Manage Views
+        <.link navigate={~p"/server/dns/views"} class="btn btn-primary btn-lg gap-2">
+          <.dm_mdi name="eye" class="w-5 h-5" /> Manage Views
         </.link>
 
-        <.link navigate={~p"/dns/acl"} class="btn btn-secondary btn-lg gap-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-            />
-          </svg>
-          Configure ACLs
+        <.link navigate={~p"/server/dns/acl"} class="btn btn-secondary btn-lg gap-2">
+          <.dm_mdi name="shield-check" class="w-5 h-5" /> Configure ACLs
         </.link>
       </div>
     </.card>

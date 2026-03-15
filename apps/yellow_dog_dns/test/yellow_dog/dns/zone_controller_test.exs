@@ -14,18 +14,10 @@ defmodule YellowDog.Dns.ZoneControllerTest do
 
   alias YellowDog.Dns.ZoneController
 
-  # Start required registry before all tests
-  setup_all do
-    case Registry.start_link(keys: :unique, name: YellowDog.Dns.ZoneRegistry) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-    end
-
-    :ok
-  end
-
-  # Start a fresh ZoneController for each test
+  # Start a fresh ZoneRegistry and ZoneController for each test
   setup do
+    start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry})
+
     name = :"zone_controller_test_#{:rand.uniform(1_000_000)}"
     {:ok, pid} = ZoneController.start_link(name: name)
 

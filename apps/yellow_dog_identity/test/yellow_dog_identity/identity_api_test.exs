@@ -22,6 +22,8 @@ defmodule YellowDogIdentity.IdentityApiTest do
 
     File.mkdir_p!(tmp_dir)
 
+    YellowDogIdentity.TestHelper.stop_app_identity()
+
     {:ok, pid} = Registry.start_link(data_dir: tmp_dir, name: YellowDogIdentity.Registry)
 
     on_exit(fn ->

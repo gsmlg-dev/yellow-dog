@@ -5,6 +5,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv4Tab do
   Provides form fields for DHCPv4 message testing with privileged port warning.
   """
   use Phoenix.Component
+  use PhoenixDuskmoon.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.ResultDisplay
   alias YellowDog.Console.DiagnosticsLive.Components.QueryHistory
@@ -25,38 +26,24 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv4Tab do
     assigns = assign(assigns, :message_types, @message_types)
 
     ~H"""
-    <div class="card bg-base-100 shadow-xl">
+    <div class="card bg-surface shadow-xl">
       <div class="card-body">
         <h2 class="card-title">DHCPv4 Message Testing</h2>
 
         <div class="alert alert-warning mb-4">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="stroke-current shrink-0 h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
+          <.dm_mdi name="alert" class="stroke-current shrink-0 h-6 w-6" />
           <span>Port 68 requires root/administrator privileges</span>
         </div>
 
         <form phx-change="validate_dhcpv4" phx-submit="send_dhcpv4_query">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <%!-- Message Type --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Message Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Message Type</label>
               <select
                 name="dhcpv4_query[message_type]"
                 aria-label="DHCPv4 message type"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <%= for {label, value} <- @message_types do %>
                   <option
@@ -72,61 +59,47 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv4Tab do
             </div>
 
             <%!-- Client MAC --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Client MAC Address</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Client MAC Address</label>
               <input
                 type="text"
                 name="dhcpv4_query[client_mac]"
                 value={@tab.form[:client_mac] || @tab.form["client_mac"] || ""}
                 placeholder="Auto-generate"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">Format: xx:xx:xx:xx:xx:xx (leave empty for auto)</span>
-              </label>
+              <span class="helper-text">Format: xx:xx:xx:xx:xx:xx (leave empty for auto)</span>
             </div>
 
             <%!-- Transaction ID --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Transaction ID</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Transaction ID</label>
               <input
                 type="text"
                 name="dhcpv4_query[transaction_id]"
                 value={@tab.form[:transaction_id] || @tab.form["transaction_id"] || ""}
                 placeholder="Auto-generate"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">Hex string (leave empty for auto)</span>
-              </label>
+              <span class="helper-text">Hex string (leave empty for auto)</span>
             </div>
 
             <%!-- Requested Options --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Requested Options</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Requested Options</label>
               <input
                 type="text"
                 name="dhcpv4_query[requested_options]"
                 value={@tab.form[:requested_options] || @tab.form["requested_options"] || "1,3,6,15"}
                 placeholder="1,3,6,15"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">Comma-separated option codes</span>
-              </label>
+              <span class="helper-text">Comma-separated option codes</span>
             </div>
 
             <%!-- Timeout --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Timeout (ms)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Timeout (ms)</label>
               <input
                 type="number"
                 name="dhcpv4_query[timeout]"
@@ -134,7 +107,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv4Tab do
                 placeholder="10000"
                 min="1000"
                 max="60000"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
             </div>
           </div>
@@ -147,7 +120,12 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv4Tab do
               phx-disable-with="Sending..."
             >
               <%= if @tab.loading do %>
-                <span class="loading loading-spinner loading-sm"></span> Sending...
+                <span
+                  class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+                  role="status"
+                >
+                </span>
+                Sending...
               <% else %>
                 Send Message
               <% end %>

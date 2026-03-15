@@ -35,36 +35,32 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
     assigns = assign(assigns, :protocols, @protocols)
 
     ~H"""
-    <div class="card bg-base-100 shadow-xl">
+    <div class="card bg-surface shadow-xl">
       <div class="card-body">
         <h2 class="card-title">DNS Query</h2>
 
         <form phx-change="validate_dns" phx-submit="send_dns_query">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <%!-- Query Name --%>
-            <div class="form-control md:col-span-2">
-              <label class="label">
-                <span class="label-text">Domain Name</span>
-              </label>
+            <div class="form-group md:col-span-2">
+              <label class="form-label">Domain Name</label>
               <input
                 type="text"
                 name="dns_query[query_name]"
                 value={@tab.form[:query_name] || @tab.form["query_name"]}
                 placeholder="example.com"
-                class="input input-bordered w-full"
+                class="input w-full"
                 required
               />
             </div>
 
             <%!-- Record Type --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Record Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Record Type</label>
               <select
                 name="dns_query[record_type]"
                 aria-label="DNS record type"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <%= for {label, value} <- @record_types do %>
                   <option
@@ -78,14 +74,12 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
             </div>
 
             <%!-- Protocol --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Protocol</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Protocol</label>
               <select
                 name="dns_query[protocol]"
                 aria-label="DNS protocol"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <%= for {label, value} <- @protocols do %>
                   <option
@@ -99,24 +93,20 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
             </div>
 
             <%!-- Server --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">DNS Server</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">DNS Server</label>
               <input
                 type="text"
                 name="dns_query[server]"
                 value={@tab.form[:server] || @tab.form["server"] || "127.0.0.1"}
                 placeholder="127.0.0.1"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
             </div>
 
             <%!-- Port --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Port</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Port</label>
               <input
                 type="number"
                 name="dns_query[port]"
@@ -124,14 +114,14 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
                 placeholder="53"
                 min="1"
                 max="65535"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
             </div>
 
             <%!-- Recursion Desired --%>
-            <div class="form-control">
-              <label class="label cursor-pointer">
-                <span class="label-text">Recursion Desired</span>
+            <div class="form-group">
+              <label class="form-label cursor-pointer">
+                Recursion Desired
                 <input
                   type="checkbox"
                   name="dns_query[recursion_desired]"
@@ -146,10 +136,8 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
             </div>
 
             <%!-- Timeout --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Timeout (ms)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Timeout (ms)</label>
               <input
                 type="number"
                 name="dns_query[timeout]"
@@ -157,7 +145,7 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
                 placeholder="5000"
                 min="1000"
                 max="30000"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
             </div>
           </div>
@@ -170,7 +158,12 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
               phx-disable-with="Sending..."
             >
               <%= if @tab.loading do %>
-                <span class="loading loading-spinner loading-sm"></span> Sending...
+                <span
+                  class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+                  role="status"
+                >
+                </span>
+                Sending...
               <% else %>
                 Send Query
               <% end %>

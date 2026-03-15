@@ -51,42 +51,42 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>TFTP Server</li>
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot TFTP" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot TFTP" navigate="/system/settings" />
 
         <div>
           <h1 class="text-4xl font-bold">TFTP Server</h1>
-          <p class="mt-2 text-base-content/70">
+          <p class="mt-2 text-on-surface-variant">
             Boot file serving via TFTP protocol
           </p>
         </div>
 
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Status</div>
-            <div :if={@status.running} class="stat-value text-success">Running</div>
-            <div :if={!@status.running} class="stat-value text-error">Stopped</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Port</div>
-            <div class="stat-value font-mono">{@status.port}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Files Indexed</div>
-            <div class="stat-value">{@status.file_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Active Transfers</div>
-            <div class="stat-value">{@status.active_transfers}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Total Size</div>
-            <div class="stat-value text-sm">{format_size(@total_file_size)}</div>
-          </div>
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Status</div>
+            <div :if={@status.running} class="text-2xl font-bold text-success">Running</div>
+            <div :if={!@status.running} class="text-2xl font-bold text-error">Stopped</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Port</div>
+            <div class="text-2xl font-bold font-mono">{@status.port}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Files Indexed</div>
+            <div class="text-2xl font-bold">{@status.file_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Active Transfers</div>
+            <div class="text-2xl font-bold">{@status.active_transfers}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total Size</div>
+            <div class="text-2xl font-bold">{format_size(@total_file_size)}</div>
+          </.card>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -94,11 +94,11 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             <h2 class="card-title mb-4">Configuration</h2>
             <div class="space-y-2">
               <div class="flex justify-between">
-                <span class="text-base-content/70">Root Directory</span>
+                <span class="text-on-surface-variant">Root Directory</span>
                 <span class="font-mono text-sm">{@status.root_dir}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-base-content/70">Listen Port</span>
+                <span class="text-on-surface-variant">Listen Port</span>
                 <span class="font-mono">{@status.port}</span>
               </div>
             </div>
@@ -112,28 +112,26 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
           <.card>
             <h2 class="card-title mb-4">Upload Boot Assets</h2>
             <.form for={%{}} phx-change="validate_upload" phx-submit="save_upload" class="space-y-3">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Target Directory (relative to TFTP root)</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label">Target Directory (relative to TFTP root)</label>
                 <input
                   type="text"
                   name="upload_path"
                   value={@upload_path}
                   placeholder="e.g. nixos/ or rescue/"
-                  class="input input-bordered input-sm w-full font-mono"
+                  class="input input-sm w-full font-mono"
                 />
               </div>
 
               <div
-                class="border-2 border-dashed border-base-300 rounded-lg p-4 text-center"
+                class="border-2 border-dashed border-outline rounded-lg p-4 text-center"
                 phx-drop-target={@uploads.boot_asset.ref}
               >
                 <.live_file_input
                   upload={@uploads.boot_asset}
-                  class="file-input file-input-bordered file-input-sm w-full"
+                  class="file-input file-input-sm w-full"
                 />
-                <p class="text-xs text-base-content/50 mt-1">
+                <p class="text-xs text-on-surface-variant mt-1">
                   Max 500 MB per file, up to 5 files
                 </p>
               </div>
@@ -141,7 +139,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
               <%= for entry <- @uploads.boot_asset.entries do %>
                 <div class="flex items-center gap-2 text-sm">
                   <span class="font-mono flex-1 truncate">{entry.client_name}</span>
-                  <span class="text-base-content/50">{format_size(entry.client_size)}</span>
+                  <span class="text-on-surface-variant">{format_size(entry.client_size)}</span>
                   <progress class="progress progress-primary w-20" value={entry.progress} max="100" />
                   <button
                     type="button"
@@ -160,7 +158,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
               <button
                 type="submit"
-                class={["btn btn-primary btn-sm", @uploads.boot_asset.entries == [] && "btn-disabled"]}
+                class="btn btn-primary btn-sm"
                 disabled={@uploads.boot_asset.entries == []}
                 phx-disable-with="Uploading..."
               >
@@ -172,7 +170,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
         <.card>
           <h2 class="card-title mb-4">Active Transfers</h2>
-          <div :if={@active_transfers_map == %{}} class="text-base-content/50">
+          <div :if={@active_transfers_map == %{}} class="text-on-surface-variant">
             No active transfers
           </div>
           <div :if={@active_transfers_map != %{}} class="overflow-x-auto">
@@ -203,7 +201,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             <div class="flex items-center gap-2">
               <input
                 type="text"
-                class="input input-bordered input-sm w-64"
+                class="input input-sm w-64"
                 placeholder="Filter by client or file..."
                 value={@history_filter}
                 phx-change="filter_history"
@@ -229,7 +227,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
                 @history_sort_dir
               ) == []
             }
-            class="text-base-content/50"
+            class="text-on-surface-variant"
           >
             No transfer history
           </div>
@@ -244,7 +242,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             }
             class="overflow-x-auto"
           >
-            <table class="table table-sm table-zebra">
+            <table class="table table-sm table-striped">
               <thead>
                 <tr>
                   <.history_sort_header
@@ -335,7 +333,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
               Export CSV
             </button>
           </div>
-          <div :if={@file_tree == []} class="text-base-content/50 text-center py-4">
+          <div :if={@file_tree == []} class="text-on-surface-variant text-center py-4">
             <p>No files found in TFTP root</p>
             <p class="text-sm mt-1">
               Upload boot assets using the form above or place files in the TFTP root directory
@@ -346,7 +344,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
           </div>
         </.card>
 
-        <div class="text-xs text-base-content/50 flex justify-end">
+        <div class="text-xs text-on-surface-variant flex justify-end">
           <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
@@ -362,7 +360,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
       <summary class="cursor-pointer hover:text-primary py-0.5">
         {@node.name}/
       </summary>
-      <div class="ml-2 border-l border-base-300 pl-2">
+      <div class="ml-2 border-l border-outline pl-2">
         <.file_tree_node :for={child <- @node.children} node={child} />
       </div>
     </details>
@@ -374,7 +372,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     <div class="ml-2 py-0.5 flex justify-between items-center">
       <span class="font-mono">{@node.name}</span>
       <span class="flex items-center gap-2">
-        <span class="text-base-content/50">{format_size(@node.size)}</span>
+        <span class="text-on-surface-variant">{format_size(@node.size)}</span>
         <button
           phx-click="delete_file"
           phx-value-path={@node.path}
@@ -635,7 +633,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     <th
       phx-click="sort_history"
       phx-value-field={@field}
-      class="cursor-pointer select-none hover:bg-base-200"
+      class="cursor-pointer select-none hover:bg-surface-container"
     >
       <div class="flex items-center gap-1">
         {@label}

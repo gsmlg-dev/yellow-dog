@@ -1,16 +1,10 @@
 defmodule YellowDog.Console.CoreComponents do
   @moduledoc """
-  Provides core UI components.
-
-  The components in this module use Tailwind CSS, a utility-first CSS framework.
-  See the [Tailwind CSS documentation](https://tailwindcss.com) to learn how to
-  customize the generated components in this file.
+  Provides core UI components built on @duskmoon-dev/core CSS classes.
   """
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
-
-  # Note: modal function removed for now - can be added later when needed
 
   ## JS Commands
 
@@ -39,16 +33,6 @@ defmodule YellowDog.Console.CoreComponents do
   Translates an error message using gettext.
   """
   def translate_error({msg, opts}) do
-    # When using gettext, we typically pass the strings we want
-    # to translate as a static argument:
-    #
-    #     # Translate "is invalid" in the "errors" domain
-    #     dgettext("errors", "is invalid")
-    #
-    # However the error messages in our forms and APIs are generated
-    # dynamically, so we need to translate them by calling Gettext
-    # with our gettext backend as first argument. Translations are
-    # available in the errors.po file (as we use the "errors" domain).
     if count = opts[:count] do
       Gettext.dngettext(YellowDog.Console.Gettext, "errors", msg, msg, count, opts)
     else
@@ -62,10 +46,6 @@ defmodule YellowDog.Console.CoreComponents do
 
   @doc """
   Renders validation errors for a form field from a changeset.
-
-  ## Attributes
-  - `changeset` - The changeset containing errors
-  - `field` - The field atom to display errors for
   """
   attr :changeset, :map, required: true
   attr :field, :atom, required: true
@@ -76,19 +56,15 @@ defmodule YellowDog.Console.CoreComponents do
 
     ~H"""
     <%= if @errors != [] do %>
-      <div class="label">
-        <span class="label-text-alt text-error">
-          {translate_error(hd(@errors))}
-        </span>
+      <div class="helper-text text-error">
+        {translate_error(hd(@errors))}
       </div>
     <% end %>
     """
   end
 
   @doc """
-  Returns a DaisyUI badge color for a DHCP lease state.
-
-  Used by DHCPv4 and DHCPv6 lease/pool views.
+  Returns a badge color for a DHCP lease state.
   """
   @lease_state_colors %{
     active: "success",
@@ -102,19 +78,18 @@ defmodule YellowDog.Console.CoreComponents do
   def lease_state_color(state), do: Map.get(@lease_state_colors, state, "ghost")
 
   @doc """
-  Returns a DaisyUI text color class for a DHCP lease state.
-  Used in overview/pool pages for state breakdowns.
+  Returns a text color class for a DHCP lease state.
   """
   @spec lease_state_text_color(atom()) :: String.t()
   def lease_state_text_color(state) do
     case lease_state_color(state) do
-      "ghost" -> "text-base-content"
+      "ghost" -> "text-on-surface"
       color -> "text-#{color}"
     end
   end
 
   @doc """
-  Returns a DaisyUI color name for pool utilization percentage.
+  Returns a color name for pool utilization percentage.
   """
   @spec utilization_color(number()) :: String.t()
   def utilization_color(percent) when percent >= 90, do: "error"
@@ -123,35 +98,30 @@ defmodule YellowDog.Console.CoreComponents do
   def utilization_color(_), do: "success"
 
   @doc """
-  Returns a DaisyUI text color class for pool utilization percentage.
+  Returns a text color class for pool utilization percentage.
   """
   @spec utilization_text_color(number()) :: String.t()
   def utilization_text_color(percent), do: "text-#{utilization_color(percent)}"
 
-  @doc "Returns a DaisyUI badge color for a DHCPv6 IA type."
+  @doc "Returns a badge color for a DHCPv6 IA type."
   @ia_type_colors %{ia_na: "primary", ia_ta: "secondary", ia_pd: "accent"}
 
   @spec ia_type_color(atom()) :: String.t()
   def ia_type_color(type), do: Map.get(@ia_type_colors, type, "ghost")
 
-  @doc "Returns a DaisyUI text color class for a DHCPv6 IA type."
+  @doc "Returns a text color class for a DHCPv6 IA type."
   @spec ia_type_text_color(atom()) :: String.t()
   def ia_type_text_color(type) do
     case ia_type_color(type) do
-      "ghost" -> "text-base-content"
+      "ghost" -> "text-on-surface"
       color -> "text-#{color}"
     end
   end
 
-  ## DaisyUI Components
+  ## Components
 
   @doc """
-  Renders a DaisyUI stat card.
-
-  ## Examples
-
-      <.stat title="Total Users" value="4,200" desc="21% more than last month" />
-      <.stat title="Downloads" value="12M" trend="up" trend_value="12%" />
+  Renders a stat card.
   """
   attr :title, :string, required: true
   attr :value, :string, required: true
@@ -162,13 +132,13 @@ defmodule YellowDog.Console.CoreComponents do
 
   def stat(assigns) do
     ~H"""
-    <div class={["stat", @class]}>
-      <div class="stat-title">{@title}</div>
-      <div class="stat-value">{@value}</div>
-      <div :if={@desc} class="stat-desc">{@desc}</div>
+    <div class={["p-4 flex flex-col gap-1", @class]}>
+      <div class="text-sm text-on-surface-variant">{@title}</div>
+      <div class="text-2xl font-bold text-on-surface">{@value}</div>
+      <div :if={@desc} class="text-xs text-on-surface-variant">{@desc}</div>
       <div
         :if={@trend}
-        class={["stat-desc", @trend == "up" && "text-success", @trend == "down" && "text-error"]}
+        class={["text-xs", @trend == "up" && "text-success", @trend == "down" && "text-error"]}
       >
         {@trend_value}
       </div>
@@ -177,13 +147,7 @@ defmodule YellowDog.Console.CoreComponents do
   end
 
   @doc """
-  Renders a DaisyUI badge.
-
-  ## Examples
-
-      <.badge>Default</.badge>
-      <.badge color="primary">Primary</.badge>
-      <.badge color="success" size="lg">Success Large</.badge>
+  Renders a badge.
   """
   attr :color, :string,
     default: nil,
@@ -219,16 +183,7 @@ defmodule YellowDog.Console.CoreComponents do
   end
 
   @doc """
-  Renders a DaisyUI card.
-
-  ## Examples
-
-      <.card title="Card Title">
-        <p>Card content goes here</p>
-        <:actions>
-          <button class="btn btn-primary">Action</button>
-        </:actions>
-      </.card>
+  Renders a card.
   """
   attr :title, :string, default: nil
   attr :image, :string, default: nil
@@ -240,7 +195,7 @@ defmodule YellowDog.Console.CoreComponents do
 
   def card(assigns) do
     ~H"""
-    <div class={["card bg-base-100 shadow-xl", @compact && "card-compact", @class]}>
+    <div class={["card bg-surface-container shadow-xl", @compact && "p-2", @class]}>
       <figure :if={@image}>
         <img src={@image} alt={@title} />
       </figure>
@@ -256,17 +211,7 @@ defmodule YellowDog.Console.CoreComponents do
   end
 
   @doc """
-  Renders a DaisyUI modal.
-
-  ## Examples
-
-      <.modal id="my-modal" title="Modal Title">
-        <p>Modal content</p>
-        <:actions>
-          <button class="btn" phx-click={hide_modal("my-modal")}>Cancel</button>
-          <button class="btn btn-primary">Confirm</button>
-        </:actions>
-      </.modal>
+  Renders a modal dialog.
   """
   attr :id, :string, required: true
   attr :title, :string, default: nil
@@ -280,37 +225,28 @@ defmodule YellowDog.Console.CoreComponents do
     ~H"""
     <div
       id={@id}
-      class={["modal", @show && "modal-open"]}
+      class={["dialog-backdrop", @show && "dialog-backdrop-show"]}
       phx-remove={hide_modal(@id)}
       phx-window-keydown={@on_cancel}
       phx-key="Escape"
     >
-      <div class="modal-box">
-        <h3 :if={@title} class="font-bold text-lg mb-4">{@title}</h3>
-        {render_slot(@inner_block)}
-        <div :if={@actions != []} class="modal-action">
+      <div class="dialog dialog-md">
+        <div :if={@title} class="dialog-header">
+          <h2 class="dialog-title">{@title}</h2>
+        </div>
+        <div class="dialog-body">
+          {render_slot(@inner_block)}
+        </div>
+        <div :if={@actions != []} class="dialog-actions">
           {render_slot(@actions)}
         </div>
-      </div>
-      <div class="modal-backdrop" phx-click={@on_cancel}>
-        <button type="button">close</button>
       </div>
     </div>
     """
   end
 
   @doc """
-  Renders a DaisyUI table.
-
-  ## Examples
-
-      <.table id="users" rows={@users}>
-        <:col :let={user} label="Name"><%= user.name %></:col>
-        <:col :let={user} label="Email"><%= user.email %></:col>
-        <:action :let={user}>
-          <button class="btn btn-sm btn-ghost">Edit</button>
-        </:action>
-      </.table>
+  Renders a data table.
   """
   attr :id, :string, required: true
   attr :rows, :list, required: true
@@ -331,9 +267,8 @@ defmodule YellowDog.Console.CoreComponents do
     <div class="overflow-x-auto">
       <table class={[
         "table",
-        @zebra && "table-zebra",
-        @hover && "hover:table-hover",
-        @pin_rows && "table-pin-rows",
+        @zebra && "table-striped",
+        @hover && "table-hover",
         @class
       ]}>
         <thead>
@@ -343,7 +278,7 @@ defmodule YellowDog.Console.CoreComponents do
           </tr>
         </thead>
         <tbody id={@id}>
-          <tr :for={row <- @rows} class="hover">
+          <tr :for={row <- @rows}>
             <td :for={col <- @col} class={col[:class]}>
               {render_slot(col, row)}
             </td>
@@ -360,12 +295,7 @@ defmodule YellowDog.Console.CoreComponents do
   end
 
   @doc """
-  Renders a DaisyUI loading indicator.
-
-  ## Examples
-
-      <.loading />
-      <.loading type="spinner" size="lg" />
+  Renders a loading indicator.
   """
   attr :type, :string, default: "spinner", values: ["spinner", "dots", "ring", "ball", "bars"]
   attr :size, :string, default: "md", values: ["xs", "sm", "md", "lg"]
@@ -374,25 +304,26 @@ defmodule YellowDog.Console.CoreComponents do
     default: nil,
     values: ["primary", "secondary", "accent", "info", "success", "warning", "error", nil]
 
+  @loading_sizes %{"xs" => "w-4 h-4", "sm" => "w-5 h-5", "md" => "w-8 h-8", "lg" => "w-12 h-12"}
+
   def loading(assigns) do
+    assigns = assign(assigns, :size_class, Map.get(@loading_sizes, assigns.size, "w-8 h-8"))
+
     ~H"""
-    <span class={[
-      "loading",
-      "loading-#{@type}",
-      "loading-#{@size}",
-      @color && "text-#{@color}"
-    ]}>
+    <span
+      class={[
+        "inline-block animate-spin rounded-full border-2 border-current border-t-transparent",
+        @size_class,
+        @color && "text-#{@color}"
+      ]}
+      role="status"
+    >
     </span>
     """
   end
 
   @doc """
-  Renders a DaisyUI progress bar.
-
-  ## Examples
-
-      <.progress value={75} />
-      <.progress value={50} color="success" />
+  Renders a progress bar.
   """
   attr :value, :integer, default: 0
   attr :max, :integer, default: 100
@@ -415,12 +346,7 @@ defmodule YellowDog.Console.CoreComponents do
   end
 
   @doc """
-  Renders a DaisyUI radial progress indicator.
-
-  ## Examples
-
-      <.radial_progress value={70} />
-      <.radial_progress value={85} color="success" size="lg"><%= "85%" %></.radial_progress>
+  Renders a radial progress indicator using SVG.
   """
   attr :value, :integer, required: true
   attr :size, :string, default: "md", values: ["xs", "sm", "md", "lg", "xl"]
@@ -432,32 +358,60 @@ defmodule YellowDog.Console.CoreComponents do
   attr :thickness, :integer, default: 2
   slot :inner_block
 
+  @radial_sizes %{"xs" => 32, "sm" => 48, "md" => 64, "lg" => 80, "xl" => 96}
+
   def radial_progress(assigns) do
+    px = Map.get(@radial_sizes, assigns.size, 64)
+    r = (px - assigns.thickness * 2) / 2
+    circumference = 2 * :math.pi() * r
+    offset = circumference * (1 - assigns.value / 100)
+
     assigns =
-      assign(assigns, :style, "--value:#{assigns.value}; --thickness: #{assigns.thickness}px;")
+      assign(assigns,
+        px: px,
+        r: r,
+        circumference: circumference,
+        offset: offset
+      )
 
     ~H"""
     <div
-      class={[
-        "radial-progress",
-        @size && "radial-progress-#{@size}",
-        @color && "text-#{@color}"
-      ]}
-      style={@style}
+      class={["relative inline-flex items-center justify-center", @color && "text-#{@color}"]}
+      style={"width: #{@px}px; height: #{@px}px"}
       role="progressbar"
+      aria-valuenow={@value}
     >
-      {if @inner_block != [], do: render_slot(@inner_block), else: "#{@value}%"}
+      <svg class="rotate-[-90deg]" width={@px} height={@px}>
+        <circle
+          class="text-surface-container-high"
+          stroke="currentColor"
+          fill="none"
+          stroke-width={@thickness * 2}
+          r={@r}
+          cx={@px / 2}
+          cy={@px / 2}
+        />
+        <circle
+          stroke="currentColor"
+          fill="none"
+          stroke-width={@thickness * 2}
+          stroke-dasharray={@circumference}
+          stroke-dashoffset={@offset}
+          stroke-linecap="round"
+          r={@r}
+          cx={@px / 2}
+          cy={@px / 2}
+        />
+      </svg>
+      <span class="absolute text-xs font-bold">
+        {if @inner_block != [], do: render_slot(@inner_block), else: "#{@value}%"}
+      </span>
     </div>
     """
   end
 
   @doc """
-  Renders a DaisyUI alert/toast.
-
-  ## Examples
-
-      <.toast id="success-toast" type="success">Operation successful!</.toast>
-      <.toast id="error-toast" type="error">Something went wrong</.toast>
+  Renders a toast/alert.
   """
   attr :id, :string, required: true
 
@@ -471,41 +425,6 @@ defmodule YellowDog.Console.CoreComponents do
   def toast(assigns) do
     ~H"""
     <div id={@id} class={["alert", "alert-#{@type}", @class]} role="alert">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-6 w-6 shrink-0 stroke-current"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <path
-          :if={@type == "success"}
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-        <path
-          :if={@type == "error"}
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-        <path
-          :if={@type == "warning"}
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-        />
-        <path
-          :if={@type == "info"}
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-      </svg>
       <span>{render_slot(@inner_block)}</span>
     </div>
     """
@@ -513,11 +432,6 @@ defmodule YellowDog.Console.CoreComponents do
 
   @doc """
   Renders a service status indicator with pulse animation.
-
-  ## Examples
-
-      <.status_indicator status="running" />
-      <.status_indicator status="stopped" label="DNS Service" />
   """
   attr :status, :string, required: true, values: ["running", "stopped", "warning", "unknown"]
   attr :label, :string, default: nil
@@ -537,7 +451,7 @@ defmodule YellowDog.Console.CoreComponents do
           @status == "running" && "bg-success",
           @status == "stopped" && "bg-error",
           @status == "warning" && "bg-warning",
-          @status == "unknown" && "bg-base-300"
+          @status == "unknown" && "bg-outline"
         ]}>
         </span>
       </span>
@@ -550,34 +464,13 @@ defmodule YellowDog.Console.CoreComponents do
 
   @doc """
   Renders a service status alert banner.
-
-  Shows a warning when the backing service is not running, helping users
-  understand why data may be missing.
-
-  ## Examples
-
-      <.service_alert :if={not @service_running} service="DNS" />
-      <.service_alert :if={not @service_running} service="mDNS" navigate="/dashboard" />
   """
   attr :service, :string, required: true
-  attr :navigate, :string, default: "/dashboard"
+  attr :navigate, :string, default: "/server/dashboard"
 
   def service_alert(assigns) do
     ~H"""
     <div class="alert alert-warning" role="alert">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-6 w-6 shrink-0 stroke-current"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-        />
-      </svg>
       <div>
         <h3 class="font-bold">{@service} service is not running</h3>
         <div class="text-sm">
@@ -593,26 +486,18 @@ defmodule YellowDog.Console.CoreComponents do
 
   def show_modal(js \\ %JS{}, id) when is_binary(id) do
     js
-    |> JS.add_class("modal-open", to: "##{id}")
+    |> JS.add_class("dialog-backdrop-show", to: "##{id}")
   end
 
   def hide_modal(js \\ %JS{}, id) do
     js
-    |> JS.remove_class("modal-open", to: "##{id}")
+    |> JS.remove_class("dialog-backdrop-show", to: "##{id}")
   end
 
   ## Formatting helpers
 
   @doc """
   Formats a number with thousand separators.
-
-  ## Examples
-
-      iex> format_number(1234567)
-      "1,234,567"
-
-      iex> format_number(0)
-      "0"
   """
   def format_number(number) when is_integer(number) do
     number |> Integer.to_string() |> String.replace(~r/\B(?=(\d{3})+$)/, ",")

@@ -76,6 +76,7 @@ defmodule YellowDog.Resolved.Counters do
   @impl true
   def init(_opts) do
     :persistent_term.put({__MODULE__, :started_at}, System.monotonic_time(:second))
+    try do: :ets.delete(@table), catch: (_, _ -> :ok)
     table = :ets.new(@table, [:named_table, :set, :public, write_concurrency: true])
 
     :ets.insert(table, [

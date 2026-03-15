@@ -37,6 +37,7 @@ defmodule DNS.MixProject do
 
   defp deps() do
     [
+      {:jason, "~> 1.4", optional: true},
       {:http_fetch, "~> 0.1", runtime: false},
       {:machete, ">= 0.0.0", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},

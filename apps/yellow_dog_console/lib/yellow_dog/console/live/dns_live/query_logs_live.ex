@@ -251,130 +251,76 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
         <%!-- Header --%>
         <div class="flex flex-wrap justify-between items-center gap-4">
           <h1 class="text-2xl font-bold">DNS Query Logs</h1>
-          <div class="join">
+          <div class="flex">
             <button
               phx-click="toggle_pause"
-              class={"btn btn-sm join-item " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
+              class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
             >
               <%= if @paused do %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Resume
+                <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Resume
               <% else %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Pause
+                <.dm_mdi name="pause-circle-outline" class="h-4 w-4" /> Pause
               <% end %>
             </button>
-            <button phx-click="clear" class="btn btn-sm btn-ghost join-item">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-              Clear
+            <button phx-click="clear" class="btn btn-sm btn-ghost">
+              <.dm_mdi name="delete" class="h-4 w-4" /> Clear
             </button>
             <button
               phx-click="export_csv"
-              class="btn btn-sm btn-ghost join-item"
+              class="btn btn-sm btn-ghost"
               id="csv-export"
               phx-hook="CsvDownload"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              Export CSV
+              <.dm_mdi name="download" class="h-4 w-4" /> Export CSV
             </button>
           </div>
         </div>
 
         <%!-- Stats --%>
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Logged</div>
-            <div class="stat-value text-lg">{@stats.total_logged}</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Total Logged</div>
+              <div class="text-2xl font-bold">{@stats.total_logged}</div>
+            </div>
           </div>
-          <div class="stat">
-            <div class="stat-title">Buffer</div>
-            <div class="stat-value text-lg">{@stats.current_entries} / {@stats.buffer_size}</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Buffer</div>
+              <div class="text-2xl font-bold">{@stats.current_entries} / {@stats.buffer_size}</div>
+            </div>
           </div>
-          <div class="stat">
-            <div class="stat-title">Displayed</div>
-            <div class="stat-value text-lg">{length(@entries)}</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Displayed</div>
+              <div class="text-2xl font-bold">{length(@entries)}</div>
+            </div>
           </div>
-          <div class="stat">
-            <div class="stat-title">Logger</div>
-            <div class="stat-value text-lg">
-              <%= if @stats.enabled do %>
-                <span class="text-success">Active</span>
-              <% else %>
-                <span class="text-error">Disabled</span>
-              <% end %>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Logger</div>
+              <div class="text-2xl font-bold">
+                <%= if @stats.enabled do %>
+                  <span class="text-success">Active</span>
+                <% else %>
+                  <span class="text-error">Disabled</span>
+                <% end %>
+              </div>
             </div>
           </div>
         </div>
 
         <%!-- Filters --%>
-        <div class="card bg-base-200">
+        <div class="card bg-surface-container">
           <div class="card-body py-3 px-4">
             <div class="flex flex-wrap gap-4 items-center">
               <%!-- Search --%>
-              <div class="form-control">
+              <div class="form-group">
                 <input
                   type="text"
                   placeholder="Search domain or IP..."
                   aria-label="Search DNS query logs"
-                  class="input input-sm input-bordered w-48"
+                  class="input input-sm w-48"
                   phx-change="search"
                   phx-debounce="300"
                   name="search"
@@ -383,9 +329,9 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
               </div>
 
               <%!-- Response Code Filter --%>
-              <div class="form-control">
+              <div class="form-group">
                 <select
-                  class="select select-sm select-bordered"
+                  class="select select-sm"
                   phx-change="filter_rcode"
                   aria-label="Filter by response code"
                   name="rcode"
@@ -399,9 +345,9 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
               </div>
 
               <%!-- Protocol Filter --%>
-              <div class="form-control">
+              <div class="form-group">
                 <select
-                  class="select select-sm select-bordered"
+                  class="select select-sm"
                   phx-change="filter_protocol"
                   aria-label="Filter by protocol"
                   name="protocol"
@@ -421,10 +367,10 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
         </div>
 
         <%!-- Query Log Table --%>
-        <div class="card bg-base-100 shadow">
+        <div class="card bg-surface shadow">
           <div class="card-body p-0">
             <div class="overflow-x-auto">
-              <table class="table table-zebra table-sm">
+              <table class="table table-striped table-sm">
                 <thead>
                   <tr>
                     <th scope="col">Time</th>
@@ -441,7 +387,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                 <tbody>
                   <%= if Enum.empty?(@entries) do %>
                     <tr>
-                      <td colspan="9" class="text-center text-base-content/50 py-8">
+                      <td colspan="9" class="text-center text-on-surface-variant py-8">
                         No DNS queries recorded yet
                       </td>
                     </tr>
@@ -476,7 +422,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                               {entry.response_code |> to_string() |> String.upcase()}
                             </span>
                           <% else %>
-                            <span class="text-base-content/40">-</span>
+                            <span class="text-on-surface-variant">-</span>
                           <% end %>
                         </td>
                         <td class="text-xs">
@@ -486,7 +432,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                           <%= if entry.cache_hit do %>
                             <span class="badge badge-success badge-xs">HIT</span>
                           <% else %>
-                            <span class="text-base-content/40 text-xs">miss</span>
+                            <span class="text-on-surface-variant text-xs">miss</span>
                           <% end %>
                         </td>
                         <td class="text-xs">{entry.view || "-"}</td>
@@ -500,7 +446,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
         </div>
 
         <%!-- Footer --%>
-        <div class="text-xs text-base-content/50 flex justify-between">
+        <div class="text-xs text-on-surface-variant flex justify-between">
           <span>Showing {length(@entries)} entries</span>
           <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected

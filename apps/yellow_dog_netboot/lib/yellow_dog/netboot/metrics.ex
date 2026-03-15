@@ -21,15 +21,15 @@ defmodule YellowDog.Netboot.Metrics do
 
   @doc "Initialize the metrics table. Called once at app start."
   def init do
-    if :ets.info(@table) == :undefined do
-      :ets.new(@table, [:named_table, :public, :set])
+    :ets.new(@table, [:named_table, :public, :set])
 
-      Enum.each(@counters, fn key ->
-        :ets.insert(@table, {key, 0})
-      end)
-    end
+    Enum.each(@counters, fn key ->
+      :ets.insert(@table, {key, 0})
+    end)
 
     :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   @doc "Increment a counter by the given amount."

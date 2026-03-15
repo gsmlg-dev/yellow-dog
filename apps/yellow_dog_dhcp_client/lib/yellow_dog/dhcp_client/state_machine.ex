@@ -320,7 +320,13 @@ defmodule YellowDog.DhcpClient.StateMachine do
       :telemetry.execute(
         [:yellow_dog, :dhcp_client, :lease, :renewed],
         %{lease_time_s: data.lease.lease_time},
-        %{interface: data.interface, ip: format_ip(data.lease.ip)}
+        %{
+          interface: data.interface,
+          ip: format_ip(data.lease.ip),
+          gateway: format_ip_or_nil(data.lease.router),
+          dns_servers: Enum.map(data.lease.dns_servers, &format_ip/1),
+          domain_name: data.lease.domain_name
+        }
       )
     else
       handshake_ms = System.monotonic_time(:millisecond) - data.start_time
@@ -331,7 +337,10 @@ defmodule YellowDog.DhcpClient.StateMachine do
         %{
           interface: data.interface,
           ip: format_ip(data.lease.ip),
-          server: format_ip(data.lease.server_ip)
+          server: format_ip(data.lease.server_ip),
+          gateway: format_ip_or_nil(data.lease.router),
+          dns_servers: Enum.map(data.lease.dns_servers, &format_ip/1),
+          domain_name: data.lease.domain_name
         }
       )
     end
@@ -844,6 +853,9 @@ defmodule YellowDog.DhcpClient.StateMachine do
   end
 
   defp format_ip(ip), do: to_string(ip)
+
+  defp format_ip_or_nil(nil), do: nil
+  defp format_ip_or_nil(ip), do: format_ip(ip)
 
   defp generate_xid do
     DHCP.SecureRandom.generate_dhcpv4_xid()

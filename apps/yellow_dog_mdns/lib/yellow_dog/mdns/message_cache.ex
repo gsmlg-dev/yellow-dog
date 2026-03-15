@@ -188,10 +188,8 @@ defmodule YellowDog.Mdns.MessageCache do
   # Private helper functions
 
   defp init_table do
-    if :ets.whereis(@table_name) == :undefined do
-      :ets.new(@table_name, @ets_options)
-    end
-
+    try do: :ets.delete(@table_name), catch: (_, _ -> :ok)
+    :ets.new(@table_name, @ets_options)
     :ok
   end
 

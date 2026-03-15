@@ -53,17 +53,17 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>Devices</li>
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/system/settings" />
 
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Netboot Devices</h1>
-            <p class="mt-2 text-base-content/70">
+            <p class="mt-2 text-on-surface-variant">
               PXE boot devices discovered via DHCP and TFTP
             </p>
           </div>
@@ -77,43 +77,32 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </button>
         </div>
 
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Devices</div>
-            <div class="stat-value text-primary">{length(@all_devices)}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Installed</div>
-            <div class="stat-value text-success">{@installed_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Failed</div>
-            <div class="stat-value text-error">{@failed_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Showing</div>
-            <div class="stat-value text-sm">
-              {length(@filtered_devices)}<span class="text-base-content/50 font-normal">/{length(@all_devices)}</span>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total Devices</div>
+            <div class="text-2xl font-bold text-primary">{length(@all_devices)}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Installed</div>
+            <div class="text-2xl font-bold text-success">{@installed_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Failed</div>
+            <div class="text-2xl font-bold text-error">{@failed_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Showing</div>
+            <div class="text-2xl font-bold">
+              {length(@filtered_devices)}<span class="text-on-surface-variant font-normal text-sm">/{length(@all_devices)}</span>
             </div>
-          </div>
+          </.card>
         </div>
 
         <.card>
           <div class="flex flex-col md:flex-row gap-4">
             <div class="flex-1">
-              <label class="input input-bordered flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  class="h-4 w-4 opacity-70"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
+              <label class="input flex items-center gap-2">
+                <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
                 <input
                   type="text"
                   class="grow"
@@ -126,7 +115,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               </label>
             </div>
             <select
-              class="select select-bordered"
+              class="select"
               phx-change="filter_state"
               name="state"
               value={@filter_state}
@@ -135,7 +124,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               <option :for={s <- @available_states} value={s}>{s}</option>
             </select>
             <select
-              class="select select-bordered"
+              class="select"
               phx-change="filter_profile"
               name="profile"
               value={@filter_profile}
@@ -155,7 +144,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
             {MapSet.size(@selected_devices)} device(s) selected
           </span>
           <select
-            class="select select-bordered select-sm"
+            class="select select-sm"
             phx-change="bulk_select_profile"
             name="profile"
           >
@@ -176,7 +165,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               type="text"
               name="tag"
               placeholder="Add tag..."
-              class="input input-bordered input-sm w-32"
+              class="input input-sm w-32"
               value=""
             />
             <button type="submit" class="btn btn-outline btn-sm" phx-disable-with="Tagging...">
@@ -198,7 +187,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
 
         <.card>
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-striped">
               <thead>
                 <tr>
                   <th>
@@ -259,7 +248,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               </thead>
               <tbody>
                 <tr :if={@filtered_devices == []}>
-                  <td colspan="10" class="text-center text-base-content/50 py-8">
+                  <td colspan="10" class="text-center text-on-surface-variant py-8">
                     No devices found
                   </td>
                 </tr>
@@ -274,7 +263,10 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                     />
                   </td>
                   <td class="font-mono text-sm">
-                    <.link navigate={"/netboot/devices/#{device.mac}"} class="link link-primary">
+                    <.link
+                      navigate={"/server/netboot/devices/#{device.mac}"}
+                      class="link link-primary"
+                    >
                       {device.mac}
                     </.link>
                   </td>
@@ -286,7 +278,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                   <td>
                     <.link
                       :if={device.profile_id}
-                      navigate={"/netboot/profiles/#{device.profile_id}/edit"}
+                      navigate={"/server/netboot/profiles/#{device.profile_id}/edit"}
                       class="link link-primary"
                     >
                       {device.profile_id}
@@ -300,7 +292,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                       <.badge :for={tag <- Enum.take(device.tags, 3)} color="ghost" size="sm">
                         {tag}
                       </.badge>
-                      <span :if={length(device.tags) > 3} class="text-xs text-base-content/50">
+                      <span :if={length(device.tags) > 3} class="text-xs text-on-surface-variant">
                         +{length(device.tags) - 3}
                       </span>
                     </div>
@@ -326,7 +318,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                         phx-value-mac={device.mac}
                         class={[
                           "btn btn-ghost btn-xs",
-                          if(device.rescue_mode, do: "text-warning", else: "text-base-content/40")
+                          if(device.rescue_mode, do: "text-warning", else: "text-on-surface-variant")
                         ]}
                         title={
                           if device.rescue_mode,
@@ -349,7 +341,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </div>
         </.card>
 
-        <div class="text-xs text-base-content/50 flex justify-end">
+        <div class="text-xs text-on-surface-variant flex justify-end">
           <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
@@ -364,7 +356,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     <th
       phx-click="sort"
       phx-value-field={@field}
-      class="cursor-pointer select-none hover:bg-base-200"
+      class="cursor-pointer select-none hover:bg-surface-container"
     >
       <div class="flex items-center gap-1">
         {@label}

@@ -37,47 +37,39 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
           class="space-y-4"
         >
           <!-- Enabled Toggle -->
-          <div class="form-control">
+          <div class="form-group">
             <label class="label cursor-pointer justify-start gap-4">
               <input type="hidden" name="service_configuration[enabled]" value="false" />
               <input
                 type="checkbox"
                 name="service_configuration[enabled]"
                 value="true"
-                class="toggle toggle-success"
+                class="switch switch-primary"
                 checked={Ecto.Changeset.get_field(@changeset, :enabled)}
               />
-              <span class="label-text font-medium">Enable DHCPv4 Service</span>
+              <span class="font-medium">Enable DHCPv4 Service</span>
             </label>
             <.input_error changeset={@changeset} field={:enabled} />
           </div>
-          
-    <!-- Listen Address -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Listen Address</span>
-            </label>
+          <!-- Listen Address -->
+          <div class="form-group">
+            <label class="form-label">Listen Address</label>
             <input
               type="text"
               name="service_configuration[listen]"
               value={Ecto.Changeset.get_field(@changeset, :listen)}
               placeholder="0.0.0.0"
               class={[
-                "input input-bordered w-full",
+                "input w-full",
                 Keyword.has_key?(@changeset.errors, :listen) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:listen} />
-            <label class="label">
-              <span class="label-text-alt">IPv4 address to bind DHCPv4 service</span>
-            </label>
+            <span class="helper-text">IPv4 address to bind DHCPv4 service</span>
           </div>
-          
-    <!-- Port -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Port</span>
-            </label>
+          <!-- Port -->
+          <div class="form-group">
+            <label class="form-label">Port</label>
             <input
               type="number"
               name="service_configuration[port]"
@@ -86,19 +78,16 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
               max="65535"
               placeholder="67"
               class={[
-                "input input-bordered w-full",
+                "input w-full",
                 Keyword.has_key?(@changeset.errors, :port) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:port} />
-            <label class="label">
-              <span class="label-text-alt">Default DHCPv4 port is 67 (requires privileges)</span>
-            </label>
+            <span class="helper-text">Default DHCPv4 port is 67 (requires privileges)</span>
           </div>
 
           <div class="divider"></div>
-          
-    <!-- Action Buttons -->
+          <!-- Action Buttons -->
           <div class="flex gap-2 justify-end">
             <%= if @pending_changes do %>
               <button
@@ -107,21 +96,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
                 phx-disable-with="Applying..."
                 class="btn btn-success gap-2"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-                Apply Changes
+                <.dm_mdi name="refresh" class="h-5 w-5" /> Apply Changes
               </button>
             <% end %>
 
@@ -130,52 +105,23 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
               phx-disable-with="Saving..."
               class={[
                 "btn btn-primary gap-2",
-                !@changeset.valid? && "btn-disabled"
+                false
               ]}
               disabled={!@changeset.valid?}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                />
-              </svg>
-              Save Configuration
+              <.dm_mdi name="content-save" class="h-5 w-5" /> Save Configuration
             </button>
           </div>
         </.form>
       </.card>
-      
-    <!-- Address Pools Link -->
+      <!-- Address Pools Link -->
       <.card title="Address Pools">
         <div class="flex items-center justify-between">
-          <p class="text-base-content/70">
+          <p class="text-on-surface-variant">
             Manage DHCPv4 address pools including IP ranges, lease times, and DNS settings.
           </p>
-          <.link navigate="/dhcpv4/pools" class="btn btn-primary gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
-              />
-            </svg>
-            Manage Pools
+          <.link navigate="/server/dhcpv4/pools" class="btn btn-primary gap-2">
+            <.dm_mdi name="server-network" class="h-5 w-5" /> Manage Pools
           </.link>
         </div>
       </.card>

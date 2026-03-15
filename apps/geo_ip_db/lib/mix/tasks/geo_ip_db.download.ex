@@ -84,9 +84,15 @@ defmodule Mix.Tasks.GeoIpDb.Download do
   defp decompress_and_save(compressed, target_path) do
     case :zlib.gunzip(compressed) do
       data when is_binary(data) ->
-        File.write!(target_path, data)
-        Mix.shell().info("Database saved to #{target_path}")
-        :ok
+        case File.write(target_path, data) do
+          :ok ->
+            Mix.shell().info("Database saved to #{target_path}")
+            :ok
+
+          {:error, reason} ->
+            Mix.shell().error("Failed to write database to #{target_path}: #{inspect(reason)}")
+            {:error, {:write_failed, reason}}
+        end
 
       _ ->
         Mix.shell().error("Failed to decompress database")

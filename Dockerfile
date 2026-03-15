@@ -1,18 +1,59 @@
 FROM docker.io/library/elixir:1.19-alpine AS builder
 
-# Install git for fetching hex from GitHub
-RUN apk add --no-cache git
+# Install Rust/Cargo for Rustler NIFs (netlink_helper port binary)
+RUN apk add --no-cache rust cargo
 
-COPY . /app
 WORKDIR /app
 
 ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.1
 
-RUN mix archive.install github hexpm/hex branch latest --force && \
-    mix local.rebar --force && \
-    mix deps.get && \
-    mix release yellow_dog --version "${RELEASE_VERSION}"
+# Install hex and rebar (cached unless base image changes)
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Copy dependency manifests first for better layer caching
+COPY mix.exs mix.lock ./
+COPY apps/abyss/mix.exs apps/abyss/mix.exs
+COPY apps/ex_dhcp/mix.exs apps/ex_dhcp/mix.exs
+COPY apps/ex_dns/mix.exs apps/ex_dns/mix.exs
+COPY apps/geo_ip_db/mix.exs apps/geo_ip_db/mix.exs
+COPY apps/yellow_dog/mix.exs apps/yellow_dog/mix.exs
+COPY apps/yellow_dog_dhcp_client/mix.exs apps/yellow_dog_dhcp_client/mix.exs
+COPY apps/yellow_dog_dhcpv4/mix.exs apps/yellow_dog_dhcpv4/mix.exs
+COPY apps/yellow_dog_dhcpv6/mix.exs apps/yellow_dog_dhcpv6/mix.exs
+COPY apps/yellow_dog_dns/mix.exs apps/yellow_dog_dns/mix.exs
+COPY apps/yellow_dog_fingerprint/mix.exs apps/yellow_dog_fingerprint/mix.exs
+COPY apps/yellow_dog_identity/mix.exs apps/yellow_dog_identity/mix.exs
+COPY apps/yellow_dog_mdns/mix.exs apps/yellow_dog_mdns/mix.exs
+COPY apps/yellow_dog_netboot/mix.exs apps/yellow_dog_netboot/mix.exs
+COPY apps/yellow_dog_netman/mix.exs apps/yellow_dog_netman/mix.exs
+COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
+COPY apps/yellow_dog_telemetry/mix.exs apps/yellow_dog_telemetry/mix.exs
+COPY config config
+
+RUN mix deps.get
+
+# Pre-fetch Rust dependencies for better layer caching
+COPY apps/yellow_dog_netman/native/netlink_helper/Cargo.toml \
+     apps/yellow_dog_netman/native/netlink_helper/Cargo.lock \
+     apps/yellow_dog_netman/native/netlink_helper/
+RUN cd apps/yellow_dog_netman/native/netlink_helper && \
+    mkdir -p src && echo 'fn main() {}' > src/main.rs && \
+    cargo build --release --quiet 2>/dev/null; \
+    rm -rf src target/release/netlink_helper target/release/deps/netlink_helper*
+
+# Copy full source
+COPY . .
+
+# Build Rust netlink_helper port binary for netman
+RUN cd apps/yellow_dog_netman/native/netlink_helper && \
+    cargo build --release --quiet && \
+    mkdir -p ../../priv/native && \
+    cp target/release/netlink_helper ../../priv/native/ && \
+    chmod 755 ../../priv/native/netlink_helper
+
+RUN mix release yellow_dog --version "${RELEASE_VERSION}"
 
 FROM docker.io/library/alpine:3.23
 
@@ -43,16 +84,17 @@ ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
 
 RUN apk add --update --no-cache libncursesw libstdc++ \
-    musl musl-utils musl-locales tzdata inotify-tools && \
+    musl musl-utils musl-locales tzdata inotify-tools iproute2 && \
     mkdir -p /data/yellowdog/dns/zones \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
-             /data/yellowdog/mdns
+             /data/yellowdog/mdns \
+             /etc/yellowdog/netman/profiles \
+             /run/yellowdog
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
 
-EXPOSE 53 67/udp 547/udp 5353/udp 4270
+EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 
 CMD ["/app/bin/yellow_dog", "start"]
-

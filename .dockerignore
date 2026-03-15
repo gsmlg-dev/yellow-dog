@@ -1,0 +1,27 @@
+_build/
+deps/
+.elixir_ls/
+.loki/
+.trees/
+.claude/
+.git/
+cover/
+doc/
+node_modules/
+tmp/
+erl_crash.dump
+*.ez
+*.tar
+*.beam
+
+# Rust build artifacts (re-built inside container)
+apps/*/native/*/target/
+
+# Test artifacts
+apps/*/cover/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumbs text-sm">
       <ul>
-        <li><.link navigate={~p"/dns"}>DNS</.link></li>
-        <li><.link navigate={~p"/dns/views"}>Views</.link></li>
-        <li><.link navigate={~p"/dns/views/#{@view_name}/zones"}>{@view_name}</.link></li>
+        <li><.link navigate={~p"/server/dns"}>DNS</.link></li>
+        <li><.link navigate={~p"/server/dns/views"}>Views</.link></li>
+        <li><.link navigate={~p"/server/dns/views/#{@view_name}/zones"}>{@view_name}</.link></li>
         <li class="font-semibold">{@zone_name}</li>
       </ul>
     </div>
@@ -16,7 +16,7 @@
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Resource Records</h1>
-        <p class="text-sm text-base-content/70">
+        <p class="text-sm text-on-surface-variant">
           Zone: <span class="font-mono font-semibold">{@zone_name}</span>
         </p>
       </div>
@@ -29,15 +29,7 @@
           title="Export CSV"
           aria-label="Export CSV"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-            />
-          </svg>
-          Export CSV
+          <.dm_mdi name="download" class="w-4 h-4" /> Export CSV
         </button>
         <%= if @zone_type == :auth do %>
           <button
@@ -46,15 +38,7 @@
             title="Export BIND Zone File"
             aria-label="Export BIND Zone File"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            Export BIND
+            <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Export BIND
           </button>
         <% end %>
         <button
@@ -63,50 +47,24 @@
           title="Refresh"
           aria-label="Refresh"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Refresh
+          <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </button>
         <.link
-          patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"}
+          patch={
+            ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
+          }
           class="btn btn-ghost btn-sm"
           title="Bulk Add"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
-          Bulk Add
+          <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Bulk Add
         </.link>
         <.link
-          patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"}
+          patch={
+            ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
+          }
           class="btn btn-primary btn-sm"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          Add Record
+          <.dm_mdi name="plus" class="w-4 h-4" /> Add Record
         </.link>
       </div>
     </div>
@@ -114,23 +72,23 @@
     <%= case @live_action do %>
       <% :index -> %>
         <!-- Records Data Table -->
-        <div class="card bg-base-100 shadow">
+        <div class="card bg-surface shadow">
           <div class="card-body p-0">
             <%= if @rrs != [] do %>
               <!-- Filter Bar -->
-              <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
+              <div class="flex flex-wrap gap-2 p-4 border-b border-outline-variant">
                 <input
                   type="text"
                   placeholder="Filter by name..."
                   aria-label="Filter DNS records"
-                  class="input input-bordered input-sm flex-1 min-w-48"
+                  class="input input-sm flex-1 min-w-48"
                   phx-change="filter"
                   phx-debounce="300"
                   name="filter"
                   value={@filter}
                 />
                 <select
-                  class="select select-bordered select-sm"
+                  class="select select-sm"
                   phx-change="filter_type"
                   aria-label="Filter by record type"
                   name="type"
@@ -145,7 +103,7 @@
               </div>
 
               <div class="overflow-x-auto">
-                <table class="table table-zebra">
+                <table class="table table-striped">
                   <thead>
                     <tr>
                       <th scope="col">Name</th>
@@ -174,25 +132,13 @@
                           <div class="flex items-center justify-end gap-1">
                             <.link
                               patch={
-                                ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/#{idx}/edit"
+                                ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/#{idx}/edit"
                               }
                               class="btn btn-ghost btn-sm"
                               title="Edit"
                               aria-label="Edit"
                             >
-                              <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
+                              <.dm_mdi name="pencil" class="w-4 h-4" />
                             </.link>
                             <button
                               phx-click="confirm_delete"
@@ -201,19 +147,7 @@
                               title="Delete"
                               aria-label="Delete"
                             >
-                              <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
+                              <.dm_mdi name="delete" class="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -222,32 +156,23 @@
                   </tbody>
                 </table>
               </div>
-              <div class="px-4 py-2 border-t border-base-200 text-sm text-base-content/60">
+              <div class="px-4 py-2 border-t border-outline-variant text-sm text-on-surface-variant">
                 {length(filtered_records(@rrs, @filter, @type_filter))} of {length(@rrs)} record(s)
               </div>
             <% else %>
               <div class="text-center py-12">
                 <div class="text-6xl mb-4">
-                  <svg
-                    class="w-16 h-16 mx-auto text-base-content/30"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.5"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
+                  <.dm_mdi
+                    name="file-document-outline"
+                    class="w-16 h-16 mx-auto text-on-surface-variant"
+                  />
                 </div>
                 <h3 class="text-lg font-semibold mb-2">No Records</h3>
-                <p class="text-base-content/60 mb-4">This zone has no resource records.</p>
+                <p class="text-on-surface-variant mb-4">This zone has no resource records.</p>
                 <div class="flex justify-center gap-2">
                   <.link
                     patch={
-                      ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
+                      ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
                     }
                     class="btn btn-primary"
                   >
@@ -255,7 +180,7 @@
                   </.link>
                   <.link
                     patch={
-                      ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
+                      ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
                     }
                     class="btn btn-ghost"
                   >
@@ -297,21 +222,17 @@
             phx-change="preview_bulk"
             class="space-y-4"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Records</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Records</label>
               <textarea
                 name="bulk[records]"
-                class="textarea textarea-bordered h-64 font-mono text-sm"
+                class="textarea h-64 font-mono text-sm"
                 phx-debounce="500"
                 placeholder={"www     3600  IN  A     192.0.2.1\nmail    3600  IN  A     192.0.2.2\nmail    3600  IN  MX    10 mail.example.com.\n@       3600  IN  TXT   \"v=spf1 mx -all\""}
               >{@bulk_form[:records].value}</textarea>
-              <label class="label">
-                <span class="label-text-alt">
-                  One record per line in zone file format: name ttl class type rdata
-                </span>
-              </label>
+              <span class="helper-text">
+                One record per line in zone file format: name ttl class type rdata
+              </span>
             </div>
             
 <!-- Live Preview -->
@@ -319,19 +240,7 @@
               <%= case @bulk_preview.status do %>
                 <% :ok -> %>
                   <div class="alert alert-success">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="stroke-current shrink-0 w-6 h-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
+                    <.dm_mdi name="check-circle" class="w-6 h-6" />
                     <div>
                       <p class="font-semibold">
                         Preview: {@bulk_preview.count} record(s) to add
@@ -345,19 +254,7 @@
                   </div>
                 <% :error -> %>
                   <div class="alert alert-error">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="stroke-current shrink-0 w-6 h-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
+                    <.dm_mdi name="close-circle" class="w-6 h-6" />
                     <div>
                       <p class="font-semibold">Parse error</p>
                       <p class="text-sm">{@bulk_preview.message}</p>
@@ -367,20 +264,7 @@
             <% end %>
 
             <div class="alert alert-info">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                class="stroke-current shrink-0 w-6 h-6"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                >
-                </path>
-              </svg>
+              <.dm_mdi name="information" class="w-6 h-6" />
               <div>
                 <p class="font-semibold">Format: name ttl class type rdata</p>
                 <p class="text-sm">Lines starting with ; are treated as comments and ignored.</p>
@@ -416,7 +300,7 @@
       on_cancel={JS.push("close_modal")}
     >
       <div class="py-4">
-        <p class="text-base-content/80">
+        <p class="text-on-surface-variant">
           Are you sure you want to delete the record
           <strong class="font-mono">{@delete_confirm.rr.name}</strong>
           (<span class="badge badge-sm">{String.upcase(to_string(@delete_confirm.rr.type))}</span>)?

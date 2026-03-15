@@ -4,14 +4,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Netboot Dashboard page" do
     test "mounts with title", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       assert html =~ "Netboot Dashboard"
       assert html =~ "Network boot provisioning"
     end
 
     test "shows state summary cards", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       assert html =~ "Discovered"
       assert html =~ "Booting"
@@ -21,25 +21,25 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows TFTP server card", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       assert html =~ "TFTP Server"
     end
 
     test "shows boot profiles card", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       assert html =~ "Boot Profiles"
     end
 
     test "shows recent devices table", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot")
+      {:ok, view, _html} = live(conn, "/server/netboot")
 
       assert has_element?(view, "table")
     end
 
     test "shows telemetry metrics cards", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       assert html =~ "TFTP Requests"
       assert html =~ "Transfers"
@@ -51,7 +51,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows profile usage stats", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       # With no profiles/devices, should show empty list
       assert html =~ "Boot Profiles"
@@ -60,7 +60,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has refresh button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot")
+      {:ok, view, _html} = live(conn, "/server/netboot")
 
       assert has_element?(view, "button", "Refresh")
       html = view |> element("button", "Refresh") |> render_click()
@@ -68,43 +68,43 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows live indicator", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot")
+      {:ok, _view, html} = live(conn, "/server/netboot")
 
       assert html =~ "animate-pulse"
       assert html =~ "Live"
     end
 
     test "state stat cards are clickable links to devices page", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot")
+      {:ok, view, _html} = live(conn, "/server/netboot")
 
-      assert has_element?(view, "a[href='/netboot/devices?state=discovered']")
-      assert has_element?(view, "a[href='/netboot/devices?state=failed']")
-      assert has_element?(view, "a[href='/netboot/devices?state=installed']")
+      assert has_element?(view, "a[href='/server/netboot/devices?state=discovered']")
+      assert has_element?(view, "a[href='/server/netboot/devices?state=failed']")
+      assert has_element?(view, "a[href='/server/netboot/devices?state=installed']")
     end
 
     test "has View All links for profiles and devices sections", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot")
+      {:ok, view, _html} = live(conn, "/server/netboot")
 
-      assert has_element?(view, "a[href='/netboot/profiles']", "View all")
-      assert has_element?(view, "a[href='/netboot/devices']", "View all")
+      assert has_element?(view, "a[href='/server/netboot/profiles']", "View all")
+      assert has_element?(view, "a[href='/server/netboot/devices']", "View all")
     end
 
     test "TFTP card has Details link", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot")
+      {:ok, view, _html} = live(conn, "/server/netboot")
 
-      assert has_element?(view, "a[href='/netboot/tftp']", "Details")
+      assert has_element?(view, "a[href='/server/netboot/tftp']", "Details")
     end
 
     test "has Boot Log link", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot")
+      {:ok, view, _html} = live(conn, "/server/netboot")
 
-      assert has_element?(view, "a[href='/netboot/log']", "Boot Log")
+      assert has_element?(view, "a[href='/server/netboot/log']", "Boot Log")
     end
   end
 
   describe "Netboot Devices page" do
     test "mounts with title and search", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices")
 
       assert html =~ "Netboot Devices"
       assert html =~ "Search by MAC"
@@ -112,7 +112,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows stats cards", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices")
 
       assert html =~ "Total Devices"
       assert html =~ "Installed"
@@ -120,46 +120,46 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has export CSV button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       assert has_element?(view, "button#export-csv")
     end
 
     test "renders device table", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       assert has_element?(view, "table")
     end
 
     test "search filters devices", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       html = view |> element("input[name=search]") |> render_change(%{"search" => "test"})
       assert html =~ "Netboot Devices"
     end
 
     test "state filter works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       html = view |> element("select[name=state]") |> render_change(%{"state" => "all"})
       assert html =~ "Netboot Devices"
     end
 
     test "has Actions and Tags column headers", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices")
 
       assert html =~ "Actions"
       assert html =~ "Tags"
     end
 
     test "accepts state filter from URL query params", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices?state=failed")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices?state=failed")
 
       assert html =~ "Netboot Devices"
     end
 
     test "has profile filter dropdown", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       assert has_element?(view, "select[name=profile]")
       html = view |> element("select[name=profile]") |> render_change(%{"profile" => "all"})
@@ -167,7 +167,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "profile filter has unassigned option", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       html =
         view |> element("select[name=profile]") |> render_change(%{"profile" => "unassigned"})
@@ -176,7 +176,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "PubSub device_registered does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       send(view.pid, {:device_registered, %{mac: "AA:BB:CC:DD:EE:FF"}})
       html = render(view)
@@ -184,7 +184,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "PubSub device_deleted does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       send(view.pid, {:device_deleted, "AA:BB:CC:DD:EE:FF"})
       html = render(view)
@@ -192,7 +192,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "PubSub device_state_changed does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       send(view.pid, {:device_state_changed, %{mac: "AA:BB:CC:DD:EE:FF", state: :installed}})
       html = render(view)
@@ -200,7 +200,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "export_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       assert render_hook(view, "export_csv", %{}) =~ "Netboot Devices"
     end
@@ -208,7 +208,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Netboot Devices sorting" do
     test "clicking column header triggers sort event", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       html = view |> element("th[phx-value-field=mac]") |> render_click()
       # Should show ascending indicator
@@ -216,7 +216,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "clicking same column toggles sort direction", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       # First click: asc
       view |> element("th[phx-value-field=mac]") |> render_click()
@@ -226,7 +226,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "clicking different column resets to asc", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       # Click mac (asc), then hostname (should reset to asc)
       view |> element("th[phx-value-field=mac]") |> render_click()
@@ -235,7 +235,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "all sortable columns have phx-click=sort", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       for field <- ~w(mac hostname arch profile_id state install_attempts last_seen) do
         assert has_element?(view, "th[phx-value-field=#{field}]")
@@ -336,13 +336,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Netboot Devices bulk actions" do
     test "shows select-all checkbox in table header", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       assert has_element?(view, "th input[type=checkbox]")
     end
 
     test "toggle_select adds device to selection", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       # With no devices loaded (service unavailable), the table is empty,
       # but we can verify the bulk action bar is hidden
@@ -350,14 +350,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "bulk_clear resets selection", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       # Bulk clear should not crash even with no selection
       refute has_element?(view, "button", "Clear Selection")
     end
 
     test "bulk profile dropdown present in action bar structure", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices")
 
       # The select element for profile assignment is rendered only when
       # devices are selected; verify the page renders without it
@@ -365,7 +365,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "bulk_add_tag with empty tag is a no-op", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       html = view |> render_hook("bulk_add_tag", %{"tag" => ""})
       # Should not crash
@@ -373,7 +373,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "bulk_add_tag with selection but service unavailable", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       # Add a device to selection, then try to tag
       # Since no devices exist (service unavailable), this just completes gracefully
@@ -382,7 +382,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "bulk_delete event completes gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices")
 
       html = view |> render_hook("bulk_delete", %{})
       assert html =~ "Deleted 0 device(s)"
@@ -404,34 +404,34 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Netboot Device Detail page" do
     test "mounts with MAC title", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices/AA:BB:CC:DD:EE:FF")
 
       assert html =~ "AA:BB:CC:DD:EE:FF"
     end
 
     test "shows device not found for unknown MAC", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices/FF:FF:FF:FF:FF:FF")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices/FF:FF:FF:FF:FF:FF")
 
       assert html =~ "Device not found"
     end
 
     test "has breadcrumb navigation", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+      {:ok, view, html} = live(conn, "/server/netboot/devices/AA:BB:CC:DD:EE:FF")
 
       assert html =~ "breadcrumbs"
-      assert has_element?(view, "a[href='/netboot']", "Netboot")
-      assert has_element?(view, "a[href='/netboot/devices']", "Devices")
+      assert has_element?(view, "a[href='/server/netboot']", "Netboot")
+      assert has_element?(view, "a[href='/server/netboot/devices']", "Devices")
     end
 
     test "has copy MAC button with CopyToClipboard hook", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices/AA:BB:CC:DD:EE:FF")
 
       assert has_element?(view, "button#copy-mac[phx-hook=CopyToClipboard]")
       assert has_element?(view, "#device-mac")
     end
 
     test "renders device info section when device not found", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices/AA:BB:CC:DD:EE:FF")
 
       # With no registry running, device is nil, so we see the warning
       assert html =~ "Device not found"
@@ -440,7 +440,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "add_tag event does not crash when device is nil", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices/AA:BB:CC:DD:EE:FF")
 
       # Device is nil (service unavailable), add_tag should be a no-op
       html = view |> render_hook("add_tag", %{"tag" => "test-tag"})
@@ -449,14 +449,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "remove_tag event does not crash when device is nil", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+      {:ok, view, _html} = live(conn, "/server/netboot/devices/AA:BB:CC:DD:EE:FF")
 
       html = view |> render_hook("remove_tag", %{"tag" => "old-tag"})
       assert html =~ "Device not found"
     end
 
     test "boot script preview not shown when device not found", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/devices/FF:FF:FF:FF:FF:FF")
+      {:ok, _view, html} = live(conn, "/server/netboot/devices/FF:FF:FF:FF:FF:FF")
 
       refute html =~ "iPXE Boot Script"
     end
@@ -464,7 +464,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Boot Profiles page" do
     test "mounts with title and breadcrumbs", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles")
 
       assert html =~ "Boot Profiles"
       assert html =~ "Configured netboot profiles"
@@ -472,57 +472,57 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows stats cards", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles")
 
       assert html =~ "Total Profiles"
       assert html =~ "Default Profile"
     end
 
     test "has export CSV button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles")
 
       assert has_element?(view, "button#export-csv")
     end
 
     test "export_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles")
 
       assert render_hook(view, "export_csv", %{}) =~ "Boot Profiles"
     end
 
     test "has new profile button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles")
 
-      assert has_element?(view, "a[href='/netboot/profiles/new']")
+      assert has_element?(view, "a[href='/server/netboot/profiles/new']")
     end
 
     test "search filters profiles", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles")
 
       html = view |> element("input[name=search]") |> render_change(%{"search" => "nixos"})
       assert html =~ "Boot Profiles"
     end
 
     test "table has actions column", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles")
 
       assert html =~ "Actions"
     end
 
     test "empty table has create link", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles")
 
-      assert has_element?(view, "a[href='/netboot/profiles/new']", "create one")
+      assert has_element?(view, "a[href='/server/netboot/profiles/new']", "create one")
     end
 
     test "table has devices column", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles")
 
       assert html =~ "Devices"
     end
 
     test "columns are sortable", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles")
 
       # Clickable sort headers exist
       assert has_element?(view, "th[phx-click=sort][phx-value-field=id]")
@@ -563,7 +563,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "empty table shows create link", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles")
 
       assert html =~ "create one"
     end
@@ -571,14 +571,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Profile Editor — new profile" do
     test "mounts new profile form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles/new")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles/new")
 
       assert html =~ "New Boot Profile"
       assert html =~ "Create a new PXE boot profile"
     end
 
     test "has required form fields", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       assert has_element?(view, "input[name='profile[id]']")
       assert has_element?(view, "input[name='profile[kernel]']")
@@ -589,7 +589,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has arch checkboxes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       assert has_element?(view, "input[value='x86_64']")
       assert has_element?(view, "input[value='aarch64']")
@@ -597,7 +597,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "kernel and initrd inputs have datalist for autocomplete", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       assert has_element?(view, "input[name='profile[kernel]'][list='tftp-files']")
       assert has_element?(view, "input[name='profile[initrd]'][list='tftp-files']")
@@ -605,7 +605,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has manifest form fields", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       assert has_element?(view, "select[name='profile[disk_layout]']")
       assert has_element?(view, "select[name='profile[slot_strategy]']")
@@ -613,22 +613,22 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has breadcrumb navigation", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, html} = live(conn, "/server/netboot/profiles/new")
 
       assert html =~ "breadcrumbs"
-      assert has_element?(view, "a[href='/netboot']", "Netboot")
-      assert has_element?(view, "a[href='/netboot/profiles']", "Profiles")
+      assert has_element?(view, "a[href='/server/netboot']", "Netboot")
+      assert has_element?(view, "a[href='/server/netboot/profiles']", "Profiles")
     end
 
     test "has cancel and submit buttons", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
-      assert has_element?(view, "a[href='/netboot/profiles']", "Cancel")
+      assert has_element?(view, "a[href='/server/netboot/profiles']", "Cancel")
       assert has_element?(view, "button[type=submit]", "Create Profile")
     end
 
     test "validate shows errors for empty required fields", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       html =
         view
@@ -641,7 +641,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "validate shows error for invalid ID format", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       html =
         view
@@ -652,7 +652,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "validate accepts valid input", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       html =
         view
@@ -663,7 +663,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows iPXE script preview when kernel and initrd are set", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       html =
         view
@@ -686,7 +686,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "hides iPXE preview when kernel or initrd empty", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       html =
         view
@@ -699,7 +699,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Profile Editor — clone profile" do
     test "mounts clone form in new mode", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles/new?clone=test-profile")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles/new?clone=test-profile")
 
       # With no Store running, it falls back to new empty profile
       assert html =~ "New Boot Profile"
@@ -707,20 +707,20 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "ID field is editable in clone mode (new mode)", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new?clone=test-profile")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new?clone=test-profile")
 
       # Clone creates a new profile, so ID should NOT be disabled
       refute has_element?(view, "input[name='profile[id]'][disabled]")
     end
 
     test "submit button says Create Profile in clone mode", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new?clone=test-profile")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new?clone=test-profile")
 
       assert has_element?(view, "button[type=submit]", "Create Profile")
     end
 
     test "does not show 'Cloned from' when not cloning", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles/new")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles/new")
 
       refute html =~ "Cloned from"
     end
@@ -728,32 +728,32 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Profile Editor — edit profile" do
     test "mounts edit form with profile ID", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles/test-profile/edit")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles/test-profile/edit")
 
       assert html =~ "Edit Profile"
       assert html =~ "test-profile"
     end
 
     test "ID field is disabled in edit mode", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/test-profile/edit")
 
       assert has_element?(view, "input[name='profile[id]'][disabled]")
     end
 
     test "has save changes button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/test-profile/edit")
 
       assert has_element?(view, "button[type=submit]", "Save Changes")
     end
 
     test "has delete button in edit mode", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/test-profile/edit")
 
       assert has_element?(view, "button[phx-click=delete_profile]", "Delete Profile")
     end
 
     test "delete button not shown in new mode", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+      {:ok, view, _html} = live(conn, "/server/netboot/profiles/new")
 
       refute has_element?(view, "button[phx-click=delete_profile]")
     end
@@ -838,7 +838,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "new profile editor initializes file_warnings as empty", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/profiles/new")
+      {:ok, _view, html} = live(conn, "/server/netboot/profiles/new")
 
       # No warning labels should appear initially
       refute html =~ "File not found in TFTP root"
@@ -847,7 +847,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "TFTP Server page" do
     test "mounts with title and breadcrumbs", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "TFTP Server"
       assert html =~ "Boot file serving"
@@ -855,7 +855,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows status cards", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "Status"
       assert html =~ "Port"
@@ -864,26 +864,26 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows configuration card", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "Configuration"
       assert html =~ "Root Directory"
     end
 
     test "shows file browser card", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "File Browser"
     end
 
     test "has rescan button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       assert has_element?(view, "button", "Rescan Files")
     end
 
     test "shows upload card with form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "Upload Boot Assets"
       assert html =~ "Target Directory"
@@ -891,13 +891,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has upload submit button (disabled when no files)", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       assert has_element?(view, "button[disabled]", "Upload Files")
     end
 
     test "validate_upload updates target path", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       html =
         view
@@ -908,27 +908,27 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "file input is present for boot_asset upload", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       assert has_element?(view, "input[type=file]")
     end
 
     test "shows active transfers section", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "Active Transfers"
       assert html =~ "No active transfers"
     end
 
     test "shows transfer history section", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "Transfer History"
       assert html =~ "No transfer history"
     end
 
     test "transfer_started adds to active transfers", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       meta = %{
         client_addr: {192, 168, 1, 10},
@@ -944,7 +944,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "transfer_complete moves to history", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       meta = %{
         client_addr: {10, 0, 0, 1},
@@ -966,7 +966,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "transfer_failed moves to history with error status", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       meta = %{
         client_addr: {10, 0, 0, 5},
@@ -983,7 +983,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "history filter works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       # Add a transfer to history
       meta = %{
@@ -1019,7 +1019,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has export CSV buttons for history and files", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       assert has_element?(view, "button#export-history-csv")
       assert has_element?(view, "button#export-files-csv")
@@ -1054,7 +1054,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "transfer history has sortable column headers", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       # Add transfers to history so headers render
       meta1 = %{
@@ -1100,7 +1100,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "sort_history event changes sort direction", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       # Add entries to history first
       meta = %{
@@ -1119,26 +1119,26 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "export_history_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       assert render_hook(view, "export_history_csv", %{}) =~ "TFTP Server"
     end
 
     test "export_files_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       assert render_hook(view, "export_files_csv", %{}) =~ "TFTP Server"
     end
 
     test "delete_file event shows error when service unavailable", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/tftp")
+      {:ok, view, _html} = live(conn, "/server/netboot/tftp")
 
       html = view |> render_hook("delete_file", %{"path" => "test/file.bin"})
       assert html =~ "Failed to delete"
     end
 
     test "shows live indicator", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/tftp")
+      {:ok, _view, html} = live(conn, "/server/netboot/tftp")
 
       assert html =~ "animate-pulse"
       assert html =~ "Live"
@@ -1147,7 +1147,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
   describe "Boot Log page" do
     test "mounts with title and breadcrumbs", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/log")
+      {:ok, _view, html} = live(conn, "/server/netboot/log")
 
       assert html =~ "Boot Log"
       assert html =~ "Real-time netboot activity"
@@ -1155,32 +1155,32 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "has pause/resume button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       assert has_element?(view, "button", "Pause")
     end
 
     test "has clear button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       assert has_element?(view, "button", "Clear")
     end
 
     test "has export CSV button", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       assert has_element?(view, "button#export-csv")
     end
 
     test "toggle pause works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       html = view |> element("button", "Pause") |> render_click()
       assert html =~ "Resume"
     end
 
     test "shows paused indicator when paused", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       html = view |> element("button", "Pause") |> render_click()
       assert html =~ "Paused"
@@ -1188,47 +1188,47 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "clear log works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       html = view |> element("button", "Clear") |> render_click()
       assert html =~ "Boot Log"
     end
 
     test "search filters entries", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       html = view |> element("input[name=search]") |> render_change(%{"search" => "test"})
       assert html =~ "Boot Log"
     end
 
     test "type filter works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       html = view |> element("select[name=type]") |> render_change(%{"type" => "device"})
       assert html =~ "Boot Log"
     end
 
     test "level filter dropdown is present", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       assert has_element?(view, "select[name=level]")
     end
 
     test "level filter works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       html = view |> element("select[name=level]") |> render_change(%{"level" => "error"})
       assert html =~ "Boot Log"
     end
 
     test "log table has Level column header", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/log")
+      {:ok, _view, html} = live(conn, "/server/netboot/log")
 
       assert html =~ "<th>Level</th>"
     end
 
     test "device_state_changed to :failed uses warning level", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:device_state_changed, %{mac: "AA:BB:CC:DD:EE:FF", state: :failed}})
       html = render(view)
@@ -1237,7 +1237,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "device_registered uses info level", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:device_registered, %{mac: "11:22:33:44:55:66"}})
       html = render(view)
@@ -1246,7 +1246,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "tftp_request_rejected uses error level", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:tftp_request_rejected, %{file: "missing.bin", reason: "not found"}})
       html = render(view)
@@ -1255,7 +1255,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "tftp_transfer_failed uses error level", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:tftp_transfer_failed, %{file_path: "broken.bin"}})
       html = render(view)
@@ -1265,7 +1265,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows stats cards", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/log")
+      {:ok, _view, html} = live(conn, "/server/netboot/log")
 
       assert html =~ "Total Entries"
       assert html =~ "Errors"
@@ -1274,7 +1274,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "stats update when events arrive", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:tftp_request_rejected, %{file: "bad.bin", reason: "not found"}})
       send(view.pid, {:device_state_changed, %{mac: "AA:BB:CC:DD:EE:FF", state: :failed}})
@@ -1286,14 +1286,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "shows live indicator", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/netboot/log")
+      {:ok, _view, html} = live(conn, "/server/netboot/log")
 
       assert html =~ "animate-pulse"
       assert html =~ "Live"
     end
 
     test "device_deleted adds log entry", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:device_deleted, "AA:BB:CC:DD:EE:FF"})
       html = render(view)
@@ -1302,7 +1302,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "tftp_transfer_started adds log entry", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(
         view.pid,
@@ -1315,7 +1315,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "tftp_transfer_complete adds log entry", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:tftp_transfer_complete, %{file_path: "nixos/initrd", duration: 500}})
       html = render(view)
@@ -1324,7 +1324,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "tftp_request_accepted adds log entry", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       send(view.pid, {:tftp_request_accepted, %{file: "pxelinux.0"}})
       html = render(view)
@@ -1333,7 +1333,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
 
     test "export_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/log")
+      {:ok, view, _html} = live(conn, "/server/netboot/log")
 
       assert render_hook(view, "export_csv", %{}) =~ "Boot Log"
     end

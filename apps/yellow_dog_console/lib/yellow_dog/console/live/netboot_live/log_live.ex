@@ -44,7 +44,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
             <li>Boot Log</li>
           </ul>
         </div>
@@ -52,7 +52,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Boot Log</h1>
-            <p class="mt-2 text-base-content/70">
+            <p class="mt-2 text-on-surface-variant">
               Real-time netboot activity stream
             </p>
           </div>
@@ -75,43 +75,34 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
           </div>
         </div>
 
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Entries</div>
-            <div class="stat-value text-primary">{length(@log_entries)}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Errors</div>
-            <div class="stat-value text-error">{count_by_level(@log_entries, "error")}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Warnings</div>
-            <div class="stat-value text-warning">{count_by_level(@log_entries, "warning")}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Buffer</div>
-            <div class="stat-value text-sm">
-              {length(@log_entries)}<span class="text-base-content/50 font-normal">/{@max_entries}</span>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total Entries</div>
+            <div class="text-2xl font-bold text-primary">{length(@log_entries)}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Errors</div>
+            <div class="text-2xl font-bold text-error">{count_by_level(@log_entries, "error")}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Warnings</div>
+            <div class="text-2xl font-bold text-warning">
+              {count_by_level(@log_entries, "warning")}
             </div>
-          </div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Buffer</div>
+            <div class="text-2xl font-bold">
+              {length(@log_entries)}<span class="text-on-surface-variant font-normal text-sm">/{@max_entries}</span>
+            </div>
+          </.card>
         </div>
 
         <.card>
           <div class="flex flex-col md:flex-row gap-4">
             <div class="flex-1">
-              <label class="input input-bordered flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  class="h-4 w-4 opacity-70"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
+              <label class="input flex items-center gap-2">
+                <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
                 <input
                   type="text"
                   class="grow"
@@ -124,7 +115,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
               </label>
             </div>
             <select
-              class="select select-bordered"
+              class="select"
               phx-change="filter_type"
               name="type"
               value={@filter_type}
@@ -134,7 +125,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
               <option value="tftp">TFTP Events</option>
             </select>
             <select
-              class="select select-bordered"
+              class="select"
               phx-change="filter_level"
               name="level"
               value={@filter_level}
@@ -149,13 +140,13 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
 
         <.card>
           <div class="flex justify-between items-center mb-2">
-            <span :if={@log_entries != []} class="text-sm text-base-content/70">
+            <span :if={@log_entries != []} class="text-sm text-on-surface-variant">
               {length(filtered_entries(@log_entries, @search_query, @filter_type, @filter_level))} of {length(
                 @log_entries
               )} entries
             </span>
-            <span :if={@log_entries == []} class="text-sm text-base-content/70"></span>
-            <span :if={@connected} class="flex items-center gap-1 text-xs text-base-content/50">
+            <span :if={@log_entries == []} class="text-sm text-on-surface-variant"></span>
+            <span :if={@connected} class="flex items-center gap-1 text-xs text-on-surface-variant">
               <span :if={@paused} class="flex items-center gap-1">
                 <span class="w-2 h-2 bg-warning rounded-full"></span> Paused
               </span>
@@ -165,8 +156,8 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
             </span>
           </div>
           <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-            <table class="table table-zebra table-sm">
-              <thead class="sticky top-0 bg-base-200 z-10">
+            <table class="table table-striped table-sm">
+              <thead class="sticky top-0 bg-surface-container z-10">
                 <tr>
                   <th>Time</th>
                   <th>Type</th>
@@ -178,7 +169,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
                 <tr :if={
                   filtered_entries(@log_entries, @search_query, @filter_type, @filter_level) == []
                 }>
-                  <td colspan="4" class="text-center text-base-content/50 py-8">
+                  <td colspan="4" class="text-center text-on-surface-variant py-8">
                     No log entries yet — activity will appear in real-time
                   </td>
                 </tr>

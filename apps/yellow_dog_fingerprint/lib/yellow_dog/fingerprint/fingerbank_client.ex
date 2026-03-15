@@ -37,6 +37,7 @@ defmodule YellowDog.Fingerprint.FingerbankClient do
 
   @impl true
   def init(_opts) do
+    try do: :ets.delete(@cache_table), catch: (_, _ -> :ok)
     :ets.new(@cache_table, [:named_table, :set, :public, read_concurrency: true])
 
     state = %{

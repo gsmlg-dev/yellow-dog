@@ -6,26 +6,12 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
   @source_ip {10, 0, 0, 1}
 
   # Pre-populate the JWKS cache so tests don't hit the real Google endpoint.
-  # Using {:error, :keys_unavailable} forces the unverified decode fallback path.
+  # Using empty keys forces the unverified decode fallback path.
+  # Delete-then-recreate avoids race with on_exit from a prior test.
   setup do
-    try do
-      :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
-    rescue
-      ArgumentError -> :ok
-    end
-
-    # Set cache to very old timestamp so it appears expired, which triggers
-    # fetch_and_cache_keys. Instead, we insert a valid cache with empty keys
-    # that will cause the "keys_unavailable" fallback.
+    try do: :ets.delete(:gcp_jwks_cache), rescue: (ArgumentError -> :ok)
+    :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
     :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => []}, System.monotonic_time(:second)})
-
-    on_exit(fn ->
-      try do
-        :ets.delete(:gcp_jwks_cache)
-      rescue
-        ArgumentError -> :ok
-      end
-    end)
 
     :ok
   end

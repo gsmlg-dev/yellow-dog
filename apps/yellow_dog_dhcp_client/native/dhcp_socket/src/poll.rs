@@ -116,7 +116,7 @@ fn run(
                 let sent = msg_env.send_and_clear(&owner_pid, |env| {
                     let mut bin = NewBinary::new(env, len);
                     bin.as_mut_slice().copy_from_slice(&buf[..len]);
-                    let bin_term = bin.into();
+                    let bin_term: rustler::Binary = bin.into();
                     (crate::atoms::dhcp_rx(), bin_term).encode(env)
                 });
                 if sent.is_err() {
@@ -156,7 +156,7 @@ fn run(
                     let sent = msg_env.send_and_clear(&owner_pid, |env| {
                         let mut bin = NewBinary::new(env, len);
                         bin.as_mut_slice().copy_from_slice(&buf[..len]);
-                        let bin_term = bin.into();
+                        let bin_term: rustler::Binary = bin.into();
                         (crate::atoms::arp_rx(), bin_term).encode(env)
                     });
                     if sent.is_err() {

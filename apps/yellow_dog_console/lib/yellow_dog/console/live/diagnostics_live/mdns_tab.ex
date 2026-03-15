@@ -6,6 +6,7 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
   multiple responses from the multicast group.
   """
   use Phoenix.Component
+  use PhoenixDuskmoon.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.ResultDisplay
   alias YellowDog.Console.DiagnosticsLive.Components.QueryHistory
@@ -26,56 +27,38 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
     assigns = assign(assigns, :query_types, @query_types)
 
     ~H"""
-    <div class="card bg-base-100 shadow-xl">
+    <div class="card bg-surface shadow-xl">
       <div class="card-body">
         <h2 class="card-title">mDNS Service Discovery</h2>
 
         <div class="alert alert-info mb-4">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            class="stroke-current shrink-0 w-6 h-6"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <.dm_mdi name="information" class="stroke-current shrink-0 w-6 h-6" />
           <span>Queries are sent to multicast address 224.0.0.251:5353</span>
         </div>
 
         <form phx-change="validate_mdns" phx-submit="send_mdns_query">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <%!-- Service Type --%>
-            <div class="form-control md:col-span-2">
-              <label class="label">
-                <span class="label-text">Service Type</span>
-              </label>
+            <div class="form-group md:col-span-2">
+              <label class="form-label">Service Type</label>
               <input
                 type="text"
                 name="mdns_query[service_type]"
                 value={@tab.form[:service_type] || @tab.form["service_type"] || "_http._tcp.local"}
                 placeholder="_http._tcp.local"
-                class="input input-bordered w-full"
+                class="input w-full"
                 required
               />
-              <label class="label">
-                <span class="label-text-alt">e.g., _http._tcp.local, _printer._tcp.local</span>
-              </label>
+              <span class="helper-text">e.g., _http._tcp.local, _printer._tcp.local</span>
             </div>
 
             <%!-- Query Type --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Query Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Query Type</label>
               <select
                 name="mdns_query[query_type]"
                 aria-label="mDNS query type"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <%= for {label, value} <- @query_types do %>
                   <option
@@ -89,10 +72,8 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
             </div>
 
             <%!-- Timeout --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Timeout (ms)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Timeout (ms)</label>
               <input
                 type="number"
                 name="mdns_query[timeout]"
@@ -100,11 +81,9 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
                 placeholder="3000"
                 min="1000"
                 max="30000"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">Collects all responses until timeout</span>
-              </label>
+              <span class="helper-text">Collects all responses until timeout</span>
             </div>
           </div>
 
@@ -116,7 +95,12 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
               phx-disable-with="Discovering..."
             >
               <%= if @tab.loading do %>
-                <span class="loading loading-spinner loading-sm"></span> Discovering...
+                <span
+                  class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+                  role="status"
+                >
+                </span>
+                Discovering...
               <% else %>
                 Send Query
               <% end %>

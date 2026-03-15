@@ -24,7 +24,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.HexDump do
     ~H"""
     <div class="font-mono text-xs">
       <%= if @formatted == "" do %>
-        <span class="text-base-content/50 italic">(empty)</span>
+        <span class="text-on-surface-variant italic">(empty)</span>
       <% else %>
         <pre class="whitespace-pre overflow-x-auto"><%= @formatted %></pre>
       <% end %>

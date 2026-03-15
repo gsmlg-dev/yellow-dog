@@ -9,6 +9,8 @@ defmodule YellowDogIdentity.AuditLogTest do
     File.mkdir_p!(Path.join(tmp_dir, "hosts"))
     File.mkdir_p!(Path.join(tmp_dir, "tokens"))
 
+    YellowDogIdentity.TestHelper.stop_app_identity()
+
     start_supervised!({YellowDogIdentity.Registry, data_dir: tmp_dir, name: YellowDogIdentity.Registry})
 
     on_exit(fn -> File.rm_rf!(tmp_dir) end)

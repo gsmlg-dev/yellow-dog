@@ -58,8 +58,8 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
       <div class="space-y-6">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><.link navigate="/netboot">Netboot</.link></li>
-            <li><.link navigate="/netboot/profiles">Profiles</.link></li>
+            <li><.link navigate="/server/netboot">Netboot</.link></li>
+            <li><.link navigate="/server/netboot/profiles">Profiles</.link></li>
             <li>{if @mode == :new, do: "New", else: @profile_id}</li>
           </ul>
         </div>
@@ -69,7 +69,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
             <h1 class="text-4xl font-bold">
               {if @mode == :new, do: "New Boot Profile", else: "Edit Profile"}
             </h1>
-            <p class="mt-1 text-base-content/70">
+            <p class="mt-1 text-on-surface-variant">
               {if @mode == :new,
                 do: "Create a new PXE boot profile",
                 else: "Modify boot profile: #{@profile_id}"}
@@ -85,103 +85,93 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
 
         <.card>
           <form phx-submit="save" phx-change="validate" class="space-y-4">
-            <div class="form-control w-full">
-              <label class="label"><span class="label-text">Profile ID</span></label>
+            <div class="form-group w-full">
+              <label class="form-label">Profile ID</label>
               <input
                 type="text"
                 name="profile[id]"
                 value={@form[:id].value}
-                class={"input input-bordered w-full #{if @errors[:id], do: "input-error"}"}
+                class={"input w-full #{if @errors[:id], do: "input-error"}"}
                 placeholder="e.g. nixos-minimal"
                 disabled={@mode == :edit}
               />
-              <label :if={@errors[:id]} class="label">
-                <span class="label-text-alt text-error">{@errors[:id]}</span>
-              </label>
+              <span :if={@errors[:id]} class="helper-text text-error">{@errors[:id]}</span>
             </div>
 
-            <div class="form-control w-full">
-              <label class="label"><span class="label-text">Description</span></label>
+            <div class="form-group w-full">
+              <label class="form-label">Description</label>
               <input
                 type="text"
                 name="profile[description]"
                 value={@form[:description].value}
-                class="input input-bordered w-full"
+                class="input w-full"
                 placeholder="e.g. NixOS Minimal Install"
               />
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control w-full">
-                <label class="label"><span class="label-text">Kernel Path</span></label>
+              <div class="form-group w-full">
+                <label class="form-label">Kernel Path</label>
                 <input
                   type="text"
                   name="profile[kernel]"
                   value={@form[:kernel].value}
                   list="tftp-files"
-                  class={"input input-bordered w-full #{if @errors[:kernel], do: "input-error"}"}
+                  class={"input w-full #{if @errors[:kernel], do: "input-error"}"}
                   placeholder="e.g. nixos/bzImage"
                 />
-                <label :if={@errors[:kernel]} class="label">
-                  <span class="label-text-alt text-error">{@errors[:kernel]}</span>
-                </label>
-                <label :if={@file_warnings[:kernel]} class="label">
-                  <span class="label-text-alt text-warning">
-                    {@file_warnings[:kernel]} —
-                    <.link navigate="/netboot/tftp" class="link link-primary">upload</.link>
-                  </span>
-                </label>
+                <span :if={@errors[:kernel]} class="helper-text text-error">{@errors[:kernel]}</span>
+                <span :if={@file_warnings[:kernel]} class="helper-text text-warning">
+                  {@file_warnings[:kernel]} —
+                  <.link navigate="/server/netboot/tftp" class="link link-primary">upload</.link>
+                </span>
               </div>
 
-              <div class="form-control w-full">
-                <label class="label"><span class="label-text">Initrd Path</span></label>
+              <div class="form-group w-full">
+                <label class="form-label">Initrd Path</label>
                 <input
                   type="text"
                   name="profile[initrd]"
                   value={@form[:initrd].value}
                   list="tftp-files"
-                  class={"input input-bordered w-full #{if @errors[:initrd], do: "input-error"}"}
+                  class={"input w-full #{if @errors[:initrd], do: "input-error"}"}
                   placeholder="e.g. nixos/initrd.img"
                 />
-                <label :if={@errors[:initrd]} class="label">
-                  <span class="label-text-alt text-error">{@errors[:initrd]}</span>
-                </label>
-                <label :if={@file_warnings[:initrd]} class="label">
-                  <span class="label-text-alt text-warning">
-                    {@file_warnings[:initrd]} —
-                    <.link navigate="/netboot/tftp" class="link link-primary">upload</.link>
-                  </span>
-                </label>
+                <span :if={@errors[:initrd]} class="helper-text text-error">{@errors[:initrd]}</span>
+                <span :if={@file_warnings[:initrd]} class="helper-text text-warning">
+                  {@file_warnings[:initrd]} —
+                  <.link navigate="/server/netboot/tftp" class="link link-primary">upload</.link>
+                </span>
               </div>
             </div>
 
-            <div class="form-control w-full">
-              <label class="label"><span class="label-text">Kernel Arguments</span></label>
+            <div class="form-group w-full">
+              <label class="form-label">Kernel Arguments</label>
               <input
                 type="text"
                 name="profile[kernel_args]"
                 value={@form[:kernel_args].value}
-                class="input input-bordered w-full"
+                class="input w-full"
                 placeholder="e.g. init=/nix/store/...-init ip=dhcp"
               />
             </div>
 
-            <div class="form-control w-full">
-              <label class="label"><span class="label-text">Installer Image</span></label>
+            <div class="form-group w-full">
+              <label class="form-label">Installer Image</label>
               <input
                 type="text"
                 name="profile[installer_image]"
                 value={@form[:installer_image].value}
                 list="tftp-files"
-                class="input input-bordered w-full"
+                class="input w-full"
                 placeholder="e.g. nixos/installer.squashfs"
               />
             </div>
 
-            <div class="form-control w-full">
-              <label class="label"><span class="label-text">Architectures</span></label>
+            <div class="form-group w-full">
+              <label class="form-label">Architectures</label>
               <div class="flex gap-4">
-                <label :for={arch <- @valid_arches} class="label cursor-pointer gap-2">
+                <label :for={arch <- @valid_arches} class="form-label cursor-pointer gap-2">
                   <input
                     type="checkbox"
                     name="profile[arch][]"
@@ -189,7 +179,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                     checked={arch in (@form[:arch].value || [])}
                     class="checkbox checkbox-sm"
                   />
-                  <span class="label-text">{arch}</span>
+                  {arch}
                 </label>
               </div>
             </div>
@@ -197,9 +187,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
             <div class="divider">Manifest (Optional)</div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control w-full">
-                <label class="label"><span class="label-text">Disk Layout</span></label>
-                <select name="profile[disk_layout]" class="select select-bordered w-full">
+              <div class="form-group w-full">
+                <label class="form-label">Disk Layout</label>
+                <select name="profile[disk_layout]" class="select w-full">
                   <option value="" selected={@form[:disk_layout].value in [nil, ""]}>
                     None
                   </option>
@@ -221,9 +211,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 </select>
               </div>
 
-              <div class="form-control w-full">
-                <label class="label"><span class="label-text">Slot Strategy</span></label>
-                <select name="profile[slot_strategy]" class="select select-bordered w-full">
+              <div class="form-group w-full">
+                <label class="form-label">Slot Strategy</label>
+                <select name="profile[slot_strategy]" class="select w-full">
                   <option value="single" selected={@form[:slot_strategy].value in [nil, "single"]}>
                     Single
                   </option>
@@ -234,13 +224,13 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
               </div>
             </div>
 
-            <div class="form-control w-full">
-              <label class="label"><span class="label-text">Flake URL</span></label>
+            <div class="form-group w-full">
+              <label class="form-label">Flake URL</label>
               <input
                 type="text"
                 name="profile[flake]"
                 value={@form[:flake].value}
-                class="input input-bordered w-full"
+                class="input w-full"
                 placeholder="e.g. github:user/system#x86_64-linux"
               />
             </div>
@@ -259,7 +249,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 </button>
               </div>
               <div class="flex gap-2">
-                <.link navigate="/netboot/profiles" class="btn btn-ghost">Cancel</.link>
+                <.link navigate="/server/netboot/profiles" class="btn btn-ghost">Cancel</.link>
                 <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
                   {if @mode == :new, do: "Create Profile", else: "Save Changes"}
                 </button>
@@ -274,7 +264,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
 
         <.card :if={@form[:kernel].value != "" and @form[:initrd].value != ""}>
           <h2 class="card-title mb-4">iPXE Script Preview</h2>
-          <pre class="bg-base-200 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{render_preview(@form)}</pre>
+          <pre class="bg-surface-container p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{render_preview(@form)}</pre>
         </.card>
       </div>
     </Layouts.app>
@@ -313,7 +303,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
           {:noreply,
            socket
            |> put_flash(:info, "Profile #{profile.id} saved successfully")
-           |> push_navigate(to: "/netboot/profiles")}
+           |> push_navigate(to: "/server/netboot/profiles")}
 
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
@@ -339,7 +329,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
         :ok ->
           socket
           |> put_flash(:info, "Profile '#{id}' deleted successfully")
-          |> push_navigate(to: "/netboot/profiles")
+          |> push_navigate(to: "/server/netboot/profiles")
 
         {:error, _reason} ->
           put_flash(socket, :error, "Failed to delete profile '#{id}'")
