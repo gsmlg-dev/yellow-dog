@@ -101,8 +101,34 @@ defmodule YellowDog.Mdns.Supervisor do
            %{count: 1},
            %{mode: mode}
          )
+
+         start_store_consumers()
        end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
+  end
+
+  defp start_store_consumers do
+    if Process.whereis(YellowDog.Store.EventBridge) do
+      child_spec =
+        {YellowDog.Store.ConfigWatcher,
+         service: :mdns, handler: &handle_store_config_change/2, name: :mdns_store_config_watcher}
+
+      case Supervisor.start_child(YellowDog.Mdns, child_spec) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+        {:error, _reason} -> :ok
+      end
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp handle_store_config_change(key, value) do
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :config, :store_change],
+      %{},
+      %{key: key, value: value}
+    )
   end
 end

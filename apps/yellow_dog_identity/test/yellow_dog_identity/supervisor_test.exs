@@ -19,14 +19,19 @@ defmodule YellowDogIdentity.SupervisorTest do
       assert sup_flags.strategy == :one_for_one
     end
 
-    test "starts children in correct order: Registry then LeaseCache" do
+    test "starts children in correct order: Registry, LeaseCache, post_init" do
       {:ok, {_sup_flags, children}} = IdentitySup.init([])
 
-      assert length(children) == 2
+      assert length(children) == 3
 
-      [first, second] = children
-      assert first.start == {YellowDogIdentity.Registry, :start_link, [[data_dir: "data/identity"]]}
+      [first, second, third] = children
+
+      assert first.start ==
+               {YellowDogIdentity.Registry, :start_link, [[data_dir: "data/identity"]]}
+
       assert second.start == {YellowDogIdentity.Trust.DHCP.LeaseCache, :start_link, [[]]}
+      assert third.id == :post_init
+      assert third.restart == :temporary
     end
 
     test "uses default data_dir when no option is provided" do
@@ -37,16 +42,18 @@ defmodule YellowDogIdentity.SupervisorTest do
     end
 
     test "uses custom data_dir when provided" do
-      {:ok, {_sup_flags, [registry_spec | _]}} = IdentitySup.init(data_dir: "/tmp/custom_identity")
+      {:ok, {_sup_flags, [registry_spec | _]}} =
+        IdentitySup.init(data_dir: "/tmp/custom_identity")
 
       {YellowDogIdentity.Registry, :start_link, [opts]} = registry_spec.start
       assert Keyword.get(opts, :data_dir) == "/tmp/custom_identity"
     end
 
     test "LeaseCache child receives empty opts" do
-      {:ok, {_sup_flags, [_registry, lease_cache_spec]}} = IdentitySup.init([])
+      {:ok, {_sup_flags, [_registry, lease_cache_spec | _]}} = IdentitySup.init([])
 
-      assert lease_cache_spec.start == {YellowDogIdentity.Trust.DHCP.LeaseCache, :start_link, [[]]}
+      assert lease_cache_spec.start ==
+               {YellowDogIdentity.Trust.DHCP.LeaseCache, :start_link, [[]]}
     end
   end
 
@@ -73,17 +80,22 @@ defmodule YellowDogIdentity.SupervisorTest do
         # Supervisor is alive
         assert Process.alive?(pid)
 
-        # Has the expected two children
+        # Has at least the core children (Registry + LeaseCache + post_init task)
         children = Supervisor.which_children(pid)
-        assert length(children) == 2
+        assert length(children) >= 2
 
-        # Children are the correct modules
-        child_modules = Enum.map(children, fn {_id, _pid, _type, [mod]} -> mod end)
-        assert YellowDogIdentity.Registry in child_modules
-        assert YellowDogIdentity.Trust.DHCP.LeaseCache in child_modules
+        # Core children are the correct modules
+        child_ids = Enum.map(children, fn {id, _pid, _type, _modules} -> id end)
+        assert YellowDogIdentity.Registry in child_ids
+        assert YellowDogIdentity.Trust.DHCP.LeaseCache in child_ids
 
-        # All children are workers and alive
-        Enum.each(children, fn {_id, child_pid, type, _modules} ->
+        # Core children are workers and alive (temporary tasks may be :undefined)
+        core_children =
+          Enum.filter(children, fn {id, _pid, _type, _mods} ->
+            id in [YellowDogIdentity.Registry, YellowDogIdentity.Trust.DHCP.LeaseCache]
+          end)
+
+        Enum.each(core_children, fn {_id, child_pid, type, _modules} ->
           assert type == :worker
           assert is_pid(child_pid)
           assert Process.alive?(child_pid)
@@ -126,7 +138,7 @@ defmodule YellowDogIdentity.SupervisorTest do
       # so init should always return a usable spec.
       assert {:ok, {sup_flags, children}} = IdentitySup.init([])
       assert sup_flags.strategy == :one_for_one
-      assert length(children) == 2
+      assert length(children) == 3
     end
   end
 
@@ -162,7 +174,9 @@ defmodule YellowDogIdentity.SupervisorTest do
 
   # Starts the identity supervisor, retrying if the name is still registered
   defp start_identity_sup(tmp_dir, retries \\ 5)
-  defp start_identity_sup(_tmp_dir, 0), do: raise("Could not start identity supervisor after retries")
+
+  defp start_identity_sup(_tmp_dir, 0),
+    do: raise("Could not start identity supervisor after retries")
 
   defp start_identity_sup(tmp_dir, retries) do
     case IdentitySup.start_link(data_dir: tmp_dir) do
