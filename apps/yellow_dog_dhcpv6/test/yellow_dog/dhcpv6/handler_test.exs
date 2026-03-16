@@ -12,8 +12,15 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
     # Stop any existing LeaseManager so each test starts with a clean pool
     case GenServer.whereis(LeaseManager) do
-      nil -> :ok
-      pid -> GenServer.stop(pid, :normal)
+      nil ->
+        :ok
+
+      pid ->
+        try do
+          GenServer.stop(pid, :normal)
+        catch
+          :exit, _ -> :ok
+        end
     end
 
     # Configure a default test pool
