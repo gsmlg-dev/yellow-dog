@@ -124,6 +124,8 @@ defmodule YellowDog.Console.ServiceManager do
   defp supervisor_module(:mdns), do: YellowDog.Mdns.Supervisor
   defp supervisor_module(:dhcpv4), do: YellowDog.Dhcpv4.Supervisor
   defp supervisor_module(:dhcpv6), do: YellowDog.Dhcpv6.Supervisor
+  defp supervisor_module(:netboot), do: YellowDog.Netboot.Supervisor
+  defp supervisor_module(:identity), do: YellowDogIdentity.Supervisor
 
   defp terminate_supervisor(pid) do
     # Monitor the process to detect termination

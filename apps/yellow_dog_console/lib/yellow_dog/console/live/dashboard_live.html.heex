@@ -11,7 +11,7 @@
       </button>
     </div>
     <!-- Service Stats Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 w-full">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
       <div
         :for={service <- @services}
         class="p-4 bg-surface-container rounded-lg flex flex-col gap-1"
@@ -48,7 +48,7 @@
     <!-- Main Content Grid -->
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <!-- Service Cards -->
-      <div class="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <.card :for={service <- @services} class="hover:shadow-2xl transition-shadow">
           <div class="flex items-start justify-between">
             <div class="flex-1">
@@ -153,8 +153,8 @@
                 <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
               </button>
             <% end %>
-            <.link navigate={"/system/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
-              <.dm_mdi name="cog" class="h-4 w-4" /> Configure
+            <.link navigate={service_link(service.key)} class="btn btn-sm btn-ghost gap-2">
+              <.dm_mdi name="arrow-right" class="h-4 w-4" /> Details
             </.link>
           </:actions>
         </.card>
@@ -179,8 +179,19 @@
               <.dm_mdi name="wifi" class="h-5 w-5" /> mDNS Discovery
             </.link>
 
+            <.link navigate={~p"/server/netboot"} class="btn btn-outline w-full justify-start gap-2">
+              <.dm_mdi name="flash" class="h-5 w-5" /> Netboot
+            </.link>
+
             <.link
-              navigate={~p"/system/settings"}
+              navigate={~p"/server/identity"}
+              class="btn btn-outline w-full justify-start gap-2"
+            >
+              <.dm_mdi name="key-variant" class="h-5 w-5" /> Identity
+            </.link>
+
+            <.link
+              navigate={~p"/server/settings"}
               class="btn btn-outline w-full justify-start gap-2"
             >
               <.dm_mdi name="cog" class="h-5 w-5" /> Configuration
