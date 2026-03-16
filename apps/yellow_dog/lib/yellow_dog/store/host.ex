@@ -23,7 +23,7 @@ defmodule YellowDog.Store.Host do
       |> Map.put(:last_attested, now)
 
     timed(:put, key, fn ->
-      case Concord.put_if(key, record, expected: nil) do
+      case Concord.put_if(key, record, expected: nil, consistency: :strong) do
         :ok -> :ok
         {:error, :condition_failed} -> {:error, :already_registered}
         error -> error
@@ -38,10 +38,11 @@ defmodule YellowDog.Store.Host do
 
     timed(:put, key, fn ->
       case Concord.put_if(key, nil,
+             consistency: :strong,
              condition: fn old ->
                if old do
                  updated = %{old | pubkeys: pubkeys, keys_updated_at: now}
-                 {:replace, updated}
+                 {:update, updated}
                else
                  false
                end
@@ -86,13 +87,21 @@ defmodule YellowDog.Store.Host do
     now = System.system_time(:second)
 
     timed(:put, key, fn ->
-      case Concord.get(key, consistency: :leader) do
-        {:ok, record} ->
-          updated = Map.put(record, :last_attested, now)
-          Concord.put(key, updated, [])
+      case Concord.put_if(key, nil,
+             consistency: :strong,
+             condition: fn
+               nil ->
+                 false
 
-        {:error, :not_found} ->
-          {:error, :not_found}
+               record ->
+                 updated = Map.put(record, :last_attested, now)
+                 ttl_opts = if ttl = Map.get(record, :attestation_ttl), do: [ttl: ttl], else: []
+                 {:update, updated, ttl_opts}
+             end
+           ) do
+        :ok -> :ok
+        {:error, :condition_failed} -> {:error, :not_found}
+        error -> error
       end
     end)
   end

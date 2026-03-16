@@ -65,7 +65,7 @@ defmodule YellowDog.Store.Zone do
         emit_operation_telemetry(start_time, :zone, :put, key, :strong)
         :ok
 
-      {:error, :condition_not_met} ->
+      {:error, :condition_failed} ->
         {:error, :already_exists}
 
       {:error, _} = error ->
@@ -350,7 +350,7 @@ defmodule YellowDog.Store.Zone do
 
             :ok
 
-          {:error, :condition_not_met} ->
+          {:error, :condition_failed} ->
             # Retry on CAS conflict
             increment_serial(name)
 

@@ -33,7 +33,7 @@ defmodule YellowDog.Store.Rpz do
     prefix = Key.rpz_prefix(zone)
 
     timed(:list, prefix, fn ->
-      Concord.prefix_scan(prefix, [])
+      Concord.prefix_scan(prefix, consistency: :eventual)
     end)
   end
 
@@ -51,7 +51,7 @@ defmodule YellowDog.Store.Rpz do
     prefix = Key.rpz_all_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Concord.prefix_scan(prefix, [])
+      {:ok, entries} = Concord.prefix_scan(prefix, consistency: :eventual)
 
       zone_names =
         entries

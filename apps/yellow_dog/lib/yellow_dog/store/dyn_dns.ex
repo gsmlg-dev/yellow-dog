@@ -33,7 +33,8 @@ defmodule YellowDog.Store.DynDns do
       |> Map.put_new(:created_at, now)
       |> Map.put(:updated_at, now)
 
-    concord_opts = if ttl = Keyword.get(opts, :ttl), do: [ttl: ttl], else: []
+    concord_opts =
+      [consistency: :strong] ++ if(ttl = Keyword.get(opts, :ttl), do: [ttl: ttl], else: [])
 
     timed(:put, key, fn ->
       Concord.put(key, record, concord_opts)
@@ -45,7 +46,9 @@ defmodule YellowDog.Store.DynDns do
     key = Key.dyn_dns_ptr(arpa)
     now = System.system_time(:second)
     record = %{type: :ptr, rdata: fqdn, created_at: now, updated_at: now}
-    concord_opts = if ttl = Keyword.get(opts, :ttl), do: [ttl: ttl], else: []
+
+    concord_opts =
+      [consistency: :strong] ++ if(ttl = Keyword.get(opts, :ttl), do: [ttl: ttl], else: [])
 
     timed(:put, key, fn ->
       Concord.put(key, record, concord_opts)

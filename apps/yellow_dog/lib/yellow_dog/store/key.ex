@@ -80,9 +80,10 @@ defmodule YellowDog.Store.Key do
   @doc "Normalize MAC address to lowercase colon-separated format."
   @spec normalize_mac(String.t()) :: String.t()
   def normalize_mac(mac) do
+    # Strip all separators, then re-chunk into colon-separated pairs
     mac
     |> String.downcase()
-    |> String.replace(~r/[-.]/, ":")
+    |> String.replace(~r/[:\-.]/, "")
     |> normalize_mac_colons()
   end
 
@@ -94,18 +95,12 @@ defmodule YellowDog.Store.Key do
     |> String.replace(~r/[-.]/, ":")
   end
 
-  # Ensure consistent colon-separated format (handles "aabbccddeeff" → "aa:bb:cc:dd:ee:ff")
-  defp normalize_mac_colons(mac) do
-    case String.contains?(mac, ":") do
-      true ->
-        mac
-
-      false ->
-        mac
-        |> String.graphemes()
-        |> Enum.chunk_every(2)
-        |> Enum.map(&Enum.join/1)
-        |> Enum.join(":")
-    end
+  # Re-chunk hex digits into colon-separated pairs: "aabbccddeeff" → "aa:bb:cc:dd:ee:ff"
+  defp normalize_mac_colons(hex) do
+    hex
+    |> String.graphemes()
+    |> Enum.chunk_every(2)
+    |> Enum.map(&Enum.join/1)
+    |> Enum.join(":")
   end
 end

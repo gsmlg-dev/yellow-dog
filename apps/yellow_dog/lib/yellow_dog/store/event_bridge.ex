@@ -126,12 +126,6 @@ defmodule YellowDog.Store.EventBridge do
     # Dispatch to subscribers
     GenServer.cast(__MODULE__, {:dispatch, event})
 
-    :telemetry.execute(
-      [:yellow_dog, :store, :event, :dispatched],
-      %{count: 1},
-      %{key: key, type: type}
-    )
-
     :ok
   end
 
@@ -178,6 +172,12 @@ defmodule YellowDog.Store.EventBridge do
     Enum.each(state.subscriptions, fn {_ref, sub} ->
       if matches_pattern?(event.key, sub.pattern) do
         dispatch_to_handler(sub.handler, event)
+
+        :telemetry.execute(
+          [:yellow_dog, :store, :event, :dispatched],
+          %{count: 1},
+          %{key: event.key, pattern: sub.pattern, consumer: handler_id(sub.handler)}
+        )
       end
     end)
 
@@ -190,6 +190,9 @@ defmodule YellowDog.Store.EventBridge do
   end
 
   # ── Private ─────────────────────────────────────────────────────
+
+  defp handler_id({:fn, _fun}), do: :anonymous
+  defp handler_id({:pid, pid}), do: pid
 
   defp dispatch_to_handler({:fn, fun}, event) do
     Task.start(fn ->

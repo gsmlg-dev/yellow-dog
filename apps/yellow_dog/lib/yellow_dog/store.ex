@@ -87,6 +87,7 @@ defmodule YellowDog.Store do
 
   # Event operations
   defdelegate subscribe(pattern, handler_fn), to: YellowDog.Store.EventBridge
+  defdelegate subscribe(pattern), to: YellowDog.Store.EventBridge
   defdelegate replay(pattern, since), to: YellowDog.Store.EventBridge
 
   @doc """

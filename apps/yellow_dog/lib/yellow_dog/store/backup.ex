@@ -124,18 +124,61 @@ defmodule YellowDog.Store.Backup do
     case Concord.Backup.restore(path, force: true) do
       :ok ->
         duration = System.monotonic_time() - start
+        {keys_restored, namespaces} = collect_restore_stats()
 
         :telemetry.execute(
           [:yellow_dog, :store, :backup, :restored],
-          %{duration: duration, keys_restored: 0},
-          %{path: path, namespaces: []}
+          %{duration: duration, keys_restored: keys_restored},
+          %{path: path, namespaces: namespaces}
         )
 
-        {:ok, %{path: path, restored: true}}
+        {:ok, %{path: path, restored: true, keys_restored: keys_restored, namespaces: namespaces}}
+
+      {:ok, stats} when is_map(stats) ->
+        duration = System.monotonic_time() - start
+        keys_restored = Map.get(stats, :keys_restored, 0)
+        namespaces = Map.get(stats, :namespaces, [])
+
+        :telemetry.execute(
+          [:yellow_dog, :store, :backup, :restored],
+          %{duration: duration, keys_restored: keys_restored},
+          %{path: path, namespaces: namespaces}
+        )
+
+        {:ok, %{path: path, restored: true, keys_restored: keys_restored, namespaces: namespaces}}
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp collect_restore_stats do
+    namespace_prefixes = [
+      {"dhcp:lease:", :lease},
+      {"device:", :device},
+      {"dns:zone:", :zone},
+      {"dns:dyn:", :dyn_dns},
+      {"dns:cache:", :cache},
+      {"rpz:", :rpz},
+      {"host:", :host},
+      {"config:", :config}
+    ]
+
+    counts =
+      Enum.reduce(namespace_prefixes, %{total: 0, namespaces: []}, fn {prefix, ns}, acc ->
+        case Concord.prefix_scan(prefix, consistency: :eventual) do
+          {:ok, entries} when entries != [] ->
+            count = length(entries)
+            %{acc | total: acc.total + count, namespaces: [ns | acc.namespaces]}
+
+          _ ->
+            acc
+        end
+      end)
+
+    {counts.total, Enum.reverse(counts.namespaces)}
+  rescue
+    _ -> {0, []}
   end
 
   defp file_size(path) do

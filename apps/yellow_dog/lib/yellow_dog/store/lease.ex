@@ -17,7 +17,6 @@ defmodule YellowDog.Store.Lease do
   @type lease :: map()
 
   @transition_event [:yellow_dog, :store, :lease, :transition]
-  @operation_event [:yellow_dog, :store, :operation, :stop]
 
   @released_ttl 60
 
@@ -29,6 +28,7 @@ defmodule YellowDog.Store.Lease do
   Uses CAS `put_if expected: nil` to prevent duplicate offers.
   Re-offers over stale (expired) offers are allowed by retrying
   with a condition that accepts nil or an existing `:offered` state.
+  TTL is set atomically with the CAS write.
   """
   @spec offer(protocol, client_id, ip, keyword()) :: :ok | {:error, term()}
   def offer(protocol, client_id, ip, opts \\ []) do
@@ -51,9 +51,12 @@ defmodule YellowDog.Store.Lease do
     }
 
     ttl = lease.lease_duration
+    start_time = System.monotonic_time()
 
     result =
       Concord.put_if(key, lease,
+        consistency: :strong,
+        ttl: ttl,
         condition: fn
           nil -> true
           %{state: :offered} -> true
@@ -63,9 +66,8 @@ defmodule YellowDog.Store.Lease do
 
     case result do
       :ok ->
-        set_ttl(key, lease, ttl)
+        emit_timed_operation(start_time, :lease, :put_if, key, :strong)
         emit_transition(client_id, nil, :offered, ip)
-        emit_operation(:lease, :put_if, key)
         :ok
 
       {:error, :condition_failed} ->
@@ -80,13 +82,16 @@ defmodule YellowDog.Store.Lease do
   Transition a lease from `:offered` to `:bound`.
 
   CAS validates that the current state is `:offered` and the transaction ID matches.
+  The condition function returns `{:update, new_value}` to atomically replace the value.
   """
   @spec bind(protocol, client_id, integer()) :: :ok | {:error, term()}
   def bind(protocol, client_id, xid) do
     key = Key.lease(protocol, client_id)
+    start_time = System.monotonic_time()
 
     result =
       Concord.put_if(key, nil,
+        consistency: :strong,
         condition: fn
           %{state: :offered, xid: ^xid} = lease ->
             {:update,
@@ -97,12 +102,6 @@ defmodule YellowDog.Store.Lease do
                  version: lease.version + 1
              }}
 
-          %{state: :offered} ->
-            false
-
-          nil ->
-            false
-
           _other ->
             false
         end
@@ -110,8 +109,8 @@ defmodule YellowDog.Store.Lease do
 
     case result do
       :ok ->
+        emit_timed_operation(start_time, :lease, :put_if, key, :strong)
         emit_transition(client_id, :offered, :bound, nil)
-        emit_operation(:lease, :put_if, key)
         :ok
 
       {:error, :condition_failed} ->
@@ -123,19 +122,22 @@ defmodule YellowDog.Store.Lease do
   end
 
   @doc """
-  Transition a lease from `:bound` or `:renewing` to `:renewing`.
+  Transition a lease from `:bound`, `:renewing`, or `:rebinding` to `:renewing`.
 
-  Updates the TTL to the new duration.
+  Updates the TTL atomically within the CAS condition.
   """
   @spec renew(protocol, client_id, pos_integer()) :: :ok | {:error, term()}
   def renew(protocol, client_id, duration) do
     key = Key.lease(protocol, client_id)
     now = System.system_time(:second)
+    start_time = System.monotonic_time()
 
     result =
       Concord.put_if(key, nil,
+        consistency: :strong,
+        ttl: duration,
         condition: fn
-          %{state: state} = lease when state in [:bound, :renewing] ->
+          %{state: state} = lease when state in [:bound, :renewing, :rebinding] ->
             {:update,
              %{
                lease
@@ -152,14 +154,8 @@ defmodule YellowDog.Store.Lease do
 
     case result do
       :ok ->
-        # Update the TTL for the renewed lease
-        case Concord.get(key, consistency: :leader) do
-          {:ok, lease} -> set_ttl(key, lease, duration)
-          _ -> :ok
-        end
-
+        emit_timed_operation(start_time, :lease, :put_if, key, :strong)
         emit_transition(client_id, :bound, :renewing, nil)
-        emit_operation(:lease, :put_if, key)
         :ok
 
       {:error, :condition_failed} ->
@@ -175,19 +171,20 @@ defmodule YellowDog.Store.Lease do
 
   Does not delete the lease immediately -- it remains visible briefly
   so that event consumers can react to the release.
+  TTL is set atomically with the CAS write.
   """
   @spec release(protocol, client_id) :: :ok | {:error, term()}
   def release(protocol, client_id) do
     key = Key.lease(protocol, client_id)
+    start_time = System.monotonic_time()
 
     result =
       Concord.put_if(key, nil,
+        consistency: :strong,
+        ttl: @released_ttl,
         condition: fn
-          %{state: state} = lease when state in [:offered, :bound, :renewing] ->
+          %{state: state} = lease when state in [:offered, :bound, :renewing, :rebinding] ->
             {:update, %{lease | state: :released, version: lease.version + 1}}
-
-          nil ->
-            false
 
           _other ->
             false
@@ -196,13 +193,8 @@ defmodule YellowDog.Store.Lease do
 
     case result do
       :ok ->
-        case Concord.get(key, consistency: :leader) do
-          {:ok, lease} -> set_ttl(key, lease, @released_ttl)
-          _ -> :ok
-        end
-
+        emit_timed_operation(start_time, :lease, :put_if, key, :strong)
         emit_transition(client_id, nil, :released, nil)
-        emit_operation(:lease, :put_if, key)
         :ok
 
       {:error, :condition_failed} ->
@@ -219,15 +211,14 @@ defmodule YellowDog.Store.Lease do
   @spec decline(protocol, client_id) :: :ok | {:error, term()}
   def decline(protocol, client_id) do
     key = Key.lease(protocol, client_id)
+    start_time = System.monotonic_time()
 
     result =
       Concord.put_if(key, nil,
+        consistency: :strong,
         condition: fn
-          %{state: state} = lease when state in [:offered, :bound, :renewing] ->
+          %{state: state} = lease when state in [:offered, :bound, :renewing, :rebinding] ->
             {:update, %{lease | state: :declined, version: lease.version + 1}}
-
-          nil ->
-            false
 
           _other ->
             false
@@ -236,8 +227,8 @@ defmodule YellowDog.Store.Lease do
 
     case result do
       :ok ->
+        emit_timed_operation(start_time, :lease, :put_if, key, :strong)
         emit_transition(client_id, nil, :declined, nil)
-        emit_operation(:lease, :put_if, key)
         :ok
 
       {:error, :condition_failed} ->
@@ -254,8 +245,9 @@ defmodule YellowDog.Store.Lease do
   @spec get(protocol, client_id) :: {:ok, lease()} | {:error, :not_found}
   def get(protocol, client_id) do
     key = Key.lease(protocol, client_id)
+    start_time = System.monotonic_time()
     result = Concord.get(key, consistency: :leader)
-    emit_operation(:lease, :get, key)
+    emit_timed_operation(start_time, :lease, :get, key, :leader)
     result
   end
 
@@ -336,10 +328,6 @@ defmodule YellowDog.Store.Lease do
     end
   end
 
-  defp set_ttl(key, lease, ttl) do
-    Concord.put(key, lease, ttl: ttl)
-  end
-
   defp emit_transition(client_id, from, to, ip) do
     :telemetry.execute(@transition_event, %{}, %{
       mac: client_id,
@@ -349,11 +337,13 @@ defmodule YellowDog.Store.Lease do
     })
   end
 
-  defp emit_operation(namespace, operation, key) do
-    :telemetry.execute(@operation_event, %{}, %{
-      namespace: namespace,
-      operation: operation,
-      key: key
-    })
+  defp emit_timed_operation(start_time, namespace, operation, key, consistency) do
+    duration = System.monotonic_time() - start_time
+
+    :telemetry.execute(
+      [:yellow_dog, :store, :operation, :stop],
+      %{duration: duration},
+      %{namespace: namespace, operation: operation, key: key, consistency: consistency}
+    )
   end
 end
