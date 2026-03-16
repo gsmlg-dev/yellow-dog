@@ -45,6 +45,8 @@ defmodule YellowDog.Application do
       {YellowDog.Config, config},
       # Data layer supervisor (Registry for collection tracking)
       YellowDog.Data.Supervisor,
+      # Store mode detector: creates ETS table, detects single-node vs. cluster
+      YellowDog.Store.ModeDetector,
       # Store event bridge (must start before DynDnsUpdater)
       YellowDog.Store.EventBridge,
       # DynDnsUpdater: subscribes to lease events, creates DNS records
