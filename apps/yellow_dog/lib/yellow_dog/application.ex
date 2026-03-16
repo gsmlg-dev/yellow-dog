@@ -55,8 +55,8 @@ defmodule YellowDog.Application do
       YellowDog.ServiceHeartbeat
     ]
 
-    # Note: YellowDog.Console and YellowDog.Telemetry have their own Application
-    # modules and start separately as OTP applications (required for Phoenix dependencies)
+    # Note: YellowDog.Console and YellowDog.Netman have their own Application
+    # modules and start separately as OTP applications
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
 
