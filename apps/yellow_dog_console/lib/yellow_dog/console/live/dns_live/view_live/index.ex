@@ -2,6 +2,11 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   @moduledoc """
   DNS Views management page with data table.
   First level of the View -> Zone -> Records hierarchy.
+
+  View configuration is decoupled from the DNS service lifecycle.
+  Views are persisted to TOML and can be managed even when the DNS
+  service is stopped. When the service is running, changes are also
+  propagated to the live ViewManager processes.
   """
   use YellowDog.Console, :live_view
 
@@ -16,6 +21,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
+  alias YellowDog.Dns.ViewStore
   alias YellowDog.Dns.ConfigPersistence
 
   @impl true
@@ -167,32 +173,36 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
   @impl true
   def handle_event("toggle_enabled", %{"name" => view_name}, socket) do
-    result =
-      try do
-        ViewManager.get_view(view_name)
-      catch
-        :exit, _ -> :error
-      end
-
-    case result do
-      {:ok, pid} ->
-        try do
-          current = View.is_enabled?(pid)
-          View.set_enabled(pid, !current)
-          save_config_async()
-          action = if current, do: "disabled", else: "enabled"
-
-          {:noreply,
-           socket
-           |> refresh_views()
-           |> put_flash(:info, "View '#{view_name}' #{action}")}
-        catch
-          :exit, _ ->
+    # Load current views from TOML, toggle the enabled flag, save back
+    case load_persisted_views() do
+      {:ok, views} ->
+        case Enum.find(views, &(&1.name == view_name)) do
+          nil ->
             {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
+
+          view ->
+            new_enabled = not Map.get(view, :enabled, true)
+            updated_view = Map.put(view, :enabled, new_enabled)
+            updated_views = replace_view_in_list(views, view_name, updated_view)
+
+            case save_views_to_toml(updated_views) do
+              :ok ->
+                # Propagate to running service if available
+                propagate_toggle(view_name, new_enabled)
+                action = if new_enabled, do: "enabled", else: "disabled"
+
+                {:noreply,
+                 socket
+                 |> refresh_views()
+                 |> put_flash(:info, "View '#{view_name}' #{action}")}
+
+              {:error, reason} ->
+                {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
+            end
         end
 
-      :error ->
-        {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to load views: #{inspect(reason)}")}
     end
   end
 
@@ -228,29 +238,34 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
        |> assign(:delete_confirm, nil)
        |> put_flash(:error, "Cannot delete the default view")}
     else
-      result =
-        try do
-          ViewManager.stop_view(view_name)
-        catch
-          :exit, _ -> {:error, :service_unavailable}
-        end
+      # Remove from TOML persistence first
+      case load_persisted_views() do
+        {:ok, views} ->
+          updated_views = Enum.reject(views, &(&1.name == view_name))
 
-      case result do
-        :ok ->
-          # Persist configuration to files
-          save_config_async()
+          case save_views_to_toml(updated_views) do
+            :ok ->
+              # Also stop the running process if service is up
+              propagate_delete(view_name)
 
-          {:noreply,
-           socket
-           |> assign(:delete_confirm, nil)
-           |> refresh_views()
-           |> put_flash(:info, "View '#{view_name}' deleted successfully")}
+              {:noreply,
+               socket
+               |> assign(:delete_confirm, nil)
+               |> refresh_views()
+               |> put_flash(:info, "View '#{view_name}' deleted successfully")}
+
+            {:error, reason} ->
+              {:noreply,
+               socket
+               |> assign(:delete_confirm, nil)
+               |> put_flash(:error, "Failed to delete: #{inspect(reason)}")}
+          end
 
         {:error, _reason} ->
           {:noreply,
            socket
            |> assign(:delete_confirm, nil)
-           |> put_flash(:error, "View '#{view_name}' not found")}
+           |> put_flash(:error, "Failed to load views")}
       end
     end
   end
@@ -326,7 +341,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   end
 
   # ============================================================================
-  # Private Helpers
+  # Private Helpers — Save
   # ============================================================================
 
   defp save_view_impl(socket, view_params) do
@@ -364,7 +379,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         :error -> 1
       end
 
-    config = %{
+    view_config = %{
       name: view_params["name"],
       priority: priority,
       recursion_enabled: view_params["recursion_enabled"] == "true",
@@ -372,38 +387,39 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       acl: acl_config,
       fallback_forwarders: fallback_forwarders,
       fallback_timeout: fallback_timeout,
-      fallback_retries: fallback_retries
+      fallback_retries: fallback_retries,
+      enabled: true
     }
 
-    result =
-      try do
-        if editing do
-          case ViewManager.get_view(editing) do
-            {:ok, pid} ->
-              View.reload(pid, config)
-              :ok
+    # Convert to persistence format
+    persist_config = to_persist_format(view_config)
 
-            :error ->
-              {:error, :not_found}
-          end
-        else
-          case ViewManager.start_view(config) do
-            {:ok, _pid} -> :ok
-            {:error, reason} -> {:error, reason}
-          end
-        end
-      catch
-        :exit, _ -> {:error, :service_unavailable}
+    # Save to TOML first (works regardless of service state)
+    result =
+      case load_persisted_views() do
+        {:ok, views} ->
+          updated_views =
+            if editing do
+              replace_view_in_list(views, editing, persist_config)
+            else
+              views ++ [persist_config]
+            end
+
+          save_views_to_toml(updated_views)
+
+        {:error, reason} ->
+          {:error, reason}
       end
 
     case result do
       :ok ->
-        save_config_async()
+        # Propagate to running service if available
+        propagate_save(view_config, editing)
         action = if editing, do: "updated", else: "created"
 
         {:noreply,
          socket
-         |> put_flash(:info, "View '#{config.name}' #{action} successfully")
+         |> put_flash(:info, "View '#{view_config.name}' #{action} successfully")
          |> push_navigate(to: ~p"/server/dns/views")}
 
       {:error, reason} ->
@@ -411,51 +427,242 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     end
   end
 
-  defp validate_view_fields(params) do
-    errors = %{}
-    name = params["name"] || ""
-    forwarders = params["fallback_forwarders"] || ""
-
-    # Validate view name (alphanumeric, hyphens, underscores)
-    errors =
-      if name != "" and not (name =~ ~r/^[a-zA-Z0-9_-]+$/) do
-        Map.put(errors, :name, "Name must be alphanumeric with hyphens or underscores")
-      else
-        errors
-      end
-
-    # Validate fallback forwarders are valid IPs
-    errors =
-      if forwarders != "" do
-        invalid =
-          forwarders
-          |> StringHelper.split_and_trim("\n")
-          |> Enum.find(fn entry ->
-            # Strip optional :port suffix
-            ip =
-              case String.split(entry, ":", parts: 2) do
-                [ip, _port] -> ip
-                [ip] -> ip
-              end
-
-            Validators.validate_ip(ip, :ipv4) != :ok and
-              Validators.validate_ip(ip, :ipv6) != :ok
-          end)
-
-        if invalid do
-          Map.put(errors, :fallback_forwarders, "Invalid IP address: #{invalid}")
-        else
-          errors
-        end
-      else
-        errors
-      end
-
-    errors
+  # Convert LiveView config format to ViewStore persistence format
+  defp to_persist_format(config) do
+    %{
+      name: config.name,
+      priority: config.priority,
+      recursion: config[:recursion_enabled] || config[:recursion] || false,
+      ecs_enabled: config[:ecs_enabled] || false,
+      acl: config[:acl],
+      zones: config[:zones] || [],
+      enabled: Map.get(config, :enabled, true),
+      fallback_forwarders: config[:fallback_forwarders] || [],
+      fallback_timeout: config[:fallback_timeout] || 2000,
+      fallback_retries: config[:fallback_retries] || 1
+    }
   end
 
+  defp replace_view_in_list(views, view_name, new_view) do
+    case Enum.find_index(views, &(&1.name == view_name)) do
+      nil ->
+        # View not found in list, append it
+        views ++ [new_view]
+
+      idx ->
+        # Preserve fields from the existing entry that aren't in the new config
+        existing = Enum.at(views, idx)
+        merged = Map.merge(existing, new_view)
+        List.replace_at(views, idx, merged)
+    end
+  end
+
+  # ============================================================================
+  # Private Helpers — TOML Persistence
+  # ============================================================================
+
+  defp load_persisted_views do
+    views_path = Path.join(ConfigPersistence.default_data_path(), "views.toml")
+    ViewStore.load_views(views_path)
+  end
+
+  defp save_views_to_toml(views) do
+    views_path = Path.join(ConfigPersistence.default_data_path(), "views.toml")
+
+    with :ok <- File.mkdir_p(ConfigPersistence.default_data_path()) do
+      ViewStore.save_views(views_path, views)
+    end
+  end
+
+  # ============================================================================
+  # Private Helpers — Service Propagation
+  # ============================================================================
+
+  # Propagate changes to running ViewManager when DNS service is up.
+  # Failures here are non-fatal — TOML is the source of truth.
+
+  defp propagate_save(config, editing) do
+    if dns_service_running?() do
+      try do
+        if editing do
+          case ViewManager.get_view(editing) do
+            {:ok, pid} -> View.reload(pid, config)
+            :error -> ViewManager.start_view(config)
+          end
+        else
+          ViewManager.start_view(config)
+        end
+      catch
+        :exit, _ -> :ok
+      end
+    end
+  end
+
+  defp propagate_toggle(view_name, enabled) do
+    if dns_service_running?() do
+      try do
+        case ViewManager.get_view(view_name) do
+          {:ok, pid} -> View.set_enabled(pid, enabled)
+          :error -> :ok
+        end
+      catch
+        :exit, _ -> :ok
+      end
+    end
+  end
+
+  defp propagate_delete(view_name) do
+    if dns_service_running?() do
+      try do
+        ViewManager.stop_view(view_name)
+      catch
+        :exit, _ -> :ok
+      end
+    end
+  end
+
+  defp dns_service_running? do
+    service_running?(YellowDog.Dns)
+  end
+
+  # ============================================================================
+  # Private Helpers — Data Loading
+  # ============================================================================
+
   defp refresh_views(socket) do
-    assign(socket, :views, list_views())
+    assign(socket, views: list_views(), service_running: dns_service_running?())
+  end
+
+  defp list_views do
+    # Try to get runtime stats from running service first
+    runtime_views = list_views_from_service()
+
+    case runtime_views do
+      views when views != [] ->
+        views
+
+      _ ->
+        # Fall back to TOML persisted data
+        list_views_from_toml()
+    end
+  end
+
+  defp list_views_from_service do
+    try do
+      views = ViewManager.list_views()
+
+      Enum.map(views, fn {view_name, pid, priority} ->
+        stats = View.stats(pid)
+
+        %{
+          name: view_name,
+          priority: priority,
+          enabled: Map.get(stats, :enabled, true),
+          recursion_enabled: Map.get(stats, :recursion_enabled, false),
+          ecs_enabled: Map.get(stats, :ecs_enabled, false),
+          zone_count: length(Map.get(stats, :zones, [])),
+          query_count: Map.get(stats, :query_count, 0)
+        }
+      end)
+      |> Enum.sort_by(& &1.priority)
+    catch
+      _, _ -> []
+    end
+  end
+
+  defp list_views_from_toml do
+    case load_persisted_views() do
+      {:ok, views} ->
+        Enum.map(views, fn view ->
+          priority =
+            case view[:priority] do
+              999_999 -> :infinity
+              p -> p || 100
+            end
+
+          %{
+            name: view.name,
+            priority: priority,
+            enabled: Map.get(view, :enabled, true),
+            recursion_enabled: Map.get(view, :recursion, false),
+            ecs_enabled: Map.get(view, :ecs_enabled, false),
+            zone_count: length(Map.get(view, :zones, [])),
+            query_count: 0
+          }
+        end)
+        |> Enum.sort_by(& &1.priority)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp get_view_config(view_name) do
+    # Try running service first for live config
+    case get_view_config_from_service(view_name) do
+      {:ok, _} = result -> result
+      :error -> get_view_config_from_toml(view_name)
+    end
+  end
+
+  defp get_view_config_from_service(view_name) do
+    try do
+      case ViewManager.get_view(view_name) do
+        {:ok, pid} ->
+          stats = View.stats(pid)
+
+          config = %{
+            name: stats.name,
+            priority: stats.priority,
+            recursion_enabled: stats.recursion_enabled,
+            ecs_enabled: stats.ecs_enabled,
+            acl: Map.get(stats, :acl, :any),
+            fallback_forwarders: Map.get(stats, :fallback_forwarders, []),
+            fallback_timeout: Map.get(stats, :fallback_timeout, 2000),
+            fallback_retries: Map.get(stats, :fallback_retries, 1)
+          }
+
+          {:ok, config}
+
+        :error ->
+          :error
+      end
+    catch
+      _, _ -> :error
+    end
+  end
+
+  defp get_view_config_from_toml(view_name) do
+    case load_persisted_views() do
+      {:ok, views} ->
+        case Enum.find(views, &(&1.name == view_name)) do
+          nil ->
+            :error
+
+          view ->
+            priority =
+              case view[:priority] do
+                999_999 -> :infinity
+                p -> p || 100
+              end
+
+            config = %{
+              name: view.name,
+              priority: priority,
+              recursion_enabled: Map.get(view, :recursion, false),
+              ecs_enabled: Map.get(view, :ecs_enabled, false),
+              acl: Map.get(view, :acl, :any),
+              fallback_forwarders: Map.get(view, :fallback_forwarders, []),
+              fallback_timeout: Map.get(view, :fallback_timeout, 2000),
+              fallback_retries: Map.get(view, :fallback_retries, 1)
+            }
+
+            {:ok, config}
+        end
+
+      {:error, _} ->
+        :error
+    end
   end
 
   # ============================================================================
@@ -505,56 +712,53 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     header <> rows
   end
 
+  # ============================================================================
+  # Validation & Parsing Helpers
+  # ============================================================================
+
   defp is_default_view?(view_name), do: view_name == "default"
 
-  defp list_views do
-    try do
-      views = ViewManager.list_views()
+  defp validate_view_fields(params) do
+    errors = %{}
+    name = params["name"] || ""
+    forwarders = params["fallback_forwarders"] || ""
 
-      Enum.map(views, fn {view_name, pid, priority} ->
-        stats = View.stats(pid)
-
-        %{
-          name: view_name,
-          priority: priority,
-          enabled: Map.get(stats, :enabled, true),
-          recursion_enabled: Map.get(stats, :recursion_enabled, false),
-          ecs_enabled: Map.get(stats, :ecs_enabled, false),
-          zone_count: length(Map.get(stats, :zones, [])),
-          query_count: Map.get(stats, :query_count, 0)
-        }
-      end)
-      |> Enum.sort_by(& &1.priority)
-    catch
-      _, _ -> []
-    end
-  end
-
-  defp get_view_config(view_name) do
-    try do
-      case ViewManager.get_view(view_name) do
-        {:ok, pid} ->
-          stats = View.stats(pid)
-
-          config = %{
-            name: stats.name,
-            priority: stats.priority,
-            recursion_enabled: stats.recursion_enabled,
-            ecs_enabled: stats.ecs_enabled,
-            acl: Map.get(stats, :acl, :any),
-            fallback_forwarders: Map.get(stats, :fallback_forwarders, []),
-            fallback_timeout: Map.get(stats, :fallback_timeout, 2000),
-            fallback_retries: Map.get(stats, :fallback_retries, 1)
-          }
-
-          {:ok, config}
-
-        :error ->
-          :error
+    # Validate view name (alphanumeric, hyphens, underscores)
+    errors =
+      if name != "" and not (name =~ ~r/^[a-zA-Z0-9_-]+$/) do
+        Map.put(errors, :name, "Name must be alphanumeric with hyphens or underscores")
+      else
+        errors
       end
-    catch
-      _, _ -> :error
-    end
+
+    # Validate fallback forwarders are valid IPs
+    errors =
+      if forwarders != "" do
+        invalid =
+          forwarders
+          |> StringHelper.split_and_trim("\n")
+          |> Enum.find(fn entry ->
+            # Strip optional :port suffix
+            ip =
+              case String.split(entry, ":", parts: 2) do
+                [ip, _port] -> ip
+                [ip] -> ip
+              end
+
+            Validators.validate_ip(ip, :ipv4) != :ok and
+              Validators.validate_ip(ip, :ipv6) != :ok
+          end)
+
+        if invalid do
+          Map.put(errors, :fallback_forwarders, "Invalid IP address: #{invalid}")
+        else
+          errors
+        end
+      else
+        errors
+      end
+
+    errors
   end
 
   defp parse_acl_for_form(acl) do
@@ -618,17 +822,5 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       {:ok, ip} -> ip
       {:error, _} -> {0, 0, 0, 0}
     end
-  end
-
-  defp save_config_async do
-    Task.start(fn ->
-      case ConfigPersistence.save_current() do
-        :ok ->
-          :ok
-
-        {:error, reason} ->
-          Logger.warning("Failed to save DNS config", error: inspect(reason))
-      end
-    end)
   end
 end

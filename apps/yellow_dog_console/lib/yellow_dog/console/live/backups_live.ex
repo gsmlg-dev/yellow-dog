@@ -11,7 +11,6 @@ defmodule YellowDog.Console.BackupsLive do
   alias YellowDog.Console.Layouts
   alias YellowDog.Store.Backup
 
-
   @impl true
   def mount(_params, _session, socket) do
     {:ok,

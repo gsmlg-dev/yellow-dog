@@ -232,7 +232,11 @@ defmodule YellowDog.Dns.ConfigPersistence do
           recursion: stats[:recursion_enabled] || false,
           ecs_enabled: stats[:ecs_enabled] || false,
           zones: stats[:zones] || [],
-          acl: stats[:acl]
+          acl: stats[:acl],
+          enabled: Map.get(stats, :enabled, true),
+          fallback_forwarders: Map.get(stats, :fallback_forwarders, []),
+          fallback_timeout: Map.get(stats, :fallback_timeout, 2000),
+          fallback_retries: Map.get(stats, :fallback_retries, 1)
         }
       rescue
         _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError, KeyError] ->

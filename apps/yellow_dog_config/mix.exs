@@ -1,9 +1,9 @@
-defmodule YellowDog.Dhcpv6.MixProject do
+defmodule YellowDog.Config.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :yellow_dog_dhcpv6,
+      app: :yellow_dog_config,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -16,24 +16,14 @@ defmodule YellowDog.Dhcpv6.MixProject do
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :mnesia]
+      extra_applications: [:logger]
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # Core dependencies
-      {:yellow_dog, in_umbrella: true},
-      {:yellow_dog_store, in_umbrella: true},
-      {:yellow_dog_telemetry, in_umbrella: true},
-
-      # External dependencies for DHCPv6 functionality
-      {:ex_dhcp, in_umbrella: true},
-      {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
 

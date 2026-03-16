@@ -28,6 +28,8 @@ defmodule YellowDog.MixProject do
   defp deps do
     [
       # Core dependencies
+      {:yellow_dog_config, in_umbrella: true},
+      {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:abyss, in_umbrella: true},
 

@@ -60,6 +60,7 @@ defmodule YellowDog.Console.MixProject do
 
       # YellowDog dependencies
       {:yellow_dog, in_umbrella: true},
+      {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_mdns, in_umbrella: true},
       {:yellow_dog_dhcpv4, in_umbrella: true},
       {:yellow_dog_dhcpv6, in_umbrella: true},
