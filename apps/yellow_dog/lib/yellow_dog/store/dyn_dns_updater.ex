@@ -210,8 +210,14 @@ defmodule YellowDog.Store.DynDnsUpdater do
   defp subscribe_to_bridge(state) do
     case EventBridge.subscribe(@lease_event_pattern) do
       {:ok, ref} ->
-        mon = Process.monitor(Process.whereis(EventBridge))
-        %{state | subscription_ref: ref, bridge_monitor: mon}
+        case Process.whereis(EventBridge) do
+          pid when is_pid(pid) ->
+            mon = Process.monitor(pid)
+            %{state | subscription_ref: ref, bridge_monitor: mon}
+
+          nil ->
+            %{state | subscription_ref: ref, bridge_monitor: nil}
+        end
 
       _ ->
         Logger.warning("DynDnsUpdater: failed to subscribe to EventBridge, retrying")

@@ -2,9 +2,10 @@ defmodule YellowDog.Store.Zone do
   @moduledoc """
   Authoritative DNS zone data facade over the Store backend.
 
-  Manages zone metadata and resource record sets (RRsets). All writes use
-  `:strong` consistency and compare-and-swap (CAS) to prevent concurrent
-  edit races. RR mutations auto-increment the SOA serial.
+  Manages zone metadata and resource record sets (RRsets). Zone creation
+  uses CAS (`expected: nil`) to prevent duplicates. RRset writes use
+  upsert semantics (last-writer-wins). SOA serial auto-increment uses
+  CAS with bounded retries to prevent lost updates.
 
   Key patterns (via `YellowDog.Store.Key`):
   - Zone metadata: `dns:zone:{zone_name}`
@@ -88,10 +89,16 @@ defmodule YellowDog.Store.Zone do
 
       zone_key = Key.zone(name)
       start_time = System.monotonic_time()
-      result = Backend.active().delete(zone_key)
-      emit_operation_telemetry(start_time, :zone, :delete, zone_key, :strong)
-      EventBridge.notify(:delete, zone_key, nil)
-      result
+
+      case Backend.active().delete(zone_key) do
+        :ok ->
+          emit_operation_telemetry(start_time, :zone, :delete, zone_key, :strong)
+          EventBridge.notify(:delete, zone_key, nil)
+          :ok
+
+        {:error, _} = error ->
+          error
+      end
     end
   end
 
