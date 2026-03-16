@@ -42,26 +42,48 @@ defmodule YellowDog.Store do
   defdelegate delete_zone(name), to: YellowDog.Store.Zone
   defdelegate get_zone(name), to: YellowDog.Store.Zone
   defdelegate list_zones(), to: YellowDog.Store.Zone
+  defdelegate put_rrset(zone, owner, type, rrset), to: YellowDog.Store.Zone
+  defdelegate get_rrset(zone, owner, type), to: YellowDog.Store.Zone
+  defdelegate delete_rrset(zone, owner, type), to: YellowDog.Store.Zone
+  defdelegate list_records(zone), to: YellowDog.Store.Zone
+  defdelegate import_zone(name, records), to: YellowDog.Store.Zone, as: :import
+  defdelegate export_zone(name), to: YellowDog.Store.Zone, as: :export
+  defdelegate increment_serial(name), to: YellowDog.Store.Zone
 
   # DynDns operations
   defdelegate put_dyn_dns(fqdn, record, opts \\ []), to: YellowDog.Store.DynDns, as: :put
+  defdelegate put_dyn_dns_ptr(arpa, fqdn, opts \\ []), to: YellowDog.Store.DynDns, as: :put_ptr
   defdelegate get_dyn_dns(fqdn), to: YellowDog.Store.DynDns, as: :get
+  defdelegate get_dyn_dns_ptr(arpa), to: YellowDog.Store.DynDns, as: :get_ptr
+  defdelegate delete_dyn_dns(fqdn), to: YellowDog.Store.DynDns, as: :delete
+  defdelegate dyn_dns_by_source(source), to: YellowDog.Store.DynDns, as: :list_by_source
 
   # RPZ operations
   defdelegate put_rpz(zone, trigger, rule), to: YellowDog.Store.Rpz, as: :put
   defdelegate get_rpz(zone, trigger), to: YellowDog.Store.Rpz, as: :get
+  defdelegate list_rpz(zone), to: YellowDog.Store.Rpz, as: :list
+  defdelegate delete_rpz(zone, trigger), to: YellowDog.Store.Rpz, as: :delete
+  defdelegate rpz_zones(), to: YellowDog.Store.Rpz, as: :zones
 
   # Host operations
   defdelegate register_host(hostname, attrs), to: YellowDog.Store.Host, as: :register
+  defdelegate update_host_keys(hostname, pubkeys), to: YellowDog.Store.Host, as: :update_keys
   defdelegate get_host(hostname), to: YellowDog.Store.Host, as: :get
+  defdelegate host_by_mac(mac), to: YellowDog.Store.Host, as: :by_mac
+  defdelegate attest_host(hostname), to: YellowDog.Store.Host, as: :attest
 
   # Config operations
   defdelegate get_config(service, key, default \\ nil), to: YellowDog.Store.Config, as: :get
   defdelegate put_config(service, key, value), to: YellowDog.Store.Config, as: :put
+  defdelegate list_config(service), to: YellowDog.Store.Config, as: :list
+  defdelegate delete_config(service, key), to: YellowDog.Store.Config, as: :delete
 
   # Backup operations
   defdelegate create_backup(opts \\ []), to: YellowDog.Store.Backup, as: :create
   defdelegate restore_backup(path, opts \\ []), to: YellowDog.Store.Backup, as: :restore
+  defdelegate verify_backup(path), to: YellowDog.Store.Backup, as: :verify
+  defdelegate list_backups(opts \\ []), to: YellowDog.Store.Backup, as: :list
+  defdelegate delete_backup(path), to: YellowDog.Store.Backup, as: :delete
 
   # Event operations
   defdelegate subscribe(pattern, handler_fn), to: YellowDog.Store.EventBridge
