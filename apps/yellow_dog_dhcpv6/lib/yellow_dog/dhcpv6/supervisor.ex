@@ -73,8 +73,38 @@ defmodule YellowDog.Dhcpv6.Supervisor do
            %{count: 1},
            %{}
          )
+
+         start_store_consumers()
        end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
+  end
+
+  defp start_store_consumers do
+    if Process.whereis(YellowDog.Store.EventBridge) do
+      child_spec =
+        {YellowDog.Store.ConfigWatcher,
+         service: :dhcpv6,
+         handler: &handle_store_config_change/2,
+         name: :dhcpv6_store_config_watcher}
+
+      name = Map.get(%{}, :name, YellowDog.Dhcpv6)
+
+      case Supervisor.start_child(name, child_spec) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+        {:error, _reason} -> :ok
+      end
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp handle_store_config_change(key, value) do
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :config, :store_change],
+      %{},
+      %{key: key, value: value}
+    )
   end
 end
