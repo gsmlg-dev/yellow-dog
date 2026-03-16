@@ -96,7 +96,7 @@ defmodule YellowDog.ServiceManagerTest do
       services = ServiceManager.list_services()
 
       assert is_list(services)
-      assert length(services) == 4
+      assert length(services) == 6
     end
 
     test "includes all expected services" do
@@ -106,6 +106,8 @@ defmodule YellowDog.ServiceManagerTest do
       assert :mdns in services
       assert :dhcpv4 in services
       assert :dhcpv6 in services
+      assert :netboot in services
+      assert :identity in services
     end
 
     test "returns atoms" do
@@ -192,7 +194,7 @@ defmodule YellowDog.ServiceManagerTest do
       all_status = ServiceManager.get_all_status()
 
       assert is_map(all_status)
-      assert map_size(all_status) == 4
+      assert map_size(all_status) == 6
     end
 
     test "includes all services as keys" do
@@ -202,6 +204,8 @@ defmodule YellowDog.ServiceManagerTest do
       assert Map.has_key?(all_status, :mdns)
       assert Map.has_key?(all_status, :dhcpv4)
       assert Map.has_key?(all_status, :dhcpv6)
+      assert Map.has_key?(all_status, :netboot)
+      assert Map.has_key?(all_status, :identity)
     end
 
     test "each service has status map" do
