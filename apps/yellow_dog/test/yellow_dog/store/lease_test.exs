@@ -154,6 +154,81 @@ defmodule YellowDog.Store.LeaseTest do
     end
   end
 
+  describe "DHCPv6 lease lifecycle" do
+    test "offer and bind v6 lease using DUID" do
+      duid = "00:01:00:01:2a:3b:4c:5d:aa:bb:cc:dd:ee:ff"
+
+      assert :ok =
+               Lease.offer(:v6, duid, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1},
+                 xid: 500,
+                 lease_duration: 7200
+               )
+
+      assert {:ok, lease} = Lease.get(:v6, duid)
+      assert lease.state == :offered
+      assert lease.ip == {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}
+
+      assert :ok = Lease.bind(:v6, duid, 500)
+      assert {:ok, bound} = Lease.get(:v6, duid)
+      assert bound.state == :bound
+    end
+
+    test "v6 renew and release" do
+      duid = "00:01:00:01:2a:3b:4c:5d:11:22:33:44:55:66"
+      Lease.offer(:v6, duid, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 2}, xid: 501)
+      Lease.bind(:v6, duid, 501)
+
+      assert :ok = Lease.renew(:v6, duid, 14400)
+      assert {:ok, lease} = Lease.get(:v6, duid)
+      assert lease.state == :renewing
+      assert lease.lease_duration == 14400
+
+      assert :ok = Lease.release(:v6, duid)
+      assert {:ok, released} = Lease.get(:v6, duid)
+      assert released.state == :released
+    end
+
+    test "DUID normalization in offer" do
+      duid = "00-01-00-01-2A-3B-4C-5D-AA-BB-CC-DD-EE-FF"
+      assert :ok = Lease.offer(:v6, duid, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 3})
+      # Lookup with normalized format
+      assert {:ok, _lease} =
+               Lease.get(:v6, "00:01:00:01:2a:3b:4c:5d:aa:bb:cc:dd:ee:ff")
+    end
+
+    test "list_by_protocol returns v6 leases" do
+      duid = "00:01:00:01:ff:ff:ff:ff:11:22:33:44:55:66"
+      Lease.offer(:v6, duid, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 10})
+
+      assert {:ok, leases} = Lease.list_by_protocol(:v6)
+      assert length(leases) >= 1
+    end
+  end
+
+  describe "cross-protocol by_ip" do
+    test "by_ip finds v6 lease" do
+      duid = "00:01:00:01:aa:bb:cc:dd:11:22:33:44:55:66"
+      ip6 = {0x2001, 0xDB8, 0, 0, 0, 0, 0, 99}
+      Lease.offer(:v6, duid, ip6)
+
+      assert {:ok, {:v6, _id, lease}} = Lease.by_ip(ip6)
+      assert lease.ip == ip6
+    end
+
+    test "by_ip searches both v4 and v6 prefixes" do
+      mac = "a1:b2:c3:d4:e5:f6"
+      duid = "00:01:00:01:cc:dd:ee:ff:a1:b2:c3:d4:e5:f6"
+      ip4 = {10, 0, 0, 50}
+      ip6 = {0x2001, 0xDB8, 0, 0, 0, 0, 0, 50}
+
+      Lease.offer(:v4, mac, ip4)
+      Lease.offer(:v6, duid, ip6)
+
+      assert {:ok, {:v4, _, _}} = Lease.by_ip(ip4)
+      assert {:ok, {:v6, _, _}} = Lease.by_ip(ip6)
+    end
+  end
+
   describe "list_by_subnet/1" do
     test "filters leases by subnet" do
       Lease.offer(:v4, "22:00:00:00:00:01", {10, 20, 0, 1}, subnet: "10.20.0.0/24")
