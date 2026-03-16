@@ -446,6 +446,12 @@ defmodule YellowDog.Console.Layouts do
         <span>Process Map</span>
       </.link>
     </li>
+    <li>
+      <.link navigate="/system/backups" class={active?(@current_path, "/system/backups")}>
+        <.dm_mdi name="folder-multiple" class="w-5 h-5" />
+        <span>Backups</span>
+      </.link>
+    </li>
     <!-- Logs -->
     <li class="nested-menu-title mt-4">Log</li>
     <li>

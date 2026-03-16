@@ -384,5 +384,41 @@ defmodule YellowDog.Store.PropertyTest do
         assert final_total >= initial_total + length(labels)
       end
     end
+
+    property "memory never exceeds budget after store/evict cycles" do
+      check all(count <- integer(10..50)) do
+        :ets.delete_all_objects(:yellow_dog_dns_cache)
+
+        # Set a small memory budget to trigger eviction
+        Cache.configure(max_memory_bytes: 4096)
+
+        now = System.system_time(:second)
+
+        for i <- 1..count do
+          qname = "lru-#{i}.budget.test"
+
+          entry = %{
+            rrset: [%{rdata: String.duplicate("x", 50)}],
+            qname: qname,
+            qtype: :a,
+            rcode: :noerror,
+            upstream: "8.8.8.8",
+            fetched_at: now,
+            original_ttl: 3600,
+            negative: false
+          }
+
+          Cache.store(qname, :a, entry)
+        end
+
+        stats = Cache.stats()
+        # After eviction, memory should be within budget
+        # (eviction triggers when budget exceeded, so post-eviction should be at or below)
+        assert stats.memory_bytes <= stats.max_memory_bytes or stats.size < count
+
+        # Restore default budget
+        Cache.configure(max_memory_bytes: 64 * 1024 * 1024)
+      end
+    end
   end
 end

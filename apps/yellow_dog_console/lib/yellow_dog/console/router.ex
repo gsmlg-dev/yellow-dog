@@ -151,6 +151,7 @@ defmodule YellowDog.Console.Router do
     live "/logs/netboot", NetbootLive.LogLive
     live "/logs/identity-audit", IdentityLive.AuditLive
     live "/process-map", ProcessMapLive
+    live "/backups", BackupsLive
 
     # Fingerprint (provider data)
     live "/fingerprint/devices", FingerprintLive.DevicesLive
