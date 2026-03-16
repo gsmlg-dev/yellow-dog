@@ -127,8 +127,8 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
             <span>Reference</span>
           </button>
         </div>
-
-        <!-- Reference Documentation -->
+        
+    <!-- Reference Documentation -->
         <%= if @show_reference do %>
           <div class="card bg-surface shadow-xl">
             <div class="card-body">
@@ -395,8 +395,8 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
                     />
                   </div>
                 </div>
-
-                <!-- Ethernet Section -->
+                
+    <!-- Ethernet Section -->
                 <div class="divider text-sm font-semibold">Ethernet</div>
 
                 <div class="form-control">
@@ -411,8 +411,8 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
                     class="input input-bordered w-full"
                   />
                 </div>
-
-                <!-- IPv4 Section -->
+                
+    <!-- IPv4 Section -->
                 <div class="divider text-sm font-semibold">IPv4</div>
 
                 <div class="form-control">
@@ -493,8 +493,8 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
                     </div>
                   </div>
                 <% end %>
-
-                <!-- IPv6 Section -->
+                
+    <!-- IPv6 Section -->
                 <div class="divider text-sm font-semibold">IPv6</div>
 
                 <div class="form-control">
@@ -584,15 +584,14 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
                     Reset
                   </button>
                   <button type="submit" class="btn btn-primary">
-                    <.dm_mdi name="file-document-outline" class="h-4 w-4" />
-                    Generate TOML
+                    <.dm_mdi name="file-document-outline" class="h-4 w-4" /> Generate TOML
                   </button>
                 </div>
               </.form>
             </div>
           </div>
-
-          <!-- Generated Output -->
+          
+    <!-- Generated Output -->
           <div class="card bg-surface shadow-xl">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -605,8 +604,7 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
                     data-content={@generated_toml}
                     class="btn btn-ghost btn-sm"
                   >
-                    <.dm_mdi name="content-copy" class="h-4 w-4" />
-                    Copy
+                    <.dm_mdi name="content-copy" class="h-4 w-4" /> Copy
                   </button>
                 <% end %>
               </div>
