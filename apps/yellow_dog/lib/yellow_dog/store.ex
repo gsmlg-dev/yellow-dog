@@ -20,6 +20,8 @@ defmodule YellowDog.Store do
     * `Store.EventBridge` — Event stream dispatcher
   """
 
+  alias YellowDog.Store.SingleNode
+
   # Lease operations
   defdelegate offer(protocol, client_id, ip, opts), to: YellowDog.Store.Lease
   defdelegate bind(protocol, client_id, xid), to: YellowDog.Store.Lease
@@ -46,6 +48,7 @@ defmodule YellowDog.Store do
   defdelegate get_rrset(zone, owner, type), to: YellowDog.Store.Zone
   defdelegate delete_rrset(zone, owner, type), to: YellowDog.Store.Zone
   defdelegate list_records(zone), to: YellowDog.Store.Zone
+  defdelegate list_records(zone, owner), to: YellowDog.Store.Zone
   defdelegate import_zone(name, records), to: YellowDog.Store.Zone, as: :import
   defdelegate export_zone(name), to: YellowDog.Store.Zone, as: :export
   defdelegate increment_serial(name), to: YellowDog.Store.Zone
@@ -90,6 +93,14 @@ defmodule YellowDog.Store do
   defdelegate subscribe(pattern), to: YellowDog.Store.EventBridge
   defdelegate replay(pattern, since), to: YellowDog.Store.EventBridge
 
+  # Single-node mode detection
+  defdelegate single_node?(), to: YellowDog.Store.SingleNode
+
+  @doc """
+  Returns the current Store mode: `:single_node` or `:cluster`.
+  """
+  defdelegate store_mode(), to: YellowDog.Store.SingleNode, as: :mode
+
   @doc """
   Emits a telemetry event for Store operations.
   """
@@ -99,5 +110,72 @@ defmodule YellowDog.Store do
       %{duration: duration},
       Map.merge(metadata, %{namespace: namespace, operation: operation, key: key})
     )
+  end
+
+  @doc """
+  Routes a Concord `put` call through single-node ETS when in single-node mode,
+  or through Concord when in cluster mode. Used by Store sub-modules.
+  """
+  def backend_put(key, value, opts \\ []) do
+    if SingleNode.single_node?() do
+      SingleNode.put(key, value, opts)
+    else
+      Concord.put(key, value, opts)
+    end
+  end
+
+  @doc """
+  Routes a Concord `get` call through single-node ETS or Concord.
+  """
+  def backend_get(key, opts \\ []) do
+    if SingleNode.single_node?() do
+      SingleNode.get(key, opts)
+    else
+      Concord.get(key, opts)
+    end
+  end
+
+  @doc """
+  Routes a Concord `delete` call through single-node ETS or Concord.
+  """
+  def backend_delete(key) do
+    if SingleNode.single_node?() do
+      SingleNode.delete(key)
+    else
+      Concord.delete(key)
+    end
+  end
+
+  @doc """
+  Routes a Concord `put_if` call through single-node ETS or Concord.
+  """
+  def backend_put_if(key, value, opts) do
+    if SingleNode.single_node?() do
+      SingleNode.put_if(key, value, opts)
+    else
+      Concord.put_if(key, value, opts)
+    end
+  end
+
+  @doc """
+  Routes a Concord `prefix_scan` call through single-node ETS or Concord.
+  """
+  def backend_prefix_scan(prefix, opts \\ []) do
+    if SingleNode.single_node?() do
+      SingleNode.prefix_scan(prefix, opts)
+    else
+      Concord.prefix_scan(prefix, opts)
+    end
+  end
+
+  @doc """
+  Routes a Concord `put_many` call through single-node ETS or Concord.
+  """
+  def backend_put_many(operations) do
+    if SingleNode.single_node?() do
+      SingleNode.put_many(operations)
+    else
+      Concord.put_many(operations)
+    end
   end
 end
