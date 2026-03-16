@@ -301,4 +301,51 @@ defmodule YellowDog.Store.CacheTest do
       assert :ok = Cache.flush_to_store()
     end
   end
+
+  describe "flush/warm round-trip" do
+    @tag :store_integration
+    test "entries survive flush → clear → warm cycle" do
+      YellowDog.StoreHelper.setup_store()
+
+      # Store entries in ETS
+      entry_a = make_entry(qname: "roundtrip.com", qtype: :a, original_ttl: 600)
+      entry_aaaa = make_entry(qname: "roundtrip.com", qtype: :aaaa, original_ttl: 600)
+      Cache.store("roundtrip.com", :a, entry_a)
+      Cache.store("roundtrip.com", :aaaa, entry_aaaa)
+
+      # Flush to backend
+      assert :ok = Cache.flush_to_store()
+
+      # Clear ETS
+      :ets.delete_all_objects(@table)
+      assert {:error, :not_found} = Cache.lookup("roundtrip.com", :a)
+
+      # Warm from backend
+      assert :ok = Cache.warm_from_store()
+
+      # Entries should be back
+      assert {:ok, restored} = Cache.lookup("roundtrip.com", :a)
+      assert restored.qname == "roundtrip.com"
+      assert restored.upstream == "8.8.8.8"
+
+      assert {:ok, _} = Cache.lookup("roundtrip.com", :aaaa)
+    end
+
+    @tag :store_integration
+    test "expired entries are not loaded during warm" do
+      YellowDog.StoreHelper.setup_store()
+
+      past = System.system_time(:second) - 600
+      expired_entry = make_entry(qname: "expired-warm.com", fetched_at: past, original_ttl: 300)
+      Cache.store("expired-warm.com", :a, expired_entry)
+
+      assert :ok = Cache.flush_to_store()
+      :ets.delete_all_objects(@table)
+
+      assert :ok = Cache.warm_from_store()
+
+      # Expired entry should not be loaded
+      assert {:error, :not_found} = Cache.lookup("expired-warm.com", :a)
+    end
+  end
 end

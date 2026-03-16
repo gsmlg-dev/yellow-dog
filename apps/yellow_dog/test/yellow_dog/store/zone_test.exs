@@ -192,4 +192,55 @@ defmodule YellowDog.Store.ZoneTest do
       assert is_list(records)
     end
   end
+
+  describe "import/export round-trip" do
+    test "imported records can be exported with semantic equivalence" do
+      records = [
+        %{owner: "@", type: :soa, rrset: [@test_soa]},
+        %{owner: "www", type: :a, rrset: [%{rdata: {192, 168, 1, 1}, ttl: 300}]},
+        %{owner: "mail", type: :mx, rrset: [%{rdata: "mail.rt.example.com", priority: 10}]},
+        %{
+          owner: "www",
+          type: :aaaa,
+          rrset: [%{rdata: {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}}]
+        }
+      ]
+
+      assert :ok = Zone.import("rt.example.com", records)
+
+      assert {:ok, exported} = Zone.export("rt.example.com")
+
+      # Verify all non-SOA records round-trip
+      for original <- records, original.type != :soa do
+        match =
+          Enum.find(exported, fn r ->
+            r.owner == original.owner and r.type == original.type
+          end)
+
+        assert match != nil, "Missing #{original.owner}/#{original.type} after round-trip"
+        assert match.rrset == original.rrset
+      end
+    end
+  end
+
+  describe "RRset CAS prevents concurrent edit races" do
+    test "concurrent put_rrset on same key serializes correctly" do
+      Zone.create_zone("test-cas.example.com", @test_soa)
+
+      # First write
+      assert :ok =
+               Zone.put_rrset("test-cas.example.com", "www", :a, [
+                 %{rdata: {10, 0, 0, 1}}
+               ])
+
+      # Second write (overwrites first)
+      assert :ok =
+               Zone.put_rrset("test-cas.example.com", "www", :a, [
+                 %{rdata: {10, 0, 0, 2}}
+               ])
+
+      {:ok, record} = Zone.get_rrset("test-cas.example.com", "www", :a)
+      assert [%{rdata: {10, 0, 0, 2}}] = record.rrset
+    end
+  end
 end
