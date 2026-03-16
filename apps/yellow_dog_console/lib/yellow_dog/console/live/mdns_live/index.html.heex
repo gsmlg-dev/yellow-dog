@@ -1,6 +1,6 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
-    <.service_alert :if={not @service_running} service="mDNS" navigate="/system/settings" />
+    <.service_alert :if={not @service_running} service="mDNS" navigate="/server/settings" />
     <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>

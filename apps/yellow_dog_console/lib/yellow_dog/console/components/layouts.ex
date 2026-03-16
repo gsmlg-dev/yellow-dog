@@ -61,7 +61,7 @@ defmodule YellowDog.Console.Layouts do
   @nav_sections [
     %{label: "Servers", icon: "server-network", path: "/server/dashboard"},
     %{label: "Tools", icon: "wrench", path: "/tool/geoip"},
-    %{label: "System", icon: "cog", path: "/system/settings"},
+    %{label: "System", icon: "cog", path: "/system/process-map"},
     %{label: "Netman", icon: "lan", path: "/netman"}
   ]
 
@@ -175,6 +175,12 @@ defmodule YellowDog.Console.Layouts do
       <.link navigate="/server/dashboard" class={active?(@current_path, "/server/dashboard")}>
         <.dm_mdi name="view-dashboard" class="w-5 h-5" />
         <span>Services</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/server/settings" class={active?(@current_path, "/server/settings")}>
+        <.dm_mdi name="cog" class="w-5 h-5" />
+        <span>Settings</span>
       </.link>
     </li>
     <!-- DNS -->
@@ -434,12 +440,6 @@ defmodule YellowDog.Console.Layouts do
   defp sidebar_system(assigns) do
     ~H"""
     <li class="nested-menu-title">System</li>
-    <li>
-      <.link navigate="/system/settings" class={active?(@current_path, "/system/settings")}>
-        <.dm_mdi name="cog" class="w-5 h-5" />
-        <span>Settings</span>
-      </.link>
-    </li>
     <li>
       <.link navigate="/system/process-map" class={active?(@current_path, "/system/process-map")}>
         <.dm_mdi name="sitemap" class="w-5 h-5" />

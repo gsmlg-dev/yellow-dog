@@ -115,6 +115,14 @@ defmodule YellowDog.Console.Router do
     live "/identity/tokens", IdentityLive.TokensLive
     live "/identity/policies", IdentityLive.PoliciesLive
     live "/identity/audit", IdentityLive.AuditLive
+
+    # Settings (service configuration)
+    live "/settings", SettingsLive, :dns
+    live "/settings/dns", SettingsLive, :dns
+    live "/settings/mdns", SettingsLive, :mdns
+    live "/settings/dhcpv4", SettingsLive, :dhcpv4
+    live "/settings/dhcpv6", SettingsLive, :dhcpv6
+    live "/settings/netboot", SettingsLive, :netboot
   end
 
   # Tool section — network utilities
@@ -137,12 +145,6 @@ defmodule YellowDog.Console.Router do
   scope "/system", YellowDog.Console do
     pipe_through :browser
 
-    live "/settings", SettingsLive, :dns
-    live "/settings/dns", SettingsLive, :dns
-    live "/settings/mdns", SettingsLive, :mdns
-    live "/settings/dhcpv4", SettingsLive, :dhcpv4
-    live "/settings/dhcpv6", SettingsLive, :dhcpv6
-    live "/settings/netboot", SettingsLive, :netboot
     live "/logs", LogsLive, :index
     live "/logs/realtime", LogsLive, :realtime
     live "/logs/dns-query", DnsLive.QueryLogsLive
