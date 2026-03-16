@@ -1,0 +1,27 @@
+#!/bin/sh
+# CLI wrapper for YellowDog Store commands.
+# Forwards arguments to YellowDog.Store.CLI.main/1 via release eval.
+#
+# Usage:
+#   bin/yellow_dog_cli backup create --label nightly
+#   bin/yellow_dog_cli backup restore --file ./backups/2026-03-13.backup --yes
+#   bin/yellow_dog_cli backup list
+
+set -e
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+RELEASE_ROOT="$(cd "$SELF_DIR/.." && pwd)"
+
+# Build the args string for Elixir
+ARGS=""
+for arg in "$@"; do
+  # Escape double quotes in arguments
+  escaped=$(printf '%s' "$arg" | sed 's/"/\\"/g')
+  if [ -z "$ARGS" ]; then
+    ARGS="\"$escaped\""
+  else
+    ARGS="$ARGS, \"$escaped\""
+  fi
+done
+
+exec "$RELEASE_ROOT/bin/yellow_dog" eval "YellowDog.Store.CLI.main([$ARGS])"
