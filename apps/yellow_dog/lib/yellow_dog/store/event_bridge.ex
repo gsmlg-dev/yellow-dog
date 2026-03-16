@@ -37,7 +37,7 @@ defmodule YellowDog.Store.EventBridge do
 
   @event_log_retention_seconds 86_400
 
-  defstruct subscriptions: %{}, counter: 0
+  defstruct subscriptions: %{}, monitors: %{}, counter: 0
 
   # ── Public API ──────────────────────────────────────────────────
 
@@ -49,7 +49,8 @@ defmodule YellowDog.Store.EventBridge do
   @doc """
   Subscribe to events matching a key pattern.
 
-  Pattern uses `*` as wildcard suffix, e.g. `"dhcp:lease:*"`.
+  Pattern uses `*` as a **trailing** wildcard only, e.g. `"dhcp:lease:*"`.
+  Patterns like `"dhcp:*:v4"` (wildcard in the middle) are NOT supported.
   The handler function receives event maps.
 
   Returns `{:ok, subscription_ref}`.
@@ -152,6 +153,7 @@ defmodule YellowDog.Store.EventBridge do
 
   def handle_call({:subscribe_pid, pattern, pid}, _from, state) do
     ref = make_ref()
+    mon_ref = Process.monitor(pid)
 
     subscription = %{
       pattern: pattern,
@@ -159,13 +161,27 @@ defmodule YellowDog.Store.EventBridge do
       ref: ref
     }
 
-    new_state = %{state | subscriptions: Map.put(state.subscriptions, ref, subscription)}
+    new_state = %{
+      state
+      | subscriptions: Map.put(state.subscriptions, ref, subscription),
+        monitors: Map.put(state.monitors, mon_ref, {ref, pid})
+    }
+
     {:reply, {:ok, ref}, new_state}
   end
 
   @impl true
   def handle_cast({:unsubscribe, ref}, state) do
-    {:noreply, %{state | subscriptions: Map.delete(state.subscriptions, ref)}}
+    # Clean up any associated monitor
+    {mon_ref, monitors} =
+      Enum.reduce(state.monitors, {nil, state.monitors}, fn {m_ref, {s_ref, _pid}},
+                                                            {found, acc} ->
+        if s_ref == ref, do: {m_ref, Map.delete(acc, m_ref)}, else: {found, acc}
+      end)
+
+    if mon_ref, do: Process.demonitor(mon_ref, [:flush])
+
+    {:noreply, %{state | subscriptions: Map.delete(state.subscriptions, ref), monitors: monitors}}
   end
 
   def handle_cast({:dispatch, event}, state) do
@@ -185,6 +201,17 @@ defmodule YellowDog.Store.EventBridge do
   end
 
   @impl true
+  def handle_info({:DOWN, mon_ref, :process, _pid, _reason}, state) do
+    case Map.pop(state.monitors, mon_ref) do
+      {{sub_ref, _pid}, monitors} ->
+        {:noreply,
+         %{state | subscriptions: Map.delete(state.subscriptions, sub_ref), monitors: monitors}}
+
+      {nil, _} ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info(_msg, state) do
     {:noreply, state}
   end

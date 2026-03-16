@@ -32,7 +32,7 @@ defmodule YellowDog.Store.Backup do
   @spec create(keyword()) :: {:ok, String.t()} | {:error, term()}
   def create(opts \\ []) do
     start = System.monotonic_time()
-    backup_opts = [path: Keyword.get(opts, :dir, "./backups")]
+    backup_opts = [path: Keyword.get(opts, :dir, default_dir())]
 
     case Concord.Backup.create(backup_opts) do
       {:ok, path} ->
@@ -115,7 +115,7 @@ defmodule YellowDog.Store.Backup do
   """
   @spec list(keyword()) :: {:ok, [map()]} | {:error, term()}
   def list(opts \\ []) do
-    dir = Keyword.get(opts, :dir, "./backups")
+    dir = Keyword.get(opts, :dir, default_dir())
     Concord.Backup.list(dir)
   end
 
@@ -124,7 +124,19 @@ defmodule YellowDog.Store.Backup do
   """
   @spec delete(String.t()) :: :ok | {:error, term()}
   def delete(path) do
-    File.rm(path)
+    case File.rm(path) do
+      :ok ->
+        :telemetry.execute(
+          [:yellow_dog, :store, :backup, :deleted],
+          %{},
+          %{path: path}
+        )
+
+        :ok
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # ── Private ─────────────────────────────────────────────────────

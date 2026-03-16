@@ -55,37 +55,34 @@ defmodule YellowDog.Store.Backend.Ets do
     case Keyword.get(opts, :condition) do
       nil ->
         expected = Keyword.get(opts, :expected)
-        current = raw_get(key)
+        expires_at = compute_expires_at(opts)
 
-        if current == expected do
-          expires_at = compute_expires_at(opts)
-          :ets.insert(@table, {key, value, expires_at})
-          :ok
+        if expected == nil do
+          atomic_insert_new(key, value, expires_at)
         else
-          {:error, :condition_failed}
+          atomic_cas(key, expected, value, expires_at)
         end
 
       condition_fn when is_function(condition_fn, 1) ->
         current = raw_get(key)
 
         case condition_fn.(current) do
-          true ->
-            expires_at = compute_expires_at(opts)
-            :ets.insert(@table, {key, value, expires_at})
-            :ok
-
-          {:update, new_value} ->
-            expires_at = compute_expires_at(opts)
-            :ets.insert(@table, {key, new_value, expires_at})
-            :ok
-
-          {:update, new_value, ttl_opts} ->
-            expires_at = compute_expires_at(Keyword.merge(opts, ttl_opts))
-            :ets.insert(@table, {key, new_value, expires_at})
-            :ok
-
           false ->
             {:error, :condition_failed}
+
+          result ->
+            {final_value, final_expires} =
+              case result do
+                true -> {value, compute_expires_at(opts)}
+                {:update, nv} -> {nv, compute_expires_at(opts)}
+                {:update, nv, ttl_opts} -> {nv, compute_expires_at(Keyword.merge(opts, ttl_opts))}
+              end
+
+            if current == nil do
+              atomic_insert_new(key, final_value, final_expires)
+            else
+              atomic_cas(key, current, final_value, final_expires)
+            end
         end
     end
   end
@@ -177,6 +174,46 @@ defmodule YellowDog.Store.Backend.Ets do
   def table, do: @table
 
   # --- Private ---
+
+  # Atomic insert — only succeeds if key doesn't exist (or is expired).
+  defp atomic_insert_new(key, value, expires_at) do
+    if :ets.insert_new(@table, {key, value, expires_at}) do
+      :ok
+    else
+      # Key exists in ETS — check if expired and retry once
+      case :ets.lookup(@table, key) do
+        [{^key, _v, exp}] when not is_nil(exp) ->
+          if System.system_time(:second) >= exp do
+            :ets.delete(@table, key)
+
+            if :ets.insert_new(@table, {key, value, expires_at}),
+              do: :ok,
+              else: {:error, :condition_failed}
+          else
+            {:error, :condition_failed}
+          end
+
+        _ ->
+          {:error, :condition_failed}
+      end
+    end
+  end
+
+  # Atomic CAS via select_replace — only succeeds if current value matches expected.
+  defp atomic_cas(key, expected, new_value, expires_at) do
+    ms = [
+      {
+        {key, :"$1", :_},
+        [{:==, :"$1", {:const, expected}}],
+        [{{:const, key}, {:const, new_value}, {:const, expires_at}}]
+      }
+    ]
+
+    case :ets.select_replace(@table, ms) do
+      1 -> :ok
+      0 -> {:error, :condition_failed}
+    end
+  end
 
   defp compute_expires_at(opts) do
     case Keyword.get(opts, :ttl) do
