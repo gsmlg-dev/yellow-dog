@@ -8,6 +8,7 @@ dns = true
 mdns = false
 dhcpv4 = false
 dhcpv6 = false
+netboot = false
 
 [dns]
 listen = "0.0.0.0"
