@@ -28,7 +28,7 @@ erl_crash.dump
 yellow_dog-*.tar
 
 # Temporary files, for example, from tests.
-/tmp/
+tmp/
 
 # nix build output
 /result
