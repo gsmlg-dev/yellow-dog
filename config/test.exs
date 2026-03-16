@@ -55,6 +55,9 @@ config :yellow_dog_telemetry,
 # Disable Swoosh API client during tests
 config :yellow_dog_console, :swoosh_api_client, false
 
+# Resolved: disable in test (requires privileged port 53)
+config :yellow_dog_resolved, enabled: false
+
 # YellowDog Netman: use a writable temp path for the CLI Unix socket in tests
 config :yellow_dog_netman,
   socket_path: "/tmp/yellow_dog_netman_test.sock",

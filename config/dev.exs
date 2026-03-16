@@ -104,6 +104,9 @@ config :abyss,
 # In production, remove this config to enable NIF compilation.
 config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native, skip_compilation?: true
 
+# Resolved: disable in dev (requires privileged port 53)
+config :yellow_dog_resolved, enabled: false
+
 # Netman: auto-connect to the local console in dev
 config :yellow_dog_netman, :console,
   enabled: true,
