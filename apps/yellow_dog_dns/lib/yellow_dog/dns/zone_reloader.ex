@@ -15,10 +15,11 @@ defmodule YellowDog.Dns.ZoneReloader do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @resubscribe_delay_ms 1_000
+
   @impl true
   def init(_opts) do
-    subscribe()
-    {:ok, %{}}
+    {:ok, subscribe_to_bridge(%{subscription_ref: nil, bridge_monitor: nil})}
   end
 
   @impl true
@@ -31,17 +32,46 @@ defmodule YellowDog.Dns.ZoneReloader do
     {:noreply, state}
   end
 
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+    {:noreply, %{state | subscription_ref: nil, bridge_monitor: nil}}
+  end
+
+  def handle_info(:resubscribe, state) do
+    {:noreply, subscribe_to_bridge(state)}
+  end
+
   def handle_info(_msg, state) do
     {:noreply, state}
   end
 
-  defp subscribe do
+  @impl true
+  def terminate(_reason, %{subscription_ref: ref}) when not is_nil(ref) do
     try do
-      YellowDog.Store.EventBridge.subscribe("dns:zone:*")
+      YellowDog.Store.EventBridge.unsubscribe(ref)
     rescue
-      e ->
-        Logger.warning("ZoneReloader: failed to subscribe to EventBridge: #{inspect(e)}")
+      _ -> :ok
     end
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  defp subscribe_to_bridge(state) do
+    case YellowDog.Store.EventBridge.subscribe("dns:zone:*") do
+      {:ok, ref} ->
+        mon = Process.monitor(Process.whereis(YellowDog.Store.EventBridge))
+        %{state | subscription_ref: ref, bridge_monitor: mon}
+
+      _ ->
+        Logger.warning("ZoneReloader: failed to subscribe to EventBridge, retrying")
+        Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+        state
+    end
+  rescue
+    e ->
+      Logger.warning("ZoneReloader: EventBridge subscribe error: #{inspect(e)}")
+      Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+      state
   end
 
   defp handle_zone_change(key) do

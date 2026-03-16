@@ -28,15 +28,25 @@ defmodule YellowDog.Store.ConfigWatcher do
 
   defp via_name(service), do: :"#{__MODULE__}.#{service}"
 
+  @resubscribe_delay_ms 1_000
+
   @impl true
   def init(opts) do
     service = Keyword.fetch!(opts, :service)
     handler = Keyword.fetch!(opts, :handler)
     prefix = "config:#{service}:"
+    pattern = "config:#{service}:*"
 
-    subscribe(prefix)
+    state = %{
+      service: service,
+      handler: handler,
+      prefix: prefix,
+      pattern: pattern,
+      subscription_ref: nil,
+      bridge_monitor: nil
+    }
 
-    {:ok, %{service: service, handler: handler, prefix: prefix}}
+    {:ok, subscribe_to_bridge(state)}
   end
 
   @impl true
@@ -59,18 +69,45 @@ defmodule YellowDog.Store.ConfigWatcher do
     {:noreply, state}
   end
 
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+    {:noreply, %{state | subscription_ref: nil, bridge_monitor: nil}}
+  end
+
+  def handle_info(:resubscribe, state) do
+    {:noreply, subscribe_to_bridge(state)}
+  end
+
   def handle_info(_msg, state) do
     {:noreply, state}
   end
 
-  defp subscribe(prefix) do
-    pattern = String.trim_trailing(prefix, ":") <> ":*"
-
+  @impl true
+  def terminate(_reason, %{subscription_ref: ref}) when not is_nil(ref) do
     try do
-      YellowDog.Store.EventBridge.subscribe(pattern)
+      YellowDog.Store.EventBridge.unsubscribe(ref)
     rescue
-      e ->
-        Logger.warning("ConfigWatcher: failed to subscribe: #{inspect(e)}")
+      _ -> :ok
     end
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  defp subscribe_to_bridge(state) do
+    case YellowDog.Store.EventBridge.subscribe(state.pattern) do
+      {:ok, ref} ->
+        mon = Process.monitor(Process.whereis(YellowDog.Store.EventBridge))
+        %{state | subscription_ref: ref, bridge_monitor: mon}
+
+      _ ->
+        Logger.warning("ConfigWatcher[#{state.service}]: failed to subscribe, retrying")
+        Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+        state
+    end
+  rescue
+    e ->
+      Logger.warning("ConfigWatcher[#{state.service}]: subscribe error: #{inspect(e)}")
+      Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+      state
   end
 end

@@ -11,7 +11,6 @@ defmodule YellowDog.Console.BackupsLive do
   alias YellowDog.Console.Layouts
   alias YellowDog.Store.Backup
 
-  @default_backup_dir "./backups"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -353,7 +352,7 @@ defmodule YellowDog.Console.BackupsLive do
 
   defp load_backups(socket) do
     backups =
-      case Backup.list(dir: @default_backup_dir) do
+      case Backup.list(dir: Backup.default_dir()) do
         {:ok, list} -> list
         {:error, _} -> []
       end

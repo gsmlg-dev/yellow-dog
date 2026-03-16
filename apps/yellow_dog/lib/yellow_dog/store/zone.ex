@@ -11,7 +11,7 @@ defmodule YellowDog.Store.Zone do
   - Resource records: `dns:zone:{zone_name}:rr:{owner}:{type}`
   """
 
-  alias YellowDog.Store.{Backend, Key}
+  alias YellowDog.Store.{Backend, EventBridge, Key}
 
   @type zone_name :: String.t()
   @type owner :: String.t()
@@ -63,6 +63,7 @@ defmodule YellowDog.Store.Zone do
     case Backend.active().put_if(key, value, expected: nil) do
       :ok ->
         emit_operation_telemetry(start_time, :zone, :put, key, :strong)
+        EventBridge.notify(:put, key, value)
         :ok
 
       {:error, :condition_failed} ->
@@ -89,6 +90,7 @@ defmodule YellowDog.Store.Zone do
       start_time = System.monotonic_time()
       result = Backend.active().delete(zone_key)
       emit_operation_telemetry(start_time, :zone, :delete, zone_key, :strong)
+      EventBridge.notify(:delete, zone_key, nil)
       result
     end
   end
@@ -158,19 +160,15 @@ defmodule YellowDog.Store.Zone do
 
     start_time = System.monotonic_time()
 
-    result =
-      case Backend.active().get(key, consistency: :strong) do
-        {:ok, existing} ->
-          Backend.active().put_if(key, value, condition: fn old -> old == existing end)
-
-        {:error, :not_found} ->
-          Backend.active().put_if(key, value, expected: nil)
-      end
+    # Upsert: create or overwrite. SOA serial increment provides
+    # zone-level change detection for downstream consumers.
+    result = Backend.active().put(key, value)
 
     case result do
       :ok ->
         emit_operation_telemetry(start_time, :zone, :put, key, :strong)
         emit_rr_changed(zone, owner, type, :put)
+        EventBridge.notify(:put, key, value)
         increment_serial(zone)
         :ok
 
@@ -204,6 +202,7 @@ defmodule YellowDog.Store.Zone do
       :ok ->
         emit_operation_telemetry(start_time, :zone, :delete, key, :strong)
         emit_rr_changed(zone, owner, type, :delete)
+        EventBridge.notify(:delete, key, nil)
         increment_serial(zone)
         :ok
 
@@ -322,8 +321,14 @@ defmodule YellowDog.Store.Zone do
 
   Uses CAS to prevent lost updates.
   """
+  @max_cas_retries 10
+
   @spec increment_serial(zone_name()) :: :ok | {:error, term()}
-  def increment_serial(name) do
+  def increment_serial(name), do: increment_serial(name, @max_cas_retries)
+
+  defp increment_serial(_name, 0), do: {:error, :max_retries}
+
+  defp increment_serial(name, retries) do
     key = Key.zone(name)
 
     case Backend.active().get(key, consistency: :strong) do
@@ -351,8 +356,7 @@ defmodule YellowDog.Store.Zone do
             :ok
 
           {:error, :condition_failed} ->
-            # Retry on CAS conflict
-            increment_serial(name)
+            increment_serial(name, retries - 1)
 
           {:error, _} = error ->
             error

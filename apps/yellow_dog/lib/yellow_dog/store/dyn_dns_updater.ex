@@ -28,14 +28,14 @@ defmodule YellowDog.Store.DynDnsUpdater do
 
   # ── GenServer Callbacks ─────────────────────────────────────────
 
+  @resubscribe_delay_ms 1_000
+
   @impl true
   def init(opts) do
     domain = Keyword.get(opts, :domain, "local")
+    state = %{domain: domain, subscription_ref: nil, bridge_monitor: nil}
 
-    # Subscribe to lease events via EventBridge
-    {:ok, ref} = EventBridge.subscribe(@lease_event_pattern)
-
-    {:ok, %{domain: domain, subscription_ref: ref}}
+    {:ok, subscribe_to_bridge(state)}
   end
 
   @impl true
@@ -44,9 +44,30 @@ defmodule YellowDog.Store.DynDnsUpdater do
     {:noreply, state}
   end
 
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    # EventBridge crashed — re-subscribe after delay
+    Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+    {:noreply, %{state | subscription_ref: nil, bridge_monitor: nil}}
+  end
+
+  def handle_info(:resubscribe, state) do
+    {:noreply, subscribe_to_bridge(state)}
+  end
+
   def handle_info(_msg, state) do
     {:noreply, state}
   end
+
+  @impl true
+  def terminate(_reason, %{subscription_ref: ref}) when not is_nil(ref) do
+    try do
+      EventBridge.unsubscribe(ref)
+    rescue
+      _ -> :ok
+    end
+  end
+
+  def terminate(_reason, _state), do: :ok
 
   # ── Event Handlers ──────────────────────────────────────────────
 
@@ -185,4 +206,22 @@ defmodule YellowDog.Store.DynDnsUpdater do
   end
 
   defp build_arpa(_), do: :error
+
+  defp subscribe_to_bridge(state) do
+    case EventBridge.subscribe(@lease_event_pattern) do
+      {:ok, ref} ->
+        mon = Process.monitor(Process.whereis(EventBridge))
+        %{state | subscription_ref: ref, bridge_monitor: mon}
+
+      _ ->
+        Logger.warning("DynDnsUpdater: failed to subscribe to EventBridge, retrying")
+        Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+        state
+    end
+  rescue
+    e ->
+      Logger.warning("DynDnsUpdater: EventBridge subscribe error: #{inspect(e)}")
+      Process.send_after(self(), :resubscribe, @resubscribe_delay_ms)
+      state
+  end
 end
