@@ -1,12 +1,10 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-4">
     <!-- Breadcrumb -->
-    <div class="breadcrumbs text-sm">
-      <ul>
-        <li><.link navigate={~p"/server/dns"}>DNS</.link></li>
-        <li class="font-semibold">Views</li>
-      </ul>
-    </div>
+    <.dm_breadcrumb>
+      <:crumb to={~p"/server/dns"}>DNS</:crumb>
+      <:crumb>Views</:crumb>
+    </.dm_breadcrumb>
 
     <.service_alert :if={not @service_running} service="DNS" />
     
