@@ -20,8 +20,8 @@ defmodule YellowDog.Store.CacheTest do
     :persistent_term.erase({Cache, :batch_size})
     :persistent_term.erase({Cache, :flush_interval_ms})
 
-    # Re-initialize counters so each test starts at zero
-    ref = :counters.new(2, [:write_concurrency])
+    # Re-initialize counters so each test starts at zero (3 counters: hits, misses, evictions)
+    ref = :counters.new(3, [:write_concurrency])
     :persistent_term.put({Cache, :counters}, ref)
 
     on_exit(fn ->

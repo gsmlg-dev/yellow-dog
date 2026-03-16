@@ -31,7 +31,7 @@ defmodule YellowDog.Store.Config do
     concord_key = Key.config(service, key)
 
     timed(:put, concord_key, fn ->
-      result = Concord.put(concord_key, value)
+      result = Concord.put(concord_key, value, consistency: :strong)
 
       if result == :ok do
         YellowDog.Store.EventBridge.notify(:put, concord_key, value)

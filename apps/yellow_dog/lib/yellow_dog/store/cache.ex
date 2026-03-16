@@ -18,6 +18,7 @@ defmodule YellowDog.Store.Cache do
   # Counter indices
   @hit_idx 1
   @miss_idx 2
+  @eviction_idx 3
 
   # Defaults
   @default_max_memory 64 * 1024 * 1024
@@ -232,16 +233,25 @@ defmodule YellowDog.Store.Cache do
     memory_bytes = Keyword.get(info, :memory, 0) * :erlang.system_info(:wordsize)
     entry_count = Keyword.get(info, :size, 0)
 
-    {hits, misses} = read_counters()
+    {hits, misses, evictions} = read_counters()
 
-    %{
+    result = %{
       hits: hits,
       misses: misses,
       size: entry_count,
+      evictions: evictions,
       memory_bytes: memory_bytes,
       max_memory_bytes: get_max_memory(),
       hit_rate: if(hits + misses > 0, do: hits / (hits + misses), else: 0.0)
     }
+
+    :telemetry.execute(
+      [:yellow_dog, :store, :cache, :stats],
+      %{hits: hits, misses: misses, size: entry_count, evictions: evictions},
+      %{}
+    )
+
+    result
   end
 
   @doc """
@@ -295,31 +305,47 @@ defmodule YellowDog.Store.Cache do
   end
 
   defp init_counters do
-    ref = :counters.new(2, [:write_concurrency])
+    ref = :counters.new(3, [:write_concurrency])
     :persistent_term.put({__MODULE__, :counters}, ref)
-  rescue
-    ArgumentError ->
-      :ok
   end
 
   defp counters_ref do
     :persistent_term.get({__MODULE__, :counters}, nil)
   end
 
-  defp bump_counter(idx) do
+  defp bump_counter(idx), do: bump_counter(idx, 1)
+
+  defp bump_counter(idx, amount) do
     case counters_ref() do
-      nil -> :ok
-      ref -> :counters.add(ref, idx, 1)
+      nil ->
+        :ok
+
+      ref ->
+        try do
+          :counters.add(ref, idx, amount)
+        rescue
+          ArgumentError ->
+            # Counter ref is stale (wrong size); reinitialize and retry
+            init_counters()
+            :counters.add(counters_ref(), idx, amount)
+        end
     end
   end
 
   defp read_counters do
     case counters_ref() do
       nil ->
-        {0, 0}
+        {0, 0, 0}
 
       ref ->
-        {:counters.get(ref, @hit_idx), :counters.get(ref, @miss_idx)}
+        try do
+          {:counters.get(ref, @hit_idx), :counters.get(ref, @miss_idx),
+           :counters.get(ref, @eviction_idx)}
+        rescue
+          ArgumentError ->
+            init_counters()
+            {0, 0, 0}
+        end
     end
   end
 
@@ -329,8 +355,14 @@ defmodule YellowDog.Store.Cache do
         :ok
 
       ref ->
-        :counters.put(ref, @hit_idx, 0)
-        :counters.put(ref, @miss_idx, 0)
+        try do
+          :counters.put(ref, @hit_idx, 0)
+          :counters.put(ref, @miss_idx, 0)
+          :counters.put(ref, @eviction_idx, 0)
+        rescue
+          ArgumentError ->
+            init_counters()
+        end
     end
   end
 
@@ -387,5 +419,7 @@ defmodule YellowDog.Store.Cache do
     |> Enum.sort_by(fn {_key, last_accessed} -> last_accessed end, :asc)
     |> Enum.take(evict_count)
     |> Enum.each(fn {key, _} -> :ets.delete(@table, key) end)
+
+    bump_counter(@eviction_idx, evict_count)
   end
 end
