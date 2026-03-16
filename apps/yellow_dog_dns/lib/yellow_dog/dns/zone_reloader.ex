@@ -22,15 +22,8 @@ defmodule YellowDog.Dns.ZoneReloader do
   end
 
   @impl true
-  def handle_info({:store_event, :put, key, _value}, state) do
-    if String.starts_with?(key, "dns:zone:") do
-      handle_zone_change(key)
-    end
-
-    {:noreply, state}
-  end
-
-  def handle_info({:store_event, :delete, key, _value}, state) do
+  def handle_info({:store_event, %{type: type, key: key}}, state)
+      when type in [:put, :delete] do
     if String.starts_with?(key, "dns:zone:") do
       handle_zone_change(key)
     end

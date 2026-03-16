@@ -11,7 +11,11 @@ defmodule YellowDog.Dns.RpzReloaderTest do
   test "handles RPZ change events" do
     pid = start_supervised!(RpzReloader)
 
-    send(pid, {:store_event, :put, "rpz:blocklist:evil.com", %{action: :nxdomain}})
+    send(
+      pid,
+      {:store_event, %{type: :put, key: "rpz:blocklist:evil.com", value: %{action: :nxdomain}}}
+    )
+
     Process.sleep(10)
     assert Process.alive?(pid)
   end
@@ -19,7 +23,7 @@ defmodule YellowDog.Dns.RpzReloaderTest do
   test "handles RPZ delete events" do
     pid = start_supervised!(RpzReloader)
 
-    send(pid, {:store_event, :delete, "rpz:blocklist:evil.com", nil})
+    send(pid, {:store_event, %{type: :delete, key: "rpz:blocklist:evil.com", value: nil}})
     Process.sleep(10)
     assert Process.alive?(pid)
   end
@@ -27,7 +31,7 @@ defmodule YellowDog.Dns.RpzReloaderTest do
   test "ignores non-RPZ events" do
     pid = start_supervised!(RpzReloader)
 
-    send(pid, {:store_event, :put, "dns:zone:example.com", %{}})
+    send(pid, {:store_event, %{type: :put, key: "dns:zone:example.com", value: %{}}})
     Process.sleep(10)
     assert Process.alive?(pid)
   end

@@ -11,7 +11,7 @@ defmodule YellowDog.Dns.ZoneReloaderTest do
   test "handles zone change events" do
     pid = start_supervised!(ZoneReloader)
 
-    send(pid, {:store_event, :put, "dns:zone:example.com", %{}})
+    send(pid, {:store_event, %{type: :put, key: "dns:zone:example.com", value: %{}}})
     Process.sleep(10)
     assert Process.alive?(pid)
   end
@@ -19,7 +19,7 @@ defmodule YellowDog.Dns.ZoneReloaderTest do
   test "handles zone RR change events" do
     pid = start_supervised!(ZoneReloader)
 
-    send(pid, {:store_event, :put, "dns:zone:example.com:rr:www:a", %{}})
+    send(pid, {:store_event, %{type: :put, key: "dns:zone:example.com:rr:www:a", value: %{}}})
     Process.sleep(10)
     assert Process.alive?(pid)
   end
@@ -27,7 +27,7 @@ defmodule YellowDog.Dns.ZoneReloaderTest do
   test "handles delete events" do
     pid = start_supervised!(ZoneReloader)
 
-    send(pid, {:store_event, :delete, "dns:zone:example.com:rr:www:a", nil})
+    send(pid, {:store_event, %{type: :delete, key: "dns:zone:example.com:rr:www:a", value: nil}})
     Process.sleep(10)
     assert Process.alive?(pid)
   end
@@ -35,7 +35,7 @@ defmodule YellowDog.Dns.ZoneReloaderTest do
   test "ignores non-zone events" do
     pid = start_supervised!(ZoneReloader)
 
-    send(pid, {:store_event, :put, "dhcp:lease:v4:aa:bb:cc:dd:ee:ff", %{}})
+    send(pid, {:store_event, %{type: :put, key: "dhcp:lease:v4:aa:bb:cc:dd:ee:ff", value: %{}}})
     Process.sleep(10)
     assert Process.alive?(pid)
   end

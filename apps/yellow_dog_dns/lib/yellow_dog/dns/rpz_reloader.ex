@@ -21,7 +21,7 @@ defmodule YellowDog.Dns.RpzReloader do
   end
 
   @impl true
-  def handle_info({:store_event, _action, key, _value}, state) do
+  def handle_info({:store_event, %{key: key}}, state) do
     if String.starts_with?(key, "rpz:") do
       handle_rpz_change(key)
     end

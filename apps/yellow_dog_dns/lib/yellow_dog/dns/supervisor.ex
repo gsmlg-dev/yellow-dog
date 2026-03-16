@@ -220,7 +220,9 @@ defmodule YellowDog.Dns.Supervisor do
       children = [
         {YellowDog.Dns.CacheSyncer, []},
         {YellowDog.Dns.ZoneReloader, []},
-        {YellowDog.Dns.RpzReloader, []}
+        {YellowDog.Dns.RpzReloader, []},
+        {YellowDog.Store.ConfigWatcher,
+         service: :dns, handler: &handle_store_config_change/2, name: :dns_store_config_watcher}
       ]
 
       Enum.each(children, fn child_spec ->
@@ -243,6 +245,16 @@ defmodule YellowDog.Dns.Supervisor do
     end
   rescue
     _ -> :ok
+  end
+
+  defp handle_store_config_change(key, value) do
+    Telemetry.info("DNS store config change", %{key: key, value: inspect(value)})
+
+    :telemetry.execute(
+      [:yellow_dog, :dns, :config, :store_change],
+      %{},
+      %{key: key, value: value}
+    )
   end
 
   defp load_persisted_config do
