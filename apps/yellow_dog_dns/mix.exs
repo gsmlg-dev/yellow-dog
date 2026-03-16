@@ -52,6 +52,7 @@ defmodule YellowDog.Dns.MixProject do
 
       # Development and test dependencies
       {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
+      {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
