@@ -20,7 +20,8 @@ defmodule YellowDog.Store do
     * `Store.EventBridge` — Event stream dispatcher
   """
 
-  alias YellowDog.Store.SingleNode
+  alias YellowDog.Store.Backend
+  alias YellowDog.Store.ModeDetector
 
   # Lease operations
   defdelegate offer(protocol, client_id, ip, opts), to: YellowDog.Store.Lease
@@ -94,12 +95,12 @@ defmodule YellowDog.Store do
   defdelegate replay(pattern, since), to: YellowDog.Store.EventBridge
 
   # Single-node mode detection
-  defdelegate single_node?(), to: YellowDog.Store.SingleNode
+  defdelegate single_node?(), to: ModeDetector
 
   @doc """
   Returns the current Store mode: `:single_node` or `:cluster`.
   """
-  defdelegate store_mode(), to: YellowDog.Store.SingleNode, as: :mode
+  defdelegate store_mode(), to: ModeDetector, as: :mode
 
   @doc """
   Emits a telemetry event for Store operations.
@@ -113,69 +114,45 @@ defmodule YellowDog.Store do
   end
 
   @doc """
-  Routes a Concord `put` call through single-node ETS when in single-node mode,
-  or through Concord when in cluster mode. Used by Store sub-modules.
+  Routes a `put` call to the active backend (ETS or Concord).
+  Used by Store sub-modules.
   """
   def backend_put(key, value, opts \\ []) do
-    if SingleNode.single_node?() do
-      SingleNode.put(key, value, opts)
-    else
-      Concord.put(key, value, opts)
-    end
+    Backend.active().put(key, value, opts)
   end
 
   @doc """
-  Routes a Concord `get` call through single-node ETS or Concord.
+  Routes a `get` call to the active backend.
   """
   def backend_get(key, opts \\ []) do
-    if SingleNode.single_node?() do
-      SingleNode.get(key, opts)
-    else
-      Concord.get(key, opts)
-    end
+    Backend.active().get(key, opts)
   end
 
   @doc """
-  Routes a Concord `delete` call through single-node ETS or Concord.
+  Routes a `delete` call to the active backend.
   """
   def backend_delete(key) do
-    if SingleNode.single_node?() do
-      SingleNode.delete(key)
-    else
-      Concord.delete(key)
-    end
+    Backend.active().delete(key)
   end
 
   @doc """
-  Routes a Concord `put_if` call through single-node ETS or Concord.
+  Routes a `put_if` call to the active backend.
   """
   def backend_put_if(key, value, opts) do
-    if SingleNode.single_node?() do
-      SingleNode.put_if(key, value, opts)
-    else
-      Concord.put_if(key, value, opts)
-    end
+    Backend.active().put_if(key, value, opts)
   end
 
   @doc """
-  Routes a Concord `prefix_scan` call through single-node ETS or Concord.
+  Routes a `prefix_scan` call to the active backend.
   """
   def backend_prefix_scan(prefix, opts \\ []) do
-    if SingleNode.single_node?() do
-      SingleNode.prefix_scan(prefix, opts)
-    else
-      Concord.prefix_scan(prefix, opts)
-    end
+    Backend.active().prefix_scan(prefix, opts)
   end
 
   @doc """
-  Routes a Concord `put_many` call through single-node ETS or Concord.
+  Routes a `put_many` call to the active backend.
   """
   def backend_put_many(operations) do
-    if SingleNode.single_node?() do
-      SingleNode.put_many(operations)
-    else
-      Concord.put_many(operations)
-    end
+    Backend.active().put_many(operations)
   end
 end

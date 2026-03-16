@@ -8,6 +8,17 @@ defmodule YellowDog.Store.Backup do
 
   require Logger
 
+  @default_backup_dir "./backups"
+
+  @doc """
+  Returns the default backup directory. Controllers and CLI should call this
+  so the backup location is always consistent with `create/1` and `list/1`.
+  """
+  @spec default_dir() :: String.t()
+  def default_dir do
+    Application.get_env(:yellow_dog, :backup_dir, @default_backup_dir)
+  end
+
   @doc """
   Create a compressed backup of all Concord data.
 
