@@ -11,7 +11,7 @@ defmodule YellowDog.Store.Cache do
   Each entry is `{key, value, inserted_at, last_accessed}` where key is `{qname, qtype}`.
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @table :yellow_dog_dns_cache
 
@@ -99,7 +99,11 @@ defmodule YellowDog.Store.Cache do
     :ets.delete(@table, key)
 
     Task.start(fn ->
-      Concord.delete(Key.cache(qname, qtype))
+      try do
+        Backend.active().delete(Key.cache(qname, qtype))
+      rescue
+        ArgumentError -> :ok
+      end
     end)
 
     :ok
@@ -115,12 +119,16 @@ defmodule YellowDog.Store.Cache do
     reset_counters()
 
     Task.start(fn ->
-      case Concord.prefix_scan(Key.cache_prefix(), consistency: :eventual) do
-        {:ok, entries} ->
-          Enum.each(entries, fn {key, _value} -> Concord.delete(key) end)
+      try do
+        case Backend.active().prefix_scan(Key.cache_prefix(), consistency: :eventual) do
+          {:ok, entries} ->
+            Enum.each(entries, fn {key, _value} -> Backend.active().delete(key) end)
 
-        {:error, _} ->
-          :ok
+          {:error, _} ->
+            :ok
+        end
+      rescue
+        ArgumentError -> :ok
       end
     end)
 
@@ -140,7 +148,7 @@ defmodule YellowDog.Store.Cache do
     now = System.system_time(:second)
 
     {count, _} =
-      case Concord.prefix_scan(Key.cache_prefix(), consistency: :eventual) do
+      case Backend.active().prefix_scan(Key.cache_prefix(), consistency: :eventual) do
         {:ok, entries} ->
           loaded =
             entries
@@ -205,7 +213,7 @@ defmodule YellowDog.Store.Cache do
 
     if flushed_count > 0 do
       write_start = System.monotonic_time(:millisecond)
-      Concord.put_many(operations)
+      Backend.active().put_many(operations)
       write_latency = System.monotonic_time(:millisecond) - write_start
 
       adapt_batch_size(batch_size, write_latency)

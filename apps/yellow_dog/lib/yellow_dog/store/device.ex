@@ -7,7 +7,7 @@ defmodule YellowDog.Store.Device do
   (option 55, vendor class, hostname) accumulate over time.
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @namespace :device
 
@@ -17,13 +17,13 @@ defmodule YellowDog.Store.Device do
     now = System.system_time(:second)
 
     timed(:put, key, fn ->
-      case Concord.get(key, consistency: :leader) do
+      case Backend.active().get(key, consistency: :leader) do
         {:ok, existing} ->
           merged =
             Map.merge(existing, attrs)
             |> Map.put(:last_seen, now)
 
-          Concord.put_if(key, merged, condition: fn old -> old.last_seen <= now end)
+          Backend.active().put_if(key, merged, condition: fn old -> old.last_seen <= now end)
 
         {:error, :not_found} ->
           record =
@@ -32,7 +32,7 @@ defmodule YellowDog.Store.Device do
             |> Map.put(:first_seen, now)
             |> Map.put(:last_seen, now)
 
-          Concord.put_if(key, record, expected: nil)
+          Backend.active().put_if(key, record, expected: nil)
       end
     end)
   end
@@ -42,7 +42,7 @@ defmodule YellowDog.Store.Device do
     key = Key.device(mac)
 
     timed(:get, key, fn ->
-      Concord.get(key, consistency: :eventual)
+      Backend.active().get(key, consistency: :eventual)
     end)
   end
 
@@ -51,7 +51,7 @@ defmodule YellowDog.Store.Device do
     prefix = Key.device_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Concord.prefix_scan(prefix, [])
+      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
 
       matches =
         entries
@@ -67,7 +67,7 @@ defmodule YellowDog.Store.Device do
     prefix = Key.device_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Concord.prefix_scan(prefix, [])
+      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
 
       matches =
         entries

@@ -6,7 +6,7 @@ defmodule YellowDog.Store.Rpz do
   per-zone listing and cross-zone zone enumeration.
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @namespace :rpz
 
@@ -15,7 +15,7 @@ defmodule YellowDog.Store.Rpz do
     key = Key.rpz(zone, trigger)
 
     timed(:put, key, fn ->
-      Concord.put(key, rule, consistency: :strong)
+      Backend.active().put(key, rule, consistency: :strong)
     end)
   end
 
@@ -24,7 +24,7 @@ defmodule YellowDog.Store.Rpz do
     key = Key.rpz(zone, trigger)
 
     timed(:get, key, fn ->
-      Concord.get(key, consistency: :eventual)
+      Backend.active().get(key, consistency: :eventual)
     end)
   end
 
@@ -33,7 +33,7 @@ defmodule YellowDog.Store.Rpz do
     prefix = Key.rpz_prefix(zone)
 
     timed(:list, prefix, fn ->
-      Concord.prefix_scan(prefix, consistency: :eventual)
+      Backend.active().prefix_scan(prefix, consistency: :eventual)
     end)
   end
 
@@ -42,7 +42,7 @@ defmodule YellowDog.Store.Rpz do
     key = Key.rpz(zone, trigger)
 
     timed(:delete, key, fn ->
-      Concord.delete(key)
+      Backend.active().delete(key)
     end)
   end
 
@@ -51,7 +51,7 @@ defmodule YellowDog.Store.Rpz do
     prefix = Key.rpz_all_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Concord.prefix_scan(prefix, consistency: :eventual)
+      {:ok, entries} = Backend.active().prefix_scan(prefix, consistency: :eventual)
 
       zone_names =
         entries

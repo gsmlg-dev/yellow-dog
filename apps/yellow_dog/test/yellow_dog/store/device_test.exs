@@ -1,11 +1,15 @@
 defmodule YellowDog.Store.DeviceTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias YellowDog.Store.Device
 
   @moduletag :store_integration
 
-  @tag :skip
+  setup do
+    YellowDog.StoreHelper.setup_store()
+    :ok
+  end
+
   test "upsert creates a new device record" do
     mac = "aa:bb:cc:dd:ee:01"
     attrs = %{vendor_class: "TestVendor", hostname: "test-device"}
@@ -20,7 +24,6 @@ defmodule YellowDog.Store.DeviceTest do
     assert is_integer(device.last_seen)
   end
 
-  @tag :skip
   test "upsert merges new attributes into existing device" do
     mac = "aa:bb:cc:dd:ee:02"
 
@@ -32,12 +35,10 @@ defmodule YellowDog.Store.DeviceTest do
     assert device.hostname == "updated-host"
   end
 
-  @tag :skip
   test "get returns :not_found for unknown MAC" do
     assert {:error, :not_found} = Device.get("ff:ff:ff:ff:ff:ff")
   end
 
-  @tag :skip
   test "by_vendor returns devices matching vendor class" do
     Device.upsert("aa:bb:cc:dd:ee:03", %{vendor_class: "SpecificVendor"})
     Device.upsert("aa:bb:cc:dd:ee:04", %{vendor_class: "OtherVendor"})
@@ -47,7 +48,6 @@ defmodule YellowDog.Store.DeviceTest do
     assert Enum.all?(devices, &(&1.vendor_class == "SpecificVendor"))
   end
 
-  @tag :skip
   test "list_recent returns devices seen since timestamp" do
     now = System.system_time(:second)
     Device.upsert("aa:bb:cc:dd:ee:05", %{hostname: "recent"})
@@ -56,7 +56,6 @@ defmodule YellowDog.Store.DeviceTest do
     assert length(devices) >= 1
   end
 
-  @tag :skip
   test "different MAC formats resolve to same device" do
     Device.upsert("AA-BB-CC-DD-EE-06", %{hostname: "format-test"})
 

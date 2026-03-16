@@ -7,7 +7,7 @@ defmodule YellowDog.Store.Host do
   CAS with `expected: nil` to prevent hostname squatting.
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @namespace :host
 
@@ -23,7 +23,7 @@ defmodule YellowDog.Store.Host do
       |> Map.put(:last_attested, now)
 
     timed(:put, key, fn ->
-      case Concord.put_if(key, record, expected: nil, consistency: :strong) do
+      case Backend.active().put_if(key, record, expected: nil, consistency: :strong) do
         :ok -> :ok
         {:error, :condition_failed} -> {:error, :already_registered}
         error -> error
@@ -37,11 +37,15 @@ defmodule YellowDog.Store.Host do
     now = System.system_time(:second)
 
     timed(:put, key, fn ->
-      case Concord.put_if(key, nil,
+      case Backend.active().put_if(key, nil,
              consistency: :strong,
              condition: fn old ->
                if old do
-                 updated = %{old | pubkeys: pubkeys, keys_updated_at: now}
+                 updated =
+                   old
+                   |> Map.put(:pubkeys, pubkeys)
+                   |> Map.put(:keys_updated_at, now)
+
                  {:update, updated}
                else
                  false
@@ -60,7 +64,7 @@ defmodule YellowDog.Store.Host do
     key = Key.host(hostname)
 
     timed(:get, key, fn ->
-      Concord.get(key, consistency: :eventual)
+      Backend.active().get(key, consistency: :eventual)
     end)
   end
 
@@ -70,7 +74,7 @@ defmodule YellowDog.Store.Host do
     prefix = "host:"
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Concord.prefix_scan(prefix, [])
+      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
 
       match =
         Enum.find_value(entries, fn {_k, v} ->
@@ -87,7 +91,7 @@ defmodule YellowDog.Store.Host do
     now = System.system_time(:second)
 
     timed(:put, key, fn ->
-      case Concord.put_if(key, nil,
+      case Backend.active().put_if(key, nil,
              consistency: :strong,
              condition: fn
                nil ->

@@ -33,7 +33,7 @@ defmodule YellowDog.Store.EventBridge do
   use GenServer
   require Logger
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @event_log_retention_seconds 86_400
 
@@ -88,7 +88,7 @@ defmodule YellowDog.Store.EventBridge do
   def replay(pattern, since_timestamp) when is_binary(pattern) and is_integer(since_timestamp) do
     prefix = Key.event_log_prefix()
 
-    case Concord.prefix_scan(prefix, consistency: :eventual) do
+    case Backend.active().prefix_scan(prefix, consistency: :eventual) do
       {:ok, entries} ->
         events =
           entries
@@ -220,7 +220,11 @@ defmodule YellowDog.Store.EventBridge do
     Task.start(fn ->
       key = Key.event_log(event.timestamp, event.key)
 
-      Concord.put(key, event, ttl: @event_log_retention_seconds)
+      try do
+        Backend.active().put(key, event, ttl: @event_log_retention_seconds)
+      rescue
+        ArgumentError -> :ok
+      end
     end)
   end
 end

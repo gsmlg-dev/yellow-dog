@@ -462,7 +462,11 @@ defmodule YellowDog.Store.PropertyTest do
 
   describe "lease state machine (integration)" do
     @tag :store_integration
-    @tag :skip
+    setup do
+      YellowDog.StoreHelper.setup_store()
+      :ok
+    end
+
     property "random sequences of offer/bind/renew/release reach valid states" do
       alias YellowDog.Store.Lease
 

@@ -2,6 +2,7 @@ defmodule YellowDog.Store.BackupTest do
   use ExUnit.Case, async: false
 
   @moduletag :store_integration
+  # Backup tests require Concord.Backup (Raft-specific) — skip in single-node/ETS mode
   @moduletag :skip
 
   alias YellowDog.Store.Backup

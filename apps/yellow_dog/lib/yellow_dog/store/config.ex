@@ -9,7 +9,7 @@ defmodule YellowDog.Store.Config do
   Writes emit events via EventBridge so ConfigWatcher can react.
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @namespace :config
 
@@ -18,7 +18,7 @@ defmodule YellowDog.Store.Config do
     concord_key = Key.config(service, key)
 
     timed(:get, concord_key, fn ->
-      case Concord.get(concord_key, consistency: :leader) do
+      case Backend.active().get(concord_key, consistency: :leader) do
         {:ok, value} -> value
         {:error, :not_found} -> default
         {:error, _} -> default
@@ -31,7 +31,7 @@ defmodule YellowDog.Store.Config do
     concord_key = Key.config(service, key)
 
     timed(:put, concord_key, fn ->
-      result = Concord.put(concord_key, value, consistency: :strong)
+      result = Backend.active().put(concord_key, value, consistency: :strong)
 
       if result == :ok do
         YellowDog.Store.EventBridge.notify(:put, concord_key, value)
@@ -46,7 +46,7 @@ defmodule YellowDog.Store.Config do
     prefix = Key.config_prefix(service)
 
     timed(:list, prefix, fn ->
-      Concord.prefix_scan(prefix, [])
+      Backend.active().prefix_scan(prefix, [])
     end)
   end
 
@@ -55,7 +55,7 @@ defmodule YellowDog.Store.Config do
     concord_key = Key.config(service, key)
 
     timed(:delete, concord_key, fn ->
-      result = Concord.delete(concord_key)
+      result = Backend.active().delete(concord_key)
 
       if result == :ok do
         YellowDog.Store.EventBridge.notify(:delete, concord_key, nil)
