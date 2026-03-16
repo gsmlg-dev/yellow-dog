@@ -421,4 +421,80 @@ defmodule YellowDog.Store.PropertyTest do
       end
     end
   end
+
+  describe "structured key round-trip" do
+    property "lease key encodes MAC into key and prefix scan would match" do
+      check all(mac <- mac_any_format()) do
+        key = Key.lease_v4(mac)
+        assert String.starts_with?(key, Key.lease_v4_prefix())
+        # The MAC in the key is the normalized form
+        normalized = Key.normalize_mac(mac)
+        assert key == "dhcp:lease:v4:#{normalized}"
+      end
+    end
+
+    property "zone_rr key decomposes into zone prefix + owner + type" do
+      check all(
+              zone <- dns_name(),
+              owner <- member_of(["@", "www", "mail", "ns1", "_srv"]),
+              type <- dns_type()
+            ) do
+        key = Key.zone_rr(zone, owner, type)
+        prefix = Key.zone_rr_prefix(zone)
+        assert String.starts_with?(key, prefix)
+        suffix = String.trim_leading(key, prefix)
+        assert suffix == "#{owner}:#{type}"
+      end
+    end
+
+    property "event_log key encodes timestamp and original key" do
+      check all(
+              ts <- positive_integer(),
+              inner_key <- string(:alphanumeric, min_length: 1, max_length: 30)
+            ) do
+        key = Key.event_log(ts, inner_key)
+        assert String.starts_with?(key, Key.event_log_prefix())
+        assert String.contains?(key, to_string(ts))
+        assert String.contains?(key, inner_key)
+      end
+    end
+  end
+
+  describe "lease state machine (integration)" do
+    @tag :store_integration
+    @tag :skip
+    property "random sequences of offer/bind/renew/release reach valid states" do
+      alias YellowDog.Store.Lease
+
+      valid_states = [:offered, :bound, :renewing, :released, :declined]
+
+      check all(
+              mac <- mac_any_format(),
+              actions <-
+                list_of(member_of([:offer, :bind, :renew, :release, :decline]),
+                  min_length: 1,
+                  max_length: 10
+                )
+            ) do
+        ip = {192, 168, 1, Enum.random(2..254)}
+        xid = Enum.random(1..0xFFFF)
+
+        Enum.reduce(actions, nil, fn action, _prev ->
+          case action do
+            :offer -> Lease.offer(:v4, mac, ip, xid: xid, lease_duration: 3600)
+            :bind -> Lease.bind(:v4, mac, xid)
+            :renew -> Lease.renew(:v4, mac, 7200)
+            :release -> Lease.release(:v4, mac)
+            :decline -> Lease.decline(:v4, mac)
+          end
+        end)
+
+        case Lease.get(:v4, mac) do
+          {:ok, lease} -> assert lease.state in valid_states
+          {:error, :not_found} -> :ok
+          {:error, _} -> :ok
+        end
+      end
+    end
+  end
 end
