@@ -117,7 +117,7 @@ defmodule YellowDog.Console.BackupsLive do
                 </span>
               </div>
               <p class="text-sm text-on-surface-variant">
-                File: <code class="text-xs"><%= Path.basename(@confirm_restore) %></code>
+                File: <code class="text-xs">{Path.basename(@confirm_restore)}</code>
               </p>
               <div class="flex justify-end gap-2 mt-4">
                 <button phx-click="cancel_restore" class="btn btn-ghost">Cancel</button>
@@ -160,13 +160,19 @@ defmodule YellowDog.Console.BackupsLive do
                     <%= for backup <- @backups do %>
                       <tr>
                         <td class="font-mono text-xs">
-                          <%= Path.basename(backup.path) %>
+                          {Path.basename(backup.path)}
                         </td>
-                        <td><%= format_timestamp(backup[:timestamp]) %></td>
-                        <td><%= format_bytes(backup[:size_bytes]) %></td>
-                        <td><%= backup[:entry_count] || "—" %></td>
+                        <td>{format_timestamp(backup[:timestamp])}</td>
+                        <td>{format_bytes(backup[:size_bytes])}</td>
+                        <td>{backup[:entry_count] || "—"}</td>
                         <td class="text-right">
                           <div class="flex justify-end gap-1">
+                            <a
+                              href={"/server/backups/download/#{URI.encode(Path.basename(backup.path))}"}
+                              class="btn btn-ghost btn-xs"
+                            >
+                              <.dm_mdi name="download" class="h-4 w-4" /> Download
+                            </a>
                             <button
                               phx-click="verify"
                               phx-value-path={backup.path}

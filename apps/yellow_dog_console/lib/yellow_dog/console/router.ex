@@ -152,6 +152,7 @@ defmodule YellowDog.Console.Router do
     live "/logs/identity-audit", IdentityLive.AuditLive
     live "/process-map", ProcessMapLive
     live "/backups", BackupsLive
+    get "/backups/download/:filename", BackupController, :download
 
     # Fingerprint (provider data)
     live "/fingerprint/devices", FingerprintLive.DevicesLive
