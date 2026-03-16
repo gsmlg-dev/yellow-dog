@@ -64,29 +64,29 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive mount" do
     test "successfully mounts with valid configuration", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/system/settings")
+      {:ok, view, html} = live(conn, ~p"/server/settings")
 
       assert html =~ "Service Settings"
       assert html =~ "Configure YellowDog network services"
-      assert has_element?(view, "a[href='/system/settings/dns']")
-      assert has_element?(view, "a[href='/system/settings/mdns']")
-      assert has_element?(view, "a[href='/system/settings/dhcpv4']")
-      assert has_element?(view, "a[href='/system/settings/dhcpv6']")
-      assert has_element?(view, "a[href='/system/settings/netboot']")
+      assert has_element?(view, "a[href='/server/settings/dns']")
+      assert has_element?(view, "a[href='/server/settings/mdns']")
+      assert has_element?(view, "a[href='/server/settings/dhcpv4']")
+      assert has_element?(view, "a[href='/server/settings/dhcpv6']")
+      assert has_element?(view, "a[href='/server/settings/netboot']")
     end
 
     test "displays current configuration version", %{conn: conn, config_path: config_path} do
       version_info = ConfigurationVersion.get_version(config_path)
-      {:ok, _view, html} = live(conn, ~p"/system/settings")
+      {:ok, _view, html} = live(conn, ~p"/server/settings")
 
       assert html =~ "Config Version: #{version_info.version}"
     end
 
     test "loads DNS service configuration correctly", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Check DNS tab is active by default
-      assert has_element?(view, "a.tab.tab-active[href='/system/settings/dns']")
+      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
 
       # Verify DNS form fields are populated
       assert has_element?(view, "input[name='service_configuration[listen]'][value='0.0.0.0']")
@@ -98,7 +98,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # Set non-existent config path
       Application.put_env(:yellow_dog_console, :config_path, "/nonexistent/config.toml")
 
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Page should load with default configuration values
       rendered = render(view)
@@ -110,26 +110,26 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive tab navigation" do
     test "switches between tabs via navigation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Initially on DNS tab
-      assert has_element?(view, "a.tab.tab-active[href='/system/settings/dns']")
+      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
 
       # Navigate to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
-      assert has_element?(view, "a.tab.tab-active[href='/system/settings/mdns']")
-      refute has_element?(view, "a.tab.tab-active[href='/system/settings/dns']")
+      assert has_element?(view, "a.tab.tab-active[href='/server/settings/mdns']")
+      refute has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
 
       # Navigate to DHCPv4 tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/dhcpv4")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/dhcpv4")
 
-      assert has_element?(view, "a.tab.tab-active[href='/system/settings/dhcpv4']")
+      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dhcpv4']")
 
       # Navigate back to DNS
-      {:ok, view, _html} = live(conn, ~p"/system/settings/dns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/dns")
 
-      assert has_element?(view, "a.tab.tab-active[href='/system/settings/dns']")
+      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
     end
 
     @tag :skip
@@ -137,7 +137,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # NOTE: This test is skipped because with URL-based navigation,
       # each tab creates a new LiveView instance and form state is not preserved.
       # Form state preservation would require saving to the server before switching tabs.
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Modify DNS configuration
       view
@@ -145,10 +145,10 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Navigate to mDNS tab
-      {:ok, _mdns_view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, _mdns_view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Navigate back to DNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/dns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/dns")
 
       # Verify DNS form still has modified values
       assert has_element?(view, "input[name='service_configuration[listen]'][value='127.0.0.1']")
@@ -158,7 +158,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive DNS configuration validation" do
     test "validates listen address format", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Enter invalid IP address
       html =
@@ -171,7 +171,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "validates port range", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Enter port below range
       html =
@@ -191,7 +191,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "disables save button when validation fails", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Enter invalid data
       view
@@ -203,7 +203,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "enables save button when all fields are valid", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Enter valid data
       view
@@ -217,7 +217,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive DNS configuration save" do
     test "successfully saves valid DNS configuration", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Modify and save DNS configuration
       html =
@@ -236,7 +236,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "creates backup before saving", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Save configuration
       view
@@ -256,7 +256,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     test "increments version after successful save", %{conn: conn, config_path: config_path} do
       initial_version = ConfigurationVersion.get_version(config_path).version
 
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Save configuration
       view
@@ -269,7 +269,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "prevents save when validation errors exist", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Attempt to save invalid configuration
       html =
@@ -284,7 +284,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive apply changes" do
     test "shows apply button when pending changes exist", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Save configuration (creates pending changes)
       view
@@ -297,7 +297,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "hides apply button when no pending changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # No changes made
       refute has_element?(view, "button[phx-click='apply_changes_dns']")
@@ -305,7 +305,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "applies changes and restarts service", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Save configuration
       view
@@ -334,7 +334,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       conn: conn,
       config_path: config_path
     } do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Simulate external modification (another user/process)
       {:ok, _config} = ConfigManager.load_config(config_path)
@@ -356,7 +356,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "reload button in conflict modal refreshes configuration", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Trigger conflict (simplified - in real test would need concurrent modification)
       # For now, just test the reload functionality
@@ -372,7 +372,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive configuration reload" do
     test "reloads configuration from disk", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Externally modify configuration file
       ConfigManager.save_config(config_path, %{"dns.port" => 7777})
@@ -389,7 +389,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "clears pending changes on reload", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Make changes
       view
@@ -412,39 +412,39 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive DNS reload and modal events" do
     test "dns_reload_all shows success or error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
       html = render_click(view, "dns_reload_all")
       # DNS service isn't running, so we get an error
       assert html =~ "DNS configuration reloaded" or html =~ "Failed to reload DNS"
     end
 
     test "dns_reload_views shows success or error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
       html = render_click(view, "dns_reload_views")
       assert html =~ "DNS views reloaded" or html =~ "Failed to reload DNS views"
     end
 
     test "dns_reload_acls shows success or error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
       html = render_click(view, "dns_reload_acls")
       assert html =~ "DNS ACLs reloaded" or html =~ "Failed to reload DNS ACLs"
     end
 
     test "close_conflict_modal hides the modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
       html = render_click(view, "close_conflict_modal")
       # Should not crash, page still renders
       assert html =~ "Settings" or html =~ "Configuration"
     end
 
     test "close_recovery_modal hides the modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
       html = render_click(view, "close_recovery_modal")
       assert html =~ "Settings" or html =~ "Configuration"
     end
 
     test "restore_backup handles missing backup file gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
       html = render_click(view, "restore_backup", %{"backup_path" => "/nonexistent/backup.toml"})
       assert html =~ "Failed to restore backup" or html =~ "Configuration"
     end
@@ -452,7 +452,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive configuration persistence" do
     test "persists enabled/disabled toggle", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Disable DNS service
       view
@@ -500,7 +500,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
       File.write!(config_path, config_with_comments)
 
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # Modify DNS port
       view
@@ -513,7 +513,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "handles multiple sequential saves correctly", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings")
+      {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # First save
       view
@@ -541,7 +541,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
   describe "SettingsLive mDNS configuration" do
     test "loads mDNS configuration correctly", %{conn: conn} do
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Verify mDNS form fields are populated from config
       assert has_element?(view, "input[name='service_configuration[listen]'][value='0.0.0.0']")
@@ -552,7 +552,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
     test "validates mDNS mode field is required", %{conn: conn} do
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Try to save without mode (by clearing it)
       html =
@@ -567,7 +567,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
     test "successfully saves valid mDNS configuration", %{conn: conn, config_path: config_path} do
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Modify and save mDNS configuration
       html =
@@ -590,7 +590,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
     test "toggles mDNS service enabled status", %{conn: conn, config_path: config_path} do
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Disable mDNS service
       view
@@ -606,7 +606,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
     test "validates mode must be responder or hybrid", %{conn: conn} do
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # The select dropdown should only show valid options
       # This test verifies the component structure
@@ -628,7 +628,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # Form state preservation would require saving to the server before switching tabs.
 
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Modify mDNS configuration
       view
@@ -638,10 +638,10 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Navigate to DNS tab
-      {:ok, _dns_view, _html} = live(conn, ~p"/system/settings/dns")
+      {:ok, _dns_view, _html} = live(conn, ~p"/server/settings/dns")
 
       # Navigate back to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Verify mDNS form still has modified values
       assert has_element?(
@@ -659,7 +659,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
     test "shows apply button when mDNS has pending changes", %{conn: conn} do
       # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/system/settings/mdns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
 
       # Save configuration (creates pending changes)
       view
@@ -676,7 +676,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive DHCPv4 pool navigation" do
     test "DHCPv4 tab shows link to dedicated pools page", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/dhcpv4")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/dhcpv4")
 
       # Pool management has been moved to the dedicated /dhcpv4/pools page
       # Settings page should show a link to navigate there
@@ -688,7 +688,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive DHCPv6 pool navigation" do
     test "DHCPv6 tab shows link to dedicated pools page", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/dhcpv6")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/dhcpv6")
 
       # Pool management has been moved to the dedicated /dhcpv6/pools page
       # Settings page should show a link to navigate there
@@ -704,7 +704,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive atom safety guards" do
     test "validate_ event with valid service works correctly", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/dns")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/dns")
 
       html =
         render_change(view, "validate_dns", %{
@@ -716,7 +716,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
     test "valid service tabs all mount correctly", %{conn: conn} do
       for service <- ~w(dns mdns dhcpv4 dhcpv6 netboot) do
-        {:ok, _view, html} = live(conn, "/system/settings/#{service}")
+        {:ok, _view, html} = live(conn, "/server/settings/#{service}")
         assert html =~ "Settings"
       end
     end
@@ -724,16 +724,16 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   describe "SettingsLive netboot configuration" do
     test "loads netboot tab with default values", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
 
-      assert has_element?(view, "a.tab.tab-active[href='/system/settings/netboot']")
+      assert has_element?(view, "a.tab.tab-active[href='/server/settings/netboot']")
       assert has_element?(view, "input[name='service_configuration[tftp_root]']")
       assert has_element?(view, "input[name='service_configuration[port]']")
       assert has_element?(view, "select[name='service_configuration[default_profile]']")
     end
 
     test "displays netboot configuration title", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, _view, html} = live(conn, ~p"/server/settings/netboot")
 
       assert html =~ "Netboot Service Configuration"
       assert html =~ "TFTP Root Directory"
@@ -742,7 +742,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "validates tftp_root is required", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
 
       html =
         view
@@ -755,7 +755,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "validates port range for netboot", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
 
       html =
         view
@@ -768,7 +768,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "saves netboot configuration to TOML", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
 
       html =
         view
@@ -791,7 +791,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "shows apply button after saving netboot changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
 
       view
       |> form("form",
@@ -809,7 +809,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "toggles netboot enabled status", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/system/settings/netboot")
+      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
 
       view
       |> form("form",
