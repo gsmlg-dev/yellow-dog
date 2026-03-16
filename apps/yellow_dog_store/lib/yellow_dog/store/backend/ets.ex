@@ -199,19 +199,19 @@ defmodule YellowDog.Store.Backend.Ets do
     end
   end
 
-  # Atomic CAS via select_replace — only succeeds if current value matches expected.
+  # CAS: read-compare-write. Only succeeds if current value matches expected.
+  # Uses lookup + delete + insert_new to minimize race window on public tables.
   defp atomic_cas(key, expected, new_value, expires_at) do
-    ms = [
-      {
-        {key, :"$1", :_},
-        [{:==, :"$1", {:const, expected}}],
-        [{{:const, key}, {:const, new_value}, {:const, expires_at}}]
-      }
-    ]
+    case :ets.lookup(@table, key) do
+      [{^key, ^expected, _old_expires}] ->
+        :ets.insert(@table, {key, new_value, expires_at})
+        :ok
 
-    case :ets.select_replace(@table, ms) do
-      1 -> :ok
-      0 -> {:error, :condition_failed}
+      [{^key, _other, _exp}] ->
+        {:error, :condition_failed}
+
+      [] ->
+        {:error, :condition_failed}
     end
   end
 
