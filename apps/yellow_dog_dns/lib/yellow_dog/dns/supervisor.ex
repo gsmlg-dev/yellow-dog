@@ -127,11 +127,6 @@ defmodule YellowDog.Dns.Supervisor do
       {YellowDog.Dns.MetricsCollector, []},
       {YellowDog.Dns.ConfigWatcher, data_path: get_data_path()},
 
-      # Store event consumers — react to Concord state changes
-      {YellowDog.Dns.CacheSyncer, []},
-      {YellowDog.Dns.ZoneReloader, []},
-      {YellowDog.Dns.RpzReloader, []},
-
       # Post-init task - set up default view and zones
       # Uses restart: :temporary so it doesn't restart after completion
       %{
