@@ -59,8 +59,14 @@ defmodule YellowDog.Dns.ZoneReloader do
   defp subscribe_to_bridge(state) do
     case YellowDog.Store.EventBridge.subscribe("dns:zone:*") do
       {:ok, ref} ->
-        mon = Process.monitor(Process.whereis(YellowDog.Store.EventBridge))
-        %{state | subscription_ref: ref, bridge_monitor: mon}
+        case Process.whereis(YellowDog.Store.EventBridge) do
+          pid when is_pid(pid) ->
+            mon = Process.monitor(pid)
+            %{state | subscription_ref: ref, bridge_monitor: mon}
+
+          nil ->
+            %{state | subscription_ref: ref, bridge_monitor: nil}
+        end
 
       _ ->
         Logger.warning("ZoneReloader: failed to subscribe to EventBridge, retrying")

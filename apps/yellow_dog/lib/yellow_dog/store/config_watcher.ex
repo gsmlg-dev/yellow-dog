@@ -96,8 +96,14 @@ defmodule YellowDog.Store.ConfigWatcher do
   defp subscribe_to_bridge(state) do
     case YellowDog.Store.EventBridge.subscribe(state.pattern) do
       {:ok, ref} ->
-        mon = Process.monitor(Process.whereis(YellowDog.Store.EventBridge))
-        %{state | subscription_ref: ref, bridge_monitor: mon}
+        case Process.whereis(YellowDog.Store.EventBridge) do
+          pid when is_pid(pid) ->
+            mon = Process.monitor(pid)
+            %{state | subscription_ref: ref, bridge_monitor: mon}
+
+          nil ->
+            %{state | subscription_ref: ref, bridge_monitor: nil}
+        end
 
       _ ->
         Logger.warning("ConfigWatcher[#{state.service}]: failed to subscribe, retrying")
