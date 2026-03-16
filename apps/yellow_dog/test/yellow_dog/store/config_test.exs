@@ -1,11 +1,16 @@
 defmodule YellowDog.Store.ConfigTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias YellowDog.Store.Config
 
   @moduletag :store_integration
 
-  @tag :skip
+  setup do
+    YellowDog.StoreHelper.setup_store()
+    start_supervised!(YellowDog.Store.EventBridge)
+    :ok
+  end
+
   test "put and get a config value" do
     assert :ok = Config.put(:dns, :port, 5353)
 
@@ -13,19 +18,16 @@ defmodule YellowDog.Store.ConfigTest do
     assert result == 5353
   end
 
-  @tag :skip
   test "get returns default when key not found" do
     result = Config.get(:dns, :nonexistent_key, 42)
     assert result == 42
   end
 
-  @tag :skip
   test "get returns nil default when key not found" do
     result = Config.get(:dns, :nonexistent_key)
     assert result == nil
   end
 
-  @tag :skip
   test "put overwrites existing value" do
     Config.put(:dns, :timeout, 1000)
     Config.put(:dns, :timeout, 2000)
@@ -33,7 +35,6 @@ defmodule YellowDog.Store.ConfigTest do
     assert Config.get(:dns, :timeout) == 2000
   end
 
-  @tag :skip
   test "list returns all config keys for a service" do
     Config.put(:dhcpv4, :pool_size, 100)
     Config.put(:dhcpv4, :lease_time, 3600)
@@ -43,7 +44,6 @@ defmodule YellowDog.Store.ConfigTest do
     assert length(entries) >= 2
   end
 
-  @tag :skip
   test "delete removes config override" do
     Config.put(:mdns, :enabled, true)
     assert :ok = Config.delete(:mdns, :enabled)
@@ -52,7 +52,6 @@ defmodule YellowDog.Store.ConfigTest do
     assert result == :default_val
   end
 
-  @tag :skip
   test "config values can be any Elixir term" do
     Config.put(:test, :map_val, %{nested: %{key: "value"}})
     assert Config.get(:test, :map_val) == %{nested: %{key: "value"}}

@@ -2,9 +2,13 @@ defmodule YellowDog.Store.LeaseTest do
   use ExUnit.Case, async: false
 
   @moduletag :store_integration
-  @moduletag :skip
 
   alias YellowDog.Store.Lease
+
+  setup do
+    YellowDog.StoreHelper.setup_store()
+    :ok
+  end
 
   describe "offer/4" do
     test "creates a lease in offered state" do

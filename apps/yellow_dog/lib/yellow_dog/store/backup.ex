@@ -177,7 +177,7 @@ defmodule YellowDog.Store.Backup do
 
     counts =
       Enum.reduce(namespace_prefixes, %{total: 0, namespaces: []}, fn {prefix, ns}, acc ->
-        case Concord.prefix_scan(prefix, consistency: :eventual) do
+        case YellowDog.Store.Backend.active().prefix_scan(prefix, consistency: :eventual) do
           {:ok, entries} when entries != [] ->
             count = length(entries)
             %{acc | total: acc.total + count, namespaces: [ns | acc.namespaces]}

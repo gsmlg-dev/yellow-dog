@@ -1,11 +1,15 @@
 defmodule YellowDog.Store.HostTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias YellowDog.Store.Host
 
   @moduletag :store_integration
 
-  @tag :skip
+  setup do
+    YellowDog.StoreHelper.setup_store()
+    :ok
+  end
+
   test "register creates a new host" do
     hostname = "testhost-#{System.unique_integer([:positive])}"
 
@@ -24,7 +28,6 @@ defmodule YellowDog.Store.HostTest do
     assert is_integer(host.last_attested)
   end
 
-  @tag :skip
   test "register rejects duplicate hostname (CAS)" do
     hostname = "dup-host-#{System.unique_integer([:positive])}"
     attrs = %{ssh_pubkeys: ["key1"]}
@@ -33,7 +36,6 @@ defmodule YellowDog.Store.HostTest do
     assert {:error, :already_registered} = Host.register(hostname, %{ssh_pubkeys: ["key2"]})
   end
 
-  @tag :skip
   test "update_keys replaces SSH keys" do
     hostname = "keyhost-#{System.unique_integer([:positive])}"
     Host.register(hostname, %{ssh_pubkeys: ["old-key"], pubkeys: ["old-key"]})
@@ -44,17 +46,14 @@ defmodule YellowDog.Store.HostTest do
     assert host.pubkeys == ["new-key-1", "new-key-2"]
   end
 
-  @tag :skip
   test "update_keys returns :not_found for unregistered host" do
     assert {:error, :not_found} = Host.update_keys("ghost-host", ["key"])
   end
 
-  @tag :skip
   test "get returns :not_found for unknown hostname" do
     assert {:error, :not_found} = Host.get("nonexistent-host")
   end
 
-  @tag :skip
   test "by_mac finds host by MAC address" do
     hostname = "machost-#{System.unique_integer([:positive])}"
     mac = "11:22:33:44:55:66"
@@ -65,7 +64,6 @@ defmodule YellowDog.Store.HostTest do
     assert host.hostname == hostname
   end
 
-  @tag :skip
   test "by_mac normalizes MAC format" do
     hostname = "macfmt-#{System.unique_integer([:positive])}"
     Host.register(hostname, %{ssh_pubkeys: ["key"], mac: "aa:bb:cc:dd:ee:ff"})
@@ -74,7 +72,6 @@ defmodule YellowDog.Store.HostTest do
     assert host != nil
   end
 
-  @tag :skip
   test "attest refreshes attestation timestamp" do
     hostname = "attest-#{System.unique_integer([:positive])}"
     Host.register(hostname, %{ssh_pubkeys: ["key"]})
@@ -87,7 +84,6 @@ defmodule YellowDog.Store.HostTest do
     assert after_attest.last_attested >= before.last_attested
   end
 
-  @tag :skip
   test "attest returns :not_found for unregistered host" do
     assert {:error, :not_found} = Host.attest("unknown-host")
   end

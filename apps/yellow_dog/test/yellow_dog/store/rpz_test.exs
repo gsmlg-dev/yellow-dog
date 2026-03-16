@@ -1,11 +1,15 @@
 defmodule YellowDog.Store.RpzTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias YellowDog.Store.Rpz
 
   @moduletag :store_integration
 
-  @tag :skip
+  setup do
+    YellowDog.StoreHelper.setup_store()
+    :ok
+  end
+
   test "put and get a rule" do
     zone = "blocklist"
     trigger = "bad.example.com"
@@ -18,7 +22,6 @@ defmodule YellowDog.Store.RpzTest do
     assert result.reason == "malware"
   end
 
-  @tag :skip
   test "list returns all rules in a zone" do
     Rpz.put("testzone", "evil1.com", %{
       action: :nxdomain,
@@ -38,7 +41,6 @@ defmodule YellowDog.Store.RpzTest do
     assert length(entries) >= 2
   end
 
-  @tag :skip
   test "delete removes a rule" do
     Rpz.put("delzone", "target.com", %{
       action: :nodata,
@@ -51,7 +53,6 @@ defmodule YellowDog.Store.RpzTest do
     assert {:error, :not_found} = Rpz.get("delzone", "target.com")
   end
 
-  @tag :skip
   test "zones returns unique zone names" do
     Rpz.put("zone_a", "a.com", %{
       action: :nxdomain,
@@ -73,7 +74,6 @@ defmodule YellowDog.Store.RpzTest do
     assert zone_names == Enum.uniq(zone_names)
   end
 
-  @tag :skip
   test "get returns :not_found for unknown trigger" do
     assert {:error, :not_found} = Rpz.get("nonexistent", "unknown.com")
   end

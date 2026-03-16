@@ -14,6 +14,7 @@ defmodule YellowDog.Store.DynDnsUpdaterTest do
   # 3. Classify/FQDN helper logic (tested indirectly)
 
   setup do
+    YellowDog.StoreHelper.setup_store()
     # EventBridge must be running for DynDnsUpdater to subscribe
     bridge_pid = start_supervised!({EventBridge, []}, id: :test_event_bridge)
 
@@ -103,10 +104,7 @@ defmodule YellowDog.Store.DynDnsUpdaterTest do
     end
 
     @tag :store_integration
-    @tag :skip
     test "delete event with lease value is handled" do
-      # Requires running Concord - DynDns.delete raises CaseClauseError
-      # when Concord is not available
       _pid = start_supervised!({DynDnsUpdater, domain: "test.local"})
 
       event = %{
@@ -162,10 +160,7 @@ defmodule YellowDog.Store.DynDnsUpdaterTest do
     end
 
     @tag :store_integration
-    @tag :skip
     test "released lease event does not crash updater" do
-      # Requires running Concord - DynDns.delete raises CaseClauseError
-      # when Concord is not available because it calls Concord.get internally
       _pid = start_supervised!({DynDnsUpdater, domain: "test.local"})
 
       event = %{
@@ -200,9 +195,7 @@ defmodule YellowDog.Store.DynDnsUpdaterTest do
 
   describe "end-to-end DNS record creation" do
     @tag :store_integration
-    @tag :skip
     test "bound lease creates forward and reverse records" do
-      # Requires running Concord cluster
       _pid = start_supervised!({DynDnsUpdater, domain: "example.local"})
 
       event = %{

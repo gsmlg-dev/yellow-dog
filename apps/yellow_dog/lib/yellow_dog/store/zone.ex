@@ -1,6 +1,6 @@
 defmodule YellowDog.Store.Zone do
   @moduledoc """
-  Authoritative DNS zone data facade over Concord.
+  Authoritative DNS zone data facade over the Store backend.
 
   Manages zone metadata and resource record sets (RRsets). All writes use
   `:strong` consistency and compare-and-swap (CAS) to prevent concurrent
@@ -11,7 +11,7 @@ defmodule YellowDog.Store.Zone do
   - Resource records: `dns:zone:{zone_name}:rr:{owner}:{type}`
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @type zone_name :: String.t()
   @type owner :: String.t()
@@ -60,7 +60,7 @@ defmodule YellowDog.Store.Zone do
 
     start_time = System.monotonic_time()
 
-    case Concord.put_if(key, value, expected: nil) do
+    case Backend.active().put_if(key, value, expected: nil) do
       :ok ->
         emit_operation_telemetry(start_time, :zone, :put, key, :strong)
         :ok
@@ -80,14 +80,14 @@ defmodule YellowDog.Store.Zone do
   def delete_zone(name) do
     rr_prefix = Key.zone_rr_prefix(name)
 
-    with {:ok, rr_entries} <- Concord.prefix_scan(rr_prefix, consistency: :strong) do
+    with {:ok, rr_entries} <- Backend.active().prefix_scan(rr_prefix, consistency: :strong) do
       Enum.each(rr_entries, fn {rr_key, _value} ->
-        Concord.delete(rr_key)
+        Backend.active().delete(rr_key)
       end)
 
       zone_key = Key.zone(name)
       start_time = System.monotonic_time()
-      result = Concord.delete(zone_key)
+      result = Backend.active().delete(zone_key)
       emit_operation_telemetry(start_time, :zone, :delete, zone_key, :strong)
       result
     end
@@ -100,7 +100,7 @@ defmodule YellowDog.Store.Zone do
   def get_zone(name) do
     key = Key.zone(name)
     start_time = System.monotonic_time()
-    result = Concord.get(key, consistency: :eventual)
+    result = Backend.active().get(key, consistency: :eventual)
     emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
     result
   end
@@ -113,7 +113,7 @@ defmodule YellowDog.Store.Zone do
   def list_zones do
     start_time = System.monotonic_time()
 
-    case Concord.prefix_scan(@zone_prefix, consistency: :eventual) do
+    case Backend.active().prefix_scan(@zone_prefix, consistency: :eventual) do
       {:ok, entries} ->
         names =
           entries
@@ -159,12 +159,12 @@ defmodule YellowDog.Store.Zone do
     start_time = System.monotonic_time()
 
     result =
-      case Concord.get(key, consistency: :strong) do
+      case Backend.active().get(key, consistency: :strong) do
         {:ok, existing} ->
-          Concord.put_if(key, value, condition: fn old -> old == existing end)
+          Backend.active().put_if(key, value, condition: fn old -> old == existing end)
 
         {:error, :not_found} ->
-          Concord.put_if(key, value, expected: nil)
+          Backend.active().put_if(key, value, expected: nil)
       end
 
     case result do
@@ -187,7 +187,7 @@ defmodule YellowDog.Store.Zone do
   def get_rrset(zone, owner, type) do
     key = Key.zone_rr(zone, owner, type)
     start_time = System.monotonic_time()
-    result = Concord.get(key, consistency: :eventual)
+    result = Backend.active().get(key, consistency: :eventual)
     emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
     result
   end
@@ -200,7 +200,7 @@ defmodule YellowDog.Store.Zone do
     key = Key.zone_rr(zone, owner, type)
     start_time = System.monotonic_time()
 
-    case Concord.delete(key) do
+    case Backend.active().delete(key) do
       :ok ->
         emit_operation_telemetry(start_time, :zone, :delete, key, :strong)
         emit_rr_changed(zone, owner, type, :delete)
@@ -220,7 +220,7 @@ defmodule YellowDog.Store.Zone do
     prefix = Key.zone_rr_prefix(zone)
     start_time = System.monotonic_time()
 
-    case Concord.prefix_scan(prefix, consistency: :eventual) do
+    case Backend.active().prefix_scan(prefix, consistency: :eventual) do
       {:ok, entries} ->
         records = Enum.map(entries, fn {_key, value} -> value end)
         emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
@@ -288,7 +288,7 @@ defmodule YellowDog.Store.Zone do
         updated_at: now
       }
 
-      Concord.put(key, value, consistency: :strong)
+      Backend.active().put(key, value, consistency: :strong)
     end)
 
     :telemetry.execute(
@@ -326,7 +326,7 @@ defmodule YellowDog.Store.Zone do
   def increment_serial(name) do
     key = Key.zone(name)
 
-    case Concord.get(key, consistency: :strong) do
+    case Backend.active().get(key, consistency: :strong) do
       {:ok, zone_meta} ->
         old_serial = zone_meta.soa.serial
         strategy = Map.get(zone_meta, :serial_strategy, :date_serial)
@@ -340,7 +340,7 @@ defmodule YellowDog.Store.Zone do
           |> Map.put(:soa, updated_soa)
           |> Map.put(:updated_at, now)
 
-        case Concord.put_if(key, updated_meta, condition: fn old -> old == zone_meta end) do
+        case Backend.active().put_if(key, updated_meta, condition: fn old -> old == zone_meta end) do
           :ok ->
             :telemetry.execute(
               [:yellow_dog, :store, :zone, :serial_incremented],

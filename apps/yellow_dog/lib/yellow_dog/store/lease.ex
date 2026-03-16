@@ -1,6 +1,6 @@
 defmodule YellowDog.Store.Lease do
   @moduledoc """
-  DHCP lease lifecycle management facade over Concord.
+  DHCP lease lifecycle management facade over the Store backend.
 
   All functions take a `protocol` (`:v4` or `:v6`) and a client identifier
   (MAC address for v4, DUID for v6). Keys are encoded via `YellowDog.Store.Key`.
@@ -9,7 +9,7 @@ defmodule YellowDog.Store.Lease do
   All state transitions use compare-and-swap (CAS) to prevent races.
   """
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @type protocol :: :v4 | :v6
   @type client_id :: String.t()
@@ -54,7 +54,7 @@ defmodule YellowDog.Store.Lease do
     start_time = System.monotonic_time()
 
     result =
-      Concord.put_if(key, lease,
+      Backend.active().put_if(key, lease,
         consistency: :strong,
         ttl: ttl,
         condition: fn
@@ -90,7 +90,7 @@ defmodule YellowDog.Store.Lease do
     start_time = System.monotonic_time()
 
     result =
-      Concord.put_if(key, nil,
+      Backend.active().put_if(key, nil,
         consistency: :strong,
         condition: fn
           %{state: :offered, xid: ^xid} = lease ->
@@ -133,7 +133,7 @@ defmodule YellowDog.Store.Lease do
     start_time = System.monotonic_time()
 
     result =
-      Concord.put_if(key, nil,
+      Backend.active().put_if(key, nil,
         consistency: :strong,
         ttl: duration,
         condition: fn
@@ -179,7 +179,7 @@ defmodule YellowDog.Store.Lease do
     start_time = System.monotonic_time()
 
     result =
-      Concord.put_if(key, nil,
+      Backend.active().put_if(key, nil,
         consistency: :strong,
         ttl: @released_ttl,
         condition: fn
@@ -214,7 +214,7 @@ defmodule YellowDog.Store.Lease do
     start_time = System.monotonic_time()
 
     result =
-      Concord.put_if(key, nil,
+      Backend.active().put_if(key, nil,
         consistency: :strong,
         condition: fn
           %{state: state} = lease when state in [:offered, :bound, :renewing, :rebinding] ->
@@ -246,7 +246,7 @@ defmodule YellowDog.Store.Lease do
   def get(protocol, client_id) do
     key = Key.lease(protocol, client_id)
     start_time = System.monotonic_time()
-    result = Concord.get(key, consistency: :leader)
+    result = Backend.active().get(key, consistency: :leader)
     emit_timed_operation(start_time, :lease, :get, key, :leader)
     result
   end
@@ -279,7 +279,7 @@ defmodule YellowDog.Store.Lease do
   def list_by_protocol(protocol) do
     prefix = lease_prefix(protocol)
 
-    case Concord.prefix_scan(prefix, []) do
+    case Backend.active().prefix_scan(prefix, []) do
       {:ok, entries} ->
         results =
           Enum.map(entries, fn {key, lease} ->
@@ -300,7 +300,7 @@ defmodule YellowDog.Store.Lease do
   defp lease_prefix(:v6), do: Key.lease_v6_prefix()
 
   defp scan_prefix_for_ip(prefix, protocol, target_ip) do
-    case Concord.prefix_scan(prefix, []) do
+    case Backend.active().prefix_scan(prefix, []) do
       {:ok, entries} ->
         case Enum.find(entries, fn {_key, lease} -> lease.ip == target_ip end) do
           {key, lease} ->
@@ -317,7 +317,7 @@ defmodule YellowDog.Store.Lease do
   end
 
   defp scan_and_filter(prefix, filter_fn) do
-    case Concord.prefix_scan(prefix, []) do
+    case Backend.active().prefix_scan(prefix, []) do
       {:ok, entries} ->
         entries
         |> Enum.filter(fn {_key, lease} -> filter_fn.(lease) end)

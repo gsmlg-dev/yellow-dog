@@ -1,6 +1,6 @@
 defmodule YellowDog.Store.DynDns do
   @moduledoc """
-  Dynamic DNS record storage backed by Concord.
+  Dynamic DNS record storage backed by the Store backend.
 
   Manages forward (A/AAAA/CNAME) and reverse (PTR) dynamic records.
   Records carry source metadata so consumers can distinguish DHCP-originated
@@ -9,7 +9,7 @@ defmodule YellowDog.Store.DynDns do
 
   import Bitwise
 
-  alias YellowDog.Store.Key
+  alias YellowDog.Store.{Backend, Key}
 
   @namespace :dyn_dns
 
@@ -33,11 +33,11 @@ defmodule YellowDog.Store.DynDns do
       |> Map.put_new(:created_at, now)
       |> Map.put(:updated_at, now)
 
-    concord_opts =
+    backend_opts =
       [consistency: :strong] ++ if(ttl = Keyword.get(opts, :ttl), do: [ttl: ttl], else: [])
 
     timed(:put, key, fn ->
-      Concord.put(key, record, concord_opts)
+      Backend.active().put(key, record, backend_opts)
     end)
   end
 
@@ -47,11 +47,11 @@ defmodule YellowDog.Store.DynDns do
     now = System.system_time(:second)
     record = %{type: :ptr, rdata: fqdn, created_at: now, updated_at: now}
 
-    concord_opts =
+    backend_opts =
       [consistency: :strong] ++ if(ttl = Keyword.get(opts, :ttl), do: [ttl: ttl], else: [])
 
     timed(:put, key, fn ->
-      Concord.put(key, record, concord_opts)
+      Backend.active().put(key, record, backend_opts)
     end)
   end
 
@@ -60,7 +60,7 @@ defmodule YellowDog.Store.DynDns do
     key = Key.dyn_dns(fqdn)
 
     timed(:get, key, fn ->
-      Concord.get(key, consistency: :eventual)
+      Backend.active().get(key, consistency: :eventual)
     end)
   end
 
@@ -69,7 +69,7 @@ defmodule YellowDog.Store.DynDns do
     key = Key.dyn_dns_ptr(arpa)
 
     timed(:get, key, fn ->
-      Concord.get(key, consistency: :eventual)
+      Backend.active().get(key, consistency: :eventual)
     end)
   end
 
@@ -78,12 +78,12 @@ defmodule YellowDog.Store.DynDns do
     key = Key.dyn_dns(fqdn)
 
     timed(:delete, key, fn ->
-      case Concord.get(key, consistency: :leader) do
+      case Backend.active().get(key, consistency: :leader) do
         {:ok, record} ->
-          :ok = Concord.delete(key)
+          :ok = Backend.active().delete(key)
 
           case ip_to_arpa(record) do
-            {:ok, arpa} -> Concord.delete(Key.dyn_dns_ptr(arpa))
+            {:ok, arpa} -> Backend.active().delete(Key.dyn_dns_ptr(arpa))
             :error -> :ok
           end
 
@@ -98,7 +98,7 @@ defmodule YellowDog.Store.DynDns do
     prefix = Key.dyn_dns_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Concord.prefix_scan(prefix, [])
+      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
 
       matches =
         entries

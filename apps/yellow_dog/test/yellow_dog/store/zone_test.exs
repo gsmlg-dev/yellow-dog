@@ -2,7 +2,6 @@ defmodule YellowDog.Store.ZoneTest do
   use ExUnit.Case, async: false
 
   @moduletag :store_integration
-  @moduletag :skip
 
   alias YellowDog.Store.Zone
 
@@ -15,6 +14,11 @@ defmodule YellowDog.Store.ZoneTest do
     expire: 604_800,
     minimum: 86_400
   }
+
+  setup do
+    YellowDog.StoreHelper.setup_store()
+    :ok
+  end
 
   describe "create_zone/3" do
     test "creates zone metadata" do

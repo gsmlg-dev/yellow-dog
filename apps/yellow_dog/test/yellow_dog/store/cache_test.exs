@@ -288,18 +288,16 @@ defmodule YellowDog.Store.CacheTest do
 
   describe "warm_from_store/0" do
     @tag :store_integration
-    @tag :skip
-    test "loads entries from Concord into ETS" do
-      # Requires running Concord cluster
+    test "loads entries from backend into ETS" do
+      YellowDog.StoreHelper.setup_store()
       assert :ok = Cache.warm_from_store()
     end
   end
 
   describe "flush_to_store/0" do
     @tag :store_integration
-    @tag :skip
-    test "writes recent ETS entries to Concord" do
-      # Requires running Concord cluster
+    test "writes recent ETS entries to backend" do
+      YellowDog.StoreHelper.setup_store()
       assert :ok = Cache.flush_to_store()
     end
   end
