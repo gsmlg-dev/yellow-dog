@@ -48,7 +48,7 @@ defmodule YellowDog.Console.DashboardLiveTest do
     test "shows configure links for each service", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
       assert html =~ "Configure"
-      assert html =~ "/system/settings/"
+      assert html =~ "/server/settings/"
     end
   end
 

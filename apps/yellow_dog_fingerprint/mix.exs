@@ -19,7 +19,6 @@ defmodule YellowDog.Fingerprint.MixProject do
 
   def application do
     [
-      mod: {YellowDog.Fingerprint.Application, []},
       extra_applications: [:logger]
     ]
   end
@@ -33,6 +32,7 @@ defmodule YellowDog.Fingerprint.MixProject do
       {:toml, "~> 0.7"},
       {:phoenix_pubsub, "~> 2.1"},
       {:yellow_dog, in_umbrella: true},
+      {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:gsmlg_mac, "~> 0.1"},
 

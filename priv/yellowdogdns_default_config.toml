@@ -3,6 +3,7 @@ dns = true
 mdns = true
 dhcpv4 = true
 dhcpv6 = true
+netboot = false
 
 [dns]
 listen = "0.0.0.0"

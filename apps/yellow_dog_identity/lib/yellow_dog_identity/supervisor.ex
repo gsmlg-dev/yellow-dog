@@ -22,7 +22,10 @@ defmodule YellowDogIdentity.Supervisor do
 
     children = [
       {YellowDogIdentity.Registry, [data_dir: data_dir]},
-      {YellowDogIdentity.Trust.DHCP.LeaseCache, []}
+      {YellowDogIdentity.Trust.DHCP.LeaseCache, []},
+      # Post-init: start Store event consumers if available
+      {Task, fn -> start_store_consumers() end}
+      |> Supervisor.child_spec(id: :post_init, restart: :temporary)
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -62,22 +65,32 @@ defmodule YellowDogIdentity.Supervisor do
 
   defp validate_approval_config(config) when is_map(config) do
     case Map.get(config, "default_action") do
-      action when action in [nil, "pending", "approve", "reject"] -> :ok
-      invalid -> Logger.warning("Identity: invalid approval default_action '#{invalid}', using 'pending'")
+      action when action in [nil, "pending", "approve", "reject"] ->
+        :ok
+
+      invalid ->
+        Logger.warning("Identity: invalid approval default_action '#{invalid}', using 'pending'")
     end
 
     case Map.get(config, "policies") do
-      nil -> :ok
+      nil ->
+        :ok
+
       policies when is_list(policies) ->
         Enum.each(policies, fn policy ->
           unless Map.has_key?(policy, "name") do
             Logger.warning("Identity: approval policy missing 'name' field")
           end
+
           unless Map.get(policy, "action") in ["approve", "reject"] do
-            Logger.warning("Identity: approval policy '#{Map.get(policy, "name", "?")}' has invalid action")
+            Logger.warning(
+              "Identity: approval policy '#{Map.get(policy, "name", "?")}' has invalid action"
+            )
           end
         end)
-      _ -> Logger.warning("Identity: approval.policies should be a list")
+
+      _ ->
+        Logger.warning("Identity: approval.policies should be a list")
     end
   end
 
@@ -90,7 +103,9 @@ defmodule YellowDogIdentity.Supervisor do
       case Map.get(config, provider) do
         %{"allowed_projects" => projects} when not is_list(projects) ->
           Logger.warning("Identity: cloud.#{provider}.allowed_projects should be a list")
-        _ -> :ok
+
+        _ ->
+          :ok
       end
     end)
   end
@@ -101,14 +116,44 @@ defmodule YellowDogIdentity.Supervisor do
 
   defp validate_webhook_config(config) when is_map(config) do
     case Map.get(config, "url") do
-      nil -> :ok
+      nil ->
+        :ok
+
       url when is_binary(url) ->
         unless String.starts_with?(url, "http://") or String.starts_with?(url, "https://") do
           Logger.warning("Identity: webhook.url should start with http:// or https://")
         end
-      _ -> Logger.warning("Identity: webhook.url should be a string")
+
+      _ ->
+        Logger.warning("Identity: webhook.url should be a string")
     end
   end
 
   defp validate_webhook_config(_), do: :ok
+
+  defp start_store_consumers do
+    if Process.whereis(YellowDog.Store.EventBridge) do
+      child_spec =
+        {YellowDog.Store.ConfigWatcher,
+         service: :identity,
+         handler: &handle_store_config_change/2,
+         name: :identity_store_config_watcher}
+
+      case Supervisor.start_child(__MODULE__, child_spec) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+        {:error, _reason} -> :ok
+      end
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp handle_store_config_change(key, value) do
+    :telemetry.execute(
+      [:yellow_dog, :identity, :config, :store_change],
+      %{},
+      %{key: key, value: value}
+    )
+  end
 end

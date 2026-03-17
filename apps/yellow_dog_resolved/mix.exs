@@ -18,8 +18,7 @@ defmodule YellowDog.Resolved.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
-      mod: {YellowDog.Resolved.Application, []}
+      extra_applications: [:logger]
     ]
   end
 

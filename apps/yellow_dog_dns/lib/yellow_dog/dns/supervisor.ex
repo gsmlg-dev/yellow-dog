@@ -209,7 +209,52 @@ defmodule YellowDog.Dns.Supervisor do
       end
     end
 
+    # Start Store event consumers if EventBridge is available
+    start_store_consumers()
+
     Telemetry.info("DNS supervisor post-init completed")
+  end
+
+  defp start_store_consumers do
+    if Process.whereis(YellowDog.Store.EventBridge) do
+      children = [
+        {YellowDog.Dns.CacheSyncer, []},
+        {YellowDog.Dns.ZoneReloader, []},
+        {YellowDog.Dns.RpzReloader, []},
+        {YellowDog.Store.ConfigWatcher,
+         service: :dns, handler: &handle_store_config_change/2, name: :dns_store_config_watcher}
+      ]
+
+      Enum.each(children, fn child_spec ->
+        case Supervisor.start_child(YellowDog.Dns, child_spec) do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, {:already_started, _pid}} ->
+            :ok
+
+          {:error, reason} ->
+            Telemetry.warning("Failed to start store consumer", %{
+              spec: inspect(child_spec),
+              reason: inspect(reason)
+            })
+        end
+      end)
+    else
+      Telemetry.info("EventBridge not available, skipping store consumers")
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp handle_store_config_change(key, value) do
+    Telemetry.info("DNS store config change", %{key: key, value: inspect(value)})
+
+    :telemetry.execute(
+      [:yellow_dog, :dns, :config, :store_change],
+      %{},
+      %{key: key, value: value}
+    )
   end
 
   defp load_persisted_config do

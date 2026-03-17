@@ -28,8 +28,7 @@ defmodule GeoIpDb.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
-      mod: {GeoIpDb.Application, []}
+      extra_applications: [:logger]
     ]
   end
 

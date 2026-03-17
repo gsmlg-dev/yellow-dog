@@ -1,0 +1,63 @@
+# Complete valid Yellow Dog DNS configuration for testing
+
+[global]
+node_name = "yellow-dog-test-1"
+log_level = "info"
+
+[core]
+dns = true
+mdns = true
+dhcpv4 = true
+dhcpv6 = false
+
+[telemetry]
+enabled = true
+metrics_port = 9090
+
+[dns]
+enabled = true
+port = 53
+listen = "127.0.0.1"
+worker_pool_size = 10
+mode = "authoritative"
+upstream_servers = ["8.8.8.8", "1.1.1.1"]
+cache_ttl = 300
+
+  [dns.zones.example_com]
+  file = "zones/example.com.zone"
+  type = "authoritative"
+
+  [dns.zones.test_local]
+  file = "zones/test.local.zone"
+  type = "authoritative"
+
+[mdns]
+enabled = true
+port = 5353
+listen = "0.0.0.0"
+
+[dhcpv4]
+enabled = true
+port = 67
+listen = "0.0.0.0"
+
+  [[dhcpv4.pools]]
+  name = "office_network"
+  subnet = "192.168.1.0/24"
+  range_start = "192.168.1.100"
+  range_end = "192.168.1.200"
+  lease_time = 3600
+  router = "192.168.1.1"
+  dns_servers = ["192.168.1.1"]
+
+  [[dhcpv4.pools]]
+  name = "guest_network"
+  subnet = "192.168.2.0/24"
+  range_start = "192.168.2.100"
+  range_end = "192.168.2.200"
+  lease_time = 1800
+
+[dhcpv6]
+enabled = false
+port = 547
+listen = "::"

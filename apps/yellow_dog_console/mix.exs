@@ -48,7 +48,7 @@ defmodule YellowDog.Console.MixProject do
       {:phoenix_duskmoon, "~> 9.0-rc"},
       {:hackney, "~> 1.9"},
       {:req, "~> 0.5"},
-      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
@@ -60,6 +60,7 @@ defmodule YellowDog.Console.MixProject do
 
       # YellowDog dependencies
       {:yellow_dog, in_umbrella: true},
+      {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_mdns, in_umbrella: true},
       {:yellow_dog_dhcpv4, in_umbrella: true},
       {:yellow_dog_dhcpv6, in_umbrella: true},

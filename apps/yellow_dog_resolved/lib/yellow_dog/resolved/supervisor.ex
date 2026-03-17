@@ -8,6 +8,16 @@ defmodule YellowDog.Resolved.Supervisor do
 
   @impl true
   def init(_opts) do
+    enabled = Application.get_env(:yellow_dog_resolved, :enabled, true)
+
+    if not enabled do
+      Supervisor.init([], strategy: :one_for_one)
+    else
+      init_children()
+    end
+  end
+
+  defp init_children do
     config = YellowDog.Resolved.Config.load()
 
     children = [

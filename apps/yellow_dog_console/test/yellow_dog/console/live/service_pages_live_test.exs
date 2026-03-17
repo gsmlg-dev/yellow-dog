@@ -49,7 +49,7 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
 
     test "configure buttons link to settings", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
-      assert html =~ "/system/settings/"
+      assert html =~ "/server/settings/"
       assert html =~ "Configure"
     end
 
@@ -441,7 +441,7 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
 
   describe "Settings /settings" do
     test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/system/settings")
+      {:ok, _view, html} = live(conn, "/server/settings")
       assert html =~ "Settings" or html =~ "Configuration"
     end
   end
@@ -525,7 +525,7 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
 
   describe "phx-disable-with on form submit buttons" do
     test "Settings page has phx-disable-with on save button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/system/settings")
+      {:ok, _view, html} = live(conn, "/server/settings")
       assert html =~ "phx-disable-with"
     end
 
@@ -658,7 +658,7 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {"/server/mdns/services", "Services"},
       {"/server/mdns/discovery", "Discovery"},
       {"/server/mdns/monitor", "Monitor"},
-      {"/system/settings", "Settings"},
+      {"/server/settings", "Settings"},
       {"/system/logs", "Logs"},
       {"/tool/diagnostics/dns", "DNS Diagnostics"},
       {"/system/process-map", "Process Map"}

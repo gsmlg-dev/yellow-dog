@@ -5,6 +5,7 @@ defmodule YellowDog.Netman.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {YellowDog.Resolved.Supervisor, []},
       {YellowDog.Netman.Supervisor, []}
     ]
 

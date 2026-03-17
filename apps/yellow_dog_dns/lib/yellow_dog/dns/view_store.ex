@@ -199,15 +199,65 @@ defmodule YellowDog.Dns.ViewStore do
   end
 
   defp normalize_view_keys(view) when is_map(view) do
-    %{
+    base = %{
       name: get_value(view, [:name, "name"]),
       priority: get_integer(view, [:priority, "priority"], 100),
       match_clients: get_value(view, [:match_clients, "match_clients"]),
       recursion: get_boolean(view, [:recursion, "recursion"], false),
       ecs_enabled: get_boolean(view, [:ecs_enabled, "ecs_enabled"], false),
       zones: get_list(view, [:zones, "zones"], []),
-      acl: normalize_acl(view)
+      acl: normalize_acl(view),
+      enabled: get_boolean(view, [:enabled, "enabled"], true),
+      fallback_timeout: get_integer(view, [:fallback_timeout, "fallback_timeout"], 2000),
+      fallback_retries: get_integer(view, [:fallback_retries, "fallback_retries"], 1)
     }
+
+    # Parse fallback_forwarders from TOML format (list of "ip:port" strings)
+    raw_forwarders = get_list(view, [:fallback_forwarders, "fallback_forwarders"], [])
+
+    forwarders =
+      Enum.map(raw_forwarders, fn
+        s when is_binary(s) -> parse_forwarder_string(s)
+        other -> other
+      end)
+
+    Map.put(base, :fallback_forwarders, forwarders)
+  end
+
+  defp parse_forwarder_string(s) do
+    case Regex.run(~r/^\[(.+)\]:(\d+)$/, s) do
+      [_, ip, port_str] ->
+        # Bracket notation: [2001:db8::1]:53
+        {port, _} = Integer.parse(port_str)
+        {parse_ip(ip), port}
+
+      nil ->
+        case :inet.parse_address(String.to_charlist(s)) do
+          {:ok, _} ->
+            # Bare IP (v4 or v6) without port
+            {parse_ip(s), 53}
+
+          {:error, _} ->
+            # Try ip:port for IPv4 only
+            case String.split(s, ":", parts: 2) do
+              [ip, port_str] ->
+                case Integer.parse(port_str) do
+                  {port, _} -> {parse_ip(ip), port}
+                  :error -> {parse_ip(ip), 53}
+                end
+
+              [ip] ->
+                {parse_ip(ip), 53}
+            end
+        end
+    end
+  end
+
+  defp parse_ip(ip_str) do
+    case :inet.parse_address(String.to_charlist(ip_str)) do
+      {:ok, ip} -> ip
+      {:error, _} -> {0, 0, 0, 0}
+    end
   end
 
   defp normalize_acl(view) do
@@ -297,15 +347,31 @@ defmodule YellowDog.Dns.ViewStore do
         _ -> 100
       end
 
+    enabled = Map.get(view, :enabled, true)
+    fallback_timeout = Map.get(view, :fallback_timeout, 2000)
+    fallback_retries = Map.get(view, :fallback_retries, 1)
+
+    # Derive match_clients from acl when it's a simple type (not a list of rules)
+    match_clients =
+      case {view[:match_clients], view[:acl]} do
+        {mc, _} when is_binary(mc) -> mc
+        {_, acl} when acl in [:any, :none] -> to_string(acl)
+        {_, acl} when is_binary(acl) -> acl
+        _ -> nil
+      end
+
     base =
       [
         "",
         "[[view]]",
         "name = #{encode_toml_string(view.name)}",
         "priority = #{priority}",
-        view[:match_clients] && "match_clients = #{encode_toml_string(view.match_clients)}",
+        match_clients && "match_clients = #{encode_toml_string(match_clients)}",
         "recursion = #{view[:recursion] || false}",
-        "ecs_enabled = #{view[:ecs_enabled] || false}"
+        "ecs_enabled = #{view[:ecs_enabled] || false}",
+        "enabled = #{enabled}",
+        "fallback_timeout = #{fallback_timeout}",
+        "fallback_retries = #{fallback_retries}"
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -324,7 +390,7 @@ defmodule YellowDog.Dns.ViewStore do
       end
 
     acl_lines =
-      if view[:acl] && view.acl != [] do
+      if is_list(view[:acl]) and view.acl != [] do
         Enum.flat_map(view.acl, fn acl_entry ->
           base_rule = [
             "",
@@ -350,6 +416,29 @@ defmodule YellowDog.Dns.ViewStore do
         []
       end
 
-    Enum.join(base ++ zones_line ++ acl_lines, "\n")
+    forwarders_line =
+      case Map.get(view, :fallback_forwarders, []) do
+        forwarders when is_list(forwarders) and forwarders != [] ->
+          formatted =
+            Enum.map_join(forwarders, ", ", fn
+              {ip, port} when port == 53 -> encode_toml_string(format_ip_str(ip))
+              {ip, port} -> encode_toml_string("#{format_ip_str(ip)}:#{port}")
+              ip when is_tuple(ip) -> encode_toml_string(format_ip_str(ip))
+              s when is_binary(s) -> encode_toml_string(s)
+            end)
+
+          ["fallback_forwarders = [#{formatted}]"]
+
+        _ ->
+          []
+      end
+
+    Enum.join(base ++ zones_line ++ forwarders_line ++ acl_lines, "\n")
   end
+
+  defp format_ip_str(ip) when is_tuple(ip) do
+    ip |> :inet.ntoa() |> to_string()
+  end
+
+  defp format_ip_str(ip) when is_binary(ip), do: ip
 end

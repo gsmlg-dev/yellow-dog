@@ -28,16 +28,22 @@ defmodule YellowDog.MixProject do
   defp deps do
     [
       # Core dependencies
+      {:yellow_dog_config, in_umbrella: true},
+      {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:abyss, in_umbrella: true},
 
       # External dependencies for core functionality
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
+      {:concord, github: "gsmlg-dev/concord", branch: "main", override: true},
+      {:gen_stage, "~> 1.2"},
+      {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:stream_data, "~> 1.0", only: [:test]}
     ]
   end
 

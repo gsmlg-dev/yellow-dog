@@ -18,8 +18,7 @@ defmodule YellowDog.DhcpClient.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
-      mod: {YellowDog.DhcpClient.Application, []}
+      extra_applications: [:logger]
     ]
   end
 

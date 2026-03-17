@@ -1,0 +1,4 @@
+# Invalid TOML structure for error testing
+[core
+dns = true
+# Missing closing bracket

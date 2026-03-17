@@ -58,7 +58,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </ul>
         </div>
 
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/system/settings" />
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/server/settings" />
 
         <div class="flex items-center justify-between">
           <div>

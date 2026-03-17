@@ -45,7 +45,7 @@ defmodule YellowDog.Console.DashboardLive do
      |> assign(:system_health, get_system_health())}
   end
 
-  @valid_services ~w(dns mdns dhcpv4 dhcpv6)
+  @valid_services ~w(dns mdns dhcpv4 dhcpv6 netboot identity)
 
   @impl true
   def handle_event("start_service", %{"service" => service_str}, socket)
@@ -118,7 +118,9 @@ defmodule YellowDog.Console.DashboardLive do
     dns: %{name: "DNS", description: "Domain Name Service", default_port: "53"},
     dhcpv4: %{name: "DHCPv4", description: "DHCP IPv4 Service", default_port: "67"},
     dhcpv6: %{name: "DHCPv6", description: "DHCP IPv6 Service", default_port: "547"},
-    mdns: %{name: "mDNS", description: "Multicast DNS", default_port: "5353"}
+    mdns: %{name: "mDNS", description: "Multicast DNS", default_port: "5353"},
+    netboot: %{name: "Netboot", description: "Network Boot Service", default_port: "69"},
+    identity: %{name: "Identity", description: "Host Identity Service", default_port: "—"}
   }
 
   defp get_service_status do
@@ -127,7 +129,7 @@ defmodule YellowDog.Console.DashboardLive do
       all_status = YellowDog.get_all_status()
 
       # Transform to UI format
-      [:dns, :dhcpv4, :dhcpv6, :mdns]
+      [:dns, :dhcpv4, :dhcpv6, :mdns, :netboot, :identity]
       |> Enum.map(fn service_key ->
         service_status = Map.get(all_status, service_key, %{})
         service_config = Map.get(@service_info, service_key)
@@ -225,9 +227,16 @@ defmodule YellowDog.Console.DashboardLive do
 
   defp format_uptime_ms(ms), do: format_uptime(div(ms, 1_000))
 
+  defp service_link(:dns), do: "/server/dns"
+  defp service_link(:mdns), do: "/server/mdns"
+  defp service_link(:dhcpv4), do: "/server/dhcpv4"
+  defp service_link(:dhcpv6), do: "/server/dhcpv6"
+  defp service_link(:netboot), do: "/server/netboot"
+  defp service_link(:identity), do: "/server/identity"
+
   defp get_fallback_status do
     # Return default status when service manager is unavailable
-    Enum.map([:dns, :dhcpv4, :dhcpv6, :mdns], fn service_key ->
+    Enum.map([:dns, :dhcpv4, :dhcpv6, :mdns, :netboot, :identity], fn service_key ->
       service_config = Map.get(@service_info, service_key)
 
       %{

@@ -28,35 +28,35 @@
     <!-- Tab Navigation -->
     <div class="tabs bg-surface-container mb-6">
       <.link
-        patch={~p"/system/settings/dns"}
+        patch={~p"/server/settings/dns"}
         class={["tab", @active_tab == :dns && "tab-active"]}
       >
         <.dm_mdi name="web" class="h-4 w-4 mr-2" /> DNS
       </.link>
 
       <.link
-        patch={~p"/system/settings/mdns"}
+        patch={~p"/server/settings/mdns"}
         class={["tab", @active_tab == :mdns && "tab-active"]}
       >
         <.dm_mdi name="wifi" class="h-4 w-4 mr-2" /> mDNS
       </.link>
 
       <.link
-        patch={~p"/system/settings/dhcpv4"}
+        patch={~p"/server/settings/dhcpv4"}
         class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
       >
         <.dm_mdi name="chip" class="h-4 w-4 mr-2" /> DHCPv4
       </.link>
 
       <.link
-        patch={~p"/system/settings/dhcpv6"}
+        patch={~p"/server/settings/dhcpv6"}
         class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
       >
         <.dm_mdi name="chip" class="h-4 w-4 mr-2" /> DHCPv6
       </.link>
 
       <.link
-        patch={~p"/system/settings/netboot"}
+        patch={~p"/server/settings/netboot"}
         class={["tab", @active_tab == :netboot && "tab-active"]}
       >
         <.dm_mdi name="server-network" class="h-4 w-4 mr-2" /> Netboot

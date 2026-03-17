@@ -45,12 +45,20 @@ defmodule YellowDog.Application do
       {YellowDog.Config, config},
       # Data layer supervisor (Registry for collection tracking)
       YellowDog.Data.Supervisor,
+      # Store mode detector: creates ETS table, detects single-node vs. cluster
+      YellowDog.Store.ModeDetector,
+      # Task supervisor for EventBridge handler dispatch and event persistence
+      {Task.Supervisor, name: YellowDog.Store.TaskSupervisor},
+      # Store event bridge (must start before DynDnsUpdater)
+      YellowDog.Store.EventBridge,
+      # DynDnsUpdater: subscribes to lease events, creates DNS records
+      {YellowDog.Store.DynDnsUpdater, domain: get_dyn_dns_domain(config)},
       # Service heartbeat for periodic status logging
       YellowDog.ServiceHeartbeat
     ]
 
-    # Note: YellowDog.Console and YellowDog.Telemetry have their own Application
-    # modules and start separately as OTP applications (required for Phoenix dependencies)
+    # Note: YellowDog.Console and YellowDog.Netman have their own Application
+    # modules and start separately as OTP applications
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
 
@@ -571,6 +579,11 @@ defmodule YellowDog.Application do
 
   defp convert_ipv6(ip_tuple) when is_tuple(ip_tuple), do: ip_tuple
   defp convert_ipv6(_), do: {0, 0, 0, 0, 0, 0, 0, 0}
+
+  # Gets the domain for dynamic DNS record creation from config.
+  defp get_dyn_dns_domain(config) do
+    get_in(config, ["dns", "domain"]) || "local"
+  end
 
   # Checks if a service is enabled in the configuration.
   defp service_enabled?(config, service_name) do

@@ -1,0 +1,16 @@
+# Partial configuration with some missing optional fields
+
+[core]
+dns = true
+mdns = true
+
+[dns]
+# Missing port, should use default
+listen = "127.0.0.1"
+
+  [dns.zones.example_com]
+  # Missing file path
+  type = "authoritative"
+
+[mdns]
+# Missing all fields, should use defaults

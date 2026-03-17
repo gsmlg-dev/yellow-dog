@@ -21,26 +21,29 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     # Store test PID so the mock can send messages back
     :persistent_term.put(:dns_push_test_pid, self())
 
-    # Define YellowDog.Resolved dynamically if not already loaded
-    unless Code.ensure_loaded?(YellowDog.Resolved) do
-      Module.create(
-        YellowDog.Resolved,
-        quote do
-          def set_link_dns(interface, config) do
-            pid = :persistent_term.get(:dns_push_test_pid, nil)
-            if pid, do: send(pid, {:resolved_set_link_dns, interface, config})
-            :ok
-          end
+    # Replace YellowDog.Resolved with a mock that sends messages back to the test.
+    # The real module is loaded (in-umbrella dep) but its LinkDns GenServer isn't running,
+    # so we must purge and replace it with our mock.
+    :code.purge(YellowDog.Resolved)
+    :code.delete(YellowDog.Resolved)
 
-          def reset_link_dns(interface) do
-            pid = :persistent_term.get(:dns_push_test_pid, nil)
-            if pid, do: send(pid, {:resolved_reset_link_dns, interface})
-            :ok
-          end
-        end,
-        Macro.Env.location(__ENV__)
-      )
-    end
+    Module.create(
+      YellowDog.Resolved,
+      quote do
+        def set_link_dns(interface, config) do
+          pid = :persistent_term.get(:dns_push_test_pid, nil)
+          if pid, do: send(pid, {:resolved_set_link_dns, interface, config})
+          :ok
+        end
+
+        def reset_link_dns(interface) do
+          pid = :persistent_term.get(:dns_push_test_pid, nil)
+          if pid, do: send(pid, {:resolved_reset_link_dns, interface})
+          :ok
+        end
+      end,
+      Macro.Env.location(__ENV__)
+    )
 
     on_exit(fn ->
       Connection.Supervisor.stop_connection(iface)

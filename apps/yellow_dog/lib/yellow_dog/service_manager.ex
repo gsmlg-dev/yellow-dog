@@ -8,14 +8,16 @@ defmodule YellowDog.ServiceManager do
 
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
-  @services [:dns, :mdns, :dhcpv4, :dhcpv6]
+  @services [:dns, :mdns, :dhcpv4, :dhcpv6, :netboot, :identity]
 
   # Supervisor modules (used for start/stop)
   @service_supervisors %{
     dns: YellowDog.Dns.Supervisor,
     mdns: YellowDog.Mdns.Supervisor,
     dhcpv4: YellowDog.Dhcpv4.Supervisor,
-    dhcpv6: YellowDog.Dhcpv6.Supervisor
+    dhcpv6: YellowDog.Dhcpv6.Supervisor,
+    netboot: YellowDog.Netboot.Supervisor,
+    identity: YellowDogIdentity.Supervisor
   }
 
   # Process registration names (supervisors register with these names, not their module names)
@@ -23,7 +25,9 @@ defmodule YellowDog.ServiceManager do
     dns: YellowDog.Dns,
     mdns: YellowDog.Mdns,
     dhcpv4: YellowDog.Dhcpv4,
-    dhcpv6: YellowDog.Dhcpv6
+    dhcpv6: YellowDog.Dhcpv6,
+    netboot: YellowDog.Netboot.Supervisor,
+    identity: YellowDogIdentity.Supervisor
   }
 
   @doc """
@@ -108,6 +112,16 @@ defmodule YellowDog.ServiceManager do
   - `{:error, reason}` if start failed
   """
   @spec start_service(atom()) :: :ok | {:error, term()}
+  def start_service(:netboot) do
+    YellowDog.Config.set_service_enabled(:netboot, true)
+
+    case Application.ensure_all_started(:yellow_dog_netboot) do
+      {:ok, _apps} -> :ok
+      {:error, {_app, {:already_started, _}}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def start_service(service) when service in @services do
     # Enable the service in config
     YellowDog.Config.set_service_enabled(service, true)
@@ -148,6 +162,16 @@ defmodule YellowDog.ServiceManager do
   - `{:error, reason}` if stop failed
   """
   @spec stop_service(atom()) :: :ok | {:error, term()}
+  def stop_service(:netboot) do
+    YellowDog.Config.set_service_enabled(:netboot, false)
+
+    case Application.stop(:yellow_dog_netboot) do
+      :ok -> :ok
+      {:error, {:not_started, _}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def stop_service(service) when service in @services do
     # Disable the service in config
     YellowDog.Config.set_service_enabled(service, false)
@@ -214,6 +238,22 @@ defmodule YellowDog.ServiceManager do
   def get_service_stats(:dns) do
     if YellowDog.Config.service_enabled?(:dns) do
       %{info: "DNS statistics not yet implemented"}
+    else
+      %{error: "Service disabled"}
+    end
+  end
+
+  def get_service_stats(:netboot) do
+    if YellowDog.Config.service_enabled?(:netboot) do
+      %{info: "Netboot statistics not yet implemented"}
+    else
+      %{error: "Service disabled"}
+    end
+  end
+
+  def get_service_stats(:identity) do
+    if YellowDog.Config.service_enabled?(:identity) do
+      %{info: "Identity statistics not yet implemented"}
     else
       %{error: "Service disabled"}
     end
@@ -386,6 +426,9 @@ defmodule YellowDog.ServiceManager do
             :dns ->
               # DNS stats to be implemented
               []
+
+            _ ->
+              []
           end
 
         base_details ++ stats_details
@@ -428,6 +471,9 @@ defmodule YellowDog.ServiceManager do
         listen = get_value(config, :listen, "::")
         pools = get_value(config, :pools, [])
         "#{listen}:#{port} (#{length(pools)} pools)"
+
+      _ ->
+        nil
     end
   end
 

@@ -19,7 +19,6 @@ defmodule YellowDog.Netboot.MixProject do
 
   def application do
     [
-      mod: {YellowDog.Netboot.Application, []},
       extra_applications: [:logger, :eex]
     ]
   end

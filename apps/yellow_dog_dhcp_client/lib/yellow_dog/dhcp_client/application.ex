@@ -1,10 +1,10 @@
 defmodule YellowDog.DhcpClient.Application do
   @moduledoc """
-  Application module for the Yellow Dog DHCP client.
+  Supervisor for the Yellow Dog DHCP client.
 
   Starts the supervision tree:
 
-      Application
+      Supervisor
       ├── Registry  (named: YellowDog.DhcpClient.Registry)
       ├── DynamicSupervisor  (named: YellowDog.DhcpClient.DynamicSupervisor)
       └── ConfigWatcher
@@ -14,22 +14,25 @@ defmodule YellowDog.DhcpClient.Application do
   lease store, and OS integration process.
   """
 
-  use Application
+  use Supervisor
 
   require Logger
 
   @dynamic_supervisor YellowDog.DhcpClient.DynamicSupervisor
 
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: YellowDog.DhcpClient.Supervisor)
+  end
+
   @impl true
-  def start(_type, _args) do
+  def init(_opts) do
     children = [
       {Registry, keys: :unique, name: YellowDog.DhcpClient.Registry},
       {DynamicSupervisor, name: @dynamic_supervisor, strategy: :one_for_one},
       {YellowDog.DhcpClient.ConfigWatcher, []}
     ]
 
-    opts = [strategy: :one_for_one, name: YellowDog.DhcpClient.Supervisor]
-    Supervisor.start_link(children, opts)
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   @doc """

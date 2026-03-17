@@ -1,14 +1,20 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-4">
     <!-- Breadcrumb -->
-    <div class="breadcrumbs text-sm">
-      <ul>
-        <li><.link navigate={~p"/server/dns"}>DNS</.link></li>
-        <li class="font-semibold">Views</li>
-      </ul>
-    </div>
+    <.dm_breadcrumb>
+      <:crumb to={~p"/server/dns"}>DNS</:crumb>
+      <:crumb>Views</:crumb>
+    </.dm_breadcrumb>
 
-    <.service_alert :if={not @service_running} service="DNS" />
+    <div :if={not @service_running} class="alert alert-info" role="alert">
+      <div>
+        <h3 class="font-bold">DNS service is not running</h3>
+        <div class="text-sm">
+          View configuration can still be managed. Runtime stats (queries) are unavailable until the service is started.
+        </div>
+      </div>
+      <.link navigate={~p"/server/dashboard"} class="btn btn-sm btn-ghost">Go to Dashboard</.link>
+    </div>
     
 <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

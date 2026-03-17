@@ -67,6 +67,7 @@ defmodule YellowDog.Umbrella.MixProject do
     [
       # Shared dependencies for all apps
       {:telemetry, "~> 1.0"},
+      {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
       {:toml, "~> 0.7"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}

@@ -1,0 +1,10 @@
+# Minimal Yellow Dog DNS configuration with many defaults
+
+[core]
+dns = true
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+
+[dns]
+port = 53

@@ -290,7 +290,18 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
 
   property "all entries in list_neighbors always have valid state atoms" do
     check all(_ <- StreamData.constant(:ok)) do
-      valid_states = [:reachable, :stale, :delay, :probe, :failed, :permanent, :incomplete, :noarp, :none]
+      valid_states = [
+        :reachable,
+        :stale,
+        :delay,
+        :probe,
+        :failed,
+        :permanent,
+        :incomplete,
+        :noarp,
+        :none
+      ]
+
       neighbors = NeighborMonitor.list_neighbors()
 
       for n <- neighbors do
