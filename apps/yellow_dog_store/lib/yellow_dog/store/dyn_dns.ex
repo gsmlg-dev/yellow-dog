@@ -80,12 +80,14 @@ defmodule YellowDog.Store.DynDns do
     timed(:delete, key, fn ->
       case Backend.active().get(key, consistency: :leader) do
         {:ok, record} ->
-          :ok = Backend.active().delete(key)
+          Backend.active().delete(key)
 
           case ip_to_arpa(record) do
             {:ok, arpa} -> Backend.active().delete(Key.dyn_dns_ptr(arpa))
             :error -> :ok
           end
+
+          :ok
 
         {:error, :not_found} ->
           :ok
