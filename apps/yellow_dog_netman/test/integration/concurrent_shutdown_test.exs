@@ -84,10 +84,15 @@ defmodule YellowDog.Netman.Integration.ConcurrentShutdownTest do
 
     Task.await_many(tasks, 5_000)
 
-    Process.sleep(100)
-
-    # All should be gone
+    # Poll until all connections are gone (CI runners may be slow)
     Enum.each(ifaces, fn iface ->
+      Enum.reduce_while(1..20, :waiting, fn _, _ ->
+        case Connection.Supervisor.find_connection(iface) do
+          :error -> {:halt, :gone}
+          {:ok, _} -> Process.sleep(100); {:cont, :waiting}
+        end
+      end)
+
       assert :error = Connection.Supervisor.find_connection(iface)
     end)
   end
