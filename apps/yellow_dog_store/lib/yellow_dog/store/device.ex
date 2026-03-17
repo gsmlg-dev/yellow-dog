@@ -23,7 +23,7 @@ defmodule YellowDog.Store.Device do
             Map.merge(existing, attrs)
             |> Map.put(:last_seen, now)
 
-          Backend.active().put_if(key, merged, condition: fn old -> old.last_seen <= now end)
+          Backend.active().put_if(key, merged, expected: existing)
 
         {:error, :not_found} ->
           record =

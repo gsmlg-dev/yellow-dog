@@ -100,7 +100,7 @@ defmodule YellowDog.Store.Lease do
                | state: :bound,
                  lease_start: System.system_time(:second),
                  version: lease.version + 1
-             }}
+             }, ttl: lease.lease_duration}
 
           _other ->
             false
@@ -216,6 +216,7 @@ defmodule YellowDog.Store.Lease do
     result =
       Backend.active().put_if(key, nil,
         consistency: :strong,
+        ttl: @released_ttl,
         condition: fn
           %{state: state} = lease when state in [:offered, :bound, :renewing, :rebinding] ->
             {:update, %{lease | state: :declined, version: lease.version + 1}}

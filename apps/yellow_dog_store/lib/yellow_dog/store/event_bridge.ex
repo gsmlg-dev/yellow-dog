@@ -222,7 +222,7 @@ defmodule YellowDog.Store.EventBridge do
   defp handler_id({:pid, pid}), do: pid
 
   defp dispatch_to_handler({:fn, fun}, event) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(YellowDog.Store.TaskSupervisor, fn ->
       try do
         fun.(event)
       rescue
@@ -244,7 +244,7 @@ defmodule YellowDog.Store.EventBridge do
   end
 
   defp persist_event(event) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(YellowDog.Store.TaskSupervisor, fn ->
       key = Key.event_log(event.timestamp, event.key)
 
       try do

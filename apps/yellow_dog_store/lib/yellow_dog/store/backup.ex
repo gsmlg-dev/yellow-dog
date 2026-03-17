@@ -64,18 +64,20 @@ defmodule YellowDog.Store.Backup do
   """
   @spec restore(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def restore(path, opts \\ []) do
-    confirm = Keyword.get(opts, :confirm, false)
-    verify_only = Keyword.get(opts, :verify_only, false)
+    with :ok <- validate_backup_path(path) do
+      confirm = Keyword.get(opts, :confirm, false)
+      verify_only = Keyword.get(opts, :verify_only, false)
 
-    cond do
-      verify_only ->
-        verify(path)
+      cond do
+        verify_only ->
+          do_verify(path)
 
-      not confirm ->
-        {:error, :confirm_required}
+        not confirm ->
+          {:error, :confirm_required}
 
-      true ->
-        do_restore(path)
+        true ->
+          do_restore(path)
+      end
     end
   end
 
@@ -86,6 +88,12 @@ defmodule YellowDog.Store.Backup do
   """
   @spec verify(String.t()) :: {:ok, map()} | {:error, term()}
   def verify(path) do
+    with :ok <- validate_backup_path(path) do
+      do_verify(path)
+    end
+  end
+
+  defp do_verify(path) do
     start = System.monotonic_time()
 
     case Concord.Backup.verify(path) do
@@ -120,22 +128,24 @@ defmodule YellowDog.Store.Backup do
   end
 
   @doc """
-  Delete a backup file.
+  Delete a backup file. The path must be inside the backup directory.
   """
   @spec delete(String.t()) :: :ok | {:error, term()}
   def delete(path) do
-    case File.rm(path) do
-      :ok ->
-        :telemetry.execute(
-          [:yellow_dog, :store, :backup, :deleted],
-          %{},
-          %{path: path}
-        )
+    with :ok <- validate_backup_path(path) do
+      case File.rm(path) do
+        :ok ->
+          :telemetry.execute(
+            [:yellow_dog, :store, :backup, :deleted],
+            %{},
+            %{path: path}
+          )
 
-        :ok
+          :ok
 
-      {:error, _} = error ->
-        error
+        {:error, _} = error ->
+          error
+      end
     end
   end
 
@@ -208,6 +218,17 @@ defmodule YellowDog.Store.Backup do
     case File.stat(path) do
       {:ok, %{size: size}} -> size
       _ -> 0
+    end
+  end
+
+  defp validate_backup_path(path) do
+    backup_dir = Path.expand(default_dir())
+    expanded = Path.expand(path)
+
+    if String.starts_with?(expanded, backup_dir <> "/") do
+      :ok
+    else
+      {:error, :path_outside_backup_dir}
     end
   end
 end
