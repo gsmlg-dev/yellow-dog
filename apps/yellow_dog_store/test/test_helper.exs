@@ -1,8 +1,7 @@
-# Start processes required by Store facade modules.
-# EventBridge dispatches via TaskSupervisor, and both must be running
-# before any Store mutation (which calls EventBridge.notify/3).
+# EventBridge dispatches callbacks via TaskSupervisor. Start it globally
+# since it's stateless. EventBridge itself is started per-test via
+# start_supervised! for proper isolation.
 {:ok, _} = Task.Supervisor.start_link(name: YellowDog.Store.TaskSupervisor)
-{:ok, _} = YellowDog.Store.EventBridge.start_link()
 
 ExUnit.start()
 
