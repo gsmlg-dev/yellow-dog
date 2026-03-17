@@ -225,15 +225,31 @@ defmodule YellowDog.Dns.ViewStore do
   end
 
   defp parse_forwarder_string(s) do
-    case String.split(s, ":", parts: 2) do
-      [ip, port_str] ->
-        case Integer.parse(port_str) do
-          {port, _} -> {parse_ip(ip), port}
-          :error -> {parse_ip(ip), 53}
-        end
+    case Regex.run(~r/^\[(.+)\]:(\d+)$/, s) do
+      [_, ip, port_str] ->
+        # Bracket notation: [2001:db8::1]:53
+        {port, _} = Integer.parse(port_str)
+        {parse_ip(ip), port}
 
-      [ip] ->
-        {parse_ip(ip), 53}
+      nil ->
+        case :inet.parse_address(String.to_charlist(s)) do
+          {:ok, _} ->
+            # Bare IP (v4 or v6) without port
+            {parse_ip(s), 53}
+
+          {:error, _} ->
+            # Try ip:port for IPv4 only
+            case String.split(s, ":", parts: 2) do
+              [ip, port_str] ->
+                case Integer.parse(port_str) do
+                  {port, _} -> {parse_ip(ip), port}
+                  :error -> {parse_ip(ip), 53}
+                end
+
+              [ip] ->
+                {parse_ip(ip), 53}
+            end
+        end
     end
   end
 
