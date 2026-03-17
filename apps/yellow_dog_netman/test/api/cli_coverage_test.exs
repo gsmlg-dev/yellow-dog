@@ -300,7 +300,7 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile_id, profile)
+      YellowDog.Netman.ProfileStore.put(profile_id, profile)
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(30)
 
@@ -313,7 +313,7 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
       assert is_binary(status_with["default_route"])
 
       Connection.Supervisor.stop_connection(iface)
-      ProfileStore.delete(profile_id)
+      YellowDog.Netman.ProfileStore.delete(profile_id)
       MockNetlink.link_removed(iface)
     end
 
