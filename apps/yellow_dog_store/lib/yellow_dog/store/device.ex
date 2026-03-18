@@ -11,30 +11,47 @@ defmodule YellowDog.Store.Device do
 
   @namespace :device
 
+  @max_upsert_retries 5
+
   @spec upsert(String.t(), map()) :: :ok | {:error, term()}
   def upsert(mac, attrs) when is_binary(mac) and is_map(attrs) do
     key = Key.device(mac)
-    now = System.system_time(:second)
 
     timed(:put, key, fn ->
-      case Backend.active().get(key, consistency: :leader) do
-        {:ok, existing} ->
-          merged =
-            Map.merge(existing, attrs)
-            |> Map.put(:last_seen, now)
-
-          Backend.active().put_if(key, merged, expected: existing)
-
-        {:error, :not_found} ->
-          record =
-            attrs
-            |> Map.put(:mac, Key.normalize_mac(mac))
-            |> Map.put(:first_seen, now)
-            |> Map.put(:last_seen, now)
-
-          Backend.active().put_if(key, record, expected: nil)
-      end
+      do_upsert(key, mac, attrs, @max_upsert_retries)
     end)
+  end
+
+  defp do_upsert(_key, _mac, _attrs, 0), do: {:error, :max_retries}
+
+  defp do_upsert(key, mac, attrs, retries) do
+    now = System.system_time(:second)
+
+    case Backend.active().get(key, consistency: :leader) do
+      {:ok, existing} ->
+        merged =
+          Map.merge(existing, attrs)
+          |> Map.put(:last_seen, now)
+
+        case Backend.active().put_if(key, merged, expected: existing) do
+          :ok -> :ok
+          {:error, :condition_failed} -> do_upsert(key, mac, attrs, retries - 1)
+          error -> error
+        end
+
+      {:error, :not_found} ->
+        record =
+          attrs
+          |> Map.put(:mac, Key.normalize_mac(mac))
+          |> Map.put(:first_seen, now)
+          |> Map.put(:last_seen, now)
+
+        case Backend.active().put_if(key, record, expected: nil) do
+          :ok -> :ok
+          {:error, :condition_failed} -> do_upsert(key, mac, attrs, retries - 1)
+          error -> error
+        end
+    end
   end
 
   @spec get(String.t()) :: {:ok, map()} | {:error, :not_found}
@@ -51,14 +68,18 @@ defmodule YellowDog.Store.Device do
     prefix = Key.device_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
+      case Backend.active().prefix_scan(prefix, []) do
+        {:ok, entries} ->
+          matches =
+            entries
+            |> Enum.filter(fn {_k, v} -> Map.get(v, :vendor_class) == vendor_class end)
+            |> Enum.map(fn {_k, v} -> v end)
 
-      matches =
-        entries
-        |> Enum.filter(fn {_k, v} -> Map.get(v, :vendor_class) == vendor_class end)
-        |> Enum.map(fn {_k, v} -> v end)
+          {:ok, matches}
 
-      {:ok, matches}
+        {:error, _} ->
+          {:ok, []}
+      end
     end)
   end
 
@@ -67,14 +88,18 @@ defmodule YellowDog.Store.Device do
     prefix = Key.device_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
+      case Backend.active().prefix_scan(prefix, []) do
+        {:ok, entries} ->
+          matches =
+            entries
+            |> Enum.filter(fn {_k, v} -> Map.get(v, :last_seen, 0) >= since_timestamp end)
+            |> Enum.map(fn {_k, v} -> v end)
 
-      matches =
-        entries
-        |> Enum.filter(fn {_k, v} -> Map.get(v, :last_seen, 0) >= since_timestamp end)
-        |> Enum.map(fn {_k, v} -> v end)
+          {:ok, matches}
 
-      {:ok, matches}
+        {:error, _} ->
+          {:ok, []}
+      end
     end)
   end
 

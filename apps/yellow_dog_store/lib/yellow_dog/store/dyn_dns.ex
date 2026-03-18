@@ -100,15 +100,19 @@ defmodule YellowDog.Store.DynDns do
     prefix = Key.dyn_dns_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
+      case Backend.active().prefix_scan(prefix, []) do
+        {:ok, entries} ->
+          matches =
+            entries
+            |> Enum.reject(fn {k, _v} -> String.starts_with?(k, "dns:dyn:ptr:") end)
+            |> Enum.filter(fn {_k, v} -> Map.get(v, :source) == source end)
+            |> Enum.map(fn {_k, v} -> v end)
 
-      matches =
-        entries
-        |> Enum.reject(fn {k, _v} -> String.starts_with?(k, "dns:dyn:ptr:") end)
-        |> Enum.filter(fn {_k, v} -> Map.get(v, :source) == source end)
-        |> Enum.map(fn {_k, v} -> v end)
+          {:ok, matches}
 
-      {:ok, matches}
+        {:error, _} ->
+          {:ok, []}
+      end
     end)
   end
 

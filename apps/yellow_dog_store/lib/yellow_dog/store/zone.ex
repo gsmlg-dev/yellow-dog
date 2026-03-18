@@ -80,25 +80,35 @@ defmodule YellowDog.Store.Zone do
   """
   @spec delete_zone(zone_name()) :: :ok | {:error, term()}
   def delete_zone(name) do
-    rr_prefix = Key.zone_rr_prefix(name)
+    zone_key = Key.zone(name)
+    start_time = System.monotonic_time()
 
-    with {:ok, rr_entries} <- Backend.active().prefix_scan(rr_prefix, consistency: :strong) do
-      Enum.each(rr_entries, fn {rr_key, _value} ->
-        Backend.active().delete(rr_key)
-      end)
+    # Delete zone metadata first so the zone appears "gone" immediately,
+    # even if RR cleanup is interrupted by a crash.
+    case Backend.active().delete(zone_key) do
+      :ok ->
+        emit_operation_telemetry(start_time, :zone, :delete, zone_key, :strong)
+        EventBridge.notify(:delete, zone_key, nil)
 
-      zone_key = Key.zone(name)
-      start_time = System.monotonic_time()
+        # Best-effort cleanup of RR entries (orphans are harmless —
+        # they are invisible without zone metadata and will be collected
+        # by periodic GC or overwritten on zone re-creation).
+        rr_prefix = Key.zone_rr_prefix(name)
 
-      case Backend.active().delete(zone_key) do
-        :ok ->
-          emit_operation_telemetry(start_time, :zone, :delete, zone_key, :strong)
-          EventBridge.notify(:delete, zone_key, nil)
-          :ok
+        case Backend.active().prefix_scan(rr_prefix, consistency: :strong) do
+          {:ok, rr_entries} ->
+            Enum.each(rr_entries, fn {rr_key, _value} ->
+              Backend.active().delete(rr_key)
+            end)
 
-        {:error, _} = error ->
-          error
-      end
+          {:error, _} ->
+            :ok
+        end
+
+        :ok
+
+      {:error, _} = error ->
+        error
     end
   end
 

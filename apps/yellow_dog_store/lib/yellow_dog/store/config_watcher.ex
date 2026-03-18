@@ -26,7 +26,7 @@ defmodule YellowDog.Store.ConfigWatcher do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  defp via_name(service), do: :"#{__MODULE__}.#{service}"
+  defp via_name(service) when is_atom(service), do: :"#{__MODULE__}.#{service}"
 
   @resubscribe_delay_ms 1_000
 
