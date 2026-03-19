@@ -61,12 +61,12 @@ defmodule YellowDog.Store.EventBridge do
   end
 
   @doc """
-  Subscribe to events matching a key pattern (GenStage consumer mode).
+  Subscribe to events matching a key pattern (pid-forwarding mode).
 
-  Returns `{:ok, pid}` of a consumer process that forwards events
+  Returns `{:ok, reference()}`. Events matching the pattern are sent
   to the calling process as `{:store_event, event}` messages.
   """
-  @spec subscribe(String.t()) :: {:ok, pid()}
+  @spec subscribe(String.t()) :: {:ok, reference()}
   def subscribe(pattern) when is_binary(pattern) do
     subscriber = self()
     GenServer.call(__MODULE__, {:subscribe_pid, pattern, subscriber})
@@ -151,6 +151,7 @@ defmodule YellowDog.Store.EventBridge do
     {:reply, {:ok, ref}, new_state}
   end
 
+  @impl true
   def handle_call({:subscribe_pid, pattern, pid}, _from, state) do
     ref = make_ref()
     mon_ref = Process.monitor(pid)

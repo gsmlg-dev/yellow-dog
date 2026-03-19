@@ -17,8 +17,11 @@ defmodule YellowDog.Console.BackupController do
     if File.exists?(path) do
       # send_file/5 uses zero-copy sendfile(2) syscall when supported,
       # avoiding loading the entire backup into memory
+      # Sanitize filename to prevent content-disposition header injection
+      sanitized = String.replace(safe_name, ~r/["\\\r\n]/, "_")
+
       conn
-      |> put_resp_header("content-disposition", ~s(attachment; filename="#{safe_name}"))
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{sanitized}"))
       |> send_file(200, path)
     else
       conn

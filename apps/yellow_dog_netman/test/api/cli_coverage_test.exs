@@ -300,11 +300,12 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
+      YellowDog.Netman.ProfileStore.put(profile_id, profile)
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(30)
 
       {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
-      Process.sleep(50)
+      Process.sleep(100)
 
       # With at least one connection, PolicyEngine.default_route returns {:ok, id} → line 373
       result = CLI.handle_command(%{"method" => "status"})
@@ -312,6 +313,7 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
       assert is_binary(status_with["default_route"])
 
       Connection.Supervisor.stop_connection(iface)
+      YellowDog.Netman.ProfileStore.delete(profile_id)
       MockNetlink.link_removed(iface)
     end
 

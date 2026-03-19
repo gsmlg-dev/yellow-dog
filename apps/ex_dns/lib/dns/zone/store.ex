@@ -21,6 +21,8 @@ defmodule DNS.Zone.Store do
     end
 
     :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   @doc """

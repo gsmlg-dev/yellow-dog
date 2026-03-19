@@ -321,7 +321,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp check_response_ips(state, response) do
     # Extract A/AAAA records from response
-    ips = for rr <- response.anlist, to_string(rr.type) in ["A", "AAAA"], do: rr.rdata
+    ips = for rr <- response.anlist, to_string(rr.type) in ["A", "AAAA"], do: rr.data.data
 
     # Check each IP against policies
     Enum.find_value(ips, :no_match, fn ip ->

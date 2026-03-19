@@ -51,20 +51,24 @@ defmodule YellowDog.Store.Rpz do
     prefix = Key.rpz_all_prefix()
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Backend.active().prefix_scan(prefix, consistency: :eventual)
+      case Backend.active().prefix_scan(prefix, consistency: :eventual) do
+        {:ok, entries} ->
+          zone_names =
+            entries
+            |> Enum.map(fn {k, _v} ->
+              k
+              |> String.trim_leading(prefix)
+              |> String.split(":", parts: 2)
+              |> List.first()
+            end)
+            |> Enum.uniq()
+            |> Enum.sort()
 
-      zone_names =
-        entries
-        |> Enum.map(fn {k, _v} ->
-          k
-          |> String.trim_leading(prefix)
-          |> String.split(":", parts: 2)
-          |> List.first()
-        end)
-        |> Enum.uniq()
-        |> Enum.sort()
+          {:ok, zone_names}
 
-      {:ok, zone_names}
+        {:error, _} ->
+          {:ok, []}
+      end
     end)
   end
 

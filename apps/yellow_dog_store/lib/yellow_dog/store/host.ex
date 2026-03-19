@@ -74,14 +74,18 @@ defmodule YellowDog.Store.Host do
     prefix = "host:"
 
     timed(:list, prefix, fn ->
-      {:ok, entries} = Backend.active().prefix_scan(prefix, [])
+      case Backend.active().prefix_scan(prefix, []) do
+        {:ok, entries} ->
+          match =
+            Enum.find_value(entries, fn {_k, v} ->
+              if Map.get(v, :mac) == normalized, do: v
+            end)
 
-      match =
-        Enum.find_value(entries, fn {_k, v} ->
-          if Map.get(v, :mac) == normalized, do: v
-        end)
+          {:ok, match}
 
-      {:ok, match}
+        {:error, _} ->
+          {:ok, nil}
+      end
     end)
   end
 

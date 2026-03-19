@@ -15,7 +15,7 @@ defmodule YellowDog.Store.ModeDetector do
   use GenServer
   require Logger
 
-  alias YellowDog.Store.Backend
+  alias YellowDog.Store.{Backend, Cache}
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
 
   @check_interval_ms 30_000
@@ -47,6 +47,7 @@ defmodule YellowDog.Store.ModeDetector do
   @impl true
   def init(_opts) do
     EtsBackend.create_table()
+    Cache.ensure_table()
     mode = detect_mode()
     Backend.set_active(backend_for(mode))
     schedule_check()

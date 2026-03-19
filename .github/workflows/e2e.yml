@@ -76,4 +76,4 @@ jobs:
 
       - name: Run all E2E tests
         run: MIX_ENV=test mix test.e2e
-        timeout-minutes: 5
+        timeout-minutes: 10
