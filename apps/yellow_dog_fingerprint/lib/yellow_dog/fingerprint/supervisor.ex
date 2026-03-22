@@ -18,6 +18,7 @@ defmodule YellowDog.Fingerprint.Supervisor do
 
     children = [
       {YellowDog.Fingerprint.Database, data_dir: data_dir},
+      {YellowDog.Fingerprint.OuiDatabase, data_dir: data_dir},
       {YellowDog.Fingerprint.OUI, data_dir: data_dir},
       {YellowDog.Fingerprint.DeviceRegistry, data_dir: data_dir},
       {YellowDog.Fingerprint.Observer, []}

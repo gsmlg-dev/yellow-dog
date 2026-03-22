@@ -47,6 +47,21 @@ defmodule YellowDog.Netman.Kernel.Netlink do
     GenServer.cast(__MODULE__, {:subscribe, self()})
   end
 
+  @doc """
+  Request a full re-dump of kernel network state.
+
+  Sends a "dump" command to the netlink helper port, which triggers
+  RTM_GET* requests for links, addresses, routes, rules, and neighbors.
+  The dump responses flow through the normal event pipeline, repopulating
+  the kernel monitors' ETS tables.
+
+  Useful after hot code reload to recover state without restarting the port.
+  """
+  @spec request_dump() :: :ok | {:error, term()}
+  def request_dump do
+    GenServer.call(__MODULE__, :request_dump, 10_000)
+  end
+
   ## Server callbacks
 
   @impl true
@@ -89,6 +104,27 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   end
 
   def handle_call({:command, _cmd}, _from, state) do
+    {:reply, {:error, :not_connected}, state}
+  end
+
+  def handle_call(:request_dump, _from, %{backend: :port, port: port} = state)
+      when port != nil do
+    case Jason.encode(%{"cmd" => "dump"}) do
+      {:ok, json} ->
+        send(port, {self(), {:command, json}})
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call(:request_dump, _from, %{backend: :mock} = state) do
+    Logger.debug("Mock netlink dump requested")
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:request_dump, _from, state) do
     {:reply, {:error, :not_connected}, state}
   end
 

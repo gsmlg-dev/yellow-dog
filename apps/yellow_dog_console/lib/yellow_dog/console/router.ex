@@ -160,6 +160,12 @@ defmodule YellowDog.Console.Router do
     live "/fingerprint/devices", FingerprintLive.DevicesLive
     live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
     live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive
+
+    # IP Database management
+    live "/ip-database", IpDatabaseLive
+
+    # MAC manufacturer database management
+    live "/mac-database", MacDatabaseLive
   end
 
   # Netman section — central management of remote Netman instances

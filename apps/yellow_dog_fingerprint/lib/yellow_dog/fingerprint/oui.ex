@@ -23,7 +23,7 @@ defmodule YellowDog.Fingerprint.OUI do
   def lookup(mac) do
     normalized = normalize_mac(mac)
 
-    case GSMLG.MAC.lookup_vendor(normalized) do
+    case lookup_runtime_or_compiled(normalized) do
       {:ok, _short, full} -> {:ok, full}
       :error -> :not_found
     end
@@ -38,7 +38,7 @@ defmodule YellowDog.Fingerprint.OUI do
   def lookup_full(mac) do
     normalized = normalize_mac(mac)
 
-    case GSMLG.MAC.lookup_vendor(normalized) do
+    case lookup_runtime_or_compiled(normalized) do
       {:ok, short, full} -> {:ok, short, full}
       :error -> :not_found
     end
@@ -52,6 +52,13 @@ defmodule YellowDog.Fingerprint.OUI do
   end
 
   # --- Private ---
+
+  defp lookup_runtime_or_compiled(mac) do
+    case YellowDog.Fingerprint.OuiDatabase.lookup(mac) do
+      {:ok, short, full} -> {:ok, short, full}
+      :error -> GSMLG.MAC.lookup_vendor(mac)
+    end
+  end
 
   defp normalize_mac(mac) do
     mac

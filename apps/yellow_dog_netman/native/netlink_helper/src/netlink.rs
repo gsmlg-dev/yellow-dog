@@ -27,14 +27,27 @@ const NLMSG_HDRLEN: usize = 16;
 // RTM message types (from linux/rtnetlink.h)
 const RTM_NEWLINK: u16 = 16;
 const RTM_DELLINK: u16 = 17;
+const RTM_GETLINK: u16 = 18;
 const RTM_NEWADDR: u16 = 20;
 const RTM_DELADDR: u16 = 21;
+const RTM_GETADDR: u16 = 22;
 const RTM_NEWROUTE: u16 = 24;
 const RTM_DELROUTE: u16 = 25;
+const RTM_GETROUTE: u16 = 26;
 const RTM_NEWNEIGH: u16 = 28;
 const RTM_DELNEIGH: u16 = 29;
+const RTM_GETNEIGH: u16 = 30;
 const RTM_NEWRULE: u16 = 32;
 const RTM_DELRULE: u16 = 33;
+const RTM_GETRULE: u16 = 34;
+
+// Netlink message types (from linux/netlink.h)
+const NLMSG_ERROR: u16 = 2;
+const NLMSG_DONE: u16 = 3;
+
+// Netlink flags
+const NLM_F_REQUEST: u16 = 0x0001;
+const NLM_F_DUMP: u16 = 0x0300; // NLM_F_ROOT | NLM_F_MATCH
 
 // Multicast groups
 const RTNLGRP_LINK: u32 = 1;
@@ -58,10 +71,20 @@ fn multicast_groups() -> u32 {
 }
 
 /// Listen for netlink events and send them to the channel.
+///
+/// On startup, dumps existing kernel state (links, addresses, routes, rules,
+/// neighbors) so that the Elixir monitors can populate their ETS tables
+/// immediately. After the dump, enters the main event loop for real-time
+/// multicast events.
 pub fn listen(tx: mpsc::Sender<Value>) -> Result<(), Box<dyn std::error::Error>> {
     let mut socket = Socket::new(NETLINK_ROUTE)?;
     let addr = SocketAddr::new(0, multicast_groups());
     socket.bind(&addr)?;
+
+    // Dump existing kernel state before entering the live event loop.
+    // This ensures ETS tables are populated even after a port restart
+    // (e.g., during hot code reload).
+    dump_initial_state(&socket, &tx);
 
     let mut buf = vec![0u8; NETLINK_RECV_BUFFER_SIZE];
 
@@ -82,6 +105,121 @@ pub fn listen(tx: mpsc::Sender<Value>) -> Result<(), Box<dyn std::error::Error>>
             }
         }
     }
+}
+
+/// Dump all existing kernel network state by sending RTM_GET* requests.
+///
+/// Each dump sends a netlink request with NLM_F_DUMP flag and reads responses
+/// until NLMSG_DONE. The parsed events are forwarded through the channel to
+/// Elixir, where they're indistinguishable from live events — the monitors
+/// handle them identically to populate their ETS tables.
+fn dump_initial_state(socket: &Socket, tx: &mpsc::Sender<Value>) {
+    let dumps: &[(u16, usize, &str)] = &[
+        (RTM_GETLINK, 16, "links"),       // ifinfomsg = 16 bytes
+        (RTM_GETADDR, 8, "addresses"),     // ifaddrmsg = 8 bytes
+        (RTM_GETROUTE, 12, "routes"),      // rtmsg = 12 bytes
+        (RTM_GETRULE, 12, "rules"),        // fib_rule_hdr = 12 bytes
+        (RTM_GETNEIGH, 12, "neighbors"),   // ndmsg = 12 bytes
+    ];
+
+    for &(msg_type, payload_size, name) in dumps {
+        match dump_netlink(socket, tx, msg_type, payload_size) {
+            Ok(count) => eprintln!("netlink_helper: dumped {} {}", count, name),
+            Err(e) => eprintln!("netlink_helper: failed to dump {}: {}", name, e),
+        }
+    }
+}
+
+/// Send a single RTM_GET* dump request and read all responses until NLMSG_DONE.
+///
+/// Returns the number of events forwarded to the channel.
+fn dump_netlink(
+    socket: &Socket,
+    tx: &mpsc::Sender<Value>,
+    msg_type: u16,
+    payload_size: usize,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    // Build the dump request: nlmsghdr + zero-filled payload
+    let total_len = NLMSG_HDRLEN + payload_size;
+    let mut req = vec![0u8; total_len];
+    req[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes()); // nlmsg_len
+    req[4..6].copy_from_slice(&msg_type.to_ne_bytes());           // nlmsg_type
+    req[6..8].copy_from_slice(&(NLM_F_REQUEST | NLM_F_DUMP).to_ne_bytes()); // nlmsg_flags
+    // nlmsg_seq = 0, nlmsg_pid = 0 (remaining bytes are already zero)
+
+    let dst = SocketAddr::new(0, 0); // send to kernel (pid=0)
+    socket.send_to(&req, &dst, 0)?;
+
+    let mut buf = vec![0u8; NETLINK_RECV_BUFFER_SIZE];
+    let mut count = 0;
+
+    loop {
+        let n = socket.recv(&mut buf, 0)?;
+        if n == 0 {
+            continue;
+        }
+
+        // Check if this batch contains NLMSG_DONE or NLMSG_ERROR
+        let mut done = false;
+        let mut offset = 0;
+        while offset + NLMSG_HDRLEN <= n {
+            let len = u32::from_ne_bytes([
+                buf[offset], buf[offset + 1], buf[offset + 2], buf[offset + 3],
+            ]) as usize;
+            if len < NLMSG_HDRLEN || offset + len > n {
+                break;
+            }
+
+            let mtype = u16::from_ne_bytes([buf[offset + 4], buf[offset + 5]]);
+            if mtype == NLMSG_DONE {
+                done = true;
+                break;
+            }
+            if mtype == NLMSG_ERROR {
+                // Check if it's a genuine error (nlmsgerr.error != 0) or ACK (error == 0)
+                if offset + NLMSG_HDRLEN + 4 <= n {
+                    let errno = i32::from_ne_bytes([
+                        buf[offset + NLMSG_HDRLEN],
+                        buf[offset + NLMSG_HDRLEN + 1],
+                        buf[offset + NLMSG_HDRLEN + 2],
+                        buf[offset + NLMSG_HDRLEN + 3],
+                    ]);
+                    if errno != 0 {
+                        return Err(format!("netlink dump error: errno {}", -errno).into());
+                    }
+                }
+                done = true;
+                break;
+            }
+
+            offset += (len + 3) & !3;
+        }
+
+        // Parse and forward any regular messages in this batch
+        let messages = parse_netlink_messages(&buf[..n]);
+        for msg in messages {
+            if tx.send(msg).is_err() {
+                return Ok(count);
+            }
+            count += 1;
+        }
+
+        if done {
+            break;
+        }
+    }
+
+    Ok(count)
+}
+
+/// Re-dump all kernel state. Called when Elixir sends a "dump" command
+/// to repopulate ETS tables after hot code reload without restarting the port.
+pub fn redump(tx: &mpsc::Sender<Value>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut sock = Socket::new(NETLINK_ROUTE)?;
+    let addr = SocketAddr::new(0, 0); // no multicast — just for dump requests
+    sock.bind(&addr)?;
+    dump_initial_state(&sock, tx);
+    Ok(())
 }
 
 /// Parse raw netlink message buffer into JSON events.

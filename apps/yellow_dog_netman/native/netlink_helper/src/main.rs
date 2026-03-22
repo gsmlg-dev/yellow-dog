@@ -18,6 +18,9 @@ fn main() -> io::Result<()> {
     eprintln!("netlink_helper: starting");
 
     let (event_tx, event_rx) = mpsc::channel::<serde_json::Value>();
+    // Clone for the dump command handler — allows re-dumping kernel state
+    // from the main thread without restarting the listener.
+    let dump_tx = event_tx.clone();
 
     // Spawn netlink event listener thread
     let listener = thread::spawn(move || {
@@ -78,10 +81,20 @@ fn main() -> io::Result<()> {
 
         // Check for commands (non-blocking)
         while let Ok(cmd) = cmd_rx.try_recv() {
+            let cmd_type = cmd["cmd"].as_str().unwrap_or("");
+
+            if cmd_type == "dump" {
+                // Re-dump kernel state — used by Elixir after hot reload to
+                // repopulate ETS tables without restarting the port process.
+                if let Err(e) = netlink::redump(&dump_tx) {
+                    eprintln!("dump error: {}", e);
+                }
+                continue;
+            }
+
             if let Err(e) = commands::handle(&cmd) {
                 eprintln!("command error: {}", e);
                 // Send error back to Elixir so it can log/react
-                let cmd_type = cmd["cmd"].as_str().unwrap_or("unknown");
                 let error_event = serde_json::json!({
                     "type": "command_error",
                     "cmd": cmd_type,

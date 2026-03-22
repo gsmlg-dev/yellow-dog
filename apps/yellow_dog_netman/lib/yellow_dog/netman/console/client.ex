@@ -281,7 +281,7 @@ defmodule YellowDog.Netman.Console.Client do
       params: params,
       name: @socket_name,
       reconnect?: true,
-      reconnect_interval: 30_000,
+      reconnect_interval: @min_reconnect_gap_ms,
       heartbeat_interval: 30_000
     )
   end
@@ -617,24 +617,27 @@ defmodule YellowDog.Netman.Console.Client do
 
   # -- Telemetry --
 
+  @doc false
+  def handle_resolved_query_event(_event, measurements, metadata, config) do
+    entry = %{
+      timestamp: DateTime.utc_now(),
+      domain: metadata.domain,
+      type: metadata.type,
+      source: metadata.source,
+      duration_us:
+        System.convert_time_unit(measurements[:duration] || 0, :native, :microsecond)
+    }
+
+    send(config.pid, {:resolved_query, entry})
+  end
+
   defp attach_telemetry do
     detach_telemetry()
 
     :telemetry.attach(
       @telemetry_id,
       [:yellow_dog, :resolved, :query, :stop],
-      fn _event, measurements, metadata, config ->
-        entry = %{
-          timestamp: DateTime.utc_now(),
-          domain: metadata.domain,
-          type: metadata.type,
-          source: metadata.source,
-          duration_us:
-            System.convert_time_unit(measurements[:duration] || 0, :native, :microsecond)
-        }
-
-        send(config.pid, {:resolved_query, entry})
-      end,
+      &__MODULE__.handle_resolved_query_event/4,
       %{pid: self()}
     )
   rescue

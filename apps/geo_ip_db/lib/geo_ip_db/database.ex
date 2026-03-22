@@ -41,12 +41,15 @@ defmodule GeoIpDb.Database do
   """
   @spec lookup(:inet.ip_address(), atom()) :: {:ok, map() | nil} | {:error, term()}
   def lookup(ip, database \\ :city) do
-    case :ets.lookup(@table_name, database) do
+    case safe_lookup(database) do
       [{^database, meta, tree, data}] ->
         # MMDB2Decoder.lookup returns {:ok, data} or {:error, reason}
         MMDB2Decoder.lookup(ip, meta, tree, data)
 
       [] ->
+        {:error, {:database_not_loaded, database}}
+
+      :table_not_found ->
         {:error, {:database_not_loaded, database}}
     end
   end
@@ -68,12 +71,59 @@ defmodule GeoIpDb.Database do
   end
 
   @doc """
+  Downloads a DB-IP lite database and loads it.
+
+  Downloads the gzipped MMDB file from db-ip.com, decompresses it,
+  saves to `priv/data/`, and hot-loads into the ETS table.
+
+  ## Options
+
+    - `type` - `:city` or `:country` (default: `:city`)
+
+  Returns `{:ok, path}` on success or `{:error, reason}` on failure.
+  """
+  @spec download(atom()) :: {:ok, Path.t()} | {:error, term()}
+  def download(type \\ :city) when type in [:city, :country] do
+    GenServer.call(__MODULE__, {:download, type}, :timer.minutes(5))
+  end
+
+  @doc """
+  Returns the file path for a database type.
+  """
+  @spec database_path(atom()) :: Path.t()
+  def database_path(type) do
+    priv_dir = :code.priv_dir(:geo_ip_db)
+    filename = "dbip-#{type}-lite.mmdb"
+    Path.join([to_string(priv_dir), "data", filename])
+  end
+
+  @doc """
+  Returns file info (size, mtime) for a loaded database file.
+  """
+  @spec file_info(atom()) :: {:ok, map()} | {:error, term()}
+  def file_info(type) do
+    path = database_path(type)
+
+    case File.stat(path) do
+      {:ok, %File.Stat{size: size, mtime: mtime}} ->
+        {:ok, %{path: path, size: size, mtime: mtime}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Lists all loaded database names.
   """
   @spec list_databases() :: [atom()]
   def list_databases do
-    :ets.tab2list(@table_name)
-    |> Enum.map(&elem(&1, 0))
+    if :ets.whereis(@table_name) != :undefined do
+      :ets.tab2list(@table_name)
+      |> Enum.map(&elem(&1, 0))
+    else
+      []
+    end
   end
 
   @doc """
@@ -81,11 +131,14 @@ defmodule GeoIpDb.Database do
   """
   @spec get_metadata(atom()) :: {:ok, map()} | {:error, term()}
   def get_metadata(database) do
-    case :ets.lookup(@table_name, database) do
+    case safe_lookup(database) do
       [{^database, meta, _tree, _data}] ->
         {:ok, format_metadata(meta)}
 
       [] ->
+        {:error, {:database_not_loaded, database}}
+
+      :table_not_found ->
         {:error, {:database_not_loaded, database}}
     end
   end
@@ -95,7 +148,11 @@ defmodule GeoIpDb.Database do
   """
   @spec loaded?(atom()) :: boolean()
   def loaded?(name) do
-    :ets.member(@table_name, name)
+    if :ets.whereis(@table_name) != :undefined do
+      :ets.member(@table_name, name)
+    else
+      false
+    end
   end
 
   # Server Callbacks
@@ -123,7 +180,34 @@ defmodule GeoIpDb.Database do
     {:reply, :ok, state}
   end
 
+  @impl true
+  def handle_call({:download, type}, _from, state) do
+    result = do_download(type)
+    {:reply, result, state}
+  end
+
   # Private Functions
+
+  defp safe_lookup(key) do
+    if :ets.whereis(@table_name) != :undefined do
+      :ets.lookup(@table_name, key)
+    else
+      :table_not_found
+    end
+  end
+
+  defp do_download(type) do
+    case GeoIpDb.Download.download(type) do
+      {:ok, target_path} ->
+        case do_load(type, target_path) do
+          :ok -> {:ok, target_path}
+          {:error, reason} -> {:error, {:load_failed, reason}}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   defp load_default_databases do
     priv_dir = :code.priv_dir(:geo_ip_db)

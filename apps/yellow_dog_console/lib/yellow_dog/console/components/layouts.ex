@@ -528,6 +528,24 @@ defmodule YellowDog.Console.Layouts do
         <span>Fingerprints</span>
       </.link>
     </li>
+    <li>
+      <.link
+        navigate="/system/ip-database"
+        class={active?(@current_path, "/system/ip-database")}
+      >
+        <.dm_mdi name="earth" class="w-5 h-5" />
+        <span>IP Database</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/mac-database"
+        class={active?(@current_path, "/system/mac-database")}
+      >
+        <.dm_mdi name="ethernet" class="w-5 h-5" />
+        <span>MAC Database</span>
+      </.link>
+    </li>
     """
   end
 

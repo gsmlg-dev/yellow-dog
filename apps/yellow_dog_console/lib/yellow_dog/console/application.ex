@@ -10,6 +10,8 @@ defmodule YellowDog.Console.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      # GeoIP database server (ETS table for IP geolocation lookups)
+      GeoIpDb.Database,
       # PubSub for real-time updates
       {Phoenix.PubSub, name: YellowDog.Console.PubSub},
       # Telemetry supervisor for metrics
