@@ -743,7 +743,9 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defp build_record_from_store(_type, _owner, _rdata), do: nil
 
-  # Async-sync a single RRset to Store after mutation
+  # Async-sync a single RRset to Store after mutation.
+  # Store.Zone.put_rrset wraps the 5th arg in its own metadata map,
+  # so we only pass the list of rdata maps.
   defp async_sync_rrset_to_store(state, name, type) do
     records = lookup_records(state.table, name, type)
     view_name = state.view_name
@@ -758,15 +760,7 @@ defmodule YellowDog.Dns.Zone.Auth do
           zone_name,
           normalize_name(name),
           normalize_type(type),
-          %{
-            rrset: rrset_data,
-            owner: normalize_name(name),
-            type: normalize_type(type),
-            zone: zone_name,
-            class: :in,
-            source: :api,
-            updated_at: System.system_time(:second)
-          }
+          rrset_data
         )
       rescue
         _ -> :ok
@@ -811,16 +805,7 @@ defmodule YellowDog.Dns.Zone.Auth do
       |> Enum.group_by(fn r -> {normalize_name(r.name), normalize_type(r.type)} end)
       |> Enum.each(fn {{name, type}, recs} ->
         rrset_data = Enum.map(recs, &record_to_store_rdata/1)
-
-        YellowDog.Store.Zone.put_rrset(state.view_name, state.name, name, type, %{
-          rrset: rrset_data,
-          owner: name,
-          type: type,
-          zone: state.name,
-          class: :in,
-          source: :api,
-          updated_at: System.system_time(:second)
-        })
+        YellowDog.Store.Zone.put_rrset(state.view_name, state.name, name, type, rrset_data)
       end)
     rescue
       _ -> :ok
