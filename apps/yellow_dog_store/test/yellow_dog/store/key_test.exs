@@ -100,14 +100,14 @@ defmodule YellowDog.Store.KeyTest do
 
   describe "zone/1" do
     test "builds correct key" do
-      assert Key.zone("example.com") == "dns:zone:example.com"
+      assert Key.zone("example.com") == "dns:view:default:zone:example.com"
     end
   end
 
   describe "zone_rr/3" do
     test "builds correct key" do
       assert Key.zone_rr("example.com", "www.example.com", :a) ==
-               "dns:zone:example.com:rr:www.example.com:a"
+               "dns:view:default:zone:example.com:rr:www.example.com:a"
     end
   end
 
@@ -164,11 +164,11 @@ defmodule YellowDog.Store.KeyTest do
     end
 
     test "zone_prefix" do
-      assert Key.zone_prefix() == "dns:zone:"
+      assert Key.zone_prefix() == "dns:view:default:zone:"
     end
 
     test "zone_rr_prefix includes zone name" do
-      assert Key.zone_rr_prefix("example.com") == "dns:zone:example.com:rr:"
+      assert Key.zone_rr_prefix("example.com") == "dns:view:default:zone:example.com:rr:"
     end
 
     test "cache_prefix" do

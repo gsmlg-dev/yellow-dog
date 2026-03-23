@@ -96,7 +96,7 @@ defmodule YellowDog.Store.Key do
     do: "dns:view:#{view_name}:zone:#{zone_name}:rr:"
 
   @deprecated "Use zone_prefix/1 with view_name or all_views_prefix/0"
-  def zone_prefix, do: "dns:zone:"
+  def zone_prefix, do: zone_prefix("default")
 
   @deprecated "Use zone_rr_prefix/2 with view_name"
   def zone_rr_prefix(zone_name), do: zone_rr_prefix("default", zone_name)
