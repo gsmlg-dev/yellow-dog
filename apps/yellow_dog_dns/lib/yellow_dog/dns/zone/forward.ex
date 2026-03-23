@@ -128,9 +128,20 @@ defmodule YellowDog.Dns.Zone.Forward do
   def init(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    upstreams = parse_upstreams(Keyword.get(opts, :upstreams, []))
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    retries = Keyword.get(opts, :retries, @default_retries)
+
+    # Load config from opts, falling back to Store if no upstreams provided
+    {upstreams, timeout, retries} =
+      case Keyword.get(opts, :upstreams) do
+        nil ->
+          load_config_from_store(view_name, zone_name)
+
+        explicit_upstreams ->
+          {
+            parse_upstreams(explicit_upstreams),
+            Keyword.get(opts, :timeout, @default_timeout),
+            Keyword.get(opts, :retries, @default_retries)
+          }
+      end
 
     # Open UDP socket for forwarding
     {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
@@ -202,9 +213,24 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   @impl true
   def handle_call({:reload, config}, _from, state) do
-    upstreams = parse_upstreams(Keyword.get(config, :upstreams, state.upstreams))
-    timeout = Keyword.get(config, :timeout, state.timeout)
-    retries = Keyword.get(config, :retries, state.retries)
+    # If config is empty, reload from Store; otherwise apply explicit config
+    {upstreams, timeout, retries} =
+      if config == [] do
+        {store_upstreams, store_timeout, store_retries} =
+          load_config_from_store(state.view_name, state.name)
+
+        {
+          if(store_upstreams == [], do: state.upstreams, else: store_upstreams),
+          store_timeout,
+          store_retries
+        }
+      else
+        {
+          parse_upstreams(Keyword.get(config, :upstreams, state.upstreams)),
+          Keyword.get(config, :timeout, state.timeout),
+          Keyword.get(config, :retries, state.retries)
+        }
+      end
 
     new_state = %{state | upstreams: upstreams, timeout: timeout, retries: retries}
 
@@ -414,6 +440,37 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   defp format_upstream({ip, port}) do
     "#{IpFormat.format(ip)}:#{port}"
+  end
+
+  # Load forward zone config from Store, returning {upstreams, timeout, retries}
+  defp load_config_from_store(view_name, zone_name) do
+    try do
+      case YellowDog.Store.Zone.get_zone(view_name, zone_name) do
+        {:ok, %{zone_type: :forward} = metadata} ->
+          forwarders = Map.get(metadata, :forwarders, [])
+
+          upstreams =
+            Enum.flat_map(forwarders, fn
+              %{ip: ip, port: port} ->
+                case IpFormat.parse(ip) do
+                  {:ok, addr} -> [{addr, port}]
+                  _ -> []
+                end
+
+              _ ->
+                []
+            end)
+
+          timeout = Map.get(metadata, :timeout_ms, @default_timeout)
+          retries = Map.get(metadata, :max_retries, @default_retries)
+          {upstreams, timeout, retries}
+
+        _ ->
+          {[], @default_timeout, @default_retries}
+      end
+    rescue
+      _ -> {[], @default_timeout, @default_retries}
+    end
   end
 
   defp async_sync_to_store(state) do

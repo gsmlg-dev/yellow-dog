@@ -152,10 +152,21 @@ defmodule YellowDog.Dns.Zone.Stub do
   def init(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    ns_records = Keyword.get(opts, :ns_records, [])
-    glue_records = parse_glue_records(Keyword.get(opts, :glue_records, %{}))
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    retries = Keyword.get(opts, :retries, @default_retries)
+
+    # Load config from opts, falling back to Store if no ns_records provided
+    {ns_records, glue_records, timeout, retries} =
+      case Keyword.get(opts, :ns_records) do
+        nil ->
+          load_config_from_store(view_name, zone_name)
+
+        explicit_ns ->
+          {
+            explicit_ns,
+            parse_glue_records(Keyword.get(opts, :glue_records, %{})),
+            Keyword.get(opts, :timeout, @default_timeout),
+            Keyword.get(opts, :retries, @default_retries)
+          }
+      end
 
     # Open UDP socket for querying NS servers
     {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
@@ -249,10 +260,26 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   @impl true
   def handle_call({:reload, config}, _from, state) do
-    ns_records = Keyword.get(config, :ns_records, state.ns_records)
-    glue_records = parse_glue_records(Keyword.get(config, :glue_records, state.glue_records))
-    timeout = Keyword.get(config, :timeout, state.timeout)
-    retries = Keyword.get(config, :retries, state.retries)
+    # If config is empty, reload from Store; otherwise apply explicit config
+    {ns_records, glue_records, timeout, retries} =
+      if config == [] do
+        {store_ns, store_glue, store_timeout, store_retries} =
+          load_config_from_store(state.view_name, state.name)
+
+        {
+          if(store_ns == [], do: state.ns_records, else: store_ns),
+          if(store_glue == %{}, do: state.glue_records, else: store_glue),
+          store_timeout,
+          store_retries
+        }
+      else
+        {
+          Keyword.get(config, :ns_records, state.ns_records),
+          parse_glue_records(Keyword.get(config, :glue_records, state.glue_records)),
+          Keyword.get(config, :timeout, state.timeout),
+          Keyword.get(config, :retries, state.retries)
+        }
+      end
 
     new_state = %{
       state
@@ -459,6 +486,43 @@ defmodule YellowDog.Dns.Zone.Stub do
   defp send_query(state, ns_ip, query) do
     data = DNS.to_iodata(query)
     Abyss.Transport.UDP.send(state.socket, ns_ip, @default_port, data)
+  end
+
+  # Load stub zone config from Store, returning {ns_records, glue_records, timeout, retries}
+  defp load_config_from_store(view_name, zone_name) do
+    try do
+      case YellowDog.Store.Zone.get_zone(view_name, zone_name) do
+        {:ok, %{zone_type: :stub} = metadata} ->
+          primaries = Map.get(metadata, :primaries, [])
+
+          # Build ns_records and glue_records from primaries
+          {ns_records, glue_records} =
+            Enum.reduce(primaries, {[], %{}}, fn
+              %{ip: ip, port: _port}, {ns_acc, glue_acc} ->
+                hostname = "ns-#{ip}"
+
+                case IpFormat.parse(ip) do
+                  {:ok, addr} ->
+                    {[hostname | ns_acc], Map.put(glue_acc, String.downcase(hostname), addr)}
+
+                  _ ->
+                    {ns_acc, glue_acc}
+                end
+
+              _, acc ->
+                acc
+            end)
+
+          timeout = Map.get(metadata, :timeout, @default_timeout)
+          retries = Map.get(metadata, :retries, @default_retries)
+          {Enum.reverse(ns_records), glue_records, timeout, retries}
+
+        _ ->
+          {[], %{}, @default_timeout, @default_retries}
+      end
+    rescue
+      _ -> {[], %{}, @default_timeout, @default_retries}
+    end
   end
 
   defp async_sync_to_store(state) do

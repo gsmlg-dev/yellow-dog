@@ -277,7 +277,8 @@ defmodule YellowDog.Dns.Zone.Auth do
       dirty: false
     }
 
-    # Load initial zone data
+    # Load initial zone data.
+    # Priority: explicit zone_data opts > zone_file > Store persistence > empty
     state =
       cond do
         zone_data = Keyword.get(opts, :zone_data) ->
@@ -287,7 +288,7 @@ defmodule YellowDog.Dns.Zone.Auth do
           load_zone_file(state, zone_file)
 
         true ->
-          state
+          load_from_store(state)
       end
 
     Telemetry.info("Auth zone started", %{name: zone_name, zone_file: zone_file})
@@ -325,7 +326,7 @@ defmodule YellowDog.Dns.Zone.Auth do
     # Clear existing data
     :ets.delete_all_objects(state.table)
 
-    # Reload zone data
+    # Reload zone data: explicit opts > zone_file > Store > empty
     new_state =
       cond do
         zone_data = Keyword.get(config, :zone_data) ->
@@ -335,12 +336,12 @@ defmodule YellowDog.Dns.Zone.Auth do
           load_zone_file(state, zone_file)
 
         true ->
-          state
+          load_from_store(state)
       end
 
     Telemetry.info("Auth zone reloaded", %{name: state.name})
 
-    {:reply, :ok, new_state}
+    {:reply, :ok, %{new_state | dirty: false}}
   end
 
   @impl true
@@ -391,12 +392,18 @@ defmodule YellowDog.Dns.Zone.Auth do
         updated_at: DateTime.utc_now()
     }
 
+    # Async-sync the changed RRset to Store for persistence
+    async_sync_rrset_to_store(new_state, record.name, record.type)
+
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call({:remove_record, name, type}, _from, state) do
     :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
+
+    # Async-sync deletion to Store
+    async_delete_rrset_from_store(state, name, type)
 
     new_state = %{
       state
@@ -457,6 +464,8 @@ defmodule YellowDog.Dns.Zone.Auth do
           updated_at: DateTime.utc_now()
       }
 
+      async_sync_rrset_to_store(new_state, record.name, record.type)
+
       {:reply, {:ok, new_version}, new_state}
     else
       {:reply, {:error, :version_conflict}, state}
@@ -475,6 +484,8 @@ defmodule YellowDog.Dns.Zone.Auth do
           version: new_version,
           updated_at: DateTime.utc_now()
       }
+
+      async_delete_rrset_from_store(new_state, name, type)
 
       {:reply, {:ok, new_version}, new_state}
     else
@@ -546,9 +557,11 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def terminate(reason, state) do
-    # Save zone data on graceful shutdown if dirty
+    # Flush dirty records to Store for persistence across restarts
     if state.dirty do
-      # Only attempt save if a file path is configured
+      flush_to_store(state)
+
+      # Also save to zone file if configured
       if state.zone_file != nil || state.zone_data_path != nil do
         case do_save(state) do
           :ok ->
@@ -560,9 +573,6 @@ defmodule YellowDog.Dns.Zone.Auth do
               reason: save_reason
             })
         end
-      else
-        # No file path configured - this is normal for test zones
-        Telemetry.debug("Zone not persisted (no file path configured)", %{name: state.name})
       end
     end
 
@@ -574,6 +584,248 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   # Private Functions
+
+  # Load records from Store into ETS on startup.
+  # Returns updated state with records loaded, or unchanged state if Store has nothing.
+  defp load_from_store(state) do
+    try do
+      case YellowDog.Store.Zone.get_zone(state.view_name, state.name) do
+        {:ok, metadata} when is_map(metadata) ->
+          # Load zone metadata (SOA)
+          soa_record = build_soa_record_from_metadata(metadata, state.name, state.ttl)
+
+          # Load all RRsets from Store
+          case YellowDog.Store.Zone.list_records(state.view_name, state.name) do
+            {:ok, rrsets} when is_list(rrsets) ->
+              records = store_rrsets_to_records(rrsets, state.name)
+              all_records = if soa_record, do: [soa_record | records], else: records
+              load_zone_data(state, all_records)
+
+            _ ->
+              if soa_record, do: load_zone_data(state, [soa_record]), else: state
+          end
+
+        _ ->
+          state
+      end
+    rescue
+      _ -> state
+    end
+  end
+
+  # Convert Store metadata SOA fields to a DNS.Message.Record
+  defp build_soa_record_from_metadata(%{soa: soa} = _metadata, zone_name, default_ttl)
+       when is_map(soa) do
+    mname = Map.get(soa, :mname, "ns1.#{zone_name}")
+    rname = Map.get(soa, :rname, "hostmaster.#{zone_name}")
+    serial = Map.get(soa, :serial, 1)
+    refresh = Map.get(soa, :refresh, 3600)
+    retry = Map.get(soa, :retry, 1800)
+    expire = Map.get(soa, :expire, 604_800)
+    minimum = Map.get(soa, :minimum, 86_400)
+    ttl = minimum || default_ttl
+
+    Message.Record.new(
+      zone_name,
+      :soa,
+      :in,
+      ttl,
+      {mname, rname, serial, refresh, retry, expire, minimum}
+    )
+  end
+
+  defp build_soa_record_from_metadata(_metadata, _zone_name, _default_ttl), do: nil
+
+  # Convert Store RRset maps back to DNS.Message.Record structs
+  defp store_rrsets_to_records(rrsets, zone_name) do
+    Enum.flat_map(rrsets, fn rrset ->
+      owner = Map.get(rrset, :owner, zone_name)
+      type = Map.get(rrset, :type, :unknown)
+      records_data = Map.get(rrset, :rrset, [])
+
+      Enum.flat_map(records_data, fn rdata ->
+        case build_record_from_store(type, owner, rdata) do
+          nil -> []
+          record -> [record]
+        end
+      end)
+    end)
+  end
+
+  defp build_record_from_store(:a, owner, rdata) do
+    case IpFormat.parse_v4(rdata[:address] || Map.get(rdata, "address")) do
+      nil -> nil
+      ip -> Message.Record.new(owner, :a, :in, Map.get(rdata, :ttl, 3600), ip)
+    end
+  end
+
+  defp build_record_from_store(:aaaa, owner, rdata) do
+    case IpFormat.parse_v6(rdata[:address] || Map.get(rdata, "address")) do
+      nil -> nil
+      ip -> Message.Record.new(owner, :aaaa, :in, Map.get(rdata, :ttl, 3600), ip)
+    end
+  end
+
+  defp build_record_from_store(:ns, owner, rdata) do
+    nsdname = rdata[:nsdname] || Map.get(rdata, "nsdname")
+
+    if nsdname,
+      do: Message.Record.new(owner, :ns, :in, Map.get(rdata, :ttl, 3600), to_string(nsdname))
+  end
+
+  defp build_record_from_store(:cname, owner, rdata) do
+    cname = rdata[:cname] || Map.get(rdata, "cname")
+
+    if cname,
+      do: Message.Record.new(owner, :cname, :in, Map.get(rdata, :ttl, 3600), to_string(cname))
+  end
+
+  defp build_record_from_store(:mx, owner, rdata) do
+    preference = rdata[:preference] || Map.get(rdata, "preference", 10)
+    exchange = rdata[:exchange] || Map.get(rdata, "exchange")
+
+    if exchange,
+      do:
+        Message.Record.new(
+          owner,
+          :mx,
+          :in,
+          Map.get(rdata, :ttl, 3600),
+          {preference, to_string(exchange)}
+        )
+  end
+
+  defp build_record_from_store(:txt, owner, rdata) do
+    txtdata = rdata[:txtdata] || Map.get(rdata, "txtdata")
+
+    txt_list =
+      cond do
+        is_list(txtdata) -> txtdata
+        is_binary(txtdata) -> [txtdata]
+        true -> nil
+      end
+
+    if txt_list, do: Message.Record.new(owner, :txt, :in, Map.get(rdata, :ttl, 3600), txt_list)
+  end
+
+  defp build_record_from_store(:srv, owner, rdata) do
+    priority = rdata[:priority] || Map.get(rdata, "priority", 0)
+    weight = rdata[:weight] || Map.get(rdata, "weight", 0)
+    port = rdata[:port] || Map.get(rdata, "port", 0)
+    target = rdata[:target] || Map.get(rdata, "target")
+
+    if target,
+      do:
+        Message.Record.new(
+          owner,
+          :srv,
+          :in,
+          Map.get(rdata, :ttl, 3600),
+          {priority, weight, port, to_string(target)}
+        )
+  end
+
+  defp build_record_from_store(:ptr, owner, rdata) do
+    ptrdname = rdata[:ptrdname] || Map.get(rdata, "ptrdname")
+
+    if ptrdname,
+      do: Message.Record.new(owner, :ptr, :in, Map.get(rdata, :ttl, 3600), to_string(ptrdname))
+  end
+
+  defp build_record_from_store(:caa, owner, rdata) do
+    flags = rdata[:flags] || Map.get(rdata, "flags", 0)
+    tag = rdata[:tag] || Map.get(rdata, "tag")
+    value = rdata[:value] || Map.get(rdata, "value")
+
+    if tag && value,
+      do: Message.Record.new(owner, :caa, :in, Map.get(rdata, :ttl, 3600), {flags, tag, value})
+  end
+
+  defp build_record_from_store(_type, _owner, _rdata), do: nil
+
+  # Async-sync a single RRset to Store after mutation
+  defp async_sync_rrset_to_store(state, name, type) do
+    records = lookup_records(state.table, name, type)
+    view_name = state.view_name
+    zone_name = state.name
+
+    Task.start(fn ->
+      try do
+        rrset_data = Enum.map(records, &record_to_store_rdata/1)
+
+        YellowDog.Store.Zone.put_rrset(
+          view_name,
+          zone_name,
+          normalize_name(name),
+          normalize_type(type),
+          %{
+            rrset: rrset_data,
+            owner: normalize_name(name),
+            type: normalize_type(type),
+            zone: zone_name,
+            class: :in,
+            source: :api,
+            updated_at: System.system_time(:second)
+          }
+        )
+      rescue
+        _ -> :ok
+      end
+    end)
+  end
+
+  # Async-sync deletion of an RRset to Store
+  defp async_delete_rrset_from_store(state, name, type) do
+    view_name = state.view_name
+    zone_name = state.name
+
+    Task.start(fn ->
+      try do
+        YellowDog.Store.Zone.delete_rrset(
+          view_name,
+          zone_name,
+          normalize_name(name),
+          normalize_type(type)
+        )
+      rescue
+        _ -> :ok
+      end
+    end)
+  end
+
+  # Convert a DNS.Message.Record to Store rdata map
+  defp record_to_store_rdata(record) do
+    type = normalize_type(record.type)
+    data = record_data(record)
+    rdata = rdata_to_bind_map(type, data)
+    Map.put(rdata, :ttl, record.ttl || 3600)
+  end
+
+  # Flush all dirty records to Store on shutdown
+  defp flush_to_store(state) do
+    try do
+      records = get_all_records_from_table(state.table)
+
+      # Group by {name, type} and sync each RRset
+      records
+      |> Enum.group_by(fn r -> {normalize_name(r.name), normalize_type(r.type)} end)
+      |> Enum.each(fn {{name, type}, recs} ->
+        rrset_data = Enum.map(recs, &record_to_store_rdata/1)
+
+        YellowDog.Store.Zone.put_rrset(state.view_name, state.name, name, type, %{
+          rrset: rrset_data,
+          owner: name,
+          type: type,
+          zone: state.name,
+          class: :in,
+          source: :api,
+          updated_at: System.system_time(:second)
+        })
+      end)
+    rescue
+      _ -> :ok
+    end
+  end
 
   defp do_save(%{zone_file: nil, zone_data_path: nil} = _state) do
     {:error, "No zone file path configured"}
