@@ -94,6 +94,11 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
+  def update_config(pid, config) do
+    GenServer.call(pid, {:update_config, config})
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
   def stats(pid) do
     GenServer.call(pid, :stats)
   end
@@ -334,6 +339,26 @@ defmodule YellowDog.Dns.Zone.Auth do
       end
 
     Telemetry.info("Auth zone reloaded", %{name: state.name})
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:update_config, config}, _from, state) do
+    ttl = Map.get(config, :ttl, state.ttl)
+    new_state = %{state | ttl: ttl}
+
+    # Async-sync metadata to Store
+    Task.start(fn ->
+      try do
+        attrs = %{default_ttl: new_state.ttl}
+        YellowDog.Store.Zone.update_zone(new_state.view_name, new_state.name, attrs)
+      rescue
+        _ -> :ok
+      end
+    end)
+
+    Telemetry.info("Auth zone config updated", %{name: state.name})
 
     {:reply, :ok, new_state}
   end

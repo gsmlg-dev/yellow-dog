@@ -113,6 +113,11 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
+  def update_config(pid, config) do
+    GenServer.call(pid, {:update_config, config})
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
   def stats(pid) do
     GenServer.call(pid, :stats)
   end
@@ -204,6 +209,27 @@ defmodule YellowDog.Dns.Zone.Forward do
     new_state = %{state | upstreams: upstreams, timeout: timeout, retries: retries}
 
     Telemetry.info("Forward zone reloaded", %{name: state.name})
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:update_config, config}, _from, state) do
+    upstreams =
+      case Map.get(config, :upstreams) do
+        nil -> state.upstreams
+        new -> parse_upstreams(new)
+      end
+
+    timeout = Map.get(config, :timeout, state.timeout)
+    retries = Map.get(config, :retries, state.retries)
+
+    new_state = %{state | upstreams: upstreams, timeout: timeout, retries: retries}
+
+    # Async-sync to Store
+    async_sync_to_store(new_state)
+
+    Telemetry.info("Forward zone config updated", %{name: state.name})
 
     {:reply, :ok, new_state}
   end
@@ -325,6 +351,8 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   @impl true
   def terminate(_reason, state) do
+    # Flush config to Store on graceful shutdown
+    sync_to_store(state)
     Abyss.Transport.UDP.close(state.socket)
     :ok
   end
@@ -386,6 +414,30 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   defp format_upstream({ip, port}) do
     "#{IpFormat.format(ip)}:#{port}"
+  end
+
+  defp async_sync_to_store(state) do
+    Task.start(fn -> sync_to_store(state) end)
+  end
+
+  defp sync_to_store(state) do
+    try do
+      attrs = %{
+        forwarders: format_upstreams_for_store(state.upstreams),
+        timeout_ms: state.timeout,
+        max_retries: state.retries
+      }
+
+      YellowDog.Store.Zone.update_forward_zone(state.view_name, state.name, attrs)
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp format_upstreams_for_store(upstreams) do
+    Enum.map(upstreams, fn {ip, port} ->
+      %{ip: IpFormat.format(ip), port: port}
+    end)
   end
 
   # ===========================================================================

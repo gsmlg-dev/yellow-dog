@@ -83,10 +83,16 @@ defmodule YellowDog.Dns.Zone.BehaviourTest do
       assert {:stats, 1} in callbacks
     end
 
-    test "has exactly 4 callbacks" do
+    test "defines update_config/2 callback" do
       callbacks = Behaviour.behaviour_info(:callbacks)
 
-      assert length(callbacks) == 4
+      assert {:update_config, 2} in callbacks
+    end
+
+    test "has exactly 5 callbacks" do
+      callbacks = Behaviour.behaviour_info(:callbacks)
+
+      assert length(callbacks) == 5
     end
   end
 

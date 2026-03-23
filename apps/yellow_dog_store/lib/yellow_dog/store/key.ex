@@ -36,13 +36,24 @@ defmodule YellowDog.Store.Key do
   @spec dyn_dns_ptr(String.t()) :: String.t()
   def dyn_dns_ptr(arpa), do: "dns:dyn:ptr:#{arpa}"
 
-  @doc "Zone metadata key."
-  @spec zone(String.t()) :: String.t()
-  def zone(name), do: "dns:zone:#{name}"
+  @doc "Zone metadata key (view-scoped)."
+  @spec zone(String.t(), String.t()) :: String.t()
+  def zone(view_name, zone_name), do: "dns:view:#{view_name}:zone:#{zone_name}"
 
-  @doc "Zone resource record key."
+  @doc "Zone metadata key (legacy, default view)."
+  @deprecated "Use zone/2 with explicit view_name"
+  @spec zone(String.t()) :: String.t()
+  def zone(name), do: zone("default", name)
+
+  @doc "Zone resource record key (view-scoped)."
+  @spec zone_rr(String.t(), String.t(), String.t(), atom()) :: String.t()
+  def zone_rr(view_name, zone_name, owner, type),
+    do: "dns:view:#{view_name}:zone:#{zone_name}:rr:#{owner}:#{type}"
+
+  @doc "Zone resource record key (legacy, default view)."
+  @deprecated "Use zone_rr/4 with explicit view_name"
   @spec zone_rr(String.t(), String.t(), atom()) :: String.t()
-  def zone_rr(zone_name, owner, type), do: "dns:zone:#{zone_name}:rr:#{owner}:#{type}"
+  def zone_rr(zone_name, owner, type), do: zone_rr("default", zone_name, owner, type)
 
   @doc "DNS cache key."
   @spec cache(String.t(), atom()) :: String.t()
@@ -65,12 +76,31 @@ defmodule YellowDog.Store.Key do
   def event_log(timestamp, key), do: "event_log:#{timestamp}:#{key}"
 
   # Key prefix constants for prefix scans
+
   def lease_v4_prefix, do: "dhcp:lease:v4:"
   def lease_v6_prefix, do: "dhcp:lease:v6:"
   def device_prefix, do: "device:"
   def dyn_dns_prefix, do: "dns:dyn:"
+
+  @doc "Prefix for all zones across all views."
+  def all_views_prefix, do: "dns:view:"
+
+  @doc "Prefix for a specific view."
+  def view_prefix(view_name), do: "dns:view:#{view_name}:"
+
+  @doc "Prefix for all zones in a view."
+  def zone_prefix(view_name), do: "dns:view:#{view_name}:zone:"
+
+  @doc "Prefix for all RRsets in a zone (view-scoped)."
+  def zone_rr_prefix(view_name, zone_name),
+    do: "dns:view:#{view_name}:zone:#{zone_name}:rr:"
+
+  @deprecated "Use zone_prefix/1 with view_name or all_views_prefix/0"
   def zone_prefix, do: "dns:zone:"
-  def zone_rr_prefix(zone_name), do: "dns:zone:#{zone_name}:rr:"
+
+  @deprecated "Use zone_rr_prefix/2 with view_name"
+  def zone_rr_prefix(zone_name), do: zone_rr_prefix("default", zone_name)
+
   def cache_prefix, do: "dns:cache:"
   def rpz_prefix(zone_name), do: "rpz:#{zone_name}:"
   def rpz_all_prefix, do: "rpz:"

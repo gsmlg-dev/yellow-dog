@@ -121,6 +121,11 @@ defmodule YellowDog.Dns.Zone.Stub do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
+  def update_config(pid, config) do
+    GenServer.call(pid, {:update_config, config})
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
   def stats(pid) do
     GenServer.call(pid, :stats)
   end
@@ -263,6 +268,35 @@ defmodule YellowDog.Dns.Zone.Stub do
   end
 
   @impl true
+  def handle_call({:update_config, config}, _from, state) do
+    ns_records = Map.get(config, :ns_records, state.ns_records)
+
+    glue_records =
+      case Map.get(config, :glue_records) do
+        nil -> state.glue_records
+        new -> parse_glue_records(new)
+      end
+
+    timeout = Map.get(config, :timeout, state.timeout)
+    retries = Map.get(config, :retries, state.retries)
+
+    new_state = %{
+      state
+      | ns_records: ns_records,
+        glue_records: glue_records,
+        timeout: timeout,
+        retries: retries
+    }
+
+    # Async-sync to Store
+    async_sync_to_store(new_state)
+
+    Telemetry.info("Stub zone config updated", %{name: state.name})
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
   def handle_call(:stats, _from, state) do
     stats = %{
       name: state.name,
@@ -383,6 +417,9 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   @impl true
   def terminate(_reason, state) do
+    # Flush config to Store on graceful shutdown
+    sync_to_store(state)
+
     if state.socket do
       Abyss.Transport.UDP.close(state.socket)
     end
@@ -422,5 +459,24 @@ defmodule YellowDog.Dns.Zone.Stub do
   defp send_query(state, ns_ip, query) do
     data = DNS.to_iodata(query)
     Abyss.Transport.UDP.send(state.socket, ns_ip, @default_port, data)
+  end
+
+  defp async_sync_to_store(state) do
+    Task.start(fn -> sync_to_store(state) end)
+  end
+
+  defp sync_to_store(state) do
+    try do
+      primaries =
+        state.glue_records
+        |> Enum.map(fn {_hostname, ip} ->
+          %{ip: IpFormat.format(ip), port: @default_port}
+        end)
+
+      attrs = %{primaries: primaries}
+      YellowDog.Store.Zone.update_stub_zone(state.view_name, state.name, attrs)
+    rescue
+      _ -> :ok
+    end
   end
 end
