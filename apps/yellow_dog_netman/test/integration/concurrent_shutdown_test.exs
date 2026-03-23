@@ -88,8 +88,12 @@ defmodule YellowDog.Netman.Integration.ConcurrentShutdownTest do
     Enum.each(ifaces, fn iface ->
       Enum.reduce_while(1..20, :waiting, fn _, _ ->
         case Connection.Supervisor.find_connection(iface) do
-          :error -> {:halt, :gone}
-          {:ok, _} -> Process.sleep(100); {:cont, :waiting}
+          :error ->
+            {:halt, :gone}
+
+          {:ok, _} ->
+            Process.sleep(100)
+            {:cont, :waiting}
         end
       end)
 

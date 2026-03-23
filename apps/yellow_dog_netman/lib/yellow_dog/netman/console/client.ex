@@ -624,8 +624,7 @@ defmodule YellowDog.Netman.Console.Client do
       domain: metadata.domain,
       type: metadata.type,
       source: metadata.source,
-      duration_us:
-        System.convert_time_unit(measurements[:duration] || 0, :native, :microsecond)
+      duration_us: System.convert_time_unit(measurements[:duration] || 0, :native, :microsecond)
     }
 
     send(config.pid, {:resolved_query, entry})

@@ -59,17 +59,14 @@ defmodule YellowDog.Console.IpDatabaseLive do
                 disabled={@downloading != nil}
               >
                 <%= if @downloading == type do %>
-                  <span class="loading loading-spinner loading-sm"></span>
-                  Downloading...
+                  <span class="loading loading-spinner loading-sm"></span> Downloading...
                 <% else %>
-                  <.dm_mdi name="download" class="h-5 w-5" />
-                  Download {type_label(type)}
+                  <.dm_mdi name="download" class="h-5 w-5" /> Download {type_label(type)}
                 <% end %>
               </button>
             </div>
             <p class="text-xs text-on-surface-variant mt-2">
-              Source:
-              <span class="font-mono">download.db-ip.com</span>
+              Source: <span class="font-mono">download.db-ip.com</span>
               — Free with attribution (CC BY 4.0)
             </p>
           </div>
@@ -152,7 +149,9 @@ defmodule YellowDog.Console.IpDatabaseLive do
           </div>
           <div>
             <div class="text-xs text-on-surface-variant">Node Count</div>
-            <div class="font-semibold text-sm">{if @db.metadata[:node_count], do: format_number(@db.metadata[:node_count]), else: "—"}</div>
+            <div class="font-semibold text-sm">
+              {if @db.metadata[:node_count], do: format_number(@db.metadata[:node_count]), else: "—"}
+            </div>
           </div>
           <div>
             <div class="text-xs text-on-surface-variant">File Size</div>
@@ -286,7 +285,6 @@ defmodule YellowDog.Console.IpDatabaseLive do
   end
 
   defp format_bytes(_), do: "—"
-
 
   defp format_error({:http_error, status}), do: "HTTP #{status}"
   defp format_error({:download_failed, reason}), do: "Download failed: #{inspect(reason)}"

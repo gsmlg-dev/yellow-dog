@@ -57,11 +57,9 @@ defmodule YellowDog.Console.MacDatabaseLive do
                 disabled={@downloading}
               >
                 <%= if @downloading do %>
-                  <span class="loading loading-spinner loading-sm"></span>
-                  Downloading...
+                  <span class="loading loading-spinner loading-sm"></span> Downloading...
                 <% else %>
-                  <.dm_mdi name="download" class="h-5 w-5" />
-                  Download Latest
+                  <.dm_mdi name="download" class="h-5 w-5" /> Download Latest
                 <% end %>
               </button>
               <button
@@ -69,13 +67,11 @@ defmodule YellowDog.Console.MacDatabaseLive do
                 class="btn btn-ghost"
                 disabled={@downloading}
               >
-                <.dm_mdi name="reload" class="h-5 w-5" />
-                Reload from Disk
+                <.dm_mdi name="reload" class="h-5 w-5" /> Reload from Disk
               </button>
             </div>
             <p class="text-xs text-on-surface-variant mt-2">
-              Source:
-              <span class="font-mono">wireshark.org</span>
+              Source: <span class="font-mono">wireshark.org</span>
               — Based on IEEE OUI assignments (Wireshark manuf format)
             </p>
           </div>
@@ -280,7 +276,6 @@ defmodule YellowDog.Console.MacDatabaseLive do
       :exit, _ -> nil
     end
   end
-
 
   defp format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
   defp format_datetime(_), do: "—"
