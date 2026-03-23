@@ -279,7 +279,11 @@ defmodule YellowDog.Store.Zone do
         zones =
           entries
           |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-          |> Enum.map(fn {_key, value} -> value end)
+          |> Enum.map(fn {key, value} ->
+            # Inject view_name from key: dns:view:{view_name}:zone:{zone_name}
+            view_name = extract_view_name_from_key(key)
+            Map.put(value, :view_name, view_name)
+          end)
 
         emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
         {:ok, zones}
@@ -302,7 +306,7 @@ defmodule YellowDog.Store.Zone do
         zones =
           entries
           |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-          |> Enum.map(fn {_key, value} -> value end)
+          |> Enum.map(fn {_key, value} -> Map.put(value, :view_name, view_name) end)
 
         emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
         {:ok, zones}
@@ -580,6 +584,15 @@ defmodule YellowDog.Store.Zone do
     case String.split(key, ":zone:", parts: 2) do
       [_prefix, suffix] -> not String.contains?(suffix, ":")
       _ -> false
+    end
+  end
+
+  # Extract view_name from key: "dns:view:{view_name}:zone:{zone_name}"
+  defp extract_view_name_from_key(key) do
+    case String.split(key, ":") do
+      ["dns", "view", view_name, "zone", _zone_name] -> view_name
+      ["dns", "view", view_name | _rest] -> view_name
+      _ -> "default"
     end
   end
 

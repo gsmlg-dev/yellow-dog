@@ -62,6 +62,10 @@ defmodule YellowDog.Dns.ZoneController do
           DynamicSupervisor.on_start_child()
   def start_zone(supervisor, zone_type, zone_name, config) do
     view_name = Keyword.get(config, :view_name, @default_view)
+
+    # Persist zone metadata to Store if not already present
+    ensure_zone_in_store(view_name, zone_type, zone_name, config)
+
     module = zone_module(zone_type)
     opts = Keyword.merge(config, name: zone_name, view_name: view_name)
 
@@ -104,6 +108,50 @@ defmodule YellowDog.Dns.ZoneController do
         })
 
         error
+    end
+  end
+
+  @doc """
+  Loads all zones from Store and starts their processes.
+
+  Called during DNS supervisor startup to restore persisted zones.
+  Returns the count of zones successfully started.
+  """
+  @spec load_zones_from_store() :: {:ok, non_neg_integer()}
+  def load_zones_from_store do
+    load_zones_from_store(__MODULE__)
+  end
+
+  @spec load_zones_from_store(Supervisor.supervisor()) :: {:ok, non_neg_integer()}
+  def load_zones_from_store(supervisor) do
+    try do
+      case YellowDog.Store.Zone.list_zones() do
+        {:ok, zones} when is_list(zones) ->
+          started =
+            Enum.count(zones, fn zone ->
+              zone_type = Map.get(zone, :zone_type)
+              origin = Map.get(zone, :origin)
+              view_name = extract_view_from_zone(zone)
+
+              if zone_type && origin do
+                case start_zone(supervisor, zone_type, origin, view_name: view_name) do
+                  {:ok, _pid} -> true
+                  {:error, {:already_started, _}} -> true
+                  _ -> false
+                end
+              else
+                false
+              end
+            end)
+
+          Telemetry.info("Loaded zones from Store", %{count: started})
+          {:ok, started}
+
+        _ ->
+          {:ok, 0}
+      end
+    rescue
+      _ -> {:ok, 0}
     end
   end
 
@@ -324,5 +372,81 @@ defmodule YellowDog.Dns.ZoneController do
       {:error, _} -> "priv/zones"
       path -> Path.join(to_string(path), "zones")
     end
+  end
+
+  # Persist zone metadata to Store before starting the process (CAS: no-op if exists)
+  defp ensure_zone_in_store(view_name, zone_type, zone_name, config) do
+    try do
+      case zone_type do
+        :auth ->
+          soa = Keyword.get(config, :soa, default_soa(zone_name))
+          opts = Keyword.take(config, [:default_ttl, :serial_strategy])
+          YellowDog.Store.Zone.create_zone(view_name, zone_name, soa, opts)
+
+        :forward ->
+          forwarders = store_forwarders_from_config(config)
+          opts = Keyword.take(config, [:forward_mode, :timeout_ms, :max_retries])
+          YellowDog.Store.Zone.create_forward_zone(view_name, zone_name, forwarders, opts)
+
+        :stub ->
+          primaries = store_primaries_from_config(config)
+          opts = Keyword.take(config, [:refresh_interval])
+          YellowDog.Store.Zone.create_stub_zone(view_name, zone_name, primaries, opts)
+
+        _ ->
+          :ok
+      end
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp default_soa(zone_name) do
+    %{
+      mname: "ns1.#{zone_name}",
+      rname: "hostmaster.#{zone_name}",
+      serial: 1,
+      refresh: 3600,
+      retry: 1800,
+      expire: 604_800,
+      minimum: 86_400
+    }
+  end
+
+  defp store_forwarders_from_config(config) do
+    upstreams = Keyword.get(config, :upstreams, [])
+
+    Enum.flat_map(upstreams, fn
+      {ip, port} when is_tuple(ip) ->
+        [%{ip: :inet.ntoa(ip) |> to_string(), port: port}]
+
+      ip_str when is_binary(ip_str) ->
+        [%{ip: ip_str, port: 53}]
+
+      _ ->
+        []
+    end)
+  end
+
+  defp store_primaries_from_config(config) do
+    glue_records = Keyword.get(config, :glue_records, %{})
+
+    Enum.flat_map(glue_records, fn {_hostname, ip} ->
+      case ip do
+        ip when is_tuple(ip) ->
+          [%{ip: :inet.ntoa(ip) |> to_string(), port: 53}]
+
+        _ ->
+          []
+      end
+    end)
+  end
+
+  # Extract view_name from zone metadata returned by Store
+  defp extract_view_from_zone(zone) do
+    # Zone metadata from Store doesn't include view_name directly;
+    # the view is encoded in the Store key. For list_zones(), we extract
+    # from the key pattern or default to "default".
+    Map.get(zone, :view_name, @default_view)
   end
 end
