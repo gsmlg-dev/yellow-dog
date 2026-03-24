@@ -113,11 +113,11 @@ defmodule YellowDog.Console.FormatHelperTest do
 
     test "returns default for far-future" do
       future = System.system_time(:second) + 86400
-      assert FormatHelper.expiration_color(future) == "text-base-content/50"
+      assert FormatHelper.expiration_color(future) == "text-on-surface-variant"
     end
 
     test "returns default for non-integer" do
-      assert FormatHelper.expiration_color(nil) == "text-base-content/50"
+      assert FormatHelper.expiration_color(nil) == "text-on-surface-variant"
     end
   end
 

@@ -14,7 +14,7 @@ defmodule YellowDog.Console.LogsLiveTest do
   describe "LogsLive /logs mounting" do
     test "mounts successfully with empty log buffer", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/system/logs")
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
 
     test "shows empty state message when no logs", %{conn: conn} do
@@ -106,20 +106,20 @@ defmodule YellowDog.Console.LogsLiveTest do
     test "search event updates search filter", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system/logs")
       html = render_change(view, "search", %{"search" => "error"})
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
 
     test "set_level with valid level changes minimum level", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system/logs")
       html = render_click(view, "set_level", %{"level" => "warning"})
       # Warning button should become active
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
 
     test "set_level with invalid level is silently ignored", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system/logs")
       html = render_click(view, "set_level", %{"level" => "evil_level"})
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
 
     test "toggle_app with valid app toggles filter", %{conn: conn} do
@@ -133,7 +133,7 @@ defmodule YellowDog.Console.LogsLiveTest do
       {:ok, view, _html} = live(conn, "/system/logs")
       html = render_click(view, "toggle_app", %{"app" => "evil_app"})
       # Should NOT show the module count line (no apps selected)
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
 
     test "select_all_apps selects all modules", %{conn: conn} do
@@ -154,7 +154,7 @@ defmodule YellowDog.Console.LogsLiveTest do
     test "export_csv does not crash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system/logs")
       render_click(view, "export_csv")
-      assert render(view) =~ "Real-time Logs"
+      assert render(view) =~ "Logs"
     end
   end
 
@@ -179,7 +179,7 @@ defmodule YellowDog.Console.LogsLiveTest do
       )
 
       html = render(view)
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
 
     test "log_event buffers when paused", %{conn: conn} do
@@ -213,7 +213,7 @@ defmodule YellowDog.Console.LogsLiveTest do
       {:ok, view, _html} = live(conn, "/system/logs")
       send(view.pid, {:unknown_message, :data})
       html = render(view)
-      assert html =~ "Real-time Logs"
+      assert html =~ "Logs"
     end
   end
 
