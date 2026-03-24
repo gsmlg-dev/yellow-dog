@@ -614,10 +614,10 @@ defmodule YellowDog.Store.Zone do
   def default_soa(name) do
     %{
       mname: "ns1.#{name}",
-      rname: "admin.#{name}",
+      rname: "hostmaster.#{name}",
       serial: 1,
       refresh: 3600,
-      retry: 900,
+      retry: 1800,
       expire: 604_800,
       minimum: 86_400
     }

@@ -533,12 +533,27 @@ defmodule YellowDog.Dns.Zone.Auth do
             updated_at: DateTime.utc_now()
         }
 
-        # Async-sync all imported RRsets to Store for persistence
-        records
-        |> Enum.map(fn r -> {normalize_name(r.name), normalize_type(r.type)} end)
-        |> Enum.uniq()
-        |> Enum.each(fn {name, type} ->
-          async_sync_rrset_to_store(new_state, name, type)
+        # Sync imported RRsets to Store in a single background task
+        # (batched to avoid spawning thousands of tasks for large zone files)
+        rrset_pairs =
+          records
+          |> Enum.map(fn r -> {normalize_name(r.name), normalize_type(r.type)} end)
+          |> Enum.uniq()
+
+        view_name = new_state.view_name
+        zone_name = new_state.name
+        table = new_state.table
+
+        Task.start(fn ->
+          try do
+            Enum.each(rrset_pairs, fn {name, type} ->
+              recs = lookup_records(table, name, type)
+              rrset_data = Enum.map(recs, &record_to_store_rdata/1)
+              YellowDog.Store.Zone.put_rrset(view_name, zone_name, name, type, rrset_data)
+            end)
+          rescue
+            _ -> :ok
+          end
         end)
 
         stats = %{records_imported: count, zone_origin: zone.origin}
