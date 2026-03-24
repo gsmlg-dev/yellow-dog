@@ -98,6 +98,10 @@ defmodule YellowDog.Store.Key do
   @deprecated "Use zone_prefix/1 with view_name or all_views_prefix/0"
   def zone_prefix, do: zone_prefix("default")
 
+  @doc "Prefix for all RRsets of a specific owner in a zone (view-scoped)."
+  def zone_rr_owner_prefix(view_name, zone_name, owner),
+    do: "dns:view:#{view_name}:zone:#{zone_name}:rr:#{owner}:"
+
   @deprecated "Use zone_rr_prefix/2 with view_name"
   def zone_rr_prefix(zone_name), do: zone_rr_prefix("default", zone_name)
 

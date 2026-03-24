@@ -533,6 +533,14 @@ defmodule YellowDog.Dns.Zone.Auth do
             updated_at: DateTime.utc_now()
         }
 
+        # Async-sync all imported RRsets to Store for persistence
+        records
+        |> Enum.map(fn r -> {normalize_name(r.name), normalize_type(r.type)} end)
+        |> Enum.uniq()
+        |> Enum.each(fn {name, type} ->
+          async_sync_rrset_to_store(new_state, name, type)
+        end)
+
         stats = %{records_imported: count, zone_origin: zone.origin}
 
         Telemetry.info("Zone file imported", %{

@@ -498,7 +498,17 @@ defmodule YellowDog.Dns.Zone.Stub do
           # Build ns_records and glue_records from primaries
           {ns_records, glue_records} =
             Enum.reduce(primaries, {[], %{}}, fn
+              %{hostname: hostname, ip: ip}, {ns_acc, glue_acc} when is_binary(hostname) ->
+                case IpFormat.parse(ip) do
+                  {:ok, addr} ->
+                    {[hostname | ns_acc], Map.put(glue_acc, String.downcase(hostname), addr)}
+
+                  _ ->
+                    {[hostname | ns_acc], glue_acc}
+                end
+
               %{ip: ip, port: _port}, {ns_acc, glue_acc} ->
+                # Legacy format without hostname — synthesize from IP
                 hostname = "ns-#{ip}"
 
                 case IpFormat.parse(ip) do
@@ -532,9 +542,14 @@ defmodule YellowDog.Dns.Zone.Stub do
   defp sync_to_store(state) do
     try do
       primaries =
-        state.glue_records
-        |> Enum.map(fn {_hostname, ip} ->
-          %{ip: IpFormat.format(ip), port: @default_port}
+        Enum.map(state.ns_records, fn ns_name ->
+          ip = Map.get(state.glue_records, String.downcase(ns_name))
+
+          %{
+            hostname: ns_name,
+            ip: if(ip, do: IpFormat.format(ip), else: nil),
+            port: @default_port
+          }
         end)
 
       attrs = %{primaries: primaries}

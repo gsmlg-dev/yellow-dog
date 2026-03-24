@@ -205,12 +205,22 @@ defmodule YellowDog.Store.Zone do
 
         case Backend.active().prefix_scan(rr_prefix, consistency: :strong) do
           {:ok, rr_entries} ->
-            Enum.each(rr_entries, fn {rr_key, _value} ->
-              Backend.active().delete(rr_key)
-            end)
+            failed =
+              Enum.count(rr_entries, fn {rr_key, _value} ->
+                Backend.active().delete(rr_key) != :ok
+              end)
 
-          {:error, _} ->
-            :ok
+            if failed > 0 do
+              require Logger
+
+              Logger.warning(
+                "Zone #{name}: #{failed}/#{length(rr_entries)} RR keys failed to delete"
+              )
+            end
+
+          {:error, scan_error} ->
+            require Logger
+            Logger.warning("Zone #{name}: RR cleanup scan failed: #{inspect(scan_error)}")
         end
 
         :ok
@@ -236,8 +246,15 @@ defmodule YellowDog.Store.Zone do
   Update zone metadata (any zone type). Merges `attrs` into existing metadata.
   Uses CAS to prevent lost updates.
   """
+  @max_update_retries 5
+
   @spec update_zone(view_name(), zone_name(), map()) :: :ok | {:error, term()}
-  def update_zone(view_name, name, attrs) do
+  def update_zone(view_name, name, attrs),
+    do: do_update_zone(view_name, name, attrs, @max_update_retries)
+
+  defp do_update_zone(_view_name, _name, _attrs, 0), do: {:error, :conflict}
+
+  defp do_update_zone(view_name, name, attrs, retries) do
     key = Key.zone(view_name, name)
 
     case Backend.active().get(key, consistency: :strong) do
@@ -255,7 +272,7 @@ defmodule YellowDog.Store.Zone do
             :ok
 
           {:error, :condition_failed} ->
-            {:error, :conflict}
+            do_update_zone(view_name, name, attrs, retries - 1)
 
           {:error, _} = error ->
             error
@@ -429,10 +446,14 @@ defmodule YellowDog.Store.Zone do
   """
   @spec list_records(view_name(), zone_name(), owner()) :: {:ok, [map()]} | {:error, term()}
   def list_records(view_name, zone, owner) do
-    case list_records(view_name, zone) do
-      {:ok, records} ->
-        filtered = Enum.filter(records, fn r -> r.owner == owner end)
-        {:ok, filtered}
+    prefix = Key.zone_rr_owner_prefix(view_name, zone, owner)
+    start_time = System.monotonic_time()
+
+    case Backend.active().prefix_scan(prefix, consistency: :eventual) do
+      {:ok, entries} ->
+        records = Enum.map(entries, fn {_key, value} -> value end)
+        emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+        {:ok, records}
 
       {:error, _} = error ->
         error
@@ -456,39 +477,34 @@ defmodule YellowDog.Store.Zone do
         _ -> default_soa(name)
       end
 
-    case create_zone(view_name, name, soa) do
-      :ok -> :ok
-      {:error, :already_exists} -> :ok
-      {:error, _} = error -> throw(error)
+    with result when result in [:ok, {:error, :already_exists}] <-
+           create_zone(view_name, name, soa) do
+      now = System.system_time(:second)
+
+      Enum.each(records, fn record ->
+        key = Key.zone_rr(view_name, name, record.owner, record.type)
+
+        value = %{
+          rrset: record.rrset,
+          owner: record.owner,
+          type: record.type,
+          zone: name,
+          class: :in,
+          source: :import,
+          updated_at: now
+        }
+
+        Backend.active().put(key, value, consistency: :strong)
+      end)
+
+      :telemetry.execute(
+        [:yellow_dog, :store, :zone, :imported],
+        %{},
+        %{zone: name, record_count: length(records)}
+      )
+
+      :ok
     end
-
-    now = System.system_time(:second)
-
-    Enum.each(records, fn record ->
-      key = Key.zone_rr(view_name, name, record.owner, record.type)
-
-      value = %{
-        rrset: record.rrset,
-        owner: record.owner,
-        type: record.type,
-        zone: name,
-        class: :in,
-        source: :import,
-        updated_at: now
-      }
-
-      Backend.active().put(key, value, consistency: :strong)
-    end)
-
-    :telemetry.execute(
-      [:yellow_dog, :store, :zone, :imported],
-      %{},
-      %{zone: name, record_count: length(records)}
-    )
-
-    :ok
-  catch
-    {:error, _} = error -> error
   end
 
   @doc """
@@ -579,12 +595,9 @@ defmodule YellowDog.Store.Zone do
 
   # A zone metadata key has the form dns:view:{v}:zone:{name}
   # An RR key has dns:view:{v}:zone:{name}:rr:{owner}:{type}
-  # We distinguish them by checking that after "zone:" there's no further ":"
+  # We distinguish them by checking that the key does NOT contain ":rr:"
   defp zone_metadata_key?(key) do
-    case String.split(key, ":zone:", parts: 2) do
-      [_prefix, suffix] -> not String.contains?(suffix, ":")
-      _ -> false
-    end
+    String.contains?(key, ":zone:") and not String.contains?(key, ":rr:")
   end
 
   # Extract view_name from key: "dns:view:{view_name}:zone:{zone_name}"
@@ -596,7 +609,9 @@ defmodule YellowDog.Store.Zone do
     end
   end
 
-  defp default_soa(name) do
+  @doc "Default SOA record values for a zone."
+  @spec default_soa(zone_name()) :: soa()
+  def default_soa(name) do
     %{
       mname: "ns1.#{name}",
       rname: "admin.#{name}",

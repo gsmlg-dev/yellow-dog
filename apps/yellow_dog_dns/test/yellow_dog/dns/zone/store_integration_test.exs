@@ -13,6 +13,30 @@ defmodule YellowDog.Dns.Zone.StoreIntegrationTest do
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
   alias DNS.Message
 
+  # Poll until condition is true or timeout (avoids brittle Process.sleep)
+  defp assert_eventually(fun, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 500)
+    interval = Keyword.get(opts, :interval, 10)
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    do_assert_eventually(fun, interval, deadline)
+  end
+
+  defp do_assert_eventually(fun, interval, deadline) do
+    case fun.() do
+      true ->
+        :ok
+
+      false ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          flunk("assert_eventually timed out")
+        else
+          Process.sleep(interval)
+          do_assert_eventually(fun, interval, deadline)
+        end
+    end
+  end
+
   setup_all do
     registry_name = YellowDog.Dns.ZoneRegistry
 
@@ -115,10 +139,12 @@ defmodule YellowDog.Dns.Zone.StoreIntegrationTest do
       :ok = Auth.update_config(pid, %{ttl: 7200})
 
       # Wait for async Store sync
-      Process.sleep(100)
-
-      {:ok, metadata} = YellowDog.Store.Zone.get_zone(view, zone_name)
-      assert metadata[:default_ttl] == 7200
+      assert_eventually(fn ->
+        case YellowDog.Store.Zone.get_zone(view, zone_name) do
+          {:ok, metadata} -> metadata[:default_ttl] == 7200
+          _ -> false
+        end
+      end)
 
       GenServer.stop(pid, :normal)
     end
@@ -204,10 +230,12 @@ defmodule YellowDog.Dns.Zone.StoreIntegrationTest do
       :ok = Forward.update_config(pid, %{upstreams: [{"9.9.9.9", 53}], timeout: 2000})
 
       # Wait for async sync
-      Process.sleep(100)
-
-      {:ok, metadata} = YellowDog.Store.Zone.get_zone(view, zone_name)
-      assert metadata[:timeout_ms] == 2000
+      assert_eventually(fn ->
+        case YellowDog.Store.Zone.get_zone(view, zone_name) do
+          {:ok, metadata} -> metadata[:timeout_ms] == 2000
+          _ -> false
+        end
+      end)
 
       GenServer.stop(pid, :normal)
     end
@@ -230,10 +258,6 @@ defmodule YellowDog.Dns.Zone.StoreIntegrationTest do
 
       {:ok, metadata} = YellowDog.Store.Zone.get_zone(view, zone_name)
       assert length(metadata[:forwarders]) == 2
-
-      GenServer.stop(pid, :normal)
-    catch
-      :exit, _ -> :ok
     end
   end
 
@@ -278,10 +302,12 @@ defmodule YellowDog.Dns.Zone.StoreIntegrationTest do
         })
 
       # Wait for async sync
-      Process.sleep(100)
-
-      {:ok, metadata} = YellowDog.Store.Zone.get_zone(view, zone_name)
-      assert metadata[:zone_type] == :stub
+      assert_eventually(fn ->
+        case YellowDog.Store.Zone.get_zone(view, zone_name) do
+          {:ok, metadata} -> metadata[:zone_type] == :stub
+          _ -> false
+        end
+      end)
 
       GenServer.stop(pid, :normal)
     end

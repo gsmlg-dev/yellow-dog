@@ -151,7 +151,9 @@ defmodule YellowDog.Dns.ZoneController do
           {:ok, 0}
       end
     rescue
-      _ -> {:ok, 0}
+      error ->
+        Telemetry.warning("Failed to load zones from Store", %{error: inspect(error)})
+        {:ok, 0}
     end
   end
 
@@ -379,7 +381,7 @@ defmodule YellowDog.Dns.ZoneController do
     try do
       case zone_type do
         :auth ->
-          soa = Keyword.get(config, :soa, default_soa(zone_name))
+          soa = Keyword.get(config, :soa, YellowDog.Store.Zone.default_soa(zone_name))
           opts = Keyword.take(config, [:default_ttl, :serial_strategy])
           YellowDog.Store.Zone.create_zone(view_name, zone_name, soa, opts)
 
@@ -397,20 +399,16 @@ defmodule YellowDog.Dns.ZoneController do
           :ok
       end
     rescue
-      _ -> :ok
-    end
-  end
+      error ->
+        Telemetry.warning("Failed to persist zone to Store", %{
+          view: view_name,
+          type: zone_type,
+          name: zone_name,
+          error: inspect(error)
+        })
 
-  defp default_soa(zone_name) do
-    %{
-      mname: "ns1.#{zone_name}",
-      rname: "hostmaster.#{zone_name}",
-      serial: 1,
-      refresh: 3600,
-      retry: 1800,
-      expire: 604_800,
-      minimum: 86_400
-    }
+        :ok
+    end
   end
 
   defp store_forwarders_from_config(config) do
