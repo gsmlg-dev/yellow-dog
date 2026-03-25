@@ -38,7 +38,6 @@ defmodule YellowDog.Dns.ZoneStore do
       parse_toml: 1,
       get_value: 2,
       get_value: 3,
-      get_integer: 3,
       get_list: 2,
       encode_toml_string: 1,
       ensure_directory: 1,
@@ -327,7 +326,7 @@ defmodule YellowDog.Dns.ZoneStore do
       file: get_value(zone, [:file, "file"]),
       upstreams: get_list(zone, [:upstreams, "upstreams"]),
       ns_records: get_list(zone, [:ns_records, "ns_records"]),
-      ttl: get_integer(zone, [:ttl, "ttl"], nil)
+      ttl: get_value(zone, [:ttl, "ttl"])
     }
   end
 
