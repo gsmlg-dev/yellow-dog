@@ -199,7 +199,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Save button should be disabled
-      assert has_element?(view, "button[type='submit'].btn-disabled")
+      assert has_element?(view, "button[type='submit'][disabled]")
     end
 
     test "enables save button when all fields are valid", %{conn: conn} do

@@ -2,10 +2,24 @@ defmodule YellowDog.Console.BootControllerTest do
   use YellowDog.Console.ConnCase, async: false
 
   setup do
-    # Clear device registry between tests
-    if :ets.info(:netboot_device_registry) != :undefined do
-      :ets.delete_all_objects(:netboot_device_registry)
-    end
+    # Start required Netboot GenServers for controller tests
+    tmp_dir = System.tmp_dir!()
+
+    start_supervised!(
+      {YellowDog.Netboot.Device.Registry,
+       config: %{persist_path: Path.join(tmp_dir, "test_devices_#{:rand.uniform(100_000)}.toml")}}
+    )
+
+    start_supervised!({YellowDog.Netboot.Boot.ScriptEngine, []})
+
+    start_supervised!(
+      {YellowDog.Netboot.Asset.Store,
+       config: %{tftp_root: Path.join(tmp_dir, "test_tftp_#{:rand.uniform(100_000)}")}}
+    )
+
+    start_supervised!(
+      {YellowDog.Netboot.Manifest.Store, config: %{}}
+    )
 
     :ok
   end

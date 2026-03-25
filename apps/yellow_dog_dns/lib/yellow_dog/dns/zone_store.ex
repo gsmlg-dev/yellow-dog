@@ -2,6 +2,9 @@ defmodule YellowDog.Dns.ZoneStore do
   @moduledoc """
   Persistence layer for DNS zone metadata configurations.
 
+  **Deprecated**: Zone configuration is now managed via `YellowDog.Store.Zone`.
+  Use `migrate_to_store/0` to migrate existing TOML zones to Store.
+
   Handles loading and saving zone metadata from/to TOML files.
   Note: Resource records are stored in standard BIND zone files via Zone.Auth.
 
@@ -144,6 +147,106 @@ defmodule YellowDog.Dns.ZoneStore do
         error
     end
   end
+
+  @doc """
+  Migrates zone configurations from TOML to YellowDog.Store.
+
+  Reads zones from the default TOML file and creates them in Store.
+  Skips zones that already exist in Store (CAS prevents duplicates).
+
+  Returns `{:ok, %{migrated: n, skipped: n, errors: n}}`.
+  """
+  @deprecated "Zone data should be managed via YellowDog.Store.Zone"
+  @spec migrate_to_store() :: {:ok, map()}
+  def migrate_to_store do
+    migrate_to_store("data/dns/zones.toml")
+  end
+
+  @spec migrate_to_store(String.t()) :: {:ok, map()}
+  def migrate_to_store(file_path) do
+    case load_zones(file_path) do
+      {:ok, zones} ->
+        results =
+          Enum.reduce(zones, %{migrated: 0, skipped: 0, errors: 0}, fn zone, acc ->
+            case migrate_zone_to_store(zone) do
+              :ok -> %{acc | migrated: acc.migrated + 1}
+              :skipped -> %{acc | skipped: acc.skipped + 1}
+              :error -> %{acc | errors: acc.errors + 1}
+            end
+          end)
+
+        {:ok, results}
+
+      {:error, _} ->
+        {:ok, %{migrated: 0, skipped: 0, errors: 0}}
+    end
+  end
+
+  defp migrate_zone_to_store(%{type: :auth} = zone) do
+    view = zone[:view_name] || "default"
+
+    soa = %{
+      mname: "ns1.#{zone.name}",
+      rname: "hostmaster.#{zone.name}",
+      serial: 1,
+      refresh: 3600,
+      retry: 1800,
+      expire: 604_800,
+      minimum: 86_400
+    }
+
+    opts = if zone[:ttl], do: [default_ttl: zone.ttl], else: []
+
+    case YellowDog.Store.Zone.create_zone(view, zone.name, soa, opts) do
+      :ok -> :ok
+      {:error, :already_exists} -> :skipped
+      {:error, _} -> :error
+    end
+  end
+
+  defp migrate_zone_to_store(%{type: :forward} = zone) do
+    view = zone[:view_name] || "default"
+
+    forwarders =
+      (zone[:upstreams] || [])
+      |> Enum.flat_map(fn upstream ->
+        case String.split(upstream, ":") do
+          [ip, port_str] ->
+            case Integer.parse(port_str) do
+              {port, ""} -> [%{ip: ip, port: port}]
+              _ -> [%{ip: ip, port: 53}]
+            end
+
+          [ip] ->
+            [%{ip: ip, port: 53}]
+
+          _ ->
+            []
+        end
+      end)
+
+    case YellowDog.Store.Zone.create_forward_zone(view, zone.name, forwarders) do
+      :ok -> :ok
+      {:error, :already_exists} -> :skipped
+      {:error, _} -> :error
+    end
+  end
+
+  defp migrate_zone_to_store(%{type: :stub} = zone) do
+    view = zone[:view_name] || "default"
+
+    primaries =
+      (zone[:ns_records] || [])
+      |> Enum.map(fn ns -> %{ip: ns, port: 53} end)
+
+    case YellowDog.Store.Zone.create_stub_zone(view, zone.name, primaries) do
+      :ok -> :ok
+      {:error, :already_exists} -> :skipped
+      {:error, _} -> :error
+    end
+  end
+
+  defp migrate_zone_to_store(_zone), do: :skipped
 
   @doc """
   Validates a zone configuration.

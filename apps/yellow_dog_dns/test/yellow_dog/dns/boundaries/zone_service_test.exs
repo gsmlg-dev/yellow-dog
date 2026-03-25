@@ -6,8 +6,12 @@ defmodule YellowDog.Dns.Boundaries.ZoneServiceTest do
   alias DNS.Zone.Validator.Result
 
   setup_all do
-    # Start the ZoneRegistry once for all tests
-    {:ok, _registry_pid} = Registry.start_link(keys: :unique, name: YellowDog.Dns.ZoneRegistry)
+    # Start the ZoneRegistry once for all tests (handle already started)
+    case Registry.start_link(keys: :unique, name: YellowDog.Dns.ZoneRegistry) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
     :ok
   end
 

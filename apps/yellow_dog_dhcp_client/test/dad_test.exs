@@ -56,7 +56,11 @@ defmodule YellowDog.DhcpClient.DADTest do
     # We'll register using the socket_pid as coordinator key.
 
     on_exit(fn ->
-      if Process.alive?(socket_pid), do: GenServer.stop(socket_pid)
+      try do
+        if Process.alive?(socket_pid), do: GenServer.stop(socket_pid)
+      catch
+        :exit, _ -> :ok
+      end
     end)
 
     %{socket_pid: socket_pid}

@@ -38,6 +38,11 @@ defmodule YellowDog.Dns.Zone.Behaviour do
   @callback reload(pid :: pid(), config :: keyword()) :: :ok | {:error, term()}
 
   @doc """
+  Updates zone configuration at runtime and async-syncs to Store.
+  """
+  @callback update_config(pid :: pid(), config :: map()) :: :ok | {:error, term()}
+
+  @doc """
   Returns zone statistics.
   """
   @callback stats(pid :: pid()) :: map()

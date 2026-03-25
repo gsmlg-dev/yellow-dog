@@ -84,6 +84,9 @@ defmodule YellowDog.Dns.Zone.Root do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
+  def update_config(_pid, _config), do: :ok
+
+  @impl YellowDog.Dns.Zone.Behaviour
   def stats(pid) do
     GenServer.call(pid, :stats)
   end

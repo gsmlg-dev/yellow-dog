@@ -40,19 +40,34 @@ defmodule YellowDog.Store do
   defdelegate devices_by_vendor(vendor_class), to: YellowDog.Store.Device, as: :by_vendor
   defdelegate recent_devices(since), to: YellowDog.Store.Device, as: :list_recent
 
-  # Zone operations
-  defdelegate create_zone(name, soa, opts \\ []), to: YellowDog.Store.Zone
-  defdelegate delete_zone(name), to: YellowDog.Store.Zone
-  defdelegate get_zone(name), to: YellowDog.Store.Zone
+  # Zone operations (view-scoped)
+  defdelegate create_zone(view_name, name, soa, opts \\ []), to: YellowDog.Store.Zone
+  defdelegate delete_zone(view_name, name), to: YellowDog.Store.Zone
+  defdelegate get_zone(view_name, name), to: YellowDog.Store.Zone
   defdelegate list_zones(), to: YellowDog.Store.Zone
-  defdelegate put_rrset(zone, owner, type, rrset), to: YellowDog.Store.Zone
-  defdelegate get_rrset(zone, owner, type), to: YellowDog.Store.Zone
-  defdelegate delete_rrset(zone, owner, type), to: YellowDog.Store.Zone
-  defdelegate list_records(zone), to: YellowDog.Store.Zone
-  defdelegate list_records(zone, owner), to: YellowDog.Store.Zone
-  defdelegate import_zone(name, records), to: YellowDog.Store.Zone, as: :import
-  defdelegate export_zone(name), to: YellowDog.Store.Zone, as: :export
-  defdelegate increment_serial(name), to: YellowDog.Store.Zone
+  defdelegate list_zones_for_view(view_name), to: YellowDog.Store.Zone
+  defdelegate list_zones_by_type(zone_type), to: YellowDog.Store.Zone
+  defdelegate update_zone(view_name, name, attrs), to: YellowDog.Store.Zone
+  defdelegate put_rrset(view_name, zone, owner, type, rrset), to: YellowDog.Store.Zone
+  defdelegate get_rrset(view_name, zone, owner, type), to: YellowDog.Store.Zone
+  defdelegate delete_rrset(view_name, zone, owner, type), to: YellowDog.Store.Zone
+  defdelegate list_records(view_name, zone), to: YellowDog.Store.Zone
+  defdelegate list_records(view_name, zone, owner), to: YellowDog.Store.Zone
+  defdelegate import_zone(view_name, name, records), to: YellowDog.Store.Zone
+  defdelegate export_zone(view_name, name), to: YellowDog.Store.Zone
+  defdelegate increment_serial(view_name, name), to: YellowDog.Store.Zone
+
+  # Forward zone operations
+  defdelegate create_forward_zone(view_name, name, forwarders, opts \\ []),
+    to: YellowDog.Store.Zone
+
+  defdelegate update_forward_zone(view_name, name, attrs), to: YellowDog.Store.Zone
+
+  # Stub zone operations
+  defdelegate create_stub_zone(view_name, name, primaries, opts \\ []),
+    to: YellowDog.Store.Zone
+
+  defdelegate update_stub_zone(view_name, name, attrs), to: YellowDog.Store.Zone
 
   # DynDns operations
   defdelegate put_dyn_dns(fqdn, record, opts \\ []), to: YellowDog.Store.DynDns, as: :put

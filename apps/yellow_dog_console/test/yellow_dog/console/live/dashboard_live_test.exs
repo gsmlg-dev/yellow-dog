@@ -45,10 +45,10 @@ defmodule YellowDog.Console.DashboardLiveTest do
       assert html =~ "phx-disable-with"
     end
 
-    test "shows configure links for each service", %{conn: conn} do
+    test "shows configuration link", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
-      assert html =~ "Configure"
-      assert html =~ "/server/settings/"
+      assert html =~ "Configuration"
+      assert html =~ "/server/settings"
     end
   end
 

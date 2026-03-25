@@ -120,7 +120,10 @@ defmodule YellowDog.Umbrella.MixProject do
       "test.e2e.mdns": &run_e2e_mdns/1,
       "test.e2e.dhcpv4": &run_e2e_dhcpv4/1,
       "test.e2e.dhcpv6": &run_e2e_dhcpv6/1,
-      "test.e2e.netboot": &run_e2e_netboot/1
+      "test.e2e.netboot": &run_e2e_netboot/1,
+      "test.e2e.zone.auth": &run_e2e_zone_auth/1,
+      "test.e2e.zone.forward": &run_e2e_zone_forward/1,
+      "test.e2e.zone.stub": &run_e2e_zone_stub/1
     ]
   end
 
@@ -148,6 +151,18 @@ defmodule YellowDog.Umbrella.MixProject do
 
   defp run_e2e_netboot(_args) do
     run_e2e_test_files(["e2e_test/netboot_tftp_e2e_test.exs"])
+  end
+
+  defp run_e2e_zone_auth(_args) do
+    run_e2e_test_files(["e2e_test/dns_zone_auth_e2e_test.exs"])
+  end
+
+  defp run_e2e_zone_forward(_args) do
+    run_e2e_test_files(["e2e_test/dns_zone_forward_e2e_test.exs"])
+  end
+
+  defp run_e2e_zone_stub(_args) do
+    run_e2e_test_files(["e2e_test/dns_zone_stub_e2e_test.exs"])
   end
 
   defp run_e2e_test_files(paths) do

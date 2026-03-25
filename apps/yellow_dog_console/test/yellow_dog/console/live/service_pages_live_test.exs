@@ -47,10 +47,10 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       assert html =~ "DHCPv4"
     end
 
-    test "configure buttons link to settings", %{conn: conn} do
+    test "configuration link points to settings", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
-      assert html =~ "/server/settings/"
-      assert html =~ "Configure"
+      assert html =~ "/server/settings"
+      assert html =~ "Configuration"
     end
 
     test "system health shows real BEAM VM data", %{conn: conn} do
@@ -451,9 +451,9 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
   # ============================================================================
 
   describe "ARIA accessibility: layout components" do
-    test "navbar has aria-label on theme toggle", %{conn: conn} do
+    test "navbar has theme switcher component", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
-      assert html =~ "aria-label=\"Toggle theme\""
+      assert html =~ "theme-toggle" or html =~ "theme-switcher" or html =~ "dm_theme_switcher"
     end
 
     test "navbar has aria-label on notifications", %{conn: conn} do

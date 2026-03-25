@@ -124,6 +124,9 @@ defmodule YellowDog.Dns.Zone.RPZ do
   def reload(pid, config), do: GenServer.call(pid, {:reload, config})
 
   @impl Behaviour
+  def update_config(_pid, _config), do: :ok
+
+  @impl Behaviour
   def stats(pid), do: GenServer.call(pid, :stats)
 
   # For compatibility with zone interface, but RPZ doesn't resolve queries
