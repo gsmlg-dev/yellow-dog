@@ -319,7 +319,7 @@ defmodule YellowDog.Dns.Zone.Cache do
 
   defp cache_key(name, type) do
     normalized = normalize_name(name)
-    {normalized, type}
+    {normalized, to_string(type)}
   end
 
   defp normalize_name(name) do

@@ -606,7 +606,7 @@ defmodule YellowDog.Dns.View do
   end
 
   defp check_cache(state, name, type) do
-    key = {normalize_name(name), type}
+    key = {normalize_name(name), to_string(type)}
     now = System.system_time(:second)
 
     case :ets.lookup(state.cache_table, key) do
@@ -649,7 +649,7 @@ defmodule YellowDog.Dns.View do
       case query.qdlist do
         [question | _] ->
           ttl = get_min_ttl(response)
-          key = {normalize_name(question.name), question.type}
+          key = {normalize_name(question.name), to_string(question.type)}
           expires_at = System.system_time(:second) + ttl
           :ets.insert(state.cache_table, {key, {response, expires_at}})
 

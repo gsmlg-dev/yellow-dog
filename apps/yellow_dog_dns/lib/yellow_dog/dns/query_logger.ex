@@ -37,6 +37,28 @@ defmodule YellowDog.Dns.QueryLogger do
   # Query log entry
   defmodule Entry do
     @moduledoc false
+
+    @type t :: %__MODULE__{
+            id: binary() | nil,
+            timestamp: DateTime.t() | nil,
+            client_ip: :inet.ip_address() | nil,
+            client_port: non_neg_integer() | nil,
+            view: String.t() | nil,
+            qname: String.t() | nil,
+            qtype: atom() | String.t() | nil,
+            qclass: atom() | nil,
+            protocol: :udp | :tcp | nil,
+            response_code: atom() | nil,
+            response_time_us: non_neg_integer() | nil,
+            answer_count: non_neg_integer() | nil,
+            authority_count: non_neg_integer() | nil,
+            additional_count: non_neg_integer() | nil,
+            cache_hit: boolean() | nil,
+            zone_used: String.t() | nil,
+            fallback_used: boolean() | nil,
+            error: term()
+          }
+
     defstruct [
       :id,
       :timestamp,

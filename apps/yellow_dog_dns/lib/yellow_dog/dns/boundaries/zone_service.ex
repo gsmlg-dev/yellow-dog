@@ -130,7 +130,10 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
       # For updates, we need to check conflicts excluding the current record
       existing_records =
         Auth.get_all_records(zone_pid)
-        |> Enum.reject(&(normalize_name(&1.name) == normalize_name(name) and &1.type == type))
+        |> Enum.reject(
+          &(normalize_name(&1.name) == normalize_name(name) and
+              to_string(&1.type) == to_string(type))
+        )
 
       with {:ok, validated} <- RecordValidator.validate(type, params),
            {:ok, :no_conflict} <-
