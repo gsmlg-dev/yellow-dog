@@ -411,13 +411,17 @@ defmodule YellowDog.Dns.MetricsCollector do
   end
 
   defp increment(table, key) do
-    try do
-      :ets.update_counter(table, key, {2, 1})
-    rescue
-      ArgumentError ->
+    :ets.update_counter(table, key, {2, 1})
+  rescue
+    ArgumentError ->
+      try do
         :ets.insert_new(table, {key, 0})
         :ets.update_counter(table, key, {2, 1})
-    end
+      rescue
+        # Table was deleted (stale ref from terminated MetricsCollector).
+        # Silently ignore — the handler will be detached on next event.
+        ArgumentError -> :ok
+      end
   end
 
   defp read_bound(table, bound) do
