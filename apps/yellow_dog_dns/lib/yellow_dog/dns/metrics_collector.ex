@@ -286,7 +286,7 @@ defmodule YellowDog.Dns.MetricsCollector do
     end
 
     if qtype = metadata[:qtype] do
-      increment(table, {:counter, :queries_by_type, qtype})
+      increment(table, {:counter, :queries_by_type, to_string(qtype)})
     end
 
     if client_ip = metadata[:client_ip] do
@@ -332,7 +332,7 @@ defmodule YellowDog.Dns.MetricsCollector do
   def handle_event([:yellow_dog, :dns, :query, :logged], _measurements, metadata, table) do
     # Track from QueryLogger events as fallback for query counting
     if qtype = metadata[:qtype] do
-      increment(table, {:counter, :queries_by_type, qtype})
+      increment(table, {:counter, :queries_by_type, to_string(qtype)})
     end
 
     if client_ip = metadata[:client_ip] do

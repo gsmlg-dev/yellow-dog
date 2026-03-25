@@ -17,9 +17,7 @@ defmodule YellowDog.Console.BootControllerTest do
        config: %{tftp_root: Path.join(tmp_dir, "test_tftp_#{:rand.uniform(100_000)}")}}
     )
 
-    start_supervised!(
-      {YellowDog.Netboot.Manifest.Store, config: %{}}
-    )
+    start_supervised!({YellowDog.Netboot.Manifest.Store, config: %{}})
 
     :ok
   end

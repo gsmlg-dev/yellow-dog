@@ -104,9 +104,9 @@ defmodule YellowDog.Dns.MetricsCollectorTest do
 
       metrics = MetricsCollector.get_metrics(server)
       type_counts = Map.new(metrics.queries_by_type)
-      assert Map.get(type_counts, :a) == 2
-      assert Map.get(type_counts, :aaaa) == 1
-      assert Map.get(type_counts, :mx) == 1
+      assert Map.get(type_counts, "a") == 2
+      assert Map.get(type_counts, "aaaa") == 1
+      assert Map.get(type_counts, "mx") == 1
     end
 
     test "tracks cache hits and misses", %{server: server} do
