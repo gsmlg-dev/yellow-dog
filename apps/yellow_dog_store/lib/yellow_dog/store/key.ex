@@ -111,6 +111,27 @@ defmodule YellowDog.Store.Key do
   def config_prefix(service), do: "config:#{service}:"
   def event_log_prefix, do: "event_log:"
 
+  @doc "DNS provider config key."
+  @spec provider_config(String.t()) :: String.t()
+  def provider_config(name), do: "dns:provider:#{name}:config"
+
+  @doc "DNS provider status key."
+  @spec provider_status(String.t()) :: String.t()
+  def provider_status(name), do: "dns:provider:#{name}:status"
+
+  @doc "DNS provider conflict key."
+  @spec provider_conflict(String.t(), String.t()) :: String.t()
+  def provider_conflict(name, conflict_id), do: "dns:provider:#{name}:conflict:#{conflict_id}"
+
+  @doc "Prefix for all provider keys."
+  def provider_prefix, do: "dns:provider:"
+
+  @doc "Prefix for a specific provider's keys."
+  def provider_prefix(name), do: "dns:provider:#{name}:"
+
+  @doc "Prefix for a specific provider's conflicts."
+  def provider_conflict_prefix(name), do: "dns:provider:#{name}:conflict:"
+
   @doc "Normalize MAC address to lowercase colon-separated format."
   @spec normalize_mac(String.t()) :: String.t()
   def normalize_mac(mac) do
