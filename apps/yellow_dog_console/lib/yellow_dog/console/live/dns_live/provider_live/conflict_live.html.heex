@@ -1,0 +1,133 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 text-sm text-on-surface-variant mb-1">
+          <.link navigate={~p"/server/dns/providers"} class="hover:underline">Providers</.link>
+          <.dm_mdi name="chevron-right" class="w-4 h-4" />
+          <.link
+            navigate={~p"/server/dns/providers/#{@provider_name}"}
+            class="hover:underline"
+          >
+            {@provider_name}
+          </.link>
+          <.dm_mdi name="chevron-right" class="w-4 h-4" />
+          <span>Conflicts</span>
+        </div>
+        <h1 class="text-4xl font-bold">Sync Conflicts</h1>
+        <p class="mt-2 text-on-surface-variant">
+          Resolve conflicts between local and remote DNS records for {@provider_name}
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button
+          phx-click="refresh"
+          class="btn btn-ghost btn-circle btn-sm"
+          title="Refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-5 w-5" />
+        </button>
+      </div>
+    </div>
+
+    <%= if @conflicts != [] do %>
+      <!-- Bulk Actions -->
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-on-surface-variant">
+          {length(@conflicts)} unresolved conflicts
+        </span>
+        <button phx-click="resolve_all_local" class="btn btn-sm btn-primary gap-2">
+          <.dm_mdi name="home" class="w-4 h-4" /> Keep All Local
+        </button>
+        <button phx-click="resolve_all_remote" class="btn btn-sm btn-secondary gap-2">
+          <.dm_mdi name="cloud" class="w-4 h-4" /> Keep All Remote
+        </button>
+      </div>
+
+      <!-- Conflict Cards -->
+      <div class="space-y-4">
+        <%= for conflict <- @conflicts do %>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <!-- Conflict Header -->
+              <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h3 class="font-mono font-semibold text-lg">
+                    {Map.get(conflict, :owner, "")}
+                  </h3>
+                  <div class="flex items-center gap-2 mt-1">
+                    <.badge color="info" size="sm">
+                      {Map.get(conflict, :type, "?")}
+                    </.badge>
+                    <span class="text-xs text-on-surface-variant">
+                      Zone: {Map.get(conflict, :zone, "?")}
+                    </span>
+                    <span class="text-xs text-on-surface-variant">
+                      Detected: {format_detected_at(Map.get(conflict, :detected_at))}
+                    </span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    phx-click="keep_local"
+                    phx-value-id={Map.get(conflict, :id)}
+                    class="btn btn-primary btn-sm gap-1"
+                  >
+                    <.dm_mdi name="home" class="w-4 h-4" /> Keep Local
+                  </button>
+                  <button
+                    phx-click="keep_remote"
+                    phx-value-id={Map.get(conflict, :id)}
+                    class="btn btn-secondary btn-sm gap-1"
+                  >
+                    <.dm_mdi name="cloud" class="w-4 h-4" /> Keep Remote
+                  </button>
+                </div>
+              </div>
+
+              <!-- Side-by-side comparison -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-surface-container rounded-lg p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <.dm_mdi name="home" class="w-4 h-4 text-primary" />
+                    <span class="text-sm font-semibold text-primary">Local Records</span>
+                  </div>
+                  <pre class="text-sm font-mono text-on-surface whitespace-pre-wrap"><%= format_records(Map.get(conflict, :local_records)) %></pre>
+                </div>
+                <div class="bg-surface-container rounded-lg p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <.dm_mdi name="cloud" class="w-4 h-4 text-secondary" />
+                    <span class="text-sm font-semibold text-secondary">Remote Records</span>
+                  </div>
+                  <pre class="text-sm font-mono text-on-surface whitespace-pre-wrap"><%= format_records(Map.get(conflict, :remote_records)) %></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <!-- Empty State -->
+      <div class="card bg-surface shadow-xl">
+        <div class="card-body text-center py-12">
+          <.dm_mdi name="check-circle" class="mx-auto h-16 w-16 text-success" />
+          <h3 class="mt-4 text-xl font-semibold">No Conflicts</h3>
+          <p class="mt-2 text-on-surface-variant">
+            All DNS records for {@provider_name} are synchronized.
+            No manual resolution is needed.
+          </p>
+          <div class="mt-6">
+            <.link
+              navigate={~p"/server/dns/providers/#{@provider_name}"}
+              class="btn btn-primary gap-2"
+            >
+              <.dm_mdi name="arrow-left" class="w-5 h-5" /> Back to Provider
+            </.link>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</Layouts.app>
