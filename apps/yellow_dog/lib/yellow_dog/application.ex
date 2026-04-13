@@ -53,10 +53,6 @@ defmodule YellowDog.Application do
       YellowDog.Store.EventBridge,
       # DynDnsUpdater: subscribes to lease events, creates DNS records
       {YellowDog.Store.DynDnsUpdater, domain: get_dyn_dns_domain(config)},
-      # DNS Provider subsystem: sync engines, conflict store, config watcher
-      # Starts unconditionally (ConfigWatcher handles empty state gracefully)
-      # Must start after Store children (ModeDetector, EventBridge) are ready
-      YellowDog.DnsProvider.Supervisor,
       # Service heartbeat for periodic status logging
       YellowDog.ServiceHeartbeat
     ]
@@ -199,6 +195,10 @@ defmodule YellowDog.Application do
   # Each service is started independently so one failure doesn't block others.
   defp start_services_async(config) do
     Task.start(fn ->
+      # Start DNS Provider subsystem unconditionally (ConfigWatcher handles empty state)
+      # Must start after Store children (ModeDetector, EventBridge) are ready
+      maybe_start_dns_provider()
+
       enabled_services = get_enabled_services(config)
 
       Enum.each(enabled_services, fn {module, opts} ->
@@ -226,6 +226,31 @@ defmodule YellowDog.Application do
         end
       end)
     end)
+  end
+
+  # Starts the DNS Provider supervisor if the module is available.
+  # Uses Code.ensure_loaded? to avoid a hard dependency on yellow_dog_dns_provider
+  # (which would create a circular dependency since dns_provider depends on yellow_dog).
+  defp maybe_start_dns_provider do
+    module = YellowDog.DnsProvider.Supervisor
+
+    if Code.ensure_loaded?(module) do
+      case Supervisor.start_child(YellowDog.Supervisor, module) do
+        {:ok, pid} ->
+          :telemetry.execute(
+            [:yellow_dog, :service, :started],
+            %{count: 1},
+            %{source: __MODULE__, service: :dns_provider, pid: inspect(pid), severity: :info}
+          )
+
+        {:error, reason} ->
+          :telemetry.execute(
+            [:yellow_dog, :application, :error],
+            %{count: 1},
+            %{source: __MODULE__, service: :dns_provider, reason: inspect(reason), severity: :error}
+          )
+      end
+    end
   end
 
   # Maps service atom to app module
