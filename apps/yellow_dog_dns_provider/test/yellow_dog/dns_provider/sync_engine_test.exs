@@ -1,0 +1,161 @@
+defmodule YellowDog.DnsProvider.SyncEngineTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDog.DnsProvider.{Config, SyncEngine}
+
+  setup do
+    start_supervised!({Registry, keys: :unique, name: YellowDog.DnsProvider.Registry})
+
+    :ok
+  end
+
+  defp build_config(overrides \\ %{}) do
+    attrs =
+      Map.merge(
+        %{
+          name: "test-provider-#{System.unique_integer([:positive])}",
+          type: :cloudflare,
+          zones: ["example.com"],
+          sync_interval: 3600,
+          conflict_strategy: :local_wins,
+          enabled: true,
+          credentials: %{}
+        },
+        overrides
+      )
+
+    {:ok, config} = Config.new(attrs)
+    config
+  end
+
+  defp start_engine(config, provider_opts \\ %{}) do
+    credentials =
+      Map.merge(
+        %{zones: config.zones, records: %{}},
+        provider_opts
+      )
+
+    config = %{config | credentials: credentials}
+
+    start_supervised!(
+      {SyncEngine, config: config, provider_module: YellowDog.DnsProvider.Provider.Test}
+    )
+  end
+
+  describe "start_link/1" do
+    test "starts and registers with provider name" do
+      config = build_config()
+      pid = start_engine(config)
+
+      assert is_pid(pid)
+      assert Process.alive?(pid)
+
+      # Verify registry lookup
+      assert [{^pid, nil}] =
+               Registry.lookup(YellowDog.DnsProvider.Registry, config.name)
+    end
+  end
+
+  describe "sync_now/1" do
+    test "triggers sync for all zones" do
+      config = build_config()
+
+      remote_records = %{
+        "example.com" => [
+          %{owner: "www.example.com", type: "A", ttl: 300, rdata: "1.2.3.4"}
+        ]
+      }
+
+      pid = start_engine(config, %{records: remote_records})
+
+      # Status before sync
+      status_before = SyncEngine.status(pid)
+      assert status_before.sync_count == 0
+      assert status_before.last_sync == nil
+
+      # Trigger sync
+      :ok = SyncEngine.sync_now(pid)
+
+      # Give the cast time to process
+      :sys.get_state(pid)
+
+      status_after = SyncEngine.status(pid)
+      assert status_after.sync_count == 1
+      assert status_after.last_sync != nil
+    end
+  end
+
+  describe "sync_now/2" do
+    test "triggers sync for a specific zone" do
+      config = build_config(%{zones: ["example.com", "other.com"]})
+
+      remote_records = %{
+        "example.com" => [
+          %{owner: "www.example.com", type: "A", ttl: 300, rdata: "1.2.3.4"}
+        ],
+        "other.com" => [
+          %{owner: "mail.other.com", type: "MX", ttl: 3600, rdata: "10 mail.other.com"}
+        ]
+      }
+
+      pid = start_engine(config, %{records: remote_records})
+
+      :ok = SyncEngine.sync_now(pid, "example.com")
+      :sys.get_state(pid)
+
+      status = SyncEngine.status(pid)
+      # Single zone sync increments count by 1
+      assert status.sync_count == 1
+    end
+  end
+
+  describe "status/1" do
+    test "returns sync status map" do
+      config = build_config()
+      pid = start_engine(config)
+
+      status = SyncEngine.status(pid)
+
+      assert status.provider == config.name
+      assert status.zones == ["example.com"]
+      assert status.interval == 3_600_000
+      assert status.sync_count == 0
+      assert status.last_sync == nil
+      assert status.last_error == nil
+    end
+
+    test "updates after sync" do
+      config = build_config()
+      pid = start_engine(config)
+
+      :ok = SyncEngine.sync_now(pid)
+      :sys.get_state(pid)
+
+      status = SyncEngine.status(pid)
+      assert status.sync_count == 1
+      assert is_integer(status.last_sync)
+      assert status.last_error == nil
+    end
+  end
+
+  describe "read-only provider" do
+    test "skips push to remote" do
+      config = build_config()
+
+      remote_records = %{
+        "example.com" => [
+          %{owner: "ns.example.com", type: "A", ttl: 300, rdata: "10.0.0.1"}
+        ]
+      }
+
+      pid = start_engine(config, %{records: remote_records, read_only: true})
+
+      :ok = SyncEngine.sync_now(pid)
+      :sys.get_state(pid)
+
+      status = SyncEngine.status(pid)
+      assert status.sync_count == 1
+      assert status.last_error == nil
+    end
+  end
+end
