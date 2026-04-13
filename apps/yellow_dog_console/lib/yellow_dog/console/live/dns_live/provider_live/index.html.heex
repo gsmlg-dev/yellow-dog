@@ -1,0 +1,186 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-bold">DNS Providers</h1>
+        <p class="mt-2 text-on-surface-variant">
+          External DNS zone synchronization
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <.link navigate={~p"/server/dns/providers/new"} class="btn btn-primary btn-sm gap-2">
+          <.dm_mdi name="plus" class="w-4 h-4" /> Add Provider
+        </.link>
+        <button
+          phx-click="refresh"
+          class="btn btn-ghost btn-circle btn-sm"
+          title="Refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-5 w-5" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Add Provider Form -->
+    <%= if @show_form do %>
+      <.card title="New Provider">
+        <.simple_form for={@form} phx-change="validate_form" phx-submit="save_provider">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <.input field={@form[:name]} type="text" label="Name" required />
+            <.input
+              field={@form[:type]}
+              type="select"
+              label="Type"
+              options={[
+                {"IANA Root", "iana_root"},
+                {"AWS Route 53", "aws"},
+                {"Cloudflare", "cloudflare"},
+                {"Google Cloud DNS", "gcp"},
+                {"Vultr DNS", "vultr"}
+              ]}
+            />
+            <.input field={@form[:zones]} type="text" label="Zones (comma-separated)" />
+            <.input field={@form[:sync_interval]} type="number" label="Sync Interval (seconds)" />
+            <.input
+              field={@form[:conflict_strategy]}
+              type="select"
+              label="Conflict Strategy"
+              options={[
+                {"Local Wins", "local_wins"},
+                {"Remote Wins", "remote_wins"},
+                {"Manual Resolution", "manual"}
+              ]}
+            />
+          </div>
+          <.input
+            field={@form[:credentials]}
+            type="textarea"
+            label="Credentials (key=value per line)"
+            class="font-mono"
+          />
+          <:actions>
+            <.link navigate={~p"/server/dns/providers"} class="btn btn-ghost">Cancel</.link>
+            <button type="submit" class="btn btn-primary">Create Provider</button>
+          </:actions>
+        </.simple_form>
+      </.card>
+    <% end %>
+
+    <!-- Provider Table -->
+    <%= if @providers != [] do %>
+      <.card title="Configured Providers">
+        <div class="overflow-x-auto">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Type</th>
+                <th scope="col">Status</th>
+                <th scope="col">Last Sync</th>
+                <th scope="col">Syncs</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for provider <- @providers do %>
+                <tr class="hover">
+                  <td>
+                    <.link
+                      navigate={~p"/server/dns/providers/#{provider.name}"}
+                      class="font-mono font-semibold text-primary hover:underline"
+                    >
+                      {provider.name}
+                    </.link>
+                  </td>
+                  <td>{format_type(provider.type)}</td>
+                  <td>
+                    <%= if provider.enabled do %>
+                      <%= if provider.status == :running do %>
+                        <.badge color="success" size="sm">Running</.badge>
+                      <% else %>
+                        <.badge color="warning" size="sm">Stopped</.badge>
+                      <% end %>
+                    <% else %>
+                      <.badge color="neutral" size="sm">Disabled</.badge>
+                    <% end %>
+                    <%= if provider.last_error do %>
+                      <.badge color="error" size="sm">Error</.badge>
+                    <% end %>
+                  </td>
+                  <td class="text-sm text-on-surface-variant">
+                    {format_sync_time(provider.last_sync)}
+                  </td>
+                  <td class="font-mono">{provider.sync_count}</td>
+                  <td>
+                    <div class="flex items-center gap-1">
+                      <button
+                        phx-click="sync_now"
+                        phx-value-name={provider.name}
+                        class="btn btn-ghost btn-xs"
+                        title="Sync Now"
+                        disabled={!provider.enabled || provider.status != :running}
+                      >
+                        <.dm_mdi name="sync" class="w-4 h-4" />
+                      </button>
+                      <button
+                        phx-click="toggle_enabled"
+                        phx-value-name={provider.name}
+                        phx-value-enabled={to_string(provider.enabled)}
+                        class="btn btn-ghost btn-xs"
+                        title={if provider.enabled, do: "Disable", else: "Enable"}
+                      >
+                        <.dm_mdi
+                          name={if provider.enabled, do: "pause", else: "play"}
+                          class="w-4 h-4"
+                        />
+                      </button>
+                      <%= if @delete_confirm == provider.name do %>
+                        <button
+                          phx-click="delete"
+                          phx-value-name={provider.name}
+                          class="btn btn-error btn-xs"
+                        >
+                          Confirm
+                        </button>
+                        <button phx-click="cancel_delete" class="btn btn-ghost btn-xs">
+                          Cancel
+                        </button>
+                      <% else %>
+                        <button
+                          phx-click="confirm_delete"
+                          phx-value-name={provider.name}
+                          class="btn btn-ghost btn-xs text-error"
+                          title="Delete"
+                        >
+                          <.dm_mdi name="delete" class="w-4 h-4" />
+                        </button>
+                      <% end %>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </.card>
+    <% else %>
+      <div class="card bg-surface shadow-xl">
+        <div class="card-body text-center py-12">
+          <.dm_mdi name="cloud-sync" class="mx-auto h-16 w-16 text-on-surface-variant" />
+          <h3 class="mt-4 text-xl font-semibold">No DNS Providers Configured</h3>
+          <p class="mt-2 text-on-surface-variant">
+            Add a provider to synchronize DNS zones with external services like
+            Cloudflare, AWS Route 53, or Google Cloud DNS.
+          </p>
+          <div class="mt-6">
+            <.link navigate={~p"/server/dns/providers/new"} class="btn btn-primary gap-2">
+              <.dm_mdi name="plus" class="w-5 h-5" /> Add Provider
+            </.link>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</Layouts.app>
