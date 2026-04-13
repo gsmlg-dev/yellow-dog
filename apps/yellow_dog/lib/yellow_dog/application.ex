@@ -53,6 +53,10 @@ defmodule YellowDog.Application do
       YellowDog.Store.EventBridge,
       # DynDnsUpdater: subscribes to lease events, creates DNS records
       {YellowDog.Store.DynDnsUpdater, domain: get_dyn_dns_domain(config)},
+      # DNS Provider subsystem: sync engines, conflict store, config watcher
+      # Starts unconditionally (ConfigWatcher handles empty state gracefully)
+      # Must start after Store children (ModeDetector, EventBridge) are ready
+      YellowDog.DnsProvider.Supervisor,
       # Service heartbeat for periodic status logging
       YellowDog.ServiceHeartbeat
     ]

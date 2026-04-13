@@ -31,6 +31,7 @@ defmodule YellowDog.MixProject do
       {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
+      {:yellow_dog_dns_provider, in_umbrella: true},
       {:abyss, in_umbrella: true},
 
       # External dependencies for core functionality
