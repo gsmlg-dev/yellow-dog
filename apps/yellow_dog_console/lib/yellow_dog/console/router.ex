@@ -77,6 +77,13 @@ defmodule YellowDog.Console.Router do
     live "/dns/logs", DnsLive.QueryLogsLive
     live "/dns/metrics", DnsLive.MetricsLive
 
+    # DNS Providers
+    live "/dns/providers", DnsLive.ProviderLive.Index
+    live "/dns/providers/new", DnsLive.ProviderLive.Index, :new
+    live "/dns/providers/:name", DnsLive.ProviderLive.Show
+    live "/dns/providers/:name/edit", DnsLive.ProviderLive.Show, :edit
+    live "/dns/providers/:name/conflicts", DnsLive.ProviderLive.ConflictLive
+
     # DHCPv4
     live "/dhcpv4", Dhcpv4Live.Index
     live "/dhcpv4/leases", Dhcpv4Live.LeasesLive
