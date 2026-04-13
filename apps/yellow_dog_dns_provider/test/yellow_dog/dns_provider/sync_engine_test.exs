@@ -1,10 +1,13 @@
 defmodule YellowDog.DnsProvider.SyncEngineTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDog.DnsProvider.{Config, SyncEngine}
 
   setup do
-    start_supervised!({Registry, keys: :unique, name: YellowDog.DnsProvider.Registry})
+    case Registry.start_link(keys: :unique, name: YellowDog.DnsProvider.Registry) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
 
     :ok
   end

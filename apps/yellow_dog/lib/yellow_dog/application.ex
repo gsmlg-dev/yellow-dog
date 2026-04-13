@@ -247,7 +247,12 @@ defmodule YellowDog.Application do
           :telemetry.execute(
             [:yellow_dog, :application, :error],
             %{count: 1},
-            %{source: __MODULE__, service: :dns_provider, reason: inspect(reason), severity: :error}
+            %{
+              source: __MODULE__,
+              service: :dns_provider,
+              reason: inspect(reason),
+              severity: :error
+            }
           )
       end
     end

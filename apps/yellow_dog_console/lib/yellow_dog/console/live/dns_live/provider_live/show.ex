@@ -84,7 +84,10 @@ defmodule YellowDog.Console.DnsLive.ProviderLive.Show do
 
     {:noreply,
      socket
-     |> put_flash(:info, "Provider #{name} #{if config[:enabled], do: "disabled", else: "enabled"}")
+     |> put_flash(
+       :info,
+       "Provider #{name} #{if config[:enabled], do: "disabled", else: "enabled"}"
+     )
      |> assign_provider_data()}
   end
 
@@ -125,7 +128,11 @@ defmodule YellowDog.Console.DnsLive.ProviderLive.Show do
       end
 
     sync_status =
-      case safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.sync_status(name) end, {:error, :not_found}) do
+      case safe_call(
+             YellowDog.DnsProvider,
+             fn -> YellowDog.DnsProvider.sync_status(name) end,
+             {:error, :not_found}
+           ) do
         {:ok, status} -> status
         _ -> %{}
       end

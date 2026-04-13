@@ -122,7 +122,11 @@ defmodule YellowDog.Console.DnsLive.ProviderLive.Index do
       credentials: parse_credentials(params["credentials"] || "")
     }
 
-    case safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.add_provider(attrs) end, {:error, :service_unavailable}) do
+    case safe_call(
+           YellowDog.DnsProvider,
+           fn -> YellowDog.DnsProvider.add_provider(attrs) end,
+           {:error, :service_unavailable}
+         ) do
       :ok ->
         {:noreply,
          socket
@@ -157,7 +161,11 @@ defmodule YellowDog.Console.DnsLive.ProviderLive.Index do
 
     Enum.map(providers, fn p ->
       status_info =
-        safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.sync_status(p.name) end, {:error, :not_found})
+        safe_call(
+          YellowDog.DnsProvider,
+          fn -> YellowDog.DnsProvider.sync_status(p.name) end,
+          {:error, :not_found}
+        )
 
       sync_status =
         case status_info do

@@ -22,8 +22,8 @@
         </button>
       </div>
     </div>
-
-    <!-- Add Provider Form -->
+    
+<!-- Add Provider Form -->
     <%= if @show_form do %>
       <.card title="New Provider">
         <.form
@@ -107,7 +107,7 @@
               name="provider[credentials]"
               class="textarea w-full font-mono"
               rows="4"
-              placeholder={"api_token=your_token\nzone_id=your_zone_id"}
+              placeholder="api_token=your_token\nzone_id=your_zone_id"
             >{@form[:credentials].value}</textarea>
           </div>
           <div class="flex justify-end gap-3 pt-4">
@@ -117,8 +117,8 @@
         </.form>
       </.card>
     <% end %>
-
-    <!-- Provider Table -->
+    
+<!-- Provider Table -->
     <%= if @providers != [] do %>
       <.card title="Configured Providers">
         <div class="overflow-x-auto">
