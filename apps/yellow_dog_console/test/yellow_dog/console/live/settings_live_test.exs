@@ -292,7 +292,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_submit()
 
       # Verify apply button appears with pending badge
-      assert has_element?(view, "button[phx-click='apply_changes_dns']")
+      assert has_element?(view, "[phx-click='apply_changes_dns']")
       assert has_element?(view, ".badge", "Pending Changes")
     end
 
@@ -300,7 +300,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/server/settings")
 
       # No changes made
-      refute has_element?(view, "button[phx-click='apply_changes_dns']")
+      refute has_element?(view, "[phx-click='apply_changes_dns']")
       assert has_element?(view, ".badge", "Saved")
     end
 
@@ -314,7 +314,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
       # Click apply changes
       view
-      |> element("button[phx-click='apply_changes_dns']")
+      |> element("[phx-click='apply_changes_dns']")
       |> render_click()
 
       # Note: ServiceManager.apply_and_restart will fail in test environment
@@ -363,7 +363,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
       html =
         view
-        |> element("button[phx-click='reload_config']")
+        |> element("[phx-click='reload_config']")
         |> render_click()
 
       assert html =~ "Configuration reloaded from disk"
@@ -380,7 +380,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # Reload configuration in LiveView
       html =
         view
-        |> element("button[phx-click='reload_config']")
+        |> element("[phx-click='reload_config']")
         |> render_click()
 
       # Verify new configuration is loaded
@@ -401,12 +401,12 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
       # Reload configuration
       view
-      |> element("button[phx-click='reload_config']")
+      |> element("[phx-click='reload_config']")
       |> render_click()
 
       # Verify pending changes cleared
       assert has_element?(view, ".badge", "Saved")
-      refute has_element?(view, "button[phx-click='apply_changes_dns']")
+      refute has_element?(view, "[phx-click='apply_changes_dns']")
     end
   end
 
@@ -669,7 +669,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_submit()
 
       # Verify apply button appears
-      assert has_element?(view, "button[phx-click='apply_changes_mdns']")
+      assert has_element?(view, "[phx-click='apply_changes_mdns']")
       assert has_element?(view, ".badge", "Pending Changes")
     end
   end
@@ -804,7 +804,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       )
       |> render_submit()
 
-      assert has_element?(view, "button[phx-click='apply_changes_netboot']")
+      assert has_element?(view, "[phx-click='apply_changes_netboot']")
       assert has_element?(view, ".badge", "Pending Changes")
     end
 

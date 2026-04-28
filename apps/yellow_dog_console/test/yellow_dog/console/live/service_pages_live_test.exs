@@ -639,6 +639,17 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
   # ============================================================================
 
   describe "active sidebar highlighting" do
+    test "sidebar renders as a sticky scroll-preserving LiveComponent", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/server/identity")
+      html = render(view)
+
+      assert html =~ ~s(id="app-sidebar")
+      assert html =~ ~r/data-phx-component="\d+"/
+      assert html =~ ~s(phx-hook="PreserveScroll")
+      assert html =~ ~s(data-scroll-key="sidebar:Servers")
+      assert html =~ ~s(yd-sidebar-sticky)
+    end
+
     @active_pages [
       {"/server/dashboard", "Services"},
       {"/server/dns", "Overview"},

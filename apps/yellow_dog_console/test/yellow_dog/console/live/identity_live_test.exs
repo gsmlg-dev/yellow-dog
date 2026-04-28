@@ -6,6 +6,27 @@ defmodule YellowDog.Console.IdentityLiveTest do
   use YellowDog.Console.ConnCase, async: true
   import Phoenix.LiveViewTest
 
+  @identity_routes [
+    "/server/identity",
+    "/server/identity/hosts",
+    "/server/identity/approvals",
+    "/server/identity/tokens",
+    "/server/identity/policies",
+    "/server/identity/audit",
+    "/server/identity/hosts/00000000-0000-0000-0000-000000000000"
+  ]
+
+  describe "Identity shared layout" do
+    test "renders the server sidebar on all identity pages", %{conn: conn} do
+      for path <- @identity_routes do
+        {:ok, _view, html} = live(conn, path)
+
+        assert html =~ ~r/class="[^"]*yd-sidebar[^"]*"/
+        assert html =~ ~s(href="/server/identity/hosts")
+      end
+    end
+  end
+
   # ============================================================================
   # Identity Index
   # ============================================================================

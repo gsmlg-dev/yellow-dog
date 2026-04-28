@@ -6,9 +6,14 @@
         <h1 class="text-4xl font-bold">Service Dashboard</h1>
         <p class="mt-2 text-on-surface-variant">Monitor and manage your Yellow Dog services</p>
       </div>
-      <.dm_btn variant="ghost" class="btn-circle" phx-click="refresh" aria-label="Refresh">
+      <button
+        type="button"
+        class="btn btn-ghost btn-circle"
+        phx-click="refresh"
+        aria-label="Refresh"
+      >
         <.dm_mdi name="refresh" class="h-6 w-6" />
-      </.dm_btn>
+      </button>
     </div>
     <!-- Service Stats Grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
@@ -135,27 +140,25 @@
 
           <:actions>
             <%= if service.running do %>
-              <.dm_btn
-                variant="error"
-                size="sm"
-                class="gap-2"
+              <button
+                type="button"
+                class="btn btn-error btn-sm gap-2"
                 phx-click="stop_service"
                 phx-value-service={service.key}
                 phx-disable-with="Stopping..."
               >
                 <.dm_mdi name="stop-circle-outline" class="h-4 w-4" /> Stop
-              </.dm_btn>
+              </button>
             <% else %>
-              <.dm_btn
-                variant="success"
-                size="sm"
-                class="gap-2"
+              <button
+                type="button"
+                class="btn btn-success btn-sm gap-2"
                 phx-click="start_service"
                 phx-value-service={service.key}
                 phx-disable-with="Starting..."
               >
                 <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
-              </.dm_btn>
+              </button>
             <% end %>
             <.link navigate={service_link(service.key)} class="btn btn-sm btn-ghost gap-2">
               <.dm_mdi name="arrow-right" class="h-4 w-4" /> Details

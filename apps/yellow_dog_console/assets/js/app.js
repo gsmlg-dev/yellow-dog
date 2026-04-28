@@ -6,9 +6,10 @@ import {LiveSocket} from "phoenix_live_view"
 
 // Duskmoon hooks and element registration
 import * as DuskmoonHooks from "../../../../deps/phoenix_duskmoon/assets/js/hooks/index.js"
-import { registerAll } from "@duskmoon-dev/elements"
-
-registerAll()
+// WORKAROUND(upstream): duskmoon-dev/duskmoon-elements#50
+// @duskmoon-dev/elements@1.2.0 registerAll() imports el-code-engine eagerly and
+// crashes before LiveView hooks mount. The console currently uses CSS/HEEx
+// components, so skip custom element registration until the package is fixed.
 
 // Custom Hooks
 let CustomHooks = {}
@@ -70,6 +71,46 @@ CustomHooks.LogAutoScroll = {
     if (this.autoScroll) {
       this.el.scrollTop = this.el.scrollHeight
     }
+  }
+}
+
+// Preserve a scroll container's position across LiveView navigation/remounts.
+CustomHooks.PreserveScroll = {
+  mounted() {
+    this.saveScroll = () => {
+      try {
+        sessionStorage.setItem(this.storageKey(), String(this.el.scrollTop))
+      } catch (_err) {
+      }
+    }
+
+    this.restoreScroll = () => {
+      try {
+        const value = sessionStorage.getItem(this.storageKey())
+        const top = value === null ? 0 : Number.parseInt(value, 10)
+
+        if (Number.isFinite(top)) {
+          this.el.scrollTop = top
+        }
+      } catch (_err) {
+      }
+    }
+
+    this.el.addEventListener("scroll", this.saveScroll, {passive: true})
+    requestAnimationFrame(this.restoreScroll)
+  },
+  beforeUpdate() {
+    this.saveScroll()
+  },
+  updated() {
+    requestAnimationFrame(this.restoreScroll)
+  },
+  destroyed() {
+    this.saveScroll()
+    this.el.removeEventListener("scroll", this.saveScroll)
+  },
+  storageKey() {
+    return `yellow-dog:${this.el.dataset.scrollKey || this.el.id}:scroll-top`
   }
 }
 

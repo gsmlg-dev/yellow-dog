@@ -31,6 +31,7 @@ code, pre, .font-mono { font-family: var(--font-mono); }
 .yd-layout {
   display: flex;
   flex-direction: column;
+  --yd-navbar-height: 4rem;
 }
 
 /* Body area below appbar: sidebar + main content side by side */
@@ -39,6 +40,7 @@ code, pre, .font-mono { font-family: var(--font-mono); }
   flex-direction: row;
   flex: 1;
   min-height: 0;
+  min-height: calc(100dvh - var(--yd-navbar-height));
 }
 
 /* Sidebar container — hidden on mobile, shown on lg+ */
@@ -48,6 +50,14 @@ code, pre, .font-mono { font-family: var(--font-mono); }
   width: 20rem;
   overflow-y: auto;
   border-right: 1px solid var(--color-outline-variant);
+}
+
+.yd-sidebar-sticky {
+  position: sticky;
+  top: var(--yd-navbar-height);
+  align-self: flex-start;
+  height: calc(100dvh - var(--yd-navbar-height));
+  max-height: calc(100dvh - var(--yd-navbar-height));
 }
 
 @media (min-width: 1024px) {
@@ -63,6 +73,8 @@ code, pre, .font-mono { font-family: var(--font-mono); }
   top: 0;
   left: 0;
   bottom: 0;
+  height: 100dvh;
+  max-height: none;
   z-index: 1200;
   border-right: none;
   box-shadow: var(--shadow-2xl);
@@ -70,7 +82,8 @@ code, pre, .font-mono { font-family: var(--font-mono); }
 
 @media (min-width: 1024px) {
   .yd-sidebar-open .yd-sidebar {
-    position: static;
+    position: sticky;
+    top: var(--yd-navbar-height);
     box-shadow: none;
     border-right: 1px solid var(--color-outline-variant);
   }
@@ -117,19 +130,25 @@ code, pre, .font-mono { font-family: var(--font-mono); }
   color: var(--color-primary-content);
 }
 
-/* Sidebar nested-menu: inherit secondary-content color */
+/* Sidebar nested-menu: keep text/background on the same theme container pair */
+.yd-sidebar-panel {
+  background-color: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+  min-height: 100%;
+}
+
 .yd-sidebar .nested-menu li > a,
 .yd-sidebar .nested-menu li > button {
-  color: var(--color-secondary-content);
+  color: var(--color-on-secondary-container);
 }
 
 .yd-sidebar .nested-menu li > a:hover,
 .yd-sidebar .nested-menu li > button:hover {
-  background-color: color-mix(in oklch, var(--color-secondary-content) 12%, transparent);
+  background-color: color-mix(in oklch, var(--color-on-secondary-container) 12%, transparent);
 }
 
 .yd-sidebar .nested-menu-title {
-  color: color-mix(in oklch, var(--color-secondary-content) 60%, transparent);
+  color: color-mix(in oklch, var(--color-on-secondary-container) 62%, transparent);
 }
 
 .yd-sidebar .nested-menu li > a.active,

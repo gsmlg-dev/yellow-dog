@@ -29,7 +29,7 @@ defmodule YellowDog.Console.IdentityLive.PoliciesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Approval Policies</h1>

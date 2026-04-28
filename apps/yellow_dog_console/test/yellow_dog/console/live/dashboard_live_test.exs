@@ -110,6 +110,12 @@ defmodule YellowDog.Console.DashboardLiveTest do
       assert html =~ "Service Dashboard"
     end
 
+    test "theme_changed hook event is acknowledged", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/server/dashboard")
+      html = render_hook(view, "theme_changed", %{"theme" => "moonlight"})
+      assert html =~ "Service Dashboard"
+    end
+
     test "start_service with invalid service shows error flash", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/server/dashboard")
       html = render_click(view, "start_service", %{"service" => "evil_service"})
@@ -154,6 +160,7 @@ defmodule YellowDog.Console.DashboardLiveTest do
     test "start/stop buttons have phx-disable-with", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
       assert html =~ "phx-disable-with=\"Starting...\""
+      assert html =~ "btn btn-success btn-sm gap-2"
     end
   end
 
