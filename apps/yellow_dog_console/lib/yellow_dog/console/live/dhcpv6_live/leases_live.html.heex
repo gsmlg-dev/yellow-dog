@@ -11,15 +11,16 @@
         </p>
       </div>
       <div class="flex gap-2">
-        <button
+        <.dm_btn
+          variant="outline"
+          size="sm"
           phx-click="export_csv"
           id="export-csv"
           phx-hook="CsvDownload"
-          class="btn btn-outline btn-sm"
           aria-label="Export CSV"
         >
           <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
-        </button>
+        </.dm_btn>
         <.link navigate={~p"/server/dhcpv6"} class="btn btn-ghost btn-sm">
           <.dm_mdi name="arrow-left" class="h-4 w-4" /> Back to Overview
         </.link>
@@ -177,8 +178,9 @@
                   </td>
                   <td>
                     <%= if lease.state == :active do %>
-                      <button
-                        class="btn btn-xs btn-error"
+                      <.dm_btn
+                        variant="error"
+                        size="xs"
                         phx-click="release_lease"
                         phx-value-duid={format_duid(lease.duid)}
                         phx-value-iaid={lease.iaid}
@@ -186,7 +188,7 @@
                         data-confirm="Are you sure you want to release this lease?"
                       >
                         Release
-                      </button>
+                      </.dm_btn>
                     <% end %>
                   </td>
                 </tr>

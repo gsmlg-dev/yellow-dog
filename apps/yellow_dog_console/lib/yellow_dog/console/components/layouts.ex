@@ -77,7 +77,7 @@ defmodule YellowDog.Console.Layouts do
     assigns = assign(assigns, :nav_sections, @nav_sections)
 
     ~H"""
-    <.dm_navbar class="border-b border-outline-variant">
+    <.dm_navbar class="bg-primary text-primary-content border-b border-outline-variant">
       <:start_part>
         <button
           class="btn btn-ghost lg:hidden"
@@ -86,8 +86,8 @@ defmodule YellowDog.Console.Layouts do
         >
           <.dm_mdi name="menu" class="w-6 h-6" />
         </button>
-        <.link navigate="/" class="btn btn-ghost text-xl font-bold">
-          <span class="text-primary">Yellow</span>
+        <.link navigate="/" class="btn btn-ghost text-xl font-bold text-primary-content">
+          <span>Yellow</span>
           <span class="text-warning">Dog</span>
         </.link>
       </:start_part>
@@ -155,7 +155,7 @@ defmodule YellowDog.Console.Layouts do
       >
       </div>
 
-      <div class="bg-surface w-80 overflow-y-auto">
+      <div class="bg-secondary text-secondary-content w-80 overflow-y-auto">
         <ul class="nested-menu nested-menu-bordered p-4">
           <.sidebar_servers :if={@section == "Servers"} current_path={@current_path} />
           <.sidebar_tools :if={@section == "Tools"} current_path={@current_path} />

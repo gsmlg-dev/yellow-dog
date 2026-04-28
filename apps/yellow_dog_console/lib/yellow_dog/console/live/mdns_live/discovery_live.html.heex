@@ -9,15 +9,16 @@
           Browse mDNS services discovered on your local network
         </p>
       </div>
-      <button
+      <.dm_btn
+        variant="outline"
+        size="sm"
         phx-click="export_csv"
         id="export-csv"
         phx-hook="CsvDownload"
-        class="btn btn-outline btn-sm"
         aria-label="Export CSV"
       >
         <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
-      </button>
+      </.dm_btn>
     </div>
     <!-- Search and Filter -->
     <div class="flex items-center gap-4">
@@ -176,14 +177,16 @@
         <div class="dialog dialog-md max-w-3xl">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold">{@selected_service.name}</h3>
-            <button
+            <.dm_btn
+              variant="ghost"
+              size="sm"
+              class="btn-circle"
               type="button"
               phx-click="close_details"
-              class="btn btn-sm btn-circle btn-ghost"
               aria-label="Close"
             >
               <.dm_mdi name="close" class="h-5 w-5" />
-            </button>
+            </.dm_btn>
           </div>
 
           <div class="space-y-6">
@@ -251,13 +254,13 @@
           </div>
 
           <div class="dialog-actions">
-            <button
+            <.dm_btn
+              variant="ghost"
               type="button"
               phx-click="close_details"
-              class="btn"
             >
               Close
-            </button>
+            </.dm_btn>
           </div>
         </div>
       </div>

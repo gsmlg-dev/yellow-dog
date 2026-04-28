@@ -14,9 +14,9 @@
           label={if @status.running, do: "Running", else: "Stopped"}
           pulse
         />
-        <button class="btn btn-ghost btn-circle btn-sm" aria-label="Refresh">
+        <.dm_btn variant="ghost" size="sm" class="btn-circle" aria-label="Refresh">
           <.dm_mdi name="refresh" class="h-5 w-5" />
-        </button>
+        </.dm_btn>
       </div>
     </div>
     <!-- Global Statistics -->

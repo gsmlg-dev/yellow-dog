@@ -35,14 +35,15 @@
         >
           <.dm_mdi name="download" class="w-4 h-4" /> Export
         </button>
-        <button
+        <.dm_btn
+          variant="ghost"
+          size="sm"
           phx-click="refresh"
-          class="btn btn-ghost btn-sm"
           title="Refresh"
           aria-label="Refresh"
         >
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
-        </button>
+        </.dm_btn>
         <.link patch={~p"/server/dns/views/new"} class="btn btn-primary btn-sm">
           <.dm_mdi name="plus" class="w-4 h-4" /> Add View
         </.link>
@@ -175,15 +176,17 @@
                               <.dm_mdi name="pencil" class="w-4 h-4" />
                             </.link>
                             <%= if view.name != "default" do %>
-                              <button
+                              <.dm_btn
+                                variant="ghost"
+                                size="sm"
+                                class="text-error"
                                 phx-click="confirm_delete"
                                 phx-value-name={view.name}
-                                class="btn btn-ghost btn-sm text-error"
                                 title="Delete"
                                 aria-label="Delete"
                               >
                                 <.dm_mdi name="delete" class="w-4 h-4" />
-                              </button>
+                              </.dm_btn>
                             <% end %>
                           </div>
                         </td>
@@ -209,7 +212,7 @@
                 <p class="text-on-surface-variant mb-4">
                   Get started by creating your first DNS view.
                 </p>
-                <.link patch={~p"/server/dns/views/new"} class="btn btn-primary">
+                <.link patch={~p"/server/dns/views/new"} class="btn btn-outline">
                   Create First View
                 </.link>
               </div>
@@ -720,15 +723,15 @@
         </p>
       </div>
       <div class="flex justify-end gap-2 mt-4">
-        <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
-        <button
+        <.dm_btn variant="ghost" type="button" phx-click="close_modal">Cancel</.dm_btn>
+        <.dm_btn
+          variant="error"
           type="button"
-          class="btn btn-error"
           phx-click="delete_view"
           phx-disable-with="Deleting..."
         >
           Delete View
-        </button>
+        </.dm_btn>
       </div>
     </.modal>
   <% end %>

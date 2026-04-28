@@ -15,14 +15,15 @@
           <span>Config Version: {@version_info.version}</span>
         </div>
         <!-- Reload Button -->
-        <button
+        <.dm_btn
+          variant="ghost"
+          size="sm"
           phx-click="reload_config"
-          class="btn btn-ghost btn-sm"
           title="Reload configuration from disk"
           aria-label="Reload configuration from disk"
         >
           <.dm_mdi name="refresh" class="h-5 w-5" /> Reload
-        </button>
+        </.dm_btn>
       </div>
     </div>
     <!-- Tab Navigation -->
@@ -115,16 +116,16 @@
         </div>
 
         <:actions>
-          <button phx-click="close_conflict_modal" class="btn btn-ghost">
+          <.dm_btn variant="ghost" phx-click="close_conflict_modal">
             Cancel
-          </button>
-          <button
+          </.dm_btn>
+          <.dm_btn
+            variant="primary"
             phx-click="reload_config"
             phx-click-away="close_conflict_modal"
-            class="btn btn-primary"
           >
             Reload Configuration
-          </button>
+          </.dm_btn>
         </:actions>
       </.modal>
     <% end %>
@@ -143,10 +144,11 @@
 
           <div class="space-y-2">
             <%= for backup <- list_backups(@config_path) do %>
-              <button
+              <.dm_btn
+                variant="outline"
+                class="w-full justify-start"
                 phx-click="restore_backup"
                 phx-value-backup_path={backup.path}
-                class="btn btn-outline w-full justify-start"
               >
                 <.dm_mdi name="folder" class="h-5 w-5 mr-2" />
                 <span class="flex-1 text-left">
@@ -155,15 +157,15 @@
                 <span class="text-xs text-on-surface-variant">
                   {backup.size}
                 </span>
-              </button>
+              </.dm_btn>
             <% end %>
           </div>
         </div>
 
         <:actions>
-          <button phx-click="close_recovery_modal" class="btn btn-primary">
+          <.dm_btn variant="ghost" phx-click="close_recovery_modal">
             Close
-          </button>
+          </.dm_btn>
         </:actions>
       </.modal>
     <% end %>

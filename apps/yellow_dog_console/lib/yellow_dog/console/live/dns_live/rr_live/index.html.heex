@@ -19,34 +19,37 @@
         </p>
       </div>
       <div class="flex gap-2">
-        <button
+        <.dm_btn
           phx-click="export_csv"
           id="export-csv"
           phx-hook="CsvDownload"
-          class="btn btn-ghost btn-sm"
+          variant="ghost"
+          size="sm"
           title="Export CSV"
           aria-label="Export CSV"
         >
           <.dm_mdi name="download" class="w-4 h-4" /> Export CSV
-        </button>
+        </.dm_btn>
         <%= if @zone_type == :auth do %>
-          <button
+          <.dm_btn
             phx-click="export_bind"
-            class="btn btn-ghost btn-sm"
+            variant="ghost"
+            size="sm"
             title="Export BIND Zone File"
             aria-label="Export BIND Zone File"
           >
             <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Export BIND
-          </button>
+          </.dm_btn>
         <% end %>
-        <button
+        <.dm_btn
           phx-click="refresh"
-          class="btn btn-ghost btn-sm"
+          variant="ghost"
+          size="sm"
           title="Refresh"
           aria-label="Refresh"
         >
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
-        </button>
+        </.dm_btn>
         <.link
           patch={
             ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
@@ -138,15 +141,17 @@
                             >
                               <.dm_mdi name="pencil" class="w-4 h-4" />
                             </.link>
-                            <button
+                            <.dm_btn
                               phx-click="confirm_delete"
                               phx-value-index={idx}
-                              class="btn btn-ghost btn-sm text-error"
+                              variant="ghost"
+                              size="sm"
+                              class="text-error"
                               title="Delete"
                               aria-label="Delete"
                             >
                               <.dm_mdi name="delete" class="w-4 h-4" />
-                            </button>
+                            </.dm_btn>
                           </div>
                         </td>
                       </tr>
@@ -172,7 +177,7 @@
                     patch={
                       ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
                     }
-                    class="btn btn-primary"
+                    class="btn btn-outline"
                   >
                     Add Record
                   </.link>
@@ -308,15 +313,15 @@
         </p>
       </div>
       <div class="flex justify-end gap-2 mt-4">
-        <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
-        <button
+        <.dm_btn type="button" variant="ghost" phx-click="close_modal">Cancel</.dm_btn>
+        <.dm_btn
           type="button"
-          class="btn btn-error"
+          variant="error"
           phx-click="delete_rr"
           phx-disable-with="Deleting..."
         >
           Delete Record
-        </button>
+        </.dm_btn>
       </div>
     </.modal>
   <% end %>

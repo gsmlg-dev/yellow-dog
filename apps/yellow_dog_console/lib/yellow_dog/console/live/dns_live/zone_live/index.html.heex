@@ -28,14 +28,15 @@
         >
           <.dm_mdi name="download" class="w-4 h-4" /> Export
         </button>
-        <button
+        <.dm_btn
+          variant="ghost"
+          size="sm"
           phx-click="refresh"
-          class="btn btn-ghost btn-sm"
           title="Refresh"
           aria-label="Refresh"
         >
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
-        </button>
+        </.dm_btn>
         <.link
           patch={~p"/server/dns/views/#{@view_name}/zones/import"}
           class="btn btn-ghost btn-sm"
@@ -156,16 +157,18 @@
                             >
                               <.dm_mdi name="pencil" class="w-4 h-4" />
                             </.link>
-                            <button
+                            <.dm_btn
+                              variant="ghost"
+                              size="sm"
+                              class="text-error"
                               phx-click="confirm_delete"
                               phx-value-type={zone.type}
                               phx-value-name={zone.name}
-                              class="btn btn-ghost btn-sm text-error"
                               title="Delete"
                               aria-label="Delete"
                             >
                               <.dm_mdi name="delete" class="w-4 h-4" />
-                            </button>
+                            </.dm_btn>
                           </div>
                         </td>
                       </tr>
@@ -191,7 +194,7 @@
                 <div class="flex justify-center gap-2">
                   <.link
                     patch={~p"/server/dns/views/#{@view_name}/zones/new"}
-                    class="btn btn-primary"
+                    class="btn btn-outline"
                   >
                     Create Zone
                   </.link>
@@ -467,15 +470,15 @@
         </p>
       </div>
       <div class="flex justify-end gap-2 mt-4">
-        <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
-        <button
+        <.dm_btn variant="ghost" type="button" phx-click="close_modal">Cancel</.dm_btn>
+        <.dm_btn
+          variant="error"
           type="button"
-          class="btn btn-error"
           phx-click="delete_zone"
           phx-disable-with="Deleting..."
         >
           Delete Zone
-        </button>
+        </.dm_btn>
       </div>
     </.modal>
   <% end %>

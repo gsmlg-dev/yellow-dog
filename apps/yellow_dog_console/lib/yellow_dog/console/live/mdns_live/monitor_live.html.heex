@@ -8,13 +8,11 @@
         <p class="mt-2 text-on-surface-variant">Real-time mDNS query and response monitoring</p>
       </div>
       <div class="flex items-center gap-2">
-        <button
+        <.dm_btn
+          variant={if @auto_refresh, do: "success", else: "ghost"}
+          size="sm"
           type="button"
           phx-click="toggle_auto_refresh"
-          class={[
-            "btn btn-sm",
-            if(@auto_refresh, do: "btn-success", else: "btn-ghost")
-          ]}
         >
           <%= if @auto_refresh do %>
             <.dm_mdi name="pause-circle-outline" class="w-5 h-5" />
@@ -22,26 +20,28 @@
             <.dm_mdi name="play-circle-outline" class="w-5 h-5" />
           <% end %>
           {if @auto_refresh, do: "Auto-Refresh On", else: "Auto-Refresh Off"}
-        </button>
-        <button
+        </.dm_btn>
+        <.dm_btn
+          variant="error"
+          size="sm"
           type="button"
           phx-click="clear_cache"
           phx-disable-with="Clearing..."
           data-confirm="Are you sure you want to clear all cached data?"
-          class="btn btn-sm btn-error"
         >
           <.dm_mdi name="delete" class="w-5 h-5" /> Clear Cache
-        </button>
-        <button
+        </.dm_btn>
+        <.dm_btn
+          variant="ghost"
+          size="sm"
           type="button"
           phx-click="export_csv"
           id="export-csv"
           phx-hook="CsvDownload"
-          class="btn btn-sm btn-ghost"
           aria-label="Export CSV"
         >
           <.dm_mdi name="download" class="w-5 h-5" /> Export CSV
-        </button>
+        </.dm_btn>
       </div>
     </div>
     <!-- Network Statistics -->
