@@ -27,6 +27,18 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "DNS Views"
     end
 
+    test "refresh button uses native toolbar styling", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/server/dns/views")
+
+      refute html =~ "<el-dm-button"
+
+      assert has_element?(
+               view,
+               ~s(button.btn.btn-ghost.btn-sm[type="button"][phx-click="refresh"][aria-label="Refresh"]),
+               "Refresh"
+             )
+    end
+
     test "renders filter bar when views exist or shows empty state", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dns/views")
       # Page should render without errors
@@ -133,6 +145,30 @@ defmodule YellowDog.Console.DnsLiveTest do
     test "has export button", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dns/acl")
       assert html =~ "Export"
+    end
+
+    test "toolbar actions use native button styling", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/server/dns/acl")
+
+      refute html =~ "<el-dm-button"
+
+      assert has_element?(
+               view,
+               ~s(button.btn.btn-outline.btn-sm[phx-click="export_csv"]),
+               "Export CSV"
+             )
+
+      assert has_element?(
+               view,
+               ~s(button.btn.btn-ghost.btn-sm[phx-click="refresh"][aria-label="Refresh"]),
+               "Refresh"
+             )
+
+      assert has_element?(
+               view,
+               ~s(button.btn.btn-primary.btn-sm[phx-click="show_create_form"]),
+               "Add ACL"
+             )
     end
   end
 
