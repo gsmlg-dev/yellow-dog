@@ -36,7 +36,7 @@ defmodule YellowDog.MixProject do
       # External dependencies for core functionality
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
-      {:concord, github: "gsmlg-dev/concord", branch: "main", override: true},
+      {:concord, "~> 1.1", override: true},
       {:gen_stage, "~> 1.2"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
 
