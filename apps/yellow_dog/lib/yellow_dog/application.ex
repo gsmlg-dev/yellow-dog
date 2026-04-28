@@ -229,6 +229,7 @@ defmodule YellowDog.Application do
   defp service_app_module(:mdns), do: YellowDog.Mdns
   defp service_app_module(:dhcpv4), do: YellowDog.Dhcpv4
   defp service_app_module(:dhcpv6), do: YellowDog.Dhcpv6
+  defp service_app_module(:netboot), do: YellowDog.Netboot.Supervisor
   defp service_app_module(:identity), do: YellowDogIdentity
   defp service_app_module(:netman), do: YellowDog.Netman
 
@@ -330,6 +331,7 @@ defmodule YellowDog.Application do
     # Log enabled services
     case Map.get(config, "core") do
       %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
+        netboot = Map.get(core, "netboot", false)
         netman = Map.get(core, "netman", true)
 
         services = [
@@ -337,6 +339,7 @@ defmodule YellowDog.Application do
           {"mDNS", mdns},
           {"DHCPv4", dhcpv4},
           {"DHCPv6", dhcpv6},
+          {"Netboot", netboot},
           {"NetMan", netman}
         ]
 
@@ -374,6 +377,7 @@ defmodule YellowDog.Application do
       {YellowDog.Mdns, :mdns},
       {YellowDog.Dhcpv4, :dhcpv4},
       {YellowDog.Dhcpv6, :dhcpv6},
+      {YellowDog.Netboot.Supervisor, :netboot},
       {YellowDogIdentity, :identity}
     ]
 
@@ -508,6 +512,15 @@ defmodule YellowDog.Application do
           data_dir: dhcpv6_data_dir
         ]
 
+      :netboot ->
+        tftp_root = resolve_netboot_tftp_root(config, service_config)
+
+        [
+          tftp_port: Map.get(service_config, "tftp_port", Map.get(service_config, "port", 69)),
+          tftp_root: tftp_root,
+          default_profile: Map.get(service_config, "default_profile", "")
+        ]
+
       :identity ->
         data_dir = get_data_dir(config)
         identity_data_dir = Path.join(data_dir, "identity")
@@ -538,12 +551,34 @@ defmodule YellowDog.Application do
   defp resolve_data_dir("/" <> _ = absolute), do: absolute
 
   defp resolve_data_dir(relative) do
-    umbrella_root =
-      Application.app_dir(:yellow_dog)
-      |> Path.join("../..")
-      |> Path.expand()
+    Path.join(umbrella_root(), relative)
+  end
 
-    Path.join(umbrella_root, relative)
+  defp resolve_netboot_tftp_root(config, service_config) do
+    default_root = Path.join(get_data_dir(config), "netboot/tftp")
+
+    service_config
+    |> Map.get("tftp_root", default_root)
+    |> normalize_netboot_tftp_root(default_root)
+  end
+
+  defp normalize_netboot_tftp_root(root, default_root)
+       when root in [nil, "", "data/netboot/tftp"],
+       do: default_root
+
+  defp normalize_netboot_tftp_root(root, _default_root) when is_binary(root) do
+    resolve_config_path(root)
+  end
+
+  defp normalize_netboot_tftp_root(_root, default_root), do: default_root
+
+  defp resolve_config_path("/" <> _ = absolute), do: absolute
+  defp resolve_config_path(relative), do: Path.join(umbrella_root(), relative)
+
+  defp umbrella_root do
+    Application.app_dir(:yellow_dog)
+    |> Path.join("../..")
+    |> Path.expand()
   end
 
   @valid_mdns_modes ~w(hybrid responder browser)
@@ -594,15 +629,18 @@ defmodule YellowDog.Application do
           :mdns -> mdns
           :dhcpv4 -> dhcpv4
           :dhcpv6 -> dhcpv6
+          :netboot -> Map.get(core, "netboot", false)
           other -> Map.get(core, to_string(other), true)
         end
 
       core_config when is_map(core_config) ->
-        Map.get(core_config, to_string(service_name), true)
+        Map.get(core_config, to_string(service_name), default_service_enabled?(service_name))
 
       _ ->
-        # Default to enabled if no configuration is found
-        true
+        default_service_enabled?(service_name)
     end
   end
+
+  defp default_service_enabled?(:netboot), do: false
+  defp default_service_enabled?(_service_name), do: true
 end

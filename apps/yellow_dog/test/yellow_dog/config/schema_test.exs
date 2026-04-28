@@ -64,6 +64,10 @@ defmodule YellowDog.Config.SchemaTest do
     test "includes data_dir" do
       assert Schema.defaults()["data_dir"] == "data"
     end
+
+    test "netboot TFTP root defaults under the data directory" do
+      assert Schema.defaults()["netboot"]["tftp_root"] == "data/netboot/tftp"
+    end
   end
 
   describe "minimal/0" do
@@ -91,6 +95,10 @@ defmodule YellowDog.Config.SchemaTest do
 
       refute Map.has_key?(config["dhcpv4"], "pools")
       refute Map.has_key?(config["dhcpv6"], "pools")
+    end
+
+    test "netboot TFTP root defaults under the data directory" do
+      assert Schema.minimal()["netboot"]["tftp_root"] == "data/netboot/tftp"
     end
   end
 

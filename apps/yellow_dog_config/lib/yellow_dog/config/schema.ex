@@ -25,6 +25,7 @@ defmodule YellowDog.Config.Schema do
         "mdns" => true,
         "dhcpv4" => true,
         "dhcpv6" => true,
+        "netboot" => false,
         "netman" => true
       },
       "dns" => %{
@@ -74,6 +75,11 @@ defmodule YellowDog.Config.Schema do
           "replay_window_seconds" => 300
         }
       },
+      "netboot" => %{
+        "tftp_root" => "data/netboot/tftp",
+        "tftp_port" => 69,
+        "default_profile" => ""
+      },
       "netman" => %{
         "profile_dir" => "/etc/yellowdog/netman/profiles",
         "reconciliation_interval_ms" => 5000,
@@ -93,6 +99,7 @@ defmodule YellowDog.Config.Schema do
         "mdns" => false,
         "dhcpv4" => false,
         "dhcpv6" => false,
+        "netboot" => false,
         "netman" => false
       },
       "dns" => %{
@@ -110,6 +117,10 @@ defmodule YellowDog.Config.Schema do
       "dhcpv6" => %{
         "listen" => "::",
         "port" => 547
+      },
+      "netboot" => %{
+        "tftp_root" => "data/netboot/tftp",
+        "tftp_port" => 69
       }
     }
   end
@@ -166,6 +177,7 @@ defmodule YellowDog.Config.Schema do
       "dhcpv4" => "# DHCPv4 server configuration",
       "dhcpv6" => "# DHCPv6 server configuration",
       "identity" => "# Host Identity Registry configuration",
+      "netboot" => "# Network boot and TFTP configuration",
       "netman" => "# Network Manager configuration"
     }
   end
@@ -188,7 +200,8 @@ defmodule YellowDog.Config.Schema do
     {"dns.port", ["dns", "port"]},
     {"mdns.port", ["mdns", "port"]},
     {"dhcpv4.port", ["dhcpv4", "port"]},
-    {"dhcpv6.port", ["dhcpv6", "port"]}
+    {"dhcpv6.port", ["dhcpv6", "port"]},
+    {"netboot.tftp_port", ["netboot", "tftp_port"]}
   ]
 
   defp validate_ports(errors, config) do
@@ -238,6 +251,7 @@ defmodule YellowDog.Config.Schema do
     {"core.mdns", ["core", "mdns"]},
     {"core.dhcpv4", ["core", "dhcpv4"]},
     {"core.dhcpv6", ["core", "dhcpv6"]},
+    {"core.netboot", ["core", "netboot"]},
     {"core.netman", ["core", "netman"]}
   ]
 

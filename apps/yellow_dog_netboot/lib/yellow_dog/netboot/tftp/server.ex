@@ -41,13 +41,13 @@ defmodule YellowDog.Netboot.TFTP.Server do
 
     FileIndex.init()
 
-    case File.dir?(root) do
-      true ->
+    case ensure_root(root) do
+      :ok ->
         FileIndex.scan(root)
         start_server(port, root)
 
-      false ->
-        Logger.warning("TFTP root #{root} does not exist, server not started")
+      {:error, reason} ->
+        Logger.warning("TFTP root #{root} is unavailable, server not started: #{inspect(reason)}")
         {:ok, %__MODULE__{port: port, root_dir: root, running: false}}
     end
   end
@@ -93,6 +93,18 @@ defmodule YellowDog.Netboot.TFTP.Server do
   end
 
   # --- Private ---
+
+  defp ensure_root(root) when is_binary(root) do
+    with :ok <- File.mkdir_p(root),
+         true <- File.dir?(root) do
+      :ok
+    else
+      false -> {:error, :not_directory}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp ensure_root(root), do: {:error, {:invalid_root, root}}
 
   defp start_server(port, root) do
     case Abyss.Transport.UDP.open(port, active: true) do

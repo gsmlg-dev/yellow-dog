@@ -57,7 +57,7 @@ defmodule YellowDog.Console.SettingsLive.NetbootTab do
               type="text"
               name="service_configuration[tftp_root]"
               value={Ecto.Changeset.get_field(@changeset, :tftp_root)}
-              placeholder="/srv/netboot/tftp"
+              placeholder="data/netboot/tftp"
               class={[
                 "input w-full font-mono",
                 Keyword.has_key?(@changeset.errors, :tftp_root) && "input-error"

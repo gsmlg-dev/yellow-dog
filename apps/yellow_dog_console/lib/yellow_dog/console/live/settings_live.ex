@@ -444,7 +444,7 @@ defmodule YellowDog.Console.SettingsLive do
     %{
       "listen" => "0.0.0.0",
       "port" => 69,
-      "tftp_root" => "/srv/netboot/tftp",
+      "tftp_root" => "data/netboot/tftp",
       "default_profile" => ""
     }
   end

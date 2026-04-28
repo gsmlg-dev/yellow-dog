@@ -57,10 +57,10 @@ defmodule YellowDog.Config do
   def service_enabled?(service) do
     case get("core") do
       core_config when is_map(core_config) ->
-        Map.get(core_config, to_string(service), true)
+        Map.get(core_config, to_string(service), default_service_enabled?(service))
 
       _ ->
-        true
+        default_service_enabled?(service)
     end
   end
 
@@ -204,6 +204,9 @@ defmodule YellowDog.Config do
   end
 
   # Private helper functions
+
+  defp default_service_enabled?(:netboot), do: false
+  defp default_service_enabled?(_service), do: true
 
   defp get_default_service_config(service) do
     case Map.get(@default_config, to_string(service)) do

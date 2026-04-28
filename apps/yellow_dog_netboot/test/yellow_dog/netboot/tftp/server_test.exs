@@ -32,6 +32,23 @@ defmodule YellowDog.Netboot.TFTP.ServerTest do
     <<0, 2, filename::binary, 0, mode::binary, 0>>
   end
 
+  defp blocked_root_path do
+    parent =
+      Path.join(
+        System.tmp_dir!(),
+        "tftp_server_blocked_root_#{System.unique_integer([:positive])}"
+      )
+
+    blocker = Path.join(parent, "blocker")
+    root = Path.join(blocker, "root")
+
+    File.mkdir_p!(parent)
+    File.write!(blocker, "not a directory")
+    on_exit(fn -> File.rm_rf!(parent) end)
+
+    root
+  end
+
   defp start_server(root, opts \\ []) do
     config = Map.merge(%{tftp_port: 0, tftp_root: root}, Map.new(opts))
     name = :"tftp_server_#{System.unique_integer([:positive])}"
@@ -69,10 +86,31 @@ defmodule YellowDog.Netboot.TFTP.ServerTest do
     end
   end
 
+  describe "init/1 with missing root" do
+    test "creates the root directory and starts" do
+      parent =
+        Path.join(
+          System.tmp_dir!(),
+          "tftp_server_missing_root_#{System.unique_integer([:positive])}"
+        )
+
+      root = Path.join(parent, "tftp")
+      on_exit(fn -> File.rm_rf!(parent) end)
+
+      %{server: name} = start_server(root)
+
+      status = GenServer.call(name, :status)
+      assert status.running == true
+      assert status.root_dir == root
+      assert File.dir?(root)
+    end
+  end
+
   describe "init/1 with invalid root" do
     test "starts but reports not running" do
+      blocked_root = blocked_root_path()
       name = :"tftp_server_#{System.unique_integer([:positive])}"
-      config = %{tftp_port: 0, tftp_root: "/nonexistent/tftp/root"}
+      config = %{tftp_port: 0, tftp_root: blocked_root}
 
       {:ok, pid} = GenServer.start_link(Server, [config: config], name: name)
 
@@ -82,12 +120,13 @@ defmodule YellowDog.Netboot.TFTP.ServerTest do
 
       status = GenServer.call(name, :status)
       assert status.running == false
-      assert status.root_dir == "/nonexistent/tftp/root"
+      assert status.root_dir == blocked_root
     end
 
     test "file count is 0 when not running" do
+      blocked_root = blocked_root_path()
       name = :"tftp_server_#{System.unique_integer([:positive])}"
-      config = %{tftp_port: 0, tftp_root: "/nonexistent/root"}
+      config = %{tftp_port: 0, tftp_root: blocked_root}
 
       {:ok, pid} = GenServer.start_link(Server, [config: config], name: name)
 

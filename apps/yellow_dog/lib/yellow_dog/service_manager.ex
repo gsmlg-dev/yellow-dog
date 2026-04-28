@@ -112,16 +112,6 @@ defmodule YellowDog.ServiceManager do
   - `{:error, reason}` if start failed
   """
   @spec start_service(atom()) :: :ok | {:error, term()}
-  def start_service(:netboot) do
-    YellowDog.Config.set_service_enabled(:netboot, true)
-
-    case Application.ensure_all_started(:yellow_dog_netboot) do
-      {:ok, _apps} -> :ok
-      {:error, {_app, {:already_started, _}}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   def start_service(service) when service in @services do
     # Enable the service in config
     YellowDog.Config.set_service_enabled(service, true)
@@ -162,16 +152,6 @@ defmodule YellowDog.ServiceManager do
   - `{:error, reason}` if stop failed
   """
   @spec stop_service(atom()) :: :ok | {:error, term()}
-  def stop_service(:netboot) do
-    YellowDog.Config.set_service_enabled(:netboot, false)
-
-    case Application.stop(:yellow_dog_netboot) do
-      :ok -> :ok
-      {:error, {:not_started, _}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   def stop_service(service) when service in @services do
     # Disable the service in config
     YellowDog.Config.set_service_enabled(service, false)
