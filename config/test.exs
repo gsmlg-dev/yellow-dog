@@ -37,6 +37,9 @@ config :phoenix, :plug_init_mode, :runtime
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
+# WORKAROUND(upstream): gsmlg-dev/concord#8
+config :concord, prometheus_enabled: false
+
 config :logger, :console, level: :debug
 
 # YellowDog Telemetry Configuration for Testing
