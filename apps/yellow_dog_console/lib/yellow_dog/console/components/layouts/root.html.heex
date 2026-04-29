@@ -14,12 +14,6 @@
       rel="stylesheet"
     />
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-    <script>
-      (function() {
-        var t = localStorage.getItem("theme");
-        if (t && t !== "default") document.documentElement.setAttribute("data-theme", t);
-      })();
-    </script>
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>
   </head>

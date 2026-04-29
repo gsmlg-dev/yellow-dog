@@ -24,7 +24,7 @@ defmodule YellowDog.Console.Router do
 
     plug :put_secure_browser_headers, %{
       "content-security-policy" =>
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self'; frame-ancestors 'none'"
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' ws: wss: https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'none'"
     }
 
     plug YellowDog.Console.Plugs.BasicAuth
@@ -154,6 +154,7 @@ defmodule YellowDog.Console.Router do
     live "/logs/identity-audit", IdentityLive.AuditLive
     live "/process-map", ProcessMapLive
     live "/backups", BackupsLive
+    live "/backups/restore", BackupsLive, :restore
     get "/backups/download/:filename", BackupController, :download
 
     # Fingerprint (provider data)

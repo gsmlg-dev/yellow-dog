@@ -40,7 +40,9 @@ defmodule YellowDog.Console.Layouts do
       <.navbar current_user={@current_user} current_path={@current_path} />
 
       <div class="yd-body">
-        <.live_component module={Sidebar} id="app-sidebar" current_path={@current_path} />
+        <%= if @current_path do %>
+          <.live_component module={Sidebar} id="app-sidebar" current_path={@current_path} />
+        <% end %>
 
         <div class="yd-main flex flex-col min-w-0">
           <div class="flex-1 overflow-auto">

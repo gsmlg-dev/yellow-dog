@@ -16,6 +16,9 @@ defmodule YellowDog.Console.BackupsLive do
     {:ok,
      assign(socket,
        page_title: "Backups",
+       page_description: "Create, verify, and restore Concord data backups",
+       show_create_backup: true,
+       empty_backups_message: "No backups found. Create one above.",
        backups: [],
        creating: false,
        restoring: false,
@@ -29,7 +32,7 @@ defmodule YellowDog.Console.BackupsLive do
 
   @impl true
   def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+    {:noreply, assign_page_context(socket)}
   end
 
   @impl true
@@ -39,9 +42,9 @@ defmodule YellowDog.Console.BackupsLive do
       <div class="max-w-7xl">
         <div class="flex justify-between items-center mb-6">
           <div>
-            <h1 class="text-3xl font-bold">Backups</h1>
+            <h1 class="text-3xl font-bold">{@page_title}</h1>
             <p class="text-sm text-on-surface-variant mt-1">
-              Create, verify, and restore Concord data backups
+              {@page_description}
             </p>
           </div>
           <button phx-click="refresh" class="btn btn-ghost btn-sm">
@@ -49,7 +52,7 @@ defmodule YellowDog.Console.BackupsLive do
           </button>
         </div>
 
-        <div class="card bg-surface shadow-xl mb-6">
+        <div :if={@show_create_backup} class="card bg-surface shadow-xl mb-6">
           <div class="card-body">
             <h2 class="card-title text-lg">Create Backup</h2>
             <p class="text-sm text-on-surface-variant">
@@ -140,7 +143,7 @@ defmodule YellowDog.Console.BackupsLive do
             <h2 class="card-title text-lg">Available Backups</h2>
             <%= if @backups == [] do %>
               <p class="text-on-surface-variant py-8 text-center">
-                No backups found. Create one above.
+                {@empty_backups_message}
               </p>
             <% else %>
               <div class="overflow-x-auto">
@@ -166,7 +169,7 @@ defmodule YellowDog.Console.BackupsLive do
                         <td class="text-right">
                           <div class="flex justify-end gap-1">
                             <a
-                              href={"/server/backups/download/#{URI.encode(Path.basename(backup.path))}"}
+                              href={"/system/backups/download/#{URI.encode(Path.basename(backup.path))}"}
                               class="btn btn-ghost btn-xs"
                             >
                               <.dm_mdi name="download" class="h-4 w-4" /> Download
@@ -348,6 +351,24 @@ defmodule YellowDog.Console.BackupsLive do
   end
 
   # --- Helpers ---
+
+  defp assign_page_context(%{assigns: %{live_action: :restore}} = socket) do
+    assign(socket,
+      page_title: "Restore Backup",
+      page_description: "Verify and restore existing Concord data backups",
+      show_create_backup: false,
+      empty_backups_message: "No backups found. Create one from Data Export first."
+    )
+  end
+
+  defp assign_page_context(socket) do
+    assign(socket,
+      page_title: "Backups",
+      page_description: "Create, verify, and restore Concord data backups",
+      show_create_backup: true,
+      empty_backups_message: "No backups found. Create one above."
+    )
+  end
 
   defp load_backups(socket) do
     backups =

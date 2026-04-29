@@ -362,10 +362,21 @@ defmodule YellowDog.Console.Components.Sidebar do
         <span>Process Map</span>
       </.link>
     </li>
+    <!-- Backups -->
+    <li class="nested-menu-title mt-4">Backups</li>
     <li>
-      <.link navigate="/system/backups" class={active?(@current_path, "/system/backups")}>
-        <.dm_mdi name="folder-multiple" class="w-5 h-5" />
-        <span>Backups</span>
+      <.link navigate="/system/backups" class={active?(@current_path, "/system/backups", :exact)}>
+        <.dm_mdi name="database-export" class="w-5 h-5" />
+        <span>Data Export</span>
+      </.link>
+    </li>
+    <li>
+      <.link
+        navigate="/system/backups/restore"
+        class={active?(@current_path, "/system/backups/restore")}
+      >
+        <.dm_mdi name="backup-restore" class="w-5 h-5" />
+        <span>Restore</span>
       </.link>
     </li>
     <!-- Logs -->

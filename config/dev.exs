@@ -34,7 +34,7 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   # Use `ip: {127, 0, 0, 1}` to bind only to localhost.
   http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4270")],
   check_origin: false,
-  code_reloader: true,
+  code_reloader: System.get_env("YELLOW_DOG_CODE_RELOADER") == "true",
   debug_errors: true,
   secret_key_base: "xsqEOmOqmfV082AmjacS5DWwWUPmGhzmBaRFKrW0swiqprhSDd0qU39W6GkVZBCX",
   watchers: [

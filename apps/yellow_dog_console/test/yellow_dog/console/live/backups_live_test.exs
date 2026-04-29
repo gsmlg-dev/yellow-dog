@@ -15,6 +15,19 @@ defmodule YellowDog.Console.BackupsLiveTest do
       {:ok, _view, html} = live(conn, ~p"/system/backups")
       assert html =~ "No backups found"
     end
+
+    test "renders restore menu entry under system backups", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/system/backups")
+
+      assert has_element?(view, "a[href='/system/backups/restore']", "Restore")
+    end
+
+    test "restore menu target mounts the backups restore page", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/system/backups/restore")
+
+      assert html =~ "Restore Backup"
+      assert html =~ "Available Backups"
+    end
   end
 
   describe "BackupsLive events" do

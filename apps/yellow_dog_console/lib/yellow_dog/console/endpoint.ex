@@ -44,7 +44,7 @@ defmodule YellowDog.Console.Endpoint do
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
-    plug Phoenix.CodeReloader
+    plug Phoenix.CodeReloader, reloader: &YellowDog.Console.CodeReloader.reload/2
   end
 
   plug Phoenix.LiveDashboard.RequestLogger,

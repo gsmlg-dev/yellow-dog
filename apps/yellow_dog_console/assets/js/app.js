@@ -11,6 +11,15 @@ import * as DuskmoonHooks from "../../../../deps/phoenix_duskmoon/assets/js/hook
 // crashes before LiveView hooks mount. The console currently uses CSS/HEEx
 // components, so skip custom element registration until the package is fixed.
 
+try {
+  const theme = localStorage.getItem("theme")
+
+  if (theme && theme !== "default") {
+    document.documentElement.setAttribute("data-theme", theme)
+  }
+} catch (_err) {
+}
+
 // Custom Hooks
 let CustomHooks = {}
 
