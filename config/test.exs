@@ -3,7 +3,14 @@ import Config
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :yellow_dog_console, YellowDog.Console.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [
+    ip: {127, 0, 0, 1},
+    port: 4002,
+    thousand_island_options: [
+      num_acceptors: 8,
+      num_connections: 128
+    ]
+  ],
   secret_key_base: "uUZt2Ta9p5DqwqmSNhQH5/S21duMx2BXfCxxwEXhzYdLAlGA/sXXpExoD62eacr6",
   server: false,
   code_reloader: false
