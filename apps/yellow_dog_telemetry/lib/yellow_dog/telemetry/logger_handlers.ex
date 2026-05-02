@@ -40,17 +40,10 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     end
   end
 
-  # Logs to the console AND fires [:yellow_dog, :log, level] so the realtime
-  # log UI (which subscribes via LogBroadcaster) also receives the message.
-  defp log_event(level, app, message_fn) when is_function(message_fn, 0) do
-    message = message_fn.()
-    Logger.log(level, message)
-
-    :telemetry.execute(
-      [:yellow_dog, :log, level],
-      %{system_time: System.system_time(), monotonic_time: System.monotonic_time()},
-      %{message: message, app: app}
-    )
+  # Logs to the console via Logger. The realtime log UI receives events
+  # directly via LogBroadcaster's own telemetry subscription.
+  defp log_event(level, _app, message_fn) when is_function(message_fn, 0) do
+    Logger.log(level, message_fn)
   end
 
   # Handler specifications: {id, events, handler_fn, config}
