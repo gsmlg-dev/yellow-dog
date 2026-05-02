@@ -287,7 +287,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
        ) do
     Logger.log(config.level, fn ->
       msg_type = metadata[:message_type] |> to_string() |> String.upcase()
-      "DHCPv4 #{msg_type}: #{metadata[:client_mac]}"
+      "DHCPv4 #{msg_type}: #{format_mac(metadata[:client_mac])}"
     end)
   end
 
@@ -300,7 +300,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     Logger.log(config.level, fn ->
       lease_time = measurements[:lease_time] || 0
 
-      "DHCPv4 lease granted: #{format_ip(metadata[:ip_address])} to #{metadata[:client_mac]} (#{lease_time}s)"
+      "DHCPv4 lease granted: #{format_ip(metadata[:ip_address])} to #{format_mac(metadata[:client_mac])} (#{lease_time}s)"
     end)
   end
 
@@ -311,7 +311,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          config
        ) do
     Logger.log(config.level, fn ->
-      "DHCPv4 lease released: #{format_ip(metadata[:ip_address])} from #{metadata[:client_mac]}"
+      "DHCPv4 lease released: #{format_ip(metadata[:ip_address])} from #{format_mac(metadata[:client_mac])}"
     end)
   end
 
@@ -334,7 +334,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          _config
        ) do
     Logger.log(:warning, fn ->
-      "DHCPv4 lease declined: #{format_ip(metadata[:ip_address])} by #{metadata[:client_mac]}"
+      "DHCPv4 lease declined: #{format_ip(metadata[:ip_address])} by #{format_mac(metadata[:client_mac])}"
     end)
   end
 
@@ -1029,6 +1029,12 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   @spec format_mac(binary() | String.t() | nil) :: String.t()
   def format_mac(nil), do: "unknown"
 
+  # DHCP chaddr is 16 bytes — Ethernet MAC occupies the first 6, rest are zeros
+  def format_mac(mac) when is_binary(mac) and byte_size(mac) == 16 do
+    <<mac_bytes::binary-size(6), _::binary>> = mac
+    format_mac(mac_bytes)
+  end
+
   def format_mac(mac) when is_binary(mac) and byte_size(mac) == 6 do
     mac
     |> :binary.bin_to_list()
@@ -1036,7 +1042,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     |> String.upcase()
   end
 
-  def format_mac(mac) when is_binary(mac), do: mac
+  def format_mac(mac) when is_binary(mac), do: inspect(mac)
   def format_mac(_), do: "unknown"
 
   @doc """

@@ -291,7 +291,9 @@ defmodule YellowDog.Application do
         YellowDog.Config.Schema.defaults()
       end
 
-    maybe_adjust_for_test(config)
+    config
+    |> maybe_adjust_for_test()
+    |> maybe_adjust_for_platform()
   end
 
   # In test environment, disable most services and use default ports
@@ -308,6 +310,17 @@ defmodule YellowDog.Application do
     end
   else
     defp maybe_adjust_for_test(config), do: config
+  end
+
+  # Adjust configuration based on the runtime platform.
+  # When :netman_enabled is explicitly set to false (e.g. on macOS via runtime.exs),
+  # force core.netman to false so the service is never started.
+  defp maybe_adjust_for_platform(config) do
+    if Application.get_env(:yellow_dog, :netman_enabled) == false do
+      put_in(config, ["core", "netman"], false)
+    else
+      config
+    end
   end
 
   # Logs configuration information

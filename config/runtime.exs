@@ -125,9 +125,14 @@ get_cli_arg = fn arg_name ->
   end
 end
 
-# Default configuration fallback
+# Default configuration fallback.
+# In dev, use the same config file edited by the console settings page.
 default_config_path =
-  Path.expand("../apps/yellow_dog/priv/yellowdogdns_default_config.toml", __DIR__)
+  if config_env() == :dev do
+    Path.expand("../priv/yellowdogdns_default_config.toml", __DIR__)
+  else
+    Path.expand("../apps/yellow_dog/priv/yellowdogdns_default_config.toml", __DIR__)
+  end
 
 # Determine which config file to use (CLI > ENV > default)
 # Priority: --config CLI arg > YELLOW_DOG_CONFIG env > default
@@ -154,6 +159,12 @@ data_dir =
 
 # Store data directory in application config (nil means use config file value or default)
 config :yellow_dog, :data_dir, data_dir
+
+# Disable NetMan on macOS — it relies on Linux kernel interfaces (netlink, etc.)
+# that are not available on macOS.
+if :os.type() == {:unix, :darwin} do
+  config :yellow_dog, :netman_enabled, false
+end
 
 # NetMan configuration from environment
 if profile_dir = System.get_env("YELLOW_DOG_NETMAN_PROFILE_DIR") do
