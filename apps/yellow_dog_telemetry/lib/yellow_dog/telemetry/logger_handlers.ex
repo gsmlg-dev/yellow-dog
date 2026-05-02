@@ -40,6 +40,19 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     end
   end
 
+  # Logs to the console AND fires [:yellow_dog, :log, level] so the realtime
+  # log UI (which subscribes via LogBroadcaster) also receives the message.
+  defp log_event(level, app, message_fn) when is_function(message_fn, 0) do
+    message = message_fn.()
+    Logger.log(level, message)
+
+    :telemetry.execute(
+      [:yellow_dog, :log, level],
+      %{system_time: System.system_time(), monotonic_time: System.monotonic_time()},
+      %{message: message, app: app}
+    )
+  end
+
   # Handler specifications: {id, events, handler_fn, config}
   # Each entry drives one :telemetry.attach_many/4 call in attach_all/0.
   @handler_specs [
@@ -195,7 +208,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       "DNS query: #{metadata[:query_name]} (#{metadata[:query_type]}) from #{format_ip(metadata[:client_ip])}"
     end)
   end
@@ -206,7 +219,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       duration = format_duration(measurements[:duration_us])
       answer_count = measurements[:answer_count] || 0
 
@@ -215,25 +228,25 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   end
 
   defp do_handle_dns_event([:yellow_dog, :dns, :query, :error], _measurements, metadata, _config) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog_dns, fn ->
       "DNS error: #{metadata[:query_name]} -> #{inspect(metadata[:error])}"
     end)
   end
 
   defp do_handle_dns_event([:yellow_dog, :dns, :cache, :hit], _measurements, metadata, _config) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       "DNS cache hit: #{metadata[:query_name]} (TTL: #{metadata[:ttl]}s)"
     end)
   end
 
   defp do_handle_dns_event([:yellow_dog, :dns, :cache, :miss], _measurements, metadata, _config) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       "DNS cache miss: #{metadata[:query_name]}"
     end)
   end
 
   defp do_handle_dns_event([:yellow_dog, :dns, :zone, :loaded], measurements, metadata, config) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       records = measurements[:record_count] || 0
       time_ms = measurements[:load_time_ms] || 0
       "DNS zone loaded: #{metadata[:zone_name]} (#{records} records, #{time_ms}ms)"
@@ -241,7 +254,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   end
 
   defp do_handle_dns_event([:yellow_dog, :dns, :zone, :error], _measurements, metadata, _config) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog_dns, fn ->
       "DNS zone error: #{metadata[:zone_name]} -> #{inspect(metadata[:error])}"
     end)
   end
@@ -252,7 +265,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       "DNS server started on #{format_ip(metadata[:listen_address])}:#{metadata[:port]}"
     end)
   end
@@ -263,7 +276,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       "DNS server stopped: #{metadata[:reason]}"
     end)
   end
@@ -285,7 +298,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv4, fn ->
       msg_type = metadata[:message_type] |> to_string() |> String.upcase()
       "DHCPv4 #{msg_type}: #{format_mac(metadata[:client_mac])}"
     end)
@@ -297,7 +310,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv4, fn ->
       lease_time = measurements[:lease_time] || 0
 
       "DHCPv4 lease granted: #{format_ip(metadata[:ip_address])} to #{format_mac(metadata[:client_mac])} (#{lease_time}s)"
@@ -310,7 +323,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv4, fn ->
       "DHCPv4 lease released: #{format_ip(metadata[:ip_address])} from #{format_mac(metadata[:client_mac])}"
     end)
   end
@@ -321,7 +334,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv4, fn ->
       count = measurements[:count] || 1
       "DHCPv4 leases expired: #{count} leases in pool #{metadata[:pool_name]}"
     end)
@@ -333,7 +346,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:warning, fn ->
+    log_event(:warning, :yellow_dog_dhcpv4, fn ->
       "DHCPv4 lease declined: #{format_ip(metadata[:ip_address])} by #{format_mac(metadata[:client_mac])}"
     end)
   end
@@ -344,7 +357,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv4, fn ->
       pool_count = metadata[:pool_count] || 0
 
       "DHCPv4 server started on #{format_ip(metadata[:listen_address])}:#{metadata[:port]} (#{pool_count} pools)"
@@ -357,7 +370,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv4, fn ->
       "DHCPv4 server stopped: #{metadata[:reason]}"
     end)
   end
@@ -379,7 +392,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv6, fn ->
       msg_type = metadata[:message_type] |> to_string() |> String.upcase()
       duid_hex = format_duid(metadata[:duid])
       "DHCPv6 #{msg_type}: DUID #{duid_hex}"
@@ -392,7 +405,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv6, fn ->
       valid_lifetime = measurements[:valid_lifetime] || 0
       duid_hex = format_duid(metadata[:duid])
 
@@ -406,7 +419,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv6, fn ->
       duid_hex = format_duid(metadata[:duid])
       "DHCPv6 lease released: #{format_ipv6(metadata[:ip_address])} from DUID #{duid_hex}"
     end)
@@ -418,7 +431,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv6, fn ->
       count = measurements[:count] || 1
       "DHCPv6 leases expired: #{count} leases in pool #{metadata[:pool_name]}"
     end)
@@ -430,7 +443,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:warning, fn ->
+    log_event(:warning, :yellow_dog_dhcpv6, fn ->
       duid_hex = format_duid(metadata[:duid])
       "DHCPv6 lease declined: #{format_ipv6(metadata[:ip_address])} by DUID #{duid_hex}"
     end)
@@ -442,7 +455,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv6, fn ->
       pool_count = metadata[:pool_count] || 0
 
       "DHCPv6 server started on [#{format_ipv6(metadata[:listen_address])}]:#{metadata[:port]} (#{pool_count} pools)"
@@ -455,7 +468,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dhcpv6, fn ->
       "DHCPv6 server stopped: #{metadata[:reason]}"
     end)
   end
@@ -477,7 +490,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       "mDNS service registered: #{metadata[:service_name]} (#{metadata[:service_type]}) on port #{metadata[:port]}"
     end)
   end
@@ -488,7 +501,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       "mDNS service unregistered: #{metadata[:service_name]} (#{metadata[:service_type]})"
     end)
   end
@@ -499,7 +512,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       "mDNS service announced: #{metadata[:service_name]}"
     end)
   end
@@ -510,7 +523,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       unicast = if metadata[:is_unicast], do: " (unicast)", else: ""
 
       "mDNS query: #{metadata[:query_name]} (#{metadata[:query_type]}) from #{format_ip(metadata[:source_ip])}#{unicast}"
@@ -523,7 +536,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       record_count = measurements[:record_count] || 0
       response_type = metadata[:response_type] || :multicast
       "mDNS response sent: #{record_count} records (#{response_type})"
@@ -536,7 +549,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       mode = metadata[:mode] || :responder
 
       "mDNS server started on #{format_ip(metadata[:multicast_address])}:#{metadata[:port]} (mode: #{mode})"
@@ -549,7 +562,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       "mDNS server stopped: #{metadata[:reason]}"
     end)
   end
@@ -566,14 +579,14 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   end
 
   defp do_handle_service_event([:yellow_dog, :service, :started], metadata, config) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog, fn ->
       service = metadata[:service] |> to_string() |> String.upcase()
       "Service started: #{service}"
     end)
   end
 
   defp do_handle_service_event([:yellow_dog, :service, :stopped], metadata, config) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog, fn ->
       service = metadata[:service] |> to_string() |> String.upcase()
       "Service stopped: #{service}"
     end)
@@ -596,7 +609,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       "DNS query start: #{metadata[:query_name]} (#{metadata[:query_type]})"
     end)
   end
@@ -607,7 +620,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       duration = format_duration_ms(measurements[:duration_ms])
       "DNS query complete: #{metadata[:query_name]} -> #{metadata[:result]} (#{duration})"
     end)
@@ -619,7 +632,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       duration = format_duration_ms(measurements[:duration_ms])
 
       "DNS forward: #{metadata[:query_name]} to #{metadata[:upstream]} -> #{metadata[:result]} (#{duration})"
@@ -632,7 +645,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:warning, fn ->
+    log_event(:warning, :yellow_dog_dns, fn ->
       "DNS forward error: #{metadata[:query_name]} to #{metadata[:upstream]} -> #{inspect(metadata[:reason])}"
     end)
   end
@@ -643,7 +656,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       duration = format_duration_ms(measurements[:duration_ms])
       iterations = measurements[:iteration_count] || 0
 
@@ -657,7 +670,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:warning, fn ->
+    log_event(:warning, :yellow_dog_dns, fn ->
       "DNS recursive error: #{metadata[:query_name]} -> #{inspect(metadata[:reason])}"
     end)
   end
@@ -668,7 +681,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       iteration = measurements[:iteration] || 0
       "DNS iterate: #{metadata[:query_name]} iteration #{iteration} -> #{metadata[:server]}"
     end)
@@ -680,7 +693,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       "DNS referral: #{metadata[:query_name]} -> #{metadata[:zone]} (#{metadata[:ns_count]} nameservers)"
     end)
   end
@@ -691,7 +704,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       ttl = measurements[:ttl] || 0
       "DNS cache store: #{metadata[:query_name]} (#{metadata[:query_type]}) TTL #{ttl}s"
     end)
@@ -703,7 +716,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          _metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       removed = measurements[:entries_removed] || 0
       remaining = measurements[:entries_remaining] || 0
       duration = format_duration_ms(measurements[:duration_ms])
@@ -717,7 +730,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:debug, fn ->
+    log_event(:debug, :yellow_dog_dns, fn ->
       count = measurements[:count] || 1
       "DNS cache expired: #{count} entries for #{metadata[:query_name]}"
     end)
@@ -740,7 +753,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       duration = format_duration_ms(measurements[:duration_ms])
       "Root zone fetch: #{metadata[:source_url]} -> #{metadata[:result]} (#{duration})"
     end)
@@ -752,7 +765,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog_dns, fn ->
       "Root zone fetch error: #{metadata[:source_url]} -> #{inspect(metadata[:reason])}"
     end)
   end
@@ -763,7 +776,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       zone_count = measurements[:zone_count] || 0
       "Root zone update: #{zone_count} zones loaded (version: #{metadata[:version] || "unknown"})"
     end)
@@ -775,7 +788,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_dns, fn ->
       ns_count = measurements[:ns_count] || 0
       "Root zone loaded: #{ns_count} root nameservers from #{metadata[:source] || "unknown"}"
     end)
@@ -798,7 +811,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog, fn ->
       version = metadata[:version] || "unknown"
       env = metadata[:environment] || :unknown
       "Application started: YellowDog v#{version} (#{env})"
@@ -811,7 +824,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog, fn ->
       uptime = format_duration_ms(measurements[:uptime_ms])
       reason = metadata[:reason] || :normal
       "Application stopped: #{reason} (uptime: #{uptime})"
@@ -824,7 +837,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog, fn ->
       "Application error: #{inspect(metadata[:reason])}"
     end)
   end
@@ -841,7 +854,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   end
 
   defp do_handle_config_event([:yellow_dog, :config, :loaded], metadata, config) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog, fn ->
       file = metadata[:config_file] || "default"
       services = metadata[:services_enabled] || []
       "Config loaded: #{file} (services: #{Enum.join(services, ", ")})"
@@ -849,14 +862,14 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   end
 
   defp do_handle_config_event([:yellow_dog, :config, :error], metadata, _config) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog, fn ->
       file = metadata[:config_file] || "unknown"
       "Config error: #{file} -> #{inspect(metadata[:reason])}"
     end)
   end
 
   defp do_handle_config_event([:yellow_dog, :config, :validated], metadata, config) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog, fn ->
       "Config validated: #{metadata[:config_file] || "default"}"
     end)
   end
@@ -878,7 +891,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_console, fn ->
       duration = format_duration_ms(measurements[:duration_ms])
       services = metadata[:services_loaded] || []
       "Console dashboard load: #{length(services)} services (#{duration})"
@@ -891,7 +904,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog_console, fn ->
       "Console dashboard error: #{inspect(metadata[:reason])}"
     end)
   end
@@ -902,7 +915,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:warning, fn ->
+    log_event(:warning, :yellow_dog_console, fn ->
       "Console dashboard status error: #{metadata[:error]}"
     end)
   end
@@ -913,7 +926,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_console, fn ->
       setting = metadata[:setting] || "unknown"
       "Console settings update: #{setting} -> #{metadata[:result] || :success}"
     end)
@@ -925,7 +938,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog_console, fn ->
       setting = metadata[:setting] || "unknown"
       "Console settings error: #{setting} -> #{inspect(metadata[:reason])}"
     end)
@@ -937,7 +950,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog_console, fn ->
       "Console settings config load error: #{metadata[:reason]}"
     end)
   end
@@ -948,7 +961,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          config
        ) do
-    Logger.log(config.level, fn ->
+    log_event(config.level, :yellow_dog_console, fn ->
       service = metadata[:service] || "unknown"
       action = metadata[:action] || "unknown"
       "Console service action: #{action} on #{service}"
@@ -967,7 +980,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   end
 
   defp do_handle_infrastructure_event([:ex_dns, :error], _measurements, metadata, _config) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog, fn ->
       error_type = metadata[:error_type] || :unknown
       "DNS protocol error: #{error_type} -> #{inspect(metadata[:reason])}"
     end)
@@ -979,7 +992,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
          metadata,
          _config
        ) do
-    Logger.log(:error, fn ->
+    log_event(:error, :yellow_dog, fn ->
       error_type = metadata[:error_type] || :unknown
       source = metadata[:source] || :unknown
       reason = metadata[:reason] || "unknown"
