@@ -10,8 +10,10 @@ Yellow Dog DNS is a distributed DNS and DHCP server written in Elixir/Erlang. It
 - **mDNS Responder** - Multicast DNS with service discovery and registration
 - **DHCPv4 Server** - Full DHCPv4 implementation with lease management
 - **DHCPv6 Server** - Full DHCPv6 implementation with DUID-based identification
+- **Netboot Server** - TFTP protocol implementation for PXE network booting
+- **Device Identity** - Device fingerprinting and identification
+- **Distributed Store** - Distributed data storage for configuration and state
 - **Web Console** - Phoenix LiveView dashboard with real-time monitoring
-- **Service Diagnostics** - Built-in diagnostic tools for DNS/mDNS/DHCP queries
 
 ## Quick Start
 
@@ -38,20 +40,28 @@ mix phx.server
 | mDNS    | 5353 | UDP (multicast) |
 | DHCPv4  | 67   | UDP      |
 | DHCPv6  | 547  | UDP      |
+| TFTP    | 69   | UDP      |
 | Web Console | 4270 | HTTP |
 
 ## Architecture
 
-Yellow Dog DNS is organized as an Elixir umbrella project with 10 applications:
+Yellow Dog DNS is organized as an Elixir umbrella project with 20 applications:
 
 ### Core Applications
 
-- **YellowDog** - Core application with configuration management and orchestration
+- **YellowDog** - Core application with orchestration
+- **YellowDog.Store** - Distributed data store for configuration and state
+- **YellowDog.Config** - Configuration management
 - **YellowDog.Telemetry** - Centralized telemetry and metrics functionality
 - **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
 - **YellowDog.Dhcpv4** - DHCPv4 protocol implementation with full lease management
 - **YellowDog.Dhcpv6** - DHCPv6 protocol implementation with full lease management
 - **YellowDog.Mdns** - mDNS responder with service discovery and registration
+- **YellowDog.Netboot** - TFTP server and network booting support
+- **YellowDog.Identity** - Device identity management
+- **YellowDog.Fingerprint** - Device fingerprinting
+- **YellowDog.Netman** - Network manager and DHCP client functionality
+- **YellowDog.Resolved** - DNS resolution integration
 - **YellowDogConsole** - Phoenix LiveView web console with DaisyUI
 
 ### Infrastructure Libraries
@@ -59,6 +69,7 @@ Yellow Dog DNS is organized as an Elixir umbrella project with 10 applications:
 - **abyss** - High-performance pure Elixir UDP server library
 - **ex_dns** - Pure Elixir DNS protocol library (resource records, zone management)
 - **ex_dhcp** - Pure Elixir DHCP protocol library (DHCPv4/v6 message handling)
+- **geo_ip_db** - GeoIP database integration
 
 ## Configuration
 
@@ -162,15 +173,24 @@ data/                           # Runtime data (not version controlled)
 yellow_dog/                     # Umbrella project root
 ├── apps/                       # Application directory
 │   ├── yellow_dog/             # Core application
+│   ├── yellow_dog_store/       # Distributed data store
+│   ├── yellow_dog_config/      # Configuration management
 │   ├── yellow_dog_telemetry/   # Telemetry package
 │   ├── yellow_dog_dns/         # DNS functionality
 │   ├── yellow_dog_dhcpv4/      # DHCPv4 protocol
 │   ├── yellow_dog_dhcpv6/      # DHCPv6 protocol
 │   ├── yellow_dog_mdns/        # mDNS functionality
+│   ├── yellow_dog_netboot/     # TFTP server
+│   ├── yellow_dog_identity/    # Device identity
+│   ├── yellow_dog_fingerprint/ # Device fingerprinting
+│   ├── yellow_dog_netman/      # Network manager
+│   ├── yellow_dog_dhcp_client/ # DHCP client
+│   ├── yellow_dog_resolved/    # DNS resolution integration
 │   ├── yellow_dog_console/     # Phoenix web console
 │   ├── abyss/                  # UDP server library
 │   ├── ex_dns/                 # DNS protocol library
-│   └── ex_dhcp/                # DHCP protocol library
+│   ├── ex_dhcp/                # DHCP protocol library
+│   └── geo_ip_db/              # GeoIP database
 ├── e2e_test/                   # End-to-end tests
 ├── config/                     # Configuration files
 ├── priv/                       # Static assets
@@ -209,6 +229,7 @@ mix test.e2e.dns
 mix test.e2e.mdns
 mix test.e2e.dhcpv4
 mix test.e2e.dhcpv6
+mix test.e2e.netboot
 ```
 
 ### Building
