@@ -297,7 +297,7 @@ defmodule YellowDog.Console.Components.Sidebar do
     <li>
       <.link navigate="/tool/geoip" class={active?(@current_path, "/tool/geoip")}>
         <.dm_mdi name="earth" class="w-5 h-5" />
-        <span>GeoIP Lookup</span>
+        <span>IP Geo Lookup</span>
       </.link>
     </li>
     <li>

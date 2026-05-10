@@ -12,7 +12,7 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
 
     {:ok,
      assign(socket,
-       page_title: "GeoIP Lookup",
+       page_title: "IP Geo Lookup",
        query: "",
        result: nil,
        error: nil,
@@ -25,7 +25,7 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="max-w-4xl">
-        <h1 class="text-2xl font-bold mb-4">GeoIP Lookup</h1>
+        <h1 class="text-2xl font-bold mb-4">IP Geo Lookup</h1>
 
         <form phx-submit="lookup" class="flex gap-2 mb-6">
           <input

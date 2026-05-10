@@ -114,12 +114,18 @@ defmodule YellowDog.Console.LogBroadcaster do
 
   @impl true
   def init(_opts) do
-    :telemetry.attach_many(
-      "yellow-dog-log-broadcaster",
-      @protocol_events,
-      &__MODULE__.handle_telemetry_event/4,
-      %{}
-    )
+    # Detach any stale handler from a previous run/reload
+    :telemetry.detach("yellow-dog-log-broadcaster")
+
+    result =
+      :telemetry.attach_many(
+        "yellow-dog-log-broadcaster",
+        @protocol_events,
+        &__MODULE__.handle_telemetry_event/4,
+        %{}
+      )
+
+    IO.puts("[LogBroadcaster] attached #{length(@protocol_events)} events: #{inspect(result)}")
 
     {:ok, %{}}
   end
@@ -150,7 +156,9 @@ defmodule YellowDog.Console.LogBroadcaster do
         )
     end
   rescue
-    _ -> :ok
+    e ->
+      IO.puts("[LogBroadcaster] ERROR in handler: #{inspect(e)} for event #{inspect(event)}")
+      :ok
   end
 
   # ── Explicit log events from YellowDog.Telemetry.log/3 ────────────────────

@@ -27,6 +27,14 @@ code, pre, .font-mono { font-family: var(--font-mono); }
 
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* WORKAROUND(upstream): duskmoon-dev/phoenix-duskmoon-ui#29
+   dm_mdi SVGs need intrinsic dimensions so missed utility sizing cannot stretch controls. */
+:where(svg[viewBox="0 0 24 24"][aria-hidden="true"]:not([width]):not([height])) {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
 /* App layout: appbar on top, sidebar + main below */
 .yd-layout {
   display: flex;

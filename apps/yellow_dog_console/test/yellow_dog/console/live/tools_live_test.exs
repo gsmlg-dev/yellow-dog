@@ -3,14 +3,14 @@ defmodule YellowDog.Console.ToolsLiveTest do
   import Phoenix.LiveViewTest
 
   # ============================================================================
-  # GeoIP Lookup Page
+  # IP Geo Lookup Page
   # ============================================================================
 
-  describe "GeoIP Lookup page" do
+  describe "IP Geo Lookup page" do
     test "mounts with input form", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/tool/geoip")
 
-      assert html =~ "GeoIP Lookup"
+      assert html =~ "IP Geo Lookup"
       assert html =~ "Enter IP address"
     end
 
@@ -49,8 +49,8 @@ defmodule YellowDog.Console.ToolsLiveTest do
     test "shows database info section", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/tool/geoip")
 
-      # Database info may or may not show depending on whether GeoIP DB is loaded
-      assert html =~ "GeoIP Lookup"
+      # Database info may or may not show depending on whether the IP DB is loaded
+      assert html =~ "IP Geo Lookup"
     end
 
     test "whitespace-only input is treated as empty", %{conn: conn} do
