@@ -273,6 +273,60 @@ defmodule YellowDog.Mdns.NetworkMonitorTest do
       assert {192, 168, 1, 50} in service.addresses
     end
 
+    test "discovers service from parsed DNS record data structs" do
+      ptr_record = %Record{
+        name: DNS.Message.Domain.new("_http._tcp.local"),
+        type: DNS.ResourceRecordType.new(:ptr),
+        class: :IN,
+        ttl: 4500,
+        data: DNS.Message.Record.Data.PTR.new("webserver._http._tcp.local")
+      }
+
+      srv_record = %Record{
+        name: DNS.Message.Domain.new("webserver._http._tcp.local"),
+        type: DNS.ResourceRecordType.new(:srv),
+        class: :IN,
+        ttl: 4500,
+        data: DNS.Message.Record.Data.SRV.new({0, 0, 8080, "webserver.local"})
+      }
+
+      txt_record = %Record{
+        name: DNS.Message.Domain.new("webserver._http._tcp.local"),
+        type: DNS.ResourceRecordType.new(:txt),
+        class: :IN,
+        ttl: 4500,
+        data: DNS.Message.Record.Data.TXT.new(["path=/api"])
+      }
+
+      a_record = %Record{
+        name: DNS.Message.Domain.new("webserver.local"),
+        type: DNS.ResourceRecordType.new(:a),
+        class: :IN,
+        ttl: 4500,
+        data: DNS.Message.Record.Data.A.new({192, 168, 1, 50})
+      }
+
+      message =
+        create_dns_message(
+          answers: [ptr_record, srv_record, txt_record],
+          additional: [a_record]
+        )
+
+      NetworkMonitor.cache_response(message, {192, 168, 1, 50}, 5353)
+      assert %{} = :sys.get_state(NetworkMonitor)
+
+      assert [
+               %{
+                 name: "webserver",
+                 type: "_http._tcp.local.",
+                 host: "webserver.local.",
+                 port: 8080,
+                 txt_records: %{"path" => "/api"},
+                 addresses: [{192, 168, 1, 50}]
+               }
+             ] = NetworkMonitor.list_discovered_services()
+    end
+
     test "get_discovered_service/1 returns specific service" do
       ptr_record = create_ptr_record("_http._tcp.local", "myservice._http._tcp.local")
       srv_record = create_srv_record("myservice._http._tcp.local", "host.local", 80)
@@ -284,6 +338,31 @@ defmodule YellowDog.Mdns.NetworkMonitorTest do
       service = NetworkMonitor.get_discovered_service("myservice._http._tcp.local")
       assert service != nil
       assert service.name == "myservice"
+    end
+
+    test "updates repeated service announcements without duplicating the service row" do
+      ptr_record = create_ptr_record("_hap._tcp.local", "Aqara Hub-537B 6._hap._tcp.local")
+      srv_record = create_srv_record("Aqara Hub-537B 6._hap._tcp.local", "aqara.local", 4567)
+      a_record = create_a_record("aqara.local", {10, 100, 10, 66})
+
+      message = create_dns_message(answers: [ptr_record, srv_record], additional: [a_record])
+
+      NetworkMonitor.cache_response(message, {10, 100, 10, 66}, 5353)
+      assert %{} = :sys.get_state(NetworkMonitor)
+
+      NetworkMonitor.cache_response(message, {10, 100, 10, 66}, 5353)
+      assert %{} = :sys.get_state(NetworkMonitor)
+
+      NetworkMonitor.cache_response(message, {10, 100, 10, 66}, 5353)
+      assert %{} = :sys.get_state(NetworkMonitor)
+
+      assert [
+               %{
+                 service_id: "Aqara Hub-537B 6._hap._tcp.local",
+                 response_count: 3,
+                 source_ips: [{10, 100, 10, 66}]
+               }
+             ] = NetworkMonitor.list_discovered_services()
     end
 
     test "get_discovered_service/1 returns nil for unknown service" do

@@ -12,7 +12,8 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   @response_table :mdns_responses
   @query_table :mdns_queries
   @services_table :mdns_discovered_services
-  @ets_options [:named_table, :public, :bag, read_concurrency: true, write_concurrency: true]
+  @bag_ets_options [:named_table, :public, :bag, read_concurrency: true, write_concurrency: true]
+  @set_ets_options [:named_table, :public, :set, read_concurrency: true, write_concurrency: true]
 
   # Cleanup every 5 minutes
   @cleanup_interval 300_000
@@ -334,9 +335,13 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   # Private functions
 
   defp init_tables do
-    for table <- [@response_table, @query_table, @services_table] do
+    for {table, options} <- [
+          {@response_table, @bag_ets_options},
+          {@query_table, @bag_ets_options},
+          {@services_table, @set_ets_options}
+        ] do
       try do: :ets.delete(table), catch: (_, _ -> :ok)
-      :ets.new(table, @ets_options)
+      :ets.new(table, options)
     end
 
     :ok
@@ -469,8 +474,10 @@ defmodule YellowDog.Mdns.NetworkMonitor do
           to_string(record.type) == "TXT" and to_string(record.name) == service_instance
         end)
 
+      srv_data = if srv_record, do: parse_srv_data(srv_record.data)
+
       # Find A/AAAA records
-      host = if srv_record, do: to_string(srv_record.data.target)
+      host = if srv_data, do: srv_data.host
 
       addresses =
         if host do
@@ -478,12 +485,13 @@ defmodule YellowDog.Mdns.NetworkMonitor do
           |> Enum.filter(fn record ->
             to_string(record.type) in ["A", "AAAA"] and to_string(record.name) == host
           end)
-          |> Enum.map(& &1.data)
+          |> Enum.map(&address_data(&1.data))
+          |> Enum.reject(&is_nil/1)
         else
           []
         end
 
-      if srv_record do
+      if srv_data do
         [
           %{
             service_id: service_instance,
@@ -491,7 +499,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
             type: service_type,
             domain: "local",
             host: host,
-            port: srv_record.data.port,
+            port: srv_data.port,
             txt_records: parse_txt_records(txt_record),
             addresses: addresses,
             timestamp: now,
@@ -503,6 +511,24 @@ defmodule YellowDog.Mdns.NetworkMonitor do
       end
     end)
   end
+
+  defp parse_srv_data(%{data: {_priority, _weight, port, target}}) do
+    %{host: to_string(target), port: port}
+  end
+
+  defp parse_srv_data(%{target: target, port: port}) do
+    %{host: to_string(target), port: port}
+  end
+
+  defp parse_srv_data({_priority, _weight, port, target}) do
+    %{host: to_string(target), port: port}
+  end
+
+  defp parse_srv_data(_data), do: nil
+
+  defp address_data(%{data: address}) when is_tuple(address), do: address
+  defp address_data(address) when is_tuple(address), do: address
+  defp address_data(_data), do: nil
 
   defp extract_service_name(service_instance) do
     # service_instance is like "My Service._http._tcp.local"
@@ -516,17 +542,24 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
   defp parse_txt_records(txt_record) do
     case txt_record.data do
+      %{data: list} when is_list(list) ->
+        parse_txt_list(list)
+
       list when is_list(list) ->
-        Map.new(list, fn str ->
-          case String.split(str, "=", parts: 2) do
-            [key, value] -> {key, value}
-            [key] -> {key, ""}
-          end
-        end)
+        parse_txt_list(list)
 
       _ ->
         %{}
     end
+  end
+
+  defp parse_txt_list(list) do
+    Map.new(list, fn str ->
+      case String.split(str, "=", parts: 2) do
+        [key, value] -> {key, value}
+        [key] -> {key, ""}
+      end
+    end)
   end
 
   defp update_or_create_service(service_info) do
