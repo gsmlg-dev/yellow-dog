@@ -111,6 +111,20 @@ config :abyss,
 # In production, remove this config to enable NIF compilation.
 config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native, skip_compilation?: true
 
+# macOS does not provide Linux netlink or the production DHCP socket setup.
+# Keep Netman bootable in dev with mock kernel state and writable local paths.
+if :os.type() == {:unix, :darwin} do
+  netman_dir = Path.join([System.tmp_dir!(), "yellowdog", "netman"])
+
+  config :yellow_dog_netman,
+    netlink_backend: :mock,
+    profile_dir: Path.join(netman_dir, "profiles"),
+    socket_path: Path.join(netman_dir, "netman.sock")
+
+  config :yellow_dog_dhcp_client,
+    socket_impl: YellowDog.DhcpClient.DhcpSocket.UdpFallback
+end
+
 # Resolved: disable in dev (requires privileged port 53)
 config :yellow_dog_resolved, enabled: false
 

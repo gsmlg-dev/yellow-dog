@@ -39,6 +39,14 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
       assert is_binary(path)
       assert path == "data/dns" or is_binary(path)
     end
+
+    test "falls back when YellowDog.Config process is stopped" do
+      Application.stop(:yellow_dog)
+      on_exit(fn -> Application.ensure_all_started(:yellow_dog) end)
+
+      refute Process.whereis(YellowDog.Config)
+      assert ConfigPersistence.default_data_path() == "data/dns"
+    end
   end
 
   describe "zones_path/2" do

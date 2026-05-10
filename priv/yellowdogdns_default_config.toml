@@ -1,38 +1,27 @@
+# Yellow Dog Configuration
+# Managed by YellowDog Console — manual edits may be overwritten on save
+
 [core]
-dns = true
-mdns = true
 dhcpv4 = true
 dhcpv6 = true
-netboot = false
-
-[dns]
-listen = "0.0.0.0"
-port = 53
-tcp_enabled = true
-debug = false  # Set to true to enable Abyss debug logging to console
-mode = "forward"
-upstream_servers = ["8.8.8.8", "1.1.1.1"]
-data_path = "data/dns"
-zone_data_path = "data/dns/zones"
-
-[dns.zones.example.com]
-type = "authoritative"
-file = "priv/zones/example.com.zone"
-
-[mdns]
-listen = "0.0.0.0"
-port = 5353
+dns = true
+mdns = true
+netboot = true
 
 [dhcpv4]
 listen = "0.0.0.0"
 port = 67
 
+[[dhcpv4.pools]]
+gateway = "192.168.50.1"
+lease_time = 3600
+name = "office-lan"
+range_end = "192.168.50.200"
+range_start = "192.168.50.100"
+
 [dhcpv6]
 listen = "::"
 port = 547
-
-
-
 
 [[dhcpv6.pools]]
 name = "ipv6-office"
@@ -41,9 +30,28 @@ range_end = "2001:db8:1::200"
 range_start = "2001:db8:1::100"
 valid_lifetime = 7200
 
-[[dhcpv4.pools]]
-gateway = "192.168.50.1"
-lease_time = 3600
-name = "office-lan"
-range_end = "192.168.50.200"
-range_start = "192.168.50.100"
+[dns]
+data_path = "data/dns"
+debug = false
+listen = "0.0.0.0"
+mode = "forward"
+port = 53
+tcp_enabled = true
+upstream_servers = ["8.8.8.8", "1.1.1.1"]
+zone_data_path = "data/dns/zones"
+
+[dns.zones]
+
+[dns.zones.example]
+
+[dns.zones.example.com]
+file = "priv/zones/example.com.zone"
+type = "authoritative"
+
+[mdns]
+listen = "0.0.0.0"
+port = 5353
+
+[netboot]
+tftp_port = 69
+tftp_root = "data/netboot/tftp"

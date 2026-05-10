@@ -60,6 +60,8 @@ defmodule YellowDog.Dns.ConfigPersistence do
       path || "data/dns"
     rescue
       _e in [ArgumentError, UndefinedFunctionError] -> "data/dns"
+    catch
+      :exit, _reason -> "data/dns"
     end
   end
 
