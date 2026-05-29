@@ -36,7 +36,7 @@ defmodule YellowDog.MixProject do
       # External dependencies for core functionality
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
-      {:concord, "~> 1.1", override: true},
+      {:concord, "~> 2.0"},
       {:gen_stage, "~> 1.2"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
 
