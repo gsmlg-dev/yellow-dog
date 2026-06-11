@@ -128,6 +128,10 @@ end
 # Resolved: disable in dev (requires privileged port 53)
 config :yellow_dog_resolved, enabled: false
 
+# Netman: disable autostart so `mix phx.server` does not start Netman services.
+# Use `mix netman.server` to start the Netman daemon separately.
+config :yellow_dog_netman, netman_autostart: false
+
 # Netman: auto-connect to the local console in dev
 config :yellow_dog_netman, :console,
   enabled: true,
