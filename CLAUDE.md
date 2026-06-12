@@ -4,20 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Sub-App Context
 
-When working on files within a specific sub-app (`apps/<app_name>/`), read that sub-app's `CLAUDE.md` if it exists:
-```
-apps/<app_name>/CLAUDE.md
-```
+When working on files within a specific sub-app (`apps/<app_name>/`), read that sub-app's `CLAUDE.md` if it exists. Apps with their own CLAUDE.md: `abyss`, `ex_dhcp`, `ex_dns`, `yellow_dog_console`, `yellow_dog_dhcp_client`, `yellow_dog_netman`, `yellow_dog_store`.
 
 ## Project Overview
 
-Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
+Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0.
 
-### Applications (17 total)
+### Two Products, Three Releases
+
+The umbrella builds separate Mix releases (root `mix.exs`):
+
+- **`yellow_dog_server`** — server product: DNS, mDNS, DHCPv4/v6, netboot, identity, fingerprinting, console
+- **`yellow_dog_netman`** — client product: NetworkManager replacement (netman, dhcp_client, mdns). Does NOT include Store or Concord
+- **`yellow_dog`** — combined release with everything
+
+### Applications (19 total)
 
 | App | Location | Purpose |
 |-----|----------|---------|
-| **YellowDog** | `apps/yellow_dog/` | Core: config management (TOML), orchestration, service manager |
+| **YellowDog** | `apps/yellow_dog/` | Core: orchestration, service manager, rate limiter |
+| **YellowDog.Config** | `apps/yellow_dog_config/` | TOML config loading, schema, validation, writer |
+| **YellowDog.Store** | `apps/yellow_dog_store/` | Unified data backend: Concord (Raft KV) + ETS cache facade, domain modules (Lease, Zone, Device, Rpz, Host, Cache), GenStage event bridge |
 | **YellowDog.Telemetry** | `apps/yellow_dog_telemetry/` | Centralized telemetry and span management |
 | **YellowDog.Dns** | `apps/yellow_dog_dns/` | DNS server: views, zones, name resolution, ACLs |
 | **YellowDog.Dhcpv4** | `apps/yellow_dog_dhcpv4/` | DHCPv4 server: lease management, address pools |
@@ -29,7 +36,7 @@ Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using
 | **YellowDog.Identity** | `apps/yellow_dog_identity/` | Host identity: registry, SSH key validation, trust verification, approval policies |
 | **YellowDog.Netman** | `apps/yellow_dog_netman/` | Network manager: wired ethernet, DHCP/static IP, reconciliation engine, netlink |
 | **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
-| **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DaisyUI, Bun) |
+| **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DuskMoon UI, Bun) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
 | **Abyss** | `apps/abyss/` | UDP server library (used by all protocol apps) |
 | **ExDns** | `apps/ex_dns/` | DNS protocol library (messages, zones, records) |
@@ -39,16 +46,18 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ### Key Architecture Decisions
 
-- Protocol apps are **library applications** started/managed by core `YellowDog.Application` — they have no `Application` modules. **Exception:** `yellow_dog_resolved` has its own `Application` module because it is a standalone client-side stub resolver, not a server-side protocol handler
-- Services are conditionally started via `YellowDog.Config.service_enabled?(:service_name)`
+- Only three apps have `Application` modules: `yellow_dog` (core — starts/manages all server-side protocol apps), `yellow_dog_netman` (separate netman release entry point), and `yellow_dog_console` (Phoenix). Everything else is a library application
+- Services are conditionally started by `YellowDog.Application` via `service_enabled?(config, :service_name)` from TOML config
 - Infrastructure libs (abyss, ex_dns, ex_dhcp) are **in-umbrella** with shared build paths
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
-- Configuration via TOML files loaded by `YellowDog.Config`
+- **Store** (`yellow_dog_store`) wraps Concord (Raft-based embedded KV) behind typed facade modules. Concord is the source of truth; ETS is the always-on local read cache (write-through). See `apps/yellow_dog_store/CLAUDE.md` for the full data-flow contract
+- **Netman apps never depend on `yellow_dog_store`** — netman is a separate product with its own persistence (TOML lease files via `LeaseStore`)
 - **DhcpClient** uses swappable implementations via Application env: `socket_impl` (NIF in prod, `UdpFallback` in test) and `os_integration` (`Standalone` via `ip` commands, or `HookNM` for NetworkManager)
 
 ## Constitution (Architectural Constraints)
 
 - **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp` because the DHCP client deliberately excludes Abyss (which cannot provide the broadcast-from-`0.0.0.0:68` socket semantics required by RFC 2131). In production the Rust NIF (`DhcpSocket.Native`) is always used; `UdpFallback` is never deployed.
+- **No server app calls `Concord.*` directly** — all access goes through `YellowDog.Store.*` facade modules
 
 ## Common Commands
 
@@ -62,12 +71,9 @@ cd apps/yellow_dog_console && mix test
 # Single test file
 mix test apps/yellow_dog_dhcpv4/test/yellow_dog/dhcpv4/handler_test.exs
 
-# DHCP client tests
-mix test apps/yellow_dog_dhcp_client/test/
-
-# E2E tests (auto-selects ports, CI-friendly)
+# E2E tests (auto-selects ports, CI-friendly; suites live in e2e_test/)
 mix test.e2e                # All E2E
-mix test.e2e.dns            # DNS only
+mix test.e2e.dns            # Per-service: .dns .mdns .dhcpv4 .dhcpv6 .netboot .zone.auth .zone.forward
 
 # Build verification (CI pipeline)
 mix compile --warnings-as-errors
@@ -86,8 +92,8 @@ mix setup                   # deps.get + assets.setup + assets.build
 
 # Asset building
 cd apps/yellow_dog_console
-bun run build               # Dev (255KB + sourcemaps)
-bun run build:prod          # Prod (136KB minified)
+bun run build               # Dev
+bun run build:prod          # Prod (minified)
 # Note: Bun bundles JS; Tailwind CSS v4 runs as a standalone CLI (not via PostCSS)
 
 # Pre-commit check (console only)
@@ -102,17 +108,18 @@ direnv allow                # or: devenv shell
 ### Dependency Graph
 
 ```
-YellowDog (core: config, orchestration)
-├── YellowDog.Dns         → ex_dns + abyss + yellow_dog_telemetry
-├── YellowDog.Dhcpv4      → ex_dhcp + abyss + yellow_dog_telemetry
-├── YellowDog.Dhcpv6      → ex_dhcp + abyss + yellow_dog_telemetry
-├── YellowDog.Mdns        → ex_dns + abyss + yellow_dog_telemetry
-├── YellowDog.Netboot     → abyss + yellow_dog_telemetry
-├── YellowDog.Fingerprint → ex_dhcp + yellow_dog_telemetry
-├── YellowDog.DhcpClient  → ex_dhcp + yellow_dog_telemetry
-├── YellowDog.Netman      → yellow_dog + yellow_dog_dhcp_client + yellow_dog_telemetry
-├── YellowDog.Identity    → yellow_dog + yellow_dog_telemetry
-└── YellowDogConsole      → phoenix + all service apps + geo_ip_db (read-only status/stats)
+YellowDog (core: orchestration) → yellow_dog_config + yellow_dog_store + abyss
+├── YellowDog.Dns         → ex_dns + abyss + store + geo_ip_db + telemetry
+├── YellowDog.Dhcpv4      → ex_dhcp + abyss + store + telemetry
+├── YellowDog.Dhcpv6      → ex_dhcp + abyss + store + telemetry
+├── YellowDog.Mdns        → ex_dns + abyss + store + telemetry
+├── YellowDog.Netboot     → abyss + telemetry
+├── YellowDog.Fingerprint → store + telemetry
+├── YellowDog.Identity    → store + telemetry
+├── YellowDog.DhcpClient  → ex_dhcp + telemetry           (no store)
+├── YellowDog.Resolved    → abyss + ex_dns                (no store, no core)
+├── YellowDog.Netman      → dhcp_client + resolved + ex_dhcp + telemetry (no store)
+└── YellowDogConsole      → phoenix + all service apps + store + geo_ip_db
 ```
 
 ### Console Page Structure
@@ -127,7 +134,7 @@ LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 | mDNS | Overview, Services, Discovery, Monitor | PubSub real-time updates |
 | Fingerprint | Devices, Device Detail, Fingerprints | Passive DHCP fingerprinting |
 | Tools | GeoIP, Whois, MAC Lookup | Async `Task.async` + `handle_info` for network calls |
-| System | Settings, Logs, Diagnostics, Process Map | TOML config persistence, process tree SVG |
+| System | Settings, Logs, Diagnostics, Process Map, Backups | TOML config persistence, process tree SVG |
 
 ### Console Component Architecture
 
@@ -165,13 +172,14 @@ LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 
 ### Storage Patterns
 
-- **DHCP leases (DHCPv4/v6)**: Mnesia with `disc_copies` — ACID-safe, persists across restarts; tables have secondary indices by IP, state, and pool
-- **DNS zones**: ETS for high-concurrency in-memory access
-- **DHCP client leases**: TOML file persistence via `LeaseStore`
+- **Store (`YellowDog.Store.*`)**: unified backend for server-side apps — Concord (Raft KV, source of truth) with write-through ETS read cache. Domain facades: `Lease`, `Zone`, `Device`, `Rpz`, `Host`, `Cache`, `DynDns`, `Config`. GenStage `EventBridge` for cross-domain events
+- **DNS zones**: managed via `YellowDog.Store.Zone`; `YellowDog.Dns.ZoneStore` is deprecated (kept for import/export compatibility)
+- **DHCP leases (DHCPv4/v6)**: still direct Mnesia (`disc_copies`) in `LeaseStorage` — Store.Mnesia migration is planned but not done; tables have secondary indices by IP, state, and pool
+- **DHCP client leases**: TOML file persistence via `LeaseStore` (netman product, no Store dependency)
 
 ### TOML Configuration Structure
 
-Default config (`config/yellowdogdns_default_config.toml`):
+Default config ships at `priv/yellowdogdns_default_config.toml`:
 ```toml
 data_dir = "data"
 
@@ -192,17 +200,17 @@ netboot = false
 "aa:bb:cc:dd:ee:ff" = "192.168.1.10"
 ```
 
-Config changes trigger reload via `ConfigWatcher` (hot-reload supported).
+Config loading/validation lives in `apps/yellow_dog_config/` (`YellowDog.Config`). Config changes trigger service reload via the Store's GenStage `ConfigWatcher` (hot-reload supported). Additional TOML configs in `config/`: `dhcp_acls.toml`, `dhcp_options.toml`, `dhcpv4_pools.toml`, `dhcpv6_pools.toml`.
 
 ## Test Environment
 
-- DNS service disabled (avoids privileged port 53)
-- DHCPv4 uses port 6767, DHCPv6 uses port 5667
+- DNS service disabled (avoids privileged port 53); Resolved also disabled in test
 - E2E tests start with `port: 0` for auto-selection
 - mDNS uses unicast to loopback in CI (no multicast)
-- Property-based tests use `ExUnitProperties` (stream_data) — present in dhcp_client and ex_dhcp
+- Property-based tests use `ExUnitProperties` (stream_data) — present in dhcp_client, ex_dhcp, and store
+- Store tests run Concord in single-node mode — no external infra needed
 - Console integration tests use `ConnCase`; config tests write temp TOML files to `System.tmp_dir!()`
-- Test fixtures: `apps/yellow_dog/test/fixtures/*.toml` (valid_config, minimal_config, all_disabled, etc.)
+- Test fixtures: `apps/yellow_dog_config/test/fixtures/*.toml` and `apps/yellow_dog/test/fixtures/*.toml` (valid_config, minimal_config, all_disabled, etc.)
 
 ## CI/CD
 
@@ -229,10 +237,12 @@ Two dependencies only:
 
 ### Skills
 
-Load before any UI task:
-- CSS/tokens → `.claude/skills/duskmoon-dev-core/SKILL.md`
-- Web components → `.claude/skills/duskmoon-elements/SKILL.md`
-- Phoenix components → `.claude/skills/elixir-phoenix/SKILL.md` + `.claude/skills/phoenix-duskmoon-ui/SKILL.md`
+Load before any UI task (via the Skill tool):
+- CSS/tokens → `duskmoon-ui:duskmoon-dev-core`
+- Web components → `duskmoon-ui:duskmoon-elements`
+- Phoenix components → `elixir-dev:elixir-phoenix` + `duskmoon-ui:phoenix-duskmoon-ui`
+
+Local project skill: `.claude/skills/abyss-udp-server.md` — read before working on Abyss-based UDP servers.
 
 ### Constraints
 
