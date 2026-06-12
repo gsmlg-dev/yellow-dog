@@ -1048,7 +1048,10 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     |> String.upcase()
   end
 
-  def format_mac(mac) when is_binary(mac), do: inspect(mac)
+  def format_mac(mac) when is_binary(mac) do
+    if String.printable?(mac), do: mac, else: inspect(mac)
+  end
+
   def format_mac(_), do: "unknown"
 
   @doc """
