@@ -66,7 +66,9 @@ defmodule YellowDog.Store.Backup do
 
       {:error, reason} ->
         if fallback_reason?(reason) do
-          # WORKAROUND(upstream): gsmlg-dev/concord#10
+          # Concord returns an actionable error when the Ra server is unavailable
+          # (resolved upstream as gsmlg-dev/concord#10); snapshot the active
+          # local backend instead so single-node backups still work.
           create_active_backend_backup(
             backup_opts[:path],
             Keyword.get(opts, :label),
