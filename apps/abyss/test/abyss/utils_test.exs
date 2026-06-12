@@ -3,6 +3,12 @@ defmodule Abyss.UtilsTest do
 
   alias Abyss.Utils
 
+  # Loopback interface name differs by platform: "lo" on Linux, "lo0" on macOS/BSD
+  @loopback (case :os.type() do
+               {:unix, :darwin} -> "lo0"
+               _ -> "lo"
+             end)
+
   describe "list_interfaces/0" do
     test "returns a list of interface names" do
       interfaces = Utils.list_interfaces()
@@ -17,8 +23,7 @@ defmodule Abyss.UtilsTest do
     test "includes loopback interface" do
       interfaces = Utils.list_interfaces()
 
-      # Loopback is typically "lo" on Linux
-      assert "lo" in interfaces or Enum.any?(interfaces, &String.contains?(&1, "loop"))
+      assert @loopback in interfaces or Enum.any?(interfaces, &String.contains?(&1, "loop"))
     end
   end
 
@@ -38,7 +43,7 @@ defmodule Abyss.UtilsTest do
       # Should have exactly one loopback (typically)
       assert length(loopback_interfaces) >= 1
 
-      assert "lo" in loopback_interfaces or
+      assert @loopback in loopback_interfaces or
                Enum.any?(loopback_interfaces, &String.contains?(&1, "loop"))
     end
 
@@ -60,7 +65,7 @@ defmodule Abyss.UtilsTest do
 
       assert is_list(down_interfaces)
       # Down interfaces shouldn't include loopback (which is always up)
-      refute "lo" in down_interfaces
+      refute @loopback in down_interfaces
     end
   end
 
@@ -123,12 +128,12 @@ defmodule Abyss.UtilsTest do
     end
 
     test "filters by interface name" do
-      addresses = Utils.list_addresses(interface: "lo")
+      addresses = Utils.list_addresses(interface: @loopback)
 
       assert is_list(addresses)
       # All addresses should be from loopback
       Enum.each(addresses, fn addr ->
-        assert addr.interface == "lo"
+        assert addr.interface == @loopback
       end)
     end
 
@@ -140,13 +145,13 @@ defmodule Abyss.UtilsTest do
     end
 
     test "combines filters" do
-      addresses = Utils.list_addresses(family: :inet, interface: "lo")
+      addresses = Utils.list_addresses(family: :inet, interface: @loopback)
 
       assert is_list(addresses)
       assert length(addresses) >= 1
 
       Enum.each(addresses, fn addr ->
-        assert addr.interface == "lo"
+        assert addr.interface == @loopback
         assert addr.family == :inet
       end)
     end
@@ -154,9 +159,9 @@ defmodule Abyss.UtilsTest do
 
   describe "get_interface/1" do
     test "returns interface info for existing interface" do
-      assert {:ok, info} = Utils.get_interface("lo")
+      assert {:ok, info} = Utils.get_interface(@loopback)
 
-      assert info.name == "lo"
+      assert info.name == @loopback
       assert is_list(info.flags)
       assert :up in info.flags
       assert :loopback in info.flags
@@ -169,7 +174,7 @@ defmodule Abyss.UtilsTest do
     end
 
     test "interface info includes addresses without interface key" do
-      {:ok, info} = Utils.get_interface("lo")
+      {:ok, info} = Utils.get_interface(@loopback)
 
       Enum.each(info.addresses, fn addr ->
         refute Map.has_key?(addr, :interface)
@@ -182,7 +187,7 @@ defmodule Abyss.UtilsTest do
 
   describe "get_interface_addresses/1" do
     test "returns addresses for existing interface" do
-      assert {:ok, addresses} = Utils.get_interface_addresses("lo")
+      assert {:ok, addresses} = Utils.get_interface_addresses(@loopback)
 
       assert is_list(addresses)
       assert length(addresses) > 0
@@ -195,7 +200,7 @@ defmodule Abyss.UtilsTest do
     end
 
     test "filters by family" do
-      assert {:ok, addresses} = Utils.get_interface_addresses("lo", family: :inet)
+      assert {:ok, addresses} = Utils.get_interface_addresses(@loopback, family: :inet)
 
       Enum.each(addresses, fn addr ->
         assert addr.family == :inet
@@ -209,7 +214,7 @@ defmodule Abyss.UtilsTest do
 
   describe "get_ipv4_address/1" do
     test "returns IPv4 address for loopback" do
-      assert {:ok, addr} = Utils.get_ipv4_address("lo")
+      assert {:ok, addr} = Utils.get_ipv4_address(@loopback)
 
       assert addr == {127, 0, 0, 1}
     end
@@ -221,7 +226,7 @@ defmodule Abyss.UtilsTest do
 
   describe "get_ipv6_address/1" do
     test "returns IPv6 address for loopback" do
-      result = Utils.get_ipv6_address("lo")
+      result = Utils.get_ipv6_address(@loopback)
 
       case result do
         {:ok, addr} ->
@@ -241,12 +246,15 @@ defmodule Abyss.UtilsTest do
 
   describe "get_hwaddr/1" do
     test "returns hardware address for loopback" do
-      assert {:ok, hwaddr} = Utils.get_hwaddr("lo")
+      case Utils.get_hwaddr(@loopback) do
+        {:ok, hwaddr} ->
+          # Loopback typically has all zeros
+          assert hwaddr == [0, 0, 0, 0, 0, 0]
 
-      assert is_list(hwaddr)
-      assert length(hwaddr) == 6
-      # Loopback typically has all zeros
-      assert hwaddr == [0, 0, 0, 0, 0, 0]
+        {:error, :enodev} ->
+          # macOS/BSD loopback exposes no hardware address
+          assert :os.type() == {:unix, :darwin}
+      end
     end
 
     test "returns error for non-existent interface" do
