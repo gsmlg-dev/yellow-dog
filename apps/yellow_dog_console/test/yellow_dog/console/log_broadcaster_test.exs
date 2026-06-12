@@ -62,9 +62,9 @@ defmodule YellowDog.Console.LogBroadcasterTest do
       assert Kernel.function_exported?(LogBroadcaster, :topic, 0)
     end
 
-    test "exports handle_log_event/4" do
+    test "exports handle_telemetry_event/4" do
       Code.ensure_loaded!(LogBroadcaster)
-      assert Kernel.function_exported?(LogBroadcaster, :handle_log_event, 4)
+      assert Kernel.function_exported?(LogBroadcaster, :handle_telemetry_event, 4)
     end
   end
 
@@ -163,7 +163,7 @@ defmodule YellowDog.Console.LogBroadcasterTest do
     end
   end
 
-  describe "handle_log_event/4" do
+  describe "handle_telemetry_event/4" do
     setup do
       # Start PubSub if not already running (needed for tests)
       case Process.whereis(YellowDog.Console.PubSub) do
@@ -183,14 +183,14 @@ defmodule YellowDog.Console.LogBroadcasterTest do
 
       # This will try to broadcast, but we're testing the level extraction
       # The function should not crash
-      LogBroadcaster.handle_log_event(event, %{}, %{}, %{})
+      LogBroadcaster.handle_telemetry_event(event, %{}, %{}, %{})
     end
 
     test "extracts level from error event" do
       event = [:yellow_dog, :log, :error]
 
       # Should not crash
-      LogBroadcaster.handle_log_event(event, %{}, %{}, %{})
+      LogBroadcaster.handle_telemetry_event(event, %{}, %{}, %{})
     end
 
     test "broadcasts to PubSub topic when broadcaster is started" do

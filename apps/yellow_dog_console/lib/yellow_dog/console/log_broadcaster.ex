@@ -219,7 +219,8 @@ defmodule YellowDog.Console.LogBroadcaster do
   end
 
   defp format_event([:yellow_dog, :dns, :query, :forward_error], _m, md) do
-    {:warning, :yellow_dog_dns, "DNS forward error: #{md[:query_name]} -> #{inspect(md[:reason])}"}
+    {:warning, :yellow_dog_dns,
+     "DNS forward error: #{md[:query_name]} -> #{inspect(md[:reason])}"}
   end
 
   defp format_event([:yellow_dog, :dns, :query, :recursive], _m, md) do
@@ -251,7 +252,9 @@ defmodule YellowDog.Console.LogBroadcaster do
   # ── DHCPv4 events ──────────────────────────────────────────────────────────
   defp format_event([:yellow_dog, :dhcpv4, :lease, :requested], _m, md) do
     msg_type = md[:message_type] |> to_string() |> String.upcase()
-    {:info, :yellow_dog_dhcpv4, "DHCPv4 #{msg_type}: #{LoggerHandlers.format_mac(md[:client_mac])}"}
+
+    {:info, :yellow_dog_dhcpv4,
+     "DHCPv4 #{msg_type}: #{LoggerHandlers.format_mac(md[:client_mac])}"}
   end
 
   defp format_event([:yellow_dog, :dhcpv4, :lease, :granted], m, md) do
@@ -286,7 +289,9 @@ defmodule YellowDog.Console.LogBroadcaster do
   # ── DHCPv6 events ──────────────────────────────────────────────────────────
   defp format_event([:yellow_dog, :dhcpv6, :lease, :requested], _m, md) do
     msg_type = md[:message_type] |> to_string() |> String.upcase()
-    {:info, :yellow_dog_dhcpv6, "DHCPv6 #{msg_type}: DUID #{LoggerHandlers.format_duid(md[:duid])}"}
+
+    {:info, :yellow_dog_dhcpv6,
+     "DHCPv6 #{msg_type}: DUID #{LoggerHandlers.format_duid(md[:duid])}"}
   end
 
   defp format_event([:yellow_dog, :dhcpv6, :lease, :granted], m, md) do
@@ -352,7 +357,8 @@ defmodule YellowDog.Console.LogBroadcaster do
   end
 
   # ── Service lifecycle ──────────────────────────────────────────────────────
-  defp format_event([:yellow_dog, :service, action], _m, md) when action in [:started, :stopped] do
+  defp format_event([:yellow_dog, :service, action], _m, md)
+       when action in [:started, :stopped] do
     service = md[:service] |> to_string() |> String.upcase()
     {:info, :yellow_dog, "Service #{action}: #{service}"}
   end
