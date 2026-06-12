@@ -267,8 +267,13 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
   end
 
   describe "file watching" do
-    test "triggers reload when config file is modified" do
-      config_file = create_temp_config(~s({"version": 1}))
+    # Use ExUnit's tmp_dir: System.tmp_dir!() is a symlink on macOS
+    # (/var -> /private/var), and fsevents reports resolved paths that
+    # then never match the watcher's configured file path.
+    @tag :tmp_dir
+    test "triggers reload when config file is modified", %{tmp_dir: tmp_dir} do
+      config_file = Path.join(tmp_dir, "config.json")
+      File.write!(config_file, ~s({"version": 1}))
       test_pid = self()
 
       callback = fn config ->
@@ -291,11 +296,9 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
         # Modify the file
         File.write!(config_file, ~s({"version": 2}))
 
-        # Wait for debounce + processing time
-        :timer.sleep(300)
-
-        # Should receive the updated config
-        assert_receive {:config_loaded, config}, 1000
+        # Wait for debounce + filesystem notification (fsevents on macOS can
+        # take well over a second to deliver)
+        assert_receive {:config_loaded, config}, 5000
         assert config["version"] == 2
       after
         cleanup_file(config_file)
