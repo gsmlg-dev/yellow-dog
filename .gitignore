@@ -57,6 +57,7 @@ tmp/
 /apps/yellow_dog_dns/priv/zones/
 /apps/geo_ip_db/priv/data/*.mmdb
 /data/
+/backups/
 
 # Config backup files
 *.toml.backup.*
@@ -70,3 +71,4 @@ Mnesia.nonode@nohost/
 
 # Mix install cache
 /.mix/
+nonode@nohost/
