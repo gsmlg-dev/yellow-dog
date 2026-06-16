@@ -29,6 +29,14 @@ defmodule YellowDog.Store.Zone do
           expire: pos_integer(),
           minimum: pos_integer()
         }
+  @type cloud_mirror :: %{
+          enabled: true,
+          connector_name: String.t(),
+          provider: :cloudflare | :route53,
+          zone_id: String.t(),
+          direction: :pull_from_cloud | :push_to_cloud | :bidirectional,
+          conflict_strategy: :local_wins | :cloud_wins | :manual
+        }
 
   # -------------------------------------------------------------------
   # Auth zone metadata
@@ -43,6 +51,7 @@ defmodule YellowDog.Store.Zone do
     * `:authoritative` - whether this node is authoritative (default `true`)
     * `:allow_dynamic_update` - accept RFC 2136 dynamic updates (default `false`)
     * `:serial_strategy` - `:date_serial` or `:increment` (default `:date_serial`)
+    * `:cloud_mirror` - cloud DNS mirror binding metadata (default `nil`)
   """
   @spec create_zone(view_name(), zone_name(), soa(), keyword()) ::
           :ok | {:error, :already_exists | term()}
@@ -58,6 +67,7 @@ defmodule YellowDog.Store.Zone do
       authoritative: Keyword.get(opts, :authoritative, true),
       allow_dynamic_update: Keyword.get(opts, :allow_dynamic_update, false),
       serial_strategy: Keyword.get(opts, :serial_strategy, :date_serial),
+      cloud_mirror: Keyword.get(opts, :cloud_mirror),
       created_at: now,
       updated_at: now
     }

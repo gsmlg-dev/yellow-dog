@@ -303,6 +303,11 @@
                   You can add records after creating the zone.
                 </span>
               </div>
+              <.cloud_mirror_fields
+                zone_form={@zone_form}
+                form_errors={@form_errors}
+                cloud_dns_connectors={@cloud_dns_connectors}
+              />
             <% end %>
 
             <div class="divider"></div>
@@ -391,6 +396,11 @@
                   Edit records for this zone from the records page.
                 </span>
               </div>
+              <.cloud_mirror_fields
+                zone_form={@zone_form}
+                form_errors={@form_errors}
+                cloud_dns_connectors={@cloud_dns_connectors}
+              />
             <% end %>
 
             <div class="divider"></div>

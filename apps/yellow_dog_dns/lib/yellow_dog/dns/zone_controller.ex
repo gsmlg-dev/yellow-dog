@@ -382,7 +382,7 @@ defmodule YellowDog.Dns.ZoneController do
       case zone_type do
         :auth ->
           soa = Keyword.get(config, :soa, YellowDog.Store.Zone.default_soa(zone_name))
-          opts = Keyword.take(config, [:default_ttl, :serial_strategy])
+          opts = Keyword.take(config, [:default_ttl, :serial_strategy, :cloud_mirror])
           YellowDog.Store.Zone.create_zone(view_name, zone_name, soa, opts)
 
         :forward ->

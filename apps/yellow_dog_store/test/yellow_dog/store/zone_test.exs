@@ -54,6 +54,25 @@ defmodule YellowDog.Store.ZoneTest do
       assert zone.serial_strategy == :increment
     end
 
+    test "create_zone persists cloud mirror metadata" do
+      cloud_mirror = %{
+        enabled: true,
+        connector_name: "cf-main",
+        provider: :cloudflare,
+        zone_id: "cloudflare-zone-123",
+        direction: :bidirectional,
+        conflict_strategy: :local_wins
+      }
+
+      assert :ok =
+               Zone.create_zone(@view, "test-mirror.example.com", @test_soa,
+                 cloud_mirror: cloud_mirror
+               )
+
+      assert {:ok, zone} = Zone.get_zone(@view, "test-mirror.example.com")
+      assert zone.cloud_mirror == cloud_mirror
+    end
+
     test "duplicate zone creation returns error" do
       Zone.create_zone(@view, "test-dup.example.com", @test_soa)
 

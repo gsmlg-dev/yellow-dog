@@ -9,7 +9,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
 
-  alias YellowDog.Dns.ZoneController
+  alias YellowDog.Dns.{CloudDnsSync, ZoneController}
 
   @valid_zone_types ~w(auth forward stub cache rpz unknown)
   @valid_rr_types ~w(a aaaa cname mx ns txt soa srv ptr cap naptr hinfo rp loc)
@@ -403,6 +403,13 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp load_records(socket) do
     %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
 
+    socket =
+      if zone_type == :auth do
+        maybe_sync_cloud_zone(socket)
+      else
+        socket
+      end
+
     records =
       if zone_type == :auth do
         case get_auth_zone_records(view_name, zone_type, zone_name) do
@@ -415,6 +422,50 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
     assign(socket, :rrs, records)
   end
+
+  defp maybe_sync_cloud_zone(socket) do
+    %{view_name: view_name, zone_name: zone_name} = socket.assigns
+
+    case CloudDnsSync.sync_zone_from_cloud(view_name, zone_name) do
+      {:ok, _result} ->
+        socket
+
+      {:error, :cloud_sync_disabled} ->
+        socket
+
+      {:error, :not_found} ->
+        socket
+
+      {:error, reason} ->
+        put_flash(socket, :error, cloud_sync_error(reason))
+    end
+  end
+
+  defp cloud_sync_error(:cloud_dns_connector_not_configured),
+    do: "Cloud DNS sync is enabled, but no connector is selected."
+
+  defp cloud_sync_error(:cloud_dns_connector_disabled),
+    do: "Cloud DNS sync failed because the selected connector is disabled."
+
+  defp cloud_sync_error(:cloudflare_api_token_missing),
+    do: "Cloud DNS sync failed because the Cloudflare connector has no API token."
+
+  defp cloud_sync_error(:cloudflare_zone_not_found),
+    do: "Cloud DNS sync failed because Cloudflare did not return this zone."
+
+  defp cloud_sync_error({:unsupported_provider, provider}),
+    do: "Cloud DNS sync is not implemented for #{provider}."
+
+  defp cloud_sync_error({:cloudflare_http_error, status, _errors}),
+    do: "Cloud DNS sync failed because Cloudflare returned HTTP #{status}."
+
+  defp cloud_sync_error({:cloudflare_api_error, _errors}),
+    do: "Cloud DNS sync failed because Cloudflare rejected the request."
+
+  defp cloud_sync_error({:cloudflare_request_failed, _reason}),
+    do: "Cloud DNS sync failed because Cloudflare could not be reached."
+
+  defp cloud_sync_error(_reason), do: "Cloud DNS sync failed."
 
   defp get_auth_zone_records(view_name, zone_type, zone_name) do
     try do

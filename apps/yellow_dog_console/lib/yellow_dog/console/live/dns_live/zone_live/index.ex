@@ -18,6 +18,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.ZoneController
   alias YellowDog.Dns.ConfigPersistence
+  alias YellowDog.Store.Provider, as: StoreProvider
+  alias YellowDog.Store.Zone, as: StoreZone
 
   @valid_zone_types ~w(auth forward stub cache rpz)
 
@@ -39,7 +41,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
        zone_form: nil,
        import_form: nil,
        editing_zone: nil,
-       form_errors: %{}
+       form_errors: %{},
+       cloud_dns_connectors: []
      )}
   end
 
@@ -63,19 +66,13 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   end
 
   defp apply_action(socket, :new, %{"view_name" => view_name}) do
-    form_data = %{
-      "name" => "",
-      "type" => "auth",
-      "upstreams" => "",
-      "ns_records" => ""
-    }
-
     socket
     |> assign(:page_title, "New Zone - #{view_name}")
     |> assign(:view_name, view_name)
     |> assign(:editing_zone, nil)
-    |> assign(:zone_form, to_form(form_data))
+    |> assign(:zone_form, to_form(default_zone_form_data()))
     |> assign(:form_errors, %{})
+    |> load_cloud_dns_connectors()
     |> load_zones()
   end
 
@@ -100,18 +97,12 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
     case get_zone_config(view_name, zone_type_atom, zone_name) do
       {:ok, config} ->
-        form_data = %{
-          "name" => config.name,
-          "type" => to_string(config.type),
-          "upstreams" => Enum.join(config.upstreams || [], "\n"),
-          "ns_records" => Enum.join(config.ns_records || [], "\n")
-        }
-
         socket
         |> assign(:page_title, "Edit Zone - #{zone_name}")
         |> assign(:view_name, view_name)
         |> assign(:editing_zone, %{name: zone_name, type: zone_type_atom})
-        |> assign(:zone_form, to_form(form_data))
+        |> assign(:zone_form, to_form(zone_config_form_data(config)))
+        |> load_cloud_dns_connectors()
         |> load_zones()
 
       :error ->
@@ -173,14 +164,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   @impl true
   def handle_event("validate_zone", %{"zone" => zone_params}, socket) do
     # Update form with new values to show/hide fields based on type
-    form_data = %{
-      "name" => zone_params["name"] || "",
-      "type" => zone_params["type"] || "auth",
-      "upstreams" => zone_params["upstreams"] || "",
-      "ns_records" => zone_params["ns_records"] || ""
-    }
-
-    errors = validate_zone_fields(form_data)
+    form_data = zone_params_form_data(zone_params, socket.assigns[:editing_zone])
+    errors = validate_zone_fields(form_data, socket.assigns.cloud_dns_connectors)
 
     {:noreply,
      socket
@@ -190,14 +175,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   @impl true
   def handle_event("save_zone", %{"zone" => zone_params}, socket) do
-    form_data = %{
-      "name" => zone_params["name"] || "",
-      "type" => zone_params["type"] || "auth",
-      "upstreams" => zone_params["upstreams"] || "",
-      "ns_records" => zone_params["ns_records"] || ""
-    }
-
-    errors = validate_zone_fields(form_data)
+    form_data = zone_params_form_data(zone_params, socket.assigns[:editing_zone])
+    errors = validate_zone_fields(form_data, socket.assigns.cloud_dns_connectors)
 
     if map_size(errors) > 0 do
       {:noreply,
@@ -205,7 +184,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
        |> assign(:zone_form, to_form(form_data))
        |> assign(:form_errors, errors)}
     else
-      save_zone_impl(socket, zone_params)
+      save_zone_impl(socket, form_data)
     end
   end
 
@@ -301,11 +280,11 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
        when zone_type_str in @valid_zone_types do
     editing = socket.assigns[:editing_zone]
     view_name = socket.assigns.view_name
-    zone_name = zone_params["name"]
+    zone_name = if editing, do: editing.name, else: zone_params["name"]
     zone_type = String.to_existing_atom(zone_type_str)
 
     # Build config based on zone type
-    config = build_zone_config(zone_type, zone_params)
+    config = build_zone_config(zone_type, zone_params, socket.assigns.cloud_dns_connectors)
 
     # Add view_name to config so zone is scoped to this view
     config = Keyword.put(config, :view_name, view_name)
@@ -314,7 +293,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       try do
         if editing do
           case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
-            :ok -> :ok
+            :ok -> persist_zone_metadata(view_name, editing.type, editing.name, config)
             {:error, reason} -> {:error, reason}
           end
         else
@@ -360,7 +339,144 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     {:noreply, put_flash(socket, :error, "Invalid zone type")}
   end
 
-  defp validate_zone_fields(form_data) do
+  defp default_zone_form_data do
+    %{
+      "name" => "",
+      "type" => "auth",
+      "upstreams" => "",
+      "ns_records" => "",
+      "mirror_enabled" => "false",
+      "mirror_connector" => "",
+      "mirror_provider" => "cloudflare",
+      "mirror_zone_id" => "",
+      "mirror_direction" => "bidirectional",
+      "mirror_conflict_strategy" => "local_wins"
+    }
+  end
+
+  defp zone_params_form_data(params, editing_zone) do
+    defaults = default_zone_form_data()
+
+    Map.merge(defaults, %{
+      "name" => params["name"] || editing_zone_name(editing_zone) || defaults["name"],
+      "type" => params["type"] || editing_zone_type(editing_zone) || defaults["type"],
+      "upstreams" => params["upstreams"] || defaults["upstreams"],
+      "ns_records" => params["ns_records"] || defaults["ns_records"],
+      "mirror_enabled" => normalize_mirror_enabled(params["mirror_enabled"]),
+      "mirror_connector" => params["mirror_connector"] || defaults["mirror_connector"],
+      "mirror_provider" => params["mirror_provider"] || defaults["mirror_provider"],
+      "mirror_zone_id" => params["mirror_zone_id"] || defaults["mirror_zone_id"],
+      "mirror_direction" => params["mirror_direction"] || defaults["mirror_direction"],
+      "mirror_conflict_strategy" =>
+        params["mirror_conflict_strategy"] || defaults["mirror_conflict_strategy"]
+    })
+  end
+
+  defp zone_config_form_data(config) do
+    default_zone_form_data()
+    |> Map.merge(%{
+      "name" => Map.get(config, :name, ""),
+      "type" => config |> Map.get(:type, :auth) |> to_string(),
+      "upstreams" => config |> Map.get(:upstreams, []) |> Enum.join("\n"),
+      "ns_records" => config |> Map.get(:ns_records, []) |> Enum.join("\n")
+    })
+    |> Map.merge(cloud_mirror_form_data(Map.get(config, :cloud_mirror)))
+  end
+
+  defp editing_zone_name(nil), do: nil
+  defp editing_zone_name(%{name: name}), do: name
+
+  defp editing_zone_type(nil), do: nil
+  defp editing_zone_type(%{type: type}), do: to_string(type)
+
+  defp cloud_mirror_form_data(nil), do: %{}
+
+  defp cloud_mirror_form_data(mirror) when is_map(mirror) do
+    %{
+      "mirror_enabled" => normalize_mirror_enabled(mirror_value(mirror, :enabled, false)),
+      "mirror_connector" => mirror_value(mirror, :connector_name, ""),
+      "mirror_provider" => mirror_value(mirror, :provider, "cloudflare") |> to_string(),
+      "mirror_zone_id" => mirror_value(mirror, :zone_id, ""),
+      "mirror_direction" => mirror_value(mirror, :direction, "bidirectional") |> to_string(),
+      "mirror_conflict_strategy" =>
+        mirror_value(mirror, :conflict_strategy, "local_wins") |> to_string()
+    }
+  end
+
+  defp mirror_value(map, key, default) do
+    Map.get(map, key) || Map.get(map, to_string(key)) || default
+  end
+
+  def mirror_enabled?(values) when is_list(values), do: Enum.any?(values, &mirror_enabled?/1)
+  def mirror_enabled?(true), do: true
+  def mirror_enabled?("true"), do: true
+  def mirror_enabled?("on"), do: true
+  def mirror_enabled?("1"), do: true
+  def mirror_enabled?(_value), do: false
+
+  def cloud_mirror_fields(assigns) do
+    assigns = assign_new(assigns, :cloud_dns_connectors, fn -> [] end)
+
+    ~H"""
+    <div class="space-y-4 border-t border-outline-variant pt-4">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 class="text-base font-semibold">Cloud Provider Settings</h3>
+          <p class="text-sm text-on-surface-variant">Cloud DNS Mirror</p>
+        </div>
+        <label class="label cursor-pointer justify-start gap-3 p-0">
+          <input type="hidden" name="zone[mirror_enabled]" value="false" />
+          <input
+            type="checkbox"
+            name="zone[mirror_enabled]"
+            value="true"
+            class="toggle toggle-primary"
+            checked={mirror_enabled?(@zone_form[:mirror_enabled].value)}
+          />
+          <span class="label-text font-semibold">Enable cloud sync</span>
+        </label>
+      </div>
+
+      <div>
+        <div class="form-group">
+          <label class="form-label font-semibold">Cloud DNS Connector</label>
+          <select
+            name="zone[mirror_connector]"
+            aria-label="Cloud DNS connector"
+            class={"select w-full font-mono #{if @form_errors[:mirror_connector], do: "select-error"}"}
+          >
+            <option
+              value=""
+              selected={String.trim(@zone_form[:mirror_connector].value || "") == ""}
+            >
+              Select Cloud DNS connector
+            </option>
+            <option
+              :for={connector <- @cloud_dns_connectors}
+              value={connector.name}
+              selected={@zone_form[:mirror_connector].value == connector.name}
+            >
+              {connector.name} - {provider_label(connector.type)}
+            </option>
+          </select>
+          <%= if @form_errors[:mirror_connector] do %>
+            <span class="helper-text text-error">{@form_errors[:mirror_connector]}</span>
+          <% else %>
+            <span :if={@cloud_dns_connectors == []} class="helper-text">
+              No Cloud DNS connectors configured.
+            </span>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp normalize_mirror_enabled(value) do
+    if mirror_enabled?(value), do: "true", else: "false"
+  end
+
+  defp validate_zone_fields(form_data, cloud_dns_connectors) do
     errors = %{}
     name = form_data["name"]
     zone_type = form_data["type"]
@@ -419,7 +535,33 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         errors
       end
 
-    errors
+    validate_cloud_mirror_fields(errors, form_data, cloud_dns_connectors)
+  end
+
+  defp validate_cloud_mirror_fields(errors, %{"type" => "auth"} = form_data, cloud_dns_connectors) do
+    if mirror_enabled?(form_data["mirror_enabled"]) do
+      errors
+      |> validate_mirror_connector(form_data["mirror_connector"], cloud_dns_connectors)
+    else
+      errors
+    end
+  end
+
+  defp validate_cloud_mirror_fields(errors, _form_data, _cloud_dns_connectors), do: errors
+
+  defp validate_mirror_connector(errors, connector, cloud_dns_connectors) do
+    connector = String.trim(connector || "")
+
+    cond do
+      connector == "" ->
+        Map.put(errors, :mirror_connector, "Cloud DNS connector is required")
+
+      Enum.any?(cloud_dns_connectors, &(&1.name == connector)) ->
+        errors
+
+      true ->
+        Map.put(errors, :mirror_connector, "Select a configured Cloud DNS connector")
+    end
   end
 
   defp import_bind_zone(socket, view_name, zone_data) do
@@ -511,12 +653,11 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   end
 
   # Build zone configuration based on zone type
-  defp build_zone_config(:auth, _params) do
-    # Auth zones don't need extra config (records are added separately)
-    []
+  defp build_zone_config(:auth, params, cloud_dns_connectors) do
+    [cloud_mirror: cloud_mirror_from_params(params, cloud_dns_connectors)]
   end
 
-  defp build_zone_config(:forward, params) do
+  defp build_zone_config(:forward, params, _cloud_dns_connectors) do
     upstreams =
       params["upstreams"]
       |> StringHelper.split_and_trim("\n")
@@ -524,7 +665,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     [upstreams: upstreams]
   end
 
-  defp build_zone_config(:stub, params) do
+  defp build_zone_config(:stub, params, _cloud_dns_connectors) do
     ns_records =
       params["ns_records"]
       |> StringHelper.split_and_trim("\n")
@@ -532,9 +673,49 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     [ns_records: ns_records]
   end
 
-  defp build_zone_config(_type, _params) do
+  defp build_zone_config(_type, _params, _cloud_dns_connectors) do
     []
   end
+
+  defp cloud_mirror_from_params(params, cloud_dns_connectors) do
+    if mirror_enabled?(params["mirror_enabled"]) do
+      connector_name = String.trim(params["mirror_connector"] || "")
+
+      %{
+        enabled: true,
+        connector_name: connector_name,
+        provider: connector_provider(connector_name, cloud_dns_connectors),
+        zone_id: String.trim(params["mirror_zone_id"] || ""),
+        direction: mirror_direction_atom(params["mirror_direction"]),
+        conflict_strategy: mirror_conflict_strategy_atom(params["mirror_conflict_strategy"])
+      }
+    end
+  end
+
+  defp connector_provider(connector_name, cloud_dns_connectors) do
+    cloud_dns_connectors
+    |> Enum.find(&(&1.name == connector_name))
+    |> case do
+      %{type: type} -> type
+      _ -> :cloudflare
+    end
+  end
+
+  defp mirror_direction_atom("pull_from_cloud"), do: :pull_from_cloud
+  defp mirror_direction_atom("push_to_cloud"), do: :push_to_cloud
+  defp mirror_direction_atom(_direction), do: :bidirectional
+
+  defp mirror_conflict_strategy_atom("cloud_wins"), do: :cloud_wins
+  defp mirror_conflict_strategy_atom("manual"), do: :manual
+  defp mirror_conflict_strategy_atom(_strategy), do: :local_wins
+
+  defp persist_zone_metadata(view_name, :auth, zone_name, config) do
+    StoreZone.update_zone(view_name, zone_name, %{
+      cloud_mirror: Keyword.get(config, :cloud_mirror)
+    })
+  end
+
+  defp persist_zone_metadata(_view_name, _zone_type, _zone_name, _config), do: :ok
 
   defp load_zones(socket) do
     view_name = socket.assigns.view_name
@@ -542,6 +723,16 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     # get_view_with_zones always returns {:ok, view} with fallback to persisted config
     {:ok, view} = get_view_with_zones(view_name)
     assign(socket, :zones, view.zones)
+  end
+
+  defp load_cloud_dns_connectors(socket) do
+    connectors =
+      case StoreProvider.list_configs() do
+        {:ok, configs} -> configs
+        {:error, _reason} -> []
+      end
+
+    assign(socket, :cloud_dns_connectors, connectors)
   end
 
   defp get_view_with_zones(view_name) do
@@ -700,13 +891,30 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     # First try to get config from running DNS service
     case get_zone_config_from_service(view_name, zone_type, zone_name) do
       {:ok, config} ->
-        {:ok, config}
+        {:ok, merge_store_zone_metadata(config, view_name, zone_type, zone_name)}
 
       :error ->
         # Fall back to persisted configuration
-        get_zone_config_from_persistence(view_name, zone_type, zone_name)
+        case get_zone_config_from_persistence(view_name, zone_type, zone_name) do
+          {:ok, config} ->
+            {:ok, merge_store_zone_metadata(config, view_name, zone_type, zone_name)}
+
+          :error ->
+            :error
+        end
     end
   end
+
+  defp merge_store_zone_metadata(config, view_name, :auth, zone_name) do
+    case StoreZone.get_zone(view_name, zone_name) do
+      {:ok, zone} -> Map.put(config, :cloud_mirror, Map.get(zone, :cloud_mirror))
+      _ -> config
+    end
+  catch
+    _, _ -> config
+  end
+
+  defp merge_store_zone_metadata(config, _view_name, _zone_type, _zone_name), do: config
 
   defp get_zone_config_from_service(view_name, zone_type, zone_name) do
     try do
@@ -834,6 +1042,10 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   def zone_type_label(:stub), do: "Stub"
   def zone_type_label(:cache), do: "Cache"
   def zone_type_label(_), do: "Unknown"
+
+  defp provider_label(:cloudflare), do: "Cloudflare DNS"
+  defp provider_label(:route53), do: "AWS Route 53"
+  defp provider_label(type), do: to_string(type)
 
   defp save_config_async do
     Task.start(fn ->

@@ -3,8 +3,12 @@ defmodule YellowDog.Console.DnsLiveTest do
   LiveView tests for DNS console pages.
   Tests page mounting, rendering, and UI interactions (search, filter, export).
   """
-  use YellowDog.Console.ConnCase, async: true
+  use YellowDog.Console.ConnCase, async: false
   import Phoenix.LiveViewTest
+
+  alias YellowDog.Store.Backend
+  alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Provider
 
   # ============================================================================
   # DNS Overview Page
@@ -102,6 +106,50 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "Authoritative"
       assert html =~ "Forward"
       assert html =~ "Stub"
+    end
+
+    test "auth zone form selects configured Cloud DNS connector", %{conn: conn} do
+      setup_cloud_dns_connectors()
+
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/new")
+      assert html =~ "Cloud DNS Mirror"
+      assert html =~ "Enable cloud sync"
+      assert html =~ "Cloud DNS Connector"
+      assert html =~ "cf-main - Cloudflare DNS"
+      assert html =~ "aws-prod - AWS Route 53"
+      assert html =~ "Cloudflare DNS"
+      assert html =~ "AWS Route 53"
+      refute html =~ ~s(name="zone[mirror_provider]")
+      refute html =~ "Cloud Zone ID"
+      refute html =~ "Sync Direction"
+      refute html =~ "Conflicts"
+      refute html =~ ~s(name="zone[mirror_zone_id]")
+      refute html =~ ~s(name="zone[mirror_direction]")
+      refute html =~ ~s(name="zone[mirror_conflict_strategy]")
+    end
+
+    test "edit auth zone form shows cloud provider settings", %{conn: conn} do
+      setup_cloud_dns_connectors()
+
+      zone_name = "edit-provider-#{System.unique_integer([:positive])}.example.com"
+      start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry})
+      start_supervised!({YellowDog.Dns.ZoneController, []})
+
+      assert {:ok, _pid} =
+               YellowDog.Dns.ZoneController.start_zone(:auth, zone_name, view_name: "default")
+
+      {:ok, _view, html} =
+        live(conn, "/server/dns/views/default/zones/auth/#{zone_name}/edit")
+
+      assert html =~ "Cloud Provider Settings"
+      assert html =~ "Cloud DNS Mirror"
+      assert html =~ "Enable cloud sync"
+      assert html =~ "Cloud DNS Connector"
+      assert html =~ "cf-main - Cloudflare DNS"
+      assert html =~ "aws-prod - AWS Route 53"
+      refute html =~ "Cloud Zone ID"
+      refute html =~ "Sync Direction"
+      refute html =~ "Conflicts"
     end
 
     test "navigates to import zone form", %{conn: conn} do
@@ -1178,6 +1226,47 @@ defmodule YellowDog.Console.DnsLiveTest do
       refute html =~ "text-error"
     end
 
+    test "validate_zone requires cloud connector when auth mirror is enabled", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "example.com",
+            "type" => "auth",
+            "mirror_enabled" => "true",
+            "mirror_connector" => ""
+          }
+        })
+
+      assert html =~ "Cloud DNS connector is required"
+    end
+
+    test "validate_zone accepts enabled cloud sync with only a configured connector", %{
+      conn: conn
+    } do
+      setup_cloud_dns_connectors()
+
+      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "example.com",
+            "type" => "auth",
+            "mirror_enabled" => "true",
+            "mirror_connector" => "cf-main"
+          }
+        })
+
+      refute html =~ "Cloud zone ID is required"
+      refute html =~ "Select a supported sync direction"
+      refute html =~ "Select a supported conflict strategy"
+      refute html =~ "text-error"
+    end
+
     test "validate_zone shows error for invalid upstream IP in forward zone", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
 
@@ -2183,5 +2272,40 @@ defmodule YellowDog.Console.DnsLiveTest do
       # since zone service isn't running in test
       assert is_binary(result)
     end
+  end
+
+  defp setup_cloud_dns_connectors do
+    previous_backend = Backend.active()
+
+    Backend.set_active(EtsBackend)
+    EtsBackend.create_table()
+    :ets.delete_all_objects(EtsBackend.table())
+
+    on_exit(fn ->
+      :ets.delete_all_objects(EtsBackend.table())
+      Backend.set_active(previous_backend)
+    end)
+
+    assert :ok =
+             Provider.put_config(%{
+               name: "cf-main",
+               type: :cloudflare,
+               credentials: %{api_token: "cf-token"},
+               enabled: true
+             })
+
+    assert :ok =
+             Provider.put_config(%{
+               name: "aws-prod",
+               type: :route53,
+               credentials: %{
+                 access_key_id: "AKIA_TEST",
+                 secret_access_key: "route53-secret",
+                 region: "us-east-1"
+               },
+               enabled: true
+             })
+
+    :ok
   end
 end
