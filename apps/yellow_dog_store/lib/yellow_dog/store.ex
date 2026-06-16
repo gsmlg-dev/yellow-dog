@@ -97,6 +97,11 @@ defmodule YellowDog.Store do
   defdelegate list_config(service), to: YellowDog.Store.Config, as: :list
   defdelegate delete_config(service, key), to: YellowDog.Store.Config, as: :delete
 
+  defdelegate put_provider_config(config), to: YellowDog.Store.Provider, as: :put_config
+  defdelegate get_provider_config(name), to: YellowDog.Store.Provider, as: :get_config
+  defdelegate list_provider_configs(), to: YellowDog.Store.Provider, as: :list_configs
+  defdelegate delete_provider_config(name), to: YellowDog.Store.Provider, as: :delete_config
+
   # Backup operations
   defdelegate create_backup(opts \\ []), to: YellowDog.Store.Backup, as: :create
   defdelegate restore_backup(path, opts \\ []), to: YellowDog.Store.Backup, as: :restore

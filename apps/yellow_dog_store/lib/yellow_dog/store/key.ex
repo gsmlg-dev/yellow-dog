@@ -40,6 +40,10 @@ defmodule YellowDog.Store.Key do
   @spec zone(String.t(), String.t()) :: String.t()
   def zone(view_name, zone_name), do: "dns:view:#{view_name}:zone:#{zone_name}"
 
+  @doc "DNS provider configuration key."
+  @spec provider_config(String.t()) :: String.t()
+  def provider_config(name), do: "dns:provider:#{name}:config"
+
   @doc "Zone metadata key (legacy, default view)."
   @deprecated "Use zone/2 with explicit view_name"
   @spec zone(String.t()) :: String.t()
@@ -81,6 +85,7 @@ defmodule YellowDog.Store.Key do
   def lease_v6_prefix, do: "dhcp:lease:v6:"
   def device_prefix, do: "device:"
   def dyn_dns_prefix, do: "dns:dyn:"
+  def provider_config_prefix, do: "dns:provider:"
 
   @doc "Prefix for all zones across all views."
   def all_views_prefix, do: "dns:view:"

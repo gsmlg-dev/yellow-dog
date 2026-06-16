@@ -158,6 +158,7 @@ defmodule YellowDog.Console.Router do
     get "/backups/download/:filename", BackupController, :download
 
     # Fingerprint (provider data)
+    live "/provider/cloud-dns", CloudDnsLive
     live "/fingerprint/devices", FingerprintLive.DevicesLive
     live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
     live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive

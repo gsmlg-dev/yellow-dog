@@ -439,6 +439,15 @@ defmodule YellowDog.Console.Components.Sidebar do
     <li class="nested-menu-title mt-4">Provider</li>
     <li>
       <.link
+        navigate="/system/provider/cloud-dns"
+        class={active?(@current_path, "/system/provider/cloud-dns")}
+      >
+        <.dm_mdi name="cloud" class="w-5 h-5" />
+        <span>Cloud DNS</span>
+      </.link>
+    </li>
+    <li>
+      <.link
         navigate="/system/fingerprint/devices"
         class={active?(@current_path, "/system/fingerprint/devices")}
       >
