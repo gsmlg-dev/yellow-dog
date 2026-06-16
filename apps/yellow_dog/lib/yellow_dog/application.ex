@@ -312,12 +312,25 @@ defmodule YellowDog.Application do
     defp maybe_adjust_for_test(config), do: config
   end
 
-  # Adjust configuration based on the runtime platform.
+  # Adjust configuration based on the runtime platform and execution mode.
   # When :netman_enabled is explicitly set to false (e.g. on macOS via runtime.exs),
   # force core.netman to false so the service is never started.
+  # If :netman_only is set to true, disable all server-side services.
   defp maybe_adjust_for_platform(config) do
-    if Application.get_env(:yellow_dog, :netman_enabled) == false do
-      put_in(config, ["core", "netman"], false)
+    config =
+      if Application.get_env(:yellow_dog, :netman_enabled) == false do
+        put_in(config, ["core", "netman"], false)
+      else
+        config
+      end
+
+    if Application.get_env(:yellow_dog, :netman_only, false) == true do
+      config
+      |> put_in(["core", "dns"], false)
+      |> put_in(["core", "mdns"], false)
+      |> put_in(["core", "dhcpv4"], false)
+      |> put_in(["core", "dhcpv6"], false)
+      |> put_in(["core", "netboot"], false)
     else
       config
     end

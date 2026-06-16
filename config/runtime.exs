@@ -160,6 +160,80 @@ data_dir =
 # Store data directory in application config (nil means use config file value or default)
 config :yellow_dog, :data_dir, data_dir
 
+normalize_cluster_env = fn
+  nil -> nil
+  value -> value |> String.trim() |> String.downcase()
+end
+
+cluster_env_enabled? = fn value ->
+  case normalize_cluster_env.(value) do
+    enabled when enabled in ["1", "true", "yes", "on"] -> true
+    _ -> false
+  end
+end
+
+cluster_env_disabled? = fn value ->
+  case normalize_cluster_env.(value) do
+    disabled when disabled in ["0", "false", "no", "off"] -> true
+    _ -> false
+  end
+end
+
+cluster_nodes_env = System.get_env("CONCORD_CLUSTER_NODES")
+
+cluster_nodes =
+  case cluster_nodes_env do
+    nil -> []
+    nodes -> String.split(nodes, ",", trim: true)
+  end
+  |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
+
+cluster_enabled_env = System.get_env("CONCORD_CLUSTERING")
+
+configured_topologies =
+  Application.get_env(:concord, :topologies) ||
+    Application.get_env(:libcluster, :topologies) ||
+    []
+
+cluster_enabled? =
+  cond do
+    cluster_env_disabled?.(cluster_enabled_env) -> false
+    cluster_env_enabled?.(cluster_enabled_env) -> true
+    true -> cluster_nodes != [] or configured_topologies != []
+  end
+
+if cluster_enabled? do
+  cluster_topology =
+    cond do
+      cluster_nodes != [] ->
+        [
+          concord_epmd: [
+            strategy: Cluster.Strategy.Epmd,
+            config: [hosts: Enum.map(cluster_nodes, &String.to_atom/1)]
+          ]
+        ]
+
+      configured_topologies != [] ->
+        configured_topologies
+
+      true ->
+        [
+          concord_gossip: [
+            strategy: Cluster.Strategy.Gossip
+          ]
+        ]
+    end
+
+  config :concord,
+    clustering: true,
+    topologies: cluster_topology
+else
+  config :concord,
+    clustering: false,
+    topologies: []
+end
+
 # Disable NetMan on macOS — it relies on Linux kernel interfaces (netlink, etc.)
 # that are not available on macOS.
 if :os.type() == {:unix, :darwin} do
