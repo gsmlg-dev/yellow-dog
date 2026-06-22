@@ -786,6 +786,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
                 record_count: 0,
                 query_count: 0
               }
+              |> with_zone_metadata(view_name)
             end)
 
           {:ok, %{name: view_name, zones: view_zones}}
@@ -805,7 +806,10 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     Enum.map(zones_config, fn
       {type, name} ->
         zone_stats = get_zone_stats(view_name, type, name)
-        Map.merge(%{type: type, name: name}, zone_stats)
+
+        %{type: type, name: name}
+        |> Map.merge(zone_stats)
+        |> with_zone_metadata(view_name)
 
       name when is_binary(name) ->
         # View has a plain string zone (from TOML persistence without type info).
@@ -813,13 +817,30 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         case resolve_zone_type(view_name, name) do
           {:ok, type} ->
             zone_stats = get_zone_stats(view_name, type, name)
-            Map.merge(%{type: type, name: name}, zone_stats)
+
+            %{type: type, name: name}
+            |> Map.merge(zone_stats)
+            |> with_zone_metadata(view_name)
 
           :error ->
             %{type: :unknown, name: name, record_count: 0, query_count: 0}
         end
     end)
   end
+
+  defp with_zone_metadata(%{type: :auth, name: name} = zone, view_name) do
+    case StoreZone.get_zone(view_name, name) do
+      {:ok, store_zone} ->
+        Map.put(zone, :cloud_mirror, Map.get(store_zone, :cloud_mirror))
+
+      _ ->
+        zone
+    end
+  catch
+    _, _ -> zone
+  end
+
+  defp with_zone_metadata(zone, _view_name), do: zone
 
   # Resolve zone type by checking running zone processes, then persisted config
   defp resolve_zone_type(view_name, zone_name) do
@@ -1043,8 +1064,20 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   def zone_type_label(:cache), do: "Cache"
   def zone_type_label(_), do: "Unknown"
 
+  defp cloud_mirror_enabled?(%{cloud_mirror: %{enabled: true}}), do: true
+  defp cloud_mirror_enabled?(_zone), do: false
+
+  defp cloud_mirror_provider(%{cloud_mirror: mirror}) when is_map(mirror) do
+    Map.get(mirror, :provider) || Map.get(mirror, "provider")
+  end
+
+  defp cloud_mirror_provider(_zone), do: nil
+
   defp provider_label(:cloudflare), do: "Cloudflare DNS"
   defp provider_label(:route53), do: "AWS Route 53"
+  defp provider_label("cloudflare"), do: "Cloudflare DNS"
+  defp provider_label("route53"), do: "AWS Route 53"
+  defp provider_label(nil), do: "-"
   defp provider_label(type), do: to_string(type)
 
   defp save_config_async do

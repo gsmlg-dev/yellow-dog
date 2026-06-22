@@ -91,6 +91,7 @@
                     <tr>
                       <th scope="col">Zone Name</th>
                       <th scope="col">Type</th>
+                      <th scope="col">Cloud</th>
                       <th scope="col">Records</th>
                       <th scope="col">Queries</th>
                       <th class="text-right">Actions</th>
@@ -117,6 +118,15 @@
                           <.badge color={zone_type_badge(zone.type)} size="sm">
                             {zone_type_label(zone.type)}
                           </.badge>
+                        </td>
+                        <td>
+                          <%= if cloud_mirror_enabled?(zone) do %>
+                            <span class="text-sm">
+                              {provider_label(cloud_mirror_provider(zone))}
+                            </span>
+                          <% else %>
+                            <span class="text-on-surface-variant">-</span>
+                          <% end %>
                         </td>
                         <td>
                           <%= if zone.type == :auth do %>

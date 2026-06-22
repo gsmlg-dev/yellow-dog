@@ -152,6 +152,46 @@ defmodule YellowDog.Console.DnsLiveTest do
       refute html =~ "Conflicts"
     end
 
+    test "zones table shows cloud provider for mirrored auth zones", %{conn: conn} do
+      setup_cloud_dns_connectors()
+
+      zone_name = "cloud-table-#{System.unique_integer([:positive])}.example.com"
+
+      start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry})
+      start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry})
+      start_supervised!({YellowDog.Dns.ViewManager, []})
+      start_supervised!({YellowDog.Dns.ZoneController, []})
+
+      cloud_mirror = %{
+        enabled: true,
+        connector_name: "cf-main",
+        provider: :cloudflare,
+        zone_id: "",
+        direction: :bidirectional,
+        conflict_strategy: :local_wins
+      }
+
+      assert {:ok, _pid} =
+               YellowDog.Dns.ZoneController.start_zone(:auth, zone_name,
+                 view_name: "default",
+                 cloud_mirror: cloud_mirror
+               )
+
+      assert {:ok, _pid} =
+               YellowDog.Dns.ViewManager.start_view(
+                 name: "default",
+                 priority: 0,
+                 acl: :any,
+                 zones: [{:auth, zone_name}]
+               )
+
+      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones")
+
+      assert html =~ "Cloud"
+      assert html =~ "Cloudflare DNS"
+      assert html =~ zone_name
+    end
+
     test "navigates to import zone form", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
       assert html =~ "Import Zone"
