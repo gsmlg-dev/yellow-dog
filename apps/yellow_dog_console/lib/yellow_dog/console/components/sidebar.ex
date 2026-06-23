@@ -125,6 +125,15 @@ defmodule YellowDog.Console.Components.Sidebar do
         <span>Metrics</span>
       </.link>
     </li>
+    <li>
+      <.link
+        navigate="/server/dns/providers"
+        class={active?(@current_path, "/server/dns/providers")}
+      >
+        <.dm_mdi name="cloud-sync" class="w-5 h-5" />
+        <span>Providers</span>
+      </.link>
+    </li>
     <!-- DHCPv4 -->
     <li class="nested-menu-title mt-4">DHCPv4</li>
     <li>

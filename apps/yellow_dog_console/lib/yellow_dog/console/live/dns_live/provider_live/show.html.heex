@@ -1,0 +1,177 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 text-sm text-on-surface-variant mb-1">
+          <.link navigate={~p"/server/dns/providers"} class="hover:underline">Providers</.link>
+          <.dm_mdi name="chevron-right" class="w-4 h-4" />
+          <span>{@provider_name}</span>
+        </div>
+        <h1 class="text-4xl font-bold">{@provider_name}</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {format_type(@config[:type] || :unknown)} provider
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <%= if @config[:enabled] do %>
+          <.status_indicator
+            status={if @config[:status] == :running, do: "running", else: "stopped"}
+            label={if @config[:status] == :running, do: "Running", else: "Stopped"}
+            pulse
+          />
+        <% else %>
+          <.badge color="ghost" size="md">Disabled</.badge>
+        <% end %>
+        <button
+          phx-click="refresh"
+          class="btn btn-ghost btn-circle btn-sm"
+          title="Refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-5 w-5" />
+        </button>
+      </div>
+    </div>
+    
+<!-- Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Type</div>
+          <div class="text-2xl font-bold text-primary">
+            {format_type(@config[:type] || :unknown)}
+          </div>
+        </div>
+      </div>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Zones</div>
+          <div class="text-2xl font-bold text-success">{length(@zones)}</div>
+        </div>
+      </div>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Sync Count</div>
+          <div class="text-2xl font-bold text-secondary">
+            {Map.get(@sync_status, :sync_count, 0)}
+          </div>
+        </div>
+      </div>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Conflicts</div>
+          <div class={[
+            "text-2xl font-bold",
+            if(@conflict_count > 0, do: "text-error", else: "text-on-surface")
+          ]}>
+            {@conflict_count}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+<!-- Actions -->
+    <div class="flex flex-wrap gap-3">
+      <button
+        phx-click="sync_now"
+        class="btn btn-primary btn-sm gap-2"
+        disabled={!@config[:enabled] || @config[:status] != :running}
+      >
+        <.dm_mdi name="sync" class="w-4 h-4" /> Sync All Zones
+      </button>
+      <button phx-click="toggle_enabled" class="btn btn-secondary btn-sm gap-2">
+        <.dm_mdi name={if @config[:enabled], do: "pause", else: "play"} class="w-4 h-4" />
+        {if @config[:enabled], do: "Disable", else: "Enable"}
+      </button>
+      <%= if @conflict_count > 0 do %>
+        <.link
+          navigate={~p"/server/dns/providers/#{@provider_name}/conflicts"}
+          class="btn btn-warning btn-sm gap-2"
+        >
+          <.dm_mdi name="alert-circle" class="w-4 h-4" />
+          {@conflict_count} Conflicts
+        </.link>
+      <% end %>
+    </div>
+    
+<!-- Sync Status -->
+    <.card title="Sync Status">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="space-y-3">
+          <div class="flex justify-between">
+            <span class="text-sm text-on-surface-variant">Last Sync</span>
+            <span class="text-sm font-mono">
+              {format_sync_time(Map.get(@sync_status, :last_sync))}
+            </span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-sm text-on-surface-variant">Interval</span>
+            <span class="text-sm font-mono">
+              {div(Map.get(@sync_status, :interval, 0), 1000)}s
+            </span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-sm text-on-surface-variant">Total Syncs</span>
+            <span class="text-sm font-mono">
+              {Map.get(@sync_status, :sync_count, 0)}
+            </span>
+          </div>
+        </div>
+        <div class="space-y-3">
+          <%= if error = Map.get(@sync_status, :last_error) do %>
+            <div class="bg-error/10 rounded-lg p-3">
+              <div class="text-sm font-semibold text-error">Last Error</div>
+              <div class="text-sm font-mono text-error mt-1">{inspect(error)}</div>
+            </div>
+          <% else %>
+            <div class="bg-success/10 rounded-lg p-3">
+              <div class="text-sm font-semibold text-success">No Errors</div>
+              <div class="text-sm text-on-surface-variant mt-1">
+                All syncs completed successfully
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </.card>
+    
+<!-- Zone List -->
+    <.card title="Managed Zones">
+      <%= if @zones != [] do %>
+        <div class="overflow-x-auto">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th scope="col">Zone</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for zone <- @zones do %>
+                <tr class="hover">
+                  <td class="font-mono font-semibold">{zone}</td>
+                  <td>
+                    <button
+                      phx-click="sync_zone"
+                      phx-value-zone={zone}
+                      class="btn btn-ghost btn-xs gap-1"
+                      disabled={!@config[:enabled] || @config[:status] != :running}
+                    >
+                      <.dm_mdi name="sync" class="w-4 h-4" /> Sync
+                    </button>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% else %>
+        <div class="text-center py-8 text-on-surface-variant">
+          <.dm_mdi name="folder-outline" class="mx-auto h-12 w-12" />
+          <p class="mt-2">No zones configured for this provider</p>
+        </div>
+      <% end %>
+    </.card>
+  </div>
+</Layouts.app>

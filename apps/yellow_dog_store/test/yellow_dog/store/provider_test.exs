@@ -43,7 +43,7 @@ defmodule YellowDog.Store.ProviderTest do
 
     test "rejects unsupported provider types" do
       assert {:error, :unsupported_provider} =
-               Provider.put_config(%{name: "other", type: :gcp, credentials: %{}})
+               Provider.put_config(%{name: "other", type: :unknown, credentials: %{}})
     end
   end
 end

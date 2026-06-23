@@ -1,22 +1,21 @@
 defmodule YellowDog.Store.Provider do
   @moduledoc """
-  Store facade for DNS provider connector configurations.
+  DNS provider data facade over the Store backend.
 
-  Provider configs are Store-backed connector records used by the console and
-  future DNS sync workers. Secrets are stored inside the connector config map;
-  callers are responsible for masking them when rendering.
+  Stores cloud DNS connector configuration for the console mirror flow and
+  provider sync status/conflicts for the DNS provider subsystem.
   """
 
   alias YellowDog.Store.{Backend, EventBridge, Key}
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
 
-  @valid_types [:cloudflare, :route53]
+  @valid_types [:cloudflare, :route53, :iana_root, :aws, :gcp, :vultr]
 
-  @type provider_type :: :cloudflare | :route53
+  @type provider_type :: :cloudflare | :route53 | :iana_root | :aws | :gcp | :vultr
   @type config :: %{
           name: String.t(),
           type: provider_type(),
-          credentials: map(),
+          credentials: map() | nil,
           zones: [String.t()],
           enabled: boolean(),
           created_at: integer(),
@@ -35,6 +34,7 @@ defmodule YellowDog.Store.Provider do
     else
       key = Key.provider_config(name)
       now = System.system_time(:second)
+      start_time = System.monotonic_time()
 
       value =
         config
@@ -47,6 +47,7 @@ defmodule YellowDog.Store.Provider do
 
       case Backend.active().put(key, value, consistency: :strong) do
         :ok ->
+          emit_telemetry(start_time, :provider, :put, key)
           EventBridge.notify(:put, key, value)
           :ok
 
@@ -83,16 +84,53 @@ defmodule YellowDog.Store.Provider do
   @spec delete_config(String.t()) :: :ok | {:error, term()}
   def delete_config(name) when is_binary(name) do
     ensure_ets_backend()
+
     key = Key.provider_config(String.trim(name))
+    start_time = System.monotonic_time()
 
     case Backend.active().delete(key) do
       :ok ->
+        emit_telemetry(start_time, :provider, :delete, key)
         EventBridge.notify(:delete, key, nil)
         :ok
 
       {:error, _} = error ->
         error
     end
+  end
+
+  @spec put_status(String.t(), map()) :: :ok | {:error, term()}
+  def put_status(name, status) when is_binary(name) do
+    ensure_ets_backend()
+    Backend.active().put(Key.provider_status(String.trim(name)), status, consistency: :strong)
+  end
+
+  @spec get_status(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
+  def get_status(name) when is_binary(name) do
+    ensure_ets_backend()
+    Backend.active().get(Key.provider_status(String.trim(name)), consistency: :eventual)
+  end
+
+  @spec put_conflict(map()) :: :ok | {:error, term()}
+  def put_conflict(%{provider_name: name, id: id} = conflict)
+      when is_binary(name) and is_binary(id) do
+    ensure_ets_backend()
+    Backend.active().put(Key.provider_conflict(name, id), conflict, consistency: :strong)
+  end
+
+  @spec list_conflicts(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_conflicts(name) when is_binary(name) do
+    ensure_ets_backend()
+
+    with {:ok, entries} <- Backend.active().prefix_scan(Key.provider_conflict_prefix(name)) do
+      {:ok, Enum.map(entries, fn {_key, value} -> value end)}
+    end
+  end
+
+  @spec delete_conflict(String.t(), String.t()) :: :ok | {:error, term()}
+  def delete_conflict(name, conflict_id) when is_binary(name) and is_binary(conflict_id) do
+    ensure_ets_backend()
+    Backend.active().delete(Key.provider_conflict(name, conflict_id))
   end
 
   defp put_timestamps(config, key, now) do
@@ -111,5 +149,15 @@ defmodule YellowDog.Store.Provider do
     if Backend.active() == EtsBackend do
       EtsBackend.create_table()
     end
+  end
+
+  defp emit_telemetry(start_time, namespace, operation, key) do
+    duration = System.monotonic_time() - start_time
+
+    :telemetry.execute(
+      [:yellow_dog, :store, :operation, :stop],
+      %{duration: duration},
+      %{namespace: namespace, operation: operation, key: key, consistency: :strong}
+    )
   end
 end
