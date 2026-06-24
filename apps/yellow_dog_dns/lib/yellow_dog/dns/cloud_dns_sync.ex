@@ -7,11 +7,21 @@ defmodule YellowDog.Dns.CloudDnsSync do
   alias YellowDog.Store.Provider, as: StoreProvider
   alias YellowDog.Store.Zone, as: StoreZone
 
+  require Record
+
+  Record.defrecordp(:xmlElement, Record.extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl"))
+  Record.defrecordp(:xmlText, Record.extract(:xmlText, from_lib: "xmerl/include/xmerl.hrl"))
+
   @cloudflare_api "https://api.cloudflare.com/client/v4"
+  @route53_api "https://route53.amazonaws.com"
+  @route53_host "route53.amazonaws.com"
+  @route53_service "route53"
+  @route53_signing_region "us-east-1"
   @automatic_ttl 300
+  @empty_payload_hash "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
   @type sync_result :: %{
-          provider: :cloudflare,
+          provider: :cloudflare | :route53,
           records_synced: non_neg_integer()
         }
 
@@ -67,6 +77,7 @@ defmodule YellowDog.Dns.CloudDnsSync do
   defp fetch_records(connector, mirror, zone_name, opts) do
     case connector_type(connector) do
       :cloudflare -> fetch_cloudflare_records(connector, mirror, zone_name, opts)
+      :route53 -> fetch_route53_records(connector, mirror, zone_name, opts)
       provider -> {:error, {:unsupported_provider, provider}}
     end
   end
@@ -89,6 +100,535 @@ defmodule YellowDog.Dns.CloudDnsSync do
   end
 
   defp normalize_provider(_provider), do: :unknown
+
+  defp fetch_route53_records(connector, mirror, zone_name, opts) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+
+    with {:ok, credentials} <- route53_credentials(connector),
+         {:ok, zone_id} <- route53_zone_id(mirror, zone_name, credentials, request_fun, opts),
+         {:ok, record_sets} <- route53_record_sets(zone_id, credentials, request_fun, opts) do
+      records = Enum.flat_map(record_sets, &route53_record_set_to_store/1)
+
+      {:ok, records}
+    end
+  end
+
+  defp route53_credentials(connector) do
+    credentials = value(connector, :credentials, %{})
+
+    access_key_id =
+      credentials
+      |> value(:access_key_id, "")
+      |> to_string()
+      |> String.trim()
+
+    secret_access_key =
+      credentials
+      |> value(:secret_access_key, "")
+      |> to_string()
+      |> String.trim()
+
+    region =
+      credentials
+      |> value(:region, @route53_signing_region)
+      |> to_string()
+      |> String.trim()
+
+    session_token =
+      credentials
+      |> value(:session_token, "")
+      |> to_string()
+      |> String.trim()
+
+    cond do
+      access_key_id == "" ->
+        {:error, :route53_access_key_id_missing}
+
+      secret_access_key == "" ->
+        {:error, :route53_secret_access_key_missing}
+
+      true ->
+        {:ok,
+         %{
+           access_key_id: access_key_id,
+           secret_access_key: secret_access_key,
+           region: if(region == "", do: @route53_signing_region, else: region),
+           session_token: if(session_token == "", do: nil, else: session_token)
+         }}
+    end
+  end
+
+  defp route53_zone_id(mirror, zone_name, credentials, request_fun, opts) do
+    zone_id =
+      mirror
+      |> value(:zone_id, "")
+      |> normalize_route53_zone_id()
+
+    if zone_id == "" do
+      route53_zone_id_by_name(zone_name, credentials, request_fun, opts)
+    else
+      {:ok, zone_id}
+    end
+  end
+
+  defp route53_zone_id_by_name(zone_name, credentials, request_fun, opts) do
+    params = [dnsname: route53_dns_name(zone_name), maxitems: 1]
+
+    with {:ok, doc} <-
+           route53_get("/2013-04-01/hostedzonesbyname", params, credentials, request_fun, opts) do
+      expected_name = normalize_domain(zone_name)
+
+      doc
+      |> xpath_nodes(~c"//HostedZone")
+      |> Enum.map(fn zone ->
+        %{
+          id: zone |> xpath_text(~c"Id") |> normalize_route53_zone_id(),
+          name: xpath_text(zone, ~c"Name")
+        }
+      end)
+      |> Enum.find(fn zone -> normalize_domain(zone.name) == expected_name end)
+      |> case do
+        %{id: id} when id != "" -> {:ok, id}
+        _zone -> {:error, :route53_zone_not_found}
+      end
+    end
+  end
+
+  defp route53_record_sets(zone_id, credentials, request_fun, opts) do
+    route53_record_sets(zone_id, credentials, request_fun, opts, [maxitems: 100], [])
+  end
+
+  defp route53_record_sets(zone_id, credentials, request_fun, opts, params, acc) do
+    path = "/2013-04-01/hostedzone/#{aws_uri_encode(zone_id)}/rrset"
+
+    with {:ok, doc} <- route53_get(path, params, credentials, request_fun, opts),
+         {:ok, page} <- route53_record_sets_from_xml(doc) do
+      acc = acc ++ page.record_sets
+
+      cond do
+        not page.truncated? ->
+          {:ok, acc}
+
+        page.next_record_name == "" or page.next_record_type == "" ->
+          {:error, :route53_invalid_pagination}
+
+        true ->
+          route53_record_sets(
+            zone_id,
+            credentials,
+            request_fun,
+            opts,
+            route53_next_page_params(page),
+            acc
+          )
+      end
+    end
+  end
+
+  defp route53_next_page_params(page) do
+    params = [
+      maxitems: 100,
+      name: page.next_record_name,
+      type: page.next_record_type
+    ]
+
+    if page.next_record_identifier == "" do
+      params
+    else
+      Keyword.put(params, :identifier, page.next_record_identifier)
+    end
+  end
+
+  defp route53_get(path, params, credentials, request_fun, opts) do
+    query = canonical_query_string(params)
+    url = @route53_api <> path <> if(query == "", do: "", else: "?#{query}")
+
+    request_fun.(
+      method: :get,
+      url: url,
+      headers: route53_signed_headers(path, query, credentials, opts)
+    )
+    |> normalize_route53_response()
+  end
+
+  defp route53_signed_headers(path, query, credentials, opts) do
+    amz_date =
+      opts
+      |> Keyword.get_lazy(:request_time, &DateTime.utc_now/0)
+      |> aws_datetime()
+
+    date = String.slice(amz_date, 0, 8)
+    credential_scope = "#{date}/#{credentials.region}/#{@route53_service}/aws4_request"
+
+    signed_headers =
+      [
+        {"host", @route53_host},
+        {"x-amz-content-sha256", @empty_payload_hash},
+        {"x-amz-date", amz_date}
+      ]
+      |> maybe_add_security_token(credentials.session_token)
+      |> Enum.sort_by(fn {name, _value} -> name end)
+
+    signed_header_names =
+      signed_headers
+      |> Enum.map(fn {name, _value} -> name end)
+      |> Enum.join(";")
+
+    canonical_headers =
+      signed_headers
+      |> Enum.map(fn {name, value} -> "#{name}:#{canonical_header_value(value)}\n" end)
+      |> Enum.join()
+
+    canonical_request =
+      ["GET", path, query, canonical_headers, signed_header_names, @empty_payload_hash]
+      |> Enum.join("\n")
+
+    string_to_sign =
+      [
+        "AWS4-HMAC-SHA256",
+        amz_date,
+        credential_scope,
+        sha256_hex(canonical_request)
+      ]
+      |> Enum.join("\n")
+
+    signature =
+      credentials.secret_access_key
+      |> route53_signing_key(date, credentials.region)
+      |> hmac(string_to_sign)
+      |> Base.encode16(case: :lower)
+
+    authorization =
+      "AWS4-HMAC-SHA256 " <>
+        "Credential=#{credentials.access_key_id}/#{credential_scope}, " <>
+        "SignedHeaders=#{signed_header_names}, Signature=#{signature}"
+
+    [{"authorization", authorization}, {"accept", "application/xml"} | signed_headers]
+  end
+
+  defp maybe_add_security_token(headers, nil), do: headers
+  defp maybe_add_security_token(headers, ""), do: headers
+  defp maybe_add_security_token(headers, token), do: [{"x-amz-security-token", token} | headers]
+
+  defp route53_signing_key(secret_access_key, date, region) do
+    ("AWS4" <> secret_access_key)
+    |> hmac(date)
+    |> hmac(region)
+    |> hmac(@route53_service)
+    |> hmac("aws4_request")
+  end
+
+  defp normalize_route53_response({:ok, %{status: status, body: body}})
+       when status >= 200 and status < 300 do
+    parse_route53_xml(body)
+  end
+
+  defp normalize_route53_response({:ok, %{status: status, body: body}}) do
+    {:error, {:route53_http_error, status, route53_errors(body)}}
+  end
+
+  defp normalize_route53_response({:error, reason}) do
+    {:error, {:route53_request_failed, reason}}
+  end
+
+  defp route53_errors(body) do
+    case parse_route53_xml(body) do
+      {:ok, doc} ->
+        doc
+        |> xpath_nodes(~c"//Message")
+        |> Enum.map(&xml_node_text/1)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.take(3)
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp parse_route53_xml(body) do
+    body
+    |> body_to_string()
+    |> String.to_charlist()
+    |> :xmerl_scan.string(quiet: true)
+    |> case do
+      {doc, _rest} -> {:ok, doc}
+    end
+  rescue
+    _error -> {:error, :route53_invalid_xml}
+  catch
+    _kind, _reason -> {:error, :route53_invalid_xml}
+  end
+
+  defp route53_record_sets_from_xml(doc) do
+    record_sets =
+      doc
+      |> xpath_nodes(~c"//ResourceRecordSet")
+      |> Enum.map(&route53_record_set_from_xml/1)
+
+    {:ok,
+     %{
+       record_sets: record_sets,
+       truncated?: doc |> xpath_text(~c"//IsTruncated") |> route53_truthy?(),
+       next_record_name: xpath_text(doc, ~c"//NextRecordName"),
+       next_record_type: xpath_text(doc, ~c"//NextRecordType"),
+       next_record_identifier: xpath_text(doc, ~c"//NextRecordIdentifier")
+     }}
+  end
+
+  defp route53_record_set_from_xml(record_set) do
+    values =
+      record_set
+      |> xpath_nodes(~c"ResourceRecords/ResourceRecord/Value")
+      |> Enum.map(&xml_node_text/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    %{
+      name: xpath_text(record_set, ~c"Name"),
+      type: xpath_text(record_set, ~c"Type"),
+      ttl: record_set |> xpath_text(~c"TTL") |> normalize_route53_ttl(),
+      values: values
+    }
+  end
+
+  defp route53_record_set_to_store(%{name: name, type: type, ttl: ttl, values: values}) do
+    owner = normalize_domain(name)
+    type = type |> to_string() |> String.upcase()
+
+    Enum.flat_map(values, fn value ->
+      case route53_record_value_to_store(owner, type, value, ttl) do
+        {:ok, record} -> [record]
+        :skip -> []
+      end
+    end)
+  end
+
+  defp route53_record_value_to_store(owner, "A", value, ttl) do
+    if owner != "" and valid_ip?(value, :inet) do
+      {:ok, %{owner: owner, type: :a, rdata: %{address: value, ttl: ttl}}}
+    else
+      :skip
+    end
+  end
+
+  defp route53_record_value_to_store(owner, "AAAA", value, ttl) do
+    if owner != "" and valid_ip?(value, :inet6) do
+      {:ok, %{owner: owner, type: :aaaa, rdata: %{address: value, ttl: ttl}}}
+    else
+      :skip
+    end
+  end
+
+  defp route53_record_value_to_store(owner, "NS", value, ttl) do
+    route53_domain_record(owner, :ns, :nsdname, value, ttl)
+  end
+
+  defp route53_record_value_to_store(owner, "CNAME", value, ttl) do
+    route53_domain_record(owner, :cname, :cname, value, ttl)
+  end
+
+  defp route53_record_value_to_store(owner, "PTR", value, ttl) do
+    route53_domain_record(owner, :ptr, :ptrdname, value, ttl)
+  end
+
+  defp route53_record_value_to_store(owner, "MX", value, ttl) do
+    case String.split(String.trim(value), ~r/\s+/, parts: 2) do
+      [preference, exchange] ->
+        {:ok,
+         %{
+           owner: owner,
+           type: :mx,
+           rdata: %{
+             preference: normalize_integer(preference, 10),
+             exchange: normalize_domain(exchange),
+             ttl: ttl
+           }
+         }}
+
+      _parts ->
+        :skip
+    end
+  end
+
+  defp route53_record_value_to_store(owner, "TXT", value, ttl) do
+    txtdata = route53_txt_value(value)
+
+    if owner == "" or txtdata == "" do
+      :skip
+    else
+      {:ok, %{owner: owner, type: :txt, rdata: %{txtdata: txtdata, ttl: ttl}}}
+    end
+  end
+
+  defp route53_record_value_to_store(owner, "SRV", value, ttl) do
+    case String.split(String.trim(value), ~r/\s+/, parts: 4) do
+      [priority, weight, port, target] ->
+        {:ok,
+         %{
+           owner: owner,
+           type: :srv,
+           rdata: %{
+             priority: normalize_integer(priority, 0),
+             weight: normalize_integer(weight, 0),
+             port: normalize_integer(port, 0),
+             target: normalize_domain(target),
+             ttl: ttl
+           }
+         }}
+
+      _parts ->
+        :skip
+    end
+  end
+
+  defp route53_record_value_to_store(owner, "CAA", value, ttl) do
+    case String.split(String.trim(value), ~r/\s+/, parts: 3) do
+      [flags, tag, caa_value] ->
+        {:ok,
+         %{
+           owner: owner,
+           type: :caa,
+           rdata: %{
+             flags: normalize_integer(flags, 0),
+             tag: tag,
+             value: route53_txt_value(caa_value),
+             ttl: ttl
+           }
+         }}
+
+      _parts ->
+        :skip
+    end
+  end
+
+  defp route53_record_value_to_store(_owner, _type, _value, _ttl), do: :skip
+
+  defp route53_domain_record(owner, type, field, value, ttl) do
+    target = normalize_domain(value)
+
+    if owner == "" or target == "" do
+      :skip
+    else
+      {:ok, %{owner: owner, type: type, rdata: %{field => target, ttl: ttl}}}
+    end
+  end
+
+  defp route53_dns_name(zone_name) do
+    zone_name = normalize_domain(zone_name)
+
+    if zone_name == "" do
+      ""
+    else
+      zone_name <> "."
+    end
+  end
+
+  defp normalize_route53_zone_id(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.replace_prefix("/hostedzone/", "")
+  end
+
+  defp normalize_route53_ttl(value) do
+    case normalize_integer(value, @automatic_ttl) do
+      ttl when ttl > 0 -> ttl
+      _ttl -> @automatic_ttl
+    end
+  end
+
+  defp route53_truthy?("true"), do: true
+  defp route53_truthy?("TRUE"), do: true
+  defp route53_truthy?(true), do: true
+  defp route53_truthy?(_value), do: false
+
+  defp route53_txt_value(value) do
+    value = String.trim(value)
+
+    case Regex.scan(~r/"((?:\\.|[^"])*)"/, value, capture: :all_but_first) do
+      [] ->
+        value
+
+      chunks ->
+        chunks
+        |> Enum.map(fn [chunk] -> unescape_route53_quoted(chunk) end)
+        |> Enum.join()
+    end
+  end
+
+  defp unescape_route53_quoted(value) do
+    value
+    |> String.replace("\\\"", "\"")
+    |> String.replace("\\\\", "\\")
+  end
+
+  defp canonical_query_string(params) do
+    params
+    |> Enum.reject(fn {_key, value} -> is_nil(value) or to_string(value) == "" end)
+    |> Enum.map(fn {key, value} -> {aws_uri_encode(key), aws_uri_encode(value)} end)
+    |> Enum.sort()
+    |> Enum.map(fn {key, value} -> "#{key}=#{value}" end)
+    |> Enum.join("&")
+  end
+
+  defp aws_uri_encode(value) do
+    value
+    |> to_string()
+    |> URI.encode(&aws_unreserved?/1)
+  end
+
+  defp aws_unreserved?(char)
+       when char in ?A..?Z
+       when char in ?a..?z
+       when char in ?0..?9
+       when char in [?-, ?_, ?., ?~],
+       do: true
+
+  defp aws_unreserved?(_char), do: false
+
+  defp canonical_header_value(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")
+  end
+
+  defp aws_datetime(%DateTime{} = datetime) do
+    datetime
+    |> DateTime.to_unix(:second)
+    |> DateTime.from_unix!()
+    |> Calendar.strftime("%Y%m%dT%H%M%SZ")
+  end
+
+  defp hmac(key, data), do: :crypto.mac(:hmac, :sha256, key, data)
+
+  defp sha256_hex(data) do
+    :crypto.hash(:sha256, data)
+    |> Base.encode16(case: :lower)
+  end
+
+  defp xpath_nodes(node, path), do: :xmerl_xpath.string(path, node)
+
+  defp xpath_text(node, path) do
+    node
+    |> xpath_nodes(path)
+    |> Enum.map(&xml_node_text/1)
+    |> Enum.join()
+    |> String.trim()
+  end
+
+  defp xml_node_text(xmlText(value: value)), do: to_string(value)
+
+  defp xml_node_text(xmlElement(content: content)) do
+    Enum.map_join(content, "", &xml_node_text/1)
+  end
+
+  defp xml_node_text(_node), do: ""
+
+  defp body_to_string(body) when is_binary(body), do: body
+  defp body_to_string(body) when is_list(body), do: to_string(body)
+  defp body_to_string(body), do: inspect(body)
 
   defp fetch_cloudflare_records(connector, mirror, zone_name, opts) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
