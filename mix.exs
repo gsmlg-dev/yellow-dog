@@ -4,7 +4,7 @@ defmodule YellowDog.Umbrella.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "1.1.1",
+      version: "1.1.2",
       start_permanent: Mix.env() == :prod,
       description: "YellowDog DNS/DHCP server and network manager",
       releases: [
@@ -104,7 +104,7 @@ defmodule YellowDog.Umbrella.MixProject do
       main: "readme",
       extras: ["README.md"],
       source_url: "https://github.com/gsmlg-app/yellow-dog.git",
-      source_ref: "v1.1.1"
+      source_ref: "v1.1.2"
     ]
   end
 

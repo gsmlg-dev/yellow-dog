@@ -96,8 +96,6 @@
 
       packages.docker = dockerImage;
 
-      packages.allImages = flake-docker-utils.lib.allImages ["x86_64-linux" "aarch64-linux"] dockerImage;
-
       defaultPackage = yellowdogdns;
 
       devShells.default = pkgs.mkShell {

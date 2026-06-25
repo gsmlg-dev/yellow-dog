@@ -6,7 +6,7 @@ RUN apk add --no-cache rust cargo
 WORKDIR /app
 
 ARG MIX_ENV=prod
-ARG RELEASE_VERSION=1.1.1
+ARG RELEASE_VERSION=1.1.2
 
 # Install hex and rebar (cached unless base image changes)
 RUN mix local.hex --force && \
@@ -57,7 +57,7 @@ RUN mix release yellow_dog --version "${RELEASE_VERSION}"
 
 FROM docker.io/library/alpine:3.23
 
-ARG RELEASE_VERSION=1.1.1
+ARG RELEASE_VERSION=1.1.2
 ENV RELEASE_VERSION="${RELEASE_VERSION}"
 
 LABEL org.opencontainers.image.source="https://github.com/gsmlg-dev/yellow-dog"

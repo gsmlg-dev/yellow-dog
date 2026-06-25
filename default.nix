@@ -4,6 +4,7 @@
   buildNpmPackage,
   beamPackages,
   nodejs,
+  rustPlatform,
   ...
 }: let
   mix-file = builtins.readFile ./mix.exs;
@@ -14,6 +15,7 @@
 
   pname = "yellow_dog";
   version = version_in_mix;
+  cargoRoot = "apps/yellow_dog_dhcp_client/native/dhcp_socket";
 
   src = lib.fileset.toSource {
     root = ./.;
@@ -24,18 +26,26 @@
     pname = "${pname}-mix-deps";
     inherit src version;
     # nix will complain and tell you the right value to replace this with
-    hash = "sha256-WNdN6mDQb8rmLLplPZV4B6ACz4rz9RCMk3uzdC6Widk=";
+    hash = "sha256-N1UnM3KmoWGPnKdEbyeMkcnAVtSEYvwPbxoy3TDTOmY=";
     mixEnv = "prod"; # default is "prod", when empty includes all dependencies, such as "dev", "test".
     # if you have build time environment variables add them here
     RELEASE_COOKIE = "Best_in_the_World!";
   };
+
+  cargoDeps = rustPlatform.fetchCargoVendor {
+    inherit src cargoRoot;
+    hash = "sha256-NhRYCyn4uaMNHOSj5ya6IpQ/kXeo+b+rgMOH4xkA7Tw=";
+  };
 in
   beamPackages.mixRelease {
-    inherit pname version src mixFodDeps;
+    inherit pname version src mixFodDeps cargoDeps cargoRoot;
 
     mixReleaseName = "yellow_dog";
 
     nativeBuildInputs = [
+      rustPlatform.cargoSetupHook
+      pkgs.cargo
+      pkgs.rustc
     ];
 
     preBuild = ''
