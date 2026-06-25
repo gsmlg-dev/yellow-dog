@@ -28,11 +28,13 @@ defmodule YellowDog.Dns.Supervisor do
   use Supervisor
 
   alias YellowDog.Dns.{ConfigPersistence, IpFormat, View}
+  alias YellowDog.Store.Zone, as: StoreZone
   alias YellowDog.Telemetry
 
   @default_port 53
   @default_listen {0, 0, 0, 0}
   @default_data_path "data/dns"
+  @default_forward_timeout 2_000
 
   @doc """
   Starts the DNS supervisor.
@@ -102,6 +104,9 @@ defmodule YellowDog.Dns.Supervisor do
       {Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry},
       {Registry, keys: :unique, name: YellowDog.Dns.ConnectionRegistry},
       {Registry, keys: :unique, name: YellowDog.Dns.RecursionRegistry},
+
+      # Background Cloud DNS sync jobs
+      {Task.Supervisor, name: YellowDog.Dns.CloudDnsSyncJob.TaskSupervisor},
 
       # Rate limiter - must start before server for DoS protection
       YellowDog.Dns.RateLimiter
@@ -188,31 +193,97 @@ defmodule YellowDog.Dns.Supervisor do
     # Set up default forwarding zone if not configured
     upstreams = get_upstreams()
 
-    if upstreams != [] do
-      # Only start if not already started from persisted config
-      case YellowDog.Dns.ZoneController.find_zone(:forward, ".") do
-        {:ok, _pid} ->
-          :ok
-
-        :error ->
-          case YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams) do
-            {:ok, _pid} ->
-              # Register with default view
-              case YellowDog.Dns.ViewManager.get_view("default") do
-                {:ok, view_pid} -> View.register_zone(view_pid, :forward, ".")
-                :error -> :ok
-              end
-
-            {:error, _reason} ->
-              :ok
-          end
-      end
-    end
+    ensure_default_forward_zone(upstreams)
 
     # Start Store event consumers if EventBridge is available
     start_store_consumers()
 
     Telemetry.info("DNS supervisor post-init completed")
+  end
+
+  defp ensure_default_forward_zone([]), do: :ok
+
+  defp ensure_default_forward_zone(upstreams) do
+    case YellowDog.Dns.ZoneController.find_zone(:forward, ".") do
+      {:ok, pid} ->
+        if default_forward_zone_current?(pid, upstreams) do
+          :ok
+        else
+          repair_default_forward_zone(pid, upstreams)
+        end
+
+      :error ->
+        start_default_forward_zone(upstreams)
+    end
+  end
+
+  defp default_forward_zone_current?(pid, upstreams) do
+    retries = default_forward_retries(upstreams)
+
+    case YellowDog.Dns.Zone.Forward.stats(pid) do
+      %{upstream_count: count, timeout: timeout, retries: configured_retries}
+      when count > 0 and timeout <= @default_forward_timeout and configured_retries >= retries ->
+        true
+
+      _stats ->
+        false
+    end
+  rescue
+    _error -> false
+  catch
+    :exit, _reason -> false
+  end
+
+  defp repair_default_forward_zone(pid, upstreams) do
+    forwarders = store_forwarders_from_upstreams(upstreams)
+    retries = default_forward_retries(upstreams)
+
+    _ =
+      StoreZone.update_forward_zone("default", ".", %{
+        forwarders: forwarders,
+        timeout_ms: @default_forward_timeout,
+        max_retries: retries
+      })
+
+    _ =
+      YellowDog.Dns.Zone.Forward.reload(pid,
+        upstreams: upstreams,
+        timeout: @default_forward_timeout,
+        retries: retries
+      )
+
+    register_default_forward_zone()
+  end
+
+  defp start_default_forward_zone(upstreams) do
+    case YellowDog.Dns.ZoneController.start_zone(:forward, ".",
+           upstreams: upstreams,
+           timeout: @default_forward_timeout,
+           retries: default_forward_retries(upstreams)
+         ) do
+      {:ok, _pid} -> register_default_forward_zone()
+      {:error, _reason} -> :ok
+    end
+  end
+
+  defp register_default_forward_zone do
+    case YellowDog.Dns.ViewManager.get_view("default") do
+      {:ok, view_pid} -> View.register_zone(view_pid, :forward, ".")
+      :error -> :ok
+    end
+  end
+
+  defp store_forwarders_from_upstreams(upstreams) do
+    Enum.map(upstreams, fn {ip, port} ->
+      %{ip: :inet.ntoa(ip) |> to_string(), port: port}
+    end)
+  end
+
+  defp default_forward_retries(upstreams) do
+    upstreams
+    |> length()
+    |> Kernel.-(1)
+    |> max(1)
   end
 
   defp start_store_consumers do

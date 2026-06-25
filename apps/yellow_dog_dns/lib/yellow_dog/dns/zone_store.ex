@@ -53,7 +53,8 @@ defmodule YellowDog.Dns.ZoneStore do
           file: String.t() | nil,
           upstreams: [String.t()] | nil,
           ns_records: [String.t()] | nil,
-          ttl: pos_integer() | nil
+          ttl: pos_integer() | nil,
+          cloud_mirror: map() | nil
         }
 
   @doc """
@@ -326,7 +327,8 @@ defmodule YellowDog.Dns.ZoneStore do
       file: get_value(zone, [:file, "file"]),
       upstreams: get_list(zone, [:upstreams, "upstreams"]),
       ns_records: get_list(zone, [:ns_records, "ns_records"]),
-      ttl: get_value(zone, [:ttl, "ttl"])
+      ttl: get_value(zone, [:ttl, "ttl"]),
+      cloud_mirror: normalize_cloud_mirror(get_value(zone, [:cloud_mirror, "cloud_mirror"]))
     }
   end
 
@@ -341,6 +343,41 @@ defmodule YellowDog.Dns.ZoneStore do
 
   defp normalize_type(type) when is_atom(type), do: type
   defp normalize_type(type), do: Map.get(@zone_types, type, :auth)
+
+  defp normalize_cloud_mirror(nil), do: nil
+
+  defp normalize_cloud_mirror(mirror) when is_map(mirror) do
+    %{
+      enabled: get_value(mirror, [:enabled, "enabled"], false),
+      connector_name: get_value(mirror, [:connector_name, "connector_name"], ""),
+      provider: normalize_cloud_provider(get_value(mirror, [:provider, "provider"], :cloudflare)),
+      zone_id: get_value(mirror, [:zone_id, "zone_id"], ""),
+      direction:
+        normalize_mirror_direction(get_value(mirror, [:direction, "direction"], :bidirectional)),
+      conflict_strategy:
+        normalize_conflict_strategy(
+          get_value(mirror, [:conflict_strategy, "conflict_strategy"], :local_wins)
+        )
+    }
+  end
+
+  defp normalize_cloud_mirror(_mirror), do: nil
+
+  defp normalize_cloud_provider(:route53), do: :route53
+  defp normalize_cloud_provider("route53"), do: :route53
+  defp normalize_cloud_provider(_provider), do: :cloudflare
+
+  defp normalize_mirror_direction(:pull_from_cloud), do: :pull_from_cloud
+  defp normalize_mirror_direction("pull_from_cloud"), do: :pull_from_cloud
+  defp normalize_mirror_direction(:push_to_cloud), do: :push_to_cloud
+  defp normalize_mirror_direction("push_to_cloud"), do: :push_to_cloud
+  defp normalize_mirror_direction(_direction), do: :bidirectional
+
+  defp normalize_conflict_strategy(:cloud_wins), do: :cloud_wins
+  defp normalize_conflict_strategy("cloud_wins"), do: :cloud_wins
+  defp normalize_conflict_strategy(:manual), do: :manual
+  defp normalize_conflict_strategy("manual"), do: :manual
+  defp normalize_conflict_strategy(_strategy), do: :local_wins
 
   defp validate_required_fields(zone) do
     cond do
@@ -418,7 +455,21 @@ defmodule YellowDog.Dns.ZoneStore do
       ]
       |> Enum.reject(&is_nil/1)
 
-    Enum.join(base ++ optional, "\n")
+    Enum.join(base ++ optional ++ cloud_mirror_to_toml(zone_key, zone[:cloud_mirror]), "\n")
+  end
+
+  defp cloud_mirror_to_toml(_zone_key, nil), do: []
+
+  defp cloud_mirror_to_toml(zone_key, mirror) when is_map(mirror) do
+    [
+      "[zones.#{encode_toml_key(zone_key)}.cloud_mirror]",
+      "enabled = #{if mirror[:enabled], do: "true", else: "false"}",
+      "connector_name = #{encode_toml_string(mirror[:connector_name] || "")}",
+      "provider = #{encode_toml_string(to_string(mirror[:provider] || :cloudflare))}",
+      "zone_id = #{encode_toml_string(mirror[:zone_id] || "")}",
+      "direction = #{encode_toml_string(to_string(mirror[:direction] || :bidirectional))}",
+      "conflict_strategy = #{encode_toml_string(to_string(mirror[:conflict_strategy] || :local_wins))}"
+    ]
   end
 
   defp encode_toml_key(key) when is_binary(key) do

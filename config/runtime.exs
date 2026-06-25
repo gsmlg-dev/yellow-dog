@@ -60,38 +60,6 @@ if config_env() == :prod do
     username: System.get_env("CONSOLE_USERNAME", "admin"),
     password: System.get_env("CONSOLE_PASSWORD"),
     realm: System.get_env("CONSOLE_REALM", "YellowDog Console")
-
-  # ## SSL Support
-  #
-  # To get SSL working, you will need to add the `https` key
-  # to your endpoint configuration:
-  #
-  #     config :yellow_dog_console, YellowDog.Console.Endpoint,
-  #       https: [
-  #         ...,
-  #         port: 443,
-  #         cipher_suite: :strong,
-  #         keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
-  #         certfile: System.get_env("SOME_APP_SSL_CERT_PATH")
-  #       ]
-  #
-  # The `cipher_suite` is set to `:strong` to support only the
-  # latest and more secure SSL ciphers. This means old browsers
-  # and clients may not be supported. You can set it to
-  # `:compatible` for wider support.
-  #
-  # `:keyfile` and `:certfile` expect an absolute path to the key
-  # and cert in disk or a relative path inside priv, for example
-  # "priv/ssl/server.key". For all supported SSL configuration
-  # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
-  #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :yellow_dog_console, YellowDog.Console.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
 end
 
 # config/runtime.exs is executed for all environments, including
@@ -266,7 +234,17 @@ if console_url = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_URL") do
 end
 
 if System.get_env("MIX_BUN_PATH") do
-  config :bun, path: System.get_env("MIX_BUN_PATH")
+  executable = System.get_env("MIX_BUN_PATH")
+
+  bun_version =
+    case System.cmd(executable, ["--version"]) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
+    end
+
+  config :bun,
+    path: executable,
+    version: bun_version
 end
 
 if System.get_env("MIX_TAILWIND_PATH") do

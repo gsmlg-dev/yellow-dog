@@ -1,7 +1,7 @@
 defmodule YellowDog.Console.DnsLive.RrLive.Index do
   @moduledoc """
   DNS Resource Records management page with data table.
-  Third level of the View -> Zone -> Records hierarchy.
+  Third level of the Zone -> Records hierarchy.
   Shows resource records for a specific zone.
   """
   use YellowDog.Console, :live_view
@@ -10,8 +10,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Dns.{CloudDnsSync, ZoneController}
+  alias YellowDog.Store.Zone, as: StoreZone
 
-  @valid_zone_types ~w(auth forward stub cache rpz unknown)
+  @default_view_name "default"
   @valid_rr_types ~w(a aaaa cname mx ns txt soa srv ptr cap naptr hinfo rp loc)
 
   @impl true
@@ -24,7 +25,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
      assign(socket,
        page_title: "Resource Records",
        service_running: service_running?(YellowDog.Dns),
-       view_name: nil,
+       view_name: @default_view_name,
+       zone_id: nil,
        zone_type: nil,
        zone_name: nil,
        zone_pid: nil,
@@ -47,51 +49,59 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   # Action Handlers
   # ============================================================================
 
-  defp apply_action(socket, :index, %{
-         "view_name" => view_name,
-         "zone_type" => zone_type,
-         "zone_name" => zone_name
-       }) do
-    zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
-    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
-
-    socket
-    |> assign(:page_title, "Records - #{zone_name}")
-    |> assign(:view_name, view_name)
-    |> assign(:zone_type, zone_type_atom)
-    |> assign(:zone_name, zone_name)
-    |> assign(:zone_pid, zone_pid)
-    |> assign(:bulk_form, nil)
-    |> assign(:editing_rr, nil)
-    |> load_records()
+  defp apply_action(socket, :index, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      socket
+      |> assign_zone_context(zone)
+      |> assign(:page_title, "Records - #{zone.origin}")
+      |> assign(:bulk_form, nil)
+      |> assign(:editing_rr, nil)
+      |> load_records()
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
   end
 
-  defp apply_action(socket, :new, %{
-         "view_name" => view_name,
-         "zone_type" => zone_type,
-         "zone_name" => zone_name
-       }) do
-    zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
-    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
-
-    socket
-    |> assign(:page_title, "New Record - #{zone_name}")
-    |> assign(:view_name, view_name)
-    |> assign(:zone_type, zone_type_atom)
-    |> assign(:zone_name, zone_name)
-    |> assign(:zone_pid, zone_pid)
-    |> assign(:editing_rr, nil)
-    |> load_records()
+  defp apply_action(socket, :new, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      socket
+      |> assign_zone_context(zone)
+      |> assign(:page_title, "New Record - #{zone.origin}")
+      |> assign(:editing_rr, nil)
+      |> load_records()
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
   end
 
-  defp apply_action(socket, :edit, %{
-         "view_name" => view_name,
-         "zone_type" => zone_type,
-         "zone_name" => zone_name,
-         "rr_index" => rr_index_str
-       }) do
-    zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
-    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
+  defp apply_action(socket, :edit, %{"zone_id" => zone_id, "rr_index" => rr_index_str}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      apply_edit_action(socket, zone, rr_index_str)
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
+  end
+
+  defp apply_action(socket, :bulk, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      form_data = %{
+        "records" => ""
+      }
+
+      socket
+      |> assign_zone_context(zone)
+      |> assign(:page_title, "Bulk Add Records - #{zone.origin}")
+      |> assign(:bulk_form, to_form(form_data))
+      |> assign(:bulk_preview, nil)
+      |> load_records()
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
+  end
+
+  defp apply_edit_action(socket, zone, rr_index_str) do
+    zone_id = zone.id
+    zone_name = zone.origin
 
     rr_index =
       case Integer.parse(rr_index_str) do
@@ -101,47 +111,20 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
     socket =
       socket
-      |> assign(:view_name, view_name)
-      |> assign(:zone_type, zone_type_atom)
-      |> assign(:zone_name, zone_name)
-      |> assign(:zone_pid, zone_pid)
+      |> assign_zone_context(zone)
       |> load_records()
 
     case Enum.at(socket.assigns.rrs, rr_index) do
       nil ->
         socket
         |> put_flash(:error, "Resource record not found")
-        |> push_navigate(to: records_path(view_name, zone_type_atom, zone_name))
+        |> push_navigate(to: records_path(zone_id))
 
       rr ->
         socket
         |> assign(:page_title, "Edit Record - #{zone_name}")
         |> assign(:editing_rr, %{index: rr_index, original: rr})
     end
-  end
-
-  defp apply_action(socket, :bulk, %{
-         "view_name" => view_name,
-         "zone_type" => zone_type,
-         "zone_name" => zone_name
-       })
-       when zone_type in @valid_zone_types do
-    zone_type_atom = String.to_existing_atom(zone_type)
-    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
-
-    form_data = %{
-      "records" => ""
-    }
-
-    socket
-    |> assign(:page_title, "Bulk Add Records - #{zone_name}")
-    |> assign(:view_name, view_name)
-    |> assign(:zone_type, zone_type_atom)
-    |> assign(:zone_name, zone_name)
-    |> assign(:zone_pid, zone_pid)
-    |> assign(:bulk_form, to_form(form_data))
-    |> assign(:bulk_preview, nil)
-    |> load_records()
   end
 
   # ============================================================================
@@ -199,7 +182,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("bulk_add_rrs", %{"bulk" => bulk_params}, socket) do
-    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name, zone_id: zone_id} =
+      socket.assigns
+
     records_text = bulk_params["records"]
 
     case find_auth_zone(view_name, zone_type, zone_name) do
@@ -220,7 +205,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
             {:noreply,
              socket
              |> put_flash(:info, "Imported #{count} records successfully")
-             |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
+             |> push_navigate(to: records_path(zone_id))}
 
           {:error, reason} ->
             {:noreply, put_flash(socket, :error, "Import failed: #{inspect(reason)}")}
@@ -294,8 +279,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("cancel", _params, socket) do
-    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
-    {:noreply, push_navigate(socket, to: records_path(view_name, zone_type, zone_name))}
+    {:noreply, push_navigate(socket, to: records_path(socket.assigns.zone_id))}
   end
 
   # ============================================================================
@@ -310,8 +294,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   @impl true
   def handle_info({:record_saved, validated_record}, socket) do
     # Handle save from RecordForm component
-    %{zone_pid: zone_pid, zone_name: zone_name, zone_type: zone_type, view_name: view_name} =
-      socket.assigns
+    %{zone_pid: zone_pid, zone_name: zone_name, zone_id: zone_id} = socket.assigns
 
     editing = socket.assigns[:editing_rr]
 
@@ -340,7 +323,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          :info,
          "Record '#{validated_record.name}' (#{String.upcase(to_string(validated_record.type))}) #{action}"
        )
-       |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
+       |> push_navigate(to: records_path(zone_id))}
     else
       {:noreply, put_flash(socket, :error, "Zone not available")}
     end
@@ -348,8 +331,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_info(:record_cancelled, socket) do
-    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
-    {:noreply, push_navigate(socket, to: records_path(view_name, zone_type, zone_name))}
+    {:noreply, push_navigate(socket, to: records_path(socket.assigns.zone_id))}
   end
 
   @impl true
@@ -361,29 +343,41 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   # Private Helpers
   # ============================================================================
 
-  # Resolve zone type from URL param, falling back to ZoneController lookup
-  # when the URL contains "unknown" (from stale View state with string zones)
-  defp resolve_zone_type_atom(view_name, zone_type_str, zone_name)
-       when zone_type_str in @valid_zone_types do
-    zone_type_atom = String.to_existing_atom(zone_type_str)
+  defp assign_zone_context(socket, zone) do
+    view_name = Map.get(zone, :view_name, @default_view_name)
+    zone_type = Map.get(zone, :zone_type)
+    zone_name = Map.get(zone, :origin)
 
-    if zone_type_atom == :unknown do
-      try do
-        ZoneController.list_zones_for_view(view_name)
-        |> Enum.find_value(fn
-          {type, name, _pid} when name == zone_name -> type
-          _ -> nil
-        end)
-        |> Kernel.||(:unknown)
-      catch
-        _, _ -> :unknown
-      end
+    socket
+    |> assign(:view_name, view_name)
+    |> assign(:zone_id, zone.id)
+    |> assign(:zone_type, zone_type)
+    |> assign(:zone_name, zone_name)
+    |> assign(:zone_pid, get_zone_pid(view_name, zone_type, zone_name))
+  end
+
+  defp get_default_auth_zone_by_id(zone_id) do
+    with {:ok, zone} <- StoreZone.get_zone_by_id(zone_id),
+         @default_view_name <- Map.get(zone, :view_name),
+         :auth <- Map.get(zone, :zone_type) do
+      {:ok, zone}
     else
-      zone_type_atom
+      zone_type when zone_type in [:forward, :stub, :cache, :rpz] -> {:error, :not_authoritative}
+      _ -> {:error, :not_found}
     end
   end
 
-  defp resolve_zone_type_atom(_view_name, _zone_type_str, _zone_name), do: :unknown
+  defp zone_lookup_redirect(socket, {:error, :not_authoritative}) do
+    socket
+    |> put_flash(:error, "Only authoritative zones have resource records")
+    |> push_navigate(to: zones_path())
+  end
+
+  defp zone_lookup_redirect(socket, _error) do
+    socket
+    |> put_flash(:error, "Zone not found")
+    |> push_navigate(to: zones_path())
+  end
 
   defp get_zone_pid(view_name, zone_type, zone_name) do
     try do
@@ -396,9 +390,13 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     end
   end
 
-  defp records_path(view_name, zone_type, zone_name) do
-    ~p"/server/dns/views/#{view_name}/zones/#{zone_type}/#{zone_name}/records"
-  end
+  defp zones_path, do: ~p"/server/dns/zones"
+  defp records_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records"
+  defp new_record_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records/new"
+  defp bulk_records_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records/bulk"
+
+  defp edit_record_path(zone_id, rr_index),
+    do: ~p"/server/dns/zones/#{zone_id}/records/#{rr_index}/edit"
 
   defp load_records(socket) do
     %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
@@ -465,7 +463,35 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp cloud_sync_error({:cloudflare_request_failed, _reason}),
     do: "Cloud DNS sync failed because Cloudflare could not be reached."
 
+  defp cloud_sync_error(:route53_access_key_id_missing),
+    do: "Cloud DNS sync failed because the Route 53 connector has no access key ID."
+
+  defp cloud_sync_error(:route53_secret_access_key_missing),
+    do: "Cloud DNS sync failed because the Route 53 connector has no secret access key."
+
+  defp cloud_sync_error(:route53_zone_not_found),
+    do: "Cloud DNS sync failed because Route 53 did not return this zone."
+
+  defp cloud_sync_error(:route53_invalid_xml),
+    do: "Cloud DNS sync failed because Route 53 returned an unreadable response."
+
+  defp cloud_sync_error(:route53_invalid_pagination),
+    do: "Cloud DNS sync failed because Route 53 returned an invalid paginated response."
+
+  defp cloud_sync_error({:route53_http_error, status, errors}) do
+    detail = cloud_error_detail(errors)
+    "Cloud DNS sync failed because Route 53 returned HTTP #{status}#{detail}."
+  end
+
+  defp cloud_sync_error({:route53_request_failed, reason}),
+    do: "Cloud DNS sync failed because Route 53 could not be reached: #{inspect(reason)}."
+
   defp cloud_sync_error(_reason), do: "Cloud DNS sync failed."
+
+  defp cloud_error_detail([message | _]) when is_binary(message) and message != "",
+    do: ": #{message}"
+
+  defp cloud_error_detail(_errors), do: ""
 
   defp get_auth_zone_records(view_name, zone_type, zone_name) do
     try do

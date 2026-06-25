@@ -542,6 +542,7 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
 
   describe "service status alert on DNS pages" do
     @dns_alert_pages [
+      {"/server/dns/zones", "DNS Zones"},
       {"/server/dns/views", "DNS Views"},
       {"/server/dns/acl", "DNS ACL"}
     ]
@@ -653,6 +654,7 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     @active_pages [
       {"/server/dashboard", "Services"},
       {"/server/dns", "Overview"},
+      {"/server/dns/zones", "Zones"},
       {"/server/dns/views", "Views"},
       {"/server/dns/acl", "ACL"},
       {"/server/dns/logs", "Query Logs"},

@@ -14,14 +14,16 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
+  alias YellowDog.Dns.CloudDnsSyncJob
+  alias YellowDog.Dns.ConfigPersistence
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.ZoneController
-  alias YellowDog.Dns.ConfigPersistence
   alias YellowDog.Store.Provider, as: StoreProvider
   alias YellowDog.Store.Zone, as: StoreZone
 
   @valid_zone_types ~w(auth forward stub cache rpz)
+  @default_view_name "default"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -33,7 +35,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
      assign(socket,
        page_title: "DNS Zones",
        service_running: service_running?(YellowDog.Dns),
-       view_name: nil,
+       view_name: @default_view_name,
        zones: [],
        filter: "",
        type_filter: "all",
@@ -55,20 +57,20 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   # Action Handlers
   # ============================================================================
 
-  defp apply_action(socket, :index, %{"view_name" => view_name}) do
+  defp apply_action(socket, :index, _params) do
     socket
-    |> assign(:page_title, "Zones - #{view_name}")
-    |> assign(:view_name, view_name)
+    |> assign(:page_title, "DNS Zones")
+    |> assign(:view_name, @default_view_name)
     |> assign(:zone_form, nil)
     |> assign(:import_form, nil)
     |> assign(:editing_zone, nil)
     |> load_zones()
   end
 
-  defp apply_action(socket, :new, %{"view_name" => view_name}) do
+  defp apply_action(socket, :new, _params) do
     socket
-    |> assign(:page_title, "New Zone - #{view_name}")
-    |> assign(:view_name, view_name)
+    |> assign(:page_title, "New Zone")
+    |> assign(:view_name, @default_view_name)
     |> assign(:editing_zone, nil)
     |> assign(:zone_form, to_form(default_zone_form_data()))
     |> assign(:form_errors, %{})
@@ -76,57 +78,39 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     |> load_zones()
   end
 
-  defp apply_action(socket, :edit, %{
-         "view_name" => view_name,
-         "zone_type" => zone_type,
-         "zone_name" => zone_name
-       })
-       when zone_type in @valid_zone_types do
-    zone_type_atom = String.to_existing_atom(zone_type)
-
-    # If zone type is :unknown (from stale View state), try to resolve the actual type
-    zone_type_atom =
-      if zone_type_atom == :unknown do
-        case resolve_zone_type(view_name, zone_name) do
-          {:ok, resolved_type} -> resolved_type
-          :error -> :unknown
-        end
-      else
-        zone_type_atom
-      end
-
-    case get_zone_config(view_name, zone_type_atom, zone_name) do
-      {:ok, config} ->
+  defp apply_action(socket, :edit, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_zone_by_id(zone_id),
+         {:ok, config} <- get_zone_config(@default_view_name, zone.zone_type, zone.origin) do
+      socket
+      |> assign(:page_title, "Edit Zone - #{zone.origin}")
+      |> assign(:view_name, @default_view_name)
+      |> assign(:editing_zone, %{id: zone.id, name: zone.origin, type: zone.zone_type})
+      |> assign(:zone_form, to_form(zone_config_form_data(config)))
+      |> load_cloud_dns_connectors()
+      |> load_zones()
+    else
+      _ ->
         socket
-        |> assign(:page_title, "Edit Zone - #{zone_name}")
-        |> assign(:view_name, view_name)
-        |> assign(:editing_zone, %{name: zone_name, type: zone_type_atom})
-        |> assign(:zone_form, to_form(zone_config_form_data(config)))
-        |> load_cloud_dns_connectors()
-        |> load_zones()
-
-      :error ->
-        socket
-        |> put_flash(:error, "Zone '#{zone_name}' not found")
-        |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")
+        |> put_flash(:error, "Zone not found")
+        |> push_navigate(to: zones_path())
     end
   end
 
-  defp apply_action(socket, :edit, %{"view_name" => view_name}) do
+  defp apply_action(socket, :edit, _params) do
     socket
-    |> put_flash(:error, "Invalid zone type")
-    |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")
+    |> put_flash(:error, "Zone not found")
+    |> push_navigate(to: zones_path())
   end
 
-  defp apply_action(socket, :import, %{"view_name" => view_name}) do
+  defp apply_action(socket, :import, _params) do
     form_data = %{
       "zone_data" => "",
       "format" => "zone"
     }
 
     socket
-    |> assign(:page_title, "Import Zone - #{view_name}")
-    |> assign(:view_name, view_name)
+    |> assign(:page_title, "Import Zone")
+    |> assign(:view_name, @default_view_name)
     |> assign(:import_form, to_form(form_data))
     |> load_zones()
   end
@@ -157,7 +141,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
     csv = build_zones_csv(zones)
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
-    filename = "dns_zones_#{socket.assigns.view_name}_#{timestamp}.csv"
+    filename = "dns_zones_#{timestamp}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
@@ -190,13 +174,12 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   @impl true
   def handle_event("import_zone", %{"import" => import_params}, socket) do
-    view_name = socket.assigns.view_name
     zone_data = import_params["zone_data"]
     format = import_params["format"]
 
     case format do
       "zone" ->
-        import_bind_zone(socket, view_name, zone_data)
+        import_bind_zone(socket, @default_view_name, zone_data)
 
       _ ->
         {:noreply, put_flash(socket, :error, "Unsupported import format: #{format}")}
@@ -204,15 +187,24 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   end
 
   @impl true
-  def handle_event("confirm_delete", %{"type" => type, "name" => zone_name}, socket)
-      when type in @valid_zone_types do
-    {:noreply,
-     assign(socket, :delete_confirm, %{zone_type: String.to_existing_atom(type), name: zone_name})}
+  def handle_event("confirm_delete", %{"id" => zone_id}, socket) do
+    case get_default_zone_by_id(zone_id) do
+      {:ok, zone} ->
+        {:noreply,
+         assign(socket, :delete_confirm, %{
+           id: zone.id,
+           zone_type: zone.zone_type,
+           name: zone.origin
+         })}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Zone not found")}
+    end
   end
 
   @impl true
   def handle_event("confirm_delete", _params, socket) do
-    {:noreply, put_flash(socket, :error, "Invalid zone type")}
+    {:noreply, put_flash(socket, :error, "Zone not found")}
   end
 
   @impl true
@@ -220,13 +212,14 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     %{delete_confirm: %{zone_type: zone_type, name: zone_name}, view_name: view_name} =
       socket.assigns
 
-    # Pass view_name for view-scoped zone deletion
-    result =
+    _service_result =
       try do
         ZoneController.stop_zone(view_name, zone_type, zone_name)
       catch
         :exit, _ -> {:error, :service_unavailable}
       end
+
+    result = StoreZone.delete_zone(view_name, zone_name)
 
     case result do
       :ok ->
@@ -254,8 +247,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   @impl true
   def handle_event("cancel", _params, socket) do
-    view_name = socket.assigns.view_name
-    {:noreply, push_navigate(socket, to: ~p"/server/dns/views/#{view_name}/zones")}
+    {:noreply, push_navigate(socket, to: zones_path())}
   end
 
   # ============================================================================
@@ -322,13 +314,14 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
     case result do
       :ok ->
+        maybe_enqueue_cloud_dns_sync(view_name, zone_name, zone_type, config)
         save_config_async()
         action = if editing, do: "updated", else: "created"
 
         {:noreply,
          socket
          |> put_flash(:info, "Zone '#{zone_name}' #{action} successfully")
-         |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")}
+         |> push_navigate(to: zones_path())}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to save zone: #{inspect(reason)}")}
@@ -610,7 +603,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
                    :info,
                    "Zone '#{zone_name}' imported with #{stats.records_imported} records"
                  )
-                 |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")}
+                 |> push_navigate(to: zones_path())}
 
               {:error, reason} ->
                 {:noreply,
@@ -636,7 +629,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
                    :info,
                    "Imported #{stats.records_imported} records into existing zone '#{zone_name}'"
                  )
-                 |> push_navigate(to: ~p"/server/dns/views/#{view_name}/zones")}
+                 |> push_navigate(to: zones_path())}
 
               {:error, reason} ->
                 {:noreply,
@@ -709,6 +702,34 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp mirror_conflict_strategy_atom("manual"), do: :manual
   defp mirror_conflict_strategy_atom(_strategy), do: :local_wins
 
+  defp maybe_enqueue_cloud_dns_sync(view_name, zone_name, :auth, config) do
+    if cloud_mirror_config_enabled?(Keyword.get(config, :cloud_mirror)) do
+      case CloudDnsSyncJob.enqueue(view_name, zone_name) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Failed to enqueue Cloud DNS sync",
+            view: view_name,
+            zone: zone_name,
+            error: inspect(reason)
+          )
+      end
+    else
+      :ok
+    end
+  end
+
+  defp maybe_enqueue_cloud_dns_sync(_view_name, _zone_name, _zone_type, _config), do: :ok
+
+  defp cloud_mirror_config_enabled?(mirror) when is_map(mirror) do
+    mirror
+    |> mirror_value(:enabled, false)
+    |> mirror_enabled?()
+  end
+
+  defp cloud_mirror_config_enabled?(_mirror), do: false
+
   defp persist_zone_metadata(view_name, :auth, zone_name, config) do
     StoreZone.update_zone(view_name, zone_name, %{
       cloud_mirror: Keyword.get(config, :cloud_mirror)
@@ -718,12 +739,44 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp persist_zone_metadata(_view_name, _zone_type, _zone_name, _config), do: :ok
 
   defp load_zones(socket) do
-    view_name = socket.assigns.view_name
+    zones =
+      case StoreZone.list_zones_for_view(@default_view_name) do
+        {:ok, zones} -> Enum.map(zones, &zone_row_from_store/1)
+        {:error, _reason} -> []
+      end
 
-    # get_view_with_zones always returns {:ok, view} with fallback to persisted config
-    {:ok, view} = get_view_with_zones(view_name)
-    assign(socket, :zones, view.zones)
+    assign(socket, :zones, zones)
   end
+
+  defp zone_row_from_store(zone) do
+    zone_type = Map.get(zone, :zone_type)
+    zone_name = Map.get(zone, :origin)
+
+    %{
+      id: Map.get(zone, :id),
+      type: zone_type,
+      name: zone_name,
+      cloud_mirror: Map.get(zone, :cloud_mirror),
+      record_count: 0,
+      query_count: 0
+    }
+    |> Map.merge(get_zone_stats(@default_view_name, zone_type, zone_name))
+  end
+
+  defp get_default_zone_by_id(zone_id) do
+    with {:ok, zone} <- StoreZone.get_zone_by_id(zone_id),
+         @default_view_name <- Map.get(zone, :view_name) do
+      {:ok, zone}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp zones_path, do: ~p"/server/dns/zones"
+  defp new_zone_path, do: ~p"/server/dns/zones/new"
+  defp import_zone_path, do: ~p"/server/dns/zones/import"
+  defp edit_zone_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/edit"
+  defp records_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records"
 
   defp load_cloud_dns_connectors(socket) do
     connectors =
@@ -733,158 +786,6 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
 
     assign(socket, :cloud_dns_connectors, connectors)
-  end
-
-  defp get_view_with_zones(view_name) do
-    # First try to get from running DNS service
-    case get_view_with_zones_from_service(view_name) do
-      {:ok, view} ->
-        {:ok, view}
-
-      :error ->
-        # Fall back to persisted configuration
-        get_view_with_zones_from_persistence(view_name)
-    end
-  end
-
-  defp get_view_with_zones_from_service(view_name) do
-    try do
-      case ViewManager.get_view(view_name) do
-        {:ok, pid} ->
-          stats = View.stats(pid)
-          zones = get_zones_with_details(stats, view_name)
-
-          view = %{
-            name: view_name,
-            zones: zones
-          }
-
-          {:ok, view}
-
-        :error ->
-          :error
-      end
-    catch
-      _, _ -> :error
-    end
-  end
-
-  defp get_view_with_zones_from_persistence(view_name) do
-    try do
-      case ConfigPersistence.load_all() do
-        {:ok, %{zones: zones}} ->
-          # Filter zones for this view
-          view_zones =
-            zones
-            |> Enum.filter(fn z ->
-              z.view_name == view_name || (z.view_name == "default" && view_name == "default")
-            end)
-            |> Enum.map(fn z ->
-              %{
-                type: z.type,
-                name: z.name,
-                record_count: 0,
-                query_count: 0
-              }
-              |> with_zone_metadata(view_name)
-            end)
-
-          {:ok, %{name: view_name, zones: view_zones}}
-
-        _ ->
-          # Return empty zones list if no persisted config
-          {:ok, %{name: view_name, zones: []}}
-      end
-    catch
-      _, _ -> {:ok, %{name: view_name, zones: []}}
-    end
-  end
-
-  defp get_zones_with_details(stats, view_name) do
-    zones_config = Map.get(stats, :zones, [])
-
-    Enum.map(zones_config, fn
-      {type, name} ->
-        zone_stats = get_zone_stats(view_name, type, name)
-
-        %{type: type, name: name}
-        |> Map.merge(zone_stats)
-        |> with_zone_metadata(view_name)
-
-      name when is_binary(name) ->
-        # View has a plain string zone (from TOML persistence without type info).
-        # Try to resolve the actual type from running ZoneController processes.
-        case resolve_zone_type(view_name, name) do
-          {:ok, type} ->
-            zone_stats = get_zone_stats(view_name, type, name)
-
-            %{type: type, name: name}
-            |> Map.merge(zone_stats)
-            |> with_zone_metadata(view_name)
-
-          :error ->
-            %{type: :unknown, name: name, record_count: 0, query_count: 0}
-        end
-    end)
-  end
-
-  defp with_zone_metadata(%{type: :auth, name: name} = zone, view_name) do
-    case StoreZone.get_zone(view_name, name) do
-      {:ok, store_zone} ->
-        Map.put(zone, :cloud_mirror, Map.get(store_zone, :cloud_mirror))
-
-      _ ->
-        zone
-    end
-  catch
-    _, _ -> zone
-  end
-
-  defp with_zone_metadata(zone, _view_name), do: zone
-
-  # Resolve zone type by checking running zone processes, then persisted config
-  defp resolve_zone_type(view_name, zone_name) do
-    # Try 1: Check running ZoneController processes
-    case resolve_zone_type_from_controller(view_name, zone_name) do
-      {:ok, _type} = result ->
-        result
-
-      :error ->
-        # Try 2: Check persisted zone config (zones.toml)
-        resolve_zone_type_from_persistence(view_name, zone_name)
-    end
-  end
-
-  defp resolve_zone_type_from_controller(view_name, zone_name) do
-    try do
-      ZoneController.list_zones_for_view(view_name)
-      |> Enum.find_value(fn
-        {type, name, _pid} when name == zone_name -> {:ok, type}
-        _ -> nil
-      end)
-      |> Kernel.||(:error)
-    catch
-      _, _ -> :error
-    end
-  end
-
-  defp resolve_zone_type_from_persistence(view_name, zone_name) do
-    case ConfigPersistence.load_all() do
-      {:ok, %{zones: zones}} ->
-        case Enum.find(zones, fn z ->
-               z.name == zone_name &&
-                 (z.view_name == view_name ||
-                    (z.view_name == "default" && view_name == "default"))
-             end) do
-          %{type: type} -> {:ok, type}
-          _ -> :error
-        end
-
-      _ ->
-        :error
-    end
-  catch
-    _, _ -> :error
   end
 
   defp get_zone_stats(view_name, type, name) do
@@ -915,16 +816,55 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         {:ok, merge_store_zone_metadata(config, view_name, zone_type, zone_name)}
 
       :error ->
-        # Fall back to persisted configuration
-        case get_zone_config_from_persistence(view_name, zone_type, zone_name) do
+        # Fall back to Store metadata, then legacy file persistence.
+        case get_zone_config_from_store(view_name, zone_type, zone_name) do
           {:ok, config} ->
-            {:ok, merge_store_zone_metadata(config, view_name, zone_type, zone_name)}
+            {:ok, config}
 
           :error ->
-            :error
+            case get_zone_config_from_persistence(view_name, zone_type, zone_name) do
+              {:ok, config} ->
+                {:ok, merge_store_zone_metadata(config, view_name, zone_type, zone_name)}
+
+              :error ->
+                :error
+            end
         end
     end
   end
+
+  defp get_zone_config_from_store(view_name, zone_type, zone_name) do
+    case StoreZone.get_zone(view_name, zone_name) do
+      {:ok, %{zone_type: ^zone_type} = zone} ->
+        {:ok,
+         %{
+           name: zone.origin,
+           type: zone.zone_type,
+           upstreams: store_forwarders(zone),
+           ns_records: store_ns_records(zone),
+           cloud_mirror: Map.get(zone, :cloud_mirror)
+         }}
+
+      _ ->
+        :error
+    end
+  catch
+    _, _ -> :error
+  end
+
+  defp store_forwarders(%{forwarders: forwarders}) when is_list(forwarders) do
+    Enum.map(forwarders, fn
+      %{ip: ip, port: 53} -> ip
+      %{ip: ip, port: port} -> "#{ip}:#{port}"
+      %{ip: ip} -> ip
+      other -> to_string(other)
+    end)
+  end
+
+  defp store_forwarders(_zone), do: []
+
+  defp store_ns_records(%{ns_records: ns_records}) when is_list(ns_records), do: ns_records
+  defp store_ns_records(_zone), do: []
 
   defp merge_store_zone_metadata(config, view_name, :auth, zone_name) do
     case StoreZone.get_zone(view_name, zone_name) do

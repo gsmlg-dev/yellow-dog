@@ -4,6 +4,8 @@ defmodule YellowDog.Dns.CloudDnsSync do
   """
 
   alias YellowDog.Dns.ZoneController
+  alias YellowDog.Dns.View
+  alias YellowDog.Dns.ViewManager
   alias YellowDog.Store.Provider, as: StoreProvider
   alias YellowDog.Store.Zone, as: StoreZone
 
@@ -35,7 +37,8 @@ defmodule YellowDog.Dns.CloudDnsSync do
          :ok <- connector_enabled(connector),
          {:ok, records} <- fetch_records(connector, mirror, zone_name, opts),
          :ok <- persist_records(view_name, zone_name, records),
-         :ok <- reload_running_zone(view_name, zone_name) do
+         :ok <- reload_running_zone(view_name, zone_name),
+         :ok <- invalidate_zone_cache(view_name, zone_name, opts) do
       {:ok, %{provider: connector_type(connector), records_synced: length(records)}}
     end
   end
@@ -128,12 +131,6 @@ defmodule YellowDog.Dns.CloudDnsSync do
       |> to_string()
       |> String.trim()
 
-    region =
-      credentials
-      |> value(:region, @route53_signing_region)
-      |> to_string()
-      |> String.trim()
-
     session_token =
       credentials
       |> value(:session_token, "")
@@ -152,7 +149,7 @@ defmodule YellowDog.Dns.CloudDnsSync do
          %{
            access_key_id: access_key_id,
            secret_access_key: secret_access_key,
-           region: if(region == "", do: @route53_signing_region, else: region),
+           region: @route53_signing_region,
            session_token: if(session_token == "", do: nil, else: session_token)
          }}
     end
@@ -864,6 +861,28 @@ defmodule YellowDog.Dns.CloudDnsSync do
       {:error, :not_found} -> :ok
       {:error, _reason} = error -> error
     end
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp invalidate_zone_cache(view_name, zone_name, opts) do
+    invalidator = Keyword.get(opts, :cache_invalidator, &invalidate_running_view_cache/2)
+
+    case invalidator.(view_name, zone_name) do
+      :ok -> :ok
+      {:error, :not_found} -> :ok
+      {:error, _reason} = error -> error
+      _other -> :ok
+    end
+  end
+
+  defp invalidate_running_view_cache(view_name, zone_name) do
+    case ViewManager.get_view(view_name) do
+      {:ok, view_pid} -> View.invalidate_zone_cache(view_pid, zone_name)
+      :error -> :ok
+    end
+  rescue
+    _error -> :ok
   catch
     :exit, _reason -> :ok
   end

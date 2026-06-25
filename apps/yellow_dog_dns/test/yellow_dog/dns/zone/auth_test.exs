@@ -1516,5 +1516,32 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert %DNS.Message.Record{} = soa_rec
       assert is_binary(IO.iodata_to_binary(DNS.to_iodata(soa_rec)))
     end
+
+    test "generated empty zone file resolves apex SOA" do
+      tmp_dir = System.tmp_dir!()
+      ref = :erlang.unique_integer([:positive])
+      zone_name = "generated-zone-#{ref}.test"
+      zone_file = Path.join(tmp_dir, "#{zone_name}.zone")
+
+      {:ok, pid} = Auth.start_link(name: zone_name, zone_file: zone_file)
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+
+        File.rm(zone_file)
+      end)
+
+      query = build_query(zone_name, :soa)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert [%DNS.Message.Record{} = soa_rec] = response.anlist
+      assert to_string(soa_rec.type) == "SOA"
+      assert to_string(soa_rec.name) == "#{zone_name}."
+    end
   end
 end

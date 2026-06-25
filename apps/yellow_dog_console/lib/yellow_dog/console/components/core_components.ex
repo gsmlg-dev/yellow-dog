@@ -225,22 +225,25 @@ defmodule YellowDog.Console.CoreComponents do
     ~H"""
     <div
       id={@id}
-      class={["dialog-backdrop", @show && "dialog-backdrop-show"]}
+      class={["modal", @show && "modal-open"]}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={@title && "#{@id}-title"}
       phx-remove={hide_modal(@id)}
       phx-window-keydown={@on_cancel}
       phx-key="Escape"
     >
-      <div class="dialog dialog-md">
-        <div :if={@title} class="dialog-header">
-          <h2 class="dialog-title">{@title}</h2>
-        </div>
-        <div class="dialog-body">
-          {render_slot(@inner_block)}
-        </div>
-        <div :if={@actions != []} class="dialog-actions">
+      <div class="modal-box">
+        <h2 :if={@title} id={"#{@id}-title"} class="text-title-large text-on-surface mb-4">
+          {@title}
+        </h2>
+        {render_slot(@inner_block)}
+        <div :if={@actions != []} class="modal-action">
           {render_slot(@actions)}
         </div>
       </div>
+      <button type="button" class="modal-backdrop" phx-click={@on_cancel} aria-label="Close modal">
+      </button>
     </div>
     """
   end
@@ -486,12 +489,12 @@ defmodule YellowDog.Console.CoreComponents do
 
   def show_modal(js \\ %JS{}, id) when is_binary(id) do
     js
-    |> JS.add_class("dialog-backdrop-show", to: "##{id}")
+    |> JS.add_class("modal-open", to: "##{id}")
   end
 
   def hide_modal(js \\ %JS{}, id) do
     js
-    |> JS.remove_class("dialog-backdrop-show", to: "##{id}")
+    |> JS.remove_class("modal-open", to: "##{id}")
   end
 
   ## Formatting helpers

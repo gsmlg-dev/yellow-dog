@@ -28,7 +28,7 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
       end
 
     on_exit(fn ->
-      if Process.alive?(zc_pid), do: DynamicSupervisor.stop(zc_pid)
+      stop_dynamic_supervisor(zc_pid)
       :ets.delete_all_objects(EtsBackend.table())
       Backend.set_active(previous_backend)
     end)
@@ -66,10 +66,18 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
 
     assert Auth.get_records(pid, "www.#{zone_name}", :a) == []
 
+    test_pid = self()
+
     assert {:ok, %{records_synced: 3, provider: :cloudflare}} =
              CloudDnsSync.sync_zone_from_cloud(view_name, zone_name,
-               request_fun: &cloudflare_fixture/1
+               request_fun: &cloudflare_fixture/1,
+               cache_invalidator: fn invalidated_view, invalidated_zone ->
+                 send(test_pid, {:cache_invalidated, invalidated_view, invalidated_zone})
+                 :ok
+               end
              )
+
+    assert_received {:cache_invalidated, ^view_name, ^zone_name}
 
     assert {:ok, rrsets} = Zone.list_records(view_name, zone_name)
     assert Enum.any?(rrsets, &(&1.owner == "www.#{zone_name}" and &1.type == :a))
@@ -80,7 +88,7 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
     assert [%{data: %{data: {192, 0, 2, 10}}, ttl: 120}] = records
   end
 
-  test "pulls Route 53 records into Store and reloads the running auth zone" do
+  test "pulls Route 53 records using the global service signing region" do
     view_name = "sync_view_#{System.unique_integer([:positive])}"
     zone_name = "gsmlg.net"
 
@@ -105,7 +113,7 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
         credentials: %{
           access_key_id: "AKIATEST",
           secret_access_key: "route53-secret",
-          region: "us-east-1"
+          region: "global"
         },
         enabled: true
       })
@@ -203,6 +211,14 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
       "https://route53.amazonaws.com/2013-04-01/hostedzone/Z123456789/rrset?maxitems=100" ->
         {:ok, %{status: 200, body: route53_rrsets_xml()}}
     end
+  end
+
+  defp stop_dynamic_supervisor(pid) do
+    if Process.alive?(pid) do
+      DynamicSupervisor.stop(pid)
+    end
+  catch
+    :exit, _reason -> :ok
   end
 
   defp route53_hosted_zones_xml do

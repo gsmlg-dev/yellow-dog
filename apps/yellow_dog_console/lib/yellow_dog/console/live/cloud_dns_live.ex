@@ -204,17 +204,6 @@ defmodule YellowDog.Console.CloudDnsLive do
                 />
                 <.field_error error={@errors[:access_key_id]} />
               </div>
-              <div class="form-group">
-                <label class="form-label font-semibold">Region</label>
-                <input
-                  type="text"
-                  name={"#{@form.name}[region]"}
-                  value={@form[:region].value}
-                  class={"input w-full font-mono #{if @errors[:region], do: "input-error"}"}
-                  required
-                />
-                <.field_error error={@errors[:region]} />
-              </div>
             </div>
             <div class="form-group">
               <label class="form-label font-semibold">Secret Access Key</label>
@@ -387,7 +376,6 @@ defmodule YellowDog.Console.CloudDnsLive do
         params["secret_access_key"],
         "Secret access key is required"
       )
-      |> require_field(:region, params["region"], "Region is required")
 
     if map_size(errors) == 0 do
       {:ok,
@@ -396,8 +384,7 @@ defmodule YellowDog.Console.CloudDnsLive do
          type: :route53,
          credentials: %{
            access_key_id: params["access_key_id"],
-           secret_access_key: params["secret_access_key"],
-           region: String.trim(params["region"])
+           secret_access_key: params["secret_access_key"]
          },
          zones: [],
          enabled: enabled?(params["enabled"])
@@ -458,7 +445,6 @@ defmodule YellowDog.Console.CloudDnsLive do
       "name" => "aws-prod",
       "access_key_id" => "",
       "secret_access_key" => "",
-      "region" => "us-east-1",
       "enabled" => "true"
     }
   end
@@ -502,8 +488,7 @@ defmodule YellowDog.Console.CloudDnsLive do
 
   defp masked_credentials(%{type: :route53, credentials: credentials}) do
     access_key = Map.get(credentials, :access_key_id) || Map.get(credentials, "access_key_id")
-    region = Map.get(credentials, :region) || Map.get(credentials, "region")
-    "access_key=#{mask_secret(access_key)} region=#{region}"
+    "access_key=#{mask_secret(access_key)}"
   end
 
   defp masked_credentials(_connector), do: "configured"

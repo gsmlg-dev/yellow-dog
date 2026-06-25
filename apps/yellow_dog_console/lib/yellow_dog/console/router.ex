@@ -52,26 +52,17 @@ defmodule YellowDog.Console.Router do
 
     # DNS
     live "/dns", DnsLive.Index
+    live "/dns/zones", DnsLive.ZoneLive.Index, :index
+    live "/dns/zones/new", DnsLive.ZoneLive.Index, :new
+    live "/dns/zones/import", DnsLive.ZoneLive.Index, :import
+    live "/dns/zones/:zone_id/edit", DnsLive.ZoneLive.Index, :edit
+    live "/dns/zones/:zone_id/records", DnsLive.RrLive.Index, :index
+    live "/dns/zones/:zone_id/records/new", DnsLive.RrLive.Index, :new
+    live "/dns/zones/:zone_id/records/bulk", DnsLive.RrLive.Index, :bulk
+    live "/dns/zones/:zone_id/records/:rr_index/edit", DnsLive.RrLive.Index, :edit
     live "/dns/views", DnsLive.ViewLive.Index, :index
     live "/dns/views/new", DnsLive.ViewLive.Index, :new
     live "/dns/views/:view_name/edit", DnsLive.ViewLive.Index, :edit
-    live "/dns/views/:view_name/zones", DnsLive.ZoneLive.Index, :index
-    live "/dns/views/:view_name/zones/new", DnsLive.ZoneLive.Index, :new
-    live "/dns/views/:view_name/zones/import", DnsLive.ZoneLive.Index, :import
-    live "/dns/views/:view_name/zones/:zone_type/:zone_name/edit", DnsLive.ZoneLive.Index, :edit
-    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records", DnsLive.RrLive.Index, :index
-
-    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/new",
-         DnsLive.RrLive.Index,
-         :new
-
-    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/bulk",
-         DnsLive.RrLive.Index,
-         :bulk
-
-    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/:rr_index/edit",
-         DnsLive.RrLive.Index,
-         :edit
 
     live "/dns/acl", DnsLive.AclLive
     live "/dns/logs", DnsLive.QueryLogsLive

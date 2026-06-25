@@ -41,6 +41,7 @@ defmodule YellowDog.Dns.View do
   alias YellowDog.Dns.View.ACL
   alias YellowDog.Dns.ZoneController
   alias DNS.Message
+  alias DNS.Message.Question
 
   @default_priority 100
 
@@ -120,6 +121,14 @@ defmodule YellowDog.Dns.View do
   @spec stats(pid()) :: map()
   def stats(pid) do
     GenServer.call(pid, :stats)
+  end
+
+  @doc """
+  Invalidates cached answers at or below a zone name.
+  """
+  @spec invalidate_zone_cache(pid(), String.t()) :: :ok
+  def invalidate_zone_cache(pid, zone_name) do
+    GenServer.call(pid, {:invalidate_zone_cache, zone_name})
   end
 
   @doc """
@@ -303,6 +312,12 @@ defmodule YellowDog.Dns.View do
   end
 
   @impl true
+  def handle_call({:invalidate_zone_cache, zone_name}, _from, state) do
+    :ok = invalidate_cache_entries_for_zone(state.cache_table, zone_name)
+    {:reply, :ok, state}
+  end
+
+  @impl true
   def handle_call({:register_zone, zone_type, zone_name}, _from, state) do
     # Add the {type, name} tuple and remove any plain string entry for the same zone name
     # (persisted config may store zone names as strings without type information)
@@ -425,12 +440,13 @@ defmodule YellowDog.Dns.View do
             module = zone_module(zone_type)
 
             case module.resolve(zone_pid, query) do
-              {:ok, response} = result ->
+              {:ok, response} ->
+                response = maybe_complete_cname_response(state, query, response)
                 # Notify connection process
                 send(connection_pid, {:zone_response, query_id, response})
                 # Cache the response
                 cache_response(state, query, response)
-                result
+                {:ok, response}
 
               {:referral, _ns_records} ->
                 # Handle referral - for now, treat as not found
@@ -471,19 +487,7 @@ defmodule YellowDog.Dns.View do
     send(connection_pid, {:recursive_step, query_id, %{step: :forward}})
     view_name = state.name
 
-    # Try to find forward zone "." in current view, then fall back to default view
-    zone_pid =
-      case ZoneController.find_zone(view_name, :forward, ".") do
-        {:ok, pid} ->
-          pid
-
-        :error ->
-          # Fall back to default view's forward zone
-          case ZoneController.find_zone("default", :forward, ".") do
-            {:ok, pid} -> pid
-            :error -> nil
-          end
-      end
+    zone_pid = find_forward_zone(view_name)
 
     case zone_pid do
       nil ->
@@ -563,11 +567,133 @@ defmodule YellowDog.Dns.View do
       else
         apply_rpz_policies(state, query, response)
       end
+      |> mark_recursion_available(state)
 
     # Notify connection process of RPZ evaluation
     send(connection_pid, {:rpz_evaluation, query_id, :complete})
 
     {:ok, final_response}
+  end
+
+  defp maybe_complete_cname_response(state, query, response) do
+    with true <- state.recursion_enabled,
+         true <- recursion_desired?(query),
+         {:ok, question} <- first_question(query),
+         false <- question_type?(question, "CNAME"),
+         {:ok, target_name} <- unresolved_cname_target(response, question),
+         {:ok, recursive_response} <- resolve_cname_target(state, query, question, target_name) do
+      merge_cname_response(response, recursive_response)
+    else
+      _ -> response
+    end
+  end
+
+  defp first_question(%Message{qdlist: [question | _]}), do: {:ok, question}
+  defp first_question(_query), do: :error
+
+  defp recursion_desired?(%Message{header: %{rd: rd}}), do: rd in [1, true]
+  defp recursion_desired?(_query), do: false
+
+  defp question_type?(question, type) do
+    question
+    |> question_type()
+    |> Kernel.==(type)
+  end
+
+  defp question_type(%Question{type: type}), do: to_string(type)
+  defp question_type(%{type: type}), do: to_string(type) |> String.upcase()
+
+  defp unresolved_cname_target(%Message{anlist: answers}, question) do
+    qtype = question_type(question)
+
+    has_requested_type? =
+      Enum.any?(answers, fn answer ->
+        answer
+        |> record_type()
+        |> Kernel.==(qtype)
+      end)
+
+    if has_requested_type? do
+      :error
+    else
+      answers
+      |> Enum.filter(&(record_type(&1) == "CNAME"))
+      |> List.last()
+      |> cname_target()
+      |> case do
+        nil -> :error
+        target -> {:ok, target}
+      end
+    end
+  end
+
+  defp record_type(%DNS.Message.Record{type: type}), do: to_string(type)
+  defp record_type(%{type: type}), do: to_string(type) |> String.upcase()
+
+  defp cname_target(nil), do: nil
+
+  defp cname_target(%DNS.Message.Record{data: data}) do
+    data
+    |> to_string()
+    |> normalize_name()
+  end
+
+  defp cname_target(%{rdata: target}) when is_binary(target), do: normalize_name(target)
+  defp cname_target(%{"rdata" => target}) when is_binary(target), do: normalize_name(target)
+  defp cname_target(_record), do: nil
+
+  defp resolve_cname_target(state, query, question, target_name) do
+    with pid when is_pid(pid) <- find_forward_zone(state.name),
+         target_query <- cname_target_query(query, question, target_name),
+         {:ok, response} <- YellowDog.Dns.Zone.Forward.resolve(pid, target_query) do
+      {:ok, response}
+    else
+      _ -> :error
+    end
+  end
+
+  defp cname_target_query(%Message{} = query, %Question{} = question, target_name) do
+    %{query | qdlist: [%{question | name: DNS.Message.Domain.new(target_name)}]}
+  end
+
+  defp cname_target_query(%Message{} = query, %{name: _name} = question, target_name) do
+    %{query | qdlist: [%{question | name: target_name}]}
+  end
+
+  defp merge_cname_response(response, recursive_response) do
+    answers = response.anlist ++ recursive_response.anlist
+
+    %{
+      response
+      | header: %{
+          response.header
+          | ancount: length(answers),
+            nscount: 0,
+            arcount: length(recursive_response.arlist)
+        },
+        anlist: answers,
+        nslist: [],
+        arlist: recursive_response.arlist
+    }
+  end
+
+  defp mark_recursion_available(response, %{recursion_enabled: true}) do
+    %{response | header: %{response.header | ra: 1}}
+  end
+
+  defp mark_recursion_available(response, _state), do: response
+
+  defp find_forward_zone(view_name) do
+    case ZoneController.find_zone(view_name, :forward, ".") do
+      {:ok, pid} ->
+        pid
+
+      :error ->
+        case ZoneController.find_zone("default", :forward, ".") do
+          {:ok, pid} -> pid
+          :error -> nil
+        end
+    end
   end
 
   defp apply_rpz_policies(state, query, response) do
@@ -657,6 +783,28 @@ defmodule YellowDog.Dns.View do
           :ok
       end
     end
+  end
+
+  defp invalidate_cache_entries_for_zone(cache_table, zone_name) do
+    zone_suffix = normalize_name(zone_name)
+
+    if zone_suffix == "" do
+      :ets.delete_all_objects(cache_table)
+    else
+      cache_table
+      |> :ets.tab2list()
+      |> Enum.each(fn
+        {{cached_name, _cached_type} = key, _value} when is_binary(cached_name) ->
+          if cached_name == zone_suffix or String.ends_with?(cached_name, "." <> zone_suffix) do
+            :ets.delete(cache_table, key)
+          end
+
+        _entry ->
+          :ok
+      end)
+    end
+
+    :ok
   end
 
   defp get_min_ttl(response) do

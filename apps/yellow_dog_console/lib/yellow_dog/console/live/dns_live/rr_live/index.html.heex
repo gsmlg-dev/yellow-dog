@@ -3,8 +3,7 @@
     <!-- Breadcrumb -->
     <.dm_breadcrumb>
       <:crumb to={~p"/server/dns"}>DNS</:crumb>
-      <:crumb to={~p"/server/dns/views"}>Views</:crumb>
-      <:crumb to={~p"/server/dns/views/#{@view_name}/zones"}>{@view_name}</:crumb>
+      <:crumb to={zones_path()}>Zones</:crumb>
       <:crumb>{@zone_name}</:crumb>
     </.dm_breadcrumb>
 
@@ -51,18 +50,14 @@
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </.dm_btn>
         <.link
-          patch={
-            ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
-          }
+          patch={bulk_records_path(@zone_id)}
           class="btn btn-ghost btn-sm"
           title="Bulk Add"
         >
           <.dm_mdi name="file-document-outline" class="w-4 h-4" /> Bulk Add
         </.link>
         <.link
-          patch={
-            ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
-          }
+          patch={new_record_path(@zone_id)}
           class="btn btn-primary btn-sm"
         >
           <.dm_mdi name="plus" class="w-4 h-4" /> Add Record
@@ -132,9 +127,7 @@
                         <td class="text-right">
                           <div class="flex items-center justify-end gap-1">
                             <.link
-                              patch={
-                                ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/#{idx}/edit"
-                              }
+                              patch={edit_record_path(@zone_id, idx)}
                               class="btn btn-ghost btn-sm"
                               title="Edit"
                               aria-label="Edit"
@@ -174,17 +167,13 @@
                 <p class="text-on-surface-variant mb-4">This zone has no resource records.</p>
                 <div class="flex justify-center gap-2">
                   <.link
-                    patch={
-                      ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
-                    }
+                    patch={new_record_path(@zone_id)}
                     class="btn btn-outline"
                   >
                     Add Record
                   </.link>
                   <.link
-                    patch={
-                      ~p"/server/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
-                    }
+                    patch={bulk_records_path(@zone_id)}
                     class="btn btn-ghost"
                   >
                     Bulk Add

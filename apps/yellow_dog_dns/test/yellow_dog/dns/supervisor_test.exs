@@ -12,6 +12,9 @@ defmodule YellowDog.Dns.SupervisorTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Dns.Supervisor, as: DnsSupervisor
+  alias YellowDog.Store.Backend
+  alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Zone, as: StoreZone
 
   describe "module exports" do
     test "exports start_link/0 and start_link/1" do
@@ -310,6 +313,10 @@ defmodule YellowDog.Dns.SupervisorTest do
       assert Process.whereis(YellowDog.Dns.ConnectionRegistry) != nil
     end
 
+    test "starts CloudDnsSyncJob task supervisor", %{supervisor_pid: _pid} do
+      assert Process.whereis(YellowDog.Dns.CloudDnsSyncJob.TaskSupervisor) != nil
+    end
+
     test "starts RateLimiter", %{supervisor_pid: _pid} do
       assert Process.whereis(YellowDog.Dns.RateLimiter) != nil
     end
@@ -334,6 +341,18 @@ defmodule YellowDog.Dns.SupervisorTest do
       assert Process.whereis(YellowDog.Dns.Server) != nil
     end
 
+    test "repairs existing root forward zone without upstreams", %{supervisor_pid: _pid} do
+      assert {:ok, forward_pid} = YellowDog.Dns.ZoneController.find_zone(:forward, ".")
+
+      stats = YellowDog.Dns.Zone.Forward.stats(forward_pid)
+      assert stats.upstream_count > 0
+      assert stats.timeout == 2_000
+      assert stats.retries > 0
+
+      assert {:ok, zone} = StoreZone.get_zone("default", ".")
+      assert zone.forwarders != []
+    end
+
     test "creates default view", %{supervisor_pid: _pid} do
       # Default view should be created during post-init
       case YellowDog.Dns.ViewManager.get_view("default") do
@@ -345,6 +364,97 @@ defmodule YellowDog.Dns.SupervisorTest do
           Process.sleep(200)
           assert {:ok, _pid} = YellowDog.Dns.ViewManager.get_view("default")
       end
+    end
+  end
+
+  describe "supervisor repairs persisted recursion config" do
+    setup do
+      previous_backend = Backend.active()
+      EtsBackend.create_table()
+      Backend.set_active(EtsBackend)
+      :ets.delete_all_objects(EtsBackend.table())
+
+      case Process.whereis(YellowDog.Dns) do
+        nil -> :ok
+        pid -> Supervisor.stop(pid)
+      end
+
+      Process.sleep(100)
+
+      on_exit(fn ->
+        try do
+          case Process.whereis(YellowDog.Dns) do
+            nil -> :ok
+            pid -> Supervisor.stop(pid)
+          end
+        catch
+          :exit, _ -> :ok
+        end
+
+        :ets.delete_all_objects(EtsBackend.table())
+        Backend.set_active(previous_backend)
+        Process.sleep(100)
+      end)
+
+      :ok
+    end
+
+    test "adds default upstreams to an existing empty root forward zone" do
+      assert :ok = StoreZone.create_forward_zone("default", ".", [])
+
+      {:ok, _pid} =
+        DnsSupervisor.start_link(
+          port: 0,
+          skip_persistence: true,
+          zones: [%{type: :forward, name: ".", view_name: "default"}]
+        )
+
+      Process.sleep(300)
+
+      assert {:ok, forward_pid} = YellowDog.Dns.ZoneController.find_zone(:forward, ".")
+
+      assert %{upstream_count: upstream_count, timeout: timeout, retries: retries} =
+               YellowDog.Dns.Zone.Forward.stats(forward_pid)
+
+      assert upstream_count > 0
+      assert timeout == 2_000
+      assert retries > 0
+
+      assert {:ok, zone} = StoreZone.get_zone("default", ".")
+      assert zone.forwarders != []
+      assert zone.timeout_ms == 2_000
+      assert zone.max_retries > 0
+    end
+
+    test "repairs an existing root forward zone with stale timeout and retries" do
+      assert :ok =
+               StoreZone.create_forward_zone(
+                 "default",
+                 ".",
+                 [%{ip: "8.8.8.8", port: 53}, %{ip: "1.1.1.1", port: 53}],
+                 timeout_ms: 5_000,
+                 max_retries: 0
+               )
+
+      {:ok, _pid} =
+        DnsSupervisor.start_link(
+          port: 0,
+          skip_persistence: true,
+          zones: [%{type: :forward, name: ".", view_name: "default"}]
+        )
+
+      Process.sleep(300)
+
+      assert {:ok, forward_pid} = YellowDog.Dns.ZoneController.find_zone(:forward, ".")
+
+      assert %{upstream_count: 2, timeout: 2_000, retries: retries} =
+               YellowDog.Dns.Zone.Forward.stats(forward_pid)
+
+      assert retries > 0
+
+      assert {:ok, zone} = StoreZone.get_zone("default", ".")
+      assert zone.timeout_ms == 2_000
+      assert zone.max_retries > 0
     end
   end
 
@@ -394,6 +504,7 @@ defmodule YellowDog.Dns.SupervisorTest do
       assert YellowDog.Dns.ZoneRegistry in child_ids
       assert YellowDog.Dns.ViewRegistry in child_ids
       assert YellowDog.Dns.ConnectionRegistry in child_ids
+      assert YellowDog.Dns.CloudDnsSyncJob.TaskSupervisor in child_ids
       assert :rate_limiter in child_ids
       assert YellowDog.Dns.AclRegistry in child_ids
       assert YellowDog.Dns.ZoneController in child_ids

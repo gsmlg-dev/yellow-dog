@@ -47,6 +47,8 @@ config :phoenix_live_view,
 # WORKAROUND(upstream): gsmlg-dev/concord#8
 config :concord, prometheus_enabled: false
 
+config :yellow_dog_store, provider_persistence_backend: YellowDog.Store.Backend.Ets
+
 config :logger, :console, level: :debug
 
 # YellowDog Telemetry Configuration for Testing

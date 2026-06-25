@@ -108,6 +108,12 @@ defmodule YellowDog.Console.Components.Sidebar do
       </.link>
     </li>
     <li>
+      <.link navigate="/server/dns/zones" class={active?(@current_path, "/server/dns/zones")}>
+        <.dm_mdi name="folder-outline" class="w-5 h-5" />
+        <span>Zones</span>
+      </.link>
+    </li>
+    <li>
       <.link navigate="/server/dns/views" class={active?(@current_path, "/server/dns/views")}>
         <.dm_mdi name="eye" class="w-5 h-5" />
         <span>Views</span>

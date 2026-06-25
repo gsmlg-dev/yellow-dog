@@ -275,6 +275,7 @@ defmodule YellowDog.Dns.ConfigPersistence do
         view_name: view_name,
         file: zone_file_path(view_name, name)
       }
+      |> put_store_cloud_mirror(view_name, name)
     end)
   end
 
@@ -354,5 +355,17 @@ defmodule YellowDog.Dns.ConfigPersistence do
         error -> {:halt, error}
       end
     end)
+  end
+
+  defp put_store_cloud_mirror(zone_config, view_name, name) do
+    case YellowDog.Store.Zone.get_zone(view_name, name) do
+      {:ok, %{cloud_mirror: mirror}} when is_map(mirror) ->
+        Map.put(zone_config, :cloud_mirror, mirror)
+
+      _ ->
+        zone_config
+    end
+  catch
+    _, _ -> zone_config
   end
 end

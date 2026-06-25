@@ -559,9 +559,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
           priority: priority,
           enabled: Map.get(stats, :enabled, true),
           recursion_enabled: Map.get(stats, :recursion_enabled, false),
-          ecs_enabled: Map.get(stats, :ecs_enabled, false),
-          zone_count: length(Map.get(stats, :zones, [])),
-          query_count: Map.get(stats, :query_count, 0)
+          ecs_enabled: Map.get(stats, :ecs_enabled, false)
         }
       end)
       |> Enum.sort_by(& &1.priority)
@@ -585,9 +583,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
             priority: priority,
             enabled: Map.get(view, :enabled, true),
             recursion_enabled: Map.get(view, :recursion, false),
-            ecs_enabled: Map.get(view, :ecs_enabled, false),
-            zone_count: length(Map.get(view, :zones, [])),
-            query_count: 0
+            ecs_enabled: Map.get(view, :ecs_enabled, false)
           }
         end)
         |> Enum.sort_by(& &1.priority)
@@ -690,7 +686,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   defp filter_views_by_status(views, "disabled"), do: Enum.reject(views, & &1.enabled)
 
   defp build_views_csv(views) do
-    header = "View Name,Status,Priority,Recursion,ECS,Zones,Queries\r\n"
+    header = "View Name,Status,Priority,Recursion,ECS\r\n"
 
     rows =
       Enum.map_join(views, "\r\n", fn view ->
@@ -702,9 +698,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
           if(view.enabled, do: "Active", else: "Disabled"),
           priority_str,
           if(view.recursion_enabled, do: "Enabled", else: "Disabled"),
-          if(view.ecs_enabled, do: "Enabled", else: "Disabled"),
-          to_string(view.zone_count),
-          to_string(view.query_count)
+          if(view.ecs_enabled, do: "Enabled", else: "Disabled")
         ]
         |> Enum.join(",")
       end)

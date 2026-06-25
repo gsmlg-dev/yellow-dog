@@ -402,6 +402,34 @@ defmodule YellowDog.Dns.ViewTest do
     end
   end
 
+  describe "invalidate_zone_cache/2" do
+    @tag :capture_log
+    test "removes cached answers for names inside the zone" do
+      view_name = "test_cache_invalidate_#{:rand.uniform(1_000_000)}"
+      {:ok, pid} = View.start_link(name: view_name)
+
+      :sys.replace_state(pid, fn state ->
+        expires_at = System.system_time(:second) + 300
+        :ets.insert(state.cache_table, {{"www.example.com", "A"}, {:cached, expires_at}})
+        :ets.insert(state.cache_table, {{"example.com", "SOA"}, {:cached, expires_at}})
+        :ets.insert(state.cache_table, {{"api.other.com", "A"}, {:cached, expires_at}})
+        state
+      end)
+
+      assert View.stats(pid).cache_size == 3
+
+      assert :ok = View.invalidate_zone_cache(pid, "example.com")
+
+      state = :sys.get_state(pid)
+      assert View.stats(pid).cache_size == 1
+      assert :ets.lookup(state.cache_table, {"www.example.com", "A"}) == []
+      assert :ets.lookup(state.cache_table, {"example.com", "SOA"}) == []
+      assert [{_, _}] = :ets.lookup(state.cache_table, {"api.other.com", "A"})
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "termination" do
     @tag :capture_log
     test "cleans up ETS cache on termination" do

@@ -7,6 +7,7 @@ defmodule YellowDog.Console.DnsLive.Index do
   import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
 
   alias YellowDog.Dns.View
+  alias YellowDog.Store.Zone, as: StoreZone
 
   @max_cache_entries 10_000
 
@@ -76,55 +77,62 @@ defmodule YellowDog.Console.DnsLive.Index do
   end
 
   @default_dns_stats %{
-    view_count: 0,
     total_zones: 0,
     total_queries: 0,
     total_hits: 0,
     total_misses: 0,
-    total_cache: 0,
-    views: []
+    total_cache: 0
   }
 
   defp get_dns_stats do
-    safe_call(
-      YellowDog.Dns,
-      fn ->
-        views = YellowDog.Dns.ViewManager.list_views()
+    runtime_stats =
+      safe_call(
+        YellowDog.Dns,
+        fn ->
+          views = YellowDog.Dns.ViewManager.list_views()
 
-        view_stats =
-          Enum.map(views, fn {view_name, pid, priority} ->
-            stats = Map.merge(@view_stat_defaults, View.stats(pid))
+          view_stats =
+            Enum.map(views, fn {view_name, pid, priority} ->
+              stats = Map.merge(@view_stat_defaults, View.stats(pid))
 
-            %{
-              name: view_name,
-              priority: priority,
-              recursion_enabled: stats.recursion_enabled,
-              zone_count: length(stats.zones),
-              query_count: stats.query_count,
-              hit_count: stats.hit_count,
-              miss_count: stats.miss_count,
-              cache_size: stats.cache_size
-            }
-          end)
+              %{
+                name: view_name,
+                priority: priority,
+                recursion_enabled: stats.recursion_enabled,
+                zone_count: length(stats.zones),
+                query_count: stats.query_count,
+                hit_count: stats.hit_count,
+                miss_count: stats.miss_count,
+                cache_size: stats.cache_size
+              }
+            end)
 
-        {zones, queries, hits, misses, cache} =
-          Enum.reduce(view_stats, {0, 0, 0, 0, 0}, fn s, {z, q, h, m, c} ->
-            {z + s.zone_count, q + s.query_count, h + s.hit_count, m + s.miss_count,
-             c + s.cache_size}
-          end)
+          {queries, hits, misses, cache} =
+            Enum.reduce(view_stats, {0, 0, 0, 0}, fn s, {q, h, m, c} ->
+              {q + s.query_count, h + s.hit_count, m + s.miss_count, c + s.cache_size}
+            end)
 
-        %{
-          view_count: length(views),
-          total_zones: zones,
-          total_queries: queries,
-          total_hits: hits,
-          total_misses: misses,
-          total_cache: cache,
-          views: view_stats
-        }
-      end,
-      @default_dns_stats
-    )
+          %{
+            total_zones: 0,
+            total_queries: queries,
+            total_hits: hits,
+            total_misses: misses,
+            total_cache: cache
+          }
+        end,
+        @default_dns_stats
+      )
+
+    Map.put(runtime_stats, :total_zones, total_zone_count())
+  end
+
+  defp total_zone_count do
+    case StoreZone.list_zones() do
+      {:ok, zones} -> length(zones)
+      {:error, _reason} -> 0
+    end
+  catch
+    _, _ -> 0
   end
 
   @default_cache_stats %{

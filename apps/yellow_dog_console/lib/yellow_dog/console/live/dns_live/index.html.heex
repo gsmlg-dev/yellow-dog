@@ -28,27 +28,14 @@
     </div>
     
 <!-- Summary Stats -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm text-on-surface-variant">Views</div>
-              <div class="text-2xl font-bold text-primary">{@stats.view_count}</div>
-              <div class="text-xs text-on-surface-variant">Client perspectives</div>
-            </div>
-            <.dm_mdi name="eye" class="w-8 h-8 text-primary" />
-          </div>
-        </div>
-      </div>
-
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <div class="card card-bordered bg-surface">
         <div class="card-body">
           <div class="flex items-center justify-between">
             <div>
               <div class="text-sm text-on-surface-variant">Total Zones</div>
               <div class="text-2xl font-bold text-success">{@stats.total_zones}</div>
-              <div class="text-xs text-on-surface-variant">Across all views</div>
+              <div class="text-xs text-on-surface-variant">Configured zones</div>
             </div>
             <.dm_mdi name="folder-outline" class="w-8 h-8 text-success" />
           </div>
@@ -85,54 +72,6 @@
         </div>
       </div>
     </div>
-    
-<!-- Views Summary Table -->
-    <%= if @stats.views != [] do %>
-      <.card title="Views Summary">
-        <div class="overflow-x-auto">
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th scope="col">View Name</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Recursion</th>
-                <th scope="col">Zones</th>
-                <th scope="col">Queries</th>
-                <th scope="col">Hit Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for view <- @stats.views do %>
-                <tr class="hover">
-                  <td class="font-mono font-semibold">{view.name}</td>
-                  <td>{view.priority}</td>
-                  <td>
-                    <%= if view.recursion_enabled do %>
-                      <.badge color="success" size="sm">Enabled</.badge>
-                    <% else %>
-                      <.badge color="warning" size="sm">Disabled</.badge>
-                    <% end %>
-                  </td>
-                  <td>{view.zone_count}</td>
-                  <td>{view.query_count}</td>
-                  <td>{calculate_hit_rate(view.hit_count, view.miss_count)}%</td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </div>
-      </.card>
-    <% else %>
-      <div class="card bg-surface shadow-xl">
-        <div class="card-body text-center py-12">
-          <.dm_mdi name="eye" class="mx-auto h-16 w-16 text-on-surface-variant" />
-          <h3 class="mt-4 text-xl font-semibold">No DNS Views Configured</h3>
-          <p class="mt-2 text-on-surface-variant">
-            DNS service may not be running or no views have been created yet.
-          </p>
-        </div>
-      </div>
-    <% end %>
     
 <!-- Cache Statistics -->
     <.card title="Cache Statistics">
@@ -188,8 +127,8 @@
 <!-- Quick Links -->
     <.card title="Quick Actions">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <.link navigate={~p"/server/dns/views"} class="btn btn-primary btn-lg gap-2">
-          <.dm_mdi name="eye" class="w-5 h-5" /> Manage Views
+        <.link navigate={~p"/server/dns/zones"} class="btn btn-primary btn-lg gap-2">
+          <.dm_mdi name="folder-outline" class="w-5 h-5" /> Manage Zones
         </.link>
 
         <.link navigate={~p"/server/dns/acl"} class="btn btn-secondary btn-lg gap-2">

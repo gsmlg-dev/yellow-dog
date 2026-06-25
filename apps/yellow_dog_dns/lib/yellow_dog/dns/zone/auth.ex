@@ -1021,11 +1021,41 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp extract_soa_map(nil), do: nil
 
   defp extract_soa_map(soa_record) do
-    soa_data = record_data(soa_record)
+    soa_record
+    |> record_data()
+    |> soa_data_to_map()
+  end
 
-    %{
-      primary_ns: soa_data.mname,
-      admin_email: soa_data.rname,
+  defp soa_data_to_map(%DNS.Message.Record.Data.SOA{data: data}), do: soa_data_to_map(data)
+
+  defp soa_data_to_map({mname, rname, serial, refresh, retry, expire, minimum}) do
+    %DNS.Zone.Parser.SOARecord{
+      primary_ns: to_string(mname),
+      admin_email: to_string(rname),
+      serial: serial,
+      refresh: refresh,
+      retry: retry,
+      expire: expire,
+      minimum: minimum
+    }
+  end
+
+  defp soa_data_to_map(%{mname: mname, rname: rname} = soa_data) do
+    %DNS.Zone.Parser.SOARecord{
+      primary_ns: to_string(mname),
+      admin_email: to_string(rname),
+      serial: soa_data.serial,
+      refresh: soa_data.refresh,
+      retry: soa_data.retry,
+      expire: soa_data.expire,
+      minimum: soa_data.minimum
+    }
+  end
+
+  defp soa_data_to_map(%{primary_ns: primary_ns, admin_email: admin_email} = soa_data) do
+    %DNS.Zone.Parser.SOARecord{
+      primary_ns: to_string(primary_ns),
+      admin_email: to_string(admin_email),
       serial: soa_data.serial,
       refresh: soa_data.refresh,
       retry: soa_data.retry,
@@ -1447,6 +1477,8 @@ defmodule YellowDog.Dns.Zone.Auth do
 
     case DNS.Zone.Loader.load_zone_from_file(state.name, zone_file) do
       {:ok, zone} ->
+        zone = ensure_zone_origin(zone, state.name)
+
         # DNS.Zone.Loader returns DNS.Zone.RRSet structs in zone.records, but the
         # auth zone ETS table and response builder expect DNS.Message.Record structs
         # (which implement DNS.Parameter for wire-format serialization). Use
@@ -1469,6 +1501,11 @@ defmodule YellowDog.Dns.Zone.Auth do
     end
   end
 
+  defp ensure_zone_origin(%DNS.Zone{origin: nil} = zone, zone_name),
+    do: %{zone | origin: zone_name}
+
+  defp ensure_zone_origin(%DNS.Zone{} = zone, _zone_name), do: zone
+
   defp create_empty_zone_file(zone_name, file_path) do
     # Create a minimal valid zone file with SOA and NS records
     content = """
@@ -1482,7 +1519,7 @@ defmodule YellowDog.Dns.Zone.Auth do
                 604800      ; expire (1 week)
                 86400       ; minimum (1 day)
             )
-        IN  NS  ns1.#{zone_name}.
+    @   IN  NS  ns1.#{zone_name}.
     """
 
     File.write(file_path, content)

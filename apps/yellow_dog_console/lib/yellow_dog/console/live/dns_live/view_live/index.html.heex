@@ -90,8 +90,6 @@
                       <th scope="col">Priority</th>
                       <th scope="col">Recursion</th>
                       <th scope="col">ECS</th>
-                      <th scope="col">Zones</th>
-                      <th scope="col">Queries</th>
                       <th class="text-right">Actions</th>
                     </tr>
                   </thead>
@@ -99,12 +97,9 @@
                     <%= for view <- filtered_views(@views, @filter, @status_filter) do %>
                       <tr class="hover">
                         <td>
-                          <.link
-                            navigate={~p"/server/dns/views/#{view.name}/zones"}
-                            class="link link-hover font-mono font-semibold"
-                          >
+                          <span class="font-mono font-semibold">
                             {view.name}
-                          </.link>
+                          </span>
                           <%= if view.name == "default" do %>
                             <span class="badge badge-ghost badge-xs ml-1">default</span>
                           <% end %>
@@ -148,25 +143,8 @@
                             <.badge color="ghost" size="sm">Disabled</.badge>
                           <% end %>
                         </td>
-                        <td>
-                          <.link
-                            navigate={~p"/server/dns/views/#{view.name}/zones"}
-                            class="link link-hover"
-                          >
-                            {view.zone_count} zones
-                          </.link>
-                        </td>
-                        <td class="font-mono text-sm">{format_number(view.query_count)}</td>
                         <td class="text-right">
                           <div class="flex items-center justify-end gap-1">
-                            <.link
-                              navigate={~p"/server/dns/views/#{view.name}/zones"}
-                              class="btn btn-ghost btn-sm"
-                              title="View Zones"
-                              aria-label="View Zones"
-                            >
-                              <.dm_mdi name="arrow-right" class="w-4 h-4" />
-                            </.link>
                             <.link
                               patch={~p"/server/dns/views/#{view.name}/edit"}
                               class="btn btn-ghost btn-sm"

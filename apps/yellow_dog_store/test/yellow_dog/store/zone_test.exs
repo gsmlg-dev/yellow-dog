@@ -17,6 +17,12 @@ defmodule YellowDog.Store.ZoneTest do
     minimum: 86_400
   }
 
+  defp assert_uuid(value) do
+    assert is_binary(value)
+    assert value =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    value
+  end
+
   setup do
     YellowDog.StoreHelper.setup_store()
     :ok
@@ -36,6 +42,13 @@ defmodule YellowDog.Store.ZoneTest do
       assert zone.soa.mname == "ns1.example.com"
       assert zone.authoritative == true
       assert zone.default_ttl == 3600
+    end
+
+    test "creates auth zone with generated UUID" do
+      assert :ok = Zone.create_zone(@view, "test-id-auth.example.com", @test_soa)
+
+      assert {:ok, zone} = Zone.get_zone(@view, "test-id-auth.example.com")
+      assert_uuid(zone.id)
     end
 
     test "create_zone with custom options" do
@@ -120,6 +133,16 @@ defmodule YellowDog.Store.ZoneTest do
       assert zone.max_retries == 2
     end
 
+    test "creates forward zone with generated UUID" do
+      assert :ok =
+               Zone.create_forward_zone(@view, "test-id-forward.example.com", [
+                 %{ip: "10.0.0.1", port: 53}
+               ])
+
+      assert {:ok, zone} = Zone.get_zone(@view, "test-id-forward.example.com")
+      assert_uuid(zone.id)
+    end
+
     test "duplicate forward zone returns error" do
       Zone.create_forward_zone(@view, "dup.internal", [%{ip: "10.0.0.1", port: 53}])
 
@@ -178,6 +201,16 @@ defmodule YellowDog.Store.ZoneTest do
       assert zone.refresh_interval == 1800
     end
 
+    test "creates stub zone with generated UUID" do
+      assert :ok =
+               Zone.create_stub_zone(@view, "test-id-stub.example.com", [
+                 %{ip: "10.0.0.2", port: 53}
+               ])
+
+      assert {:ok, zone} = Zone.get_zone(@view, "test-id-stub.example.com")
+      assert_uuid(zone.id)
+    end
+
     test "duplicate stub zone returns error" do
       Zone.create_stub_zone(@view, "dup-stub.example.com", [%{ip: "10.0.0.1", port: 53}])
 
@@ -213,6 +246,51 @@ defmodule YellowDog.Store.ZoneTest do
 
       assert {:ok, zone} = Zone.get_zone(@view, "ri-stub.example.com")
       assert zone.refresh_interval == 7200
+    end
+  end
+
+  describe "zone UUID lookup and backfill" do
+    test "get_zone_by_id/1 returns zone metadata with view_name" do
+      assert :ok = Zone.create_zone(@view, "lookup-id.example.com", @test_soa)
+      assert {:ok, created} = Zone.get_zone(@view, "lookup-id.example.com")
+
+      assert {:ok, found} = Zone.get_zone_by_id(created.id)
+      assert found.id == created.id
+      assert found.view_name == @view
+      assert found.origin == "lookup-id.example.com"
+      assert found.zone_type == :auth
+    end
+
+    test "get_zone_by_id/1 returns not_found for missing id" do
+      assert {:error, :not_found} =
+               Zone.get_zone_by_id("00000000-0000-4000-8000-000000000000")
+    end
+
+    test "list_zones_for_view/1 lazily backfills missing id" do
+      key = YellowDog.Store.Key.zone(@view, "legacy-no-id.example.com")
+      now = System.system_time(:second)
+
+      legacy_zone = %{
+        zone_type: :auth,
+        origin: "legacy-no-id.example.com",
+        soa: @test_soa,
+        default_ttl: 3600,
+        authoritative: true,
+        allow_dynamic_update: false,
+        serial_strategy: :date_serial,
+        cloud_mirror: nil,
+        created_at: now,
+        updated_at: now
+      }
+
+      assert :ok = YellowDog.Store.Backend.active().put_if(key, legacy_zone, expected: nil)
+
+      assert {:ok, zones} = Zone.list_zones_for_view(@view)
+      assert zone = Enum.find(zones, &(&1.origin == "legacy-no-id.example.com"))
+      assert_uuid(zone.id)
+
+      assert {:ok, persisted} = Zone.get_zone(@view, "legacy-no-id.example.com")
+      assert persisted.id == zone.id
     end
   end
 

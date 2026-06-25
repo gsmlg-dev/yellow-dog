@@ -9,6 +9,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   alias YellowDog.Store.Backend
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
   alias YellowDog.Store.Provider
+  alias YellowDog.Store.Zone, as: StoreZone
 
   # ============================================================================
   # DNS Overview Page
@@ -18,6 +19,15 @@ defmodule YellowDog.Console.DnsLiveTest do
     test "mounts successfully", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dns")
       assert html =~ "DNS"
+    end
+
+    test "shows total zones without view-specific summaries", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/server/dns")
+
+      assert html =~ "Total Zones"
+      refute html =~ "Views Summary"
+      refute html =~ "Manage Views"
+      refute html =~ "Client perspectives"
     end
   end
 
@@ -47,6 +57,26 @@ defmodule YellowDog.Console.DnsLiveTest do
       {:ok, _view, html} = live(conn, "/server/dns/views")
       # Page should render without errors
       assert html =~ "DNS Views"
+    end
+
+    test "view list does not expose zone counts or zone navigation", %{conn: conn} do
+      start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry})
+      start_supervised!({YellowDog.Dns.ViewManager, []})
+
+      assert {:ok, _pid} =
+               YellowDog.Dns.ViewManager.start_view(
+                 name: "default",
+                 priority: 0,
+                 acl: :any,
+                 zones: [{:auth, "example.com"}]
+               )
+
+      {:ok, _view, html} = live(conn, "/server/dns/views")
+
+      refute html =~ ">Zones</th>"
+      refute html =~ ">Queries</th>"
+      refute html =~ "View Zones"
+      refute html =~ "zones</a>"
     end
 
     test "navigates to new view form", %{conn: conn} do
@@ -87,22 +117,27 @@ defmodule YellowDog.Console.DnsLiveTest do
   # DNS Zones Page
   # ============================================================================
 
-  describe "DNS Zones /dns/views/:view_name/zones" do
-    test "mounts with view name from params", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones")
-      assert html =~ "Zones"
-      assert html =~ "default"
+  describe "DNS Zones /dns/zones" do
+    test "mounts default zone list without view-relative copy", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/server/dns/zones")
+      assert html =~ "DNS Zones"
+      refute html =~ "Zones in view"
+    end
+
+    test "old view-nested zones route naturally 404s", %{conn: conn} do
+      conn = get(conn, "/server/dns/views/default/zones")
+      assert conn.status == 404
     end
 
     test "navigates to new zone form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, _view, html} = live(conn, "/server/dns/zones/new")
       assert html =~ "Add Zone"
       assert html =~ "Zone Name"
       assert html =~ "Zone Type"
     end
 
     test "new zone form shows zone type options", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, _view, html} = live(conn, "/server/dns/zones/new")
       assert html =~ "Authoritative"
       assert html =~ "Forward"
       assert html =~ "Stub"
@@ -111,7 +146,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     test "auth zone form selects configured Cloud DNS connector", %{conn: conn} do
       setup_cloud_dns_connectors()
 
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, _view, html} = live(conn, "/server/dns/zones/new")
       assert html =~ "Cloud DNS Mirror"
       assert html =~ "Enable cloud sync"
       assert html =~ "Cloud DNS Connector"
@@ -138,8 +173,10 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert {:ok, _pid} =
                YellowDog.Dns.ZoneController.start_zone(:auth, zone_name, view_name: "default")
 
+      {:ok, store_zone} = StoreZone.get_zone("default", zone_name)
+
       {:ok, _view, html} =
-        live(conn, "/server/dns/views/default/zones/auth/#{zone_name}/edit")
+        live(conn, "/server/dns/zones/#{store_zone.id}/edit")
 
       assert html =~ "Cloud Provider Settings"
       assert html =~ "Cloud DNS Mirror"
@@ -185,7 +222,7 @@ defmodule YellowDog.Console.DnsLiveTest do
                  zones: [{:auth, zone_name}]
                )
 
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, _view, html} = live(conn, "/server/dns/zones")
 
       assert html =~ "Cloud"
       assert html =~ "Cloudflare DNS"
@@ -193,27 +230,27 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "navigates to import zone form", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
+      {:ok, _view, html} = live(conn, "/server/dns/zones/import")
       assert html =~ "Import Zone"
       assert html =~ "BIND Zone File Format"
     end
 
     test "import form has zone data textarea", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
+      {:ok, _view, html} = live(conn, "/server/dns/zones/import")
       assert html =~ "Zone Data"
       assert html =~ "$ORIGIN"
     end
 
     test "cancel navigates back to zones list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
 
-      assert_redirect(view, "/server/dns/views/default/zones")
+      assert_redirect(view, "/server/dns/zones")
     end
 
     test "breadcrumb navigation is present", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, _view, html} = live(conn, "/server/dns/zones")
       assert html =~ "breadcrumbs"
       assert html =~ "DNS"
       assert html =~ "Views"
@@ -760,7 +797,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "DNS Zones CRUD" do
     test "create zone form submits auth zone", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       # Auth zone form only has name and type fields (no upstreams/ns_records)
       result =
@@ -777,8 +814,37 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert is_binary(result) or match?({:error, {:live_redirect, _}}, result)
     end
 
+    test "saving a cloud provider on an auth zone enqueues cloud sync", %{conn: conn} do
+      setup_cloud_dns_connectors()
+      setup_cloud_dns_sync_runner()
+      start_dns_zone_runtime!()
+
+      zone_name = "sync-after-provider-save-#{System.unique_integer([:positive])}.example.com"
+
+      assert {:ok, _pid} =
+               YellowDog.Dns.ZoneController.start_zone(:auth, zone_name, view_name: "default")
+
+      assert {:ok, store_zone} = StoreZone.get_zone("default", zone_name)
+
+      {:ok, view, _html} = live(conn, "/server/dns/zones/#{store_zone.id}/edit")
+
+      result =
+        view
+        |> form("form", %{
+          "zone" => %{
+            "type" => "auth",
+            "mirror_enabled" => "true",
+            "mirror_connector" => "aws-prod"
+          }
+        })
+        |> render_submit()
+
+      assert is_binary(result) or match?({:error, {:live_redirect, _}}, result)
+      assert_receive {:cloud_dns_sync_enqueued, "default", ^zone_name, []}
+    end
+
     test "create zone form submits forward zone with upstreams", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       # First change type to forward to reveal upstreams textarea
       view
@@ -810,7 +876,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "create zone form submits stub zone with NS records", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       # First change type to stub to reveal ns_records textarea
       view
@@ -842,7 +908,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone event updates form type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -860,13 +926,13 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "import zone form renders BIND format textarea", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/import")
+      {:ok, _view, html} = live(conn, "/server/dns/zones/import")
       assert html =~ ~s(name="import[zone_data]")
       assert html =~ ~s(name="import[format]")
     end
 
     test "import zone form submits zone data", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/import")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/import")
 
       zone_data = """
       $ORIGIN example.com.
@@ -890,44 +956,60 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "cancel navigates back from new zone form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
-      assert_redirect(view, "/server/dns/views/default/zones")
+      assert_redirect(view, "/server/dns/zones")
     end
 
     test "cancel navigates back from import form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/import")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/import")
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
-      assert_redirect(view, "/server/dns/views/default/zones")
+      assert_redirect(view, "/server/dns/zones")
     end
 
     test "refresh button reloads zones", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/zones")
       html = view |> render_click("refresh")
       assert html =~ "Zones" or html =~ "default"
     end
 
     test "export CSV generates zones file download", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, view, html} = live(conn, "/server/dns/zones")
       assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       assert render(view) =~ "Zones" or render(view) =~ "default"
     end
 
     test "filter zones by name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/zones")
       html = view |> render_change("filter", %{"filter" => "example"})
       assert html =~ "Zones" or html =~ "default"
     end
 
     test "filter zones by type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/zones")
       html = view |> render_change("filter_type", %{"type" => "all"})
       assert html =~ "Zones" or html =~ "default"
     end
 
+    test "delete confirmation renders as modal dialog", %{conn: conn} do
+      zone =
+        create_stored_auth_zone!("delete-modal-#{System.unique_integer([:positive])}.example.com")
+
+      {:ok, view, _html} = live(conn, "/server/dns/zones")
+
+      view
+      |> element(~s(button[phx-click="confirm_delete"][phx-value-id="#{zone.id}"]))
+      |> render_click()
+
+      assert has_element?(view, "#delete-modal.modal.modal-open")
+      assert has_element?(view, "#delete-modal .modal-box")
+      assert has_element?(view, "#delete-modal .modal-action")
+      assert has_element?(view, "#delete-modal", zone.origin)
+    end
+
     test "close_modal event clears delete confirmation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones")
+      {:ok, view, _html} = live(conn, "/server/dns/zones")
       html = view |> render_click("close_modal")
       assert html =~ "Zones" or html =~ "default"
     end
@@ -1119,29 +1201,29 @@ defmodule YellowDog.Console.DnsLiveTest do
   # DNS Resource Records Page
   # ============================================================================
 
-  describe "DNS Resource Records /dns/views/:view_name/zones/:zone_type/:zone_name/records" do
+  describe "DNS Resource Records /dns/zones/:zone_id/records" do
     test "mounts with zone context from params", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, _view, html} = live(conn, auth_records_path())
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "navigates to new record form", %{conn: conn} do
       {:ok, _view, html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       assert html =~ "Add" or html =~ "Record" or html =~ "record"
     end
 
     test "navigates to bulk import form", %{conn: conn} do
       {:ok, _view, html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/bulk")
+        live(conn, auth_records_path("/bulk"))
 
       assert html =~ "Bulk" or html =~ "Import" or html =~ "record"
     end
 
     test "bulk form shows preview on text change", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/bulk")
+        live(conn, auth_records_path("/bulk"))
 
       html =
         view
@@ -1154,64 +1236,101 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "bulk form submit button disabled until valid preview", %{conn: conn} do
       {:ok, _view, html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/bulk")
+        live(conn, auth_records_path("/bulk"))
 
       assert html =~ "disabled"
     end
 
     test "shows Export BIND button for auth zones", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, _view, html} = live(conn, auth_records_path())
       assert html =~ "Export BIND"
     end
 
     test "export_bind handles missing zone gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, auth_records_path())
       html = view |> render_click("export_bind")
       # Should show an error flash or still render the page
       assert html =~ "Records" or html =~ "example.com" or html =~ "Export failed"
     end
 
     test "shows CsvDownload hook on export button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, _view, html} = live(conn, auth_records_path())
       assert html =~ "CsvDownload"
     end
 
     test "refresh reloads records", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, auth_records_path())
       html = view |> render_click("refresh")
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "filter records by name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, auth_records_path())
       html = view |> render_change("filter", %{"filter" => "www"})
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "filter records by type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, auth_records_path())
       html = view |> render_change("filter_type", %{"type" => "all"})
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "export CSV generates records file download", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, auth_records_path())
       view |> render_click("export_csv")
       assert render(view) =~ "Records" or render(view) =~ "example.com"
     end
 
     test "close_modal clears delete confirmation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/auth/example.com/records")
+      {:ok, view, _html} = live(conn, auth_records_path())
       html = view |> render_click("close_modal")
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
     test "cancel navigates back from new record form", %{conn: conn} do
+      records_path = auth_records_path()
+
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, records_path <> "/new")
 
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
-      assert_redirect(view, "/server/dns/views/default/zones/auth/example.com/records")
+      assert_redirect(view, records_path)
+    end
+
+    test "shows Route 53 credential sync errors", %{conn: conn} do
+      setup_cloud_dns_connectors()
+
+      connector_name = "aws-missing-creds"
+      zone_name = "route53-sync-error-#{System.unique_integer([:positive])}.example.com"
+
+      assert :ok =
+               Provider.put_config(%{
+                 name: connector_name,
+                 type: :route53,
+                 credentials: %{},
+                 enabled: true
+               })
+
+      cloud_mirror = %{
+        enabled: true,
+        connector_name: connector_name,
+        provider: :route53,
+        zone_id: "",
+        direction: :bidirectional,
+        conflict_strategy: :local_wins
+      }
+
+      assert :ok =
+               StoreZone.create_zone("default", zone_name, StoreZone.default_soa(zone_name),
+                 cloud_mirror: cloud_mirror
+               )
+
+      assert {:ok, zone} = StoreZone.get_zone("default", zone_name)
+
+      {:ok, _view, html} = live(conn, "/server/dns/zones/#{zone.id}/records")
+
+      assert html =~ "Route 53 connector has no access key ID"
     end
   end
 
@@ -1221,7 +1340,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
   describe "Zone form inline validation" do
     test "validate_zone shows error for invalid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1238,7 +1357,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone clears error for valid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       # First trigger an error
       view
@@ -1267,7 +1386,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone requires cloud connector when auth mirror is enabled", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1288,7 +1407,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     } do
       setup_cloud_dns_connectors()
 
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1308,7 +1427,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone shows error for invalid upstream IP in forward zone", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1325,7 +1444,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone accepts valid upstream IPs", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1342,7 +1461,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "validate_zone shows error for invalid NS in stub zone", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1359,7 +1478,7 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "save_zone rejects invalid domain name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/dns/views/default/zones/new")
+      {:ok, view, _html} = live(conn, "/server/dns/zones/new")
 
       html =
         view
@@ -1822,7 +1941,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - domain name" do
     test "shows error for invalid domain name", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1841,7 +1960,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "shows no error for valid domain name", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1860,7 +1979,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts @ for zone apex", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1881,7 +2000,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - TTL" do
     test "shows error for non-numeric TTL", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1900,7 +2019,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "shows error for negative TTL", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1919,7 +2038,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid TTL within RFC 2181 limits", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1940,7 +2059,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - A record rdata" do
     test "shows error for invalid IPv4 address", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1959,7 +2078,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid IPv4 address for A record", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -1980,7 +2099,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - AAAA record rdata" do
     test "shows error for invalid IPv6 address", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       # First switch to AAAA type
       view
@@ -2004,7 +2123,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid IPv6 address for AAAA record", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2029,7 +2148,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - MX record" do
     test "shows error for invalid MX target", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2053,7 +2172,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid MX record", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2079,7 +2198,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - SRV record" do
     test "shows error for invalid SRV target", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2105,7 +2224,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid SRV record", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2133,7 +2252,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - CNAME/NS record rdata" do
     test "shows error for invalid CNAME target", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2156,7 +2275,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid CNAME target", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2179,7 +2298,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "shows error for invalid NS target", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2202,7 +2321,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "accepts valid NS target", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2227,7 +2346,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm validation - TXT record" do
     test "accepts arbitrary rdata for TXT records", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       view
       |> element("select[name='record[type]']")
@@ -2256,7 +2375,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   describe "RecordForm submission" do
     test "rejects record with invalid domain name on submit", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -2275,7 +2394,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "rejects A record with invalid IPv4 on submit", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       html =
         view
@@ -2294,7 +2413,7 @@ defmodule YellowDog.Console.DnsLiveTest do
 
     test "valid A record submission proceeds (shows error or navigates)", %{conn: conn} do
       {:ok, view, _html} =
-        live(conn, "/server/dns/views/default/zones/auth/example.com/records/new")
+        live(conn, auth_records_path("/new"))
 
       result =
         view
@@ -2312,6 +2431,23 @@ defmodule YellowDog.Console.DnsLiveTest do
       # since zone service isn't running in test
       assert is_binary(result)
     end
+  end
+
+  defp auth_records_path(suffix \\ "") do
+    zone = create_stored_auth_zone!()
+    "/server/dns/zones/#{zone.id}/records#{suffix}"
+  end
+
+  defp create_stored_auth_zone!(
+         zone_name \\ "records-#{System.unique_integer([:positive])}.example.com"
+       ) do
+    Backend.set_active(EtsBackend)
+    EtsBackend.create_table()
+    soa = StoreZone.default_soa(zone_name)
+    assert :ok = StoreZone.create_zone("default", zone_name, soa)
+
+    assert {:ok, zone} = StoreZone.get_zone("default", zone_name)
+    zone
   end
 
   defp setup_cloud_dns_connectors do
@@ -2347,5 +2483,33 @@ defmodule YellowDog.Console.DnsLiveTest do
              })
 
     :ok
+  end
+
+  defp setup_cloud_dns_sync_runner do
+    previous_runner = Application.get_env(:yellow_dog_dns, :cloud_dns_sync_job_runner)
+    test_pid = self()
+
+    Application.put_env(:yellow_dog_dns, :cloud_dns_sync_job_runner, fn view_name,
+                                                                        zone_name,
+                                                                        opts ->
+      send(test_pid, {:cloud_dns_sync_enqueued, view_name, zone_name, opts})
+      :ok
+    end)
+
+    on_exit(fn ->
+      case previous_runner do
+        nil -> Application.delete_env(:yellow_dog_dns, :cloud_dns_sync_job_runner)
+        runner -> Application.put_env(:yellow_dog_dns, :cloud_dns_sync_job_runner, runner)
+      end
+    end)
+
+    :ok
+  end
+
+  defp start_dns_zone_runtime! do
+    start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry})
+    start_supervised!({Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry})
+    start_supervised!({YellowDog.Dns.ViewManager, []})
+    start_supervised!({YellowDog.Dns.ZoneController, []})
   end
 end

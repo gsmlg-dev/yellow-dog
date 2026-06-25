@@ -16,6 +16,8 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
   alias YellowDog.Dns.AclStore
   alias YellowDog.Dns.ViewStore
   alias YellowDog.Dns.ZoneStore
+  alias YellowDog.Store.Backend
+  alias YellowDog.Store.Backend.Ets, as: EtsBackend
 
   @tmp_dir "test/tmp/config_persistence_test"
 
@@ -572,6 +574,39 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
       assert length(zones) == 1
       assert hd(zones).name == "collect.example.com"
       assert hd(zones).type == :auth
+
+      DynamicSupervisor.stop(zc)
+    end
+
+    test "collects auth zone cloud mirror metadata from Store" do
+      ensure_registry(YellowDog.Dns.ZoneRegistry)
+      EtsBackend.create_table()
+      Backend.set_active(EtsBackend)
+      :ets.delete_all_objects(EtsBackend.table())
+
+      zc_name = :"test_zc_#{:erlang.unique_integer([:positive])}"
+      {:ok, zc} = YellowDog.Dns.ZoneController.start_link(name: zc_name)
+
+      view_name = "collect_cloud_#{:erlang.unique_integer([:positive])}"
+
+      cloud_mirror = %{
+        enabled: true,
+        connector_name: "aws-prod",
+        provider: :route53,
+        zone_id: "Z123456789",
+        direction: :bidirectional,
+        conflict_strategy: :local_wins
+      }
+
+      {:ok, _} =
+        YellowDog.Dns.ZoneController.start_zone(zc, :auth, "cloud.example.com",
+          view_name: view_name,
+          zone_data: [],
+          cloud_mirror: cloud_mirror
+        )
+
+      zones = ConfigPersistence.collect_zones(zc)
+      assert [%{cloud_mirror: ^cloud_mirror}] = zones
 
       DynamicSupervisor.stop(zc)
     end

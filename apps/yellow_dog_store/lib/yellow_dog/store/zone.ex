@@ -14,8 +14,11 @@ defmodule YellowDog.Store.Zone do
   - Resource records (auth only): `dns:view:{view_name}:zone:{zone_name}:rr:{owner}:{type}`
   """
 
+  import Bitwise, only: [&&&: 2, |||: 2]
+
   alias YellowDog.Store.{Backend, EventBridge, Key}
 
+  @type zone_id :: String.t()
   @type view_name :: String.t()
   @type zone_name :: String.t()
   @type owner :: String.t()
@@ -60,6 +63,7 @@ defmodule YellowDog.Store.Zone do
     now = System.system_time(:second)
 
     value = %{
+      id: generate_uuid(),
       zone_type: :auth,
       origin: name,
       soa: soa,
@@ -108,6 +112,7 @@ defmodule YellowDog.Store.Zone do
     now = System.system_time(:second)
 
     value = %{
+      id: generate_uuid(),
       zone_type: :forward,
       origin: name,
       forwarders: forwarders,
@@ -160,6 +165,7 @@ defmodule YellowDog.Store.Zone do
     now = System.system_time(:second)
 
     value = %{
+      id: generate_uuid(),
       zone_type: :stub,
       origin: name,
       primaries: primaries,
@@ -253,6 +259,26 @@ defmodule YellowDog.Store.Zone do
   end
 
   @doc """
+  Get zone metadata by persisted UUID.
+
+  This scans zone metadata records. Zone counts are expected to be small; a
+  secondary index can be added later if this becomes hot.
+  """
+  @spec get_zone_by_id(zone_id()) :: {:ok, map()} | {:error, :not_found | term()}
+  def get_zone_by_id(id) when is_binary(id) do
+    case list_zones() do
+      {:ok, zones} ->
+        case Enum.find(zones, &(&1[:id] == id)) do
+          nil -> {:error, :not_found}
+          zone -> {:ok, zone}
+        end
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
   Update zone metadata (any zone type). Merges `attrs` into existing metadata.
   Uses CAS to prevent lost updates.
   """
@@ -309,7 +335,7 @@ defmodule YellowDog.Store.Zone do
           |> Enum.map(fn {key, value} ->
             # Inject view_name from key: dns:view:{view_name}:zone:{zone_name}
             view_name = extract_view_name_from_key(key)
-            Map.put(value, :view_name, view_name)
+            ensure_zone_id(key, Map.put(value, :view_name, view_name))
           end)
 
         emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
@@ -333,7 +359,9 @@ defmodule YellowDog.Store.Zone do
         zones =
           entries
           |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-          |> Enum.map(fn {_key, value} -> Map.put(value, :view_name, view_name) end)
+          |> Enum.map(fn {key, value} ->
+            ensure_zone_id(key, Map.put(value, :view_name, view_name))
+          end)
 
         emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
         {:ok, zones}
@@ -617,6 +645,52 @@ defmodule YellowDog.Store.Zone do
       ["dns", "view", view_name | _rest] -> view_name
       _ -> "default"
     end
+  end
+
+  defp ensure_zone_id(_key, %{id: id} = zone) when is_binary(id) and id != "", do: zone
+
+  defp ensure_zone_id(key, zone) do
+    id = generate_uuid()
+    now = System.system_time(:second)
+    original = Map.delete(zone, :view_name)
+
+    persisted =
+      original
+      |> Map.put(:id, id)
+      |> Map.put(:updated_at, now)
+
+    case Backend.active().put_if(key, persisted, condition: fn old -> old == original end) do
+      :ok ->
+        Map.put(zone, :id, id)
+
+      {:error, :condition_failed} ->
+        reload_zone_with_view_name(key, zone.view_name)
+
+      {:error, _} ->
+        Map.put(zone, :id, id)
+    end
+  end
+
+  defp reload_zone_with_view_name(key, view_name) do
+    case Backend.active().get(key, consistency: :strong) do
+      {:ok, refreshed} ->
+        ensure_zone_id(key, Map.put(refreshed, :view_name, view_name))
+
+      {:error, _} ->
+        %{id: generate_uuid(), view_name: view_name}
+    end
+  end
+
+  defp generate_uuid do
+    <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
+    c_versioned = (c &&& 0x0FFF) ||| 0x4000
+    d_variant = (d &&& 0x3FFF) ||| 0x8000
+
+    :io_lib.format(
+      "~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b",
+      [a, b, c_versioned, d_variant, e]
+    )
+    |> to_string()
   end
 
   @doc "Default SOA record values for a zone."

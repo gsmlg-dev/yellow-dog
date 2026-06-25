@@ -3,8 +3,7 @@
     <!-- Breadcrumb -->
     <.dm_breadcrumb>
       <:crumb to={~p"/server/dns"}>DNS</:crumb>
-      <:crumb to={~p"/server/dns/views"}>Views</:crumb>
-      <:crumb>{@view_name}</:crumb>
+      <:crumb>Zones</:crumb>
     </.dm_breadcrumb>
 
     <.service_alert :if={not @service_running} service="DNS" />
@@ -12,9 +11,9 @@
 <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Zones</h1>
+        <h1 class="text-3xl font-bold">DNS Zones</h1>
         <p class="text-sm text-on-surface-variant">
-          Zones in view: <span class="font-mono font-semibold">{@view_name}</span>
+          Manage DNS zones and authoritative records.
         </p>
       </div>
       <div class="flex gap-2">
@@ -38,14 +37,14 @@
           <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
         </.dm_btn>
         <.link
-          patch={~p"/server/dns/views/#{@view_name}/zones/import"}
+          patch={import_zone_path()}
           class="btn btn-ghost btn-sm"
           title="Import Zone"
         >
           <.dm_mdi name="upload" class="w-4 h-4" /> Import
         </.link>
         <.link
-          patch={~p"/server/dns/views/#{@view_name}/zones/new"}
+          patch={new_zone_path()}
           class="btn btn-primary btn-sm"
         >
           <.dm_mdi name="plus" class="w-4 h-4" /> Add Zone
@@ -103,9 +102,7 @@
                         <td>
                           <%= if zone.type == :auth do %>
                             <.link
-                              navigate={
-                                ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
-                              }
+                              navigate={records_path(zone.id)}
                               class="link link-hover font-mono font-semibold"
                             >
                               {zone.name}
@@ -131,9 +128,7 @@
                         <td>
                           <%= if zone.type == :auth do %>
                             <.link
-                              navigate={
-                                ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
-                              }
+                              navigate={records_path(zone.id)}
                               class="link link-hover"
                             >
                               {zone.record_count} records
@@ -147,9 +142,7 @@
                           <div class="flex items-center justify-end gap-1">
                             <%= if zone.type == :auth do %>
                               <.link
-                                navigate={
-                                  ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
-                                }
+                                navigate={records_path(zone.id)}
                                 class="btn btn-ghost btn-sm"
                                 title="View Records"
                                 aria-label="View Records"
@@ -158,9 +151,7 @@
                               </.link>
                             <% end %>
                             <.link
-                              patch={
-                                ~p"/server/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/edit"
-                              }
+                              patch={edit_zone_path(zone.id)}
                               class="btn btn-ghost btn-sm"
                               title="Edit"
                               aria-label="Edit"
@@ -172,8 +163,7 @@
                               size="sm"
                               class="text-error"
                               phx-click="confirm_delete"
-                              phx-value-type={zone.type}
-                              phx-value-name={zone.name}
+                              phx-value-id={zone.id}
                               title="Delete"
                               aria-label="Delete"
                             >
@@ -200,16 +190,16 @@
                   <.dm_mdi name="web" class="w-16 h-16 mx-auto text-on-surface-variant" />
                 </div>
                 <h3 class="text-lg font-semibold mb-2">No Zones</h3>
-                <p class="text-on-surface-variant mb-4">This view has no zones configured.</p>
+                <p class="text-on-surface-variant mb-4">No DNS zones configured.</p>
                 <div class="flex justify-center gap-2">
                   <.link
-                    patch={~p"/server/dns/views/#{@view_name}/zones/new"}
+                    patch={new_zone_path()}
                     class="btn btn-outline"
                   >
                     Create Zone
                   </.link>
                   <.link
-                    patch={~p"/server/dns/views/#{@view_name}/zones/import"}
+                    patch={import_zone_path()}
                     class="btn btn-ghost"
                   >
                     Import Zone
@@ -221,7 +211,7 @@
         </div>
       <% :new -> %>
         <!-- New Zone Form -->
-        <.card title={"Add Zone to #{@view_name}"}>
+        <.card title="Add Zone">
           <.form
             for={@zone_form}
             phx-submit="save_zone"
@@ -430,7 +420,7 @@
         </.card>
       <% :import -> %>
         <!-- Zone Import Form -->
-        <.card title={"Import Zone Data to #{@view_name}"}>
+        <.card title="Import Zone Data">
           <.form for={@import_form} phx-submit="import_zone" class="space-y-4">
             <div class="form-group">
               <label class="form-label font-semibold">Import Format</label>
@@ -489,7 +479,7 @@
           This action cannot be undone. All records in this zone will be deleted.
         </p>
       </div>
-      <div class="flex justify-end gap-2 mt-4">
+      <:actions>
         <.dm_btn variant="ghost" type="button" phx-click="close_modal">Cancel</.dm_btn>
         <.dm_btn
           variant="error"
@@ -499,7 +489,7 @@
         >
           Delete Zone
         </.dm_btn>
-      </div>
+      </:actions>
     </.modal>
   <% end %>
 </Layouts.app>

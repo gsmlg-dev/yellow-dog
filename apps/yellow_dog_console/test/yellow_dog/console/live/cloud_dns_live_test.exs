@@ -70,7 +70,8 @@ defmodule YellowDog.Console.CloudDnsLiveTest do
 
       assert html =~ "Access Key ID"
       assert html =~ "Secret Access Key"
-      assert html =~ "Region"
+      refute html =~ "Region"
+      refute html =~ ~s(name="connector[region]")
       refute html =~ "API Token"
     end
 
@@ -119,7 +120,6 @@ defmodule YellowDog.Console.CloudDnsLiveTest do
             "name" => "aws-test",
             "access_key_id" => "AKIA_TEST",
             "secret_access_key" => "route53-secret",
-            "region" => "us-east-1",
             "enabled" => "true"
           }
         })
@@ -132,8 +132,7 @@ defmodule YellowDog.Console.CloudDnsLiveTest do
                 type: :route53,
                 credentials: %{
                   access_key_id: "AKIA_TEST",
-                  secret_access_key: "route53-secret",
-                  region: "us-east-1"
+                  secret_access_key: "route53-secret"
                 }
               }} = Provider.get_config("aws-test")
     end

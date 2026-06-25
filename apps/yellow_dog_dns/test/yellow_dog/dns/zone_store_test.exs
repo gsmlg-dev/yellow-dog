@@ -481,6 +481,34 @@ defmodule YellowDog.Dns.ZoneStoreTest do
       [zone] = loaded
       assert zone.ttl == 7200
     end
+
+    test "saves auth zone cloud mirror metadata", %{test_path: test_path} do
+      file_path = Path.join(test_path, "cloud_mirror.toml")
+
+      cloud_mirror = %{
+        enabled: true,
+        connector_name: "aws-prod",
+        provider: :route53,
+        zone_id: "Z123456789",
+        direction: :bidirectional,
+        conflict_strategy: :local_wins
+      }
+
+      zones = [
+        %{
+          name: "cloud.example.com",
+          type: :auth,
+          view_name: "default",
+          file: "zones/cloud.example.com.zone",
+          cloud_mirror: cloud_mirror
+        }
+      ]
+
+      assert :ok = ZoneStore.save_zones(file_path, zones)
+
+      {:ok, loaded} = ZoneStore.load_zones(file_path)
+      assert [%{cloud_mirror: ^cloud_mirror}] = loaded
+    end
   end
 
   describe "validate_zone/1" do

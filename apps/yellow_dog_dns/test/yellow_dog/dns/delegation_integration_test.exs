@@ -15,6 +15,8 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
   alias YellowDog.Dns.Zone.Auth
   alias DNS.Message
   alias DNS.Message.Header
+  alias DNS.Message.Question
+  alias DNS.Message.Record
 
   setup do
     # Stop any externally-owned registries and start fresh ones under ExUnit supervision.
@@ -236,6 +238,85 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
       GenServer.stop(zone_pid)
       GenServer.stop(view_pid)
     end
+
+    test "recursive view follows an out-of-zone CNAME target through forward zone", %{vm: vm} do
+      view_name = "test_cname_recurse_#{:erlang.unique_integer([:positive])}"
+      upstream_ip = {127, 0, 0, 1}
+      {:ok, upstream_socket} = Abyss.Transport.UDP.listen(0, ip: upstream_ip, active: false)
+      {:ok, {_bound_ip, upstream_port}} = Abyss.Transport.UDP.sockname(upstream_socket)
+
+      upstream_task =
+        Task.async(fn ->
+          {:ok, {client_ip, client_port, data}} =
+            Abyss.Transport.UDP.recv(upstream_socket, 0, 2_000)
+
+          query = Message.from_iodata(data)
+
+          response =
+            build_response(query, [
+              Record.new("target.external.test", :a, :in, 120, {203, 0, 113, 7})
+            ])
+
+          :ok =
+            Abyss.Transport.UDP.send(
+              upstream_socket,
+              client_ip,
+              client_port,
+              DNS.to_iodata(response)
+            )
+        end)
+
+      on_exit(fn ->
+        Abyss.Transport.UDP.close(upstream_socket)
+      end)
+
+      {:ok, zone_pid} =
+        ZoneController.start_zone(:auth, "example.test",
+          view_name: view_name,
+          zone_data: [
+            %{
+              name: "alias.example.test",
+              type: :cname,
+              class: :in,
+              ttl: 300,
+              rdata: "target.external.test"
+            }
+          ]
+        )
+
+      {:ok, forward_pid} =
+        ZoneController.start_zone(:forward, ".",
+          view_name: view_name,
+          upstreams: [{upstream_ip, upstream_port}],
+          timeout: 500,
+          retries: 0
+        )
+
+      {:ok, view_pid} =
+        ViewManager.start_view(vm, %{
+          name: view_name,
+          priority: 10,
+          acl: :any,
+          zones: [{:auth, "example.test"}, {:forward, "."}],
+          recursion_enabled: true
+        })
+
+      query = build_wire_query("alias.example.test", :a)
+      {:ok, response} = View.resolve(view_pid, self(), 1, query)
+
+      assert response.header.ra == 1
+      assert Enum.map(response.anlist, &(to_string(&1.type) |> String.upcase())) == ["CNAME", "A"]
+
+      assert Enum.map(response.anlist, &(to_string(&1.name) |> String.trim_trailing("."))) == [
+               "alias.example.test",
+               "target.external.test"
+             ]
+
+      Task.await(upstream_task)
+      GenServer.stop(zone_pid)
+      GenServer.stop(forward_pid)
+      GenServer.stop(view_pid)
+    end
   end
 
   describe "zone CRUD through ZoneController" do
@@ -340,6 +421,51 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
         %{name: name, type: type, class: :in}
       ],
       anlist: [],
+      nslist: [],
+      arlist: []
+    }
+  end
+
+  defp build_wire_query(name, type) do
+    %Message{
+      header: %Header{
+        id: :rand.uniform(65535),
+        qr: 0,
+        opcode: DNS.Message.OpCode.new(0),
+        aa: 0,
+        tc: 0,
+        rd: 1,
+        ra: 0,
+        z: 0,
+        ad: 0,
+        cd: 0,
+        rcode: DNS.Message.RCode.no_error(),
+        qdcount: 1,
+        ancount: 0,
+        nscount: 0,
+        arcount: 0
+      },
+      qdlist: [Question.new(name, type, :in)],
+      anlist: [],
+      nslist: [],
+      arlist: []
+    }
+  end
+
+  defp build_response(query, answers) do
+    %Message{
+      header: %{
+        query.header
+        | qr: 1,
+          aa: 0,
+          ra: 1,
+          rcode: DNS.Message.RCode.no_error(),
+          ancount: length(answers),
+          nscount: 0,
+          arcount: 0
+      },
+      qdlist: query.qdlist,
+      anlist: answers,
       nslist: [],
       arlist: []
     }

@@ -266,6 +266,8 @@ defmodule YellowDog.Dns.Zone.Forward do
       name: state.name,
       upstream_count: length(state.upstreams),
       upstreams: format_upstreams(state.upstreams),
+      timeout: state.timeout,
+      retries: state.retries,
       query_count: state.query_count,
       success_count: state.success_count,
       error_count: state.error_count,
