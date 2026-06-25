@@ -1,23 +1,5 @@
 {
   "nodes": {
-    "flake-docker-utils": {
-      "inputs": {
-        "nixpkgs": "nixpkgs"
-      },
-      "locked": {
-        "lastModified": 1717684884,
-        "narHash": "sha256-9LYgtHTdse91797LPhiFPGNYkg8jvPqaXqu0TUmCBVQ=",
-        "owner": "Gao-OS",
-        "repo": "flake-docker-utils",
-        "rev": "6ba381c87e29a7ea22700ebcd83d9e2486c6e0e6",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Gao-OS",
-        "repo": "flake-docker-utils",
-        "type": "github"
-      }
-    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -38,22 +20,6 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1717459389,
-        "narHash": "sha256-I8/plBsua4/NZ5bKgj+z7/ThiWuud1YFwLsn1QQ5PgE=",
-        "owner": "nixos",
-        "repo": "nixpkgs",
-        "rev": "3b01abcc24846ae49957b30f4345bab4b3f1d14b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nixos",
-        "ref": "nixpkgs-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_2": {
-      "locked": {
         "lastModified": 1781577229,
         "narHash": "sha256-lrp67w8AulE9Ks53n27I45ADSzbOCn4H+CNW1Ck8B+8=",
         "owner": "nixos",
@@ -70,9 +36,8 @@
     },
     "root": {
       "inputs": {
-        "flake-docker-utils": "flake-docker-utils",
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs"
       }
     },
     "systems": {

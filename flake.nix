@@ -2,14 +2,12 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    flake-docker-utils.url = "github:Gao-OS/flake-docker-utils";
   };
 
   outputs = {
     self,
     nixpkgs,
     flake-utils,
-    flake-docker-utils,
     ...
   }:
     {
@@ -92,9 +90,13 @@
         };
       };
     in {
-      packages.yellowdogdns = yellowdogdns;
-
-      packages.docker = dockerImage;
+      packages =
+        {
+          yellowdogdns = yellowdogdns;
+        }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          docker = dockerImage;
+        };
 
       defaultPackage = yellowdogdns;
 
