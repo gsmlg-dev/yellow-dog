@@ -20,12 +20,12 @@ defmodule YellowDog.Tasks.Config do
             database_path: "tasks/yellow_dog_tasks.db"
 
   @sync_tasks [
-    {"region", "0 2 * * SUN", YellowDog.Tasks.Workers.SyncRegionDataWorker, []},
-    {"ip_country", "0 3 2 * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker,
+    {"region", "0 2 * * SUN", "YellowDog.Tasks.Workers.SyncRegionDataWorker", []},
+    {"ip_country", "0 3 2 * *", "YellowDog.Tasks.Workers.SyncIpDatabaseWorker",
      [args: %{type: "country"}]},
-    {"ip_city", "30 3 2 * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker,
+    {"ip_city", "30 3 2 * *", "YellowDog.Tasks.Workers.SyncIpDatabaseWorker",
      [args: %{type: "city"}]},
-    {"mac", "0 4 * * SUN", YellowDog.Tasks.Workers.SyncMacDatabaseWorker, []}
+    {"mac", "0 4 * * SUN", "YellowDog.Tasks.Workers.SyncMacDatabaseWorker", []}
   ]
 
   @defaults %{
@@ -111,8 +111,8 @@ defmodule YellowDog.Tasks.Config do
     end
   end
 
-  defp cron_entry_tuple(cron, worker, []), do: {cron, worker}
-  defp cron_entry_tuple(cron, worker, opts), do: {cron, worker, opts}
+  defp cron_entry_tuple(cron, worker, []), do: {cron, module(worker)}
+  defp cron_entry_tuple(cron, worker, opts), do: {cron, module(worker), opts}
 
   defp validate_sync_tasks!(%{"sync" => sync}) when is_map(sync) do
     known_tasks = @sync_tasks |> Enum.map(fn {name, _cron, _worker, _opts} -> name end) |> MapSet.new()
@@ -178,4 +178,10 @@ defmodule YellowDog.Tasks.Config do
   defp normalize_keys(config), do: config
 
   defp truthy?(value), do: value in [true, "true", "1", 1]
+
+  defp module(name) do
+    name
+    |> String.split(".")
+    |> Module.concat()
+  end
 end

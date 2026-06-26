@@ -129,7 +129,7 @@ defmodule YellowDog.Tasks.RegionData.Store do
     try do
       YellowDog.Config.get_data_dir()
     catch
-      :exit, _reason -> "data"
+      :exit, _reason -> Application.get_env(:yellow_dog, :data_dir) || "data"
     end
   end
 end
