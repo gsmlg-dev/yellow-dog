@@ -17,16 +17,22 @@ defmodule YellowDog.Tasks.Config do
             sync: %{},
             data_dir: "data"
 
+  @sync_tasks [
+    {"region", "0 2 * * SUN", YellowDog.Tasks.Workers.SyncRegionDataWorker, []},
+    {"ip_country", "0 3 2 * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker,
+     [args: %{type: "country"}]},
+    {"ip_city", "30 3 2 * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker,
+     [args: %{type: "city"}]},
+    {"mac", "0 4 * * SUN", YellowDog.Tasks.Workers.SyncMacDatabaseWorker, []}
+  ]
+
   @defaults %{
     "enabled" => true,
     "timezone" => "Etc/UTC",
-    "sync" => %{
-      "ip_city" => %{
-        "enabled" => false,
-        "cron" => "0 3 * * *",
-        "worker" => "YellowDog.Tasks.Workers.IpCitySync"
-      }
-    }
+    "sync" =>
+      Map.new(@sync_tasks, fn {name, cron, _worker, _opts} ->
+        {name, %{"enabled" => true, "cron" => cron}}
+      end)
   }
 
   @doc """
@@ -75,9 +81,7 @@ defmodule YellowDog.Tasks.Config do
   defp cron_plugins(%__MODULE__{enabled?: false}), do: []
 
   defp cron_plugins(%__MODULE__{} = config) do
-    crontab =
-      config.sync
-      |> Enum.flat_map(&cron_entry/1)
+    crontab = Enum.flat_map(@sync_tasks, &cron_entry(&1, config.sync))
 
     case crontab do
       [] -> []
@@ -85,22 +89,21 @@ defmodule YellowDog.Tasks.Config do
     end
   end
 
-  defp cron_entry({_name, %{"enabled" => enabled} = schedule}) do
-    if truthy?(enabled) do
-      [{Map.fetch!(schedule, "cron"), worker_module(schedule)}]
+  defp enabled?(%{"enabled" => enabled}), do: truthy?(enabled)
+  defp enabled?(_schedule), do: false
+
+  defp cron_entry({name, _default_cron, worker, opts}, sync) do
+    schedule = Map.get(sync, name)
+
+    if enabled?(schedule) do
+      [cron_entry_tuple(Map.fetch!(schedule, "cron"), worker, opts)]
     else
       []
     end
   end
 
-  defp cron_entry(_schedule), do: []
-
-  defp worker_module(schedule) do
-    schedule
-    |> Map.fetch!("worker")
-    |> String.split(".")
-    |> Module.concat()
-  end
+  defp cron_entry_tuple(cron, worker, []), do: {cron, worker}
+  defp cron_entry_tuple(cron, worker, opts), do: {cron, worker, opts}
 
   defp validate_crons!(%{"sync" => sync}) when is_map(sync) do
     Enum.each(sync, fn {name, schedule} ->

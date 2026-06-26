@@ -313,13 +313,27 @@ defmodule YellowDog.Config.Schema do
   defp validate_task_sync(errors, nil), do: errors
 
   defp validate_task_sync(errors, sync) when is_map(sync) do
-    Enum.reduce(Map.keys(@task_sync_schedules), errors, fn name, acc ->
-      validate_sync_task(acc, name, Map.get(sync, name))
+    errors
+    |> validate_unknown_sync_tasks(sync)
+    |> then(fn errors ->
+      Enum.reduce(Map.keys(@task_sync_schedules), errors, fn name, acc ->
+        validate_sync_task(acc, name, Map.get(sync, name))
+      end)
     end)
   end
 
   defp validate_task_sync(errors, other) do
     [{"tasks.sync", "must be a map, got #{inspect(other)}"} | errors]
+  end
+
+  defp validate_unknown_sync_tasks(errors, sync) do
+    sync
+    |> Map.keys()
+    |> Enum.reject(&Map.has_key?(@task_sync_schedules, &1))
+    |> Enum.sort()
+    |> Enum.reduce(errors, fn name, acc ->
+      [{"tasks.sync.#{name}", "unknown task key"} | acc]
+    end)
   end
 
   defp validate_sync_task(errors, _name, nil), do: errors

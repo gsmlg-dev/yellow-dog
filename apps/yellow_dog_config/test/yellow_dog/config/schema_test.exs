@@ -55,6 +55,19 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
       assert {"tasks.sync.mac.max_attempts", _} =
                Enum.find(errors, &(elem(&1, 0) == "tasks.sync.mac.max_attempts"))
     end
+
+    test "rejects unknown task scheduler sync keys" do
+      assert {:error, [{"tasks.sync.unknown", message}]} =
+               Schema.validate(%{
+                 "tasks" => %{
+                   "sync" => %{
+                     "unknown" => %{"enabled" => true, "cron" => "0 0 * * *"}
+                   }
+                 }
+               })
+
+      assert message =~ "unknown task"
+    end
   end
 
   describe "section_comments/0" do

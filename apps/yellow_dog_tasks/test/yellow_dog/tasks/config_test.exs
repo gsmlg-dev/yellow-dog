@@ -5,6 +5,7 @@ defmodule YellowDog.Tasks.ConfigTest do
 
   setup do
     previous_yellow_dog_data_dir = Application.get_env(:yellow_dog, :data_dir)
+    previous_tasks_config = Application.get_env(:yellow_dog_tasks, :tasks_config)
 
     on_exit(fn ->
       if previous_yellow_dog_data_dir do
@@ -12,7 +13,15 @@ defmodule YellowDog.Tasks.ConfigTest do
       else
         Application.delete_env(:yellow_dog, :data_dir)
       end
+
+      if previous_tasks_config do
+        Application.put_env(:yellow_dog_tasks, :tasks_config, previous_tasks_config)
+      else
+        Application.delete_env(:yellow_dog_tasks, :tasks_config)
+      end
     end)
+
+    Application.delete_env(:yellow_dog_tasks, :tasks_config)
 
     :ok
   end
@@ -37,6 +46,42 @@ defmodule YellowDog.Tasks.ConfigTest do
     assert oban_config[:queues] == [data_sync: 1]
   end
 
+  test "includes the fixed default cron entries" do
+    config = Config.load()
+
+    assert [
+             {"0 2 * * SUN", YellowDog.Tasks.Workers.SyncRegionDataWorker},
+             {"0 3 2 * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker,
+              [args: %{type: "country"}]},
+             {"30 3 2 * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker,
+              [args: %{type: "city"}]},
+             {"0 4 * * SUN", YellowDog.Tasks.Workers.SyncMacDatabaseWorker}
+           ] = cron_entries(config)
+  end
+
+  test "ignores user configured worker modules" do
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{
+        "ip_city" => %{
+          "worker" => "YellowDog.Tasks.Workers.Untrusted",
+          "cron" => "15 1 * * *"
+        }
+      }
+    })
+
+    config = Config.load()
+
+    assert Enum.member?(
+             cron_entries(config),
+             {"15 1 * * *", YellowDog.Tasks.Workers.SyncIpDatabaseWorker, [args: %{type: "city"}]}
+           )
+
+    refute Enum.any?(
+             cron_entries(config),
+             &(cron_worker(&1) == YellowDog.Tasks.Workers.Untrusted)
+           )
+  end
+
   test "omits cron plugin when tasks scheduling is disabled" do
     Application.put_env(:yellow_dog_tasks, :tasks_config, %{"enabled" => false})
 
@@ -59,4 +104,15 @@ defmodule YellowDog.Tasks.ConfigTest do
   after
     Application.delete_env(:yellow_dog_tasks, :tasks_config)
   end
+
+  defp cron_entries(config) do
+    config
+    |> Config.oban_config()
+    |> Keyword.fetch!(:plugins)
+    |> Keyword.fetch!(Oban.Plugins.Cron)
+    |> Keyword.fetch!(:crontab)
+  end
+
+  defp cron_worker({_cron, worker}), do: worker
+  defp cron_worker({_cron, worker, _opts}), do: worker
 end
