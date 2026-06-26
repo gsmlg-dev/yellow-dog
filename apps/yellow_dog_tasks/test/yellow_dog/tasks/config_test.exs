@@ -37,6 +37,25 @@ defmodule YellowDog.Tasks.ConfigTest do
     assert Config.database_path(config) == Path.join([data_dir, "tasks", "yellow_dog_tasks.db"])
   end
 
+  test "resolves configured relative database path under the YellowDog data dir" do
+    data_dir = Path.join(System.tmp_dir!(), "yellow_dog_tasks_config_test")
+    Application.put_env(:yellow_dog, :data_dir, data_dir)
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{"database_path" => "custom/tasks.db"})
+
+    config = Config.load()
+
+    assert Config.database_path(config) == Path.join([data_dir, "custom", "tasks.db"])
+  end
+
+  test "uses configured absolute database path unchanged" do
+    path = Path.join(System.tmp_dir!(), "yellow_dog_tasks_absolute.db")
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{"database_path" => path})
+
+    config = Config.load()
+
+    assert Config.database_path(config) == path
+  end
+
   test "builds Oban config with Lite engine and one data_sync worker" do
     config = Config.load()
     oban_config = Config.oban_config(config)
@@ -99,6 +118,18 @@ defmodule YellowDog.Tasks.ConfigTest do
     })
 
     assert_raise ArgumentError, ~r/tasks.sync.ip_city.cron/, fn ->
+      Config.load()
+    end
+  after
+    Application.delete_env(:yellow_dog_tasks, :tasks_config)
+  end
+
+  test "rejects unknown sync task keys" do
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{"unknown" => %{"enabled" => true, "cron" => "0 0 * * *"}}
+    })
+
+    assert_raise ArgumentError, ~r/tasks.sync contains unknown task key/, fn ->
       Config.load()
     end
   after

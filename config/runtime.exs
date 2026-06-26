@@ -128,18 +128,6 @@ data_dir =
 # Store data directory in application config (nil means use config file value or default)
 config :yellow_dog, :data_dir, data_dir
 
-task_config = YellowDog.Tasks.Config.load()
-
-task_db_path =
-  task_config
-  |> YellowDog.Tasks.Config.database_path()
-
-config :yellow_dog_tasks, YellowDog.Tasks.Repo,
-  database: task_db_path,
-  pool_size: 5
-
-config :yellow_dog_tasks, Oban, YellowDog.Tasks.Config.oban_config(task_config)
-
 normalize_cluster_env = fn
   nil -> nil
   value -> value |> String.trim() |> String.downcase()

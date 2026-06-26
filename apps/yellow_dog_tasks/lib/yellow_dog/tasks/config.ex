@@ -9,13 +9,15 @@ defmodule YellowDog.Tasks.Config do
           enabled?: boolean(),
           timezone: Calendar.time_zone(),
           sync: map(),
-          data_dir: Path.t()
+          data_dir: Path.t(),
+          database_path: Path.t()
         }
 
   defstruct enabled?: true,
             timezone: "Etc/UTC",
             sync: %{},
-            data_dir: "data"
+            data_dir: "data",
+            database_path: "tasks/yellow_dog_tasks.db"
 
   @sync_tasks [
     {"region", "0 2 * * SUN", YellowDog.Tasks.Workers.SyncRegionDataWorker, []},
@@ -29,6 +31,7 @@ defmodule YellowDog.Tasks.Config do
   @defaults %{
     "enabled" => true,
     "timezone" => "Etc/UTC",
+    "database_path" => "tasks/yellow_dog_tasks.db",
     "sync" =>
       Map.new(@sync_tasks, fn {name, cron, _worker, _opts} ->
         {name, %{"enabled" => true, "cron" => cron}}
@@ -47,13 +50,15 @@ defmodule YellowDog.Tasks.Config do
 
     config = deep_merge(@defaults, app_config)
 
+    validate_sync_tasks!(config)
     validate_crons!(config)
 
     %__MODULE__{
       enabled?: truthy?(Map.get(config, "enabled")),
       timezone: Map.get(config, "timezone", "Etc/UTC"),
       sync: Map.get(config, "sync", %{}),
-      data_dir: yellow_dog_data_dir()
+      data_dir: yellow_dog_data_dir(),
+      database_path: Map.get(config, "database_path", "tasks/yellow_dog_tasks.db")
     }
   end
 
@@ -74,8 +79,12 @@ defmodule YellowDog.Tasks.Config do
   Returns the SQLite database path under the YellowDog data directory.
   """
   @spec database_path(t()) :: Path.t()
-  def database_path(%__MODULE__{data_dir: data_dir}) do
-    Path.join([data_dir, "tasks", "yellow_dog_tasks.db"])
+  def database_path(%__MODULE__{data_dir: data_dir, database_path: database_path}) do
+    if Path.type(database_path) == :absolute do
+      database_path
+    else
+      Path.join(data_dir, database_path)
+    end
   end
 
   defp cron_plugins(%__MODULE__{enabled?: false}), do: []
@@ -104,6 +113,24 @@ defmodule YellowDog.Tasks.Config do
 
   defp cron_entry_tuple(cron, worker, []), do: {cron, worker}
   defp cron_entry_tuple(cron, worker, opts), do: {cron, worker, opts}
+
+  defp validate_sync_tasks!(%{"sync" => sync}) when is_map(sync) do
+    known_tasks = @sync_tasks |> Enum.map(fn {name, _cron, _worker, _opts} -> name end) |> MapSet.new()
+
+    sync
+    |> Map.keys()
+    |> Enum.reject(&MapSet.member?(known_tasks, &1))
+    |> case do
+      [] ->
+        :ok
+
+      unknown ->
+        raise ArgumentError,
+              "tasks.sync contains unknown task key(s): #{unknown |> Enum.sort() |> Enum.join(", ")}"
+    end
+  end
+
+  defp validate_sync_tasks!(_config), do: :ok
 
   defp validate_crons!(%{"sync" => sync}) when is_map(sync) do
     Enum.each(sync, fn {name, schedule} ->
