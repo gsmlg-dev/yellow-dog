@@ -14,6 +14,9 @@ config :yellow_dog_console,
   ecto_repos: [YellowDog.Console.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :yellow_dog_tasks,
+  ecto_repos: [YellowDog.Tasks.Repo]
+
 # Configures the endpoint
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   url: [host: "localhost"],

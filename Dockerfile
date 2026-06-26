@@ -29,6 +29,7 @@ COPY apps/yellow_dog_mdns/mix.exs apps/yellow_dog_mdns/mix.exs
 COPY apps/yellow_dog_netboot/mix.exs apps/yellow_dog_netboot/mix.exs
 COPY apps/yellow_dog_netman/mix.exs apps/yellow_dog_netman/mix.exs
 COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
+COPY apps/yellow_dog_tasks/mix.exs apps/yellow_dog_tasks/mix.exs
 COPY apps/yellow_dog_telemetry/mix.exs apps/yellow_dog_telemetry/mix.exs
 COPY config config
 
@@ -89,6 +90,7 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
              /data/yellowdog/mdns \
+             /data/yellowdog/tasks \
              /etc/yellowdog/netman/profiles \
              /run/yellowdog
 
