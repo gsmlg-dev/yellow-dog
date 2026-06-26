@@ -21,6 +21,7 @@ defmodule GeoIpDb.Download do
   ## Options
 
     - `:target_dir` - directory to save the file (default: `priv/data`)
+    - `:fetcher` - function used to fetch the database URL
   """
   @spec download(database_type(), keyword()) :: {:ok, Path.t()} | {:error, term()}
   def download(type, opts \\ []) when type in [:city, :country] do
@@ -28,11 +29,11 @@ defmodule GeoIpDb.Download do
     target_path |> Path.dirname() |> File.mkdir_p!()
 
     url = download_url(type)
+    fetcher = Keyword.get(opts, :fetcher, &default_fetch/1)
+
     Logger.info("[GeoIpDb] Downloading database", type: type, url: url)
 
-    Application.ensure_all_started(:http_fetch)
-
-    case HTTP.fetch(url) |> HTTP.Promise.await() do
+    case fetcher.(url) do
       %HTTP.Response{ok: true, body: body} ->
         decompress_and_save(body, target_path, type)
 
@@ -72,6 +73,11 @@ defmodule GeoIpDb.Download do
   defp default_data_dir do
     priv_dir = :code.priv_dir(:geo_ip_db)
     Path.join(to_string(priv_dir), "data")
+  end
+
+  defp default_fetch(url) do
+    Application.ensure_all_started(:http_fetch)
+    url |> HTTP.fetch() |> HTTP.Promise.await()
   end
 
   defp decompress_and_save(compressed, target_path, type) do
