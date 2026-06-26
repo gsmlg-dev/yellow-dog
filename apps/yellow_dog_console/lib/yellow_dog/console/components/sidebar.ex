@@ -377,6 +377,12 @@ defmodule YellowDog.Console.Components.Sidebar do
         <span>Process Map</span>
       </.link>
     </li>
+    <li>
+      <.link navigate="/system/tasks" class={active?(@current_path, "/system/tasks")}>
+        <.dm_mdi name="calendar-sync" class="w-5 h-5" />
+        <span>Tasks</span>
+      </.link>
+    </li>
     <!-- Backups -->
     <li class="nested-menu-title mt-4">Backups</li>
     <li>

@@ -10,6 +10,7 @@ defmodule YellowDog.Console.MacDatabaseLive do
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.Layouts
+  alias YellowDog.Tasks
 
   @impl true
   def mount(_params, _session, socket) do
@@ -47,8 +48,8 @@ defmodule YellowDog.Console.MacDatabaseLive do
           <div class="card-body">
             <h2 class="card-title text-lg">Update Database</h2>
             <p class="text-sm text-on-surface-variant">
-              Download the latest Wireshark OUI database (manuf.txt). This file maps
-              MAC address prefixes to manufacturer names using IEEE OUI assignments.
+              Queue the Wireshark OUI database update job. The task runner downloads
+              manuf.txt and reloads MAC prefix lookups after validation.
             </p>
             <div class="flex flex-wrap gap-3 mt-4">
               <button
@@ -56,12 +57,11 @@ defmodule YellowDog.Console.MacDatabaseLive do
                 class="btn btn-primary"
                 disabled={@downloading}
               >
-                <%= if @downloading do %>
-                  <span class="loading loading-spinner loading-sm"></span> Downloading...
-                <% else %>
-                  <.dm_mdi name="download" class="h-5 w-5" /> Download Latest
-                <% end %>
+                <.dm_mdi name="calendar-sync" class="h-5 w-5" /> Queue MAC/OUI sync
               </button>
+              <.link navigate="/system/tasks/mac" class="btn btn-ghost">
+                <.dm_mdi name="history" class="h-5 w-5" /> MAC/OUI sync
+              </.link>
               <button
                 phx-click="reload"
                 class="btn btn-ghost"
@@ -185,15 +185,13 @@ defmodule YellowDog.Console.MacDatabaseLive do
   end
 
   def handle_event("download", _params, socket) do
-    socket =
-      socket
-      |> assign(:downloading, true)
-      |> start_async(:download_db, fn ->
-        ensure_oui_database_started()
-        YellowDog.Fingerprint.OuiDatabase.download()
-      end)
+    case Tasks.enqueue(:mac) do
+      {:ok, _job} ->
+        {:noreply, put_flash(socket, :info, "MAC/OUI sync queued.")}
 
-    {:noreply, socket}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Queue failed: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("reload", _params, socket) do
@@ -222,30 +220,6 @@ defmodule YellowDog.Console.MacDatabaseLive do
       end
 
     {:noreply, assign(socket, :test_result, result)}
-  end
-
-  # --- Async Handlers ---
-
-  @impl true
-  def handle_async(:download_db, {:ok, {:ok, path}}, socket) do
-    {:noreply,
-     socket
-     |> assign(downloading: false, db_info: load_info())
-     |> put_flash(:info, "Database updated: #{Path.basename(path)}")}
-  end
-
-  def handle_async(:download_db, {:ok, {:error, reason}}, socket) do
-    {:noreply,
-     socket
-     |> assign(:downloading, false)
-     |> put_flash(:error, "Download failed: #{format_error(reason)}")}
-  end
-
-  def handle_async(:download_db, {:exit, reason}, socket) do
-    {:noreply,
-     socket
-     |> assign(:downloading, false)
-     |> put_flash(:error, "Download failed: #{inspect(reason)}")}
   end
 
   # --- Private Helpers ---
@@ -298,10 +272,4 @@ defmodule YellowDog.Console.MacDatabaseLive do
   end
 
   defp format_file_mtime(_), do: "—"
-
-  defp format_error({:http_error, status}), do: "HTTP #{status}"
-  defp format_error({:download_failed, reason}), do: "Download failed: #{inspect(reason)}"
-  defp format_error({:write_failed, reason}), do: "Write failed: #{inspect(reason)}"
-  defp format_error({:parse_failed, reason}), do: "Parse failed: #{inspect(reason)}"
-  defp format_error(reason), do: inspect(reason)
 end
