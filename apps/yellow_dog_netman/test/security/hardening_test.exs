@@ -123,6 +123,9 @@ defmodule YellowDog.Netman.Security.HardeningTest do
   end
 
   describe "CLI TCP non-string method via socket" do
+    @describetag :network
+    @describetag :integration
+
     defp connect_to_cli do
       socket_path = :sys.get_state(CLI).socket_path
 

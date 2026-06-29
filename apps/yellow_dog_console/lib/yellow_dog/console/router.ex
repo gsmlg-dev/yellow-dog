@@ -154,6 +154,8 @@ defmodule YellowDog.Console.Router do
     live "/backups", BackupsLive
     live "/backups/restore", BackupsLive, :restore
     get "/backups/download/:filename", BackupController, :download
+    live "/tasks", TasksLive.Index
+    live "/tasks/:task", TasksLive.Show
 
     # Fingerprint (provider data)
     live "/provider/cloud-dns", CloudDnsLive

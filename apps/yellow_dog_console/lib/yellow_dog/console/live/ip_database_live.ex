@@ -10,6 +10,7 @@ defmodule YellowDog.Console.IpDatabaseLive do
 
   alias YellowDog.Console.Layouts
   alias GeoIpDb.Database
+  alias YellowDog.Tasks
 
   @impl true
   def mount(_params, _session, socket) do
@@ -47,8 +48,8 @@ defmodule YellowDog.Console.IpDatabaseLive do
           <div class="card-body">
             <h2 class="card-title text-lg">Download Databases</h2>
             <p class="text-sm text-on-surface-variant">
-              Download free DB-IP lite databases. These provide IP-to-location mapping
-              in MMDB format and are updated monthly.
+              Queue DB-IP lite database updates. These jobs download IP-to-location MMDB
+              files and load them through the task runner.
             </p>
             <div class="flex flex-wrap gap-3 mt-4">
               <button
@@ -58,12 +59,14 @@ defmodule YellowDog.Console.IpDatabaseLive do
                 class="btn btn-primary"
                 disabled={@downloading != nil}
               >
-                <%= if @downloading == type do %>
-                  <span class="loading loading-spinner loading-sm"></span> Downloading...
-                <% else %>
-                  <.dm_mdi name="download" class="h-5 w-5" /> Download {type_label(type)}
-                <% end %>
+                <.dm_mdi name="calendar-sync" class="h-5 w-5" /> Queue {sync_label(type)}
               </button>
+              <.link navigate="/system/tasks/ip_city" class="btn btn-ghost">
+                <.dm_mdi name="history" class="h-5 w-5" /> IP City sync
+              </.link>
+              <.link navigate="/system/tasks/ip_country" class="btn btn-ghost">
+                <.dm_mdi name="history" class="h-5 w-5" /> IP Country sync
+              </.link>
             </div>
             <p class="text-xs text-on-surface-variant mt-2">
               Source: <span class="font-mono">download.db-ip.com</span>
@@ -116,12 +119,7 @@ defmodule YellowDog.Console.IpDatabaseLive do
               disabled={@downloading != nil}
               title="Update database"
             >
-              <%= if @downloading == @db.name do %>
-                <span class="loading loading-spinner loading-xs"></span>
-              <% else %>
-                <.dm_mdi name="refresh" class="h-4 w-4" />
-              <% end %>
-              Update
+              <.dm_mdi name="calendar-sync" class="h-4 w-4" /> Queue
             </button>
             <button
               phx-click="unload"
@@ -193,12 +191,16 @@ defmodule YellowDog.Console.IpDatabaseLive do
   def handle_event("download", %{"type" => type}, socket) do
     type_atom = validated_type(type)
 
-    socket =
-      socket
-      |> assign(:downloading, type_atom)
-      |> start_async(:download_db, fn -> Database.download(type_atom) end)
+    case Tasks.enqueue(ip_task(type_atom)) do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{sync_label(type_atom)} sync queued.")
+         |> assign(:databases, load_databases())}
 
-    {:noreply, socket}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Queue failed: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("unload", %{"name" => name}, socket) do
@@ -209,31 +211,6 @@ defmodule YellowDog.Console.IpDatabaseLive do
      socket
      |> put_flash(:info, "Database #{name} unloaded.")
      |> assign(:databases, load_databases())}
-  end
-
-  # --- Async Handlers ---
-
-  @impl true
-  def handle_async(:download_db, {:ok, {:ok, path}}, socket) do
-    {:noreply,
-     socket
-     |> assign(downloading: nil)
-     |> assign(:databases, load_databases())
-     |> put_flash(:info, "Database downloaded: #{Path.basename(path)}")}
-  end
-
-  def handle_async(:download_db, {:ok, {:error, reason}}, socket) do
-    {:noreply,
-     socket
-     |> assign(:downloading, nil)
-     |> put_flash(:error, "Download failed: #{format_error(reason)}")}
-  end
-
-  def handle_async(:download_db, {:exit, reason}, socket) do
-    {:noreply,
-     socket
-     |> assign(:downloading, nil)
-     |> put_flash(:error, "Download failed: #{inspect(reason)}")}
   end
 
   # --- Private Helpers ---
@@ -265,6 +242,12 @@ defmodule YellowDog.Console.IpDatabaseLive do
   defp type_label(:country), do: "Country (Lite)"
   defp type_label(other), do: to_string(other)
 
+  defp sync_label(:city), do: "IP City"
+  defp sync_label(:country), do: "IP Country"
+
+  defp ip_task(:city), do: :ip_city
+  defp ip_task(:country), do: :ip_country
+
   defp format_epoch(nil), do: "—"
   defp format_epoch(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d")
 
@@ -285,10 +268,4 @@ defmodule YellowDog.Console.IpDatabaseLive do
   end
 
   defp format_bytes(_), do: "—"
-
-  defp format_error({:http_error, status}), do: "HTTP #{status}"
-  defp format_error({:download_failed, reason}), do: "Download failed: #{inspect(reason)}"
-  defp format_error({:write_failed, reason}), do: "Write failed: #{inspect(reason)}"
-  defp format_error({:decompress_failed, msg}), do: "Decompression failed: #{msg}"
-  defp format_error(reason), do: inspect(reason)
 end

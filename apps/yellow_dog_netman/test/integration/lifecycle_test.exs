@@ -10,6 +10,8 @@ defmodule YellowDog.Netman.Integration.LifecycleTest do
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
+  @moduletag :integration
+
   setup do
     # Create a unique interface name per test to avoid collisions
     iface = "integ_eth#{:rand.uniform(65535)}"

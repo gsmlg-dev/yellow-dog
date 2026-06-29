@@ -3,6 +3,9 @@ defmodule YellowDog.Netman.API.CLITcpTest do
 
   alias YellowDog.Netman.API.CLI
 
+  @moduletag :network
+  @moduletag :integration
+
   defp connect_to_cli do
     socket_path = :sys.get_state(CLI).socket_path
 

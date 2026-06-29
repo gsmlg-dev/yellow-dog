@@ -55,9 +55,9 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
 
   Returns `{:ok, path}` or `{:error, reason}`.
   """
-  @spec download() :: {:ok, Path.t()} | {:error, term()}
-  def download do
-    GenServer.call(__MODULE__, :download, :timer.minutes(5))
+  @spec download(keyword()) :: {:ok, Path.t()} | {:error, term()}
+  def download(opts \\ []) do
+    GenServer.call(__MODULE__, {:download, opts}, :timer.minutes(5))
   end
 
   @doc """
@@ -115,10 +115,10 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
     {:reply, info, state}
   end
 
-  def handle_call(:download, _from, state) do
+  def handle_call({:download, opts}, _from, state) do
     manuf_path = Path.join(state.data_dir, @manuf_filename)
 
-    case do_download(manuf_path) do
+    case do_download(manuf_path, opts) do
       {:ok, path} ->
         case load_from_file(path) do
           {:ok, count} ->
@@ -196,25 +196,66 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
     {:compiled, count}
   end
 
-  defp do_download(target_path) do
+  defp do_download(target_path, opts) do
     target_path |> Path.dirname() |> File.mkdir_p!()
+    fetcher = Keyword.get(opts, :fetcher, &default_fetch/1)
 
     Logger.info("[OuiDatabase] Downloading manuf.txt", url: @manuf_url)
 
-    Application.ensure_all_started(:http_fetch)
-
-    case HTTP.fetch(@manuf_url) |> HTTP.Promise.await() do
+    case fetcher.(@manuf_url) do
       %{ok: true, body: body} ->
-        case File.write(target_path, body) do
-          :ok -> {:ok, target_path}
-          {:error, reason} -> {:error, {:write_failed, reason}}
-        end
+        atomic_replace(target_path, body)
 
       %{status: status} ->
         {:error, {:http_error, status}}
 
       {:error, reason} ->
         {:error, {:download_failed, reason}}
+    end
+  end
+
+  defp default_fetch(url) do
+    Application.ensure_all_started(:http_fetch)
+    url |> HTTP.fetch() |> HTTP.Promise.await()
+  end
+
+  defp atomic_replace(target_path, body) do
+    tmp_path = "#{target_path}.#{System.unique_integer([:positive, :monotonic])}.tmp"
+
+    result =
+      try do
+        with :ok <- File.write(tmp_path, body),
+             :ok <- validate_manuf_file(tmp_path),
+             :ok <- File.rename(tmp_path, target_path) do
+          {:ok, target_path}
+        end
+      rescue
+        exception -> {:error, {:write_failed, exception}}
+      end
+
+    case result do
+      {:ok, ^target_path} ->
+        {:ok, target_path}
+
+      {:error, reason} ->
+        File.rm(tmp_path)
+        {:error, reason}
+    end
+  end
+
+  defp validate_manuf_file(path) do
+    case File.read(path) do
+      {:ok, contents} ->
+        table = GSMLG.MAC.Compiler.build_lookup_table(contents)
+
+        if GSMLG.MAC.Compiler.count_entries(table) > 0 do
+          :ok
+        else
+          {:error, :empty_database}
+        end
+
+      {:error, reason} ->
+        {:error, {:read_failed, reason}}
     end
   end
 

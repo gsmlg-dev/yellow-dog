@@ -18,7 +18,7 @@ defmodule Abyss.TestHelper do
 
         case listener_pids do
           [listener_pid | _] ->
-            {:ok, {_ip, port}} = Abyss.Listener.listener_info(listener_pid)
+            {:ok, {_ip, port}} = Abyss.Listener.listener_info_cached(listener_pid)
             {:ok, {server_pid, port}}
 
           [] ->

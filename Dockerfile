@@ -29,6 +29,7 @@ COPY apps/yellow_dog_mdns/mix.exs apps/yellow_dog_mdns/mix.exs
 COPY apps/yellow_dog_netboot/mix.exs apps/yellow_dog_netboot/mix.exs
 COPY apps/yellow_dog_netman/mix.exs apps/yellow_dog_netman/mix.exs
 COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
+COPY apps/yellow_dog_tasks/mix.exs apps/yellow_dog_tasks/mix.exs
 COPY apps/yellow_dog_telemetry/mix.exs apps/yellow_dog_telemetry/mix.exs
 COPY config config
 
@@ -79,6 +80,7 @@ ENV TZ=Asia/Shanghai
 
 # Configuration paths
 ENV YELLOW_DOG_CONFIG=/etc/yellowdog/config.toml
+ENV YELLOW_DOG_TASKS_CONFIG=/etc/yellowdog/tasks.toml
 ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
 
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
@@ -89,11 +91,13 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
              /data/yellowdog/mdns \
+             /data/yellowdog/tasks \
              /etc/yellowdog/netman/profiles \
              /run/yellowdog
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
+COPY priv/yellowdogdns_tasks_config.toml /etc/yellowdog/tasks.toml
 
 EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 

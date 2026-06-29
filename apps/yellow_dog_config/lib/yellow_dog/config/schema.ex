@@ -11,6 +11,13 @@ defmodule YellowDog.Config.Schema do
   will automatically appear in-memory config via `merge_defaults/1`.
   """
 
+  @task_sync_schedules %{
+    "region" => "0 2 * * SUN",
+    "ip_country" => "0 3 2 * *",
+    "ip_city" => "30 3 2 * *",
+    "mac" => "0 4 * * SUN"
+  }
+
   @doc """
   Returns the full default configuration map.
 
@@ -158,6 +165,7 @@ defmodule YellowDog.Config.Schema do
       |> validate_ports(config)
       |> validate_ips(config)
       |> validate_booleans(config)
+      |> validate_tasks(config)
 
     case errors do
       [] -> :ok
@@ -263,6 +271,91 @@ defmodule YellowDog.Config.Schema do
         other -> [{label, "must be a boolean, got #{inspect(other)}"} | acc]
       end
     end)
+  end
+
+  defp validate_tasks(errors, config) do
+    case Map.get(config, "tasks") do
+      nil ->
+        errors
+
+      tasks when is_map(tasks) ->
+        errors
+        |> validate_boolean_value("tasks.enabled", Map.get(tasks, "enabled"))
+        |> validate_string_value("tasks.timezone", Map.get(tasks, "timezone"))
+        |> validate_task_sync(Map.get(tasks, "sync"))
+
+      other ->
+        [{"tasks", "must be a map, got #{inspect(other)}"} | errors]
+    end
+  end
+
+  defp validate_task_sync(errors, nil), do: errors
+
+  defp validate_task_sync(errors, sync) when is_map(sync) do
+    errors
+    |> validate_unknown_sync_tasks(sync)
+    |> then(fn errors ->
+      Enum.reduce(Map.keys(@task_sync_schedules), errors, fn name, acc ->
+        validate_sync_task(acc, name, Map.get(sync, name))
+      end)
+    end)
+  end
+
+  defp validate_task_sync(errors, other) do
+    [{"tasks.sync", "must be a map, got #{inspect(other)}"} | errors]
+  end
+
+  defp validate_unknown_sync_tasks(errors, sync) do
+    sync
+    |> Map.keys()
+    |> Enum.reject(&Map.has_key?(@task_sync_schedules, &1))
+    |> Enum.sort()
+    |> Enum.reduce(errors, fn name, acc ->
+      [{"tasks.sync.#{name}", "unknown task key"} | acc]
+    end)
+  end
+
+  defp validate_sync_task(errors, _name, nil), do: errors
+
+  defp validate_sync_task(errors, name, task_config) when is_map(task_config) do
+    base_path = "tasks.sync.#{name}"
+
+    errors
+    |> validate_boolean_value("#{base_path}.enabled", Map.get(task_config, "enabled"))
+    |> validate_string_value("#{base_path}.cron", Map.get(task_config, "cron"))
+    |> validate_max_attempts("#{base_path}.max_attempts", Map.get(task_config, "max_attempts"))
+  end
+
+  defp validate_sync_task(errors, name, other) do
+    [{"tasks.sync.#{name}", "must be a map, got #{inspect(other)}"} | errors]
+  end
+
+  defp validate_boolean_value(errors, _path, nil), do: errors
+  defp validate_boolean_value(errors, _path, value) when is_boolean(value), do: errors
+
+  defp validate_boolean_value(errors, path, value) do
+    [{path, "must be a boolean, got #{inspect(value)}"} | errors]
+  end
+
+  defp validate_string_value(errors, _path, nil), do: errors
+  defp validate_string_value(errors, _path, value) when is_binary(value), do: errors
+
+  defp validate_string_value(errors, path, value) do
+    [{path, "must be a string, got #{inspect(value)}"} | errors]
+  end
+
+  defp validate_max_attempts(errors, _path, nil), do: errors
+
+  defp validate_max_attempts(errors, _path, value) when is_integer(value) and value >= 1 do
+    errors
+  end
+
+  defp validate_max_attempts(errors, path, value) when is_integer(value) do
+    [{path, "must be greater than or equal to 1, got #{value}"} | errors]
+  end
+
+  defp validate_max_attempts(errors, path, value) do
+    [{path, "must be an integer, got #{inspect(value)}"} | errors]
   end
 
   defp parseable_ip?(ip) do

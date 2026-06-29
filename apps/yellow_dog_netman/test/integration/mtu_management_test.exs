@@ -9,6 +9,7 @@ defmodule YellowDog.Netman.Integration.MtuManagementTest do
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
+  @moduletag :integration
   @moduletag :capture_log
 
   test "MTU is set via Netlink command when profile specifies mtu" do

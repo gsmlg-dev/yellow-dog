@@ -9,12 +9,37 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
 
   @moduletag :capture_log
 
+  defp start_isolated_netlink(backend) do
+    original_backend = Application.get_env(:yellow_dog_netman, :netlink_backend)
+    original_helper_path = Application.get_env(:yellow_dog_netman, :netlink_helper_path)
+
+    helper_path =
+      Path.join(System.tmp_dir!(), "missing-netlink-helper-#{System.unique_integer([:positive])}")
+
+    Application.put_env(:yellow_dog_netman, :netlink_backend, backend)
+    Application.put_env(:yellow_dog_netman, :netlink_helper_path, helper_path)
+
+    {:ok, pid} = GenServer.start_link(Netlink, [])
+
+    on_exit(fn ->
+      if Process.alive?(pid), do: GenServer.stop(pid)
+      restore_env(:netlink_backend, original_backend)
+      restore_env(:netlink_helper_path, original_helper_path)
+    end)
+
+    pid
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:yellow_dog_netman, key)
+  defp restore_env(key, value), do: Application.put_env(:yellow_dog_netman, key, value)
+
+  defp subscribe(pid), do: GenServer.cast(pid, {:subscribe, self()})
+
   describe "malformed port data handling" do
     test "invalid JSON from port is logged and not dispatched" do
-      pid = Process.whereis(Netlink)
-      original_state = :sys.get_state(pid)
+      pid = start_isolated_netlink(:mock)
 
-      Netlink.subscribe()
+      subscribe(pid)
       Process.sleep(20)
 
       # Inject a fake port ref and send malformed JSON data
@@ -30,15 +55,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
 
       # GenServer must survive
       assert Process.alive?(pid)
-
-      :sys.replace_state(pid, fn _state -> original_state end)
     end
 
     test "binary garbage from port is logged and not dispatched" do
-      pid = Process.whereis(Netlink)
-      original_state = :sys.get_state(pid)
+      pid = start_isolated_netlink(:mock)
 
-      Netlink.subscribe()
+      subscribe(pid)
       Process.sleep(20)
 
       fake_port = make_ref()
@@ -50,15 +72,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
 
       refute_receive {:netlink_event, _}, 100
       assert Process.alive?(pid)
-
-      :sys.replace_state(pid, fn _state -> original_state end)
     end
 
     test "empty string from port is handled gracefully" do
-      pid = Process.whereis(Netlink)
-      original_state = :sys.get_state(pid)
+      pid = start_isolated_netlink(:mock)
 
-      Netlink.subscribe()
+      subscribe(pid)
       Process.sleep(20)
 
       fake_port = make_ref()
@@ -69,15 +88,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
 
       refute_receive {:netlink_event, _}, 100
       assert Process.alive?(pid)
-
-      :sys.replace_state(pid, fn _state -> original_state end)
     end
 
     test "valid JSON from port is correctly dispatched" do
-      pid = Process.whereis(Netlink)
-      original_state = :sys.get_state(pid)
+      pid = start_isolated_netlink(:mock)
 
-      Netlink.subscribe()
+      subscribe(pid)
       Process.sleep(20)
 
       fake_port = make_ref()
@@ -87,24 +103,19 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
       send(pid, {fake_port, {:data, json}})
 
       assert_receive {:netlink_event, {:link_change, %{"interface" => "robust_test_eth0"}}}, 500
-
-      :sys.replace_state(pid, fn _state -> original_state end)
     end
   end
 
   describe "reconnect delay calculation" do
     test "reconnect delay follows exponential backoff with cap" do
-      # Access the private function via :sys + state manipulation
-      pid = Process.whereis(Netlink)
-      original_state = :sys.get_state(pid)
-
-      # Set up port mode with nil port to trigger reconnect
-      :sys.replace_state(pid, fn state ->
-        %{state | port: nil, backend: :port, reconnect_attempts: 0}
-      end)
+      pid = start_isolated_netlink(:port)
 
       # Trigger reconnect and check state — each attempt increases counter
       for expected_attempts <- 1..5 do
+        :sys.replace_state(pid, fn state ->
+          %{state | port: nil, backend: :port, reconnect_attempts: expected_attempts - 1}
+        end)
+
         send(pid, :reconnect_port)
         Process.sleep(50)
 
@@ -112,8 +123,6 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
         assert state.reconnect_attempts == expected_attempts
         assert state.port == nil
       end
-
-      :sys.replace_state(pid, fn _state -> original_state end)
     end
 
     test "reconnect delay is capped at 60 seconds" do
@@ -121,8 +130,7 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
       # At attempts=4: 5000 * 16 = 80000 → capped to 60000
       # We verify indirectly by observing the GenServer stays alive and
       # reconnect_attempts keeps incrementing (no overflow crash)
-      pid = Process.whereis(Netlink)
-      original_state = :sys.get_state(pid)
+      pid = start_isolated_netlink(:port)
 
       :sys.replace_state(pid, fn state ->
         %{state | port: nil, backend: :port, reconnect_attempts: 20}
@@ -136,18 +144,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
       state = :sys.get_state(pid)
       assert state.reconnect_attempts == 21
       assert Process.alive?(pid)
-
-      :sys.replace_state(pid, fn _state -> original_state end)
     end
   end
 
   describe "event dispatch with no subscribers" do
     test "events are dispatched without crash when subscriber list is empty" do
-      pid = Process.whereis(Netlink)
-
-      # Ensure no extra subscribers by checking current state
-      state = :sys.get_state(pid)
-      original_subscribers = state.subscribers
+      pid = start_isolated_netlink(:mock)
 
       # Temporarily clear subscribers
       :sys.replace_state(pid, fn state -> %{state | subscribers: []} end)
@@ -157,9 +159,6 @@ defmodule YellowDog.Netman.Kernel.NetlinkRobustnessTest do
       Process.sleep(50)
 
       assert Process.alive?(pid)
-
-      # Restore subscribers
-      :sys.replace_state(pid, fn state -> %{state | subscribers: original_subscribers} end)
     end
   end
 end

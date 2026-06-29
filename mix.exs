@@ -20,6 +20,7 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_netboot: :permanent,
             yellow_dog_identity: :permanent,
             yellow_dog_fingerprint: :permanent,
+            yellow_dog_tasks: :permanent,
             yellow_dog_console: :permanent
           ]
         ],
@@ -47,6 +48,7 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_netboot: :permanent,
             yellow_dog_identity: :permanent,
             yellow_dog_fingerprint: :permanent,
+            yellow_dog_tasks: :permanent,
             yellow_dog_console: :permanent
           ]
         ]

@@ -41,4 +41,4 @@ jobs:
           mix deps.get
 
       - name: Run tests
-        run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration
+        run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration --exclude property

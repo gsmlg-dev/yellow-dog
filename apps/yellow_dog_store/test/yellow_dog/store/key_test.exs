@@ -146,6 +146,13 @@ defmodule YellowDog.Store.KeyTest do
     end
   end
 
+  describe "task_job/2" do
+    test "builds per-task job keys" do
+      assert Key.task_job(:ip_city, "job-1") == "tasks:job:ip_city:job-1"
+      assert Key.task_job("mac", "job-2") == "tasks:job:mac:job-2"
+    end
+  end
+
   describe "prefix functions" do
     test "lease_v4_prefix" do
       assert Key.lease_v4_prefix() == "dhcp:lease:v4:"
@@ -189,6 +196,12 @@ defmodule YellowDog.Store.KeyTest do
 
     test "event_log_prefix" do
       assert Key.event_log_prefix() == "event_log:"
+    end
+
+    test "task prefixes" do
+      assert Key.task_job_prefix() == "tasks:job:"
+      assert Key.task_job_prefix(:ip_city) == "tasks:job:ip_city:"
+      assert Key.task_schedule_prefix() == "tasks:schedule:"
     end
   end
 

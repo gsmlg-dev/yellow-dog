@@ -21,6 +21,7 @@ defmodule GeoIpDb.Download do
   ## Options
 
     - `:target_dir` - directory to save the file (default: `priv/data`)
+    - `:fetcher` - function used to fetch the database URL
   """
   @spec download(database_type(), keyword()) :: {:ok, Path.t()} | {:error, term()}
   def download(type, opts \\ []) when type in [:city, :country] do
@@ -28,11 +29,11 @@ defmodule GeoIpDb.Download do
     target_path |> Path.dirname() |> File.mkdir_p!()
 
     url = download_url(type)
+    fetcher = Keyword.get(opts, :fetcher, &default_fetch/1)
+
     Logger.info("[GeoIpDb] Downloading database", type: type, url: url)
 
-    Application.ensure_all_started(:http_fetch)
-
-    case HTTP.fetch(url) |> HTTP.Promise.await() do
+    case fetcher.(url) do
       %HTTP.Response{ok: true, body: body} ->
         decompress_and_save(body, target_path, type)
 
@@ -74,20 +75,65 @@ defmodule GeoIpDb.Download do
     Path.join(to_string(priv_dir), "data")
   end
 
+  defp default_fetch(url) do
+    Application.ensure_all_started(:http_fetch)
+    url |> HTTP.fetch() |> HTTP.Promise.await()
+  end
+
   defp decompress_and_save(compressed, target_path, type) do
     try do
       data = :zlib.gunzip(compressed)
 
-      case File.write(target_path, data) do
-        :ok ->
-          Logger.info("[GeoIpDb] Saved database", type: type, path: target_path)
-          {:ok, target_path}
-
-        {:error, reason} ->
-          {:error, {:write_failed, reason}}
+      with {:ok, ^target_path} <- replace_file(target_path, data, &validate_database_file/1) do
+        Logger.info("[GeoIpDb] Saved database", type: type, path: target_path)
+        {:ok, target_path}
       end
     rescue
       e -> {:error, {:decompress_failed, Exception.message(e)}}
     end
+  end
+
+  defp validate_database_file(path) do
+    with {:ok, data} <- File.read(path) do
+      case MMDB2Decoder.parse_database(data) do
+        {:ok, _meta, _tree, _db_data} -> :ok
+        {:error, reason} -> {:error, {:invalid_database, reason}}
+      end
+    end
+  end
+
+  defp replace_file(target_path, data, validator) do
+    tmp_path = "#{target_path}.#{System.unique_integer([:positive, :monotonic])}.tmp"
+
+    result =
+      case File.write(tmp_path, data) do
+        :ok ->
+          with :ok <- validate_tmp_file(tmp_path, validator),
+               :ok <- File.rename(tmp_path, target_path) do
+            {:ok, target_path}
+          else
+            {:error, reason} -> {:error, reason}
+          end
+
+        {:error, reason} ->
+          {:error, {:write_failed, reason}}
+      end
+
+    case result do
+      {:ok, ^target_path} ->
+        {:ok, target_path}
+
+      {:error, reason} ->
+        File.rm(tmp_path)
+        {:error, reason}
+    end
+  end
+
+  defp validate_tmp_file(tmp_path, validator) do
+    validator.(tmp_path)
+  rescue
+    exception -> {:error, {:invalid_database, exception}}
+  catch
+    kind, reason -> {:error, {:invalid_database, {kind, reason}}}
   end
 end
