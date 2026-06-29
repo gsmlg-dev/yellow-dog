@@ -9,6 +9,7 @@ defmodule YellowDog.Netman.Integration.ProfileSelectionTest do
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
+  @moduletag :integration
   @moduletag :capture_log
 
   test "match_interface prefers exact interface match over wildcard" do

@@ -24,7 +24,7 @@ defmodule Abyss.ListenerTest do
       listener_id = "test-listener"
 
       assert {:ok, pid} = Listener.start_link({listener_id, server_pid, config})
-      {ip, port} = Listener.listener_info(pid)
+      {:ok, {ip, port}} = Listener.listener_info_cached(pid)
 
       assert is_tuple(ip) or is_atom(ip)
       assert is_integer(port) and port > 0
@@ -39,7 +39,7 @@ defmodule Abyss.ListenerTest do
       listener_id = "test-listener"
 
       assert {:ok, pid} = Listener.start_link({listener_id, server_pid, config})
-      info = Listener.listener_info(pid)
+      {:ok, info} = Listener.listener_info_cached(pid)
 
       assert is_tuple(info)
       assert tuple_size(info) == 2
@@ -70,7 +70,7 @@ defmodule Abyss.ListenerTest do
       config = %{config | broadcast: true}
 
       assert {:ok, pid} = Listener.start_link({listener_id, server_pid, config})
-      {ip, port} = Listener.listener_info(pid)
+      {:ok, {ip, port}} = Listener.listener_info_cached(pid)
 
       assert is_tuple(ip) or is_atom(ip)
       assert is_integer(port) and port > 0

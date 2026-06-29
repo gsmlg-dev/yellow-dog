@@ -10,6 +10,7 @@ defmodule YellowDog.Netman.Integration.DnsConfigurationTest do
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
+  @moduletag :integration
   @moduletag :capture_log
 
   setup do

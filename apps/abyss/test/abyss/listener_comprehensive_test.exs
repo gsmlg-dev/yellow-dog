@@ -14,7 +14,7 @@ defmodule Abyss.ListenerComprehensiveTest do
       {:ok, listener_pid} = Listener.start_link({"test", self(), config})
 
       # This will return a tuple with ip and port
-      info = Listener.listener_info(listener_pid)
+      {:ok, info} = Listener.listener_info_cached(listener_pid)
       assert is_tuple(info)
       assert tuple_size(info) == 2
       # IP address
@@ -22,7 +22,7 @@ defmodule Abyss.ListenerComprehensiveTest do
       # Port number
       assert is_integer(elem(info, 1))
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
 
     test "socket_info/1 returns socket and span" do
@@ -38,7 +38,7 @@ defmodule Abyss.ListenerComprehensiveTest do
       assert is_port(socket)
       assert %Abyss.Telemetry{} = span
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
 
     test "stop/1 terminates listener gracefully" do
@@ -71,10 +71,10 @@ defmodule Abyss.ListenerComprehensiveTest do
 
       {:ok, listener_pid} = Listener.start_link({"test", self(), config})
 
-      info = Listener.listener_info(listener_pid)
+      {:ok, info} = Listener.listener_info_cached(listener_pid)
       assert is_tuple(info)
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
 
     test "handles non-broadcast mode configuration" do
@@ -87,10 +87,10 @@ defmodule Abyss.ListenerComprehensiveTest do
 
       {:ok, listener_pid} = Listener.start_link({"test", self(), config})
 
-      info = Listener.listener_info(listener_pid)
+      {:ok, info} = Listener.listener_info_cached(listener_pid)
       assert is_tuple(info)
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
   end
 
@@ -117,10 +117,10 @@ defmodule Abyss.ListenerComprehensiveTest do
 
       {:ok, listener_pid} = Listener.start_link({"test", self(), config})
 
-      info = Listener.listener_info(listener_pid)
+      {:ok, info} = Listener.listener_info_cached(listener_pid)
       assert is_tuple(info)
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
   end
 
@@ -139,10 +139,10 @@ defmodule Abyss.ListenerComprehensiveTest do
       # Give it a moment to start
       Process.sleep(50)
 
-      info = Listener.listener_info(listener_pid)
+      {:ok, info} = Listener.listener_info_cached(listener_pid)
       assert is_tuple(info)
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
 
     test "doesn't start listening immediately in broadcast mode" do
@@ -155,10 +155,10 @@ defmodule Abyss.ListenerComprehensiveTest do
 
       {:ok, listener_pid} = Listener.start_link({"test", self(), config})
 
-      info = Listener.listener_info(listener_pid)
+      {:ok, info} = Listener.listener_info_cached(listener_pid)
       assert is_tuple(info)
 
-      Process.exit(listener_pid, :normal)
+      Listener.stop(listener_pid)
     end
   end
 

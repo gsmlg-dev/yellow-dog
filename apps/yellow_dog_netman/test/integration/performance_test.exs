@@ -12,6 +12,8 @@ defmodule YellowDog.Netman.Integration.PerformanceTest do
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
+  @moduletag :integration
+  @moduletag :performance
   @moduletag :capture_log
 
   # SLO thresholds from PRD

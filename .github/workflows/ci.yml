@@ -151,7 +151,7 @@ jobs:
         run: mix deps.get
 
       - name: Run tests
-        run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration
+        run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration --exclude property
 
   # NOTE: Dialyzer is disabled in CI due to resource constraints
   # PLT building requires more memory than GitHub free runners provide

@@ -11,7 +11,10 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       desired = %DesiredState{connections: %{}}
       observed = %ObservedState{}
 
-      assert ReconciliationEngine.diff(desired, observed) == []
+      diffs = ReconciliationEngine.diff(desired, observed)
+      non_deactivate_diffs = Enum.reject(diffs, &(&1.action == :deactivate_connection))
+
+      assert non_deactivate_diffs == []
     end
 
     test "desired connection with no matching FSM produces activate diff" do

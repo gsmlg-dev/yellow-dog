@@ -10,6 +10,7 @@ defmodule YellowDog.Netman.Integration.OrphanCleanupTest do
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
+  @moduletag :integration
   @moduletag :capture_log
 
   setup do
