@@ -116,6 +116,8 @@ defmodule YellowDog.Umbrella.MixProject do
       lint: ["cmd mix lint"],
       credo: ["cmd mix credo --strict"],
       dialyzer: ["cmd mix dialyzer"],
+      "yellowdog.run": ["start_server"],
+      "netman.run": ["start_netman"],
       # E2E test aliases - use function to run tests at umbrella root
       "test.e2e": &run_e2e_tests/1,
       "test.e2e.dns": &run_e2e_dns/1,
