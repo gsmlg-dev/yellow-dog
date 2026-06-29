@@ -12,7 +12,6 @@ defmodule YellowDog.Config.Schema do
   """
 
   @task_sync_schedules %{
-    "region" => "0 2 * * SUN",
     "ip_country" => "0 3 2 * *",
     "ip_city" => "30 3 2 * *",
     "mac" => "0 4 * * SUN"

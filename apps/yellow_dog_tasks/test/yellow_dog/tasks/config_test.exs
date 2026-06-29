@@ -66,7 +66,6 @@ defmodule YellowDog.Tasks.ConfigTest do
     config = Config.load()
 
     assert [
-             {"0 2 * * SUN", :region},
              {"0 3 2 * *", :ip_country},
              {"30 3 2 * *", :ip_city},
              {"0 4 * * SUN", :mac}

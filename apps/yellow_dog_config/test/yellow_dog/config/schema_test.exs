@@ -58,6 +58,19 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
 
       assert message =~ "unknown task"
     end
+
+    test "rejects removed region task scheduler sync key" do
+      assert {:error, [{"tasks.sync.region", message}]} =
+               Schema.validate(%{
+                 "tasks" => %{
+                   "sync" => %{
+                     "region" => %{"enabled" => true, "cron" => "0 2 * * SUN"}
+                   }
+                 }
+               })
+
+      assert message =~ "unknown task"
+    end
   end
 
   describe "section_comments/0" do

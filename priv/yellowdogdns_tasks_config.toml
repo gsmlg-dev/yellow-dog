@@ -5,11 +5,6 @@
 enabled = true
 timezone = "Etc/UTC"
 
-[tasks.sync.region]
-enabled = true
-cron = "0 2 * * SUN"
-max_attempts = 3
-
 [tasks.sync.ip_country]
 enabled = true
 cron = "0 3 2 * *"

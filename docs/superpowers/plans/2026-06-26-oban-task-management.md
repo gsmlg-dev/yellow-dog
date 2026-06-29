@@ -2,7 +2,7 @@
 
 **Goal:** Add the PRD MVP for YellowDog data synchronization tasks without introducing a separate SQL-backed job database. Task scheduler settings live in a standalone TOML file, while task jobs and schedule reservations are persisted through the Concord-backed `YellowDog.Store` database path.
 
-**Architecture:** Add a new umbrella app, `yellow_dog_tasks`, that owns task configuration, scheduling, job state transitions, worker modules, region-data storage, and task status APIs. Keep console UI in `yellow_dog_console`; the UI calls `YellowDog.Tasks` to enqueue jobs and read job history. Existing GeoIP and OUI download modules expose small test seams so worker tests can prove atomic failure behavior without external HTTP.
+**Architecture:** Add a new umbrella app, `yellow_dog_tasks`, that owns task configuration, scheduling, job state transitions, worker modules, and task status APIs. Keep console UI in `yellow_dog_console`; the UI calls `YellowDog.Tasks` to enqueue jobs and read job history. Existing GeoIP and OUI download modules expose small test seams so worker tests can prove atomic failure behavior without external HTTP.
 
 ## Scope
 
