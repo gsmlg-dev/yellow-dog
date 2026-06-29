@@ -2,12 +2,21 @@ defmodule YellowDog.Tasks.ConfigTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Tasks.Config
+  alias YellowDog.Tasks.Store
+  alias YellowDog.Store.Backend.Ets, as: EtsBackend
 
   setup do
     previous_tasks_config = Application.get_env(:yellow_dog_tasks, :tasks_config)
     previous_config_file_path = Application.get_env(:yellow_dog_tasks, :config_file_path)
+    previous_store_backend = Application.get_env(:yellow_dog_tasks, :store_backend)
+
+    YellowDog.StoreHelper.setup_store()
+    Application.put_env(:yellow_dog_tasks, :store_backend, EtsBackend)
+    Store.clear_all()
 
     on_exit(fn ->
+      Store.clear_all()
+
       if previous_tasks_config do
         Application.put_env(:yellow_dog_tasks, :tasks_config, previous_tasks_config)
       else
@@ -18,6 +27,12 @@ defmodule YellowDog.Tasks.ConfigTest do
         Application.put_env(:yellow_dog_tasks, :config_file_path, previous_config_file_path)
       else
         Application.delete_env(:yellow_dog_tasks, :config_file_path)
+      end
+
+      if previous_store_backend do
+        Application.put_env(:yellow_dog_tasks, :store_backend, previous_store_backend)
+      else
+        Application.delete_env(:yellow_dog_tasks, :store_backend)
       end
     end)
 
@@ -94,7 +109,7 @@ defmodule YellowDog.Tasks.ConfigTest do
     assert config.sync["cloud_zone:default:example.com"]["cron"] == "15 * * * *"
   end
 
-  test "updates task schedules in standalone task config file" do
+  test "updates task schedules in Concord-backed task config store" do
     path =
       Path.join(
         System.tmp_dir!(),
@@ -114,7 +129,13 @@ defmodule YellowDog.Tasks.ConfigTest do
     assert config.sync["cloud_zone:default:example.com"]["enabled"] == false
     assert config.sync["cloud_zone:default:example.com"]["cron"] == "20 * * * *"
 
-    assert File.read!(path) =~ ~s([tasks.sync."cloud_zone:default:example.com"])
+    refute File.exists?(path)
+
+    assert {:ok, stored_schedule} =
+             EtsBackend.get("tasks:config:cloud_zone:default:example.com", [])
+
+    assert stored_schedule["enabled"] == false
+    assert stored_schedule["cron"] == "20 * * * *"
 
     Application.delete_env(:yellow_dog_tasks, :tasks_config)
     reloaded = Config.load()

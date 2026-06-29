@@ -3,6 +3,7 @@ defmodule YellowDog.Tasks.Config do
   Runtime configuration for YellowDog background task processing.
   """
 
+  alias YellowDog.Tasks.Store
   alias YellowDog.Tasks.Cron
   alias YellowDog.Config.TomlHelpers
 
@@ -48,10 +49,13 @@ defmodule YellowDog.Tasks.Config do
       |> Application.get_env(:tasks_config, %{})
       |> normalize_keys()
 
+    store_config = store_config()
+
     config =
       @defaults
       |> deep_merge(file_config)
       |> deep_merge(app_config)
+      |> deep_merge(store_config)
 
     validate_config!(config)
 
@@ -79,14 +83,10 @@ defmodule YellowDog.Tasks.Config do
   def update_sync_task(task_key, attrs) when is_map(attrs) do
     task_key = task_key_to_string(task_key)
     current_config = load()
-    writable_config = writable_config()
     current_schedule = Map.get(current_config.sync, task_key, default_dynamic_schedule(task_key))
 
     with {:ok, schedule} <- schedule_from_attrs(current_schedule, attrs),
-         updated_config <- put_sync_schedule(writable_config, task_key, schedule),
-         :ok <- validate_for_update(updated_config),
-         :ok <- persist_config(updated_config) do
-      Application.put_env(:yellow_dog_tasks, :tasks_config, updated_config)
+         :ok <- Store.put_task_config(task_key, schedule) do
       {:ok, load()}
     end
   end
@@ -220,33 +220,6 @@ defmodule YellowDog.Tasks.Config do
 
   defp normalize_keys(config), do: config
 
-  defp writable_config do
-    file_config =
-      :yellow_dog_tasks
-      |> Application.get_env(:config_file_path)
-      |> load_file_config()
-
-    app_config =
-      :yellow_dog_tasks
-      |> Application.get_env(:tasks_config, %{})
-      |> normalize_keys()
-
-    file_config
-    |> deep_merge(app_config)
-    |> Map.put_new("enabled", true)
-    |> Map.put_new("timezone", "Etc/UTC")
-    |> Map.put_new("sync", %{})
-  end
-
-  defp put_sync_schedule(config, task_key, schedule) do
-    sync =
-      config
-      |> Map.get("sync", %{})
-      |> Map.put(task_key, schedule)
-
-    Map.put(config, "sync", sync)
-  end
-
   defp schedule_from_attrs(current_schedule, attrs) do
     attrs = normalize_keys(attrs)
 
@@ -272,64 +245,6 @@ defmodule YellowDog.Tasks.Config do
   defp to_boolean(value) when value in [true, "true", "1", 1, "on"], do: true
   defp to_boolean(_value), do: false
 
-  defp validate_for_update(config) do
-    try do
-      config
-      |> deep_merge(%{})
-      |> validate_config!()
-
-      :ok
-    rescue
-      exception in ArgumentError -> {:error, Exception.message(exception)}
-    end
-  end
-
-  defp persist_config(config) do
-    case Application.get_env(:yellow_dog_tasks, :config_file_path) do
-      path when is_binary(path) ->
-        TomlHelpers.atomic_write(path, encode_tasks_config(config))
-
-      _path ->
-        :ok
-    end
-  end
-
-  defp encode_tasks_config(config) do
-    sync = Map.get(config, "sync", %{})
-
-    header = [
-      "# Yellow Dog Task Scheduler Configuration",
-      "# Job records and schedule reservations are stored in YellowDog.Store/Concord.",
-      "",
-      "[tasks]",
-      "enabled = #{TomlHelpers.encode_toml_value(Map.get(config, "enabled", true))}",
-      "timezone = #{TomlHelpers.encode_toml_value(Map.get(config, "timezone", "Etc/UTC"))}"
-    ]
-
-    sections =
-      sync
-      |> Enum.sort_by(fn {key, _schedule} -> key end)
-      |> Enum.flat_map(fn {task_key, schedule} ->
-        [
-          "",
-          "[tasks.sync.#{toml_key(task_key)}]",
-          "enabled = #{TomlHelpers.encode_toml_value(Map.get(schedule, "enabled", true))}",
-          "cron = #{TomlHelpers.encode_toml_value(Map.get(schedule, "cron"))}",
-          "max_attempts = #{TomlHelpers.encode_toml_value(Map.get(schedule, "max_attempts", 3))}"
-        ]
-      end)
-
-    Enum.join(header ++ sections, "\n") <> "\n"
-  end
-
-  defp toml_key(key) do
-    if Regex.match?(~r/^[A-Za-z0-9_-]+$/, key) do
-      key
-    else
-      TomlHelpers.encode_toml_string(key)
-    end
-  end
-
   defp default_dynamic_schedule(task_key) do
     if dynamic_task_key?(task_key) do
       %{"enabled" => true, "cron" => "0 * * * *", "max_attempts" => 3}
@@ -347,6 +262,14 @@ defmodule YellowDog.Tasks.Config do
   defp task_key_to_string(key) when is_binary(key), do: key
 
   defp truthy?(value), do: value in [true, "true", "1", 1]
+
+  defp store_config do
+    case Store.task_configs() do
+      {:ok, configs} when configs == %{} -> %{}
+      {:ok, configs} -> %{"sync" => normalize_keys(configs)}
+      {:error, _reason} -> %{}
+    end
+  end
 
   defp time_zone_database do
     Application.get_env(:yellow_dog_tasks, :time_zone_database, Calendar.UTCOnlyTimeZoneDatabase)

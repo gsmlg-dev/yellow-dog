@@ -106,6 +106,11 @@ defmodule YellowDog.Console.TasksLiveTest do
     assert html =~ "10 * * * *"
     assert html =~ "Disabled"
     refute Tasks.get_task!(key).enabled?
+    assert Application.get_env(:yellow_dog_tasks, :tasks_config) == nil
+
+    assert {:ok, stored_schedule} = EtsBackend.get("tasks:config:#{key}", [])
+    assert stored_schedule["enabled"] == false
+    assert stored_schedule["cron"] == "10 * * * *"
 
     {:ok, _detail_view, detail_html} =
       live(conn, "/system/tasks/#{URI.encode(key, &URI.char_unreserved?/1)}")

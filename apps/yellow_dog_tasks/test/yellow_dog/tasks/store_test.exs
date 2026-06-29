@@ -22,7 +22,10 @@ defmodule YellowDog.Tasks.StoreTest do
       :ok
     end
 
-    def txn(%{compare: [{:field, key, [:minute_id], op, minute_id}], success: success_ops}, _opts \\ []) do
+    def txn(
+          %{compare: [{:field, key, [:minute_id], op, minute_id}], success: success_ops},
+          _opts \\ []
+        ) do
       actual_minute_id =
         case :ets.lookup(@table, key) do
           [{^key, %{minute_id: existing}}] -> existing

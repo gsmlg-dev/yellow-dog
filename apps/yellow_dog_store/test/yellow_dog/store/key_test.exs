@@ -202,6 +202,7 @@ defmodule YellowDog.Store.KeyTest do
       assert Key.task_job_prefix() == "tasks:job:"
       assert Key.task_job_prefix(:ip_city) == "tasks:job:ip_city:"
       assert Key.task_schedule_prefix() == "tasks:schedule:"
+      assert Key.task_config_prefix() == "tasks:config:"
     end
   end
 

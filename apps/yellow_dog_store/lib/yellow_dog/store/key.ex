@@ -87,6 +87,10 @@ defmodule YellowDog.Store.Key do
   @spec task_schedule(atom() | String.t()) :: String.t()
   def task_schedule(task_key), do: "tasks:schedule:#{task_key}"
 
+  @doc "Task scheduler configuration key."
+  @spec task_config(atom() | String.t()) :: String.t()
+  def task_config(task_key), do: "tasks:config:#{task_key}"
+
   # Key prefix constants for prefix scans
 
   def lease_v4_prefix, do: "dhcp:lease:v4:"
@@ -97,6 +101,7 @@ defmodule YellowDog.Store.Key do
   def task_job_prefix, do: "tasks:job:"
   def task_job_prefix(task_key), do: "tasks:job:#{task_key}:"
   def task_schedule_prefix, do: "tasks:schedule:"
+  def task_config_prefix, do: "tasks:config:"
 
   @doc "Prefix for all zones across all views."
   def all_views_prefix, do: "dns:view:"

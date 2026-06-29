@@ -164,11 +164,35 @@ defmodule YellowDog.Tasks.Store do
     release_schedule(backend(), key, minute_id)
   end
 
+  @spec put_task_config(atom() | String.t(), map()) :: :ok | {:error, term()}
+  def put_task_config(task_key, schedule) when is_map(schedule) do
+    backend().put(Key.task_config(task_key), schedule, consistency: :strong)
+  end
+
+  @spec task_configs() :: {:ok, map()} | {:error, term()}
+  def task_configs do
+    prefix = Key.task_config_prefix()
+
+    case backend().prefix_scan(prefix, consistency: :eventual) do
+      {:ok, entries} ->
+        configs =
+          Map.new(entries, fn {key, schedule} ->
+            {String.replace_prefix(key, prefix, ""), schedule}
+          end)
+
+        {:ok, configs}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @spec clear_all() :: :ok
   def clear_all do
     with {:ok, jobs} <- backend().prefix_scan(Key.task_job_prefix(), []),
-         {:ok, schedules} <- backend().prefix_scan(Key.task_schedule_prefix(), []) do
-      Enum.each(jobs ++ schedules, fn {key, _value} -> backend().delete(key) end)
+         {:ok, schedules} <- backend().prefix_scan(Key.task_schedule_prefix(), []),
+         {:ok, configs} <- backend().prefix_scan(Key.task_config_prefix(), []) do
+      Enum.each(jobs ++ schedules ++ configs, fn {key, _value} -> backend().delete(key) end)
     end
 
     :ok

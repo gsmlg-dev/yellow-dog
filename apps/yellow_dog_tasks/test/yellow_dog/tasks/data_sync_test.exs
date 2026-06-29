@@ -34,6 +34,8 @@ defmodule YellowDog.Tasks.DataSyncTest do
   defmodule ReserveThenFailBackend do
     @moduledoc false
 
+    def prefix_scan(_prefix, _opts), do: {:ok, []}
+
     def put_if(key, reservation, _opts) do
       send(parent!(), {:reserved, key, reservation})
       :ok
@@ -55,6 +57,8 @@ defmodule YellowDog.Tasks.DataSyncTest do
 
   defmodule ReserveReleaseFailBackend do
     @moduledoc false
+
+    def prefix_scan(_prefix, _opts), do: {:ok, []}
 
     def put_if(key, reservation, _opts) do
       send(parent!(), {:reserved, key, reservation})
@@ -163,8 +167,10 @@ defmodule YellowDog.Tasks.DataSyncTest do
     refute task.enabled?
     assert task.cron == "15 * * * *"
 
-    assert %{"enabled" => false, "cron" => "15 * * * *"} =
-             Application.get_env(:yellow_dog_tasks, :tasks_config)["sync"][key]
+    assert {:ok, stored_schedule} = EtsBackend.get("tasks:config:#{key}", [])
+    assert stored_schedule["enabled"] == false
+    assert stored_schedule["cron"] == "15 * * * *"
+    assert Application.get_env(:yellow_dog_tasks, :tasks_config) == nil
   end
 
   test "runs due cloud zone schedules" do
