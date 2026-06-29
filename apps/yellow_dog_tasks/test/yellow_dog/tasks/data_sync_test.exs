@@ -108,7 +108,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
   test "lists known tasks without accepting arbitrary workers" do
     tasks = Tasks.list_tasks()
 
-    assert Enum.map(tasks, & &1.key) == [:region, :ip_country, :ip_city, :mac]
+    assert Enum.map(tasks, & &1.key) == [:ip_country, :ip_city, :mac]
     assert Enum.all?(tasks, &Map.has_key?(&1, :status))
   end
 
@@ -282,8 +282,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
       "sync" => %{
         "ip_city" => %{"enabled" => true, "cron" => "0 2 * * *"},
         "ip_country" => %{"enabled" => false},
-        "mac" => %{"enabled" => false},
-        "region" => %{"enabled" => false}
+        "mac" => %{"enabled" => false}
       }
     })
 
@@ -305,8 +304,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
       "sync" => %{
         "ip_city" => %{"enabled" => true, "cron" => "0 2 * * *"},
         "ip_country" => %{"enabled" => false},
-        "mac" => %{"enabled" => false},
-        "region" => %{"enabled" => false}
+        "mac" => %{"enabled" => false}
       }
     })
 
@@ -326,8 +324,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
       "sync" => %{
         "ip_city" => %{"enabled" => true, "cron" => "0 2 * * *"},
         "ip_country" => %{"enabled" => false},
-        "mac" => %{"enabled" => false},
-        "region" => %{"enabled" => false}
+        "mac" => %{"enabled" => false}
       }
     })
 

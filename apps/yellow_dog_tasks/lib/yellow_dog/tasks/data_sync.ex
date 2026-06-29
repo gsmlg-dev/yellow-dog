@@ -4,22 +4,12 @@ defmodule YellowDog.Tasks.DataSync do
   """
 
   alias YellowDog.Tasks.Config
-  alias YellowDog.Tasks.RegionData.Store
   alias YellowDog.Tasks.Workers.SyncIpDatabaseWorker
   alias YellowDog.Tasks.Workers.SyncMacDatabaseWorker
-  alias YellowDog.Tasks.Workers.SyncRegionDataWorker
 
   @telemetry_prefix [:yellow_dog, :tasks, :sync]
 
   @tasks %{
-    region: %{
-      key: :region,
-      label: "Region data",
-      source: "geo-ip-countries",
-      worker: SyncRegionDataWorker,
-      args: %{},
-      max_attempts: 3
-    },
     ip_country: %{
       key: :ip_country,
       label: "IP Country",
@@ -54,7 +44,7 @@ defmodule YellowDog.Tasks.DataSync do
 
   @spec list_tasks(Config.t()) :: [map()]
   def list_tasks(%Config{} = config) do
-    Enum.map([:region, :ip_country, :ip_city, :mac], &task_with_config!(&1, config))
+    Enum.map([:ip_country, :ip_city, :mac], &task_with_config!(&1, config))
   end
 
   @spec get_task!(atom() | String.t()) :: map()
@@ -111,16 +101,6 @@ defmodule YellowDog.Tasks.DataSync do
       :ok
     else
       %{entry_count: count} -> {:error, {:empty_database, count}}
-      other -> other
-    end
-  end
-
-  @spec sync_region_data(keyword()) :: :ok | {:error, term()}
-  def sync_region_data(opts \\ []) do
-    with {:ok, %{record_count: count}} when count > 0 <- Store.sync(opts) do
-      :ok
-    else
-      {:ok, %{record_count: count}} -> {:error, {:empty_database, count}}
       other -> other
     end
   end

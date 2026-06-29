@@ -17,7 +17,6 @@ defmodule YellowDog.Tasks.Config do
             sync: %{}
 
   @sync_tasks [
-    {"region", "0 2 * * SUN"},
     {"ip_country", "0 3 2 * *"},
     {"ip_city", "30 3 2 * *"},
     {"mac", "0 4 * * SUN"}
