@@ -49,15 +49,6 @@ config :concord, prometheus_enabled: false
 
 config :yellow_dog_store, provider_persistence_backend: YellowDog.Store.Backend.Ets
 
-config :yellow_dog_tasks,
-  ecto_repos: [YellowDog.Tasks.Repo]
-
-config :yellow_dog_tasks, YellowDog.Tasks.Repo,
-  database: Path.expand("../tmp/yellow_dog_tasks_test.db", __DIR__),
-  pool_size: 1
-
-config :yellow_dog_tasks, Oban, testing: :manual
-
 config :logger, :console, level: :debug
 
 # YellowDog Telemetry Configuration for Testing

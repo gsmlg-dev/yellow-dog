@@ -3,16 +3,50 @@ defmodule YellowDog.Console.TasksLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias YellowDog.Tasks.Repo
-
-  setup_all do
-    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_tasks)
-    :ok = YellowDog.Tasks.Migrator.migrate()
-    :ok
-  end
+  alias YellowDog.Store.Backend
+  alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Tasks
+  alias YellowDog.Tasks.Store
 
   setup do
-    Repo.delete_all(Oban.Job)
+    EtsBackend.create_table()
+    Backend.set_active(EtsBackend)
+    Store.clear_all()
+
+    previous =
+      save_env([
+        :ip_database_downloader,
+        :ip_database_metadata,
+        :ip_database_file_info,
+        :mac_database_ensure_started,
+        :mac_database_downloader,
+        :mac_database_info
+      ])
+
+    Application.put_env(:yellow_dog_tasks, :ip_database_downloader, fn
+      :city -> {:ok, "/tmp/city.mmdb"}
+      :country -> {:ok, "/tmp/country.mmdb"}
+    end)
+
+    Application.put_env(:yellow_dog_tasks, :ip_database_metadata, fn _type -> {:ok, %{}} end)
+
+    Application.put_env(:yellow_dog_tasks, :ip_database_file_info, fn _type ->
+      {:ok, %{size: 1}}
+    end)
+
+    Application.put_env(:yellow_dog_tasks, :mac_database_ensure_started, fn -> :ok end)
+
+    Application.put_env(:yellow_dog_tasks, :mac_database_downloader, fn ->
+      {:ok, "/tmp/manuf.txt"}
+    end)
+
+    Application.put_env(:yellow_dog_tasks, :mac_database_info, fn -> %{entry_count: 1} end)
+
+    on_exit(fn ->
+      Store.clear_all()
+      restore_env(previous)
+    end)
+
     :ok
   end
 
@@ -30,7 +64,7 @@ defmodule YellowDog.Console.TasksLiveTest do
     html = render_click(element(view, "button[phx-click='run_now'][phx-value-task='mac']"))
 
     assert html =~ "MAC/OUI sync queued"
-    assert Repo.exists?(Oban.Job)
+    assert [_job | _] = Tasks.recent_jobs(:mac)
   end
 
   test "renders task history detail", %{conn: conn} do
@@ -49,6 +83,7 @@ defmodule YellowDog.Console.TasksLiveTest do
     html = render_click(element(view, "button[phx-click='download'][phx-value-type='city']"))
 
     assert html =~ "IP City sync queued"
+    assert [_job | _] = Tasks.recent_jobs(:ip_city)
   end
 
   test "mac database page links to task history and queues downloads", %{conn: conn} do
@@ -60,5 +95,15 @@ defmodule YellowDog.Console.TasksLiveTest do
     html = render_click(element(view, "button[phx-click='download']"))
 
     assert html =~ "MAC/OUI sync queued"
+    assert [_job | _] = Tasks.recent_jobs(:mac)
+  end
+
+  defp save_env(keys), do: Map.new(keys, &{&1, Application.get_env(:yellow_dog_tasks, &1)})
+
+  defp restore_env(previous) do
+    Enum.each(previous, fn
+      {key, nil} -> Application.delete_env(:yellow_dog_tasks, key)
+      {key, value} -> Application.put_env(:yellow_dog_tasks, key, value)
+    end)
   end
 end

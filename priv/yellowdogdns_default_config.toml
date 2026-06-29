@@ -59,7 +59,6 @@ tftp_root = "data/netboot/tftp"
 [tasks]
 enabled = true
 timezone = "Etc/UTC"
-database_path = "tasks/yellow_dog_tasks.db"
 
 [tasks.sync.region]
 enabled = true

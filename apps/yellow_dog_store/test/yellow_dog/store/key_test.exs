@@ -190,6 +190,11 @@ defmodule YellowDog.Store.KeyTest do
     test "event_log_prefix" do
       assert Key.event_log_prefix() == "event_log:"
     end
+
+    test "task prefixes" do
+      assert Key.task_job_prefix() == "tasks:job:"
+      assert Key.task_schedule_prefix() == "tasks:schedule:"
+    end
   end
 
   describe "key determinism" do

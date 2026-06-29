@@ -9,7 +9,6 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
 
       assert defaults["tasks"]["enabled"] == true
       assert defaults["tasks"]["timezone"] == "Etc/UTC"
-      assert defaults["tasks"]["database_path"] == "tasks/yellow_dog_tasks.db"
       assert defaults["tasks"]["sync"]["ip_city"]["cron"] == "30 3 2 * *"
     end
   end
@@ -20,7 +19,6 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
 
       assert minimal["tasks"]["enabled"] == false
       assert minimal["tasks"]["timezone"] == "Etc/UTC"
-      assert minimal["tasks"]["database_path"] == "tasks/yellow_dog_tasks.db"
       assert minimal["tasks"]["sync"]["mac"]["enabled"] == false
     end
   end
@@ -32,7 +30,6 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
                  "tasks" => %{
                    "enabled" => "yes",
                    "timezone" => 123,
-                   "database_path" => false,
                    "sync" => %{
                      "ip_city" => %{"cron" => 123},
                      "mac" => %{"enabled" => "true", "max_attempts" => 0}
@@ -42,9 +39,6 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
 
       assert {"tasks.enabled", _} = Enum.find(errors, &(elem(&1, 0) == "tasks.enabled"))
       assert {"tasks.timezone", _} = Enum.find(errors, &(elem(&1, 0) == "tasks.timezone"))
-
-      assert {"tasks.database_path", _} =
-               Enum.find(errors, &(elem(&1, 0) == "tasks.database_path"))
 
       assert {"tasks.sync.ip_city.cron", _} =
                Enum.find(errors, &(elem(&1, 0) == "tasks.sync.ip_city.cron"))

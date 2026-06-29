@@ -1,6 +1,6 @@
 defmodule YellowDog.Console.TasksLive.Index do
   @moduledoc """
-  Overview of Oban-backed YellowDog data synchronization tasks.
+  Overview of Concord-backed YellowDog data synchronization tasks.
   """
 
   use YellowDog.Console, :live_view

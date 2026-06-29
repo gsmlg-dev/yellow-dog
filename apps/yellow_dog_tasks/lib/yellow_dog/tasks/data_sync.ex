@@ -5,13 +5,11 @@ defmodule YellowDog.Tasks.DataSync do
 
   alias YellowDog.Tasks.Config
   alias YellowDog.Tasks.RegionData.Store
-  alias YellowDog.Tasks.Repo
   alias YellowDog.Tasks.Workers.SyncIpDatabaseWorker
   alias YellowDog.Tasks.Workers.SyncMacDatabaseWorker
   alias YellowDog.Tasks.Workers.SyncRegionDataWorker
 
   @telemetry_prefix [:yellow_dog, :tasks, :sync]
-  @unique [period: :infinity, states: :incomplete, fields: [:worker, :args]]
 
   @tasks %{
     region: %{
@@ -19,34 +17,43 @@ defmodule YellowDog.Tasks.DataSync do
       label: "Region data",
       source: "geo-ip-countries",
       worker: SyncRegionDataWorker,
-      args: %{}
+      args: %{},
+      max_attempts: 3
     },
     ip_country: %{
       key: :ip_country,
       label: "IP Country",
       source: "db-ip",
       worker: SyncIpDatabaseWorker,
-      args: %{"type" => "country"}
+      args: %{"type" => "country"},
+      max_attempts: 3
     },
     ip_city: %{
       key: :ip_city,
       label: "IP City",
       source: "db-ip",
       worker: SyncIpDatabaseWorker,
-      args: %{"type" => "city"}
+      args: %{"type" => "city"},
+      max_attempts: 3
     },
     mac: %{
       key: :mac,
       label: "MAC/OUI",
       source: "wireshark-manuf",
       worker: SyncMacDatabaseWorker,
-      args: %{}
+      args: %{},
+      max_attempts: 3
     }
   }
 
   @spec list_tasks() :: [map()]
   def list_tasks do
-    config = Config.load()
+    Config.load()
+    |> list_tasks()
+  end
+
+  @spec list_tasks(Config.t()) :: [map()]
+  def list_tasks(%Config{} = config) do
     Enum.map([:region, :ip_country, :ip_city, :mac], &task_with_config!(&1, config))
   end
 
@@ -62,18 +69,6 @@ defmodule YellowDog.Tasks.DataSync do
     {:ok, get_task!(key)}
   rescue
     KeyError -> {:error, :unknown_task}
-  end
-
-  @spec enqueue(atom() | String.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  def enqueue(key, opts \\ []) do
-    with {:ok, task} <- fetch_task(key) do
-      force? = Keyword.get(opts, :force, true)
-      args = Map.put(task.args, "force", force?)
-
-      task.worker
-      |> apply(:new, [args, [unique: @unique]])
-      |> Oban.insert(Repo)
-    end
   end
 
   @spec sync_ip_database(String.t()) :: :ok | {:error, term()}
@@ -159,15 +154,6 @@ defmodule YellowDog.Tasks.DataSync do
     end
   end
 
-  def task_filter(key) do
-    task = get_task!(key)
-
-    %{
-      worker: inspect(task.worker),
-      args: task.args
-    }
-  end
-
   defp emit_exception(started_at, metadata, kind, reason, stacktrace) do
     duration = System.monotonic_time() - started_at
 
@@ -181,10 +167,12 @@ defmodule YellowDog.Tasks.DataSync do
   defp task_with_config!(key, config) do
     task = Map.fetch!(@tasks, key)
     schedule = Map.get(config.sync, Atom.to_string(key), %{})
+    max_attempts = Map.get(schedule, "max_attempts", task.max_attempts)
 
     task
     |> Map.put(:enabled?, config.enabled? and enabled?(schedule))
     |> Map.put(:cron, Map.get(schedule, "cron"))
+    |> Map.put(:max_attempts, max_attempts)
   end
 
   defp normalize_key!(key) when is_atom(key) do

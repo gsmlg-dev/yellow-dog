@@ -1,7 +1,7 @@
 defmodule YellowDog.Tasks.Workers.SyncIpDatabaseWorkerTest do
   use ExUnit.Case, async: false
-  use Oban.Testing, repo: YellowDog.Tasks.Repo, engine: Oban.Engines.Lite
 
+  alias YellowDog.Tasks.Job
   alias YellowDog.Tasks.Workers.SyncIpDatabaseWorker
 
   setup do
@@ -21,14 +21,15 @@ defmodule YellowDog.Tasks.Workers.SyncIpDatabaseWorkerTest do
   test "syncs a city database and emits telemetry" do
     ref = attach_telemetry()
 
-    assert :ok = perform_job(SyncIpDatabaseWorker, %{"type" => "city", "force" => true})
+    assert :ok = SyncIpDatabaseWorker.perform(%Job{id: 123, args: %{"type" => "city"}})
 
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :start], %{task: :ip_city, source: "db-ip"}}
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :stop], %{task: :ip_city, source: "db-ip"}}
   end
 
   test "rejects invalid database types" do
-    assert {:error, {:invalid_type, "bogus"}} = perform_job(SyncIpDatabaseWorker, %{"type" => "bogus"})
+    assert {:error, {:invalid_type, "bogus"}} =
+             SyncIpDatabaseWorker.perform(%Job{id: 123, args: %{"type" => "bogus"}})
   end
 
   test "emits exception telemetry when sync fails" do
@@ -38,7 +39,7 @@ defmodule YellowDog.Tasks.Workers.SyncIpDatabaseWorkerTest do
 
     ref = attach_telemetry()
 
-    assert {:error, :offline} = perform_job(SyncIpDatabaseWorker, %{"type" => "city"})
+    assert {:error, :offline} = SyncIpDatabaseWorker.perform(%Job{id: 123, args: %{"type" => "city"}})
 
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :start], %{task: :ip_city, source: "db-ip"}}
 

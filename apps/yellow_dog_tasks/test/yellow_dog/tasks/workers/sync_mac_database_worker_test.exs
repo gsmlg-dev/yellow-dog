@@ -1,7 +1,7 @@
 defmodule YellowDog.Tasks.Workers.SyncMacDatabaseWorkerTest do
   use ExUnit.Case, async: false
-  use Oban.Testing, repo: YellowDog.Tasks.Repo, engine: Oban.Engines.Lite
 
+  alias YellowDog.Tasks.Job
   alias YellowDog.Tasks.Workers.SyncMacDatabaseWorker
 
   setup do
@@ -22,7 +22,7 @@ defmodule YellowDog.Tasks.Workers.SyncMacDatabaseWorkerTest do
   test "syncs the MAC database" do
     ref = attach_telemetry()
 
-    assert :ok = perform_job(SyncMacDatabaseWorker, %{"force" => true})
+    assert :ok = SyncMacDatabaseWorker.perform(%Job{id: 123, args: %{"force" => true}})
 
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :start],
                     %{task: :mac, source: "wireshark-manuf"}}

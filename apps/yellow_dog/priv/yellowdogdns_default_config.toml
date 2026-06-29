@@ -69,7 +69,6 @@ valid_lifetime = 7200  # 2 hours
 [tasks]
 enabled = true
 timezone = "Etc/UTC"
-database_path = "tasks/yellow_dog_tasks.db"
 
 [tasks.sync.region]
 enabled = true

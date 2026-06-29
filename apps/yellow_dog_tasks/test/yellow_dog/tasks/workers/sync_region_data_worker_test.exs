@@ -1,7 +1,7 @@
 defmodule YellowDog.Tasks.Workers.SyncRegionDataWorkerTest do
   use ExUnit.Case, async: false
-  use Oban.Testing, repo: YellowDog.Tasks.Repo, engine: Oban.Engines.Lite
 
+  alias YellowDog.Tasks.Job
   alias YellowDog.Tasks.RegionData.Store
   alias YellowDog.Tasks.Workers.SyncRegionDataWorker
 
@@ -23,7 +23,7 @@ defmodule YellowDog.Tasks.Workers.SyncRegionDataWorkerTest do
   test "syncs region data", %{tmp_dir: tmp_dir} do
     ref = attach_telemetry()
 
-    assert :ok = perform_job(SyncRegionDataWorker, %{"force" => true})
+    assert :ok = SyncRegionDataWorker.perform(%Job{id: 123, args: %{"force" => true}})
     assert Store.info(data_dir: tmp_dir).record_count > 0
 
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :start],

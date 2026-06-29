@@ -79,6 +79,14 @@ defmodule YellowDog.Store.Key do
   @spec event_log(integer(), String.t()) :: String.t()
   def event_log(timestamp, key), do: "event_log:#{timestamp}:#{key}"
 
+  @doc "Task job key."
+  @spec task_job(pos_integer() | String.t()) :: String.t()
+  def task_job(id), do: "tasks:job:#{id}"
+
+  @doc "Task scheduler reservation key."
+  @spec task_schedule(atom() | String.t()) :: String.t()
+  def task_schedule(task_key), do: "tasks:schedule:#{task_key}"
+
   # Key prefix constants for prefix scans
 
   def lease_v4_prefix, do: "dhcp:lease:v4:"
@@ -86,6 +94,8 @@ defmodule YellowDog.Store.Key do
   def device_prefix, do: "device:"
   def dyn_dns_prefix, do: "dns:dyn:"
   def provider_config_prefix, do: "dns:provider:"
+  def task_job_prefix, do: "tasks:job:"
+  def task_schedule_prefix, do: "tasks:schedule:"
 
   @doc "Prefix for all zones across all views."
   def all_views_prefix, do: "dns:view:"

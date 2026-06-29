@@ -29,13 +29,11 @@ defmodule YellowDog.Tasks.MixProject do
 
   defp deps do
     [
-      {:ecto_sql, "~> 3.12"},
-      {:ecto_sqlite3, "~> 0.24.1"},
-      {:oban, "~> 2.23"},
       {:geo_ip_db, in_umbrella: true},
       {:jason, "~> 1.4"},
       {:yellow_dog_fingerprint, in_umbrella: true},
       {:yellow_dog_config, in_umbrella: true},
+      {:yellow_dog_store, in_umbrella: true},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

@@ -5,6 +5,7 @@ defmodule YellowDog.Tasks do
 
   alias YellowDog.Tasks.Config
   alias YellowDog.Tasks.DataSync
+  alias YellowDog.Tasks.Runner
   alias YellowDog.Tasks.TaskStatus
 
   @doc """
@@ -35,12 +36,13 @@ defmodule YellowDog.Tasks do
   @doc """
   Enqueues a manual sync job for a known task.
   """
-  @spec enqueue(atom() | String.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  def enqueue(key, opts \\ []), do: DataSync.enqueue(key, opts)
+  @spec enqueue(atom() | String.t(), keyword()) ::
+          {:ok, YellowDog.Tasks.Job.t()} | {:error, term()}
+  def enqueue(key, opts \\ []), do: Runner.enqueue(key, opts)
 
   @doc """
-  Returns recent Oban jobs for a known task.
+  Returns recent jobs for a known task.
   """
-  @spec recent_jobs(atom() | String.t(), keyword()) :: [Oban.Job.t()]
+  @spec recent_jobs(atom() | String.t(), keyword()) :: [YellowDog.Tasks.Job.t()]
   def recent_jobs(key, opts \\ []), do: TaskStatus.recent_jobs(key, opts)
 end

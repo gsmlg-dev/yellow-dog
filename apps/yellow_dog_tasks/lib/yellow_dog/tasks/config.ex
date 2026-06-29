@@ -3,38 +3,31 @@ defmodule YellowDog.Tasks.Config do
   Runtime configuration for YellowDog background task processing.
   """
 
-  alias YellowDog.Tasks.Repo
+  alias YellowDog.Tasks.Cron
 
   @type t :: %__MODULE__{
           enabled?: boolean(),
           timezone: Calendar.time_zone(),
-          sync: map(),
-          data_dir: Path.t(),
-          database_path: Path.t()
+          sync: map()
         }
 
   defstruct enabled?: true,
             timezone: "Etc/UTC",
-            sync: %{},
-            data_dir: "data",
-            database_path: "tasks/yellow_dog_tasks.db"
+            sync: %{}
 
   @sync_tasks [
-    {"region", "0 2 * * SUN", "YellowDog.Tasks.Workers.SyncRegionDataWorker", []},
-    {"ip_country", "0 3 2 * *", "YellowDog.Tasks.Workers.SyncIpDatabaseWorker",
-     [args: %{type: "country"}]},
-    {"ip_city", "30 3 2 * *", "YellowDog.Tasks.Workers.SyncIpDatabaseWorker",
-     [args: %{type: "city"}]},
-    {"mac", "0 4 * * SUN", "YellowDog.Tasks.Workers.SyncMacDatabaseWorker", []}
+    {"region", "0 2 * * SUN"},
+    {"ip_country", "0 3 2 * *"},
+    {"ip_city", "30 3 2 * *"},
+    {"mac", "0 4 * * SUN"}
   ]
 
   @defaults %{
     "enabled" => true,
     "timezone" => "Etc/UTC",
-    "database_path" => "tasks/yellow_dog_tasks.db",
     "sync" =>
-      Map.new(@sync_tasks, fn {name, cron, _worker, _opts} ->
-        {name, %{"enabled" => true, "cron" => cron}}
+      Map.new(@sync_tasks, fn {name, cron} ->
+        {name, %{"enabled" => true, "cron" => cron, "max_attempts" => 3}}
       end)
   }
 
@@ -56,66 +49,35 @@ defmodule YellowDog.Tasks.Config do
     %__MODULE__{
       enabled?: truthy?(Map.get(config, "enabled")),
       timezone: Map.get(config, "timezone", "Etc/UTC"),
-      sync: Map.get(config, "sync", %{}),
-      data_dir: yellow_dog_data_dir(),
-      database_path: Map.get(config, "database_path", "tasks/yellow_dog_tasks.db")
+      sync: Map.get(config, "sync", %{})
     }
   end
 
   @doc """
-  Builds the SQLite-backed Oban configuration for YellowDog task processing.
+  Returns configured cron entries for enabled fixed YellowDog sync tasks.
   """
-  @spec oban_config(t()) :: keyword()
-  def oban_config(%__MODULE__{} = config) do
-    [
-      engine: Oban.Engines.Lite,
-      repo: Repo,
-      queues: [data_sync: 1],
-      plugins: cron_plugins(config)
-    ]
-  end
+  @spec cron_entries(t()) :: [{String.t(), atom()}]
+  def cron_entries(%__MODULE__{enabled?: false}), do: []
 
-  @doc """
-  Returns the SQLite database path under the YellowDog data directory.
-  """
-  @spec database_path(t()) :: Path.t()
-  def database_path(%__MODULE__{data_dir: data_dir, database_path: database_path}) do
-    if Path.type(database_path) == :absolute do
-      database_path
-    else
-      Path.join(data_dir, database_path)
-    end
-  end
-
-  defp cron_plugins(%__MODULE__{enabled?: false}), do: []
-
-  defp cron_plugins(%__MODULE__{} = config) do
-    crontab = Enum.flat_map(@sync_tasks, &cron_entry(&1, config.sync))
-
-    case crontab do
-      [] -> []
-      _ -> [{Oban.Plugins.Cron, crontab: crontab, timezone: config.timezone}]
-    end
+  def cron_entries(%__MODULE__{} = config) do
+    Enum.flat_map(@sync_tasks, &cron_entry(&1, config.sync))
   end
 
   defp enabled?(%{"enabled" => enabled}), do: truthy?(enabled)
   defp enabled?(_schedule), do: false
 
-  defp cron_entry({name, _default_cron, worker, opts}, sync) do
+  defp cron_entry({name, _default_cron}, sync) do
     schedule = Map.get(sync, name)
 
     if enabled?(schedule) do
-      [cron_entry_tuple(Map.fetch!(schedule, "cron"), worker, opts)]
+      [{Map.fetch!(schedule, "cron"), String.to_existing_atom(name)}]
     else
       []
     end
   end
 
-  defp cron_entry_tuple(cron, worker, []), do: {cron, module(worker)}
-  defp cron_entry_tuple(cron, worker, opts), do: {cron, module(worker), opts}
-
   defp validate_sync_tasks!(%{"sync" => sync}) when is_map(sync) do
-    known_tasks = @sync_tasks |> Enum.map(fn {name, _cron, _worker, _opts} -> name end) |> MapSet.new()
+    known_tasks = @sync_tasks |> Enum.map(fn {name, _cron} -> name end) |> MapSet.new()
 
     sync
     |> Map.keys()
@@ -144,21 +106,14 @@ defmodule YellowDog.Tasks.Config do
   defp validate_crons!(_config), do: :ok
 
   defp validate_cron!(path, cron) when is_binary(cron) do
-    case Oban.Plugins.Cron.parse(cron) do
-      {:ok, _expression} ->
-        :ok
-
-      {:error, error} ->
-        raise ArgumentError, "#{path} is invalid: #{Exception.message(error)}"
+    case Cron.parse(cron) do
+      {:ok, _expression} -> :ok
+      {:error, error} -> raise ArgumentError, "#{path} is invalid: #{error}"
     end
   end
 
   defp validate_cron!(path, _cron) do
     raise ArgumentError, "#{path} must be a cron expression string"
-  end
-
-  defp yellow_dog_data_dir do
-    Application.get_env(:yellow_dog, :data_dir) || "data"
   end
 
   defp deep_merge(left, right) do
@@ -178,10 +133,4 @@ defmodule YellowDog.Tasks.Config do
   defp normalize_keys(config), do: config
 
   defp truthy?(value), do: value in [true, "true", "1", 1]
-
-  defp module(name) do
-    name
-    |> String.split(".")
-    |> Module.concat()
-  end
 end

@@ -12,7 +12,6 @@ defmodule YellowDog.Config.Schema do
   """
 
   @task_timezone "Etc/UTC"
-  @task_database_path "tasks/yellow_dog_tasks.db"
   @task_sync_schedules %{
     "region" => "0 2 * * SUN",
     "ip_country" => "0 3 2 * *",
@@ -199,7 +198,6 @@ defmodule YellowDog.Config.Schema do
     %{
       "enabled" => enabled,
       "timezone" => @task_timezone,
-      "database_path" => @task_database_path,
       "sync" => sync_task_configs(sync_enabled)
     }
   end
@@ -302,7 +300,6 @@ defmodule YellowDog.Config.Schema do
         errors
         |> validate_boolean_value("tasks.enabled", Map.get(tasks, "enabled"))
         |> validate_string_value("tasks.timezone", Map.get(tasks, "timezone"))
-        |> validate_string_value("tasks.database_path", Map.get(tasks, "database_path"))
         |> validate_task_sync(Map.get(tasks, "sync"))
 
       other ->
