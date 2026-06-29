@@ -2,8 +2,8 @@ defmodule YellowDog.Tasks.Job do
   @moduledoc """
   Persisted background task execution record.
 
-  Job records are stored through `YellowDog.Store`, so the active backend is
-  Concord in clustered deployments and ETS in single-node/test deployments.
+  Job records are stored through `YellowDog.Store` so production persistence
+  follows YellowDog's configured Concord-backed database path.
   """
 
   @type state :: String.t()

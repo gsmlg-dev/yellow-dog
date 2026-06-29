@@ -4,22 +4,18 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
   alias YellowDog.Config.Schema
 
   describe "defaults/0" do
-    test "includes task scheduler defaults" do
+    test "does not include task scheduler defaults" do
       defaults = Schema.defaults()
 
-      assert defaults["tasks"]["enabled"] == true
-      assert defaults["tasks"]["timezone"] == "Etc/UTC"
-      assert defaults["tasks"]["sync"]["ip_city"]["cron"] == "30 3 2 * *"
+      refute Map.has_key?(defaults, "tasks")
     end
   end
 
   describe "minimal/0" do
-    test "includes disabled task scheduler config" do
+    test "does not include disabled task scheduler config" do
       minimal = Schema.minimal()
 
-      assert minimal["tasks"]["enabled"] == false
-      assert minimal["tasks"]["timezone"] == "Etc/UTC"
-      assert minimal["tasks"]["sync"]["mac"]["enabled"] == false
+      refute Map.has_key?(minimal, "tasks")
     end
   end
 
@@ -65,11 +61,10 @@ defmodule YellowDog.Config.SchemaTaskConfigTest do
   end
 
   describe "section_comments/0" do
-    test "includes tasks section comment" do
+    test "does not include tasks section comment" do
       comments = Schema.section_comments()
 
-      assert is_binary(comments["tasks"])
-      assert comments["tasks"] =~ "#"
+      refute Map.has_key?(comments, "tasks")
     end
   end
 end

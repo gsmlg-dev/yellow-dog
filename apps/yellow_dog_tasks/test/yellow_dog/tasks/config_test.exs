@@ -5,6 +5,7 @@ defmodule YellowDog.Tasks.ConfigTest do
 
   setup do
     previous_tasks_config = Application.get_env(:yellow_dog_tasks, :tasks_config)
+    previous_config_file_path = Application.get_env(:yellow_dog_tasks, :config_file_path)
 
     on_exit(fn ->
       if previous_tasks_config do
@@ -12,20 +13,53 @@ defmodule YellowDog.Tasks.ConfigTest do
       else
         Application.delete_env(:yellow_dog_tasks, :tasks_config)
       end
+
+      if previous_config_file_path do
+        Application.put_env(:yellow_dog_tasks, :config_file_path, previous_config_file_path)
+      else
+        Application.delete_env(:yellow_dog_tasks, :config_file_path)
+      end
     end)
 
     Application.delete_env(:yellow_dog_tasks, :tasks_config)
+    Application.delete_env(:yellow_dog_tasks, :config_file_path)
 
     :ok
   end
 
-  test "loads Concord-backed task scheduler defaults" do
+  test "loads standalone task scheduler defaults" do
     config = Config.load()
 
     assert config.enabled?
     assert config.timezone == "Etc/UTC"
     assert config.sync["ip_city"]["cron"] == "30 3 2 * *"
     assert config.sync["ip_city"]["max_attempts"] == 3
+  end
+
+  test "loads standalone tasks config file" do
+    path = Path.join(System.tmp_dir!(), "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml")
+
+    File.write!(path, """
+    [tasks]
+    enabled = false
+    timezone = "Etc/UTC"
+
+    [tasks.sync.ip_city]
+    enabled = true
+    cron = "5 1 * * *"
+    max_attempts = 5
+    """)
+
+    on_exit(fn -> File.rm(path) end)
+
+    Application.put_env(:yellow_dog_tasks, :config_file_path, path)
+
+    config = Config.load()
+
+    refute config.enabled?
+    assert config.sync["ip_city"]["enabled"]
+    assert config.sync["ip_city"]["cron"] == "5 1 * * *"
+    assert config.sync["ip_city"]["max_attempts"] == 5
   end
 
   test "returns fixed cron entries for enabled tasks" do

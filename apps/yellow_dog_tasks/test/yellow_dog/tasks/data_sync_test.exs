@@ -37,7 +37,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
              Tasks.enqueue(:ip_city)
 
     assert job.args == %{"type" => "city", "force" => true}
-    assert [%Job{id: id, state: "completed"}] = Tasks.recent_jobs(:ip_city)
+    assert %Job{id: id, state: "completed"} = await_recent_job(:ip_city, "completed")
     assert id == job.id
   end
 
@@ -55,7 +55,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
 
     try do
       assert {:ok, %Job{worker: SyncMacDatabaseWorker}} = Tasks.enqueue("mac")
-      assert [%Job{state: "completed"}] = Tasks.recent_jobs(:mac)
+      assert %Job{state: "completed"} = await_recent_job(:mac, "completed")
     after
       restore_env(previous)
     end
@@ -66,6 +66,23 @@ defmodule YellowDog.Tasks.DataSyncTest do
   end
 
   defp save_env(keys), do: Map.new(keys, &{&1, Application.get_env(:yellow_dog_tasks, &1)})
+
+  defp await_recent_job(key, state, attempts_left \\ 25)
+
+  defp await_recent_job(key, state, attempts_left) when attempts_left > 0 do
+    case Tasks.recent_jobs(key) do
+      [%Job{state: ^state} = job | _jobs] ->
+        job
+
+      _jobs ->
+        Process.sleep(10)
+        await_recent_job(key, state, attempts_left - 1)
+    end
+  end
+
+  defp await_recent_job(key, state, 0) do
+    flunk("expected recent #{key} job to reach #{state}, got: #{inspect(Tasks.recent_jobs(key))}")
+  end
 
   defp restore_env(previous) do
     Enum.each(previous, fn

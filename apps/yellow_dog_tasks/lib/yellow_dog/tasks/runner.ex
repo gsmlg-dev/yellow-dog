@@ -64,24 +64,20 @@ defmodule YellowDog.Tasks.Runner do
       try do
         case executing_job.worker.perform(executing_job) do
           :ok ->
-            {:ok, _job} = Store.mark_completed(executing_job)
-            :ok
+            mark_completed(executing_job)
 
           {:ok, _result} ->
-            {:ok, _job} = Store.mark_completed(executing_job)
-            :ok
+            mark_completed(executing_job)
 
           {:error, reason} ->
-            {:ok, _job} = Store.mark_failed(executing_job, reason)
-            :ok
+            mark_failed(executing_job, reason)
 
           other ->
-            {:ok, _job} = Store.mark_failed(executing_job, {:unexpected_result, other})
-            :ok
+            mark_failed(executing_job, {:unexpected_result, other})
         end
       rescue
         exception ->
-          {:ok, _job} = Store.mark_failed(executing_job, exception, __STACKTRACE__)
+          mark_failed(executing_job, exception, __STACKTRACE__)
           reraise exception, __STACKTRACE__
       end
     else
@@ -119,6 +115,20 @@ defmodule YellowDog.Tasks.Runner do
 
   defp due?(task, now) do
     task.enabled? and is_binary(task.cron) and Cron.due?(task.cron, now)
+  end
+
+  defp mark_completed(job) do
+    case Store.mark_completed(job) do
+      {:ok, _job} -> :ok
+      {:error, :condition_failed} -> :ok
+    end
+  end
+
+  defp mark_failed(job, reason, stacktrace \\ []) do
+    case Store.mark_failed(job, reason, stacktrace) do
+      {:ok, _job} -> :ok
+      {:error, :condition_failed} -> :ok
+    end
   end
 
   defp schedule_tick do

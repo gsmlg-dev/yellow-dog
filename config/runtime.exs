@@ -119,6 +119,28 @@ config_to_load =
 # Store config file path in application config (the actual TOML reading will be done in the application)
 config :yellow_dog, :config_file_path, config_to_load
 
+# Task scheduler configuration is separate from the main service config.
+default_tasks_config_path =
+  if config_env() == :dev do
+    Path.expand("../priv/yellowdogdns_tasks_config.toml", __DIR__)
+  else
+    Path.expand("../apps/yellow_dog_tasks/priv/yellowdogdns_tasks_config.toml", __DIR__)
+  end
+
+tasks_config_path =
+  get_cli_arg.("--tasks-config") ||
+    System.get_env("YELLOW_DOG_TASKS_CONFIG") ||
+    default_tasks_config_path
+
+tasks_config_to_load =
+  if File.exists?(tasks_config_path) do
+    tasks_config_path
+  else
+    default_tasks_config_path
+  end
+
+config :yellow_dog_tasks, :config_file_path, tasks_config_to_load
+
 # Determine data directory (CLI > ENV > default)
 # Priority: --data-dir CLI arg > YELLOW_DOG_DATA_DIR env > default from config
 data_dir =

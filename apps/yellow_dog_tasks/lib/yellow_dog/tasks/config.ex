@@ -4,6 +4,7 @@ defmodule YellowDog.Tasks.Config do
   """
 
   alias YellowDog.Tasks.Cron
+  alias YellowDog.Config.TomlHelpers
 
   @type t :: %__MODULE__{
           enabled?: boolean(),
@@ -36,12 +37,20 @@ defmodule YellowDog.Tasks.Config do
   """
   @spec load() :: t()
   def load do
+    file_config =
+      :yellow_dog_tasks
+      |> Application.get_env(:config_file_path)
+      |> load_file_config()
+
     app_config =
       :yellow_dog_tasks
       |> Application.get_env(:tasks_config, %{})
       |> normalize_keys()
 
-    config = deep_merge(@defaults, app_config)
+    config =
+      @defaults
+      |> deep_merge(file_config)
+      |> deep_merge(app_config)
 
     validate_sync_tasks!(config)
     validate_crons!(config)
@@ -65,6 +74,27 @@ defmodule YellowDog.Tasks.Config do
 
   defp enabled?(%{"enabled" => enabled}), do: truthy?(enabled)
   defp enabled?(_schedule), do: false
+
+  defp load_file_config(nil), do: %{}
+
+  defp load_file_config(path) when is_binary(path) do
+    if File.exists?(path) do
+      case TomlHelpers.read_toml_file(path) do
+        {:ok, parsed} ->
+          parsed
+          |> normalize_keys()
+          |> unwrap_tasks_root()
+
+        {:error, reason} ->
+          raise ArgumentError, "failed to load task config #{path}: #{inspect(reason)}"
+      end
+    else
+      %{}
+    end
+  end
+
+  defp unwrap_tasks_root(%{"tasks" => tasks}) when is_map(tasks), do: tasks
+  defp unwrap_tasks_root(config), do: config
 
   defp cron_entry({name, _default_cron}, sync) do
     schedule = Map.get(sync, name)

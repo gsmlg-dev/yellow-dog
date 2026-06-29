@@ -11,7 +11,6 @@ defmodule YellowDog.Config.Schema do
   will automatically appear in-memory config via `merge_defaults/1`.
   """
 
-  @task_timezone "Etc/UTC"
   @task_sync_schedules %{
     "region" => "0 2 * * SUN",
     "ip_country" => "0 3 2 * *",
@@ -92,8 +91,7 @@ defmodule YellowDog.Config.Schema do
         "profile_dir" => "/etc/yellowdog/netman/profiles",
         "reconciliation_interval_ms" => 5000,
         "socket_path" => "/run/yellowdog/netman.sock"
-      },
-      "tasks" => task_config(true, true)
+      }
     }
   end
 
@@ -130,8 +128,7 @@ defmodule YellowDog.Config.Schema do
       "netboot" => %{
         "tftp_root" => "data/netboot/tftp",
         "tftp_port" => 69
-      },
-      "tasks" => task_config(false, false)
+      }
     }
   end
 
@@ -189,23 +186,8 @@ defmodule YellowDog.Config.Schema do
       "dhcpv6" => "# DHCPv6 server configuration",
       "identity" => "# Host Identity Registry configuration",
       "netboot" => "# Network boot and TFTP configuration",
-      "netman" => "# Network Manager configuration",
-      "tasks" => "# Scheduled task configuration"
+      "netman" => "# Network Manager configuration"
     }
-  end
-
-  defp task_config(enabled, sync_enabled) do
-    %{
-      "enabled" => enabled,
-      "timezone" => @task_timezone,
-      "sync" => sync_task_configs(sync_enabled)
-    }
-  end
-
-  defp sync_task_configs(enabled) do
-    Map.new(@task_sync_schedules, fn {name, cron} ->
-      {name, %{"enabled" => enabled, "cron" => cron, "max_attempts" => 3}}
-    end)
   end
 
   # Deep merge: base provides defaults, overlay wins on conflict.

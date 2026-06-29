@@ -55,27 +55,3 @@ port = 5353
 [netboot]
 tftp_port = 69
 tftp_root = "data/netboot/tftp"
-
-[tasks]
-enabled = true
-timezone = "Etc/UTC"
-
-[tasks.sync.region]
-enabled = true
-cron = "0 2 * * SUN"
-max_attempts = 3
-
-[tasks.sync.ip_country]
-enabled = true
-cron = "0 3 2 * *"
-max_attempts = 3
-
-[tasks.sync.ip_city]
-enabled = true
-cron = "30 3 2 * *"
-max_attempts = 3
-
-[tasks.sync.mac]
-enabled = true
-cron = "0 4 * * SUN"
-max_attempts = 3

@@ -1,13 +1,13 @@
 # Concord Task Management Implementation Plan
 
-**Goal:** Add the PRD MVP for YellowDog data synchronization tasks without introducing a separate SQL-backed job database. Task jobs and schedule reservations are persisted through `YellowDog.Store`, which uses Concord in clustered deployments and the existing ETS backend in tests/single-node runs.
+**Goal:** Add the PRD MVP for YellowDog data synchronization tasks without introducing a separate SQL-backed job database. Task scheduler settings live in a standalone TOML file, while task jobs and schedule reservations are persisted through the Concord-backed `YellowDog.Store` database path.
 
 **Architecture:** Add a new umbrella app, `yellow_dog_tasks`, that owns task configuration, scheduling, job state transitions, worker modules, region-data storage, and task status APIs. Keep console UI in `yellow_dog_console`; the UI calls `YellowDog.Tasks` to enqueue jobs and read job history. Existing GeoIP and OUI download modules expose small test seams so worker tests can prove atomic failure behavior without external HTTP.
 
 ## Scope
 
 - `apps/yellow_dog_tasks`
-- Task config additions in `apps/yellow_dog_config` and default TOML files
+- Standalone task scheduler config in `yellowdogdns_tasks_config.toml`
 - Task console pages under `apps/yellow_dog_console`
 - Store key helpers in `apps/yellow_dog_store`
 - Focused tests for the touched apps
@@ -36,7 +36,7 @@
 ## Status
 
 - [x] Created `yellow_dog_tasks`
-- [x] Added task config/defaults
+- [x] Added standalone task config/defaults
 - [x] Added data sync task registry and workers
 - [x] Added Concord-backed job ledger through `YellowDog.Store`
 - [x] Added scheduled runner and manual enqueue path

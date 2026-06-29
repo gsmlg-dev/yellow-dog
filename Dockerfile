@@ -80,6 +80,7 @@ ENV TZ=Asia/Shanghai
 
 # Configuration paths
 ENV YELLOW_DOG_CONFIG=/etc/yellowdog/config.toml
+ENV YELLOW_DOG_TASKS_CONFIG=/etc/yellowdog/tasks.toml
 ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
 
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
@@ -96,6 +97,7 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
+COPY priv/yellowdogdns_tasks_config.toml /etc/yellowdog/tasks.toml
 
 EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 

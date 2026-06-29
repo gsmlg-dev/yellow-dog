@@ -66,30 +66,6 @@ valid_lifetime = 7200  # 2 hours
 # [dhcpv6.static_reservations]
 # "00:01:02:03:04:05:06:07:08:09" = "fd00::50"
 
-[tasks]
-enabled = true
-timezone = "Etc/UTC"
-
-[tasks.sync.region]
-enabled = true
-cron = "0 2 * * SUN"
-max_attempts = 3
-
-[tasks.sync.ip_country]
-enabled = true
-cron = "0 3 2 * *"
-max_attempts = 3
-
-[tasks.sync.ip_city]
-enabled = true
-cron = "30 3 2 * *"
-max_attempts = 3
-
-[tasks.sync.mac]
-enabled = true
-cron = "0 4 * * SUN"
-max_attempts = 3
-
 [server]
 logging-facility = "local0"
 logging-level = "warning"
