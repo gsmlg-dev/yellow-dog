@@ -152,7 +152,7 @@ defmodule YellowDog.Tasks.Config do
   end
 
   defp validate_timezone!(timezone) when is_binary(timezone) do
-    case DateTime.now(timezone) do
+    case DateTime.now(timezone, time_zone_database()) do
       {:ok, _now} -> :ok
       {:error, reason} -> raise ArgumentError, "tasks.timezone is invalid: #{inspect(reason)}"
     end
@@ -200,4 +200,8 @@ defmodule YellowDog.Tasks.Config do
   defp normalize_keys(config), do: config
 
   defp truthy?(value), do: value in [true, "true", "1", 1]
+
+  defp time_zone_database do
+    Application.get_env(:yellow_dog_tasks, :time_zone_database, Calendar.UTCOnlyTimeZoneDatabase)
+  end
 end

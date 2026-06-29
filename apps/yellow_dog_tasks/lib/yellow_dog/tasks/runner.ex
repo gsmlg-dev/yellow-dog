@@ -184,13 +184,17 @@ defmodule YellowDog.Tasks.Runner do
   defp scheduled_now(now, "Etc/UTC"), do: now
 
   defp scheduled_now(now, timezone) do
-    case DateTime.shift_zone(now, timezone) do
+    case DateTime.shift_zone(now, timezone, time_zone_database()) do
       {:ok, shifted} ->
         shifted
 
       {:error, reason} ->
         raise ArgumentError, "task scheduler timezone #{inspect(timezone)} is invalid: #{inspect(reason)}"
     end
+  end
+
+  defp time_zone_database do
+    Application.get_env(:yellow_dog_tasks, :time_zone_database, Calendar.UTCOnlyTimeZoneDatabase)
   end
 
   defp release_schedule(task_key, minute_id) do
