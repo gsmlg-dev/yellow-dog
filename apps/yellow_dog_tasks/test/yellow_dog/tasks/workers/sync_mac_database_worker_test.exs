@@ -22,7 +22,7 @@ defmodule YellowDog.Tasks.Workers.SyncMacDatabaseWorkerTest do
   test "syncs the MAC database" do
     ref = attach_telemetry()
 
-    assert :ok = SyncMacDatabaseWorker.perform(%Job{id: 123, args: %{"force" => true}})
+    assert :ok = SyncMacDatabaseWorker.perform(%Job{id: "job-123", args: %{"force" => true}})
 
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :start],
                     %{task: :mac, source: "wireshark-manuf"}}

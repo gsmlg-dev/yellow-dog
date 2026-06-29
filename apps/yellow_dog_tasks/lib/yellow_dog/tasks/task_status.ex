@@ -11,13 +11,23 @@ defmodule YellowDog.Tasks.TaskStatus do
 
   @spec put_status(map()) :: map()
   def put_status(task) do
-    jobs = recent_jobs(task.key, limit: 20)
-
-    task
-    |> Map.put(:status, status(jobs))
-    |> Map.put(:last_success, Enum.find(jobs, &(&1.state == @terminal_success)))
-    |> Map.put(:last_failure, Enum.find(jobs, &(&1.state in @terminal_failure)))
-    |> Map.put(:recent_jobs, jobs)
+    with {:ok, jobs} <- Store.recent_jobs_result(task.key, limit: 20),
+         {:ok, last_success} <- Store.last_job_result(task.key, [@terminal_success]),
+         {:ok, last_failure} <- Store.last_job_result(task.key, @terminal_failure) do
+      task
+      |> Map.put(:status, status(jobs))
+      |> Map.put(:last_success, last_success)
+      |> Map.put(:last_failure, last_failure)
+      |> Map.put(:recent_jobs, jobs)
+    else
+      {:error, reason} ->
+        task
+        |> Map.put(:status, :unavailable)
+        |> Map.put(:status_error, reason)
+        |> Map.put(:last_success, nil)
+        |> Map.put(:last_failure, nil)
+        |> Map.put(:recent_jobs, [])
+    end
   end
 
   @spec recent_jobs(atom() | String.t(), keyword()) :: [YellowDog.Tasks.Job.t()]

@@ -114,10 +114,12 @@ defmodule YellowDog.Console.TasksLive.Index do
   defp status_class(:active), do: "badge-info"
   defp status_class(:succeeded), do: "badge-success"
   defp status_class(:failed), do: "badge-error"
+  defp status_class(:unavailable), do: "badge-warning"
   defp status_class(_status), do: "badge-ghost"
 
   defp status_label(:active), do: "Active"
   defp status_label(:succeeded), do: "Succeeded"
   defp status_label(:failed), do: "Failed"
+  defp status_label(:unavailable), do: "Unavailable"
   defp status_label(_status), do: "Idle"
 end

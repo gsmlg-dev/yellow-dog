@@ -22,8 +22,14 @@ defmodule YellowDog.Tasks.Runner do
       args = Map.put(task.args, "force", force?)
 
       with {:ok, job} <- Store.create_job(task, args) do
-        run_async(job.id)
-        {:ok, job}
+        case run_async(job.task_key, job.id) do
+          :ok ->
+            {:ok, job}
+
+          {:error, reason} ->
+            Store.delete_job(job)
+            {:error, reason}
+        end
       end
     end
   end
@@ -33,22 +39,28 @@ defmodule YellowDog.Tasks.Runner do
     config = Config.load()
 
     if config.enabled? do
-      minute_id = Cron.minute_id(now)
+      scheduled_now = scheduled_now(now, config.timezone)
+      minute_id = "#{config.timezone}:#{Cron.minute_id(scheduled_now)}"
 
       config
       |> DataSync.list_tasks()
-      |> Enum.filter(&due?(&1, now))
+      |> Enum.filter(&due?(&1, scheduled_now))
       |> Enum.flat_map(fn task ->
         case Store.reserve_schedule(task.key, minute_id) do
           :ok ->
             case enqueue(task.key, force: false) do
               {:ok, job} -> [job]
               {:error, reason} ->
+                release_schedule(task.key, minute_id)
                 Logger.warning("Task scheduler failed to enqueue #{task.key}: #{inspect(reason)}")
                 []
             end
 
           {:error, :condition_failed} ->
+            []
+
+          {:error, reason} ->
+            Logger.warning("Task scheduler failed to reserve #{task.key}: #{inspect(reason)}")
             []
         end
       end)
@@ -57,9 +69,9 @@ defmodule YellowDog.Tasks.Runner do
     end
   end
 
-  @spec run_job(pos_integer()) :: :ok
-  def run_job(job_id) do
-    with {:ok, job} <- Store.get_job(job_id),
+  @spec run_job(atom() | String.t(), String.t()) :: :ok | {:error, term()}
+  def run_job(task_key, job_id) do
+    with {:ok, job} <- Store.get_job(task_key, job_id),
          {:ok, executing_job} <- Store.mark_executing(job) do
       try do
         case executing_job.worker.perform(executing_job) do
@@ -77,14 +89,28 @@ defmodule YellowDog.Tasks.Runner do
         end
       rescue
         exception ->
-          mark_failed(executing_job, exception, __STACKTRACE__)
-          reraise exception, __STACKTRACE__
+          case mark_failed(executing_job, exception, __STACKTRACE__) do
+            :retry -> :ok
+            {:error, reason} -> {:error, reason}
+            _other -> reraise exception, __STACKTRACE__
+          end
+      catch
+        kind, reason ->
+          case mark_failed(executing_job, {kind, reason}, __STACKTRACE__) do
+            :retry -> :ok
+            {:error, reason} -> {:error, reason}
+            _other -> :erlang.raise(kind, reason, __STACKTRACE__)
+          end
       end
     else
       {:error, :not_found} ->
         :ok
 
       {:error, :condition_failed} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Task runner failed to start job #{job_id}: #{inspect(reason)}")
         :ok
     end
   end
@@ -102,15 +128,21 @@ defmodule YellowDog.Tasks.Runner do
     {:noreply, state}
   end
 
-  defp run_async(job_id) do
-    case Process.whereis(YellowDog.Tasks.TaskSupervisor) do
+  defp run_async(task_key, job_id) do
+    case Process.whereis(task_supervisor()) do
       nil ->
-        run_job(job_id)
+        run_job(task_key, job_id)
 
       _pid ->
-        Task.Supervisor.start_child(YellowDog.Tasks.TaskSupervisor, fn -> run_job(job_id) end)
-        :ok
+        case Task.Supervisor.start_child(task_supervisor(), fn -> run_job(task_key, job_id) end) do
+          {:ok, _pid} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
     end
+  end
+
+  defp task_supervisor do
+    Application.get_env(:yellow_dog_tasks, :task_supervisor, YellowDog.Tasks.TaskSupervisor)
   end
 
   defp due?(task, now) do
@@ -121,13 +153,57 @@ defmodule YellowDog.Tasks.Runner do
     case Store.mark_completed(job) do
       {:ok, _job} -> :ok
       {:error, :condition_failed} -> :ok
+      {:error, reason} ->
+        Logger.warning("Task #{job.task_key} failed to mark job #{job.id} completed: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
   defp mark_failed(job, reason, stacktrace \\ []) do
     case Store.mark_failed(job, reason, stacktrace) do
-      {:ok, _job} -> :ok
+      {:ok, %{state: "available"} = retry_job} ->
+        case run_async(retry_job.task_key, retry_job.id) do
+          :ok ->
+            :retry
+
+          {:error, reason} ->
+            Logger.warning("Task #{job.task_key} failed to retry job #{job.id}: #{inspect(reason)}")
+            {:error, reason}
+        end
+
+      {:ok, _job} ->
+        :discarded
+
       {:error, :condition_failed} -> :ok
+      {:error, reason} ->
+        Logger.warning("Task #{job.task_key} failed to mark job #{job.id} failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp scheduled_now(now, "Etc/UTC"), do: now
+
+  defp scheduled_now(now, timezone) do
+    case DateTime.shift_zone(now, timezone) do
+      {:ok, shifted} ->
+        shifted
+
+      {:error, reason} ->
+        raise ArgumentError, "task scheduler timezone #{inspect(timezone)} is invalid: #{inspect(reason)}"
+    end
+  end
+
+  defp release_schedule(task_key, minute_id) do
+    case Store.release_schedule(task_key, minute_id) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "Task scheduler failed to release reservation for #{task_key}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
     end
   end
 

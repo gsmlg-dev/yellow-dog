@@ -10,6 +10,8 @@
 
 import Config
 
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 config :yellow_dog_console,
   ecto_repos: [YellowDog.Console.Repo],
   generators: [timestamp_type: :utc_datetime]

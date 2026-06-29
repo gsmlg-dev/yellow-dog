@@ -20,7 +20,7 @@ defmodule YellowDog.Tasks.MixProject do
   def application do
     [
       mod: {YellowDog.Tasks.Application, []},
-      extra_applications: [:logger]
+      extra_applications: [:crypto, :logger]
     ]
   end
 
@@ -34,6 +34,7 @@ defmodule YellowDog.Tasks.MixProject do
       {:yellow_dog_fingerprint, in_umbrella: true},
       {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
+      {:tz, "~> 0.28.2"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

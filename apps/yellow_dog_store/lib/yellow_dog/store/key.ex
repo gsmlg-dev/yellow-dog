@@ -80,8 +80,8 @@ defmodule YellowDog.Store.Key do
   def event_log(timestamp, key), do: "event_log:#{timestamp}:#{key}"
 
   @doc "Task job key."
-  @spec task_job(pos_integer() | String.t()) :: String.t()
-  def task_job(id), do: "tasks:job:#{id}"
+  @spec task_job(atom() | String.t(), String.t()) :: String.t()
+  def task_job(task_key, id), do: "#{task_job_prefix(task_key)}#{id}"
 
   @doc "Task scheduler reservation key."
   @spec task_schedule(atom() | String.t()) :: String.t()
@@ -95,6 +95,7 @@ defmodule YellowDog.Store.Key do
   def dyn_dns_prefix, do: "dns:dyn:"
   def provider_config_prefix, do: "dns:provider:"
   def task_job_prefix, do: "tasks:job:"
+  def task_job_prefix(task_key), do: "tasks:job:#{task_key}:"
   def task_schedule_prefix, do: "tasks:schedule:"
 
   @doc "Prefix for all zones across all views."

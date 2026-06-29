@@ -52,8 +52,7 @@ defmodule YellowDog.Tasks.Config do
       |> deep_merge(file_config)
       |> deep_merge(app_config)
 
-    validate_sync_tasks!(config)
-    validate_crons!(config)
+    validate_config!(config)
 
     %__MODULE__{
       enabled?: truthy?(Map.get(config, "enabled")),
@@ -106,7 +105,13 @@ defmodule YellowDog.Tasks.Config do
     end
   end
 
-  defp validate_sync_tasks!(%{"sync" => sync}) when is_map(sync) do
+  defp validate_config!(config) do
+    validate_boolean!("tasks.enabled", Map.get(config, "enabled"))
+    validate_timezone!(Map.get(config, "timezone"))
+    validate_sync!(Map.get(config, "sync"))
+  end
+
+  defp validate_sync!(sync) when is_map(sync) do
     known_tasks = @sync_tasks |> Enum.map(fn {name, _cron} -> name end) |> MapSet.new()
 
     sync
@@ -120,20 +125,42 @@ defmodule YellowDog.Tasks.Config do
         raise ArgumentError,
               "tasks.sync contains unknown task key(s): #{unknown |> Enum.sort() |> Enum.join(", ")}"
     end
-  end
 
-  defp validate_sync_tasks!(_config), do: :ok
-
-  defp validate_crons!(%{"sync" => sync}) when is_map(sync) do
     Enum.each(sync, fn {name, schedule} ->
-      case schedule do
-        %{"cron" => cron} -> validate_cron!("tasks.sync.#{name}.cron", cron)
-        _ -> :ok
-      end
+      validate_schedule!("tasks.sync.#{name}", schedule)
     end)
   end
 
-  defp validate_crons!(_config), do: :ok
+  defp validate_sync!(sync) do
+    raise ArgumentError, "tasks.sync must be a map, got #{inspect(sync)}"
+  end
+
+  defp validate_schedule!(path, schedule) when is_map(schedule) do
+    validate_boolean!("#{path}.enabled", Map.get(schedule, "enabled"))
+    validate_cron!("#{path}.cron", Map.get(schedule, "cron"))
+    validate_max_attempts!("#{path}.max_attempts", Map.get(schedule, "max_attempts"))
+  end
+
+  defp validate_schedule!(path, schedule) do
+    raise ArgumentError, "#{path} must be a map, got #{inspect(schedule)}"
+  end
+
+  defp validate_boolean!(_path, value) when is_boolean(value), do: :ok
+
+  defp validate_boolean!(path, value) do
+    raise ArgumentError, "#{path} must be a boolean, got #{inspect(value)}"
+  end
+
+  defp validate_timezone!(timezone) when is_binary(timezone) do
+    case DateTime.now(timezone) do
+      {:ok, _now} -> :ok
+      {:error, reason} -> raise ArgumentError, "tasks.timezone is invalid: #{inspect(reason)}"
+    end
+  end
+
+  defp validate_timezone!(timezone) do
+    raise ArgumentError, "tasks.timezone must be a string, got #{inspect(timezone)}"
+  end
 
   defp validate_cron!(path, cron) when is_binary(cron) do
     case Cron.parse(cron) do
@@ -144,6 +171,16 @@ defmodule YellowDog.Tasks.Config do
 
   defp validate_cron!(path, _cron) do
     raise ArgumentError, "#{path} must be a cron expression string"
+  end
+
+  defp validate_max_attempts!(_path, attempts) when is_integer(attempts) and attempts >= 1, do: :ok
+
+  defp validate_max_attempts!(path, attempts) when is_integer(attempts) do
+    raise ArgumentError, "#{path} must be greater than or equal to 1, got #{attempts}"
+  end
+
+  defp validate_max_attempts!(path, attempts) do
+    raise ArgumentError, "#{path} must be an integer, got #{inspect(attempts)}"
   end
 
   defp deep_merge(left, right) do

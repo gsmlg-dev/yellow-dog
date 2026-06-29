@@ -73,7 +73,7 @@ defmodule YellowDog.Tasks.DataSync do
 
   @spec sync_ip_database(String.t()) :: :ok | {:error, term()}
   def sync_ip_database(type) when type in ["city", "country"] do
-    type_atom = String.to_existing_atom(type)
+    type_atom = ip_database_type(type)
     downloader = Application.get_env(:yellow_dog_tasks, :ip_database_downloader, &GeoIpDb.Database.download/1)
     metadata = Application.get_env(:yellow_dog_tasks, :ip_database_metadata, &GeoIpDb.Database.get_metadata/1)
     file_info = Application.get_env(:yellow_dog_tasks, :ip_database_file_info, &GeoIpDb.Database.file_info/1)
@@ -125,7 +125,7 @@ defmodule YellowDog.Tasks.DataSync do
     end
   end
 
-  @spec with_telemetry(atom(), String.t(), integer() | nil, (-> term())) :: term()
+  @spec with_telemetry(atom(), String.t(), String.t() | nil, (-> term())) :: term()
   def with_telemetry(task, source, job_id, fun) when is_function(fun, 0) do
     started_at = System.monotonic_time()
     metadata = %{task: task, source: source, job_id: job_id}
@@ -189,6 +189,9 @@ defmodule YellowDog.Tasks.DataSync do
 
   defp enabled?(%{"enabled" => enabled}), do: enabled in [true, "true", "1", 1]
   defp enabled?(_schedule), do: false
+
+  defp ip_database_type("city"), do: :city
+  defp ip_database_type("country"), do: :country
 
   defp ensure_oui_database_started do
     case GenServer.whereis(YellowDog.Fingerprint.OuiDatabase) do

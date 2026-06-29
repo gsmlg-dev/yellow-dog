@@ -108,6 +108,54 @@ defmodule YellowDog.Tasks.ConfigTest do
     end
   end
 
+  test "rejects invalid timezone values" do
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{"timezone" => "No/Such_Zone"})
+
+    assert_raise ArgumentError, ~r/tasks.timezone is invalid/, fn ->
+      Config.load()
+    end
+
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{"timezone" => false})
+
+    assert_raise ArgumentError, ~r/tasks.timezone must be a string/, fn ->
+      Config.load()
+    end
+  end
+
+  test "rejects invalid max attempts values" do
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{"ip_city" => %{"max_attempts" => "3"}}
+    })
+
+    assert_raise ArgumentError, ~r/tasks.sync.ip_city.max_attempts must be an integer/, fn ->
+      Config.load()
+    end
+
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{"ip_city" => %{"max_attempts" => 0}}
+    })
+
+    assert_raise ArgumentError, ~r/tasks.sync.ip_city.max_attempts must be greater than or equal to 1/, fn ->
+      Config.load()
+    end
+  end
+
+  test "rejects malformed sync config shapes" do
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{"sync" => false})
+
+    assert_raise ArgumentError, ~r/tasks.sync must be a map/, fn ->
+      Config.load()
+    end
+
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{"ip_city" => false}
+    })
+
+    assert_raise ArgumentError, ~r/tasks.sync.ip_city must be a map/, fn ->
+      Config.load()
+    end
+  end
+
   test "rejects unknown sync task keys" do
     Application.put_env(:yellow_dog_tasks, :tasks_config, %{
       "sync" => %{"unknown" => %{"enabled" => true, "cron" => "0 0 * * *"}}

@@ -8,10 +8,19 @@ defmodule YellowDog.Console.TasksLiveTest do
   alias YellowDog.Tasks
   alias YellowDog.Tasks.Store
 
+  defmodule UnavailableTaskBackend do
+    @moduledoc false
+
+    def prefix_scan(_prefix, _opts), do: {:error, :cluster_not_ready}
+    def put(_key, _value, _opts), do: {:error, :cluster_not_ready}
+    def put_if(_key, _value, _opts), do: {:error, :cluster_not_ready}
+    def get(_key, _opts), do: {:error, :cluster_not_ready}
+    def delete(_key), do: {:error, :cluster_not_ready}
+  end
+
   setup do
     EtsBackend.create_table()
     Backend.set_active(EtsBackend)
-    Store.clear_all()
 
     previous =
       save_env([
@@ -20,8 +29,12 @@ defmodule YellowDog.Console.TasksLiveTest do
         :ip_database_file_info,
         :mac_database_ensure_started,
         :mac_database_downloader,
-        :mac_database_info
+        :mac_database_info,
+        :store_backend
       ])
+
+    Application.put_env(:yellow_dog_tasks, :store_backend, EtsBackend)
+    Store.clear_all()
 
     Application.put_env(:yellow_dog_tasks, :ip_database_downloader, fn
       :city -> {:ok, "/tmp/city.mmdb"}
@@ -72,6 +85,25 @@ defmodule YellowDog.Console.TasksLiveTest do
 
     assert html =~ "IP City"
     assert html =~ "Recent Job History"
+  end
+
+  test "renders task ledger outages in the overview", %{conn: conn} do
+    Application.put_env(:yellow_dog_tasks, :store_backend, UnavailableTaskBackend)
+
+    {:ok, _view, html} = live(conn, ~p"/system/tasks")
+
+    assert html =~ "Unavailable"
+  end
+
+  test "renders task ledger outages in the history detail", %{conn: conn} do
+    Application.put_env(:yellow_dog_tasks, :store_backend, UnavailableTaskBackend)
+
+    {:ok, _view, html} = live(conn, ~p"/system/tasks/ip_city")
+
+    assert html =~ "Unavailable"
+    assert html =~ "Task ledger unavailable."
+    assert html =~ "cluster_not_ready"
+    refute html =~ "No jobs have been queued for this task."
   end
 
   test "ip database page links to task history and queues downloads", %{conn: conn} do

@@ -25,4 +25,7 @@ defmodule YellowDog.Store.Backend.Cluster do
 
   @impl true
   def put_many(operations), do: Concord.put_many(operations)
+
+  @doc false
+  def txn(spec, opts \\ []), do: Concord.Txn.commit(spec, opts)
 end

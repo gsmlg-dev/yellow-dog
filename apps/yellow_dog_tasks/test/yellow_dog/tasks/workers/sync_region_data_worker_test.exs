@@ -23,7 +23,7 @@ defmodule YellowDog.Tasks.Workers.SyncRegionDataWorkerTest do
   test "syncs region data", %{tmp_dir: tmp_dir} do
     ref = attach_telemetry()
 
-    assert :ok = SyncRegionDataWorker.perform(%Job{id: 123, args: %{"force" => true}})
+    assert :ok = SyncRegionDataWorker.perform(%Job{id: "job-123", args: %{"force" => true}})
     assert Store.info(data_dir: tmp_dir).record_count > 0
 
     assert_receive {^ref, [:yellow_dog, :tasks, :sync, :start],

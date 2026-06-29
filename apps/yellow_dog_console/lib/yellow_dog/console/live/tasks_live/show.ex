@@ -10,7 +10,7 @@ defmodule YellowDog.Console.TasksLive.Show do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Task History", task: nil, jobs: [])}
+    {:ok, assign(socket, page_title: "Task History", task: nil, jobs: [], jobs_error: nil)}
   end
 
   @impl true
@@ -21,7 +21,8 @@ defmodule YellowDog.Console.TasksLive.Show do
      assign(socket,
        page_title: "#{task.label} Task",
        task: task,
-       jobs: Tasks.recent_jobs(key)
+       jobs: Map.get(task, :recent_jobs, []),
+       jobs_error: Map.get(task, :status_error)
      )}
   end
 
@@ -58,11 +59,16 @@ defmodule YellowDog.Console.TasksLive.Show do
         <div class="card bg-surface shadow-xl">
           <div class="card-body">
             <h2 class="card-title text-lg">Recent Job History</h2>
-            <div :if={@jobs == []} class="text-center py-12 text-on-surface-variant">
+            <div :if={@jobs_error} class="text-center py-12 text-on-surface-variant">
+              <.dm_mdi name="alert-circle" class="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>Task ledger unavailable.</p>
+              <p class="text-xs font-mono mt-2">{inspect(@jobs_error)}</p>
+            </div>
+            <div :if={!@jobs_error && @jobs == []} class="text-center py-12 text-on-surface-variant">
               <.dm_mdi name="history" class="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p>No jobs have been queued for this task.</p>
             </div>
-            <div :if={@jobs != []} class="overflow-x-auto mt-4">
+            <div :if={!@jobs_error && @jobs != []} class="overflow-x-auto mt-4">
               <table class="table">
                 <thead>
                   <tr>
@@ -100,7 +106,11 @@ defmodule YellowDog.Console.TasksLive.Show do
         {:noreply,
          socket
          |> put_flash(:info, "#{task.label} sync queued")
-         |> assign(task: task, jobs: Tasks.recent_jobs(key))}
+         |> assign(
+           task: task,
+           jobs: Map.get(task, :recent_jobs, []),
+           jobs_error: Map.get(task, :status_error)
+         )}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Unable to queue task: #{inspect(reason)}")}
@@ -121,6 +131,7 @@ defmodule YellowDog.Console.TasksLive.Show do
   defp status_label(:active), do: "Active"
   defp status_label(:succeeded), do: "Succeeded"
   defp status_label(:failed), do: "Failed"
+  defp status_label(:unavailable), do: "Unavailable"
   defp status_label(_status), do: "Idle"
 
   defp format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
