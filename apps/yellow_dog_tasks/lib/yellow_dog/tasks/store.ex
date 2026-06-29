@@ -48,7 +48,12 @@ defmodule YellowDog.Tasks.Store do
 
   @spec mark_executing(Job.t()) :: {:ok, Job.t()} | {:error, term()}
   def mark_executing(%Job{} = job) do
-    updated = %{job | state: "executing", attempt: job.attempt + 1, started_at: DateTime.utc_now()}
+    updated = %{
+      job
+      | state: "executing",
+        attempt: job.attempt + 1,
+        started_at: DateTime.utc_now()
+    }
 
     case put_if_current(job, updated, &match?(%Job{state: "available"}, &1)) do
       :ok -> {:ok, updated}
@@ -122,7 +127,8 @@ defmodule YellowDog.Tasks.Store do
     end
   end
 
-  @spec last_job_result(atom() | String.t(), [String.t()]) :: {:ok, Job.t() | nil} | {:error, term()}
+  @spec last_job_result(atom() | String.t(), [String.t()]) ::
+          {:ok, Job.t() | nil} | {:error, term()}
   def last_job_result(task_key, states) do
     normalized = normalize_key(task_key)
 
@@ -144,7 +150,7 @@ defmodule YellowDog.Tasks.Store do
     ArgumentError -> {:error, :unknown_task}
   end
 
-  @spec reserve_schedule(atom(), String.t()) :: :ok | {:error, term()}
+  @spec reserve_schedule(atom() | String.t(), String.t()) :: :ok | {:error, term()}
   def reserve_schedule(task_key, minute_id) do
     key = Key.task_schedule(task_key)
     reservation = %{task_key: task_key, minute_id: minute_id, reserved_at: DateTime.utc_now()}
@@ -240,7 +246,7 @@ defmodule YellowDog.Tasks.Store do
   end
 
   defp normalize_key(key) when is_atom(key), do: key
-  defp normalize_key(key) when is_binary(key), do: String.to_existing_atom(key)
+  defp normalize_key(key) when is_binary(key), do: key
 
   defp new_job_id do
     16
@@ -283,7 +289,11 @@ defmodule YellowDog.Tasks.Store do
     end)
   end
 
-  defp terminal_at(%Job{state: "completed", completed_at: %DateTime{} = completed_at}), do: completed_at
-  defp terminal_at(%Job{state: "discarded", discarded_at: %DateTime{} = discarded_at}), do: discarded_at
+  defp terminal_at(%Job{state: "completed", completed_at: %DateTime{} = completed_at}),
+    do: completed_at
+
+  defp terminal_at(%Job{state: "discarded", discarded_at: %DateTime{} = discarded_at}),
+    do: discarded_at
+
   defp terminal_at(%Job{inserted_at: inserted_at}), do: inserted_at
 end

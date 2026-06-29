@@ -10,7 +10,7 @@ defmodule YellowDog.Tasks.Job do
 
   @type t :: %__MODULE__{
           id: String.t(),
-          task_key: atom(),
+          task_key: atom() | String.t(),
           worker: module(),
           queue: String.t(),
           args: map(),

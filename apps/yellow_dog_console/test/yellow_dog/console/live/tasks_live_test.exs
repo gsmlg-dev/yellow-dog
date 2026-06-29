@@ -5,6 +5,7 @@ defmodule YellowDog.Console.TasksLiveTest do
 
   alias YellowDog.Store.Backend
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Zone
   alias YellowDog.Tasks
   alias YellowDog.Tasks.Store
 
@@ -20,6 +21,7 @@ defmodule YellowDog.Console.TasksLiveTest do
 
   setup do
     EtsBackend.create_table()
+    :ets.delete_all_objects(EtsBackend.table())
     Backend.set_active(EtsBackend)
 
     previous =
@@ -30,10 +32,15 @@ defmodule YellowDog.Console.TasksLiveTest do
         :mac_database_ensure_started,
         :mac_database_downloader,
         :mac_database_info,
+        :tasks_config,
+        :config_file_path,
+        :cloud_zone_sync_fun,
         :store_backend
       ])
 
     Application.put_env(:yellow_dog_tasks, :store_backend, EtsBackend)
+    Application.delete_env(:yellow_dog_tasks, :tasks_config)
+    Application.delete_env(:yellow_dog_tasks, :config_file_path)
     Store.clear_all()
 
     Application.put_env(:yellow_dog_tasks, :ip_database_downloader, fn
@@ -69,6 +76,42 @@ defmodule YellowDog.Console.TasksLiveTest do
     assert html =~ "Data Sync Tasks"
     assert has_element?(view, "button[phx-click='run_now'][phx-value-task='ip_city']", "Run Now")
     assert has_element?(view, "a[href='/system/tasks/ip_city']", "View History")
+  end
+
+  test "renders cloud zone sync tasks and updates schedule settings", %{conn: conn} do
+    zone_name = "console-cloud-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :cloudflare)
+    key = "cloud_zone:default:#{zone_name}"
+
+    {:ok, view, html} = live(conn, ~p"/system/tasks")
+
+    assert html =~ "Cloud DNS: #{zone_name}"
+    assert html =~ "Cloudflare DNS"
+    assert html =~ "0 * * * *"
+    assert has_element?(view, "form[phx-submit='save_task_config'][data-task-key='#{key}']")
+
+    assert has_element?(
+             view,
+             "a[href='/system/tasks/#{URI.encode(key, &URI.char_unreserved?/1)}']",
+             "View History"
+           )
+
+    html =
+      render_submit(view, "save_task_config", %{
+        "task_key" => key,
+        "task" => %{"enabled" => "false", "cron" => "10 * * * *"}
+      })
+
+    assert html =~ "Task schedule updated"
+    assert html =~ "10 * * * *"
+    assert html =~ "Disabled"
+    refute Tasks.get_task!(key).enabled?
+
+    {:ok, _detail_view, detail_html} =
+      live(conn, "/system/tasks/#{URI.encode(key, &URI.char_unreserved?/1)}")
+
+    assert detail_html =~ "Cloud DNS: #{zone_name}"
+    assert detail_html =~ "10 * * * *"
   end
 
   test "queues a task from the overview", %{conn: conn} do
@@ -128,6 +171,22 @@ defmodule YellowDog.Console.TasksLiveTest do
 
     assert html =~ "MAC/OUI sync queued"
     assert [_job | _] = Tasks.recent_jobs(:mac)
+  end
+
+  defp create_cloud_zone(view_name, zone_name, provider) do
+    cloud_mirror = %{
+      enabled: true,
+      connector_name: "cloud-main",
+      provider: provider,
+      zone_id: "",
+      direction: :bidirectional,
+      conflict_strategy: :local_wins
+    }
+
+    :ok =
+      Zone.create_zone(view_name, zone_name, Zone.default_soa(zone_name),
+        cloud_mirror: cloud_mirror
+      )
   end
 
   defp save_env(keys), do: Map.new(keys, &{&1, Application.get_env(:yellow_dog_tasks, &1)})

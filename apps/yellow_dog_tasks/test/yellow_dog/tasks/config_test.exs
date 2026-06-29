@@ -37,7 +37,11 @@ defmodule YellowDog.Tasks.ConfigTest do
   end
 
   test "loads standalone tasks config file" do
-    path = Path.join(System.tmp_dir!(), "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml"
+      )
 
     File.write!(path, """
     [tasks]
@@ -60,6 +64,63 @@ defmodule YellowDog.Tasks.ConfigTest do
     assert config.sync["ip_city"]["enabled"]
     assert config.sync["ip_city"]["cron"] == "5 1 * * *"
     assert config.sync["ip_city"]["max_attempts"] == 5
+  end
+
+  test "loads quoted cloud zone task config keys" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml"
+      )
+
+    File.write!(path, """
+    [tasks]
+    enabled = true
+    timezone = "Etc/UTC"
+
+    [tasks.sync."cloud_zone:default:example.com"]
+    enabled = false
+    cron = "15 * * * *"
+    max_attempts = 3
+    """)
+
+    on_exit(fn -> File.rm(path) end)
+
+    Application.put_env(:yellow_dog_tasks, :config_file_path, path)
+
+    config = Config.load()
+
+    assert config.sync["cloud_zone:default:example.com"]["enabled"] == false
+    assert config.sync["cloud_zone:default:example.com"]["cron"] == "15 * * * *"
+  end
+
+  test "updates task schedules in standalone task config file" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml"
+      )
+
+    on_exit(fn -> File.rm(path) end)
+
+    Application.put_env(:yellow_dog_tasks, :config_file_path, path)
+
+    assert {:ok, config} =
+             Config.update_sync_task("cloud_zone:default:example.com", %{
+               "enabled" => false,
+               "cron" => "20 * * * *"
+             })
+
+    assert config.sync["cloud_zone:default:example.com"]["enabled"] == false
+    assert config.sync["cloud_zone:default:example.com"]["cron"] == "20 * * * *"
+
+    assert File.read!(path) =~ ~s([tasks.sync."cloud_zone:default:example.com"])
+
+    Application.delete_env(:yellow_dog_tasks, :tasks_config)
+    reloaded = Config.load()
+
+    assert reloaded.sync["cloud_zone:default:example.com"]["enabled"] == false
+    assert reloaded.sync["cloud_zone:default:example.com"]["cron"] == "20 * * * *"
   end
 
   test "returns fixed cron entries for enabled tasks" do
@@ -134,9 +195,11 @@ defmodule YellowDog.Tasks.ConfigTest do
       "sync" => %{"ip_city" => %{"max_attempts" => 0}}
     })
 
-    assert_raise ArgumentError, ~r/tasks.sync.ip_city.max_attempts must be greater than or equal to 1/, fn ->
-      Config.load()
-    end
+    assert_raise ArgumentError,
+                 ~r/tasks.sync.ip_city.max_attempts must be greater than or equal to 1/,
+                 fn ->
+                   Config.load()
+                 end
   end
 
   test "rejects malformed sync config shapes" do
@@ -155,7 +218,19 @@ defmodule YellowDog.Tasks.ConfigTest do
     end
   end
 
-  test "rejects unknown sync task keys" do
+  test "allows cloud zone sync task keys and rejects other unknown sync task keys" do
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{
+        "cloud_zone:default:example.com" => %{
+          "enabled" => true,
+          "cron" => "0 * * * *",
+          "max_attempts" => 3
+        }
+      }
+    })
+
+    assert Config.load().sync["cloud_zone:default:example.com"]["cron"] == "0 * * * *"
+
     Application.put_env(:yellow_dog_tasks, :tasks_config, %{
       "sync" => %{"unknown" => %{"enabled" => true, "cron" => "0 0 * * *"}}
     })

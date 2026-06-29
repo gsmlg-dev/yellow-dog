@@ -10,6 +10,7 @@ defmodule YellowDog.Console.DnsLiveTest do
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
   alias YellowDog.Store.Provider
   alias YellowDog.Store.Zone, as: StoreZone
+  alias YellowDog.Tasks
 
   # ============================================================================
   # DNS Overview Page
@@ -841,6 +842,9 @@ defmodule YellowDog.Console.DnsLiveTest do
 
       assert is_binary(result) or match?({:error, {:live_redirect, _}}, result)
       assert_receive {:cloud_dns_sync_enqueued, "default", ^zone_name, []}
+
+      assert [%{state: "completed"} | _] =
+               Tasks.recent_jobs(Tasks.cloud_zone_task_key("default", zone_name))
     end
 
     test "create zone form submits forward zone with upstreams", %{conn: conn} do
@@ -2486,20 +2490,27 @@ defmodule YellowDog.Console.DnsLiveTest do
   end
 
   defp setup_cloud_dns_sync_runner do
-    previous_runner = Application.get_env(:yellow_dog_dns, :cloud_dns_sync_job_runner)
+    previous_sync_fun = Application.get_env(:yellow_dog_tasks, :cloud_zone_sync_fun)
+    previous_task_backend = Application.get_env(:yellow_dog_tasks, :store_backend)
     test_pid = self()
 
-    Application.put_env(:yellow_dog_dns, :cloud_dns_sync_job_runner, fn view_name,
-                                                                        zone_name,
-                                                                        opts ->
+    Application.put_env(:yellow_dog_tasks, :store_backend, EtsBackend)
+    YellowDog.Tasks.Store.clear_all()
+
+    Application.put_env(:yellow_dog_tasks, :cloud_zone_sync_fun, fn view_name, zone_name, opts ->
       send(test_pid, {:cloud_dns_sync_enqueued, view_name, zone_name, opts})
-      :ok
+      {:ok, %{records_synced: 0}}
     end)
 
     on_exit(fn ->
-      case previous_runner do
-        nil -> Application.delete_env(:yellow_dog_dns, :cloud_dns_sync_job_runner)
-        runner -> Application.put_env(:yellow_dog_dns, :cloud_dns_sync_job_runner, runner)
+      case previous_sync_fun do
+        nil -> Application.delete_env(:yellow_dog_tasks, :cloud_zone_sync_fun)
+        sync_fun -> Application.put_env(:yellow_dog_tasks, :cloud_zone_sync_fun, sync_fun)
+      end
+
+      case previous_task_backend do
+        nil -> Application.delete_env(:yellow_dog_tasks, :store_backend)
+        backend -> Application.put_env(:yellow_dog_tasks, :store_backend, backend)
       end
     end)
 

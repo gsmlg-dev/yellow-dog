@@ -56,7 +56,35 @@ defmodule YellowDog.Console.TasksLive.Index do
                       <div class="text-xs text-on-surface-variant font-mono">{task.key}</div>
                     </td>
                     <td><.status_badge status={task.status} enabled?={task.enabled?} /></td>
-                    <td class="font-mono text-sm">{task.cron || "Manual only"}</td>
+                    <td>
+                      <form
+                        phx-submit="save_task_config"
+                        data-task-key={task.key}
+                        class="flex flex-wrap items-center gap-2"
+                      >
+                        <input type="hidden" name="task_key" value={task.key} />
+                        <input type="hidden" name="task[enabled]" value="false" />
+                        <label class="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            name="task[enabled]"
+                            value="true"
+                            checked={task.enabled?}
+                            class="toggle toggle-sm"
+                          /> Enabled
+                        </label>
+                        <input
+                          type="text"
+                          name="task[cron]"
+                          value={task.cron || ""}
+                          class="input input-sm input-bordered font-mono w-40"
+                          aria-label={"Schedule for #{task.label}"}
+                        />
+                        <button type="submit" class="btn btn-ghost btn-sm">
+                          <.dm_mdi name="content-save" class="h-4 w-4" /> Save
+                        </button>
+                      </form>
+                    </td>
                     <td>{task.source}</td>
                     <td>
                       <div class="flex justify-end gap-2">
@@ -67,7 +95,7 @@ defmodule YellowDog.Console.TasksLive.Index do
                         >
                           <.dm_mdi name="play" class="h-4 w-4" /> Run Now
                         </button>
-                        <.link navigate={"/system/tasks/#{task.key}"} class="btn btn-ghost btn-sm">
+                        <.link navigate={task_path(task.key)} class="btn btn-ghost btn-sm">
                           <.dm_mdi name="history" class="h-4 w-4" /> View History
                         </.link>
                       </div>
@@ -103,6 +131,19 @@ defmodule YellowDog.Console.TasksLive.Index do
     end
   end
 
+  def handle_event("save_task_config", %{"task_key" => key, "task" => task_params}, socket) do
+    case Tasks.update_task(key, task_params) do
+      {:ok, _task} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Task schedule updated")
+         |> assign(:tasks, Tasks.list_tasks())}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Unable to update task: #{inspect(reason)}")}
+    end
+  end
+
   defp status_badge(assigns) do
     ~H"""
     <span class={["badge badge-sm", status_class(@status)]}>
@@ -122,4 +163,9 @@ defmodule YellowDog.Console.TasksLive.Index do
   defp status_label(:failed), do: "Failed"
   defp status_label(:unavailable), do: "Unavailable"
   defp status_label(_status), do: "Idle"
+
+  defp task_path(task_key) do
+    encoded = task_key |> to_string() |> URI.encode(&URI.char_unreserved?/1)
+    "/system/tasks/#{encoded}"
+  end
 end

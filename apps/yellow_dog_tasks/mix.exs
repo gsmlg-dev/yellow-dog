@@ -33,6 +33,7 @@ defmodule YellowDog.Tasks.MixProject do
       {:jason, "~> 1.4"},
       {:yellow_dog_fingerprint, in_umbrella: true},
       {:yellow_dog_config, in_umbrella: true},
+      {:yellow_dog_dns, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
       {:tz, "~> 0.28.2"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

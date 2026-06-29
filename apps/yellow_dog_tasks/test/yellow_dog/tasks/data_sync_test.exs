@@ -11,6 +11,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
   alias YellowDog.Tasks.Workers.SyncIpDatabaseWorker
   alias YellowDog.Tasks.Workers.SyncMacDatabaseWorker
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Zone
 
   defmodule ExitWorker do
     @moduledoc false
@@ -83,6 +84,8 @@ defmodule YellowDog.Tasks.DataSyncTest do
         :ip_database_metadata,
         :ip_database_file_info,
         :tasks_config,
+        :config_file_path,
+        :cloud_zone_sync_fun,
         :store_backend,
         :task_supervisor,
         :test_minute_id,
@@ -90,6 +93,8 @@ defmodule YellowDog.Tasks.DataSyncTest do
       ])
 
     Application.put_env(:yellow_dog_tasks, :store_backend, EtsBackend)
+    Application.delete_env(:yellow_dog_tasks, :tasks_config)
+    Application.delete_env(:yellow_dog_tasks, :config_file_path)
     Store.clear_all()
 
     Application.put_env(:yellow_dog_tasks, :ip_database_downloader, fn
@@ -98,7 +103,10 @@ defmodule YellowDog.Tasks.DataSyncTest do
     end)
 
     Application.put_env(:yellow_dog_tasks, :ip_database_metadata, fn _type -> {:ok, %{}} end)
-    Application.put_env(:yellow_dog_tasks, :ip_database_file_info, fn _type -> {:ok, %{size: 1}} end)
+
+    Application.put_env(:yellow_dog_tasks, :ip_database_file_info, fn _type ->
+      {:ok, %{size: 1}}
+    end)
 
     on_exit(fn -> restore_env(previous) end)
 
@@ -110,6 +118,82 @@ defmodule YellowDog.Tasks.DataSyncTest do
 
     assert Enum.map(tasks, & &1.key) == [:ip_country, :ip_city, :mac]
     assert Enum.all?(tasks, &Map.has_key?(&1, :status))
+  end
+
+  test "lists cloud provider zones as hourly sync tasks" do
+    zone_name = "cloud-tasks-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :cloudflare)
+
+    tasks = Tasks.list_tasks()
+    key = "cloud_zone:default:#{zone_name}"
+
+    assert [:ip_country, :ip_city, :mac, ^key] = Enum.map(tasks, & &1.key)
+
+    task = Enum.find(tasks, &(&1.key == key))
+
+    assert task.label == "Cloud DNS: #{zone_name}"
+    assert task.source == "Cloudflare DNS"
+    assert task.cron == "0 * * * *"
+    assert task.enabled?
+    assert task.args == %{"view_name" => "default", "zone_name" => zone_name}
+  end
+
+  test "does not list zones without enabled cloud providers" do
+    disabled_zone_name = "cloud-disabled-#{System.unique_integer([:positive])}.example.com"
+    plain_zone_name = "plain-#{System.unique_integer([:positive])}.example.com"
+
+    create_cloud_zone("default", disabled_zone_name, :cloudflare, enabled: false)
+    :ok = Zone.create_zone("default", plain_zone_name, Zone.default_soa(plain_zone_name))
+
+    task_keys = Tasks.list_tasks() |> Enum.map(& &1.key)
+
+    refute "cloud_zone:default:#{disabled_zone_name}" in task_keys
+    refute "cloud_zone:default:#{plain_zone_name}" in task_keys
+  end
+
+  test "updates cloud zone task schedule without creating atoms" do
+    zone_name = "cloud-config-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :route53)
+    key = "cloud_zone:default:#{zone_name}"
+
+    assert {:ok, task} =
+             Tasks.update_task(key, %{"enabled" => "false", "cron" => "15 * * * *"})
+
+    assert task.key == key
+    refute task.enabled?
+    assert task.cron == "15 * * * *"
+
+    assert %{"enabled" => false, "cron" => "15 * * * *"} =
+             Application.get_env(:yellow_dog_tasks, :tasks_config)["sync"][key]
+  end
+
+  test "runs due cloud zone schedules" do
+    parent = self()
+    zone_name = "cloud-schedule-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :cloudflare)
+    key = "cloud_zone:default:#{zone_name}"
+
+    Application.put_env(:yellow_dog_tasks, :cloud_zone_sync_fun, fn view_name,
+                                                                    sync_zone_name,
+                                                                    opts ->
+      send(parent, {:cloud_sync, view_name, sync_zone_name, opts})
+      {:ok, %{records_synced: 0}}
+    end)
+
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "timezone" => "Etc/UTC",
+      "sync" => %{
+        "ip_city" => %{"enabled" => false},
+        "ip_country" => %{"enabled" => false},
+        "mac" => %{"enabled" => false}
+      }
+    })
+
+    assert [%Job{task_key: ^key}] = Runner.run_due_schedules(~U[2026-06-29 02:00:00Z])
+
+    assert_receive {:cloud_sync, "default", ^zone_name, []}, 500
+
+    assert %Job{state: "completed"} = await_recent_job(key, "completed")
   end
 
   test "enqueues and records a known IP database task in Store" do
@@ -130,7 +214,11 @@ defmodule YellowDog.Tasks.DataSyncTest do
       ])
 
     Application.put_env(:yellow_dog_tasks, :mac_database_ensure_started, fn -> :ok end)
-    Application.put_env(:yellow_dog_tasks, :mac_database_downloader, fn -> {:ok, "/tmp/manuf.txt"} end)
+
+    Application.put_env(:yellow_dog_tasks, :mac_database_downloader, fn ->
+      {:ok, "/tmp/manuf.txt"}
+    end)
+
     Application.put_env(:yellow_dog_tasks, :mac_database_info, fn -> %{entry_count: 1} end)
 
     try do
@@ -337,6 +425,22 @@ defmodule YellowDog.Tasks.DataSyncTest do
 
   test "rejects unknown tasks" do
     assert {:error, :unknown_task} = Tasks.enqueue(:unknown)
+  end
+
+  defp create_cloud_zone(view_name, zone_name, provider, opts \\ []) do
+    cloud_mirror = %{
+      enabled: Keyword.get(opts, :enabled, true),
+      connector_name: "cloud-main",
+      provider: provider,
+      zone_id: "",
+      direction: :bidirectional,
+      conflict_strategy: :local_wins
+    }
+
+    :ok =
+      Zone.create_zone(view_name, zone_name, Zone.default_soa(zone_name),
+        cloud_mirror: cloud_mirror
+      )
   end
 
   defp save_env(keys), do: Map.new(keys, &{&1, Application.get_env(:yellow_dog_tasks, &1)})

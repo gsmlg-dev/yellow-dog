@@ -34,6 +34,25 @@ defmodule YellowDog.Tasks do
   end
 
   @doc """
+  Updates schedule settings for a known task.
+  """
+  @spec update_task(atom() | String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def update_task(key, attrs) when is_map(attrs) do
+    with {:ok, task} <- DataSync.fetch_task(key),
+         {:ok, _config} <- Config.update_sync_task(task.key, attrs),
+         {:ok, updated_task} <- DataSync.fetch_task(task.key) do
+      {:ok, TaskStatus.put_status(updated_task)}
+    end
+  end
+
+  @doc """
+  Returns the task key for a view-scoped cloud zone sync task.
+  """
+  @spec cloud_zone_task_key(String.t(), String.t()) :: String.t()
+  def cloud_zone_task_key(view_name, zone_name),
+    do: DataSync.cloud_zone_task_key(view_name, zone_name)
+
+  @doc """
   Enqueues a manual sync job for a known task.
   """
   @spec enqueue(atom() | String.t(), keyword()) ::

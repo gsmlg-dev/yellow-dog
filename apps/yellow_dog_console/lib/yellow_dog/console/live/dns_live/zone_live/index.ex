@@ -14,11 +14,11 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
-  alias YellowDog.Dns.CloudDnsSyncJob
   alias YellowDog.Dns.ConfigPersistence
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.ZoneController
+  alias YellowDog.Tasks
   alias YellowDog.Store.Provider, as: StoreProvider
   alias YellowDog.Store.Zone, as: StoreZone
 
@@ -704,8 +704,10 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   defp maybe_enqueue_cloud_dns_sync(view_name, zone_name, :auth, config) do
     if cloud_mirror_config_enabled?(Keyword.get(config, :cloud_mirror)) do
-      case CloudDnsSyncJob.enqueue(view_name, zone_name) do
-        :ok ->
+      task_key = Tasks.cloud_zone_task_key(view_name, zone_name)
+
+      case Tasks.enqueue(task_key) do
+        {:ok, _job} ->
           :ok
 
         {:error, reason} ->
