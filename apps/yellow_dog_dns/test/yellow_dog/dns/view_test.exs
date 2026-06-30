@@ -16,6 +16,30 @@ defmodule YellowDog.Dns.ViewTest do
 
   alias YellowDog.Dns.View
   alias YellowDog.Dns.View.ACL
+  alias DNS.Message
+  alias DNS.Message.Question
+  alias DNS.Message.RCode
+
+  defp build_test_query(id, name, type) do
+    query = Message.new()
+    question = Question.new(name, type, :in)
+    header = %{query.header | id: id, qdcount: 1, rd: 1}
+
+    %{query | header: header, qdlist: [question]}
+  end
+
+  defp build_test_response(query) do
+    header = %{
+      query.header
+      | qr: 1,
+        aa: 1,
+        ra: 1,
+        ancount: 0,
+        rcode: RCode.no_error()
+    }
+
+    %Message{header: header, qdlist: query.qdlist, anlist: [], nslist: [], arlist: []}
+  end
 
   # Start the required registry before all tests
   setup_all do
@@ -425,6 +449,36 @@ defmodule YellowDog.Dns.ViewTest do
       assert :ets.lookup(state.cache_table, {"www.example.com", "A"}) == []
       assert :ets.lookup(state.cache_table, {"example.com", "SOA"}) == []
       assert [{_, _}] = :ets.lookup(state.cache_table, {"api.other.com", "A"})
+
+      GenServer.stop(pid)
+    end
+  end
+
+  describe "resolve/4 route metadata" do
+    @tag :capture_log
+    test "reports auth route metadata for a cached answer under an auth zone" do
+      view_name = "test_route_metadata_#{:rand.uniform(1_000_000)}"
+      query = build_test_query(12_001, "www.example.com", :a)
+      response = build_test_response(query)
+
+      {:ok, pid} =
+        View.start_link(
+          name: view_name,
+          zones: [{:auth, "example.com"}],
+          recursion_enabled: false
+        )
+
+      :sys.replace_state(pid, fn state ->
+        expires_at = System.system_time(:second) + 300
+        :ets.insert(state.cache_table, {{"www.example.com", "A"}, {response, expires_at}})
+        state
+      end)
+
+      assert {:ok, _response} = View.resolve(pid, self(), 12_001, query)
+      assert_receive {:zone_lookup, 12_001, :hit}
+
+      assert_receive {:query_route, 12_001,
+                      %{resolution_type: :auth, zone_type: :auth, zone: "example.com"}}
 
       GenServer.stop(pid)
     end

@@ -126,6 +126,8 @@ defmodule YellowDog.Dns.QueryLoggerTest do
         authority_count: 1,
         additional_count: 0,
         cache_hit: true,
+        resolution_type: :auth,
+        zone_type: :auth,
         zone_used: "example.com",
         fallback_used: false,
         error: nil
@@ -147,6 +149,8 @@ defmodule YellowDog.Dns.QueryLoggerTest do
       assert entry.authority_count == 1
       assert entry.additional_count == 0
       assert entry.cache_hit == true
+      assert entry.resolution_type == :auth
+      assert entry.zone_type == :auth
       assert entry.zone_used == "example.com"
       assert entry.fallback_used == false
       assert entry.error == nil

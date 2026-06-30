@@ -54,6 +54,8 @@ defmodule YellowDog.Dns.QueryLogger do
             authority_count: non_neg_integer() | nil,
             additional_count: non_neg_integer() | nil,
             cache_hit: boolean() | nil,
+            resolution_type: :auth | :recursive | atom() | String.t() | nil,
+            zone_type: atom() | String.t() | nil,
             zone_used: String.t() | nil,
             fallback_used: boolean() | nil,
             error: term()
@@ -75,6 +77,8 @@ defmodule YellowDog.Dns.QueryLogger do
       :authority_count,
       :additional_count,
       :cache_hit,
+      :resolution_type,
+      :zone_type,
       :zone_used,
       :fallback_used,
       :error
@@ -259,6 +263,9 @@ defmodule YellowDog.Dns.QueryLogger do
         client_ip: entry.client_ip,
         qname: entry.qname,
         qtype: entry.qtype,
+        resolution_type: entry.resolution_type,
+        zone_type: entry.zone_type,
+        zone_used: entry.zone_used,
         response_code: entry.response_code,
         response_time_us: entry.response_time_us
       }
@@ -364,6 +371,8 @@ defmodule YellowDog.Dns.QueryLogger do
       authority_count: Map.get(attrs, :authority_count, 0),
       additional_count: Map.get(attrs, :additional_count, 0),
       cache_hit: Map.get(attrs, :cache_hit, false),
+      resolution_type: Map.get(attrs, :resolution_type),
+      zone_type: Map.get(attrs, :zone_type),
       zone_used: Map.get(attrs, :zone_used),
       fallback_used: Map.get(attrs, :fallback_used, false),
       error: Map.get(attrs, :error)

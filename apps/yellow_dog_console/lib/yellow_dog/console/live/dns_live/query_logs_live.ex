@@ -28,6 +28,11 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
 
   @protocol_badges %{"udp" => "badge-info", "tcp" => "badge-primary"}
 
+  @resolution_badges %{
+    "auth" => "badge-primary",
+    "recursive" => "badge-secondary"
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -172,7 +177,8 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
 
     Enum.filter(entries, fn e ->
       (e.qname && downcase_contains?(to_string(e.qname), q)) ||
-        (e.client_ip && String.contains?(format_ip(e.client_ip), q))
+        (e.client_ip && String.contains?(format_ip(e.client_ip), q)) ||
+        (e.zone_used && downcase_contains?(to_string(e.zone_used), q))
     end)
   end
 
@@ -218,9 +224,22 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
 
   defp protocol_badge(proto), do: Map.get(@protocol_badges, proto, "badge-ghost")
 
+  defp resolution_badge(type), do: Map.get(@resolution_badges, to_string(type), "badge-ghost")
+
+  defp resolution_label(:auth), do: "Auth"
+  defp resolution_label("auth"), do: "Auth"
+  defp resolution_label(:recursive), do: "Recursive"
+  defp resolution_label("recursive"), do: "Recursive"
+  defp resolution_label(nil), do: "-"
+  defp resolution_label(type), do: type |> to_string() |> String.capitalize()
+
+  defp format_zone(nil), do: "-"
+  defp format_zone(""), do: "-"
+  defp format_zone(zone), do: to_string(zone)
+
   defp build_csv(entries) do
     header =
-      "Timestamp,Client IP,Query Name,Type,Protocol,Response Code,Latency (us),Cache Hit,View\r\n"
+      "Timestamp,Client IP,Query Name,QType,Type,Zone,Protocol,Response Code,Latency (us),Cache Hit,View\r\n"
 
     rows =
       Enum.map_join(entries, "\r\n", fn e ->
@@ -229,6 +248,8 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
           csv_escape(format_ip(e.client_ip)),
           csv_escape(to_string(e.qname || "")),
           csv_escape(to_string(e.qtype || "")),
+          csv_escape(resolution_label(e.resolution_type)),
+          csv_escape(format_zone(e.zone_used)),
           csv_escape(to_string(e.protocol || "")),
           csv_escape(to_string(e.response_code || "")),
           to_string(e.response_time_us || ""),
@@ -376,7 +397,9 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                     <th scope="col">Time</th>
                     <th scope="col">Client</th>
                     <th scope="col">Query Name</th>
+                    <th scope="col">QType</th>
                     <th scope="col">Type</th>
+                    <th scope="col">Zone</th>
                     <th scope="col">Proto</th>
                     <th scope="col">RCode</th>
                     <th scope="col">Latency</th>
@@ -387,7 +410,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                 <tbody>
                   <%= if Enum.empty?(@entries) do %>
                     <tr>
-                      <td colspan="9" class="text-center text-on-surface-variant py-8">
+                      <td colspan="11" class="text-center text-on-surface-variant py-8">
                         No DNS queries recorded yet
                       </td>
                     </tr>
@@ -411,6 +434,12 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                             {entry.qtype |> to_string() |> String.upcase()}
                           </span>
                         </td>
+                        <td>
+                          <span class={"badge badge-xs " <> resolution_badge(entry.resolution_type)}>
+                            {resolution_label(entry.resolution_type)}
+                          </span>
+                        </td>
+                        <td class="font-mono text-xs">{format_zone(entry.zone_used)}</td>
                         <td>
                           <span class={"badge badge-xs " <> protocol_badge(to_string(entry.protocol))}>
                             {entry.protocol |> to_string() |> String.upcase()}

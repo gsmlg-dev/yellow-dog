@@ -808,6 +808,12 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       :ok = ConnectionProcess.submit_query(pid, query)
 
       response = build_test_response(query)
+
+      send(
+        pid,
+        {:query_route, 900, %{resolution_type: :auth, zone_type: :auth, zone: "example.com"}}
+      )
+
       send(pid, {:resolution_complete, 900, response})
 
       assert_receive {:dns_response, 900, _response}, 100
@@ -825,6 +831,9 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       assert entry.response_code == RCode.no_error()
       assert entry.answer_count == 0
       assert is_integer(entry.response_time_us)
+      assert entry.resolution_type == :auth
+      assert entry.zone_type == :auth
+      assert entry.zone_used == "example.com"
     end
 
     test "logs error query to QueryLogger", %{pid: pid, logger_pid: logger_pid} do

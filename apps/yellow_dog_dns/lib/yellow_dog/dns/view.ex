@@ -390,6 +390,7 @@ defmodule YellowDog.Dns.View do
           {:ok, cached_response} ->
             # Notify connection process of cache hit
             send(connection_pid, {:zone_lookup, query_id, :hit})
+            send_cached_route_metadata(state, connection_pid, query_id, question.name)
             response = update_response_id(cached_response, query.header.id)
             apply_rpz_and_respond(state, connection_pid, query_id, query, response)
 
@@ -443,6 +444,7 @@ defmodule YellowDog.Dns.View do
               {:ok, response} ->
                 response = maybe_complete_cname_response(state, query, response)
                 # Notify connection process
+                send_query_route(connection_pid, query_id, zone_type, zone_name)
                 send(connection_pid, {:zone_response, query_id, response})
                 # Cache the response
                 cache_response(state, query, response)
@@ -497,6 +499,7 @@ defmodule YellowDog.Dns.View do
       pid ->
         case YellowDog.Dns.Zone.Forward.resolve(pid, query) do
           {:ok, response} ->
+            send_query_route(connection_pid, query_id, :forward, ".")
             send(connection_pid, {:zone_response, query_id, response})
             cache_response(state, query, response)
             apply_rpz_and_respond(state, connection_pid, query_id, query, response)
@@ -516,6 +519,7 @@ defmodule YellowDog.Dns.View do
 
       case forward_to_fallback(state, query) do
         {:ok, response} ->
+          send_query_route(connection_pid, query_id, :fallback, nil)
           send(connection_pid, {:zone_response, query_id, response})
           cache_response(state, query, response)
           apply_rpz_and_respond(state, connection_pid, query_id, query, response)
@@ -715,21 +719,64 @@ defmodule YellowDog.Dns.View do
   end
 
   defp find_zone_for_name(zones, query_name) do
+    case find_zone_match(zones, query_name) do
+      {_zone_type, zone_name} -> zone_name
+      nil -> nil
+    end
+  end
+
+  defp find_zone_match(zones, query_name) do
     normalized = normalize_name(query_name)
 
     # RFC 1034 §3.6: select the most specific (longest) matching zone.
     # Use label-boundary matching to prevent "e.com" from matching "example.com".
     zones
     |> Enum.map(fn
-      {_type, zone_name} -> zone_name
-      zone_name when is_binary(zone_name) -> zone_name
+      {type, zone_name} -> {type, zone_name}
+      zone_name when is_binary(zone_name) -> {:auth, zone_name}
     end)
-    |> Enum.filter(fn zone_name ->
+    |> Enum.filter(fn {_type, zone_name} ->
       zone_suffix = normalize_name(zone_name)
       normalized == zone_suffix or String.ends_with?(normalized, "." <> zone_suffix)
     end)
-    |> Enum.max_by(&String.length/1, fn -> nil end)
+    |> Enum.max_by(fn {_type, zone_name} -> String.length(normalize_name(zone_name)) end, fn ->
+      nil
+    end)
   end
+
+  defp send_cached_route_metadata(state, connection_pid, query_id, query_name) do
+    case find_zone_match(state.zones, query_name) do
+      {zone_type, zone_name} ->
+        send_query_route(connection_pid, query_id, zone_type, zone_name)
+
+      nil when state.recursion_enabled or state.fallback_forwarders != [] ->
+        send_query_route(connection_pid, query_id, :recursive, nil)
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp send_query_route(connection_pid, query_id, zone_type, zone_name) do
+    send(connection_pid, {
+      :query_route,
+      query_id,
+      %{
+        resolution_type: resolution_type(zone_type),
+        zone_type: zone_type,
+        zone: zone_name,
+        fallback_used: fallback_zone_type?(zone_type)
+      }
+    })
+  end
+
+  defp resolution_type(:auth), do: :auth
+  defp resolution_type("auth"), do: :auth
+  defp resolution_type(_zone_type), do: :recursive
+
+  defp fallback_zone_type?(:fallback), do: true
+  defp fallback_zone_type?("fallback"), do: true
+  defp fallback_zone_type?(_zone_type), do: false
 
   defp check_cache(state, name, type) do
     key = {normalize_name(name), to_string(type)}

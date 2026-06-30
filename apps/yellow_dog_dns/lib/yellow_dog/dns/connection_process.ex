@@ -79,6 +79,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
       phase: :received,
       view: nil,
       zone: nil,
+      zone_type: nil,
+      resolution_type: nil,
       metadata: %{},
       raw: false,
       # Maximum UDP payload size: 512 (RFC 1035) unless the query includes an
@@ -298,6 +300,12 @@ defmodule YellowDog.Dns.ConnectionProcess do
   end
 
   @impl true
+  def handle_info({:query_route, query_id, route}, state) when is_map(route) do
+    state = update_query_metadata(state, query_id, route)
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info({:rpz_evaluation, query_id, result}, state) do
     case Map.get(state.queries, query_id) do
       nil ->
@@ -445,14 +453,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
       qs ->
         emit_phase_event(qs, phase, metadata)
 
-        updated_qs = %{qs | phase: phase, metadata: Map.merge(qs.metadata, metadata)}
-
-        if Map.has_key?(metadata, :view) do
-          updated_qs = %{updated_qs | view: metadata.view}
-          %{state | queries: Map.put(state.queries, query_id, updated_qs)}
-        else
-          %{state | queries: Map.put(state.queries, query_id, updated_qs)}
-        end
+        updated_qs = qs |> apply_query_metadata(metadata) |> Map.put(:phase, phase)
+        %{state | queries: Map.put(state.queries, query_id, updated_qs)}
     end
   end
 
@@ -462,8 +464,25 @@ defmodule YellowDog.Dns.ConnectionProcess do
         state
 
       qs ->
-        updated_qs = %{qs | metadata: Map.merge(qs.metadata, metadata)}
+        updated_qs = apply_query_metadata(qs, metadata)
         %{state | queries: Map.put(state.queries, query_id, updated_qs)}
+    end
+  end
+
+  defp apply_query_metadata(qs, metadata) do
+    qs
+    |> Map.put(:metadata, Map.merge(qs.metadata, metadata))
+    |> maybe_put_query_field(:view, metadata)
+    |> maybe_put_query_field(:zone, metadata)
+    |> maybe_put_query_field(:zone_type, metadata)
+    |> maybe_put_query_field(:resolution_type, metadata)
+  end
+
+  defp maybe_put_query_field(qs, field, metadata) do
+    if Map.has_key?(metadata, field) do
+      Map.put(qs, field, Map.fetch!(metadata, field))
+    else
+      qs
     end
   end
 
@@ -681,6 +700,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
       authority_count: length(response.nslist),
       additional_count: length(response.arlist),
       cache_hit: Map.get(qs.metadata, :cache_result) == :hit,
+      resolution_type: qs.resolution_type,
+      zone_type: qs.zone_type,
       zone_used: qs.zone,
       fallback_used: Map.get(qs.metadata, :fallback_used, false)
     })
@@ -696,6 +717,9 @@ defmodule YellowDog.Dns.ConnectionProcess do
       response_code: error_response.header.rcode,
       response_time_us: elapsed_ms(qs.started_at) * 1000,
       answer_count: 0,
+      resolution_type: qs.resolution_type,
+      zone_type: qs.zone_type,
+      zone_used: qs.zone,
       error: reason
     })
   end
