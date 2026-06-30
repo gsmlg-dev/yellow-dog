@@ -9,8 +9,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
 
-  alias YellowDog.Dns.{CloudDnsSync, ZoneController}
+  alias YellowDog.Dns.ZoneController
   alias YellowDog.Store.Zone, as: StoreZone
+  alias YellowDog.Tasks
 
   @default_view_name "default"
   @valid_rr_types ~w(a aaaa cname mx ns txt soa srv ptr cap naptr hinfo rp loc)
@@ -133,6 +134,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("refresh", _params, socket) do
+    socket = maybe_enqueue_current_cloud_zone_sync(socket)
     {:noreply, load_records(socket)}
   end
 
@@ -398,15 +400,33 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp edit_record_path(zone_id, rr_index),
     do: ~p"/server/dns/zones/#{zone_id}/records/#{rr_index}/edit"
 
+  defp maybe_enqueue_current_cloud_zone_sync(socket) do
+    %{view_name: view_name, zone_name: zone_name} = socket.assigns
+
+    with {:ok, zone} <- StoreZone.get_zone(view_name, zone_name),
+         true <- cloud_mirror_enabled?(Map.get(zone, :cloud_mirror)) do
+      task_key = Tasks.cloud_zone_task_key(view_name, zone_name)
+
+      case Tasks.enqueue(task_key) do
+        {:ok, _job} ->
+          put_flash(socket, :info, "Queued Cloud DNS sync for #{zone_name}")
+
+        {:error, reason} ->
+          put_flash(socket, :error, "Unable to queue Cloud DNS sync: #{inspect(reason)}")
+      end
+    else
+      _ -> socket
+    end
+  end
+
+  defp cloud_mirror_enabled?(mirror) when is_map(mirror) do
+    (Map.get(mirror, :enabled) || Map.get(mirror, "enabled")) in [true, "true", "1", 1]
+  end
+
+  defp cloud_mirror_enabled?(_mirror), do: false
+
   defp load_records(socket) do
     %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
-
-    socket =
-      if zone_type == :auth do
-        maybe_sync_cloud_zone(socket)
-      else
-        socket
-      end
 
     records =
       if zone_type == :auth do
@@ -420,78 +440,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
     assign(socket, :rrs, records)
   end
-
-  defp maybe_sync_cloud_zone(socket) do
-    %{view_name: view_name, zone_name: zone_name} = socket.assigns
-
-    case CloudDnsSync.sync_zone_from_cloud(view_name, zone_name) do
-      {:ok, _result} ->
-        socket
-
-      {:error, :cloud_sync_disabled} ->
-        socket
-
-      {:error, :not_found} ->
-        socket
-
-      {:error, reason} ->
-        put_flash(socket, :error, cloud_sync_error(reason))
-    end
-  end
-
-  defp cloud_sync_error(:cloud_dns_connector_not_configured),
-    do: "Cloud DNS sync is enabled, but no connector is selected."
-
-  defp cloud_sync_error(:cloud_dns_connector_disabled),
-    do: "Cloud DNS sync failed because the selected connector is disabled."
-
-  defp cloud_sync_error(:cloudflare_api_token_missing),
-    do: "Cloud DNS sync failed because the Cloudflare connector has no API token."
-
-  defp cloud_sync_error(:cloudflare_zone_not_found),
-    do: "Cloud DNS sync failed because Cloudflare did not return this zone."
-
-  defp cloud_sync_error({:unsupported_provider, provider}),
-    do: "Cloud DNS sync is not implemented for #{provider}."
-
-  defp cloud_sync_error({:cloudflare_http_error, status, _errors}),
-    do: "Cloud DNS sync failed because Cloudflare returned HTTP #{status}."
-
-  defp cloud_sync_error({:cloudflare_api_error, _errors}),
-    do: "Cloud DNS sync failed because Cloudflare rejected the request."
-
-  defp cloud_sync_error({:cloudflare_request_failed, _reason}),
-    do: "Cloud DNS sync failed because Cloudflare could not be reached."
-
-  defp cloud_sync_error(:route53_access_key_id_missing),
-    do: "Cloud DNS sync failed because the Route 53 connector has no access key ID."
-
-  defp cloud_sync_error(:route53_secret_access_key_missing),
-    do: "Cloud DNS sync failed because the Route 53 connector has no secret access key."
-
-  defp cloud_sync_error(:route53_zone_not_found),
-    do: "Cloud DNS sync failed because Route 53 did not return this zone."
-
-  defp cloud_sync_error(:route53_invalid_xml),
-    do: "Cloud DNS sync failed because Route 53 returned an unreadable response."
-
-  defp cloud_sync_error(:route53_invalid_pagination),
-    do: "Cloud DNS sync failed because Route 53 returned an invalid paginated response."
-
-  defp cloud_sync_error({:route53_http_error, status, errors}) do
-    detail = cloud_error_detail(errors)
-    "Cloud DNS sync failed because Route 53 returned HTTP #{status}#{detail}."
-  end
-
-  defp cloud_sync_error({:route53_request_failed, reason}),
-    do: "Cloud DNS sync failed because Route 53 could not be reached: #{inspect(reason)}."
-
-  defp cloud_sync_error(_reason), do: "Cloud DNS sync failed."
-
-  defp cloud_error_detail([message | _]) when is_binary(message) and message != "",
-    do: ": #{message}"
-
-  defp cloud_error_detail(_errors), do: ""
 
   defp get_auth_zone_records(view_name, zone_type, zone_name) do
     try do

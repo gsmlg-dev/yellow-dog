@@ -28,13 +28,15 @@ defmodule YellowDog.Dns.Supervisor do
   use Supervisor
 
   alias YellowDog.Dns.{ConfigPersistence, IpFormat, View}
-  alias YellowDog.Store.Zone, as: StoreZone
   alias YellowDog.Telemetry
 
   @default_port 53
   @default_listen {0, 0, 0, 0}
   @default_data_path "data/dns"
-  @default_forward_timeout 2_000
+  @cloud_zone_task_prefix "cloud_zone:"
+  @default_tasks_module Module.concat(["YellowDog", "Tasks"])
+  @default_tasks_task_supervisor Module.concat(["YellowDog", "Tasks", "TaskSupervisor"])
+  @startup_cloud_sync_wait_ms 60_000
 
   @doc """
   Starts the DNS supervisor.
@@ -190,100 +192,14 @@ defmodule YellowDog.Dns.Supervisor do
       Enum.each(zones, &start_zone/1)
     end
 
-    # Set up default forwarding zone if not configured
-    upstreams = get_upstreams()
-
-    ensure_default_forward_zone(upstreams)
-
     # Start Store event consumers if EventBridge is available
     start_store_consumers()
 
+    # Queue cloud-provider zone pulls after DNS zones are running. The actual
+    # sync work stays in the task system to avoid blocking DNS startup.
+    start_startup_cloud_zone_sync()
+
     Telemetry.info("DNS supervisor post-init completed")
-  end
-
-  defp ensure_default_forward_zone([]), do: :ok
-
-  defp ensure_default_forward_zone(upstreams) do
-    case YellowDog.Dns.ZoneController.find_zone(:forward, ".") do
-      {:ok, pid} ->
-        if default_forward_zone_current?(pid, upstreams) do
-          :ok
-        else
-          repair_default_forward_zone(pid, upstreams)
-        end
-
-      :error ->
-        start_default_forward_zone(upstreams)
-    end
-  end
-
-  defp default_forward_zone_current?(pid, upstreams) do
-    retries = default_forward_retries(upstreams)
-
-    case YellowDog.Dns.Zone.Forward.stats(pid) do
-      %{upstream_count: count, timeout: timeout, retries: configured_retries}
-      when count > 0 and timeout <= @default_forward_timeout and configured_retries >= retries ->
-        true
-
-      _stats ->
-        false
-    end
-  rescue
-    _error -> false
-  catch
-    :exit, _reason -> false
-  end
-
-  defp repair_default_forward_zone(pid, upstreams) do
-    forwarders = store_forwarders_from_upstreams(upstreams)
-    retries = default_forward_retries(upstreams)
-
-    _ =
-      StoreZone.update_forward_zone("default", ".", %{
-        forwarders: forwarders,
-        timeout_ms: @default_forward_timeout,
-        max_retries: retries
-      })
-
-    _ =
-      YellowDog.Dns.Zone.Forward.reload(pid,
-        upstreams: upstreams,
-        timeout: @default_forward_timeout,
-        retries: retries
-      )
-
-    register_default_forward_zone()
-  end
-
-  defp start_default_forward_zone(upstreams) do
-    case YellowDog.Dns.ZoneController.start_zone(:forward, ".",
-           upstreams: upstreams,
-           timeout: @default_forward_timeout,
-           retries: default_forward_retries(upstreams)
-         ) do
-      {:ok, _pid} -> register_default_forward_zone()
-      {:error, _reason} -> :ok
-    end
-  end
-
-  defp register_default_forward_zone do
-    case YellowDog.Dns.ViewManager.get_view("default") do
-      {:ok, view_pid} -> View.register_zone(view_pid, :forward, ".")
-      :error -> :ok
-    end
-  end
-
-  defp store_forwarders_from_upstreams(upstreams) do
-    Enum.map(upstreams, fn {ip, port} ->
-      %{ip: :inet.ntoa(ip) |> to_string(), port: port}
-    end)
-  end
-
-  defp default_forward_retries(upstreams) do
-    upstreams
-    |> length()
-    |> Kernel.-(1)
-    |> max(1)
   end
 
   defp start_store_consumers do
@@ -316,6 +232,108 @@ defmodule YellowDog.Dns.Supervisor do
     end
   rescue
     _ -> :ok
+  end
+
+  defp start_startup_cloud_zone_sync do
+    if tasks_module_available?() do
+      case Task.Supervisor.start_child(YellowDog.Dns.CloudDnsSyncJob.TaskSupervisor, fn ->
+             wait_and_enqueue_startup_cloud_zone_syncs()
+           end) do
+        {:ok, _pid} ->
+          :ok
+
+        {:error, reason} ->
+          Telemetry.warning("Failed to start startup Cloud DNS sync handoff", %{
+            reason: inspect(reason)
+          })
+      end
+    end
+  rescue
+    exception ->
+      Telemetry.warning("Failed to start startup Cloud DNS sync handoff", %{
+        reason: Exception.message(exception)
+      })
+  catch
+    kind, reason ->
+      Telemetry.warning("Failed to start startup Cloud DNS sync handoff", %{
+        reason: inspect({kind, reason})
+      })
+  end
+
+  defp tasks_module_available? do
+    Code.ensure_loaded?(@default_tasks_module) and
+      function_exported?(@default_tasks_module, :list_tasks, 0) and
+      function_exported?(@default_tasks_module, :enqueue, 2)
+  end
+
+  defp wait_and_enqueue_startup_cloud_zone_syncs do
+    task_supervisor = tasks_task_supervisor()
+
+    case wait_for_process(task_supervisor, @startup_cloud_sync_wait_ms) do
+      :ok ->
+        enqueue_startup_cloud_zone_syncs()
+
+      :timeout ->
+        Telemetry.warning("Skipping startup Cloud DNS sync; task supervisor unavailable", %{
+          supervisor: task_supervisor
+        })
+    end
+  rescue
+    exception ->
+      Telemetry.warning("Failed to enqueue startup Cloud DNS sync jobs", %{
+        reason: Exception.message(exception)
+      })
+  catch
+    kind, reason ->
+      Telemetry.warning("Failed to enqueue startup Cloud DNS sync jobs", %{
+        reason: inspect({kind, reason})
+      })
+  end
+
+  defp enqueue_startup_cloud_zone_syncs do
+    tasks =
+      @default_tasks_module
+      |> apply(:list_tasks, [])
+      |> Enum.filter(&startup_cloud_zone_task?/1)
+
+    Enum.each(tasks, &enqueue_startup_cloud_zone_sync/1)
+  rescue
+    exception ->
+      Telemetry.warning("Failed to enqueue startup Cloud DNS sync jobs", %{
+        reason: Exception.message(exception)
+      })
+  catch
+    kind, reason ->
+      Telemetry.warning("Failed to enqueue startup Cloud DNS sync jobs", %{
+        reason: inspect({kind, reason})
+      })
+  end
+
+  defp startup_cloud_zone_task?(%{key: key, enabled?: true}) when is_binary(key) do
+    String.starts_with?(key, @cloud_zone_task_prefix)
+  end
+
+  defp startup_cloud_zone_task?(_task), do: false
+
+  defp enqueue_startup_cloud_zone_sync(%{key: key}) do
+    case apply(@default_tasks_module, :enqueue, [key, []]) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Telemetry.warning("Failed to enqueue startup Cloud DNS sync", %{
+          task: key,
+          reason: inspect(reason)
+        })
+    end
+  end
+
+  defp tasks_task_supervisor do
+    Application.get_env(
+      :yellow_dog_tasks,
+      :task_supervisor,
+      @default_tasks_task_supervisor
+    )
   end
 
   defp handle_store_config_change(key, value) do
@@ -538,49 +556,6 @@ defmodule YellowDog.Dns.Supervisor do
     end
   rescue
     _e in [ArgumentError, UndefinedFunctionError] -> false
-  end
-
-  defp get_upstreams do
-    case apply(YellowDog.Config, :get, [:dns, :upstream_servers]) do
-      nil -> [{{8, 8, 8, 8}, @default_port}, {{1, 1, 1, 1}, @default_port}]
-      servers when is_list(servers) -> parse_upstreams(servers)
-      _ -> []
-    end
-  rescue
-    _e in [ArgumentError, UndefinedFunctionError] -> []
-  end
-
-  defp parse_upstreams(servers) do
-    for server <- servers,
-        parsed = parse_upstream_entry(server),
-        parsed != nil,
-        do: parsed
-  end
-
-  defp parse_upstream_entry({ip, port}) when is_tuple(ip), do: {ip, port}
-  defp parse_upstream_entry(ip) when is_tuple(ip), do: {ip, @default_port}
-  defp parse_upstream_entry(ip_str) when is_binary(ip_str), do: parse_upstream_string(ip_str)
-  defp parse_upstream_entry(_), do: nil
-
-  defp parse_upstream_string(str) do
-    case String.split(str, ":") do
-      [ip_str, port_str] ->
-        with {:ok, ip} <- parse_ip(ip_str),
-             {port, ""} <- Integer.parse(port_str) do
-          {ip, port}
-        else
-          _ -> nil
-        end
-
-      [ip_str] ->
-        case parse_ip(ip_str) do
-          {:ok, ip} -> {ip, @default_port}
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
   end
 
   defp parse_ip(ip_str) when is_binary(ip_str) do

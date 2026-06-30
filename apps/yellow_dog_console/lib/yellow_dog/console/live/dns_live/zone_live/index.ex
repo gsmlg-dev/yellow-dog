@@ -121,6 +121,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   @impl true
   def handle_event("refresh", _params, socket) do
+    socket = enqueue_all_cloud_zone_syncs(socket)
     {:noreply, load_zones(socket)}
   end
 
@@ -723,6 +724,38 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   end
 
   defp maybe_enqueue_cloud_dns_sync(_view_name, _zone_name, _zone_type, _config), do: :ok
+
+  defp enqueue_all_cloud_zone_syncs(socket) do
+    cloud_zone_tasks = Enum.filter(Tasks.list_tasks(), &cloud_zone_task?/1)
+
+    {queued, failed} =
+      Enum.reduce(cloud_zone_tasks, {0, []}, fn task, {queued, failed} ->
+        case Tasks.enqueue(task.key) do
+          {:ok, _job} -> {queued + 1, failed}
+          {:error, reason} -> {queued, [{task.key, reason} | failed]}
+        end
+      end)
+
+    cond do
+      failed != [] ->
+        Logger.warning("Failed to enqueue Cloud DNS refresh sync",
+          failures: inspect(Enum.reverse(failed))
+        )
+
+        put_flash(socket, :error, "Unable to queue #{length(failed)} Cloud DNS sync task(s)")
+
+      queued > 0 ->
+        put_flash(socket, :info, "Queued Cloud DNS sync for #{queued} zone(s)")
+
+      true ->
+        socket
+    end
+  end
+
+  defp cloud_zone_task?(%{key: key}) when is_binary(key),
+    do: String.starts_with?(key, "cloud_zone:")
+
+  defp cloud_zone_task?(_task), do: false
 
   defp cloud_mirror_config_enabled?(mirror) when is_map(mirror) do
     mirror

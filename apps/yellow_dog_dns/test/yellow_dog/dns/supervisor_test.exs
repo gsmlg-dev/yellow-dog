@@ -341,16 +341,8 @@ defmodule YellowDog.Dns.SupervisorTest do
       assert Process.whereis(YellowDog.Dns.Server) != nil
     end
 
-    test "repairs existing root forward zone without upstreams", %{supervisor_pid: _pid} do
-      assert {:ok, forward_pid} = YellowDog.Dns.ZoneController.find_zone(:forward, ".")
-
-      stats = YellowDog.Dns.Zone.Forward.stats(forward_pid)
-      assert stats.upstream_count > 0
-      assert stats.timeout == 2_000
-      assert stats.retries > 0
-
-      assert {:ok, zone} = StoreZone.get_zone("default", ".")
-      assert zone.forwarders != []
+    test "does not require a root forward zone", %{supervisor_pid: _pid} do
+      assert DnsSupervisor.status().running
     end
 
     test "creates default view", %{supervisor_pid: _pid} do
@@ -367,7 +359,7 @@ defmodule YellowDog.Dns.SupervisorTest do
     end
   end
 
-  describe "supervisor repairs persisted recursion config" do
+  describe "supervisor root forward zone startup behavior" do
     setup do
       previous_backend = Backend.active()
       EtsBackend.create_table()
@@ -399,7 +391,20 @@ defmodule YellowDog.Dns.SupervisorTest do
       :ok
     end
 
-    test "adds default upstreams to an existing empty root forward zone" do
+    test "does not create a default root forward zone from upstream servers" do
+      {:ok, _pid} =
+        DnsSupervisor.start_link(
+          port: 0,
+          skip_persistence: true
+        )
+
+      Process.sleep(300)
+
+      assert :error = YellowDog.Dns.ZoneController.find_zone(:forward, ".")
+      assert {:error, :not_found} = StoreZone.get_zone("default", ".")
+    end
+
+    test "does not add default upstreams to an existing empty root forward zone" do
       assert :ok = StoreZone.create_forward_zone("default", ".", [])
 
       {:ok, _pid} =
@@ -416,17 +421,17 @@ defmodule YellowDog.Dns.SupervisorTest do
       assert %{upstream_count: upstream_count, timeout: timeout, retries: retries} =
                YellowDog.Dns.Zone.Forward.stats(forward_pid)
 
-      assert upstream_count > 0
-      assert timeout == 2_000
-      assert retries > 0
+      assert upstream_count == 0
+      assert timeout == 5_000
+      assert retries == 2
 
       assert {:ok, zone} = StoreZone.get_zone("default", ".")
-      assert zone.forwarders != []
-      assert zone.timeout_ms == 2_000
-      assert zone.max_retries > 0
+      assert zone.forwarders == []
+      assert zone.timeout_ms == 5_000
+      assert zone.max_retries == 2
     end
 
-    test "repairs an existing root forward zone with stale timeout and retries" do
+    test "does not repair an existing root forward zone with stale timeout and retries" do
       assert :ok =
                StoreZone.create_forward_zone(
                  "default",
@@ -447,14 +452,12 @@ defmodule YellowDog.Dns.SupervisorTest do
 
       assert {:ok, forward_pid} = YellowDog.Dns.ZoneController.find_zone(:forward, ".")
 
-      assert %{upstream_count: 2, timeout: 2_000, retries: retries} =
+      assert %{upstream_count: 2, timeout: 5_000, retries: 0} =
                YellowDog.Dns.Zone.Forward.stats(forward_pid)
 
-      assert retries > 0
-
       assert {:ok, zone} = StoreZone.get_zone("default", ".")
-      assert zone.timeout_ms == 2_000
-      assert zone.max_retries > 0
+      assert zone.timeout_ms == 5_000
+      assert zone.max_retries == 0
     end
   end
 

@@ -230,6 +230,37 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ zone_name
     end
 
+    test "refresh queues sync tasks for enabled cloud provider zones", %{conn: conn} do
+      setup_cloud_dns_connectors()
+      setup_cloud_dns_sync_runner()
+
+      cloudflare_zone = "zones-refresh-cf-#{System.unique_integer([:positive])}.example.com"
+      route53_zone = "zones-refresh-aws-#{System.unique_integer([:positive])}.example.com"
+      disabled_zone = "zones-refresh-disabled-#{System.unique_integer([:positive])}.example.com"
+      plain_zone = "zones-refresh-plain-#{System.unique_integer([:positive])}.example.com"
+
+      create_cloud_zone!(cloudflare_zone, :cloudflare, connector_name: "cf-main")
+      create_cloud_zone!(route53_zone, :route53, connector_name: "aws-prod")
+      create_cloud_zone!(disabled_zone, :cloudflare, connector_name: "cf-main", enabled: false)
+      create_stored_auth_zone!(plain_zone)
+
+      {:ok, view, _html} = live(conn, "/server/dns/zones")
+
+      view
+      |> element(~s(button[phx-click="refresh"][aria-label="Refresh"]))
+      |> render_click()
+
+      assert_receive {:cloud_dns_sync_enqueued, "default", ^cloudflare_zone, []}, 500
+      assert_receive {:cloud_dns_sync_enqueued, "default", ^route53_zone, []}, 500
+      refute_receive {:cloud_dns_sync_enqueued, "default", ^disabled_zone, []}, 100
+      refute_receive {:cloud_dns_sync_enqueued, "default", ^plain_zone, []}, 100
+
+      assert [_job | _] = Tasks.recent_jobs("cloud_zone:default:#{cloudflare_zone}")
+      assert [_job | _] = Tasks.recent_jobs("cloud_zone:default:#{route53_zone}")
+      assert [] = Tasks.recent_jobs("cloud_zone:default:#{disabled_zone}")
+      assert [] = Tasks.recent_jobs("cloud_zone:default:#{plain_zone}")
+    end
+
     test "navigates to import zone form", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dns/zones/import")
       assert html =~ "Import Zone"
@@ -1268,6 +1299,30 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "Records" or html =~ "example.com" or html =~ "record"
     end
 
+    test "refresh queues the current cloud provider zone sync task", %{conn: conn} do
+      setup_cloud_dns_connectors()
+      setup_cloud_dns_sync_runner()
+
+      zone_name = "records-refresh-#{System.unique_integer([:positive])}.example.com"
+      other_zone = "records-refresh-other-#{System.unique_integer([:positive])}.example.com"
+
+      zone = create_cloud_zone!(zone_name, :cloudflare, connector_name: "cf-main")
+      create_cloud_zone!(other_zone, :route53, connector_name: "aws-prod")
+
+      {:ok, view, _html} = live(conn, "/server/dns/zones/#{zone.id}/records")
+      refute_receive {:cloud_dns_sync_enqueued, _, _, _}, 100
+
+      view
+      |> element(~s(button[phx-click="refresh"][aria-label="Refresh"]))
+      |> render_click()
+
+      assert_receive {:cloud_dns_sync_enqueued, "default", ^zone_name, []}, 500
+      refute_receive {:cloud_dns_sync_enqueued, "default", ^other_zone, []}, 100
+
+      assert [_job | _] = Tasks.recent_jobs("cloud_zone:default:#{zone_name}")
+      assert [] = Tasks.recent_jobs("cloud_zone:default:#{other_zone}")
+    end
+
     test "filter records by name", %{conn: conn} do
       {:ok, view, _html} = live(conn, auth_records_path())
       html = view |> render_change("filter", %{"filter" => "www"})
@@ -1302,11 +1357,11 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert_redirect(view, records_path)
     end
 
-    test "shows Route 53 credential sync errors", %{conn: conn} do
+    test "does not sync cloud provider zones when entering records page", %{conn: conn} do
       setup_cloud_dns_connectors()
 
       connector_name = "aws-missing-creds"
-      zone_name = "route53-sync-error-#{System.unique_integer([:positive])}.example.com"
+      zone_name = "route53-records-page-#{System.unique_integer([:positive])}.example.com"
 
       assert :ok =
                Provider.put_config(%{
@@ -1334,7 +1389,9 @@ defmodule YellowDog.Console.DnsLiveTest do
 
       {:ok, _view, html} = live(conn, "/server/dns/zones/#{zone.id}/records")
 
-      assert html =~ "Route 53 connector has no access key ID"
+      assert html =~ "Records"
+      refute html =~ "Cloud DNS sync failed"
+      refute html =~ "Route 53 connector has no access key ID"
     end
   end
 
@@ -2454,6 +2511,28 @@ defmodule YellowDog.Console.DnsLiveTest do
     zone
   end
 
+  defp create_cloud_zone!(zone_name, provider, opts) do
+    Backend.set_active(EtsBackend)
+    EtsBackend.create_table()
+
+    cloud_mirror = %{
+      enabled: Keyword.get(opts, :enabled, true),
+      connector_name: Keyword.fetch!(opts, :connector_name),
+      provider: provider,
+      zone_id: "#{zone_name}-id",
+      direction: :bidirectional,
+      conflict_strategy: :local_wins
+    }
+
+    assert :ok =
+             StoreZone.create_zone("default", zone_name, StoreZone.default_soa(zone_name),
+               cloud_mirror: cloud_mirror
+             )
+
+    assert {:ok, zone} = StoreZone.get_zone("default", zone_name)
+    zone
+  end
+
   defp setup_cloud_dns_connectors do
     previous_backend = Backend.active()
 
@@ -2492,9 +2571,15 @@ defmodule YellowDog.Console.DnsLiveTest do
   defp setup_cloud_dns_sync_runner do
     previous_sync_fun = Application.get_env(:yellow_dog_tasks, :cloud_zone_sync_fun)
     previous_task_backend = Application.get_env(:yellow_dog_tasks, :store_backend)
+    previous_task_supervisor = Application.get_env(:yellow_dog_tasks, :task_supervisor)
+    previous_tasks_config = Application.get_env(:yellow_dog_tasks, :tasks_config)
+    previous_config_file_path = Application.get_env(:yellow_dog_tasks, :config_file_path)
     test_pid = self()
 
     Application.put_env(:yellow_dog_tasks, :store_backend, EtsBackend)
+    Application.put_env(:yellow_dog_tasks, :task_supervisor, __MODULE__.SynchronousTaskSupervisor)
+    Application.delete_env(:yellow_dog_tasks, :tasks_config)
+    Application.delete_env(:yellow_dog_tasks, :config_file_path)
     YellowDog.Tasks.Store.clear_all()
 
     Application.put_env(:yellow_dog_tasks, :cloud_zone_sync_fun, fn view_name, zone_name, opts ->
@@ -2511,6 +2596,21 @@ defmodule YellowDog.Console.DnsLiveTest do
       case previous_task_backend do
         nil -> Application.delete_env(:yellow_dog_tasks, :store_backend)
         backend -> Application.put_env(:yellow_dog_tasks, :store_backend, backend)
+      end
+
+      case previous_task_supervisor do
+        nil -> Application.delete_env(:yellow_dog_tasks, :task_supervisor)
+        supervisor -> Application.put_env(:yellow_dog_tasks, :task_supervisor, supervisor)
+      end
+
+      case previous_tasks_config do
+        nil -> Application.delete_env(:yellow_dog_tasks, :tasks_config)
+        config -> Application.put_env(:yellow_dog_tasks, :tasks_config, config)
+      end
+
+      case previous_config_file_path do
+        nil -> Application.delete_env(:yellow_dog_tasks, :config_file_path)
+        path -> Application.put_env(:yellow_dog_tasks, :config_file_path, path)
       end
     end)
 
