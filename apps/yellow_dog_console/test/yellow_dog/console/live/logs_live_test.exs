@@ -56,9 +56,41 @@ defmodule YellowDog.Console.LogsLiveTest do
       assert html =~ "DHCPv4"
       assert html =~ "DHCPv6"
       assert html =~ "mDNS"
+      assert html =~ "Tasks"
       assert html =~ "Console"
       assert html =~ "Core"
       assert html =~ "Telemetry"
+    end
+
+    test "task log route shows all task entries without level or module UI", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/system/logs/tasks")
+
+      assert html =~ "Task Log"
+      refute has_element?(view, "button[phx-click='set_level']")
+      refute has_element?(view, "input[phx-click='toggle_app']")
+
+      send(
+        view.pid,
+        {:log_event, :info, %{}, %{app: :yellow_dog_tasks, message: "Task started: mac"}}
+      )
+
+      send(
+        view.pid,
+        {:log_event, :error, %{}, %{app: :yellow_dog_tasks, message: "Task stopped: ip_city"}}
+      )
+
+      html = render(view)
+      assert html =~ "Task started: mac"
+      assert html =~ "Task stopped: ip_city"
+      refute has_element?(view, "#log-container .badge", "info")
+      refute has_element?(view, "#log-container .badge", "Tasks")
+
+      send(
+        view.pid,
+        {:log_event, :info, %{}, %{app: :yellow_dog_dns, message: "DNS should be filtered"}}
+      )
+
+      refute render(view) =~ "DNS should be filtered"
     end
 
     test "shows search input with aria-label", %{conn: conn} do
@@ -125,8 +157,8 @@ defmodule YellowDog.Console.LogsLiveTest do
     test "toggle_app with valid app toggles filter", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system/logs")
       html = render_click(view, "toggle_app", %{"app" => "yellow_dog_dns"})
-      # Should show "Showing: 1 of 7 modules"
-      assert html =~ "Showing: 1 of 7 modules"
+      # Should show "Showing: 1 of 8 modules"
+      assert html =~ "Showing: 1 of 8 modules"
     end
 
     test "toggle_app with invalid app is silently ignored", %{conn: conn} do
@@ -139,7 +171,7 @@ defmodule YellowDog.Console.LogsLiveTest do
     test "select_all_apps selects all modules", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system/logs")
       html = render_click(view, "select_all_apps")
-      assert html =~ "Showing: 7 of 7 modules"
+      assert html =~ "Showing: 8 of 8 modules"
     end
 
     test "select_no_apps deselects all modules", %{conn: conn} do

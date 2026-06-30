@@ -145,6 +145,7 @@ defmodule YellowDog.Console.Router do
 
     live "/logs", LogsLive, :index
     live "/logs/realtime", LogsLive, :realtime
+    live "/logs/tasks", LogsLive, :tasks
     live "/logs/dns-query", DnsLive.QueryLogsLive
     live "/logs/dhcpv4-activity", Dhcpv4Live.ActivityLive
     live "/logs/dhcpv6-activity", Dhcpv6Live.ActivityLive

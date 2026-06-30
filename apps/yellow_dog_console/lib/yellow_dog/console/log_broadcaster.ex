@@ -77,6 +77,10 @@ defmodule YellowDog.Console.LogBroadcaster do
     [:yellow_dog, :mdns, :response, :sent],
     [:yellow_dog, :mdns, :server, :started],
     [:yellow_dog, :mdns, :server, :stopped],
+    # Tasks
+    [:yellow_dog, :tasks, :sync, :start],
+    [:yellow_dog, :tasks, :sync, :stop],
+    [:yellow_dog, :tasks, :sync, :exception],
     # Service lifecycle
     [:yellow_dog, :service, :started],
     [:yellow_dog, :service, :stopped],
@@ -356,6 +360,22 @@ defmodule YellowDog.Console.LogBroadcaster do
     {:info, :yellow_dog_mdns, "mDNS server stopped: #{md[:reason]}"}
   end
 
+  # ── Task events ────────────────────────────────────────────────────────────
+  defp format_event([:yellow_dog, :tasks, :sync, :start], _m, md) do
+    {:info, :yellow_dog_tasks,
+     "Task started: #{task_name(md[:task])} from #{task_source(md)}#{task_job(md[:job_id])}"}
+  end
+
+  defp format_event([:yellow_dog, :tasks, :sync, :stop], measurements, md) do
+    {:info, :yellow_dog_tasks,
+     "Task stopped: #{task_name(md[:task])} from #{task_source(md)}#{task_job(md[:job_id])}#{task_duration(measurements)}"}
+  end
+
+  defp format_event([:yellow_dog, :tasks, :sync, :exception], measurements, md) do
+    {:error, :yellow_dog_tasks,
+     "Task stopped: #{task_name(md[:task])} from #{task_source(md)}#{task_job(md[:job_id])}#{task_duration(measurements)} - #{inspect(md[:reason])}"}
+  end
+
   # ── Service lifecycle ──────────────────────────────────────────────────────
   defp format_event([:yellow_dog, :service, action], _m, md)
        when action in [:started, :stopped] do
@@ -397,4 +417,21 @@ defmodule YellowDog.Console.LogBroadcaster do
 
   # ── Catch-all ──────────────────────────────────────────────────────────────
   defp format_event(_event, _m, _md), do: nil
+
+  defp task_name(nil), do: "unknown"
+  defp task_name(task) when is_atom(task), do: Atom.to_string(task)
+  defp task_name(task), do: to_string(task)
+
+  defp task_source(%{source: source}) when source not in [nil, ""], do: source
+  defp task_source(_md), do: "unknown"
+
+  defp task_job(nil), do: ""
+  defp task_job(job_id), do: " (job #{job_id})"
+
+  defp task_duration(%{duration: duration}) when is_integer(duration) do
+    duration_us = System.convert_time_unit(duration, :native, :microsecond)
+    " in #{LoggerHandlers.format_duration(duration_us)}"
+  end
+
+  defp task_duration(_measurements), do: ""
 end

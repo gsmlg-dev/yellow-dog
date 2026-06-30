@@ -12,6 +12,7 @@ defmodule YellowDog.Console.LogsLive do
   import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   alias YellowDog.Console.LogBroadcaster
+  alias YellowDog.Tasks
 
   @max_logs 1000
   @max_pending 500
@@ -28,6 +29,7 @@ defmodule YellowDog.Console.LogsLive do
     {:yellow_dog_dhcpv4, "DHCPv4"},
     {:yellow_dog_dhcpv6, "DHCPv6"},
     {:yellow_dog_mdns, "mDNS"},
+    {:yellow_dog_tasks, "Tasks"},
     {:yellow_dog_console, "Console"},
     {:yellow_dog, "Core"},
     {:yellow_dog_telemetry, "Telemetry"}
@@ -54,6 +56,7 @@ defmodule YellowDog.Console.LogsLive do
     yellow_dog_dhcpv4: "DHCPv4",
     yellow_dog_dhcpv6: "DHCPv6",
     yellow_dog_mdns: "mDNS",
+    yellow_dog_tasks: "Tasks",
     yellow_dog_console: "Console",
     yellow_dog: "Core",
     yellow_dog_telemetry: "Telemetry"
@@ -64,6 +67,7 @@ defmodule YellowDog.Console.LogsLive do
     yellow_dog_dhcpv4: "badge-secondary",
     yellow_dog_dhcpv6: "badge-accent",
     yellow_dog_mdns: "badge-success",
+    yellow_dog_tasks: "badge-primary",
     yellow_dog_console: "badge-warning",
     yellow_dog: "badge-info",
     yellow_dog_telemetry: "badge-neutral"
@@ -76,6 +80,13 @@ defmodule YellowDog.Console.LogsLive do
       description: "Live-streaming system logs from all applications",
       icon: "pulse",
       color: "text-success"
+    },
+    %{
+      path: "/system/logs/tasks",
+      title: "Task Log",
+      description: "Background task execution, completion, and failure events",
+      icon: "calendar-sync",
+      color: "text-secondary"
     },
     %{
       path: "/system/logs/dns-query",
@@ -120,6 +131,8 @@ defmodule YellowDog.Console.LogsLive do
      assign(socket,
        page_title: "Logs",
        live_action: nil,
+       log_title: "Realtime Logs",
+       task_log?: false,
        connected: false,
        logs: [],
        pending_logs: [],
@@ -137,21 +150,57 @@ defmodule YellowDog.Console.LogsLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, socket) do
-    case socket.assigns.live_action do
+  def handle_params(_params, uri, socket) do
+    case log_route(uri) do
+      :tasks ->
+        if connected?(socket) and not subscribed?(socket) do
+          Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
+        end
+
+        {:noreply,
+         assign(socket,
+           page_title: "Task Log",
+           log_title: "Task Log",
+           task_log?: true,
+           connected: connected?(socket),
+           logs: task_log_entries(Tasks.list_tasks()),
+           selected_apps: MapSet.new([:yellow_dog_tasks])
+         )}
+
       :realtime ->
         if connected?(socket) and not subscribed?(socket) do
           Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
         end
 
-        {:noreply, assign(socket, page_title: "Realtime Logs", connected: connected?(socket))}
+        {:noreply,
+         assign(socket,
+           page_title: "Realtime Logs",
+           log_title: "Realtime Logs",
+           task_log?: false,
+           connected: connected?(socket),
+           selected_apps: MapSet.new()
+         )}
 
       _ ->
-        {:noreply, assign(socket, page_title: "Logs")}
+        {:noreply,
+         assign(socket,
+           page_title: "Logs",
+           log_title: "Realtime Logs",
+           task_log?: false,
+           selected_apps: MapSet.new()
+         )}
     end
   end
 
   defp subscribed?(socket), do: socket.assigns[:connected] == true
+
+  defp log_route(uri) do
+    case URI.parse(uri).path do
+      "/system/logs/tasks" -> :tasks
+      "/system/logs/realtime" -> :realtime
+      _path -> :default
+    end
+  end
 
   @impl true
   def handle_info({:log_event, level, measurements, metadata}, socket) do
@@ -193,7 +242,7 @@ defmodule YellowDog.Console.LogsLive do
     {:noreply, assign(socket, logs: [], pending_logs: [], pending_count: 0)}
   end
 
-  @valid_apps ~w(yellow_dog_dns yellow_dog_dhcpv4 yellow_dog_dhcpv6 yellow_dog_mdns yellow_dog_console yellow_dog yellow_dog_telemetry)
+  @valid_apps ~w(yellow_dog_dns yellow_dog_dhcpv4 yellow_dog_dhcpv6 yellow_dog_mdns yellow_dog_tasks yellow_dog_console yellow_dog yellow_dog_telemetry)
 
   @impl true
   def handle_event("toggle_app", %{"app" => app_string}, socket)
@@ -295,6 +344,59 @@ defmodule YellowDog.Console.LogsLive do
     }
   end
 
+  defp task_log_entries(tasks) do
+    tasks
+    |> Enum.flat_map(&task_log_entries_for_task/1)
+    |> Enum.sort_by(& &1.timestamp, :desc)
+    |> Enum.take(@max_logs)
+  end
+
+  defp task_log_entries_for_task(task) do
+    task
+    |> Map.get(:recent_jobs, [])
+    |> Enum.flat_map(fn job ->
+      [task_start_log_entry(task, job), task_stop_log_entry(task, job)]
+      |> Enum.reject(&is_nil/1)
+    end)
+  end
+
+  defp task_start_log_entry(_task, %{started_at: nil}), do: nil
+
+  defp task_start_log_entry(task, job) do
+    task_log_entry(:info, job.started_at, task, job, "Task started")
+  end
+
+  defp task_stop_log_entry(_task, %{completed_at: nil, discarded_at: nil}), do: nil
+
+  defp task_stop_log_entry(task, job) do
+    level = if job.state == "completed", do: :info, else: :error
+    stopped_at = job.completed_at || job.discarded_at
+    task_log_entry(level, stopped_at, task, job, "Task stopped")
+  end
+
+  defp task_log_entry(level, timestamp, task, job, action) do
+    %{
+      id: System.unique_integer([:positive]),
+      timestamp: DateTime.to_unix(timestamp, :nanosecond),
+      level: level,
+      app: :yellow_dog_tasks,
+      module: nil,
+      function: nil,
+      line: nil,
+      message: "#{action}: #{task_name(task.key)} from #{task_source(task)}#{task_job(job.id)}",
+      metadata: %{task: task.key, job_id: job.id, state: job.state}
+    }
+  end
+
+  defp task_name(task) when is_atom(task), do: Atom.to_string(task)
+  defp task_name(task), do: to_string(task)
+
+  defp task_source(%{source: source}) when source not in [nil, ""], do: source
+  defp task_source(_task), do: "unknown"
+
+  defp task_job(nil), do: ""
+  defp task_job(job_id), do: " (job #{job_id})"
+
   defp flush_pending(pending, logs) do
     # Merge pending into logs, respecting max size
     merged = Enum.reverse(pending) ++ logs
@@ -302,6 +404,9 @@ defmodule YellowDog.Console.LogsLive do
   end
 
   defp level_color(level), do: Map.get(@level_colors, level, "text-on-surface")
+
+  defp log_entry_color(true, _level), do: "text-on-surface"
+  defp log_entry_color(false, level), do: level_color(level)
 
   defp level_badge(level), do: Map.get(@level_badges, level, "badge-ghost")
 
@@ -388,7 +493,7 @@ defmodule YellowDog.Console.LogsLive do
       <div class="space-y-4">
         <%!-- Header --%>
         <div class="flex flex-wrap justify-between items-center gap-4">
-          <h1 class="text-2xl font-bold">Realtime Logs</h1>
+          <h1 class="text-2xl font-bold">{@log_title}</h1>
 
           <%!-- Stream Controls --%>
           <div class="flex items-center gap-2">
@@ -441,7 +546,7 @@ defmodule YellowDog.Console.LogsLive do
         <% end %>
 
         <%!-- Filters --%>
-        <div class="card bg-surface-container">
+        <div :if={!@task_log?} class="card bg-surface-container">
           <div class="card-body py-3 px-4">
             <div class="flex flex-wrap gap-4 items-center">
               <%!-- Level Filter --%>
@@ -495,7 +600,7 @@ defmodule YellowDog.Console.LogsLive do
         </div>
 
         <%!-- Filter Status --%>
-        <%= unless Enum.empty?(@selected_apps) do %>
+        <%= if !@task_log? and !Enum.empty?(@selected_apps) do %>
           <div class="text-sm text-on-surface-variant">
             Showing: {MapSet.size(@selected_apps)} of {length(@available_apps)} modules
             | Min level: {@min_level}
@@ -519,7 +624,7 @@ defmodule YellowDog.Console.LogsLive do
           <% else %>
             <%= for log <- Enum.reverse(filtered_logs(@logs, @search)) do %>
               <div
-                class={"py-1 px-2 border-b border-outline hover:bg-surface-container-high/50 cursor-pointer " <> level_color(log.level)}
+                class={"py-1 px-2 border-b border-outline hover:bg-surface-container-high/50 cursor-pointer " <> log_entry_color(@task_log?, log.level)}
                 phx-click="toggle_expand"
                 phx-value-id={log.id}
               >
@@ -528,10 +633,13 @@ defmodule YellowDog.Console.LogsLive do
                   <span class="text-on-surface-variant shrink-0">
                     {format_time_ms(log.timestamp)}
                   </span>
-                  <span class={"badge badge-xs " <> level_badge(log.level)}>
+                  <span :if={!@task_log?} class={"badge badge-xs " <> level_badge(log.level)}>
                     {log.level}
                   </span>
-                  <span class={"badge badge-xs badge-outline " <> app_badge_color(log.app)}>
+                  <span
+                    :if={!@task_log?}
+                    class={"badge badge-xs badge-outline " <> app_badge_color(log.app)}
+                  >
                     {app_name(log.app)}
                   </span>
                   <span class="break-all">{log.message}</span>

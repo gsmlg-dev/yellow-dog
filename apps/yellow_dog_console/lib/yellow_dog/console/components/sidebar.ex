@@ -412,6 +412,12 @@ defmodule YellowDog.Console.Components.Sidebar do
       </.link>
     </li>
     <li>
+      <.link navigate="/system/logs/tasks" class={active?(@current_path, "/system/logs/tasks")}>
+        <.dm_mdi name="calendar-sync" class="w-5 h-5" />
+        <span>Task Log</span>
+      </.link>
+    </li>
+    <li>
       <.link
         navigate="/system/logs/dns-query"
         class={active?(@current_path, "/system/logs/dns-query")}

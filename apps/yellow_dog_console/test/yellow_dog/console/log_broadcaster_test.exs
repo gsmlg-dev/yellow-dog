@@ -146,6 +146,14 @@ defmodule YellowDog.Console.LogBroadcasterTest do
       assert "yellow-dog-log-broadcaster" in handler_ids
     end
 
+    test "attaches to task sync events" do
+      _pid = ensure_broadcaster_running()
+
+      handlers = :telemetry.list_handlers([:yellow_dog, :tasks, :sync, :start])
+      handler_ids = Enum.map(handlers, & &1.id)
+      assert "yellow-dog-log-broadcaster" in handler_ids
+    end
+
     @tag :skip
     @tag :breaks_application_supervisor
     test "detaches telemetry handlers on terminate" do
@@ -251,6 +259,46 @@ defmodule YellowDog.Console.LogBroadcasterTest do
       )
 
       assert_receive {:log_event, :error, _, _}, 1000
+    end
+
+    test "broadcasts task sync telemetry as task log entries" do
+      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
+
+      LogBroadcaster.handle_telemetry_event(
+        [:yellow_dog, :tasks, :sync, :start],
+        %{},
+        %{task: :mac, source: "wireshark-manuf", job_id: "job-1"},
+        %{}
+      )
+
+      assert_receive {:log_event, :info, _, %{app: :yellow_dog_tasks, message: start_message}},
+                     1000
+
+      assert start_message == "Task started: mac from wireshark-manuf (job job-1)"
+
+      LogBroadcaster.handle_telemetry_event(
+        [:yellow_dog, :tasks, :sync, :stop],
+        %{},
+        %{task: :mac, source: "wireshark-manuf", job_id: "job-1"},
+        %{}
+      )
+
+      assert_receive {:log_event, :info, _, %{app: :yellow_dog_tasks, message: stop_message}},
+                     1000
+
+      assert stop_message == "Task stopped: mac from wireshark-manuf (job job-1)"
+
+      LogBroadcaster.handle_telemetry_event(
+        [:yellow_dog, :tasks, :sync, :exception],
+        %{},
+        %{task: :ip_city, source: "db-ip", job_id: "job-2", reason: :offline},
+        %{}
+      )
+
+      assert_receive {:log_event, :error, _, %{app: :yellow_dog_tasks, message: error_message}},
+                     1000
+
+      assert error_message == "Task stopped: ip_city from db-ip (job job-2) - :offline"
     end
   end
 
