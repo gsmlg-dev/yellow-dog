@@ -29,7 +29,7 @@ The umbrella builds separate Mix releases (root `mix.exs`):
 | **YellowDog.Dns** | `apps/yellow_dog_dns/` | DNS server: views, zones, name resolution, ACLs |
 | **YellowDog.Dhcpv4** | `apps/yellow_dog_dhcpv4/` | DHCPv4 server: lease management, address pools |
 | **YellowDog.Dhcpv6** | `apps/yellow_dog_dhcpv6/` | DHCPv6 server: DUID-based leases, IA_NA support |
-| **YellowDog.DhcpClient** | `apps/yellow_dog_dhcp_client/` | DHCPv4 client: DORA handshake, vendor options, NIF socket |
+| **YellowDog.DhcpClient** | `apps/yellow_dog_dhcp_client/` | DHCPv4 client: DORA handshake, vendor options, Abyss-backed NIF socket |
 | **YellowDog.Mdns** | `apps/yellow_dog_mdns/` | mDNS responder: service discovery and registration |
 | **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
 | **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
@@ -38,7 +38,7 @@ The umbrella builds separate Mix releases (root `mix.exs`):
 | **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DuskMoon UI, Bun) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
-| **Abyss** | `apps/abyss/` | UDP server library (used by all protocol apps) |
+| **Abyss** | `apps/abyss/` | UDP/server socket library (used by all protocol apps and DHCP client native sockets) |
 | **ExDns** | `apps/ex_dns/` | DNS protocol library (messages, zones, records) |
 | **ExDhcp** | `apps/ex_dhcp/` | DHCP protocol library (DHCPv4/v6 messages) |
 
@@ -52,11 +52,11 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
 - **Store** (`yellow_dog_store`) wraps Concord (Raft-based embedded KV) behind typed facade modules. Concord is the source of truth; ETS is the always-on local read cache (write-through). See `apps/yellow_dog_store/CLAUDE.md` for the full data-flow contract
 - **Netman apps never depend on `yellow_dog_store`** — netman is a separate product with its own persistence (TOML lease files via `LeaseStore`)
-- **DhcpClient** uses swappable implementations via Application env: `socket_impl` (NIF in prod, `UdpFallback` in test) and `os_integration` (`Standalone` via `ip` commands, or `HookNM` for NetworkManager)
+- **DhcpClient** uses swappable implementations via Application env: `socket_impl` (Abyss-owned NIF in prod, `UdpFallback` in test) and `os_integration` (`Standalone` via `ip` commands, or `HookNM` for NetworkManager)
 
 ## Constitution (Architectural Constraints)
 
-- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp` because the DHCP client deliberately excludes Abyss (which cannot provide the broadcast-from-`0.0.0.0:68` socket semantics required by RFC 2131). In production the Rust NIF (`DhcpSocket.Native`) is always used; `UdpFallback` is never deployed.
+- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`, or `Abyss.DhcpSocket.Native`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp`; production DHCP client sockets use the Abyss-owned Rust NIF via `DhcpSocket.Native`.
 - **No server app calls `Concord.*` directly** — all access goes through `YellowDog.Store.*` facade modules
 
 ## Common Commands
@@ -116,7 +116,7 @@ YellowDog (core: orchestration) → yellow_dog_config + yellow_dog_store + abyss
 ├── YellowDog.Netboot     → abyss + telemetry
 ├── YellowDog.Fingerprint → store + telemetry
 ├── YellowDog.Identity    → store + telemetry
-├── YellowDog.DhcpClient  → ex_dhcp + telemetry           (no store)
+├── YellowDog.DhcpClient  → ex_dhcp + abyss + telemetry   (no store)
 ├── YellowDog.Resolved    → abyss + ex_dns                (no store, no core)
 ├── YellowDog.Netman      → dhcp_client + resolved + ex_dhcp + telemetry (no store)
 └── YellowDogConsole      → phoenix + all service apps + store + geo_ip_db

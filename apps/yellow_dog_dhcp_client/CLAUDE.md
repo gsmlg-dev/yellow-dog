@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sovereign DHCPv4 client implementing the full DORA lifecycle as a supervised OTP application. Uses `:gen_statem` for the state machine, Rust NIF (via Rustler) for platform-specific broadcast socket operations, and `ex_dhcp` for packet codec.
+Sovereign DHCPv4 client implementing the full DORA lifecycle as a supervised OTP application. Uses `:gen_statem` for the state machine, an Abyss-owned Rust NIF for platform-specific broadcast socket operations, and `ex_dhcp` for packet codec.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ Application
 ├── Registry (:dhcp_client_registry)
 ├── DynamicSupervisor (per-interface clients)
 │   └── InterfaceSupervisor (rest_for_one)
-│       ├── DhcpSocket         — Socket wrapper (NIF in prod, gen_udp fallback)
+│       ├── DhcpSocket         — Socket wrapper (Abyss NIF in prod, gen_udp fallback)
 │       ├── StateMachine       — :gen_statem FSM (INIT→SELECTING→REQUESTING→BOUND→RENEWING→REBINDING)
 │       └── LeaseStore         — ETS + TOML disk persistence
 └── ConfigWatcher              — Watches TOML config, reconciles interfaces
@@ -56,15 +56,15 @@ mix test test/vendor_options_test.exs
 ## Dependencies
 
 - `ex_dhcp` (in-umbrella) — DHCP packet codec
+- `abyss` (in-umbrella) — Production DHCP socket NIF owner
 - `yellow_dog` (in-umbrella) — Core config
 - `yellow_dog_telemetry` (in-umbrella) — Telemetry
 - `telemetry`, `file_system`, `toml` (Hex)
-- Does **NOT** depend on `abyss` (client needs raw broadcast from 0.0.0.0)
 
 ## Gotchas
 
 - `DhcpSocket.UdpFallback` cannot broadcast from `0.0.0.0:68` — use Rust NIF for production
-- The Rust NIF scaffold exists but stubs return `:not_implemented` — needs Rust toolchain to compile
+- The production Rust NIF lives in `apps/abyss/native/dhcp_socket` and needs a Rust toolchain to compile
 - Yellow Dog PEN is placeholder `99999` — replace after IANA registration
 - `:gen_statem` `state_enter` events fire on every state transition — watch for side effects
 - `select_best_offer/1` reverses the offers list since they accumulate in reverse order

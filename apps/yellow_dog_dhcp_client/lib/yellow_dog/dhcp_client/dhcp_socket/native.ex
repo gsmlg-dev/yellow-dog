@@ -1,39 +1,25 @@
 defmodule YellowDog.DhcpClient.DhcpSocket.Native do
   @moduledoc """
-  Production DHCP socket implementation via Rust NIF.
+  DHCP client adapter for the Abyss-owned production socket NIF.
 
-  Loads the `dhcp_socket` Rust crate compiled by Rustler. Provides a
-  broadcast-capable UDP socket bound to the interface (`SO_BINDTODEVICE` on
-  Linux, `IP_BOUND_IF` on FreeBSD) and raw ARP socket support for Duplicate
-  Address Detection (RFC 5227).
-
-  This module is the production implementation of the `DhcpSocket` behaviour.
-  For development and testing, `DhcpSocket.UdpFallback` is used instead.
-
-  ## Fallback
-
-  If the NIF fails to load (e.g., Rust toolchain not available in CI), the
-  `DhcpSocket.default_impl/0` falls back to `UdpFallback` automatically.
+  The Rustler dependency and native crate live in `:abyss`; this module keeps
+  the DHCP client's swappable `DhcpSocket` behaviour surface stable.
   """
-
-  use Rustler,
-    otp_app: :yellow_dog_dhcp_client,
-    crate: "dhcp_socket"
 
   @behaviour YellowDog.DhcpClient.DhcpSocket
 
   @impl true
-  def open(_interface, _owner), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate open(interface, owner), to: Abyss.DhcpSocket.Native
 
   @impl true
-  def send_broadcast(_socket, _packet), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate send_broadcast(socket, packet), to: Abyss.DhcpSocket.Native
 
   @impl true
-  def send_unicast(_socket, _dest_ip, _packet), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate send_unicast(socket, dest_ip, packet), to: Abyss.DhcpSocket.Native
 
   @impl true
-  def send_arp_probe(_socket, _target_ip), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate send_arp_probe(socket, target_ip), to: Abyss.DhcpSocket.Native
 
   @impl true
-  def close(_socket), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate close(socket), to: Abyss.DhcpSocket.Native
 end

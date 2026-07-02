@@ -75,9 +75,9 @@ config :yellow_dog_netman,
   socket_path: "/tmp/yellow_dog_netman_test.sock",
   netlink_backend: :mock
 
-# DHCP client NIF: skip Rust compilation in test (cargo may not be available).
+# Abyss DHCP socket NIF: skip Rust compilation in test (cargo may not be available).
 # Tests use DhcpSocket.UdpFallback configured via :socket_impl env key.
-config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native, skip_compilation?: true
+config :abyss, Abyss.DhcpSocket.Native, skip_compilation?: true
 
 # Use the gen_udp fallback socket in tests — the Rust NIF requires cargo + capabilities.
 config :yellow_dog_dhcp_client, :socket_impl, YellowDog.DhcpClient.DhcpSocket.UdpFallback

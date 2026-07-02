@@ -45,12 +45,7 @@ pub fn start(
 
 /// The main poll loop. Runs on a dedicated OS thread until shutdown is
 /// signalled or the owner process dies.
-fn run(
-    udp_fd: RawFd,
-    arp_fd: Option<RawFd>,
-    owner_pid: LocalPid,
-    shutdown: Arc<AtomicBool>,
-) {
+fn run(udp_fd: RawFd, arp_fd: Option<RawFd>, owner_pid: LocalPid, shutdown: Arc<AtomicBool>) {
     let mut buf = [0u8; MAX_PACKET_SIZE];
     let mut msg_env = OwnedEnv::new();
 
@@ -83,9 +78,7 @@ fn run(
         }
 
         if ret < 0 {
-            let errno = std::io::Error::last_os_error()
-                .raw_os_error()
-                .unwrap_or(0);
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             if errno == libc::EINTR {
                 continue;
             }
@@ -103,14 +96,8 @@ fn run(
         }
         if fds[0].revents & libc::POLLIN != 0 {
             // SAFETY: recv from a valid fd into our buffer.
-            let n = unsafe {
-                libc::recv(
-                    udp_fd,
-                    buf.as_mut_ptr() as *mut libc::c_void,
-                    buf.len(),
-                    0,
-                )
-            };
+            let n =
+                unsafe { libc::recv(udp_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0) };
             if n > 0 {
                 let len = n as usize;
                 let sent = msg_env.send_and_clear(&owner_pid, |env| {
@@ -123,9 +110,7 @@ fn run(
                     break; // Owner process died.
                 }
             } else if n < 0 {
-                let errno = std::io::Error::last_os_error()
-                    .raw_os_error()
-                    .unwrap_or(0);
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
                 if errno != libc::EINTR {
                     break; // Fatal recv error.
                 }
@@ -143,14 +128,8 @@ fn run(
             if fds[1].revents & libc::POLLIN != 0 {
                 let afd = arp_fd.unwrap();
                 // SAFETY: recv from a valid ARP socket fd.
-                let n = unsafe {
-                    libc::recv(
-                        afd,
-                        buf.as_mut_ptr() as *mut libc::c_void,
-                        buf.len(),
-                        0,
-                    )
-                };
+                let n =
+                    unsafe { libc::recv(afd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0) };
                 if n > 0 {
                     let len = n as usize;
                     let sent = msg_env.send_and_clear(&owner_pid, |env| {
@@ -163,9 +142,7 @@ fn run(
                         break; // Owner process died.
                     }
                 } else if n < 0 {
-                    let errno = std::io::Error::last_os_error()
-                        .raw_os_error()
-                        .unwrap_or(0);
+                    let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
                     if errno != libc::EINTR {
                         break;
                     }

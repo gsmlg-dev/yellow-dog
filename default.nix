@@ -15,7 +15,7 @@
 
   pname = "yellow_dog";
   version = version_in_mix;
-  cargoRoot = "apps/yellow_dog_dhcp_client/native/dhcp_socket";
+  cargoRoot = "apps/abyss/native/dhcp_socket";
 
   src = lib.fileset.toSource {
     root = ./.;

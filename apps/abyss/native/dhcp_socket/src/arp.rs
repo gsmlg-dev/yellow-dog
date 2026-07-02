@@ -74,7 +74,11 @@ pub fn build_probe(sender_mac: &[u8; 6], target_ip: (u8, u8, u8, u8)) -> [u8; AR
 /// Linux: Uses `sendto(2)` with `sockaddr_ll` to send on the AF_PACKET socket.
 /// FreeBSD/macOS: Writes to BPF fd (not yet implemented).
 #[cfg(target_os = "linux")]
-pub fn send_raw(arp_fd: RawFd, interface: &str, frame: &[u8; ARP_FRAME_SIZE]) -> Result<(), String> {
+pub fn send_raw(
+    arp_fd: RawFd,
+    interface: &str,
+    frame: &[u8; ARP_FRAME_SIZE],
+) -> Result<(), String> {
     let ifindex = crate::socket::get_interface_index(interface)?;
 
     let mut sll: libc::sockaddr_ll = unsafe { std::mem::zeroed() };
@@ -106,7 +110,11 @@ pub fn send_raw(arp_fd: RawFd, interface: &str, frame: &[u8; ARP_FRAME_SIZE]) ->
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn send_raw(_arp_fd: RawFd, _interface: &str, _frame: &[u8; ARP_FRAME_SIZE]) -> Result<(), String> {
+pub fn send_raw(
+    _arp_fd: RawFd,
+    _interface: &str,
+    _frame: &[u8; ARP_FRAME_SIZE],
+) -> Result<(), String> {
     Err("ARP send: BPF not yet implemented on this platform".to_string())
 }
 
@@ -118,10 +126,7 @@ pub fn send_raw(_arp_fd: RawFd, _interface: &str, _frame: &[u8; ARP_FRAME_SIZE])
 ///
 /// Per RFC 5227 Section 2.1.1, a conflict is detected if the sender
 /// protocol address matches the IP being probed.
-pub fn parse_reply(
-    frame: &[u8],
-    target_ip: (u8, u8, u8, u8),
-) -> Option<([u8; 6], [u8; 4])> {
+pub fn parse_reply(frame: &[u8], target_ip: (u8, u8, u8, u8)) -> Option<([u8; 6], [u8; 4])> {
     if frame.len() < ARP_FRAME_SIZE {
         return None;
     }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Abyss is a pure Elixir UDP server library for building high-performance UDP-based services (DNS, DHCP, mDNS). Part of the Yellow Dog umbrella project with shared build paths:
+Abyss is a UDP server and socket library for building high-performance UDP-based services (DNS, DHCP, mDNS). Part of the Yellow Dog umbrella project with shared build paths:
 - `build_path: "../../_build"`, `deps_path: "../../deps"`, `lockfile: "../../mix.lock"`
 
 ## Constitution
@@ -66,6 +66,7 @@ Abyss.Server (main supervisor)
 - **`Abyss.Transport.UDP.Core`** - Shared socket operations
 - **`Abyss.Transport.UDP.Unicast`** - Standard unicast
 - **`Abyss.Transport.UDP.Broadcast`** - Broadcast/multicast with special socket options
+- **`Abyss.DhcpSocket.Native`** - Rust NIF for DHCP client broadcast and ARP socket operations
 
 ### Observability
 - **`Abyss.Telemetry`** - Metrics (connections_active, accepts_per_second, etc.)

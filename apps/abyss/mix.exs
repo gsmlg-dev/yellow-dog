@@ -45,6 +45,7 @@ defmodule Abyss.MixProject do
     [
       {:telemetry, "~> 1.0"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
+      {:rustler, "~> 0.34", runtime: false},
       {:mox, "~> 1.0", only: :test},
       {:machete, ">= 0.0.0", only: [:dev, :test]},
       {:ex_doc, ">= 0.0.0", runtime: false},

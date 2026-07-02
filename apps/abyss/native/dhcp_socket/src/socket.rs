@@ -130,7 +130,9 @@ pub fn create_arp_socket(interface: &str) -> Result<RawFd, String> {
     }
 
     let ifindex = get_interface_index(interface).map_err(|e| {
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
         e
     })?;
 
@@ -149,7 +151,9 @@ pub fn create_arp_socket(interface: &str) -> Result<RawFd, String> {
     };
     if ret < 0 {
         let err = std::io::Error::last_os_error();
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
         return Err(format!("bind(AF_PACKET, {interface}): {err}"));
     }
 
@@ -168,14 +172,7 @@ pub fn create_arp_socket(_interface: &str) -> Result<RawFd, String> {
 
 /// Send a UDP packet to 255.255.255.255:67 (DHCP server broadcast).
 pub fn sendto_broadcast(fd: RawFd, packet: &[u8]) -> Result<(), String> {
-    let dest = libc::sockaddr_in {
-        sin_family: libc::AF_INET as libc::sa_family_t,
-        sin_port: 67u16.to_be(),
-        sin_addr: libc::in_addr {
-            s_addr: u32::from_ne_bytes([255, 255, 255, 255]),
-        },
-        sin_zero: [0; 8],
-    };
+    let dest = sockaddr_in(Ipv4Addr::BROADCAST, 67);
 
     // SAFETY: Sending UDP broadcast. Socket must have SO_BROADCAST set.
     let ret = unsafe {
@@ -199,15 +196,7 @@ pub fn sendto_broadcast(fd: RawFd, packet: &[u8]) -> Result<(), String> {
 
 /// Send a UDP packet to a specific DHCP server (unicast) on port 67.
 pub fn sendto_unicast(fd: RawFd, dest: &Ipv4Addr, packet: &[u8]) -> Result<(), String> {
-    let octets = dest.octets();
-    let dest_addr = libc::sockaddr_in {
-        sin_family: libc::AF_INET as libc::sa_family_t,
-        sin_port: 67u16.to_be(),
-        sin_addr: libc::in_addr {
-            s_addr: u32::from_ne_bytes(octets),
-        },
-        sin_zero: [0; 8],
-    };
+    let dest_addr = sockaddr_in(*dest, 67);
 
     // SAFETY: Sending unicast UDP to a specific server.
     let ret = unsafe {
@@ -227,6 +216,24 @@ pub fn sendto_unicast(fd: RawFd, dest: &Ipv4Addr, packet: &[u8]) -> Result<(), S
         ));
     }
     Ok(())
+}
+
+fn sockaddr_in(addr: Ipv4Addr, port: u16) -> libc::sockaddr_in {
+    libc::sockaddr_in {
+        #[cfg(any(
+            target_os = "freebsd",
+            target_os = "macos",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        ))]
+        sin_len: std::mem::size_of::<libc::sockaddr_in>() as u8,
+        sin_family: libc::AF_INET as libc::sa_family_t,
+        sin_port: port.to_be(),
+        sin_addr: libc::in_addr {
+            s_addr: u32::from_ne_bytes(addr.octets()),
+        },
+        sin_zero: [0; 8],
+    }
 }
 
 // ============================================================================
@@ -264,7 +271,9 @@ pub fn get_interface_mac(interface: &str) -> Result<[u8; 6], String> {
     let mut ifr: libc::ifreq = unsafe { std::mem::zeroed() };
     let iface_bytes = interface.as_bytes();
     if iface_bytes.len() >= libc::IFNAMSIZ {
-        unsafe { libc::close(sock); }
+        unsafe {
+            libc::close(sock);
+        }
         return Err(format!("interface name too long: {interface}"));
     }
 
@@ -281,7 +290,9 @@ pub fn get_interface_mac(interface: &str) -> Result<[u8; 6], String> {
     // SAFETY: ioctl with SIOCGIFHWADDR reads the interface's MAC address.
     // Cast request code via `as _` for musl (c_int) vs glibc (c_ulong) portability.
     let ret = unsafe { libc::ioctl(sock, libc::SIOCGIFHWADDR as _, &mut ifr as *mut libc::ifreq) };
-    unsafe { libc::close(sock); }
+    unsafe {
+        libc::close(sock);
+    }
 
     if ret < 0 {
         return Err(format!(

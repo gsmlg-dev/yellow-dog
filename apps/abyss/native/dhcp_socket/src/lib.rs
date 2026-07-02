@@ -67,9 +67,13 @@ impl Drop for DhcpSocketResource {
         if let Ok(mut guard) = self.inner.lock() {
             if let Some(mut inner) = guard.take() {
                 inner.shutdown.store(true, Ordering::SeqCst);
-                unsafe { libc::close(inner.udp_fd); }
+                unsafe {
+                    libc::close(inner.udp_fd);
+                }
                 if let Some(arp_fd) = inner.arp_fd {
-                    unsafe { libc::close(arp_fd); }
+                    unsafe {
+                        libc::close(arp_fd);
+                    }
                 }
                 // Detach the poll thread — it will exit on its own.
                 drop(inner.poll_handle.take());
@@ -114,8 +118,7 @@ unsafe impl Sync for DhcpSocketResource {}
 #[rustler::nif(schedule = "DirtyIo")]
 fn open(interface: String, owner_pid: LocalPid) -> Result<ResourceArc<DhcpSocketResource>, Error> {
     // 1. Create UDP socket (required — failure is fatal).
-    let udp_fd = socket::create_udp_socket(&interface)
-        .map_err(|e| Error::Term(Box::new(e)))?;
+    let udp_fd = socket::create_udp_socket(&interface).map_err(|e| Error::Term(Box::new(e)))?;
 
     // 2. Create ARP socket (optional — DAD probes won't work without it).
     let arp_fd = socket::create_arp_socket(&interface).ok();
@@ -191,8 +194,7 @@ fn send_arp_probe(
         .arp_fd
         .ok_or_else(|| Error::Term(Box::new("ARP socket not available".to_string())))?;
     let frame = arp::build_probe(&inner.mac, target_ip);
-    arp::send_raw(arp_fd, &inner.interface, &frame)
-        .map_err(|e| Error::Term(Box::new(e)))?;
+    arp::send_raw(arp_fd, &inner.interface, &frame).map_err(|e| Error::Term(Box::new(e)))?;
     Ok(atoms::ok())
 }
 
@@ -208,9 +210,13 @@ fn close(resource: ResourceArc<DhcpSocketResource>) -> Atom {
         inner.shutdown.store(true, Ordering::SeqCst);
 
         // Close fds to unblock any blocking poll/recv.
-        unsafe { libc::close(inner.udp_fd); }
+        unsafe {
+            libc::close(inner.udp_fd);
+        }
         if let Some(arp_fd) = inner.arp_fd {
-            unsafe { libc::close(arp_fd); }
+            unsafe {
+                libc::close(arp_fd);
+            }
         }
 
         // Wait for the poll thread to finish (safe on DirtyIo scheduler).
@@ -227,7 +233,4 @@ fn load(env: Env, _: Term) -> bool {
     true
 }
 
-rustler::init!(
-    "Elixir.YellowDog.DhcpClient.DhcpSocket.Native",
-    load = load
-);
+rustler::init!("Elixir.Abyss.DhcpSocket.Native", load = load);

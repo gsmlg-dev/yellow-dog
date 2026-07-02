@@ -85,7 +85,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 | **Protocols** | `apps/yellow_dog_dns`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | Server GenServers, packet handlers, zone/lease management. |
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity` | DHCP Client, Netlink integration, DNS stub caching, host trust verification. |
 | **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DaisyUI templates, asset compilation via Bun. |
-| **Libraries** | `apps/abyss`, `ex_dns`, `ex_dhcp`, `geo_ip_db` | Pure Elixir infrastructure libraries (UDP core, DNS protocol, DHCP messages). |
+| **Libraries** | `apps/abyss`, `ex_dns`, `ex_dhcp`, `geo_ip_db` | Infrastructure libraries (UDP core/native sockets, DNS protocol, DHCP messages). |
 
 ### Storage Patterns
 *   **DHCP Leases**: Persisted in Mnesia using `disc_copies` tables for fast transactional writes. Indexing must be maintained by IP and lease status.
