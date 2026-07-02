@@ -55,6 +55,8 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     on_exit(fn ->
+      stop_service_if_running(:dns, YellowDog.Dns)
+
       # Clean up config file and backups
       File.rm_rf(config_dir)
     end)
@@ -824,6 +826,12 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
       {:ok, config} = ConfigManager.load_config(config_path)
       assert config["core"]["netboot"] == false
+    end
+  end
+
+  defp stop_service_if_running(service, process_name) do
+    if Process.whereis(process_name) do
+      _ = YellowDog.stop_service(service)
     end
   end
 end
