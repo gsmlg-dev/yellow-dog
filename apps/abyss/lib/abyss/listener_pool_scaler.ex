@@ -7,7 +7,6 @@ defmodule Abyss.ListenerPoolScaler do
   """
 
   use GenServer
-  require Logger
 
   @typedoc "Scaler state"
   @type t :: %__MODULE__{

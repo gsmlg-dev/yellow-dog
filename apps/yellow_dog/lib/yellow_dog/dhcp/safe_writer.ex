@@ -14,7 +14,6 @@ defmodule YellowDog.DHCP.SafeWriter do
   """
 
   import Bitwise
-  require Logger
 
   @type validator :: (String.t() -> :ok | {:error, term()})
   @type transaction_id :: String.t()
