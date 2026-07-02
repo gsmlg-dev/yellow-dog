@@ -91,7 +91,7 @@ jobs:
           architectures=("x86_64" "aarch64")
           for arch in "${architectures[@]}"; do
             docker load < images/container-"$arch"/*.tar.gz
-            docker tag yellowdogdns:latest ${{ env.TAG }}-"$arch"
+            docker tag yellow_dog:latest ${{ env.TAG }}-"$arch"
             docker push ${{ env.TAG }}-"$arch"
           done
           docker manifest create ${{ env.TAG }} \

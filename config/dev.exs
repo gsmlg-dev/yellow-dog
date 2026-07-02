@@ -68,7 +68,7 @@ config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth,
   enabled: System.get_env("CONSOLE_AUTH_ENABLED") == "true"
 
 # Settings page configuration path for development
-config :yellow_dog_console, config_path: "priv/yellowdogdns_default_config.toml"
+config :yellow_dog_console, config_path: "priv/yellow_dog_default_config.toml"
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

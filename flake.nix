@@ -15,7 +15,7 @@
       nixosModules.default = self.nixosModules.dhcpClient;
     } //
     flake-utils.lib.eachDefaultSystem (system: let
-      yellowdogdns_default_config =
+      yellow_dog_default_config =
         pkgs.writeText "yellowdog.toml"
         ''
           [server]
@@ -38,9 +38,9 @@
           ecs-prefix = 24
         '';
       pkgs = import nixpkgs {inherit system;};
-      yellowdogdns = pkgs.callPackage ./default.nix {inherit system;};
+      yellow_dog = pkgs.callPackage ./default.nix {inherit system;};
       dockerImage = pkgs.dockerTools.buildImage {
-        name = "yellowdogdns";
+        name = "yellow_dog";
         tag = "latest";
         created = "now";
         copyToRoot = pkgs.buildEnv {
@@ -54,8 +54,8 @@
             pkgs.locale
             pkgs.tzdata
             pkgs.glibcLocales
-            yellowdogdns
-            # yellowdogdns_default_config
+            yellow_dog
+            # yellow_dog_default_config
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
         };
@@ -66,8 +66,8 @@
           WorkingDir = "/root";
           Labels = {
             "org.opencontainers.image.source" = "https://github.com/gsmlg-dev/yellow-dog";
-            "org.opencontainers.image.version" = "${yellowdogdns.version}";
-            "org.opencontainers.image.title" = "YellowDogDNS";
+            "org.opencontainers.image.version" = "${yellow_dog.version}";
+            "org.opencontainers.image.title" = "YellowDog";
             "org.opencontainers.image.description" = "A DNS Server write in Elixir";
             "maintainer" = "Jonathan Gao <gsmlg.com@gmail.com>";
             "volume.config" = "/etc/yellowdog.toml";
@@ -92,27 +92,29 @@
     in {
       packages =
         {
-          yellowdogdns = yellowdogdns;
+          yellow_dog = yellow_dog;
         }
         // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           docker = dockerImage;
         };
 
-      defaultPackage = yellowdogdns;
+      defaultPackage = yellow_dog;
 
       devShells.default = pkgs.mkShell {
-        name = "YellowDog NameServer Dev Shell";
+        name = "YellowDog Server Dev Shell";
 
         buildInputs = [
           pkgs.figlet
           pkgs.elixir
-          pkgs.zig
           pkgs.p7zip
+          pkgs.rustPlatform.cargoSetupHook
+          pkgs.cargo
+          pkgs.rustc
         ];
 
         shellHook = ''
           figlet -w 120 -f starwars YellowDog
-          figlet -w 120 -f starwars NameServer
+          figlet -w 120 -f starwars Server
           figlet -w 120 -f starwars Dev Shell
 
           export EDITOR=vim

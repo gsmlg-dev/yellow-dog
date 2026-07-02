@@ -97,9 +97,9 @@ end
 # In dev, use the same config file edited by the console settings page.
 default_config_path =
   if config_env() == :dev do
-    Path.expand("../priv/yellowdogdns_default_config.toml", __DIR__)
+    Path.expand("../priv/yellow_dog_default_config.toml", __DIR__)
   else
-    Path.expand("../apps/yellow_dog/priv/yellowdogdns_default_config.toml", __DIR__)
+    Path.expand("../apps/yellow_dog/priv/yellow_dog_default_config.toml", __DIR__)
   end
 
 # Determine which config file to use (CLI > ENV > default)
@@ -122,9 +122,9 @@ config :yellow_dog, :config_file_path, config_to_load
 # Task scheduler configuration is separate from the main service config.
 default_tasks_config_path =
   if config_env() == :dev do
-    Path.expand("../priv/yellowdogdns_tasks_config.toml", __DIR__)
+    Path.expand("../priv/yellow_dog_tasks_config.toml", __DIR__)
   else
-    Path.expand("../apps/yellow_dog_tasks/priv/yellowdogdns_tasks_config.toml", __DIR__)
+    Path.expand("../apps/yellow_dog_tasks/priv/yellow_dog_tasks_config.toml", __DIR__)
   end
 
 tasks_config_path =

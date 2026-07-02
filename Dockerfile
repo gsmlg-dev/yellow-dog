@@ -96,8 +96,8 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
              /run/yellowdog
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
-COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
-COPY priv/yellowdogdns_tasks_config.toml /etc/yellowdog/tasks.toml
+COPY priv/yellow_dog_default_config.toml /etc/yellowdog/config.toml
+COPY priv/yellow_dog_tasks_config.toml /etc/yellowdog/tasks.toml
 
 EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 

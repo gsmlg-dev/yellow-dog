@@ -55,7 +55,7 @@ defmodule YellowDog.Tasks.ConfigTest do
     path =
       Path.join(
         System.tmp_dir!(),
-        "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml"
+        "yellow_dog_tasks_config_#{System.unique_integer([:positive])}.toml"
       )
 
     File.write!(path, """
@@ -85,7 +85,7 @@ defmodule YellowDog.Tasks.ConfigTest do
     path =
       Path.join(
         System.tmp_dir!(),
-        "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml"
+        "yellow_dog_tasks_config_#{System.unique_integer([:positive])}.toml"
       )
 
     File.write!(path, """
@@ -113,7 +113,7 @@ defmodule YellowDog.Tasks.ConfigTest do
     path =
       Path.join(
         System.tmp_dir!(),
-        "yellowdogdns_tasks_config_#{System.unique_integer([:positive])}.toml"
+        "yellow_dog_tasks_config_#{System.unique_integer([:positive])}.toml"
       )
 
     on_exit(fn -> File.rm(path) end)

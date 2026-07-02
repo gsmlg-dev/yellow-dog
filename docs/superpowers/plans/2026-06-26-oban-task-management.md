@@ -7,7 +7,7 @@
 ## Scope
 
 - `apps/yellow_dog_tasks`
-- Standalone task scheduler config in `yellowdogdns_tasks_config.toml`
+- Standalone task scheduler config in `yellow_dog_tasks_config.toml`
 - Task console pages under `apps/yellow_dog_console`
 - Store key helpers in `apps/yellow_dog_store`
 - Focused tests for the touched apps
@@ -31,7 +31,7 @@
 - `mix test test/yellow_dog/console/live/tasks_live_test.exs` for `apps/yellow_dog_console`
 - `mix test test/yellow_dog/config/schema_test.exs` for `apps/yellow_dog_config`
 - `mix compile --warnings-as-errors`
-- `nix build .#yellowdogdns --no-link`
+- `nix build .#yellow_dog --no-link`
 
 ## Status
 

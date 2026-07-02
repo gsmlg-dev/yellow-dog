@@ -373,7 +373,7 @@ defmodule YellowDog.Application do
   # Logs configuration information
   defp log_config_info(config) do
     config_file_path = Application.get_env(:yellow_dog, :config_file_path)
-    default_config_path = Path.expand("../priv/yellowdogdns_default_config.toml", __DIR__)
+    default_config_path = Path.expand("../priv/yellow_dog_default_config.toml", __DIR__)
 
     is_default = config_file_path && config_file_path == default_config_path
 

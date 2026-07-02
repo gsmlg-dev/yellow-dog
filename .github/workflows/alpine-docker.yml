@@ -48,7 +48,7 @@ jobs:
           build-args: |
             RELEASE_VERSION=${{ steps.version.outputs.version }}
           tags: |
-            docker.io/gsmlg/yellowdogdns:v${{ steps.version.outputs.version }}
-            docker.io/gsmlg/yellowdogdns:alpine
+            docker.io/gsmlg/yellow_dog:v${{ steps.version.outputs.version }}
+            docker.io/gsmlg/yellow_dog:alpine
             ghcr.io/gsmlg-dev/yellow-dog:v${{ steps.version.outputs.version }}
             ghcr.io/gsmlg-dev/yellow-dog:alpine

@@ -288,13 +288,13 @@ mix phx.server         # Start server at http://localhost:4270
 
 ```shell
 # Build Docker image
-docker build -t yellowdogdns .
+docker build -t yellow_dog .
 
 # Or use Nix
 nix build .#docker
 
 # Run container
-docker run -p 53:53/udp -p 67:67/udp -p 4270:4270 yellowdogdns
+docker run -p 53:53/udp -p 67:67/udp -p 4270:4270 yellow_dog
 ```
 
 ## License

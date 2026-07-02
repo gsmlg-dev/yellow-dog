@@ -6,7 +6,7 @@
 # Configuration example:
 #   services.yellowdog-dhcp-client = {
 #     enable = true;
-#     package = self.packages.${system}.yellowdogdns;
+#     package = self.packages.${system}.yellow_dog;
 #     interfaces = {
 #       eth0 = {
 #         mode = "standalone";

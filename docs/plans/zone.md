@@ -220,7 +220,7 @@ Update subscription pattern from `dns:zone:*` to `dns:view:*` to match new key h
 
 ### 3.2 Remove zone config from TOML config
 
-Zone definitions should no longer be in `yellowdogdns_default_config.toml`. The TOML config retains only server-level settings (listen address, port, recursion settings, etc.).
+Zone definitions should no longer be in `yellow_dog_default_config.toml`. The TOML config retains only server-level settings (listen address, port, recursion settings, etc.).
 
 ---
 

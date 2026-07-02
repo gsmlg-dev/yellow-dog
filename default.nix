@@ -55,7 +55,7 @@ in
     '';
 
     meta = with lib; {
-      description = "YellowDog NameServer for GSMLG.dev";
+      description = "YellowDog Server for GSMLG.dev";
       mainProgram = "yellow_dog";
     };
   }
