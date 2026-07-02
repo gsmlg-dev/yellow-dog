@@ -38,10 +38,10 @@ defmodule YellowDog.Dns.View do
   use GenServer
 
   alias YellowDog.Telemetry
+  alias YellowDog.Dns.ResponseComposer
   alias YellowDog.Dns.View.ACL
   alias YellowDog.Dns.ZoneController
   alias DNS.Message
-  alias DNS.Message.Question
 
   @default_priority 100
 
@@ -442,7 +442,7 @@ defmodule YellowDog.Dns.View do
 
             case module.resolve(zone_pid, query) do
               {:ok, response} ->
-                response = maybe_complete_cname_response(state, query, response)
+                response = compose_response(state, query, response)
                 # Notify connection process
                 send_query_route(connection_pid, query_id, zone_type, zone_name)
                 send(connection_pid, {:zone_response, query_id, response})
@@ -487,26 +487,17 @@ defmodule YellowDog.Dns.View do
   defp perform_recursion(state, connection_pid, query_id, query) do
     # Notify connection process of recursive step
     send(connection_pid, {:recursive_step, query_id, %{step: :forward}})
-    view_name = state.name
 
-    zone_pid = find_forward_zone(view_name)
+    case resolve_recursively(state, query) do
+      {:ok, response, route} ->
+        {zone_type, zone_name} = route
+        send_query_route(connection_pid, query_id, zone_type, zone_name)
+        send(connection_pid, {:zone_response, query_id, response})
+        cache_response(state, query, response)
+        apply_rpz_and_respond(state, connection_pid, query_id, query, response)
 
-    case zone_pid do
-      nil ->
-        # No forwarding configured
-        {:error, :servfail}
-
-      pid ->
-        case YellowDog.Dns.Zone.Forward.resolve(pid, query) do
-          {:ok, response} ->
-            send_query_route(connection_pid, query_id, :forward, ".")
-            send(connection_pid, {:zone_response, query_id, response})
-            cache_response(state, query, response)
-            apply_rpz_and_respond(state, connection_pid, query_id, query, response)
-
-          error ->
-            error
-        end
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -564,6 +555,8 @@ defmodule YellowDog.Dns.View do
   end
 
   defp apply_rpz_and_respond(state, connection_pid, query_id, query, response) do
+    response = compose_response(state, query, response)
+
     # Apply RPZ policies if configured
     final_response =
       if state.rpz_zones == [] do
@@ -579,106 +572,42 @@ defmodule YellowDog.Dns.View do
     {:ok, final_response}
   end
 
-  defp maybe_complete_cname_response(state, query, response) do
-    with true <- state.recursion_enabled,
-         true <- recursion_desired?(query),
-         {:ok, question} <- first_question(query),
-         false <- question_type?(question, "CNAME"),
-         {:ok, target_name} <- unresolved_cname_target(response, question),
-         {:ok, recursive_response} <- resolve_cname_target(state, query, question, target_name) do
-      merge_cname_response(response, recursive_response)
-    else
-      _ -> response
-    end
+  defp compose_response(state, query, response) do
+    ResponseComposer.compose(query, response,
+      recursion_enabled: state.recursion_enabled,
+      resolve_cname_target: &resolve_cname_target(state, &1)
+    )
   end
 
-  defp first_question(%Message{qdlist: [question | _]}), do: {:ok, question}
-  defp first_question(_query), do: :error
-
-  defp recursion_desired?(%Message{header: %{rd: rd}}), do: rd in [1, true]
-  defp recursion_desired?(_query), do: false
-
-  defp question_type?(question, type) do
-    question
-    |> question_type()
-    |> Kernel.==(type)
-  end
-
-  defp question_type(%Question{type: type}), do: to_string(type)
-  defp question_type(%{type: type}), do: to_string(type) |> String.upcase()
-
-  defp unresolved_cname_target(%Message{anlist: answers}, question) do
-    qtype = question_type(question)
-
-    has_requested_type? =
-      Enum.any?(answers, fn answer ->
-        answer
-        |> record_type()
-        |> Kernel.==(qtype)
-      end)
-
-    if has_requested_type? do
-      :error
-    else
-      answers
-      |> Enum.filter(&(record_type(&1) == "CNAME"))
-      |> List.last()
-      |> cname_target()
-      |> case do
-        nil -> :error
-        target -> {:ok, target}
-      end
-    end
-  end
-
-  defp record_type(%DNS.Message.Record{type: type}), do: to_string(type)
-  defp record_type(%{type: type}), do: to_string(type) |> String.upcase()
-
-  defp cname_target(nil), do: nil
-
-  defp cname_target(%DNS.Message.Record{data: data}) do
-    data
-    |> to_string()
-    |> normalize_name()
-  end
-
-  defp cname_target(%{rdata: target}) when is_binary(target), do: normalize_name(target)
-  defp cname_target(%{"rdata" => target}) when is_binary(target), do: normalize_name(target)
-  defp cname_target(_record), do: nil
-
-  defp resolve_cname_target(state, query, question, target_name) do
-    with pid when is_pid(pid) <- find_forward_zone(state.name),
-         target_query <- cname_target_query(query, question, target_name),
-         {:ok, response} <- YellowDog.Dns.Zone.Forward.resolve(pid, target_query) do
+  defp resolve_cname_target(state, target_query) do
+    with {:ok, response, _route} <- resolve_recursively(state, target_query) do
       {:ok, response}
     else
       _ -> :error
     end
   end
 
-  defp cname_target_query(%Message{} = query, %Question{} = question, target_name) do
-    %{query | qdlist: [%{question | name: DNS.Message.Domain.new(target_name)}]}
+  defp resolve_recursively(state, query) do
+    case find_forward_zone(state.name) do
+      pid when is_pid(pid) ->
+        case YellowDog.Dns.Zone.Forward.resolve(pid, query) do
+          {:ok, response} -> {:ok, response, {:forward, "."}}
+          {:error, _reason} = error -> error
+        end
+
+      nil ->
+        resolve_with_fallback_forwarders(state, query)
+    end
   end
 
-  defp cname_target_query(%Message{} = query, %{name: _name} = question, target_name) do
-    %{query | qdlist: [%{question | name: target_name}]}
-  end
+  defp resolve_with_fallback_forwarders(%{fallback_forwarders: []}, _query),
+    do: {:error, :servfail}
 
-  defp merge_cname_response(response, recursive_response) do
-    answers = response.anlist ++ recursive_response.anlist
-
-    %{
-      response
-      | header: %{
-          response.header
-          | ancount: length(answers),
-            nscount: 0,
-            arcount: length(recursive_response.arlist)
-        },
-        anlist: answers,
-        nslist: [],
-        arlist: recursive_response.arlist
-    }
+  defp resolve_with_fallback_forwarders(state, query) do
+    case forward_to_fallback(state, query) do
+      {:ok, response} -> {:ok, response, {:fallback, nil}}
+      {:error, _reason} = error -> error
+    end
   end
 
   defp mark_recursion_available(response, %{recursion_enabled: true}) do

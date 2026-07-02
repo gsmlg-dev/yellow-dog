@@ -268,6 +268,31 @@ defmodule YellowDog.Dns.SupervisorTest do
       assert is_pid(pid)
       assert Process.alive?(pid)
     end
+
+    test "applies upstream servers as fallback forwarders for recursive views" do
+      view_name = "recursive_with_upstreams_#{:erlang.unique_integer([:positive])}"
+
+      {:ok, _pid} =
+        DnsSupervisor.start_link(
+          port: 0,
+          skip_persistence: true,
+          upstream_servers: [{{8, 8, 8, 8}, 53}],
+          views: [
+            %{
+              name: view_name,
+              priority: 10,
+              acl: :any,
+              zones: [],
+              recursion_enabled: true
+            }
+          ]
+        )
+
+      Process.sleep(300)
+
+      assert {:ok, view_pid} = YellowDog.Dns.ViewManager.get_view(view_name)
+      assert %{fallback_forwarders: [{{8, 8, 8, 8}, 53}]} = YellowDog.Dns.View.stats(view_pid)
+    end
   end
 
   describe "child processes after start" do

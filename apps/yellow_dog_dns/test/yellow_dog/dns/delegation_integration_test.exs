@@ -317,6 +317,84 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
       GenServer.stop(forward_pid)
       GenServer.stop(view_pid)
     end
+
+    test "recursive view follows an out-of-zone CNAME target through fallback forwarders",
+         %{vm: vm} do
+      view_name = "test_cname_fallback_#{:erlang.unique_integer([:positive])}"
+      upstream_ip = {127, 0, 0, 1}
+      {:ok, upstream_socket} = Abyss.Transport.UDP.listen(0, ip: upstream_ip, active: false)
+      {:ok, {_bound_ip, upstream_port}} = Abyss.Transport.UDP.sockname(upstream_socket)
+
+      upstream_task =
+        Task.async(fn ->
+          case Abyss.Transport.UDP.recv(upstream_socket, 0, 1_000) do
+            {:ok, {client_ip, client_port, data}} ->
+              query = Message.from_iodata(data)
+
+              response =
+                build_response(query, [
+                  Record.new("target.external.test", :a, :in, 120, {203, 0, 113, 7})
+                ])
+
+              :ok =
+                Abyss.Transport.UDP.send(
+                  upstream_socket,
+                  client_ip,
+                  client_port,
+                  DNS.to_iodata(response)
+                )
+
+              :served
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end)
+
+      on_exit(fn ->
+        Abyss.Transport.UDP.close(upstream_socket)
+      end)
+
+      {:ok, zone_pid} =
+        ZoneController.start_zone(:auth, "example.test",
+          view_name: view_name,
+          zone_data: [
+            %{
+              name: "alias.example.test",
+              type: :cname,
+              class: :in,
+              ttl: 300,
+              rdata: "target.external.test"
+            }
+          ]
+        )
+
+      {:ok, view_pid} =
+        ViewManager.start_view(vm, %{
+          name: view_name,
+          priority: 10,
+          acl: :any,
+          zones: [{:auth, "example.test"}],
+          recursion_enabled: true,
+          fallback_forwarders: [{upstream_ip, upstream_port}],
+          fallback_timeout: 500
+        })
+
+      query = build_wire_query("alias.example.test", :a)
+      {:ok, response} = View.resolve(view_pid, self(), 1, query)
+
+      assert :served = Task.await(upstream_task, 1_000)
+      assert response.header.ra == 1
+      assert Enum.map(response.anlist, &(to_string(&1.type) |> String.upcase())) == ["CNAME", "A"]
+
+      assert Enum.map(response.anlist, &(to_string(&1.name) |> String.trim_trailing("."))) == [
+               "alias.example.test",
+               "target.external.test"
+             ]
+
+      GenServer.stop(zone_pid)
+      GenServer.stop(view_pid)
+    end
   end
 
   describe "zone CRUD through ZoneController" do

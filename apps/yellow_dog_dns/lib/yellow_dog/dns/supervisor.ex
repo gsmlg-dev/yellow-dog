@@ -163,16 +163,17 @@ defmodule YellowDog.Dns.Supervisor do
 
     # Start views: persisted > opts
     views = Keyword.get(opts, :views, [])
+    default_forwarders = get_default_forwarders(opts)
 
     cond do
       # Use persisted views if available
       persisted_views != [] ->
         Telemetry.info("Loading #{length(persisted_views)} views from persisted config")
-        Enum.each(persisted_views, &start_view_from_config/1)
+        Enum.each(persisted_views, &start_view_from_config(&1, default_forwarders))
 
       # Use views from opts if provided
       views != [] ->
-        Enum.each(views, &YellowDog.Dns.ViewManager.start_view/1)
+        Enum.each(views, &start_view(&1, default_forwarders))
 
       true ->
         :ok
@@ -180,7 +181,7 @@ defmodule YellowDog.Dns.Supervisor do
 
     # Always ensure default view exists as a catch-all fallback
     # Default view has priority :infinity (lowest) so it matches only when no other view does
-    ensure_default_view()
+    ensure_default_view(default_forwarders)
 
     # Start zones: persisted > opts
     zones = Keyword.get(opts, :zones, [])
@@ -357,7 +358,13 @@ defmodule YellowDog.Dns.Supervisor do
     end
   end
 
-  defp start_view_from_config(view_config) do
+  defp start_view(view_config, default_forwarders) do
+    view_config
+    |> apply_default_forwarders(default_forwarders)
+    |> YellowDog.Dns.ViewManager.start_view()
+  end
+
+  defp start_view_from_config(view_config, default_forwarders) do
     # Convert 999999 back to :infinity for default view priority
     priority =
       case view_config[:priority] do
@@ -376,11 +383,13 @@ defmodule YellowDog.Dns.Supervisor do
       ecs_enabled: view_config[:ecs_enabled] || false
     }
 
+    config = apply_default_forwarders(config, default_forwarders)
+
     YellowDog.Dns.ViewManager.start_view(config)
   end
 
   # Ensures a default view always exists as a catch-all
-  defp ensure_default_view do
+  defp ensure_default_view(default_forwarders) do
     case YellowDog.Dns.ViewManager.get_view("default") do
       {:ok, _pid} ->
         # Default view already exists
@@ -397,8 +406,30 @@ defmodule YellowDog.Dns.Supervisor do
           zones: [],
           rpz_zones: [],
           recursion_enabled: true,
+          fallback_forwarders: default_forwarders,
           ecs_enabled: false
         })
+    end
+  end
+
+  defp apply_default_forwarders(view_config, default_forwarders) when is_list(view_config) do
+    view_config
+    |> Map.new()
+    |> apply_default_forwarders(default_forwarders)
+  end
+
+  defp apply_default_forwarders(view_config, []), do: view_config
+
+  defp apply_default_forwarders(view_config, default_forwarders) when is_map(view_config) do
+    fallback_forwarders = Map.get(view_config, :fallback_forwarders, [])
+
+    recursion_enabled =
+      Map.get(view_config, :recursion_enabled) || Map.get(view_config, :recursion)
+
+    if recursion_enabled and fallback_forwarders == [] do
+      Map.put(view_config, :fallback_forwarders, default_forwarders)
+    else
+      view_config
     end
   end
 
@@ -487,6 +518,82 @@ defmodule YellowDog.Dns.Supervisor do
       end
 
     YellowDog.Dns.ZoneController.start_zone(type, name, opts)
+  end
+
+  defp get_default_forwarders(opts) do
+    servers =
+      case Keyword.fetch(opts, :upstream_servers) do
+        {:ok, upstream_servers} -> upstream_servers
+        :error -> configured_upstream_servers()
+      end
+
+    normalize_forwarders(servers)
+  end
+
+  defp configured_upstream_servers do
+    apply(YellowDog.Config, :get, [:dns, :upstream_servers]) || []
+  rescue
+    _e in [ArgumentError, UndefinedFunctionError] -> []
+  end
+
+  defp normalize_forwarders(servers) when is_list(servers) do
+    Enum.flat_map(servers, &normalize_forwarder/1)
+  end
+
+  defp normalize_forwarders(_servers), do: []
+
+  defp normalize_forwarder({ip, port}) when is_tuple(ip) and is_integer(port) do
+    [{ip, port}]
+  end
+
+  defp normalize_forwarder({ip, port}) when is_binary(ip) and is_integer(port) do
+    case parse_ip(ip) do
+      {:ok, ip_tuple} -> [{ip_tuple, port}]
+      {:error, _reason} -> []
+    end
+  end
+
+  defp normalize_forwarder(ip) when is_tuple(ip), do: [{ip, 53}]
+
+  defp normalize_forwarder(%{ip: ip, port: port}) when is_integer(port) do
+    normalize_forwarder({ip, port})
+  end
+
+  defp normalize_forwarder(%{"ip" => ip, "port" => port}) when is_integer(port) do
+    normalize_forwarder({ip, port})
+  end
+
+  defp normalize_forwarder(server) when is_binary(server) do
+    case Regex.run(~r/^\[(.+)\]:(\d+)$/, server) do
+      [_, ip, port] ->
+        normalize_forwarder({ip, String.to_integer(port)})
+
+      nil ->
+        case parse_ip(server) do
+          {:ok, ip} ->
+            [{ip, 53}]
+
+          {:error, _reason} ->
+            parse_ipv4_forwarder(server)
+        end
+    end
+  end
+
+  defp normalize_forwarder(_server), do: []
+
+  defp parse_ipv4_forwarder(server) do
+    case String.split(server, ":", parts: 2) do
+      [ip, port] ->
+        with {port, ""} <- Integer.parse(port),
+             {:ok, ip_tuple} <- parse_ip(ip) do
+          [{ip_tuple, port}]
+        else
+          _ -> []
+        end
+
+      _ ->
+        []
+    end
   end
 
   defp get_data_path do
