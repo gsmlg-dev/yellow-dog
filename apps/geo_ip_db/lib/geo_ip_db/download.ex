@@ -34,8 +34,10 @@ defmodule GeoIpDb.Download do
     Logger.info("[GeoIpDb] Downloading database", type: type, url: url)
 
     case fetcher.(url) do
-      %HTTP.Response{ok: true, body: body} ->
-        decompress_and_save(body, target_path, type)
+      %HTTP.Response{ok: true} = response ->
+        with {:ok, body} <- response_body(response) do
+          decompress_and_save(body, target_path, type)
+        end
 
       %HTTP.Response{status: status} ->
         {:error, {:http_error, status}}
@@ -78,6 +80,12 @@ defmodule GeoIpDb.Download do
   defp default_fetch(url) do
     Application.ensure_all_started(:http_fetch)
     url |> HTTP.fetch() |> HTTP.Promise.await()
+  end
+
+  defp response_body(%HTTP.Response{} = response) do
+    {:ok, HTTP.Response.read_all(response)}
+  rescue
+    exception -> {:error, {:read_failed, Exception.message(exception)}}
   end
 
   defp decompress_and_save(compressed, target_path, type) do
