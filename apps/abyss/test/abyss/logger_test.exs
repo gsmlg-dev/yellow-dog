@@ -8,7 +8,7 @@ defmodule Abyss.LoggerTest do
       Logger.attach_logger(:error)
 
       # Verify the logger is attached by emitting a test event
-      :telemetry.execute([:abyss, :acceptor, :spawn_error], %{error: :test_error}, %{
+      :telemetry.execute([:abyss, :listener, :packet_too_large], %{error: :test_error}, %{
         socket: :test
       })
 
@@ -28,7 +28,7 @@ defmodule Abyss.LoggerTest do
       Logger.attach_logger(:debug)
 
       # Verify the logger is attached by emitting a test event
-      :telemetry.execute([:abyss, :acceptor, :start], %{timestamp: :test}, %{listener_id: 1})
+      :telemetry.execute([:abyss, :connection, :start], %{timestamp: :test}, %{listener_id: 1})
 
       Logger.detach_logger(:debug)
     end
@@ -78,7 +78,7 @@ defmodule Abyss.LoggerTest do
 
   describe "log functions" do
     test "log_error/4 logs error events" do
-      event = [:abyss, :acceptor, :spawn_error]
+      event = [:abyss, :listener, :packet_too_large]
       measurements = %{error: :test_error}
       metadata = %{socket: :test_socket}
 
@@ -96,7 +96,7 @@ defmodule Abyss.LoggerTest do
     end
 
     test "log_debug/4 logs debug events" do
-      event = [:abyss, :acceptor, :start]
+      event = [:abyss, :connection, :start]
       measurements = %{timestamp: :test}
       metadata = %{listener_id: 1}
 
@@ -119,7 +119,8 @@ defmodule Abyss.LoggerTest do
       Logger.attach_logger(:info)
 
       # Both error and info events should be logged
-      :telemetry.execute([:abyss, :acceptor, :spawn_error], %{error: :test}, %{socket: :test})
+      :telemetry.execute([:abyss, :listener, :packet_too_large], %{error: :test}, %{socket: :test})
+
       :telemetry.execute([:abyss, :listener, :start], %{timestamp: :test}, %{listener_id: 1})
 
       Logger.detach_logger(:info)
@@ -129,9 +130,10 @@ defmodule Abyss.LoggerTest do
       Logger.attach_logger(:debug)
 
       # All debug, info, and error events should be logged
-      :telemetry.execute([:abyss, :acceptor, :spawn_error], %{error: :test}, %{socket: :test})
+      :telemetry.execute([:abyss, :listener, :packet_too_large], %{error: :test}, %{socket: :test})
+
       :telemetry.execute([:abyss, :listener, :start], %{timestamp: :test}, %{listener_id: 1})
-      :telemetry.execute([:abyss, :acceptor, :start], %{timestamp: :test}, %{listener_id: 1})
+      :telemetry.execute([:abyss, :connection, :start], %{timestamp: :test}, %{listener_id: 1})
 
       Logger.detach_logger(:debug)
     end
@@ -140,9 +142,10 @@ defmodule Abyss.LoggerTest do
       Logger.attach_logger(:trace)
 
       # All events should be logged
-      :telemetry.execute([:abyss, :acceptor, :spawn_error], %{error: :test}, %{socket: :test})
+      :telemetry.execute([:abyss, :listener, :packet_too_large], %{error: :test}, %{socket: :test})
+
       :telemetry.execute([:abyss, :listener, :start], %{timestamp: :test}, %{listener_id: 1})
-      :telemetry.execute([:abyss, :acceptor, :start], %{timestamp: :test}, %{listener_id: 1})
+      :telemetry.execute([:abyss, :connection, :start], %{timestamp: :test}, %{listener_id: 1})
       :telemetry.execute([:abyss, :connection, :ready], %{timestamp: :test}, %{connection_id: 1})
 
       Logger.detach_logger(:trace)

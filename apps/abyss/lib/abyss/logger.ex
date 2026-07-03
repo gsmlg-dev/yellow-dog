@@ -22,8 +22,8 @@ defmodule Abyss.Logger do
   @spec attach_logger(log_level()) :: :ok | {:error, :already_exists}
   def attach_logger(:error) do
     events = [
-      [:abyss, :acceptor, :spawn_error],
-      [:abyss, :acceptor, :econnaborted]
+      [:abyss, :listener, :packet_too_large],
+      [:abyss, :connection, :limit_exceeded]
     ]
 
     :telemetry.attach_many("#{__MODULE__}.error", events, &__MODULE__.log_error/4, nil)
@@ -48,8 +48,6 @@ defmodule Abyss.Logger do
     _ = attach_logger(:info)
 
     events = [
-      [:abyss, :acceptor, :start],
-      [:abyss, :acceptor, :stop],
       [:abyss, :connection, :start],
       [:abyss, :connection, :stop]
     ]
@@ -62,14 +60,7 @@ defmodule Abyss.Logger do
 
     events = [
       [:abyss, :connection, :ready],
-      [:abyss, :connection, :async_recv],
-      [:abyss, :connection, :recv],
-      [:abyss, :connection, :recv_error],
-      [:abyss, :connection, :send],
-      [:abyss, :connection, :send_error],
-      [:abyss, :connection, :sendfile],
-      [:abyss, :connection, :sendfile_error],
-      [:abyss, :connection, :socket_shutdown]
+      [:abyss, :metrics, :response_time]
     ]
 
     :telemetry.attach_many("#{__MODULE__}.trace", events, &__MODULE__.log_trace/4, nil)

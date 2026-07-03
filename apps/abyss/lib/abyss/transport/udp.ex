@@ -16,39 +16,31 @@ defmodule Abyss.Transport.UDP do
     * `{:local, "/path/to/socket"}` for a Unix domain socket. If this option is used,
       the `port` option *must* be set to `0`
 
-  Unless overridden, this module uses the following default options:
-
-  ```elixir
-  reuseaddr: true
-  ```
-
-  The following options are required for the proper operation of Abyss
-  and cannot be overridden:
+  Unless overridden via user options, sockets are opened with the following
+  defaults (matching `Abyss.Transport.UDP.Unicast`):
 
   ```elixir
   mode: :binary,
+  reuseaddr: true,
+  reuseport: true,
   active: false
   ```
+
+  Note that `Abyss.Listener` explicitly sets `active` according to the
+  server's mode (passive for unicast, active for broadcast), overriding
+  the default above.
   """
   @behaviour Abyss.Transport
 
-  @hardcoded_options [mode: :binary, reuseaddr: true, reuseport: true]
+  alias Abyss.Transport.UDP.Core
+
+  @default_options [mode: :binary, reuseaddr: true, reuseport: true, active: false]
 
   @impl Abyss.Transport
   @spec listen(:inet.port_number(), [:inet.inet_backend() | :gen_udp.open_option()]) ::
           Abyss.Transport.on_listen()
   def listen(port, user_options) do
-    default_options = []
-
-    # We can't use Keyword functions here because :gen_udp accepts non-keyword style options
-    resolved_options =
-      Enum.uniq_by(
-        @hardcoded_options ++ user_options ++ default_options,
-        fn
-          {key, _} when is_atom(key) -> key
-          key when is_atom(key) -> key
-        end
-      )
+    resolved_options = Core.merge_options(@default_options, user_options)
 
     :gen_udp.open(port, resolved_options)
   end
@@ -56,17 +48,7 @@ defmodule Abyss.Transport.UDP do
   @spec open(:inet.port_number(), [:inet.inet_backend() | :gen_udp.open_option()]) ::
           Abyss.Transport.on_open()
   def open(port, user_options) do
-    default_options = []
-
-    # We can't use Keyword functions here because :gen_udp accepts non-keyword style options
-    resolved_options =
-      Enum.uniq_by(
-        @hardcoded_options ++ user_options ++ default_options,
-        fn
-          {key, _} when is_atom(key) -> key
-          key when is_atom(key) -> key
-        end
-      )
+    resolved_options = Core.merge_options(@default_options, user_options)
 
     :gen_udp.open(port, resolved_options)
   end

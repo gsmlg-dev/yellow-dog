@@ -23,8 +23,7 @@ defmodule Abyss.Transport.UDP.Broadcast do
     handler_module: MyDHCPHandler,
     port: 67,
     transport_options: [
-      ip: {0, 0, 0, 0},
-      broadcast: true
+      ip: {0, 0, 0, 0}
     ]
   ])
   ```
