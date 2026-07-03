@@ -45,38 +45,6 @@ defmodule Abyss.ConnectionTest do
     end
   end
 
-  describe "start_active/6" do
-    @tag :integration
-    test "returns :ok when starting active connection process", %{config: config} do
-      # Start a complete server with proper setup
-      assert {:ok, server_pid} =
-               Abyss.start_link(
-                 handler_module: Abyss.TestHandler,
-                 port: 0
-               )
-
-      # Get the listener pool and listener
-      listener_pool_pid = Abyss.Server.listener_pool_pid(server_pid)
-      listener_pids = Abyss.ListenerPool.listener_pids(listener_pool_pid)
-      listener_pid = hd(listener_pids)
-      {socket, _telemetry} = Abyss.Listener.socket_info(listener_pid)
-
-      span = Abyss.Telemetry.start_span(:test, %{}, %{})
-
-      assert :ok =
-               Connection.start_active(
-                 server_pid,
-                 listener_pid,
-                 socket,
-                 {{127, 0, 0, 1}, 12345, "test data"},
-                 config,
-                 span
-               )
-
-      :ok = Abyss.stop(server_pid)
-    end
-  end
-
   describe "handler behavior" do
     @tag :integration
     test "handler processes data correctly", %{config: config} do
@@ -193,29 +161,6 @@ defmodule Abyss.ConnectionTest do
     end
   end
 
-  describe "start_active with exponential backoff" do
-    test "uses same exponential backoff logic for active connections", %{config: config} do
-      # Simplified test since we can't easily mock the server components
-      # Verify that active connections use the same retry configuration
-      assert config.max_connections_retry_wait > 0
-      assert config.max_connections_retry_count > 0
-
-      # The actual retry logic is tested in the regular connection tests
-      # This verifies active connections inherit the same behavior
-      :ok
-    end
-
-    test "active connection succeeds when supervisor has capacity", %{config: config} do
-      # Simplified test since we can't easily mock the server components
-      # This test verifies that the configuration allows for successful connections
-      assert config.num_connections > 0
-
-      # Active connections should succeed when supervisor has capacity
-      # This is tested in integration tests, here we verify configuration is valid
-      :ok
-    end
-  end
-
   describe "error handling" do
     test "propagates other DynamicSupervisor errors", %{config: _config} do
       # Simplified test since we can't easily mock the server components
@@ -225,17 +170,6 @@ defmodule Abyss.ConnectionTest do
       assert is_function(&Connection.start/6)
 
       # Error propagation is handled in the actual implementation
-      # This test verifies the function signature and basic structure
-      :ok
-    end
-
-    test "handles active connection errors", %{config: _config} do
-      # Simplified test since we can't easily mock the server components
-      # This test would verify that active connection errors are properly handled
-      # Both start and start_active should handle errors the same way
-      assert is_function(&Connection.start_active/6)
-
-      # Error handling for active connections mirrors regular connections
       # This test verifies the function signature and basic structure
       :ok
     end

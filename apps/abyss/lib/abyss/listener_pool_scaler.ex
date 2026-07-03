@@ -210,14 +210,8 @@ defmodule Abyss.ListenerPoolScaler do
   defp gather_metrics(state) do
     connections =
       case Abyss.Server.connection_sup_pid(state.server_supervisor) do
-        nil ->
-          0
-
-        pid ->
-          case DynamicSupervisor.count_children(pid) do
-            %{active: active} -> active
-            _ -> 0
-          end
+        nil -> 0
+        pid -> DynamicSupervisor.count_children(pid).active
       end
 
     total_ms = :counters.get(state.counters, 1)
@@ -232,10 +226,7 @@ defmodule Abyss.ListenerPoolScaler do
   end
 
   defp active_listener_count(pool) do
-    case Supervisor.count_children(pool) do
-      %{active: active} -> active
-      _ -> 0
-    end
+    Supervisor.count_children(pool).active
   end
 
   defp scale_action(current, optimal, config) do
