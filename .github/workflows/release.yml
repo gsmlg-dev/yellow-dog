@@ -1,20 +1,37 @@
 name: release
+
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.2.3)'
+        required: true
+        type: string
+      git_ref:
+        description: 'Git ref to release from'
+        required: true
+        default: 'main'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
-    name: Build Nix Release
+    name: Release v${{ inputs.version }}
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
-      - name: 🛑 Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.12.1
-        with:
-          access_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: ⬇️ Checkout repo
+      - name: ⬇️ Checkout repo at ${{ inputs.git_ref }}
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.git_ref }}
+          fetch-depth: 0
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -22,7 +39,31 @@ jobs:
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v14
 
-      - name: Build Nix Package YellowDog DNS
-        id: build
+      - name: Bump version in mix.exs
         run: |
-          nix build
+          sed -i -E "s/version: \"[^\"]+\"/version: \"${VERSION}\"/" mix.exs
+          grep -q "version: \"${VERSION}\"" mix.exs
+
+      - name: Build release package
+        run: nix build
+
+      - name: Package artifact
+        run: tar -czhf "yellow-dog-v${VERSION}-linux-x86_64.tar.gz" -C result .
+
+      - name: Commit version bump and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin "HEAD:${{ inputs.git_ref }}"
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            "yellow-dog-v${VERSION}-linux-x86_64.tar.gz"

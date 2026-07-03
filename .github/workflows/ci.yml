@@ -3,6 +3,15 @@ name: CI
 on:
   push:
     branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   compile:
@@ -93,8 +102,21 @@ jobs:
         run: mix credo --strict
 
   rust-test:
-    name: Rust Tests (netlink_helper)
+    name: Rust (${{ matrix.crate.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate:
+          - name: netlink_helper
+            path: apps/yellow_dog_netman/native/netlink_helper
+            run-tests: true
+          - name: dhcp_socket
+            path: apps/abyss/native/dhcp_socket
+            # Rustler test binaries reference enif_* symbols and cannot load
+            # outside the BEAM on Linux; clippy --all-targets still
+            # type-checks the test code. `cargo test` runs on macOS locally.
+            run-tests: false
 
     steps:
       - name: Checkout code
@@ -102,6 +124,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Cache Cargo registry and build
         uses: actions/cache@v5
@@ -109,17 +133,18 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            apps/yellow_dog_netman/native/netlink_helper/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('apps/yellow_dog_netman/native/netlink_helper/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+            ${{ matrix.crate.path }}/target
+          key: ${{ runner.os }}-cargo-${{ matrix.crate.name }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.crate.path)) }}
+          restore-keys: ${{ runner.os }}-cargo-${{ matrix.crate.name }}-
 
       - name: Run Rust tests
-        working-directory: apps/yellow_dog_netman/native/netlink_helper
+        if: matrix.crate.run-tests
+        working-directory: ${{ matrix.crate.path }}
         run: cargo test
 
       - name: Run Clippy
-        working-directory: apps/yellow_dog_netman/native/netlink_helper
-        run: cargo clippy -- -D warnings
+        working-directory: ${{ matrix.crate.path }}
+        run: cargo clippy --all-targets -- -D warnings
 
   test:
     name: Tests
