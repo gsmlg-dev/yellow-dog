@@ -98,26 +98,26 @@ defmodule Abyss.Listener do
   """
   @spec stop(GenServer.server()) :: :ok
   def stop(server) do
-    # Close the socket to unblock recv(:infinity). The listener then stops
-    # itself with :normal reason. We monitor and wait for the DOWN signal
-    # rather than calling GenServer.stop/1 (which would fail if the process
-    # is already dead after the socket close).
+    # Close the socket first to unblock recv(:infinity), then stop the
+    # GenServer. A unicast listener blocked in recv stops itself with
+    # :normal once the socket closes; a broadcast (active mode) listener
+    # is never blocked and is stopped by GenServer.stop/3 directly.
     pid = if is_pid(server), do: server, else: Process.whereis(server)
 
     if pid && Process.alive?(pid) do
-      ref = Process.monitor(pid)
+      ensure_info_table_exists()
 
       case :ets.lookup(@listener_info_table, pid) do
         [{^pid, _local_info, socket}] -> :gen_udp.close(socket)
-        _ -> GenServer.stop(server)
+        _ -> :ok
       end
 
-      receive do
-        {:DOWN, ^ref, :process, ^pid, _} -> :ok
-      after
-        5000 ->
-          Process.demonitor(ref, [:flush])
-          :ok
+      try do
+        GenServer.stop(pid, :normal, 5000)
+      catch
+        # Already stopped after the socket close (:noproc), stopped with a
+        # different reason, or unresponsive within the timeout.
+        :exit, _ -> :ok
       end
     else
       :ok
@@ -160,19 +160,18 @@ defmodule Abyss.Listener do
     end
   end
 
-  # Ensure the ETS table exists, creating it if necessary
-  defp ensure_info_table_exists do
-    case :ets.whereis(@listener_info_table) do
-      :undefined ->
-        try do
-          :ets.new(@listener_info_table, [:named_table, :public, :set, read_concurrency: true])
-        rescue
-          ArgumentError -> :ok
-        end
-
-      _ref ->
-        :ok
-    end
+  @doc false
+  # Ensure the ETS table exists. Creation is routed through Abyss.TableOwner
+  # so the table is owned by a long-lived process regardless of which process
+  # first needs it.
+  @spec ensure_info_table_exists() :: :ok
+  def ensure_info_table_exists do
+    Abyss.TableOwner.ensure_table(@listener_info_table, [
+      :named_table,
+      :public,
+      :set,
+      read_concurrency: true
+    ])
   end
 
   # Store listener info and socket in ETS cache
@@ -304,7 +303,7 @@ defmodule Abyss.Listener do
         {:error, reason} ->
           # Socket was closed externally (e.g., stop/1 called before :start_listening ran).
           # :einval = closed socket; treat as normal shutdown to avoid propagating to linked processes.
-          {:stop, if(reason == :einval, do: :normal, else: reason), state}
+          {:stop, if(reason in [:einval, :closed], do: :normal, else: reason), state}
       end
     end
   end
@@ -465,8 +464,8 @@ defmodule Abyss.Listener do
           listener_socket: listener_socket
         })
 
-        # :einval = socket closed by stop/1; treat as normal shutdown.
-        {:stop, if(reason == :einval, do: :normal, else: reason), state}
+        # :einval/:closed = socket closed by stop/1; treat as normal shutdown.
+        {:stop, if(reason in [:einval, :closed], do: :normal, else: reason), state}
     end
   end
 
@@ -546,8 +545,8 @@ defmodule Abyss.Listener do
           listener_socket: listener_socket
         })
 
-        # :einval = socket closed by stop/1; treat as normal shutdown.
-        {:stop, if(reason == :einval, do: :normal, else: reason), state}
+        # :einval/:closed = socket closed by stop/1; treat as normal shutdown.
+        {:stop, if(reason in [:einval, :closed], do: :normal, else: reason), state}
     end
   end
 

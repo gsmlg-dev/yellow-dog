@@ -171,6 +171,9 @@ defmodule Abyss.TelemetryIntegrationTest do
     end
 
     test "metrics reset functionality" do
+      # Start from a clean slate — the metrics table is shared globally
+      Telemetry.reset_metrics()
+
       # Build up some state
       for _i <- 1..50 do
         Telemetry.track_connection_accepted()

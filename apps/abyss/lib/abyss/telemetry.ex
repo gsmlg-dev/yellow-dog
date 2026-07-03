@@ -375,46 +375,38 @@ defmodule Abyss.Telemetry do
   def init_metrics do
     case :ets.whereis(@metrics_table) do
       :undefined ->
-        # Use try/catch to handle race condition when multiple processes
-        # attempt to create the table simultaneously
-        try do
-          table_id =
-            :ets.new(@metrics_table, [
-              :set,
-              :public,
-              :named_table,
-              {:read_concurrency, true},
-              {:write_concurrency, true}
-            ])
+        # Creation is routed through Abyss.TableOwner so the table is owned
+        # by a long-lived process regardless of which process first needs it.
+        Abyss.TableOwner.ensure_table(@metrics_table, [
+          :set,
+          :public,
+          :named_table,
+          {:read_concurrency, true},
+          {:write_concurrency, true}
+        ])
 
-          # Initialize metrics counters
-          :ets.insert(table_id, {:connections_active, 0})
-          :ets.insert(table_id, {:connections_total, 0})
-          :ets.insert(table_id, {:accepts_total, 0})
-          :ets.insert(table_id, {:responses_total, 0})
-
-          :ets.insert(
-            table_id,
-            {:accept_rate_window_start, System.monotonic_time(:millisecond)}
-          )
-
-          :ets.insert(table_id, {:accepts_in_window, 0})
-
-          :ets.insert(
-            table_id,
-            {:response_rate_window_start, System.monotonic_time(:millisecond)}
-          )
-
-          :ets.insert(table_id, {:responses_in_window, 0})
-        catch
-          :error, :badarg ->
-            # Table was created by another process, that's fine
-            :ok
-        end
+        seed_metrics()
 
       _ ->
         :ok
     end
+
+    :ok
+  end
+
+  # Initialize metrics counters. insert_new/2 is used per key so that a
+  # concurrent initializer can never clobber live counters.
+  defp seed_metrics do
+    now = System.monotonic_time(:millisecond)
+
+    :ets.insert_new(@metrics_table, {:connections_active, 0})
+    :ets.insert_new(@metrics_table, {:connections_total, 0})
+    :ets.insert_new(@metrics_table, {:accepts_total, 0})
+    :ets.insert_new(@metrics_table, {:responses_total, 0})
+    :ets.insert_new(@metrics_table, {:accept_rate_window_start, now})
+    :ets.insert_new(@metrics_table, {:accepts_in_window, 0})
+    :ets.insert_new(@metrics_table, {:response_rate_window_start, now})
+    :ets.insert_new(@metrics_table, {:responses_in_window, 0})
 
     :ok
   end
@@ -493,10 +485,15 @@ defmodule Abyss.Telemetry do
   end
 
   @doc """
-  Track a response being sent
+  Track a response being sent.
+
+  `metadata` is included in the emitted `[:abyss, :metrics, :response_time]`
+  event; Abyss handlers pass `%{handler: handler_module}` so that consumers
+  (e.g. `Abyss.ListenerPoolScaler`) can attribute response times to a
+  specific server instance.
   """
-  @spec track_response_sent(response_time :: integer()) :: :ok
-  def track_response_sent(response_time) when is_integer(response_time) do
+  @spec track_response_sent(response_time :: integer(), metadata()) :: :ok
+  def track_response_sent(response_time, metadata \\ %{}) when is_integer(response_time) do
     init_metrics()
     table = get_metrics_table()
 
@@ -516,7 +513,7 @@ defmodule Abyss.Telemetry do
     :telemetry.execute(
       [:abyss, :metrics, :response_time],
       %{response_time: response_time},
-      %{}
+      metadata
     )
 
     :ok

@@ -46,7 +46,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ### Key Architecture Decisions
 
-- Only three apps have `Application` modules: `yellow_dog` (core — starts/manages all server-side protocol apps), `yellow_dog_netman` (separate netman release entry point), and `yellow_dog_console` (Phoenix). Everything else is a library application
+- Only four apps have `Application` modules: `yellow_dog` (core — starts/manages all server-side protocol apps), `yellow_dog_netman` (separate netman release entry point), `yellow_dog_console` (Phoenix), and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Everything else is a library application
 - Services are conditionally started by `YellowDog.Application` via `service_enabled?(config, :service_name)` from TOML config
 - Infrastructure libs (abyss, ex_dns, ex_dhcp) are **in-umbrella** with shared build paths
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
