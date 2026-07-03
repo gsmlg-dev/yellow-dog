@@ -34,7 +34,7 @@
 
   cargoDeps = rustPlatform.fetchCargoVendor {
     inherit src cargoRoot;
-    hash = "sha256-NhRYCyn4uaMNHOSj5ya6IpQ/kXeo+b+rgMOH4xkA7Tw=";
+    hash = "sha256-VnGOU+mS57W5Z4Vbi0GmVVZiuPrmph14ocST+dQJSvk=";
   };
 in
   beamPackages.mixRelease {
