@@ -461,17 +461,19 @@ defmodule Abyss.Client do
     start_time = System.monotonic_time()
     :telemetry.execute([:abyss, :client, :send_recv, :start], %{}, metadata)
 
-    socket_opts = [:binary, active: false, broadcast: true, reuseaddr: true]
+    socket_opts = [
+      :binary,
+      {:active, false},
+      {:reuseaddr, true} | build_socket_opts(opts, _broadcast = true, broadcast_addr)
+    ]
 
     result =
       case :gen_udp.open(bind_port, socket_opts) do
         {:ok, socket} ->
           try do
-            :gen_udp.send(socket, broadcast_addr, dest_port, packet)
-
-            case :gen_udp.recv(socket, 0, timeout) do
-              {:ok, {_ip, _port, response}} -> {:ok, response}
-              {:error, _reason} = error -> error
+            with :ok <- :gen_udp.send(socket, broadcast_addr, dest_port, packet),
+                 {:ok, {_ip, _port, response}} <- :gen_udp.recv(socket, 0, timeout) do
+              {:ok, response}
             end
           after
             :gen_udp.close(socket)

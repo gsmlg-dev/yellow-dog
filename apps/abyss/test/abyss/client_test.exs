@@ -157,6 +157,40 @@ defmodule Abyss.ClientTest do
     end
   end
 
+  describe "broadcast_send_recv/5" do
+    test "sends and receives a response" do
+      {:ok, server_socket} = :gen_udp.open(0, [:binary, {:active, false}])
+      {:ok, {_ip, server_port}} = :inet.sockname(server_socket)
+
+      echo =
+        Task.async(fn ->
+          {:ok, {ip, port, data}} = :gen_udp.recv(server_socket, 0, 1000)
+          :gen_udp.send(server_socket, ip, port, data)
+        end)
+
+      assert {:ok, "hello"} =
+               Client.broadcast_send_recv({127, 0, 0, 1}, server_port, "hello", 1000)
+
+      Task.await(echo)
+      :gen_udp.close(server_socket)
+    end
+
+    test "honors the :source option" do
+      # 203.0.113.7 (TEST-NET-3) is not assigned to any local interface, so
+      # binding must fail - proving the option is no longer silently ignored.
+      assert {:error, :eaddrnotavail} =
+               Client.broadcast_send_recv({127, 0, 0, 1}, 9999, "x", 20, source: {203, 0, 113, 7})
+    end
+
+    test "returns the send error rather than :timeout when send fails" do
+      # Payload above the UDP maximum -> send fails locally with :emsgsize
+      oversized = :binary.copy(<<0>>, 70_000)
+
+      assert {:error, :emsgsize} =
+               Client.broadcast_send_recv({127, 0, 0, 1}, 9999, oversized, 20)
+    end
+  end
+
   describe "send_recv/5 request-response" do
     test "sends packet and receives response" do
       # Create an echo server that responds with the same data
