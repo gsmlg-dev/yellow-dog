@@ -108,6 +108,32 @@ fn bind_to_interface(_fd: RawFd, interface: &str) -> Result<(), String> {
 }
 
 // ============================================================================
+// Wake Pipe
+// ============================================================================
+
+/// Create the wake pipe used to interrupt the poll thread's `poll(2)` call
+/// during shutdown. Both ends are CLOEXEC and nonblocking. Returns
+/// `(read_fd, write_fd)`.
+pub fn create_wake_pipe() -> Result<(RawFd, RawFd), String> {
+    let mut fds = [0i32; 2];
+    // SAFETY: pipe(2) with a valid 2-element int array.
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } < 0 {
+        return Err(format!("pipe: {}", std::io::Error::last_os_error()));
+    }
+
+    for fd in fds {
+        // SAFETY: setting CLOEXEC and O_NONBLOCK on freshly created fds.
+        unsafe {
+            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+            let flags = libc::fcntl(fd, libc::F_GETFL);
+            libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
+
+    Ok((fds[0], fds[1]))
+}
+
+// ============================================================================
 // ARP Socket
 // ============================================================================
 

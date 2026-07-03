@@ -1,0 +1,16 @@
+# erlang NIF shared libraries (and standalone `cargo test` binaries) reference
+# enif_* symbols that are only available inside the BEAM at load time. Allow
+# them to remain undefined at link time on macOS; Linux allows this by default
+# for cdylibs. This mirrors the config rustler generates for new NIF crates.
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-undefined",
+    "-C", "link-arg=dynamic_lookup",
+]
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-undefined",
+    "-C", "link-arg=dynamic_lookup",
+]

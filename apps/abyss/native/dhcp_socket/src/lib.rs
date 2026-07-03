@@ -22,8 +22,10 @@
 //!   |                                  +-- ARP socket fd (raw, ETH_P_ARP)
 //!   |                                  +-- poll thread handle
 //!   |
-//!   |<-- {:dhcp_rx, binary}     <-- poll thread (via enif_send)
-//!   |<-- {:arp_rx, binary}      <-- poll thread (via enif_send)
+//!   |<-- {:dhcp_rx, binary}           <-- poll thread (via enif_send)
+//!   |<-- {:arp_rx, binary}            <-- poll thread (via enif_send)
+//!   |<-- {:dhcp_socket_down, reason}  <-- poll thread exited abnormally
+//!   |<-- {:arp_socket_down, reason}   <-- ARP degraded, DHCP still running
 //!   |
 //!   |-- send_broadcast(res, pkt)
 //!   |-- send_unicast(res, ip, pkt)
@@ -46,6 +48,11 @@ pub(crate) mod atoms {
         error,
         dhcp_rx,
         arp_rx,
+        dhcp_socket_down,
+        arp_socket_down,
+        poll_error,
+        recv_error,
+        socket_error,
     }
 }
 
@@ -59,24 +66,15 @@ pub struct DhcpSocketResource {
     inner: Mutex<Option<SocketInner>>,
 }
 
-/// Clean up on garbage collection. Sets the shutdown flag and closes fds.
-/// Does NOT join the poll thread (to avoid blocking a BEAM scheduler).
-/// The poll thread will exit when it sees shutdown=true or gets POLLNVAL.
+/// Clean up on garbage collection (when Elixir code forgot to call `close/1`).
+/// Uses the same wake-join-close teardown as `close/1`: the wake pipe forces
+/// `poll(2)` to return immediately, so the join is bounded by roughly one
+/// loop iteration and does not meaningfully block the scheduler.
 impl Drop for DhcpSocketResource {
     fn drop(&mut self) {
         if let Ok(mut guard) = self.inner.lock() {
-            if let Some(mut inner) = guard.take() {
-                inner.shutdown.store(true, Ordering::SeqCst);
-                unsafe {
-                    libc::close(inner.udp_fd);
-                }
-                if let Some(arp_fd) = inner.arp_fd {
-                    unsafe {
-                        libc::close(arp_fd);
-                    }
-                }
-                // Detach the poll thread — it will exit on its own.
-                drop(inner.poll_handle.take());
+            if let Some(inner) = guard.take() {
+                teardown(inner);
             }
         }
     }
@@ -90,12 +88,58 @@ struct SocketInner {
     udp_fd: RawFd,
     /// ARP socket fd (AF_PACKET on Linux). None if creation failed.
     arp_fd: Option<RawFd>,
+    /// Wake pipe read end, polled by the poll thread.
+    wake_read: RawFd,
+    /// Wake pipe write end, written by teardown to interrupt poll(2).
+    wake_write: RawFd,
     /// Background poll thread handle.
     poll_handle: Option<std::thread::JoinHandle<()>>,
     /// Shared shutdown flag for the poll thread.
     shutdown: Arc<AtomicBool>,
     /// Interface MAC address (for ARP probe construction).
     mac: [u8; 6],
+}
+
+/// Tear down the socket state: signal shutdown, wake the poll thread out of
+/// `poll(2)`, wait for it to exit, and only then close the file descriptors.
+///
+/// Closing only after the thread has exited eliminates the fd-reuse race
+/// where the kernel hands a just-closed fd number to another socket while the
+/// poll thread is still reading from it. Sends are serialized against
+/// teardown by the resource mutex, so no other user of the fds can exist at
+/// this point either.
+fn teardown(mut inner: SocketInner) {
+    inner.shutdown.store(true, Ordering::SeqCst);
+
+    // Wake the poll thread immediately (it may otherwise sleep in poll(2)
+    // for up to POLL_TIMEOUT_MS). The pipe is nonblocking; a full pipe or
+    // already-exited thread makes the write a harmless no-op.
+    let byte = 1u8;
+    // SAFETY: writing one byte to the nonblocking wake pipe.
+    unsafe {
+        libc::write(
+            inner.wake_write,
+            &byte as *const u8 as *const libc::c_void,
+            1,
+        );
+    }
+
+    // The thread checks the shutdown flag right after poll(2) returns, so
+    // this join completes within roughly one loop iteration.
+    if let Some(handle) = inner.poll_handle.take() {
+        let _ = handle.join();
+    }
+
+    // The poll thread has exited; nothing references these fds anymore.
+    // SAFETY: closing fds owned by this resource exactly once.
+    unsafe {
+        libc::close(inner.udp_fd);
+        if let Some(arp_fd) = inner.arp_fd {
+            libc::close(arp_fd);
+        }
+        libc::close(inner.wake_read);
+        libc::close(inner.wake_write);
+    }
 }
 
 // SAFETY: SocketInner is Send because all fields are Send:
@@ -126,14 +170,31 @@ fn open(interface: String, owner_pid: LocalPid) -> Result<ResourceArc<DhcpSocket
     // 3. Look up interface MAC (best effort — zero MAC if unavailable).
     let mac = socket::get_interface_mac(&interface).unwrap_or([0u8; 6]);
 
-    // 4. Start the poll thread.
+    // 4. Create the wake pipe used to interrupt the poll thread on shutdown.
+    let (wake_read, wake_write) = match socket::create_wake_pipe() {
+        Ok(pipe) => pipe,
+        Err(e) => {
+            // SAFETY: closing the fds created above before failing.
+            unsafe {
+                libc::close(udp_fd);
+                if let Some(fd) = arp_fd {
+                    libc::close(fd);
+                }
+            }
+            return Err(Error::Term(Box::new(e)));
+        }
+    };
+
+    // 5. Start the poll thread.
     let shutdown = Arc::new(AtomicBool::new(false));
-    let poll_handle = poll::start(udp_fd, arp_fd, owner_pid, shutdown.clone());
+    let poll_handle = poll::start(udp_fd, arp_fd, wake_read, owner_pid, shutdown.clone());
 
     let inner = SocketInner {
         interface,
         udp_fd,
         arp_fd,
+        wake_read,
+        wake_write,
         poll_handle: Some(poll_handle),
         shutdown,
         mac,
@@ -201,28 +262,13 @@ fn send_arp_probe(
 /// Close the socket and stop the poll thread.
 ///
 /// Idempotent: calling close on an already-closed resource returns `:ok`.
-/// Runs on DirtyIo so it can safely join the poll thread.
+/// Runs on DirtyIo so it can safely join the poll thread. See `teardown/1`
+/// for the wake-join-close ordering that makes this race-free.
 #[rustler::nif(schedule = "DirtyIo")]
 fn close(resource: ResourceArc<DhcpSocketResource>) -> Atom {
     let mut guard = resource.inner.lock().unwrap();
-    if let Some(mut inner) = guard.take() {
-        // Signal the poll thread to exit.
-        inner.shutdown.store(true, Ordering::SeqCst);
-
-        // Close fds to unblock any blocking poll/recv.
-        unsafe {
-            libc::close(inner.udp_fd);
-        }
-        if let Some(arp_fd) = inner.arp_fd {
-            unsafe {
-                libc::close(arp_fd);
-            }
-        }
-
-        // Wait for the poll thread to finish (safe on DirtyIo scheduler).
-        if let Some(handle) = inner.poll_handle.take() {
-            let _ = handle.join();
-        }
+    if let Some(inner) = guard.take() {
+        teardown(inner);
     }
     atoms::ok()
 }
