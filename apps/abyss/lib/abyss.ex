@@ -96,6 +96,12 @@ defmodule Abyss do
   - `num_acceptors` - Number of acceptor processes (deprecated, use `num_listeners`)
   - `num_listeners` - Number of listener processes (default: `100`)
   - `num_connections` - Max concurrent connections (default: `16_384`)
+  - `dynamic_listeners` - Enable automatic listener pool scaling via
+    `Abyss.ListenerPoolScaler` (unicast mode only, default: `false`)
+  - `min_listeners` - Lower bound for dynamic scaling (default: `10`)
+  - `max_listeners` - Upper bound for dynamic scaling (default: `1000`)
+  - `listener_scale_threshold` - Hysteresis factor for dynamic scaling
+    (default: `0.8`; scale down below `0.8x`, scale up above `1.2x`)
   - `max_connections_retry_count` - Connection retry attempts (default: `5`)
   - `max_connections_retry_wait` - Retry wait time in ms (default: `1000`)
   - `read_timeout` - Connection read timeout in ms (default: `60_000`)
@@ -113,6 +119,10 @@ defmodule Abyss do
           transport_options: transport_options(),
           num_acceptors: pos_integer(),
           num_connections: non_neg_integer() | :infinity,
+          dynamic_listeners: boolean(),
+          min_listeners: pos_integer(),
+          max_listeners: pos_integer(),
+          listener_scale_threshold: float(),
           max_connections_retry_count: non_neg_integer(),
           max_connections_retry_wait: timeout(),
           read_timeout: timeout(),
