@@ -155,11 +155,11 @@ pub fn create_arp_socket(interface: &str) -> Result<RawFd, String> {
         ));
     }
 
-    let ifindex = get_interface_index(interface).map_err(|e| {
+    let ifindex = get_interface_index(interface).inspect_err(|_| {
+        // SAFETY: closing the fd created above before propagating the error.
         unsafe {
             libc::close(fd);
         }
-        e
     })?;
 
     let mut sll: libc::sockaddr_ll = unsafe { std::mem::zeroed() };

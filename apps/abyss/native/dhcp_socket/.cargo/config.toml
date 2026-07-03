@@ -2,6 +2,10 @@
 # enif_* symbols that are only available inside the BEAM at load time. Allow
 # them to remain undefined at link time on macOS; Linux allows this by default
 # for cdylibs. This mirrors the config rustler generates for new NIF crates.
+#
+# Note: `cargo test` only works on macOS (dynamic_lookup defers resolution
+# until a symbol is called). On Linux the test binary fails to load, so CI
+# runs `cargo clippy --all-targets` there instead.
 
 [target.x86_64-apple-darwin]
 rustflags = [

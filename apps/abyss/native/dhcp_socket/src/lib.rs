@@ -274,9 +274,11 @@ fn close(resource: ResourceArc<DhcpSocketResource>) -> Atom {
 }
 
 /// Called when the NIF is loaded by the BEAM. Registers the resource type.
+// The resource! macro generates a non-local impl; that is how rustler 0.34
+// registers resource types.
+#[allow(non_local_definitions)]
 fn load(env: Env, _: Term) -> bool {
-    rustler::resource!(DhcpSocketResource, env);
-    true
+    rustler::resource!(DhcpSocketResource, env)
 }
 
 rustler::init!("Elixir.Abyss.DhcpSocket.Native", load = load);

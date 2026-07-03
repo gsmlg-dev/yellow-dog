@@ -166,6 +166,11 @@ defmodule Abyss.Transport.UDPTest do
                   assert is_tuple(peer_ip)
                   assert is_integer(peer_port)
 
+                {:error, :enotconn} ->
+                  # UDP sockets are connectionless; peername on an
+                  # unconnected socket legitimately returns :enotconn
+                  assert true
+
                 {:error, :einval} ->
                   # Skip peername if not supported
                   assert true
