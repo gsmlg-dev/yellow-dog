@@ -3,6 +3,60 @@ defmodule Abyss.TelemetryMetricsTest do
 
   alias Abyss.Telemetry
 
+  describe "per-handler scoped metrics" do
+    setup do
+      Telemetry.reset_metrics()
+      on_exit(fn -> Telemetry.reset_metrics() end)
+      :ok
+    end
+
+    test "get_metrics/1 isolates counters per handler module" do
+      Telemetry.track_connection_accepted(HandlerA)
+      Telemetry.track_connection_accepted(HandlerA)
+      Telemetry.track_connection_accepted(HandlerB)
+      Telemetry.track_connection_closed(HandlerA)
+      Telemetry.track_response_sent(5, %{handler: HandlerB})
+
+      a = Telemetry.get_metrics(HandlerA)
+      b = Telemetry.get_metrics(HandlerB)
+
+      assert a.connections_total == 2
+      assert a.connections_active == 1
+      assert a.responses_total == 0
+
+      assert b.connections_total == 1
+      assert b.connections_active == 1
+      assert b.responses_total == 1
+    end
+
+    test "get_metrics/0 aggregates across all scopes" do
+      Telemetry.track_connection_accepted(HandlerA)
+      Telemetry.track_connection_accepted(HandlerB)
+      Telemetry.track_connection_accepted()
+      Telemetry.track_response_sent(5, %{handler: HandlerA})
+      Telemetry.track_response_sent(5)
+
+      total = Telemetry.get_metrics()
+
+      assert total.connections_total == 3
+      assert total.connections_active == 3
+      assert total.responses_total == 2
+    end
+
+    test "unscoped tracking lands in the :unscoped bucket" do
+      Telemetry.track_connection_accepted()
+
+      assert Telemetry.get_metrics(:unscoped).connections_total == 1
+      assert Telemetry.get_metrics(HandlerA).connections_total == 0
+    end
+
+    test "connections_active never goes below zero" do
+      Telemetry.track_connection_closed(HandlerC)
+
+      assert Telemetry.get_metrics(HandlerC).connections_active == 0
+    end
+  end
+
   describe "telemetry metrics" do
     setup do
       # Ensure clean ETS table for each test
