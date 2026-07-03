@@ -12,6 +12,8 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
 
   use GenServer
 
+  require Logger
+
   @type socket_ref :: reference()
 
   @callback open(interface :: String.t(), owner :: pid()) ::
@@ -102,6 +104,31 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
   @impl true
   def handle_info({:udp, _socket, _ip, _port, data}, state) do
     forward_to_owner(state.owner, {:dhcp_rx, data})
+    {:noreply, state}
+  end
+
+  # Native NIF sockets deliver received packets directly as {:dhcp_rx, binary}.
+  def handle_info({:dhcp_rx, data}, state) do
+    forward_to_owner(state.owner, {:dhcp_rx, data})
+    {:noreply, state}
+  end
+
+  # The NIF poll thread exited abnormally — the socket no longer receives
+  # packets. Stop so the InterfaceSupervisor (rest_for_one) restarts this
+  # process and the state machine with a fresh socket.
+  def handle_info({:dhcp_socket_down, reason}, state) do
+    Logger.error("DHCP socket on #{state.interface} is down: #{inspect(reason)}")
+    {:stop, {:dhcp_socket_down, reason}, state}
+  end
+
+  # The NIF's ARP socket failed. DAD probes are unavailable from here on, but
+  # DHCP reception continues, so just log it.
+  def handle_info({:arp_socket_down, reason}, state) do
+    Logger.warning(
+      "ARP socket on #{state.interface} unavailable (#{inspect(reason)}); " <>
+        "duplicate address detection disabled"
+    )
+
     {:noreply, state}
   end
 

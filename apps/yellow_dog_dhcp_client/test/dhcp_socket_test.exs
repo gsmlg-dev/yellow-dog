@@ -86,6 +86,18 @@ defmodule YellowDog.DhcpClient.DhcpSocketTest do
       assert_receive {:dhcp_rx, "via-data"}, 500
     end
 
+    test "forwards NIF-delivered {:dhcp_rx, data} to the owner" do
+      {:ok, socket_pid} =
+        DhcpSocket.start_link(interface: "eth0", owner: self(), impl: NoOpSocketImpl)
+
+      on_exit(fn -> if Process.alive?(socket_pid), do: GenServer.stop(socket_pid) end)
+
+      # The native NIF delivers packets directly as {:dhcp_rx, binary}
+      send(socket_pid, {:dhcp_rx, "nif-data"})
+
+      assert_receive {:dhcp_rx, "nif-data"}, 500
+    end
+
     test "silently drops packet when via-name owner is not yet registered" do
       registry_name = :"test_reg_#{:erlang.unique_integer([:positive])}"
       {:ok, _} = Registry.start_link(keys: :unique, name: registry_name)
@@ -169,6 +181,32 @@ defmodule YellowDog.DhcpClient.DhcpSocketTest do
       Process.flag(:trap_exit, true)
       result = DhcpSocket.start_link(interface: "eth0", owner: self(), impl: FailingSocketImpl)
       assert {:error, :eacces} = result
+    end
+  end
+
+  describe "NIF socket status messages" do
+    test "stops with {:dhcp_socket_down, reason} when the poll thread dies" do
+      Process.flag(:trap_exit, true)
+
+      {:ok, socket_pid} =
+        DhcpSocket.start_link(interface: "eth0", owner: self(), impl: NoOpSocketImpl)
+
+      send(socket_pid, {:dhcp_socket_down, :recv_error})
+
+      assert_receive {:EXIT, ^socket_pid, {:dhcp_socket_down, :recv_error}}, 500
+    end
+
+    test "stays alive and keeps forwarding after {:arp_socket_down, reason}" do
+      {:ok, socket_pid} =
+        DhcpSocket.start_link(interface: "eth0", owner: self(), impl: NoOpSocketImpl)
+
+      on_exit(fn -> if Process.alive?(socket_pid), do: GenServer.stop(socket_pid) end)
+
+      send(socket_pid, {:arp_socket_down, :socket_error})
+      send(socket_pid, {:dhcp_rx, "still-working"})
+
+      assert_receive {:dhcp_rx, "still-working"}, 500
+      assert Process.alive?(socket_pid)
     end
   end
 
