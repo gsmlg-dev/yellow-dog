@@ -36,6 +36,18 @@
     inherit src cargoRoot;
     hash = "sha256-VnGOU+mS57W5Z4Vbi0GmVVZiuPrmph14ocST+dQJSvk=";
   };
+
+  exTursoPrecompiledNif = pkgs.fetchurl {
+    url = "https://github.com/gsmlg-dev/ex_turso/releases/download/v0.2.1/libex_turso-v0.2.1-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz";
+    hash = "sha256-5e/4LanWZxc8WOO4Ah0KrklgL3+ZFL+erhfSj+6/wKQ=";
+  };
+
+  exTursoPrecompiledCache = pkgs.linkFarm "ex-turso-precompiled-cache" [
+    {
+      name = "libex_turso-v0.2.1-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz";
+      path = exTursoPrecompiledNif;
+    }
+  ];
 in
   beamPackages.mixRelease {
     inherit pname version src mixFodDeps cargoDeps cargoRoot;
@@ -49,9 +61,10 @@ in
     ];
 
     # WORKAROUND(upstream): gsmlg-dev/ex_turso#6
-    EX_TURSO_BUILD = "true";
+    RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH = exTursoPrecompiledCache;
 
     preBuild = ''
+      mkdir -p deps/ex_turso/priv/native
     '';
 
     postBuild = ''
