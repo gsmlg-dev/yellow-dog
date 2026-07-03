@@ -48,6 +48,9 @@ in
       pkgs.rustc
     ];
 
+    # WORKAROUND(upstream): gsmlg-dev/ex_turso#6
+    EX_TURSO_BUILD = "true";
+
     preBuild = ''
     '';
 
