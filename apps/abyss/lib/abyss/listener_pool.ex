@@ -62,8 +62,11 @@ defmodule Abyss.ListenerPool do
   @doc """
   Suspend the listener pool by stopping all listener processes.
 
-  This stops the acceptance of new connections but doesn't affect
-  existing connections.
+  Each listener is stopped via `Abyss.Listener.stop/1`, which closes its
+  socket (unblocking any pending `recv`) before stopping the process. This
+  stops the acceptance of new connections but doesn't affect existing
+  connections. Listeners are `:transient`, so the supervisor keeps their
+  child specs and `resume/1` can restart them.
 
   ## Parameters
   - `pid` - The listener pool supervisor PID
@@ -77,7 +80,7 @@ defmodule Abyss.ListenerPool do
       if Process.alive?(pid) do
         pid
         |> listener_pids()
-        |> Enum.each(&Process.exit(&1, :normal))
+        |> Enum.each(&Abyss.Listener.stop/1)
 
         :ok
       else
@@ -91,7 +94,12 @@ defmodule Abyss.ListenerPool do
   end
 
   @doc """
-  Resume the listener pool by sending start messages to all listener processes.
+  Resume the listener pool by restarting suspended listener processes.
+
+  Listeners stopped by `suspend/1` are restarted via
+  `Supervisor.restart_child/2` (opening a fresh socket); listeners that are
+  still running are nudged with a `:start_listening` message. Note that a
+  server started with `port: 0` will bind to a different port after resume.
 
   ## Parameters
   - `pid` - The listener pool supervisor PID
@@ -103,10 +111,13 @@ defmodule Abyss.ListenerPool do
   def resume(pid) do
     try do
       if Process.alive?(pid) do
-        # Send resume message to all listeners
         pid
-        |> listener_pids()
-        |> Enum.each(&send(&1, :start_listening))
+        |> Supervisor.which_children()
+        |> Enum.each(fn
+          {id, :undefined, _type, _modules} -> Supervisor.restart_child(pid, id)
+          {_id, child, _type, _modules} when is_pid(child) -> send(child, :start_listening)
+          _ -> :ok
+        end)
 
         :ok
       else
