@@ -1,8 +1,8 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-4">
     <.service_alert :if={not @service_running} service="DNS" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-4xl font-bold">DNS ACL</h1>
@@ -35,8 +35,8 @@
         </.dm_btn>
       </div>
     </div>
-    
-<!-- ACL Info -->
+
+    <!-- ACL Info -->
     <div class="alert alert-info">
       <.dm_mdi name="information" class="w-6 h-6" />
       <div>
@@ -51,8 +51,8 @@
         </div>
       </div>
     </div>
-    
-<!-- Filter Bar -->
+
+    <!-- Filter Bar -->
     <div class="flex flex-wrap gap-4 items-center">
       <div class="flex-1 min-w-[200px]">
         <input
@@ -81,8 +81,8 @@
         <% end %>
       </select>
     </div>
-    
-<!-- Named ACLs Section -->
+
+    <!-- Named ACLs Section -->
     <.card title="Named ACLs">
       <:actions>
         <.dm_btn variant="outline" size="sm" phx-click="show_create_form">
@@ -198,8 +198,8 @@
         </div>
       <% end %>
     </.card>
-    
-<!-- Views ACL Table -->
+
+    <!-- Views ACL Table -->
     <% filtered_view_acls = filtered_views_acl(@views, @filter, @type_filter) %>
     <%= if filtered_view_acls != [] do %>
       <.card title="View ACL Configuration" class="overflow-x-auto">
@@ -289,8 +289,8 @@
         </div>
       </div>
     <% end %>
-    
-<!-- Built-in ACLs Reference -->
+
+    <!-- Built-in ACLs Reference -->
     <.card title="Built-in ACL Reference">
       <div class="overflow-x-auto">
         <table class="table">
@@ -336,8 +336,8 @@
       </div>
     </.card>
   </div>
-  
-<!-- Edit View ACL Modal -->
+
+  <!-- Edit View ACL Modal -->
   <%= if @editing_view do %>
     <.modal
       id="acl-modal"
@@ -374,14 +374,14 @@
             </option>
           </select>
         </div>
-        
-<!-- Geo Country Picker -->
+
+        <!-- Geo Country Picker -->
         <%= if @acl_form[:acl_type].value == "geo" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Allowed Countries</label>
             <span class="helper-text">{length(@selected_countries)} selected</span>
-            
-<!-- Selected countries badges -->
+
+            <!-- Selected countries badges -->
             <%= if @selected_countries != [] do %>
               <div class="flex flex-wrap gap-2 mb-2">
                 <%= for code <- @selected_countries do %>
@@ -401,8 +401,8 @@
                 <% end %>
               </div>
             <% end %>
-            
-<!-- Search input -->
+
+            <!-- Search input -->
             <div class="relative mb-2">
               <input
                 type="text"
@@ -426,8 +426,8 @@
                 </button>
               <% end %>
             </div>
-            
-<!-- Country grid -->
+
+            <!-- Country grid -->
             <div class="border border-outline rounded-lg p-2 max-h-48 overflow-y-auto">
               <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <%= for country <- filtered_countries(@countries, @country_search) do %>
@@ -454,8 +454,8 @@
             </span>
           </div>
         <% end %>
-        
-<!-- Custom Rules -->
+
+        <!-- Custom Rules -->
         <%= if @acl_form[:acl_type].value == "custom" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Custom Rules</label>
@@ -483,8 +483,8 @@
       </.form>
     </.modal>
   <% end %>
-  
-<!-- Create/Edit Named ACL Modal -->
+
+  <!-- Create/Edit Named ACL Modal -->
   <%= if @show_create_form do %>
     <.modal
       id="create-acl-modal"
@@ -545,8 +545,8 @@
             </option>
           </select>
         </div>
-        
-<!-- Geo Country Picker for Create Form -->
+
+        <!-- Geo Country Picker for Create Form -->
         <%= if @create_form[:acl_type].value == "geo" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Allowed Countries</label>
@@ -616,8 +616,8 @@
             </div>
           </div>
         <% end %>
-        
-<!-- Custom Rules for Create Form -->
+
+        <!-- Custom Rules for Create Form -->
         <%= if @create_form[:acl_type].value == "custom" do %>
           <div class="form-group">
             <label class="form-label font-semibold">Rules</label>
@@ -658,8 +658,8 @@
       </.form>
     </.modal>
   <% end %>
-  
-<!-- Delete Confirmation Modal -->
+
+  <!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal id="delete-acl-modal" title="Delete ACL" show on_cancel={JS.push("cancel_delete")}>
       <div class="py-4">

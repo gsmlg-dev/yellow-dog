@@ -33,8 +33,8 @@
         </button>
       </div>
     </div>
-    
-<!-- Stats Cards -->
+
+    <!-- Stats Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="card card-bordered bg-surface">
         <div class="card-body">
@@ -70,8 +70,8 @@
         </div>
       </div>
     </div>
-    
-<!-- Actions -->
+
+    <!-- Actions -->
     <div class="flex flex-wrap gap-3">
       <button
         phx-click="sync_now"
@@ -94,8 +94,8 @@
         </.link>
       <% end %>
     </div>
-    
-<!-- Sync Status -->
+
+    <!-- Sync Status -->
     <.card title="Sync Status">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-3">
@@ -135,8 +135,8 @@
         </div>
       </div>
     </.card>
-    
-<!-- Zone List -->
+
+    <!-- Zone List -->
     <.card title="Managed Zones">
       <%= if @zones != [] do %>
         <div class="overflow-x-auto">

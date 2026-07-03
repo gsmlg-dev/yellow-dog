@@ -76,8 +76,8 @@ defmodule YellowDog.Console.NetmanLive.NodeLive do
             </div>
           </.card>
         </div>
-        
-    <!-- Quick Links -->
+
+        <!-- Quick Links -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <.link
             navigate={"/netman/#{@node_id}/interfaces"}

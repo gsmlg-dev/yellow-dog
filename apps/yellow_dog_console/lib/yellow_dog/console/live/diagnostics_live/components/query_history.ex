@@ -46,8 +46,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
                     entry.status == :success && "badge-success",
                     entry.status == :timeout && "badge-warning",
                     entry.status == :error && "badge-error"
-                  ]}>
-                  </span>
+                  ]}></span>
                   <span class="text-xs font-mono">
                     {format_entry_summary(entry, @protocol)}
                   </span>

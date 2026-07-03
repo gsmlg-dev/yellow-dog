@@ -138,8 +138,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
                 <span
                   class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
                   role="status"
-                >
-                </span>
+                ></span>
                 Sending...
               <% else %>
                 Send Message

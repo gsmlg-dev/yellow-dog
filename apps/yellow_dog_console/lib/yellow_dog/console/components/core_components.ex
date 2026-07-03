@@ -242,8 +242,7 @@ defmodule YellowDog.Console.CoreComponents do
           {render_slot(@actions)}
         </div>
       </div>
-      <button type="button" class="modal-backdrop" phx-click={@on_cancel} aria-label="Close modal">
-      </button>
+      <button type="button" class="modal-backdrop" phx-click={@on_cancel} aria-label="Close modal"></button>
     </div>
     """
   end
@@ -320,8 +319,7 @@ defmodule YellowDog.Console.CoreComponents do
         @color && "text-#{@color}"
       ]}
       role="status"
-    >
-    </span>
+    ></span>
     """
   end
 
@@ -343,8 +341,7 @@ defmodule YellowDog.Console.CoreComponents do
       class={["progress", @color && "progress-#{@color}", @class]}
       value={@value}
       max={@max}
-    >
-    </progress>
+    ></progress>
     """
   end
 
@@ -447,16 +444,14 @@ defmodule YellowDog.Console.CoreComponents do
         <span
           :if={@pulse && @status == "running"}
           class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"
-        >
-        </span>
+        ></span>
         <span class={[
           "relative inline-flex rounded-full h-3 w-3",
           @status == "running" && "bg-success",
           @status == "stopped" && "bg-error",
           @status == "warning" && "bg-warning",
           @status == "unknown" && "bg-outline"
-        ]}>
-        </span>
+        ]}></span>
       </span>
       <span :if={@label} class="text-sm font-medium">
         {@label}

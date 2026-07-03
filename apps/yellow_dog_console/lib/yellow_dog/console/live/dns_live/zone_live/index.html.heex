@@ -7,8 +7,8 @@
     </.dm_breadcrumb>
 
     <.service_alert :if={not @service_running} service="DNS" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">DNS Zones</h1>
@@ -255,8 +255,8 @@
                 </option>
               </select>
             </div>
-            
-<!-- Upstream Servers - shown for forward zones -->
+
+            <!-- Upstream Servers - shown for forward zones -->
             <%= if @zone_form[:type].value == "forward" do %>
               <div class="form-group">
                 <label class="form-label font-semibold">Upstream DNS Servers</label>
@@ -274,8 +274,8 @@
                 <% end %>
               </div>
             <% end %>
-            
-<!-- NS Records - shown for stub zones -->
+
+            <!-- NS Records - shown for stub zones -->
             <%= if @zone_form[:type].value == "stub" do %>
               <div class="form-group">
                 <label class="form-label font-semibold">NS Server Names</label>
@@ -293,8 +293,8 @@
                 <% end %>
               </div>
             <% end %>
-            
-<!-- Info for auth zones -->
+
+            <!-- Info for auth zones -->
             <%= if @zone_form[:type].value == "auth" do %>
               <div class="alert alert-info">
                 <.dm_mdi name="information" class="w-6 h-6" />
@@ -357,8 +357,8 @@
               </div>
               <input type="hidden" name="zone[type]" value={@editing_zone.type} />
             </div>
-            
-<!-- Upstream Servers - shown for forward zones -->
+
+            <!-- Upstream Servers - shown for forward zones -->
             <%= if @editing_zone.type == :forward do %>
               <div class="form-group">
                 <label class="form-label font-semibold">Upstream DNS Servers</label>
@@ -372,8 +372,8 @@
                 </span>
               </div>
             <% end %>
-            
-<!-- NS Records - shown for stub zones -->
+
+            <!-- NS Records - shown for stub zones -->
             <%= if @editing_zone.type == :stub do %>
               <div class="form-group">
                 <label class="form-label font-semibold">NS Server Names</label>
@@ -387,8 +387,8 @@
                 </span>
               </div>
             <% end %>
-            
-<!-- Info for auth zones -->
+
+            <!-- Info for auth zones -->
             <%= if @editing_zone.type == :auth do %>
               <div class="alert alert-info">
                 <.dm_mdi name="information" class="w-6 h-6" />
@@ -467,8 +467,8 @@
         </.card>
     <% end %>
   </div>
-  
-<!-- Delete Confirmation Modal -->
+
+  <!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal id="delete-modal" title="Delete Zone" show on_cancel={JS.push("close_modal")}>
       <div class="py-4">

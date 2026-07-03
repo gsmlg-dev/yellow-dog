@@ -1,8 +1,8 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="DHCPv6" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-4xl font-bold">DHCPv6 Leases</h1>

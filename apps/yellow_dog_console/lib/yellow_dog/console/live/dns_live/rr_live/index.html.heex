@@ -8,8 +8,8 @@
     </.dm_breadcrumb>
 
     <.service_alert :if={not @service_running} service="DNS" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Resource Records</h1>
@@ -226,8 +226,8 @@
                 One record per line in zone file format: name ttl class type rdata
               </span>
             </div>
-            
-<!-- Live Preview -->
+
+            <!-- Live Preview -->
             <%= if @bulk_preview do %>
               <%= case @bulk_preview.status do %>
                 <% :ok -> %>
@@ -282,8 +282,8 @@
         </.card>
     <% end %>
   </div>
-  
-<!-- Delete Confirmation Modal -->
+
+  <!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal
       id="delete-modal"

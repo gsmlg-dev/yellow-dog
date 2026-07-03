@@ -239,8 +239,8 @@ defmodule YellowDog.Console.ProcessMapLive do
             </div>
           </div>
         </div>
-        
-    <!-- SVG Tree Container -->
+
+        <!-- SVG Tree Container -->
         <div class="flex-1 relative">
           <div class={[
             "card bg-surface-container shadow-lg overflow-auto h-full",
@@ -275,8 +275,8 @@ defmodule YellowDog.Console.ProcessMapLive do
               <% end %>
             </div>
           </div>
-          
-    <!-- Status Panel -->
+
+          <!-- Status Panel -->
           <.status_panel
             :if={@show_status_panel}
             status={@selected_status}
@@ -358,8 +358,8 @@ defmodule YellowDog.Console.ProcessMapLive do
         phx-click="select_node"
         phx-value-pid={@pid_string}
       />
-      
-    <!-- Type indicator -->
+
+      <!-- Type indicator -->
       <rect
         x={@node.x}
         y={@node.y}
@@ -399,8 +399,8 @@ defmodule YellowDog.Console.ProcessMapLive do
       >
         {if @is_supervisor, do: "S", else: "W"}
       </text>
-      
-    <!-- Label -->
+
+      <!-- Label -->
       <text
         x={@node.x + 32}
         y={@node.y + @node_height / 2}
@@ -409,8 +409,8 @@ defmodule YellowDog.Console.ProcessMapLive do
       >
         {truncate_label(@node.label, 14)}
       </text>
-      
-    <!-- Expand/Collapse button (only for nodes with children) -->
+
+      <!-- Expand/Collapse button (only for nodes with children) -->
       <%= if @has_children do %>
         <g
           phx-click="toggle_expand"
@@ -484,8 +484,7 @@ defmodule YellowDog.Console.ProcessMapLive do
             <span
               class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-12 h-12"
               role="status"
-            >
-            </span>
+            ></span>
           </div>
         <% else %>
           <%= if @status[:alive] == false do %>

@@ -15,8 +15,8 @@
       </div>
       <.link navigate={~p"/server/dashboard"} class="btn btn-sm btn-ghost">Go to Dashboard</.link>
     </div>
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">DNS Views</h1>
@@ -274,8 +274,8 @@
                 </label>
               </div>
             </div>
-            
-<!-- ACL Configuration for new view -->
+
+            <!-- ACL Configuration for new view -->
             <div class="divider">Access Control</div>
 
             <div class="form-group">
@@ -303,8 +303,8 @@
               </select>
               <span class="helper-text">Control which clients can use this view</span>
             </div>
-            
-<!-- Geo Country Picker for new view -->
+
+            <!-- Geo Country Picker for new view -->
             <%= if @view_form[:acl_type].value == "geo" do %>
               <div class="form-group">
                 <label class="form-label font-semibold">Allowed Countries</label>
@@ -374,8 +374,8 @@
                 </div>
               </div>
             <% end %>
-            
-<!-- Fallback Forwarders -->
+
+            <!-- Fallback Forwarders -->
             <div class="divider">Fallback Forwarding</div>
 
             <div class="form-group">
@@ -517,8 +517,8 @@
                 </label>
               </div>
             </div>
-            
-<!-- ACL Configuration (hidden for default view) -->
+
+            <!-- ACL Configuration (hidden for default view) -->
             <%= unless @is_default_view do %>
               <div class="divider">Access Control</div>
 
@@ -547,8 +547,8 @@
                 </select>
                 <span class="helper-text">Control which clients can use this view</span>
               </div>
-              
-<!-- Geo Country Picker for edit view -->
+
+              <!-- Geo Country Picker for edit view -->
               <%= if @view_form[:acl_type].value == "geo" do %>
                 <div class="form-group">
                   <label class="form-label font-semibold">Allowed Countries</label>
@@ -624,8 +624,8 @@
                 <span>The default view always accepts all clients (ACL: any)</span>
               </div>
             <% end %>
-            
-<!-- Fallback Forwarders -->
+
+            <!-- Fallback Forwarders -->
             <div class="divider">Fallback Forwarding</div>
 
             <div class="form-group">
@@ -688,8 +688,8 @@
         </.card>
     <% end %>
   </div>
-  
-<!-- Delete Confirmation Modal -->
+
+  <!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal id="delete-modal" title="Delete View" show on_cancel={JS.push("close_modal")}>
       <div class="py-4">

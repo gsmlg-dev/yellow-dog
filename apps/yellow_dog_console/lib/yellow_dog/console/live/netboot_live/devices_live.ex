@@ -93,7 +93,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           <.card>
             <div class="text-sm text-on-surface-variant">Showing</div>
             <div class="text-2xl font-bold">
-              {length(@filtered_devices)}<span class="text-on-surface-variant font-normal text-sm">/{length(@all_devices)}</span>
+              {length(@filtered_devices)}<span class="text-on-surface-variant font-normal text-sm">/{length(
+                @all_devices
+              )}</span>
             </div>
           </.card>
         </div>

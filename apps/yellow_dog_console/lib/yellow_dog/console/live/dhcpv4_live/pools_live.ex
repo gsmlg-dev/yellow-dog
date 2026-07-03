@@ -205,8 +205,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             <.dm_mdi name="plus" class="w-5 h-5" /> Add Pool
           </button>
         </div>
-        
-    <!-- Filter Bar -->
+
+        <!-- Filter Bar -->
         <div class="flex flex-wrap gap-4 items-center">
           <div class="flex-1 min-w-[200px]">
             <input
@@ -229,8 +229,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             Export CSV
           </button>
         </div>
-        
-    <!-- Service Status Alert -->
+
+        <!-- Service Status Alert -->
         <%= unless @service_running do %>
           <div class="alert alert-info">
             <.dm_mdi name="alert-circle-outline" class="w-6 h-6 shrink-0" />
@@ -242,8 +242,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             </div>
           </div>
         <% end %>
-        
-    <!-- Pools Table -->
+
+        <!-- Pools Table -->
         <%= if Enum.empty?(@pools) do %>
           <div class="card bg-surface-container">
             <div class="card-body items-center text-center py-12">
@@ -343,8 +343,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             </div>
           <% end %>
         <% end %>
-        
-    <!-- Pool Form Modal -->
+
+        <!-- Pool Form Modal -->
         <%= if @show_form do %>
           <.live_component
             module={PoolFormComponent}

@@ -93,8 +93,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               value={Ecto.Changeset.get_field(@changeset, :id)}
             />
           <% end %>
-          
-    <!-- Pool Name -->
+
+          <!-- Pool Name -->
           <div class="form-group">
             <label class="form-label">Pool Name</label>
             <input
@@ -115,8 +115,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               </span>
             <% end %>
           </div>
-          
-    <!-- Network (CIDR) -->
+
+          <!-- Network (CIDR) -->
           <div class="form-group">
             <label class="form-label">Network (CIDR notation)</label>
             <input
@@ -132,8 +132,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
             <.input_error changeset={@changeset} field={:network} />
             <span class="helper-text">The subnet this pool belongs to (optional)</span>
           </div>
-          
-    <!-- IP Range -->
+
+          <!-- IP Range -->
           <div class="grid grid-cols-2 gap-4">
             <div class="form-group">
               <label class="form-label">Range Start</label>
@@ -238,8 +238,8 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               </div>
             </div>
           <% end %>
-          
-    <!-- DNS Servers (comma-separated) -->
+
+          <!-- DNS Servers (comma-separated) -->
           <div class="form-group">
             <label class="form-label">DNS Servers (Optional, comma-separated)</label>
             <input

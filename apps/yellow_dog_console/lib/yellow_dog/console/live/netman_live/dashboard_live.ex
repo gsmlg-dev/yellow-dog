@@ -76,8 +76,8 @@ defmodule YellowDog.Console.NetmanLive.DashboardLive do
             </button>
           </div>
         </div>
-        
-    <!-- Connection Documentation -->
+
+        <!-- Connection Documentation -->
         <%= if @show_docs do %>
           <div class="card bg-surface shadow-xl">
             <div class="card-body">
@@ -169,8 +169,8 @@ defmodule YellowDog.Console.NetmanLive.DashboardLive do
             </div>
           </div>
         <% end %>
-        
-    <!-- Summary Stats -->
+
+        <!-- Summary Stats -->
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <.card>
             <div class="text-sm text-on-surface-variant">Connected Clients</div>
@@ -188,8 +188,8 @@ defmodule YellowDog.Console.NetmanLive.DashboardLive do
             <div class="text-xs text-on-surface-variant">Active network connections</div>
           </.card>
         </div>
-        
-    <!-- Connected Clients -->
+
+        <!-- Connected Clients -->
         <div class="card bg-surface shadow-xl">
           <div class="card-body">
             <h2 class="card-title">Connected Netman Instances</h2>
@@ -248,8 +248,8 @@ defmodule YellowDog.Console.NetmanLive.DashboardLive do
             <% end %>
           </div>
         </div>
-        
-    <!-- Per-Client Details -->
+
+        <!-- Per-Client Details -->
         <%= for client <- @clients do %>
           <div class="card bg-surface shadow-xl">
             <div class="card-body">

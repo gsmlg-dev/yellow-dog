@@ -46,8 +46,7 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
               :if={@loading}
               class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
               role="status"
-            >
-            </span>
+            ></span>
             Lookup
           </button>
         </form>
