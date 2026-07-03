@@ -331,14 +331,16 @@ defmodule Abyss.Handler do
 
         # Keep last 10 processing times for adaptive timeout calculation
         new_times = [processing_time | Enum.take(times, 9)]
-        new_state = %{state | processing_times: new_times}
 
-        # Calculate adaptive timeout based on processing history
+        # Calculate adaptive timeout based on processing history. The
+        # bookkeeping is merged into the state returned by the callback so
+        # that handler state changes are preserved.
         adaptive_timeout = Abyss.Handler.calculate_adaptive_timeout(state.read_timeout, new_times)
-        final_state = %{new_state | adaptive_timeout: adaptive_timeout}
 
-        result
-        |> Abyss.Handler.handle_continuation(final_state)
+        Abyss.Handler.handle_continuation(result, %{
+          processing_times: new_times,
+          adaptive_timeout: adaptive_timeout
+        })
       end
 
       def handle_continue({:handle_broadcast_data, recv_data}, state) do
@@ -356,7 +358,7 @@ defmodule Abyss.Handler do
         response_time = calculate_response_time(state)
 
         if response_time do
-          Abyss.Telemetry.track_response_sent(response_time)
+          Abyss.Telemetry.track_response_sent(response_time, %{handler: __MODULE__})
         end
 
         Abyss.Telemetry.stop_span(connection_span, %{}, %{reason: :broadcast})
@@ -416,7 +418,7 @@ defmodule Abyss.Handler do
         response_time = calculate_response_time(state)
 
         if response_time do
-          Abyss.Telemetry.track_response_sent(response_time)
+          Abyss.Telemetry.track_response_sent(response_time, %{handler: __MODULE__})
         end
 
         Abyss.Telemetry.stop_span(span, %{}, %{reason: reason})
@@ -458,27 +460,69 @@ defmodule Abyss.Handler do
   end
 
   @doc false
-  def handle_continuation(continuation, state) do
+  # Translates a `handler_result()` into a GenServer return value. The state
+  # carried in the continuation tuple (as returned by the handler callback) is
+  # preserved; `bookkeeping` holds internal updates (processing times, adaptive
+  # timeout) that are merged on top of it.
+  def handle_continuation(continuation, bookkeeping \\ %{}) do
     case continuation do
-      {:continue, _state} ->
+      {:continue, state} ->
         # Use adaptive timeout instead of fixed read_timeout
-        timeout = Map.get(state, :adaptive_timeout, state[:read_timeout])
+        state = merge_bookkeeping(state, bookkeeping)
+        {:noreply, state, continue_timeout(state, bookkeeping)}
+
+      {:continue, state, {:persistent, timeout}} ->
+        state =
+          state
+          |> merge_bookkeeping(bookkeeping)
+          |> persist_timeout(timeout)
+
         {:noreply, state, timeout}
 
-      {:close, _state} ->
+      {:continue, state, timeout} ->
+        # One-shot timeout for the next message only
+        {:noreply, merge_bookkeeping(state, bookkeeping), timeout}
+
+      {:close, state} ->
         {:stop, {:shutdown, :local_closed}, state}
 
-      {:error, :timeout, _state} ->
+      {:error, :timeout, state} ->
         {:stop, {:shutdown, :timeout}, state}
 
-      {:error, reason, _state} ->
-        if state.server_config.silent_terminate_on_error do
+      {:error, reason, state} ->
+        if silent_terminate_on_error?(state, bookkeeping) do
           {:stop, {:shutdown, {:silent_termination, reason}}, state}
         else
           {:stop, reason, state}
         end
     end
   end
+
+  defp merge_bookkeeping(state, bookkeeping) when is_map(state),
+    do: Map.merge(state, bookkeeping)
+
+  defp merge_bookkeeping(state, _bookkeeping), do: state
+
+  defp persist_timeout(state, timeout) when is_map(state) do
+    state
+    |> Map.put(:read_timeout, timeout)
+    |> Map.put(:adaptive_timeout, timeout)
+  end
+
+  defp persist_timeout(state, _timeout), do: state
+
+  defp continue_timeout(state, bookkeeping) do
+    source = if is_map(state), do: state, else: bookkeeping
+    Map.get(source, :adaptive_timeout) || Map.get(source, :read_timeout)
+  end
+
+  defp silent_terminate_on_error?(%{server_config: config}, _bookkeeping),
+    do: config.silent_terminate_on_error
+
+  defp silent_terminate_on_error?(_state, %{server_config: config}),
+    do: config.silent_terminate_on_error
+
+  defp silent_terminate_on_error?(_state, _bookkeeping), do: false
 
   @doc false
   # Add adaptive timeout calculation helper function

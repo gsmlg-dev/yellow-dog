@@ -38,6 +38,20 @@ defmodule Abyss.HandlerTest do
     end
   end
 
+  defmodule OneShotTimeoutHandler do
+    use Abyss.Handler
+
+    @impl true
+    def handle_data(_data, state), do: {:continue, state, 1234}
+  end
+
+  defmodule PersistentTimeoutHandler do
+    use Abyss.Handler
+
+    @impl true
+    def handle_data(_data, state), do: {:continue, state, {:persistent, 9999}}
+  end
+
   defmodule MemoryTestHandler do
     use Abyss.Handler
 
@@ -304,27 +318,53 @@ defmodule Abyss.HandlerTest do
 
       adaptive_timeout = Handler.calculate_adaptive_timeout(base_timeout, processing_times)
 
-      # Create a mock state with adaptive timeout
-      state = %{
-        adaptive_timeout: adaptive_timeout,
-        read_timeout: base_timeout
-      }
+      state = %{read_timeout: base_timeout}
+      bookkeeping = %{processing_times: processing_times, adaptive_timeout: adaptive_timeout}
 
-      # Test the handle_continuation function
-      result = Handler.handle_continuation({:continue, "test"}, state)
+      assert {:noreply, new_state, ^adaptive_timeout} =
+               Handler.handle_continuation({:continue, state}, bookkeeping)
 
-      # Should use adaptive timeout
-      assert {:noreply, ^state, ^adaptive_timeout} = result
+      # Bookkeeping is merged into the returned state
+      assert new_state.adaptive_timeout == adaptive_timeout
+      assert new_state.processing_times == processing_times
     end
 
     test "falls back to read timeout when adaptive timeout not set" do
       base_timeout = 5000
       state = %{read_timeout: base_timeout}
 
-      result = Handler.handle_continuation({:continue, "test"}, state)
+      assert {:noreply, ^state, ^base_timeout} = Handler.handle_continuation({:continue, state})
+    end
 
-      # Should use read timeout as fallback
-      assert {:noreply, ^state, ^base_timeout} = result
+    test "preserves state returned by the handler callback" do
+      state = %{read_timeout: 5000, packets_seen: 1}
+      returned_state = %{state | packets_seen: 2}
+
+      assert {:noreply, new_state, 5000} =
+               Handler.handle_continuation({:continue, returned_state}, %{processing_times: []})
+
+      assert new_state.packets_seen == 2
+    end
+
+    test "supports {:continue, state, timeout} one-shot timeout" do
+      state = %{read_timeout: 5000}
+
+      assert {:noreply, new_state, 1234} =
+               Handler.handle_continuation({:continue, state, 1234})
+
+      # One-shot timeout is not persisted
+      assert new_state.read_timeout == 5000
+    end
+
+    test "supports {:continue, state, {:persistent, timeout}}" do
+      state = %{read_timeout: 5000, adaptive_timeout: 5000}
+
+      assert {:noreply, new_state, 9999} =
+               Handler.handle_continuation({:continue, state, {:persistent, 9999}})
+
+      # Persistent timeout overwrites read_timeout for future messages
+      assert new_state.read_timeout == 9999
+      assert new_state.adaptive_timeout == 9999
     end
 
     test "handles different continuation results" do
@@ -333,34 +373,63 @@ defmodule Abyss.HandlerTest do
       state = Map.put(base_state, :server_config, server_config)
 
       # Test continue result
-      assert {:noreply, ^state, 5000} = Handler.handle_continuation({:continue, state}, state)
+      assert {:noreply, ^state, 5000} = Handler.handle_continuation({:continue, state})
 
       # Test close result
       assert {:stop, {:shutdown, :local_closed}, ^state} =
-               Handler.handle_continuation({:close, state}, state)
+               Handler.handle_continuation({:close, state})
 
       # Test timeout error
       assert {:stop, {:shutdown, :timeout}, ^state} =
-               Handler.handle_continuation({:error, :timeout, state}, state)
+               Handler.handle_continuation({:error, :timeout, state})
 
       # Test other error without silent termination
-      state_without_silent = %{
-        state
-        | server_config: %{server_config | silent_terminate_on_error: false}
-      }
-
       assert {:stop, :custom_error, ^state} =
-               Handler.handle_continuation({:error, :custom_error, state}, state_without_silent)
+               Handler.handle_continuation({:error, :custom_error, state})
 
-      # Test error with silent termination
+      # Test error with silent termination (flag lives in the handler state)
       state_with_silent = %{
         state
         | server_config: %{server_config | silent_terminate_on_error: true}
       }
 
-      result = Handler.handle_continuation({:error, :custom_error, state}, state_with_silent)
+      result = Handler.handle_continuation({:error, :custom_error, state_with_silent})
       assert {:stop, {:shutdown, {:silent_termination, :custom_error}}, returned_state} = result
       assert returned_state.server_config.silent_terminate_on_error == true
+    end
+  end
+
+  describe "generated handle_continue/2" do
+    test "threads state returned by handle_data through to the GenServer" do
+      state = %{processing_times: [], read_timeout: 5000, adaptive_timeout: 5000}
+      packet = {{127, 0, 0, 1}, 4000, "ping"}
+
+      assert {:noreply, new_state, _timeout} =
+               TestAdaptiveHandler.handle_continue({:handle_data, packet}, state)
+
+      # State modification made by handle_data must survive
+      assert new_state.last_data == packet
+      # Internal bookkeeping is still maintained
+      assert [_ | _] = new_state.processing_times
+      assert is_integer(new_state.adaptive_timeout)
+    end
+
+    test "handle_data may return {:continue, state, timeout} without crashing" do
+      state = %{processing_times: [], read_timeout: 5000}
+      packet = {{127, 0, 0, 1}, 4000, "ping"}
+
+      assert {:noreply, _new_state, 1234} =
+               OneShotTimeoutHandler.handle_continue({:handle_data, packet}, state)
+    end
+
+    test "handle_data may return {:continue, state, {:persistent, timeout}}" do
+      state = %{processing_times: [], read_timeout: 5000}
+      packet = {{127, 0, 0, 1}, 4000, "ping"}
+
+      assert {:noreply, new_state, 9999} =
+               PersistentTimeoutHandler.handle_continue({:handle_data, packet}, state)
+
+      assert new_state.read_timeout == 9999
     end
   end
 
