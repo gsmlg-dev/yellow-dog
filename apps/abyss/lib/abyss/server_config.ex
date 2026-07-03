@@ -82,6 +82,18 @@ defmodule Abyss.ServerConfig do
       raise ArgumentError, "handler_module must be a module"
     end
 
+    # num_acceptors is deprecated but documented; map it to num_listeners
+    # rather than crashing in struct!/2 (it is not a struct field).
+    {num_acceptors, opts} = Keyword.pop(opts, :num_acceptors)
+
+    opts =
+      if num_acceptors do
+        Logger.warning("Option :num_acceptors is deprecated. Use :num_listeners instead.")
+        Keyword.put_new(opts, :num_listeners, num_acceptors)
+      else
+        opts
+      end
+
     # Determine broadcast mode from transport module
     transport_module = Keyword.get(opts, :transport_module, Abyss.Transport.UDP)
     is_broadcast = transport_module == Abyss.Transport.UDP.Broadcast

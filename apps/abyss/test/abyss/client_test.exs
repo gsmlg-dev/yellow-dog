@@ -86,6 +86,19 @@ defmodule Abyss.ClientTest do
           assert is_atom(reason)
       end
     end
+
+    test "does not leak sockets when send fails" do
+      # Payload above the UDP maximum -> send fails locally with :emsgsize
+      oversized = :binary.copy(<<0>>, 70_000)
+      ports_before = length(Port.list())
+
+      for _ <- 1..20 do
+        assert {:error, :emsgsize} = Client.send({127, 0, 0, 1}, 9999, oversized)
+      end
+
+      # A leak would grow the port count by exactly 20
+      assert length(Port.list()) - ports_before < 10
+    end
   end
 
   describe "broadcast/4" do
@@ -128,6 +141,19 @@ defmodule Abyss.ClientTest do
         {:error, reason} ->
           assert reason in [:enetunreach, :eacces, :eperm, :enetdown, :einval]
       end
+    end
+
+    test "does not leak sockets when send fails" do
+      # Payload above the UDP maximum -> send fails locally with :emsgsize
+      oversized = :binary.copy(<<0>>, 70_000)
+      ports_before = length(Port.list())
+
+      for _ <- 1..20 do
+        assert {:error, :emsgsize} = Client.broadcast({127, 0, 0, 1}, 9999, oversized)
+      end
+
+      # A leak would grow the port count by exactly 20
+      assert length(Port.list()) - ports_before < 10
     end
   end
 

@@ -48,6 +48,23 @@ defmodule Abyss.ServerConfigTest do
       assert config.broadcast == true
     end
 
+    test "accepts deprecated num_acceptors and maps it to num_listeners" do
+      config = Abyss.ServerConfig.new(handler_module: Abyss.TestHandler, num_acceptors: 7)
+
+      assert config.num_listeners == 7
+    end
+
+    test "explicit num_listeners wins over deprecated num_acceptors" do
+      config =
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          num_acceptors: 7,
+          num_listeners: 3
+        )
+
+      assert config.num_listeners == 3
+    end
+
     test "accepts any handler module (no validation)" do
       config = Abyss.ServerConfig.new(handler_module: :not_a_module, port: 1234)
       assert config.handler_module == :not_a_module

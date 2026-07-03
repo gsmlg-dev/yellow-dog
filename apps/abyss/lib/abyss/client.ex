@@ -320,10 +320,16 @@ defmodule Abyss.Client do
     socket_opts = build_socket_opts(opts, _broadcast = false)
 
     result =
-      with {:ok, socket} <- :gen_udp.open(0, socket_opts),
-           :ok <- :gen_udp.send(socket, host, port, packet) do
-        :gen_udp.close(socket)
-        :ok
+      case :gen_udp.open(0, socket_opts) do
+        {:ok, socket} ->
+          try do
+            :gen_udp.send(socket, host, port, packet)
+          after
+            :gen_udp.close(socket)
+          end
+
+        {:error, _reason} = error ->
+          error
       end
 
     emit_result_telemetry(result, start_time, metadata)
@@ -382,10 +388,16 @@ defmodule Abyss.Client do
     socket_opts = build_socket_opts(opts, _broadcast = true, broadcast_addr)
 
     result =
-      with {:ok, socket} <- :gen_udp.open(0, socket_opts),
-           :ok <- :gen_udp.send(socket, broadcast_addr, port, packet) do
-        :gen_udp.close(socket)
-        :ok
+      case :gen_udp.open(0, socket_opts) do
+        {:ok, socket} ->
+          try do
+            :gen_udp.send(socket, broadcast_addr, port, packet)
+          after
+            :gen_udp.close(socket)
+          end
+
+        {:error, _reason} = error ->
+          error
       end
 
     emit_result_telemetry(result, start_time, metadata)

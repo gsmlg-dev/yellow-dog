@@ -127,8 +127,13 @@ defmodule Abyss.Transport.UDP do
   def send_recv({ip, port}, data, timeout \\ 5000) do
     case open(0, mode: :binary, active: false) do
       {:ok, socket} ->
-        :ok = send(socket, ip, port, data)
-        recv(socket, 0, timeout)
+        try do
+          with :ok <- send(socket, ip, port, data) do
+            recv(socket, 0, timeout)
+          end
+        after
+          close(socket)
+        end
 
       {:error, reason} ->
         {:error, reason}

@@ -260,4 +260,45 @@ defmodule Abyss.Transport.UDPTest do
       assert :ok = UDP.close(socket)
     end
   end
+
+  describe "send_recv/3" do
+    test "sends and receives a response" do
+      {:ok, server} = UDP.listen(0, ip: {127, 0, 0, 1}, active: false)
+      {:ok, {_ip, port}} = UDP.sockname(server)
+
+      echo =
+        Task.async(fn ->
+          {:ok, {ip, from_port, data}} = UDP.recv(server, 0, 1000)
+          UDP.send(server, ip, from_port, data)
+        end)
+
+      assert {:ok, {_ip, ^port, "ping"}} = UDP.send_recv({{127, 0, 0, 1}, port}, "ping", 1000)
+
+      Task.await(echo)
+      UDP.close(server)
+    end
+
+    test "does not leak sockets on timeout" do
+      # A silent server: packets arrive but are never answered
+      {:ok, server} = UDP.listen(0, ip: {127, 0, 0, 1})
+      {:ok, {_ip, port}} = UDP.sockname(server)
+
+      ports_before = length(Port.list())
+
+      for _ <- 1..10 do
+        assert {:error, :timeout} = UDP.send_recv({{127, 0, 0, 1}, port}, "ping", 20)
+      end
+
+      # A leak would grow the port count by exactly 10
+      assert length(Port.list()) - ports_before < 5
+
+      UDP.close(server)
+    end
+
+    test "returns an error without raising when send fails" do
+      # Payload above the UDP maximum -> send fails locally with :emsgsize
+      oversized = :binary.copy(<<0>>, 70_000)
+      assert {:error, :emsgsize} = UDP.send_recv({{127, 0, 0, 1}, 9999}, oversized, 20)
+    end
+  end
 end
