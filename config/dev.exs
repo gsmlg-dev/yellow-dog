@@ -27,7 +27,7 @@ import Config
 # debugging and code reloading.
 #
 # The watchers configuration can be used to run external
-# watchers to your application. For example, we can use it
+# watchers to your application. The console uses DuskmoonBundler
 # to bundle .js and .css sources.
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   # Binding to all interfaces to allow access from other machines.
@@ -45,8 +45,8 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   debug_errors: true,
   secret_key_base: "xsqEOmOqmfV082AmjacS5DWwWUPmGhzmBaRFKrW0swiqprhSDd0qU39W6GkVZBCX",
   watchers: [
-    bun: {Bun, :install_and_run, [:yellow_dog_console, ~w(--watch)]},
-    tailwind: {Tailwind, :install_and_run, [:yellow_dog_console, ~w(--watch)]}
+    duskmoon_bundler:
+      {Mix.Tasks.DuskmoonBundler.Dev, :run, [["yellow_dog_console", "--tailwind"]]}
   ]
 
 # Watch static and templates for browser reloading.

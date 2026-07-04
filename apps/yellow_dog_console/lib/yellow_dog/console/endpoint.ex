@@ -45,6 +45,11 @@ defmodule YellowDog.Console.Endpoint do
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
     plug Phoenix.CodeReloader, reloader: &YellowDog.Console.CodeReloader.reload/2
+
+    plug DuskmoonBundler.DevServer,
+      profile: :yellow_dog_console,
+      root: Path.expand("../../../assets", __DIR__),
+      prefix: "/assets"
   end
 
   plug Phoenix.LiveDashboard.RequestLogger,

@@ -62,7 +62,7 @@ Yellow Dog DNS is organized as an Elixir umbrella project with 20 applications:
 - **YellowDog.Fingerprint** - Device fingerprinting
 - **YellowDog.Netman** - Network manager and DHCP client functionality
 - **YellowDog.Resolved** - DNS resolution integration
-- **YellowDogConsole** - Phoenix LiveView web console with DaisyUI
+- **YellowDogConsole** - Phoenix LiveView web console with DuskMoon UI
 
 ### Infrastructure Libraries
 
@@ -208,8 +208,7 @@ direnv allow  # or use devenv shell
 # The environment includes:
 # - Elixir 1.18 with OTP 27
 # - Git, figlet, lolcat, watchman, inotify-tools
-# - JavaScript support with pnpm and bun
-# - Tailwind CSS 4
+# - DuskMoon asset bundling through Mix tasks
 ```
 
 ### Running Tests

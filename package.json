@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "workspaces": ["apps/*"],
-  "dependencies": {},
+  "dependencies": {
+    "@duskmoon-dev/art-elements": "latest",
+    "@duskmoon-dev/core": "latest",
+    "@duskmoon-dev/css-art": "latest",
+    "@duskmoon-dev/elements": "latest"
+  },
   "devDependencies": {}
 }

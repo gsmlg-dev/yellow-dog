@@ -254,21 +254,3 @@ if console_url = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_URL") do
 
   config :yellow_dog_netman, :console, console_config
 end
-
-if System.get_env("MIX_BUN_PATH") do
-  executable = System.get_env("MIX_BUN_PATH")
-
-  bun_version =
-    case System.cmd(executable, ["--version"]) do
-      {output, 0} -> String.trim(output)
-      _ -> nil
-    end
-
-  config :bun,
-    path: executable,
-    version: bun_version
-end
-
-if System.get_env("MIX_TAILWIND_PATH") do
-  config :tailwind, path: System.get_env("MIX_TAILWIND_PATH")
-end

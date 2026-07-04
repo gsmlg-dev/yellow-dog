@@ -36,7 +36,7 @@ The umbrella builds separate Mix releases (root `mix.exs`):
 | **YellowDog.Identity** | `apps/yellow_dog_identity/` | Host identity: registry, SSH key validation, trust verification, approval policies |
 | **YellowDog.Netman** | `apps/yellow_dog_netman/` | Network manager: wired ethernet, DHCP/static IP, reconciliation engine, netlink |
 | **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
-| **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DuskMoon UI, Bun) |
+| **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DuskMoon UI, DuskmoonBundler) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
 | **Abyss** | `apps/abyss/` | UDP/server socket library (used by all protocol apps and DHCP client native sockets) |
 | **ExDns** | `apps/ex_dns/` | DNS protocol library (messages, zones, records) |
@@ -92,9 +92,9 @@ mix setup                   # deps.get + assets.setup + assets.build
 
 # Asset building
 cd apps/yellow_dog_console
-bun run build               # Dev
-bun run build:prod          # Prod (minified)
-# Note: Bun bundles JS; Tailwind CSS v4 runs as a standalone CLI (not via PostCSS)
+mix assets.build            # Dev
+mix assets.deploy           # Prod (minified + digested)
+# Note: DuskmoonBundler owns JS/CSS asset compilation.
 
 # Pre-commit check (console only)
 cd apps/yellow_dog_console && mix precommit     # compile + format + test
@@ -225,22 +225,26 @@ GitHub Actions workflows:
 - Conventional commits: `feat|fix|refactor|test|docs|chore(scope): description`
 - Omit "Generated with Claude Code" and Co-Authored-By trailer
 
-## UI System
+## UI Library
 
 ### Stack
 
-Two dependencies only:
-- `@duskmoon-dev/core` — TailwindCSS plugin (design tokens, utilities)
+Primary dependencies:
+- `@duskmoon-dev/core` — design tokens, utilities, and CSS components
+- `@duskmoon-dev/elements` — custom elements
+- `@duskmoon-dev/css-art` and `@duskmoon-dev/art-elements` — optional CSS art packages
 - `phoenix_duskmoon` — Phoenix component module (HEEx components)
+- `duskmoon_bundler` / `duskmoon_bundler_runtime` — asset bundling and static path helpers
 
-`phoenix_duskmoon` wraps `duskmoon-elements` internally. Treat both as black boxes consumed via their published APIs only.
+Treat DuskMoon packages as black boxes consumed via their published APIs only.
 
 ### Skills
 
 Load before any UI task (via the Skill tool):
-- CSS/tokens → `duskmoon-ui:duskmoon-dev-core`
-- Web components → `duskmoon-ui:duskmoon-elements`
-- Phoenix components → `elixir-dev:elixir-phoenix` + `duskmoon-ui:phoenix-duskmoon-ui`
+- CSS/tokens → `duskmoon-dev-core`
+- Web components → `duskmoon-elements`
+- Phoenix components → `elixir-phoenix` + `phoenix-duskmoon-ui`
+- Bundling → `duskmoon-bundler`
 
 Local project skill: `.claude/skills/abyss-udp-server.md` — read before working on Abyss-based UDP servers.
 
@@ -250,6 +254,7 @@ Local project skill: `.claude/skills/abyss-udp-server.md` — read before workin
 - NEVER override `@duskmoon-dev/core` tokens locally — propose changes upstream instead
 - NEVER patch `phoenix_duskmoon` component logic inline — wrap or compose only
 - Raw Tailwind classes not provided by `@duskmoon-dev/core` are PROHIBITED in templates
+- Do not reintroduce Bun/Tailwind Mix packages for console assets; use `mix assets.build` and `mix assets.deploy`.
 
 ### Upstream Issue Protocol
 

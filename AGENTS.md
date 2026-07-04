@@ -84,7 +84,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 | **Core & Store** | `apps/yellow_dog*` | Config management, distributed state (Mnesia disk copies), service orchestration. |
 | **Protocols** | `apps/yellow_dog_dns`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | Server GenServers, packet handlers, zone/lease management. |
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity` | DHCP Client, Netlink integration, DNS stub caching, host trust verification. |
-| **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DaisyUI templates, asset compilation via Bun. |
+| **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DuskMoon UI templates, asset compilation via DuskmoonBundler. |
 | **Libraries** | `apps/abyss`, `ex_dns`, `ex_dhcp`, `geo_ip_db` | Infrastructure libraries (UDP core/native sockets, DNS protocol, DHCP messages). |
 
 ### Storage Patterns
@@ -108,7 +108,7 @@ Follow the **Conventional Commits** specification:
 *   **Initial Audit**: Read a maximum of 800 lines initially to understand module layout. Focus on the public API functions and supervision callbacks.
 
 ### Terminal & Bash Operations
-*   **Nix Shell Context**: Always execute mix/npm/bun commands within the Nix devenv context. If you need command execution, ensure `devenv shell` or `direnv allow` is active.
+*   **Nix Shell Context**: Always execute Mix and npm-related commands within the Nix devenv context. If you need command execution, ensure `devenv shell` or `direnv allow` is active.
 *   **Testing Commands**: Limit the test execution scope to conserve resources:
     *   *Umbrella wide*: `mix test`
     *   *App specific*: `mix test apps/yellow_dog_dns`

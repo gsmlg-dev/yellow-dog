@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-YellowDogConsole is the Phoenix LiveView web console for managing and monitoring YellowDog network services (DNS, mDNS, DHCPv4, DHCPv6). It uses the Duskmoon design system (`@duskmoon-dev/core` + `phoenix_duskmoon`) for UI components and Bun for JavaScript bundling.
+YellowDogConsole is the Phoenix LiveView web console for managing and monitoring YellowDog network services (DNS, mDNS, DHCPv4, DHCPv6). It uses the DuskMoon design system (`@duskmoon-dev/core` + `phoenix_duskmoon`) and DuskmoonBundler for JavaScript/CSS bundling.
 
 ## Common Commands
 
@@ -25,7 +25,7 @@ mix test test/yellow_dog/console/live/settings_live_test.exs
 # Run tests matching a pattern
 mix test --only capture_log
 
-# Build assets (Tailwind + Bun)
+# Build assets (DuskmoonBundler)
 mix assets.build
 
 # Build production assets
@@ -50,7 +50,7 @@ Use `YellowDog.Console` for the entrypoint with these uses:
 - `use YellowDog.Console, :live_component` - LiveComponents
 - `use YellowDog.Console, :html` - Function components
 
-All views auto-import `PhoenixDuskmoon.Component` (dm_* components) and `YellowDog.Console.CoreComponents`.
+All views auto-import `PhoenixDuskmoon.Component` (`dm_*` components). Existing pages also import `YellowDog.Console.CoreComponents` for project-specific helpers during the component migration.
 
 ### Directory Structure
 ```
@@ -59,7 +59,7 @@ lib/yellow_dog/console/
 ├── endpoint.ex              # Phoenix endpoint
 ├── router.ex                # Routes definition
 ├── components/
-│   ├── core_components.ex   # Project component library (stat, badge, card, modal, table, etc.)
+│   ├── core_components.ex   # Legacy project helpers still used by existing pages
 │   └── layouts.ex           # Layout components (app, navbar, sidebar)
 ├── live/
 │   ├── dashboard_live.ex    # Service overview
@@ -105,7 +105,7 @@ lib/yellow_dog/console/
 <.dm_tab id="tabs" active_tab_index={0}><:tab name="a">A</:tab><:tab_content name="a">...</:tab_content></.dm_tab>
 ```
 
-**Components (from CoreComponents):**
+**Project helpers still provided by CoreComponents:**
 ```heex
 <.stat title="..." value="..." desc="..." />
 <.badge color="success" size="sm">Active</.badge>
@@ -183,25 +183,25 @@ end
 
 ## Asset Building
 
-Uses Bun for JavaScript bundling (not npm):
+Uses DuskmoonBundler for JavaScript and CSS bundling:
 - Entry point: `assets/js/app.js`
 - CSS entry: `assets/css/app.css`
 - Output: `priv/static/assets/`
 
 ```bash
-# Development build with sourcemaps
-bun run build
-# Production build (minified)
-bun run build:prod
-# Watch mode
-bun run watch
+# Development build
+mix assets.build
+# Production build (minified + digested)
+mix assets.deploy
+# Install npm packages
+mix npm.install
 ```
 
 ## Key Dependencies
 
 - `phoenix` ~> 1.8.1, `phoenix_live_view` ~> 1.0
 - `bandit` ~> 1.5 (HTTP server)
-- `phoenix_duskmoon` ~> 9.0
-- `tailwind` ~> 0.3, `bun` ~> 1.3 (dev only)
-- `@duskmoon-dev/core`, `@duskmoon-dev/elements` (npm)
+- `phoenix_duskmoon` ~> 9.7
+- `duskmoon_bundler_runtime` ~> 9.7, `duskmoon_bundler` ~> 9.7 (dev only)
+- `@duskmoon-dev/core`, `@duskmoon-dev/elements`, `@duskmoon-dev/css-art`, `@duskmoon-dev/art-elements` (npm)
 - In-umbrella: `yellow_dog`, `yellow_dog_mdns`, `yellow_dog_dhcpv4`, `yellow_dog_dhcpv6`, `yellow_dog_dns`

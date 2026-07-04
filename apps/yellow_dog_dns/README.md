@@ -77,7 +77,7 @@ open http://localhost:4270/dns
 - ✅ **TSIG Authentication** - Secure zone transfers
 
 ### Management & Monitoring
-- ✅ **Web Console** - Beautiful DaisyUI interface
+- ✅ **Web Console** - DuskMoon interface
 - ✅ **Real-time Dashboard** - Live query statistics
 - ✅ **Visual Zone Editor** - Edit zones without touching files
 - ✅ **Query Log Viewer** - Stream queries in real-time

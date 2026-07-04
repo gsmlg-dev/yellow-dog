@@ -27,7 +27,9 @@ abyss-*.tar
 
 *.output
 
+# Native artifacts copied by release builds.
+/priv/native/
+
 # devenv
 .devenv/
 .devenv.*
-

@@ -13,8 +13,34 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
       rel="stylesheet"
     />
-    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    {DuskmoonBundler.Preload.tags(
+      YellowDog.Console.Endpoint,
+      "/assets/js/app.js",
+      profile: :yellow_dog_console
+    )}
+    <link
+      phx-track-static
+      rel="stylesheet"
+      href={
+        DuskmoonBundler.static_path(
+          YellowDog.Console.Endpoint,
+          "/assets/css/app.css",
+          profile: :yellow_dog_console
+        )
+      }
+    />
+    <script
+      defer
+      phx-track-static
+      type="module"
+      src={
+        DuskmoonBundler.static_path(
+          YellowDog.Console.Endpoint,
+          "/assets/js/app.js",
+          profile: :yellow_dog_console
+        )
+      }
+    >
     </script>
   </head>
   <body class="h-full bg-surface text-on-surface">

@@ -518,7 +518,7 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert ZoneLive.zone_type_label(:unknown) == "Unknown"
     end
 
-    test "zone_type_badge/1 returns DaisyUI color classes" do
+    test "zone_type_badge/1 returns DuskMoon badge color classes" do
       assert ZoneLive.zone_type_badge(:auth) == "primary"
       assert ZoneLive.zone_type_badge(:forward) == "secondary"
       assert ZoneLive.zone_type_badge(:stub) == "accent"
@@ -1772,7 +1772,7 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert ZoneLive.zone_type_label(:rpz) == "Unknown"
     end
 
-    test "zone_type_badge/1 returns DaisyUI classes for all types" do
+    test "zone_type_badge/1 returns DuskMoon classes for all types" do
       assert ZoneLive.zone_type_badge(:auth) == "primary"
       assert ZoneLive.zone_type_badge(:forward) == "secondary"
       assert ZoneLive.zone_type_badge(:stub) == "accent"

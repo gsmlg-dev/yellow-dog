@@ -43,9 +43,9 @@ defmodule YellowDog.Console.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_live_view, "~> 1.0"},
       {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
-      {:bun, "~> 2.0", runtime: Mix.env() == :dev},
-      {:phoenix_duskmoon, "~> 9.1"},
+      {:duskmoon_bundler_runtime, "~> 9.7"},
+      {:duskmoon_bundler, "~> 9.7", runtime: Mix.env() == :dev},
+      {:phoenix_duskmoon, "~> 9.7"},
       {:hackney, "~> 4.0"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
@@ -87,14 +87,10 @@ defmodule YellowDog.Console.MixProject do
     [
       lint: ["credo --strict", "dialyzer"],
       setup: ["deps.get", "assets.setup", "assets.build"],
-      "assets.setup": [
-        "tailwind.install --if-missing",
-        "bun.install --if-missing"
-      ],
-      "assets.build": ["compile", "tailwind yellow_dog_console", "bun yellow_dog_console"],
+      "assets.setup": ["npm.install"],
+      "assets.build": ["compile", "duskmoon_bundler.build yellow_dog_console --tailwind"],
       "assets.deploy": [
-        "tailwind yellow_dog_console --minify",
-        "bun yellow_dog_console --minify",
+        "duskmoon_bundler.build yellow_dog_console --tailwind --minify",
         "phx.digest"
       ],
       precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"]

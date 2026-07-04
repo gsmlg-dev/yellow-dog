@@ -27,28 +27,33 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   pubsub_server: YellowDog.Console.PubSub,
   live_view: [signing_salt: "yellow_dog_console_secret"]
 
-# Configure tailwind (the version is required)
-config :tailwind,
-  version: "4.3.0",
-  yellow_dog_console: [
-    args: ~w(
-      --input=assets/css/app.css
-      --output=priv/static/assets/app.css
-    ),
-    cd: Path.expand("../apps/yellow_dog_console", __DIR__)
-  ]
+config :duskmoon_bundler,
+  resolve_dirs: ["node_modules", "deps"],
+  target: :es2020,
+  sourcemap: :hidden
 
-# Configure bun (the version is required)
-config :bun,
-  version: "1.3.13",
-  yellow_dog_console: [
-    args: ~w(
-      build assets/js/app.js
-      --outdir=priv/static/assets
-      --target=browser
-      --sourcemap=external
-    ),
-    cd: Path.expand("../apps/yellow_dog_console", __DIR__)
+console_app = Path.expand("../apps/yellow_dog_console", __DIR__)
+console_assets = Path.join(console_app, "assets")
+
+config :duskmoon_bundler, :yellow_dog_console,
+  root: console_assets,
+  entry: Path.join(console_assets, "js/app.js"),
+  outdir: Path.join(console_app, "priv/static/assets"),
+  asset_url_prefix: "/assets",
+  tailwind: [
+    css: Path.join(console_assets, "css/app.css"),
+    sources: [
+      %{base: Path.join(console_app, "lib"), pattern: "**/*.{ex,heex}"},
+      %{
+        base: Path.expand("../deps/phoenix_duskmoon/lib/phoenix_duskmoon", __DIR__),
+        pattern: "**/*.{ex,heex}"
+      },
+      %{base: console_assets, pattern: "**/*.{js,css}"}
+    ]
+  ],
+  server: [
+    prefix: "/assets",
+    watch_dirs: [Path.join(console_app, "lib"), console_assets]
   ]
 
 # Configures Elixir's Logger

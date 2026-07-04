@@ -2,6 +2,7 @@
 @source "../css";
 @source "../js";
 @source "../../lib/yellow_dog/console";
+@source "../../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon";
 
 @plugin "@duskmoon-dev/core/plugin";
 @import "@duskmoon-dev/core/themes/sunshine";

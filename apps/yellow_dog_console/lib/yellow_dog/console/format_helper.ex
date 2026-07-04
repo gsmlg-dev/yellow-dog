@@ -64,7 +64,7 @@ defmodule YellowDog.Console.FormatHelper do
 
   def format_time_remaining(_), do: "N/A"
 
-  @doc "Returns a DaisyUI text color class based on expiration proximity."
+  @doc "Returns a DuskMoon text color class based on expiration proximity."
   @spec expiration_color(integer()) :: String.t()
   def expiration_color(expires_at) when is_integer(expires_at) do
     remaining = expires_at - System.system_time(:second)

@@ -1,7 +1,0 @@
-[install]
-# Don't install packages from npm
-auto = "disable"
-
-[module]
-# Tell Bun how to resolve Phoenix packages
-paths = ["./deps"]
