@@ -14,56 +14,290 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  release:
-    name: Release v${{ inputs.version }}
+  create-release:
+    name: Create release v${{ inputs.version }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
     env:
       VERSION: ${{ inputs.version }}
+      RELEASE_TAG: v${{ inputs.version }}
     steps:
-      - name: ⬇️ Checkout repo at ${{ inputs.git_ref }}
+      - name: Checkout repo at ${{ inputs.git_ref }}
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.git_ref }}
           fetch-depth: 0
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
-
-      - name: Setup Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v14
+      - name: Validate release version
+        run: |
+          set -euo pipefail
+          if [[ "${VERSION}" == v* ]]; then
+            echo "version input must not include a leading v" >&2
+            exit 1
+          fi
 
       - name: Bump version in mix.exs
         run: |
+          set -euo pipefail
           sed -i -E "s/version: \"[^\"]+\"/version: \"${VERSION}\"/" mix.exs
           grep -q "version: \"${VERSION}\"" mix.exs
 
-      - name: Build release package
-        run: nix build
-
-      - name: Package artifact
-        run: tar -czhf "yellow-dog-v${VERSION}-linux-x86_64.tar.gz" -C result .
-
       - name: Commit version bump and tag
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore(release): v${VERSION}"
-          git tag "v${VERSION}"
-          git push origin "HEAD:${{ inputs.git_ref }}"
-          git push origin "v${VERSION}"
+          git add mix.exs
+
+          if git diff --cached --quiet; then
+            echo "mix.exs is already at ${VERSION}; tagging current ref"
+          else
+            git commit -m "chore(release): v${VERSION}"
+            git push origin "HEAD:${{ inputs.git_ref }}"
+          fi
+
+          git tag "${RELEASE_TAG}"
+          git push origin "${RELEASE_TAG}"
 
       - name: Create GitHub Release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${VERSION}" \
-            --title "v${VERSION}" \
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" \
+            --title "${RELEASE_TAG}" \
             --generate-notes \
-            "yellow-dog-v${VERSION}-linux-x86_64.tar.gz"
+            --verify-tag
+
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  build-release-assets:
+    name: Build ${{ matrix.product_slug }} ${{ matrix.platform }} ${{ matrix.arch }}
+    needs: create-release
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - product_slug: yellow-dog
+            mix_release: yellow_dog_server
+            platform: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - product_slug: yellow-dog
+            mix_release: yellow_dog_server
+            platform: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - product_slug: yellow-dog
+            mix_release: yellow_dog_server
+            platform: macos
+            arch: amd64
+            runner: macos-15-intel
+          - product_slug: yellow-dog
+            mix_release: yellow_dog_server
+            platform: macos
+            arch: arm64
+            runner: macos-15
+          - product_slug: yellow-dog-netman
+            mix_release: yellow_dog_netman
+            platform: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - product_slug: yellow-dog-netman
+            mix_release: yellow_dog_netman
+            platform: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      MIX_ENV: prod
+      SECRET_KEY_BASE: release-build-secret-key-base-release-build-secret-key-base
+      VERSION: ${{ needs.create-release.outputs.version }}
+      RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
+      MIX_RELEASE_NAME: ${{ matrix.mix_release }}
+      PRODUCT_SLUG: ${{ matrix.product_slug }}
+      PLATFORM: ${{ matrix.platform }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y inotify-tools
+
+      - name: Restore build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.hex
+            ~/.cache/rebar3
+            deps
+            _build
+            apps/abyss/native/dhcp_socket/target
+            apps/yellow_dog_netman/native/netlink_helper/target
+          key: release-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.product_slug }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
+          restore-keys: |
+            release-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.product_slug }}-
+            release-${{ runner.os }}-${{ matrix.arch }}-
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get --only prod
+
+      - name: Build Netman native helper
+        if: matrix.mix_release == 'yellow_dog_netman'
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path apps/yellow_dog_netman/native/netlink_helper/Cargo.toml
+          mkdir -p apps/yellow_dog_netman/priv/native
+          cp apps/yellow_dog_netman/native/netlink_helper/target/release/netlink_helper apps/yellow_dog_netman/priv/native/
+          chmod 755 apps/yellow_dog_netman/priv/native/netlink_helper
+
+      - name: Build console assets
+        if: matrix.mix_release == 'yellow_dog_server'
+        working-directory: apps/yellow_dog_console
+        run: |
+          set -euo pipefail
+          mix assets.deploy
+
+      - name: Build Mix release
+        run: |
+          set -euo pipefail
+          mix release "${MIX_RELEASE_NAME}" --version "${VERSION}" --overwrite
+
+      - name: Package release tarball
+        id: package
+        run: |
+          set -euo pipefail
+          artifact="${PRODUCT_SLUG}-v${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
+          tar -czf "${artifact}" -C "_build/prod/rel/${MIX_RELEASE_NAME}" .
+          echo "artifact=${artifact}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${RELEASE_TAG}" "${{ steps.package.outputs.artifact }}" --clobber
+
+  docker-image:
+    name: Build and publish Docker image
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.create-release.outputs.version }}
+      RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
+      REGISTRY: ghcr.io
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Resolve image name
+        id: image
+        run: |
+          set -euo pipefail
+          image_name="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "name=${image_name}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REGISTRY}/${image_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RELEASE_VERSION=${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.ref }}:${{ env.VERSION }}
+            ${{ steps.image.outputs.ref }}:${{ env.RELEASE_TAG }}
+            ${{ steps.image.outputs.ref }}:latest
+
+      - name: Add Docker image info to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          gh release view "${RELEASE_TAG}" --json body --jq '.body' > release-body.md
+
+          cat > docker-image-notes.md <<EOF
+          ## Docker image
+
+          Pull the release image:
+
+          \`\`\`sh
+          docker pull ${IMAGE_REF}:${VERSION}
+          docker pull ${IMAGE_REF}:${RELEASE_TAG}
+          docker pull ${IMAGE_REF}:latest
+          \`\`\`
+
+          Multi-arch platforms: \`linux/amd64\`, \`linux/arm64\`
+
+          Digest: \`${IMAGE_REF}@${IMAGE_DIGEST}\`
+          EOF
+
+          {
+            cat release-body.md
+            printf '\n\n'
+            cat docker-image-notes.md
+          } > release-body-updated.md
+
+          gh release edit "${RELEASE_TAG}" --notes-file release-body-updated.md
