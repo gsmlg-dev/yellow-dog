@@ -1,7 +1,24 @@
-FROM docker.io/library/elixir:1.19-alpine AS builder
+FROM docker.io/library/elixir:1.19-slim AS builder
 
 # Install Rust/Cargo for Rustler NIFs (netlink_helper port binary)
-RUN apk add --no-cache rust cargo
+# WORKAROUND(upstream): duskmoon-dev/phoenix-duskmoon-ui#71
+# Use glibc until duskmoon_oxc publishes musl precompiled NIFs.
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      curl \
+      git \
+      perl && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+      sh -s -- -y --profile minimal --default-toolchain 1.91.1 && \
+    rustc --version && \
+    cargo --version && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -58,7 +75,7 @@ RUN cd apps/yellow_dog_netman/native/netlink_helper && \
 
 RUN mix release yellow_dog --version "${RELEASE_VERSION}"
 
-FROM docker.io/library/alpine:3.23
+FROM docker.io/library/debian:trixie-slim
 
 ARG RELEASE_VERSION=1.1.2
 ENV RELEASE_VERSION="${RELEASE_VERSION}"
@@ -87,15 +104,27 @@ ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
 
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
 
-RUN apk add --update --no-cache libncursesw libstdc++ \
-    musl musl-utils musl-locales tzdata inotify-tools iproute2 && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      inotify-tools \
+      iproute2 \
+      libatomic1 \
+      libncursesw6 \
+      libstdc++6 \
+      locales \
+      openssl \
+      tzdata && \
+    sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    locale-gen && \
     mkdir -p /data/yellowdog/dns/zones \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
              /data/yellowdog/mdns \
              /data/yellowdog/tasks \
              /etc/yellowdog/netman/profiles \
-             /run/yellowdog
+             /run/yellowdog && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellow_dog_default_config.toml /etc/yellowdog/config.toml
