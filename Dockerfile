@@ -7,6 +7,8 @@ WORKDIR /app
 
 ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.2
+# WORKAROUND(upstream): gsmlg-dev/ex_turso#6
+ENV EX_TURSO_BUILD=1
 
 # Install hex and rebar (cached unless base image changes)
 RUN mix local.hex --force && \

@@ -613,7 +613,7 @@ fn format_route_address(addr: &RouteAddress) -> String {
 /// The `CStr::from_ptr` call is safe because the null check above ensures the
 /// buffer was written successfully.
 fn ifindex_to_name(index: u32) -> Option<String> {
-    let mut buf = [0i8; libc::IFNAMSIZ];
+    let mut buf = [0 as libc::c_char; libc::IFNAMSIZ];
     // SAFETY: buf is IFNAMSIZ bytes, which is the required minimum for if_indextoname
     let result = unsafe { libc::if_indextoname(index, buf.as_mut_ptr()) };
     if result.is_null() {

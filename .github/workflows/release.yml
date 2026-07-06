@@ -67,8 +67,12 @@ jobs:
             git push origin "HEAD:${{ inputs.git_ref }}"
           fi
 
-          git tag "${RELEASE_TAG}"
-          git push origin "${RELEASE_TAG}"
+          if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "tag ${RELEASE_TAG} already exists; reusing it"
+          else
+            git tag "${RELEASE_TAG}"
+            git push origin "${RELEASE_TAG}"
+          fi
 
       - name: Create GitHub Release
         id: release
@@ -76,10 +80,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "${RELEASE_TAG}" \
-            --title "${RELEASE_TAG}" \
-            --generate-notes \
-            --verify-tag
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "release ${RELEASE_TAG} already exists; reusing it"
+          else
+            gh release create "${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
+              --generate-notes \
+              --verify-tag
+          fi
 
           echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -189,6 +197,7 @@ jobs:
         working-directory: apps/yellow_dog_console
         run: |
           set -euo pipefail
+          mix assets.setup
           mix assets.deploy
 
       - name: Build Mix release
@@ -294,8 +303,14 @@ jobs:
           Digest: \`${IMAGE_REF}@${IMAGE_DIGEST}\`
           EOF
 
+          awk '
+            /^## Docker image$/ { skip = 1; next }
+            /^## / && skip { skip = 0 }
+            !skip { print }
+          ' release-body.md > release-body-base.md
+
           {
-            cat release-body.md
+            cat release-body-base.md
             printf '\n\n'
             cat docker-image-notes.md
           } > release-body-updated.md
