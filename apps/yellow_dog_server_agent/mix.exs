@@ -1,9 +1,9 @@
-defmodule YellowDog.DhcpClient.MixProject do
+defmodule YellowDog.ServerAgent.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :yellow_dog_dhcp_client,
+      app: :yellow_dog_server_agent,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -18,20 +18,13 @@ defmodule YellowDog.DhcpClient.MixProject do
 
   def application do
     [
+      mod: {YellowDog.ServerAgent.Supervisor, []},
       extra_applications: [:logger]
     ]
   end
 
   defp deps do
     [
-      {:yellow_dog_config, in_umbrella: true},
-      {:yellow_dog_telemetry, in_umbrella: true},
-      {:abyss, in_umbrella: true},
-      {:ex_dhcp, in_umbrella: true},
-      {:telemetry, "~> 1.0"},
-      {:file_system, "~> 1.0"},
-      {:toml, "~> 0.7"},
-      {:stream_data, "~> 1.0", only: [:test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

@@ -96,7 +96,7 @@ defmodule YellowDog.ServiceManagerTest do
       services = ServiceManager.list_services()
 
       assert is_list(services)
-      assert length(services) == 6
+      assert length(services) == 8
     end
 
     test "includes all expected services" do
@@ -108,6 +108,8 @@ defmodule YellowDog.ServiceManagerTest do
       assert :dhcpv6 in services
       assert :netboot in services
       assert :identity in services
+      assert :fingerprint in services
+      assert :server_agent in services
     end
 
     test "returns atoms" do
@@ -125,6 +127,21 @@ defmodule YellowDog.ServiceManagerTest do
 
       assert is_map(status)
       assert Map.has_key?(status, :enabled)
+    end
+
+    test "includes registry metadata for known services" do
+      status = ServiceManager.get_service_status(:server_agent)
+
+      assert %{
+               metadata: %{
+                 name: :server_agent,
+                 label: "Server Agent",
+                 application: :yellow_dog_server_agent,
+                 available?: available?
+               }
+             } = status
+
+      assert available? in [true, false]
     end
 
     test "returns map for mdns service" do
@@ -194,7 +211,7 @@ defmodule YellowDog.ServiceManagerTest do
       all_status = ServiceManager.get_all_status()
 
       assert is_map(all_status)
-      assert map_size(all_status) == 6
+      assert map_size(all_status) == 8
     end
 
     test "includes all services as keys" do
@@ -206,6 +223,8 @@ defmodule YellowDog.ServiceManagerTest do
       assert Map.has_key?(all_status, :dhcpv6)
       assert Map.has_key?(all_status, :netboot)
       assert Map.has_key?(all_status, :identity)
+      assert Map.has_key?(all_status, :fingerprint)
+      assert Map.has_key?(all_status, :server_agent)
     end
 
     test "each service has status map" do
@@ -326,6 +345,14 @@ defmodule YellowDog.ServiceManagerTest do
       result = ServiceManager.stop_service(:unknown)
 
       assert result == {:error, :unknown_service}
+    end
+
+    test "start_service does not crash for known service without runtime control" do
+      assert ServiceManager.start_service(:server_agent) == {:error, :not_controllable}
+    end
+
+    test "stop_service does not crash for known service without runtime control" do
+      assert ServiceManager.stop_service(:server_agent) == {:error, :not_controllable}
     end
 
     test "start_service accepts valid service atoms" do

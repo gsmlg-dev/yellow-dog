@@ -59,6 +59,7 @@ defmodule YellowDog.Console.MixProject do
       {:toml, "~> 0.7"},
 
       # YellowDog dependencies
+      {:yellow_dog_management_core, in_umbrella: true},
       {:yellow_dog, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_mdns, in_umbrella: true},

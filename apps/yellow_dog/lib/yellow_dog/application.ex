@@ -8,6 +8,9 @@ defmodule YellowDog.Application do
 
   use Application
 
+  alias YellowDog.Server.ProfileResolver
+  alias YellowDog.Server.ServiceRegistry
+
   # Capture Mix.env() at compile time (Mix is not available in releases)
   @compile_env Mix.env()
 
@@ -87,14 +90,20 @@ defmodule YellowDog.Application do
   """
   @spec start_service_supervisor(atom(), module()) :: {:ok, pid()} | {:error, term()}
   def start_service_supervisor(service, _supervisor_module) do
-    # Get the app module for this service
-    app_module = service_app_module(service)
+    case ServiceRegistry.fetch(service) do
+      {:ok, %{controllable?: true, module: app_module}} ->
+        # Guard: module may not be available in all releases
+        if not Code.ensure_loaded?(app_module) do
+          {:error, :module_not_available}
+        else
+          start_service_supervisor_impl(service, app_module)
+        end
 
-    # Guard: module may not be available in all releases
-    if not Code.ensure_loaded?(app_module) do
-      {:error, :module_not_available}
-    else
-      start_service_supervisor_impl(service, app_module)
+      {:ok, _metadata} ->
+        {:error, :not_controllable}
+
+      :error ->
+        {:error, :unknown_service}
     end
   end
 
@@ -156,38 +165,45 @@ defmodule YellowDog.Application do
   """
   @spec stop_service_supervisor(atom(), module()) :: :ok | {:error, term()}
   def stop_service_supervisor(service, _supervisor_module) do
-    app_module = service_app_module(service)
+    case ServiceRegistry.fetch(service) do
+      {:ok, %{controllable?: true, module: app_module}} ->
+        case Supervisor.terminate_child(YellowDog.Supervisor, app_module) do
+          :ok ->
+            # Also delete the child spec so it can be restarted later
+            Supervisor.delete_child(YellowDog.Supervisor, app_module)
 
-    case Supervisor.terminate_child(YellowDog.Supervisor, app_module) do
-      :ok ->
-        # Also delete the child spec so it can be restarted later
-        Supervisor.delete_child(YellowDog.Supervisor, app_module)
+            :telemetry.execute(
+              [:yellow_dog, :service, :stopped],
+              %{count: 1},
+              %{source: __MODULE__, service: service, severity: :info}
+            )
 
-        :telemetry.execute(
-          [:yellow_dog, :service, :stopped],
-          %{count: 1},
-          %{source: __MODULE__, service: service, severity: :info}
-        )
+            :ok
 
-        :ok
+          {:error, :not_found} ->
+            :telemetry.execute(
+              [:yellow_dog, :service, :stopped],
+              %{count: 1},
+              %{source: __MODULE__, service: service, not_found: true, severity: :debug}
+            )
 
-      {:error, :not_found} ->
-        :telemetry.execute(
-          [:yellow_dog, :service, :stopped],
-          %{count: 1},
-          %{source: __MODULE__, service: service, not_found: true, severity: :debug}
-        )
+            {:error, :not_found}
 
-        {:error, :not_found}
+          {:error, reason} = error ->
+            :telemetry.execute(
+              [:yellow_dog, :application, :error],
+              %{count: 1},
+              %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
+            )
 
-      {:error, reason} = error ->
-        :telemetry.execute(
-          [:yellow_dog, :application, :error],
-          %{count: 1},
-          %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
-        )
+            error
+        end
 
-        error
+      {:ok, _metadata} ->
+        {:error, :not_controllable}
+
+      :error ->
+        {:error, :unknown_service}
     end
   end
 
@@ -257,15 +273,6 @@ defmodule YellowDog.Application do
       end
     end
   end
-
-  # Maps service atom to app module
-  defp service_app_module(:dns), do: YellowDog.Dns
-  defp service_app_module(:mdns), do: YellowDog.Mdns
-  defp service_app_module(:dhcpv4), do: YellowDog.Dhcpv4
-  defp service_app_module(:dhcpv6), do: YellowDog.Dhcpv6
-  defp service_app_module(:netboot), do: YellowDog.Netboot.Supervisor
-  defp service_app_module(:identity), do: YellowDogIdentity
-  defp service_app_module(:netman), do: YellowDog.Netman
 
   # Note: config_change is not needed in the main YellowDog app
   # The console app handles its own config changes through YellowDog.Console.Application
@@ -432,28 +439,23 @@ defmodule YellowDog.Application do
 
   # Gets the list of enabled service supervisors based on configuration.
   defp get_enabled_services(config) do
-    services = [
-      {YellowDog.Dns, :dns},
-      {YellowDog.Mdns, :mdns},
-      {YellowDog.Dhcpv4, :dhcpv4},
-      {YellowDog.Dhcpv6, :dhcpv6},
-      {YellowDog.Netboot.Supervisor, :netboot},
-      {YellowDogIdentity, :identity}
-    ]
+    resolved_profile = ProfileResolver.resolve(config)
+    service_flags = resolved_profile.services
+    services = startup_services(resolved_profile.source)
 
     # Filter services based on configuration and pass server options
     enabled_services =
-      for {module, service_name} <- services,
+      for %{module: module, name: service_name} <- services,
           Code.ensure_loaded?(module),
-          service_enabled?(config, service_name) do
+          service_enabled?(service_flags, service_name) do
         server_options = build_server_options(config, service_name)
         {module, server_options: server_options}
       end
 
     # Log which services are being started
     service_names =
-      for {_module, service_name} <- services,
-          service_enabled?(config, service_name),
+      for %{name: service_name} <- services,
+          service_enabled?(service_flags, service_name),
           do: service_name |> to_string() |> String.upcase()
 
     if service_names != [] do
@@ -466,8 +468,8 @@ defmodule YellowDog.Application do
 
     # Log disabled services
     disabled_services =
-      for {_module, service_name} <- services,
-          not service_enabled?(config, service_name),
+      for %{name: service_name} <- services,
+          not service_enabled?(service_flags, service_name),
           do: service_name |> to_string() |> String.upcase()
 
     if disabled_services != [] do
@@ -483,6 +485,18 @@ defmodule YellowDog.Application do
     end
 
     enabled_services
+  end
+
+  defp startup_services(:legacy_core) do
+    legacy_services = MapSet.new([:dns, :mdns, :dhcpv4, :dhcpv6, :netboot, :identity])
+
+    ServiceRegistry.all()
+    |> Enum.filter(&(&1.controllable? and MapSet.member?(legacy_services, &1.name)))
+  end
+
+  defp startup_services(_source) do
+    ServiceRegistry.all()
+    |> Enum.filter(& &1.controllable?)
   end
 
   # Builds server options for a specific service from the configuration.
@@ -588,6 +602,13 @@ defmodule YellowDog.Application do
         [
           data_dir: identity_data_dir
         ]
+
+      :fingerprint ->
+        data_dir = get_data_dir(config)
+
+        [
+          data_dir: Path.join(data_dir, "fingerprint")
+        ]
     end
   end
 
@@ -680,27 +701,7 @@ defmodule YellowDog.Application do
     get_in(config, ["dns", "domain"]) || "local"
   end
 
-  # Checks if a service is enabled in the configuration.
-  defp service_enabled?(config, service_name) do
-    case Map.get(config, "core") do
-      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
-        case service_name do
-          :dns -> dns
-          :mdns -> mdns
-          :dhcpv4 -> dhcpv4
-          :dhcpv6 -> dhcpv6
-          :netboot -> Map.get(core, "netboot", false)
-          other -> Map.get(core, to_string(other), true)
-        end
-
-      core_config when is_map(core_config) ->
-        Map.get(core_config, to_string(service_name), default_service_enabled?(service_name))
-
-      _ ->
-        default_service_enabled?(service_name)
-    end
+  defp service_enabled?(service_flags, service_name) do
+    Map.get(service_flags, service_name, false)
   end
-
-  defp default_service_enabled?(:netboot), do: false
-  defp default_service_enabled?(_service_name), do: true
 end

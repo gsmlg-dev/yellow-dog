@@ -81,6 +81,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 
 | Category | Apps Path | Description / Key Modules |
 | :--- | :--- | :--- |
+| **Management** | `apps/yellow_dog_management_core`, `apps/yellow_dog_server_agent`, `apps/yellow_dog_netman_agent` | Management core state/facade and skeleton runtime agents for server and Netman status. |
 | **Core & Store** | `apps/yellow_dog*` | Config management, distributed state (Mnesia disk copies), service orchestration. |
 | **Protocols** | `apps/yellow_dog_dns`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | Server GenServers, packet handlers, zone/lease management. |
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity` | DHCP Client, Netlink integration, DNS stub caching, host trust verification. |

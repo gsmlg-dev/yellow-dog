@@ -62,6 +62,7 @@ defmodule YellowDog.Console.Layouts do
   end
 
   @nav_sections [
+    %{label: "Management", icon: "account-cog", path: "/management"},
     %{label: "Servers", icon: "server-network", path: "/server/dashboard"},
     %{label: "Tools", icon: "wrench", path: "/tool/geoip"},
     %{label: "System", icon: "cog", path: "/system/process-map"},

@@ -8,11 +8,22 @@ defmodule YellowDog.Umbrella.MixProject do
       start_permanent: Mix.env() == :prod,
       description: "YellowDog DNS/DHCP server and network manager",
       releases: [
+        yellow_dog_management_core: [
+          include_executables_for: [:unix],
+          applications: [
+            yellow_dog_management_core: :permanent,
+            yellow_dog_config: :permanent,
+            yellow_dog_telemetry: :permanent,
+            yellow_dog_console: :permanent
+          ]
+        ],
         yellow_dog_server: [
           include_executables_for: [:unix],
           applications: [
             yellow_dog: :permanent,
+            yellow_dog_config: :permanent,
             yellow_dog_telemetry: :permanent,
+            yellow_dog_store: :permanent,
             yellow_dog_dns: :permanent,
             yellow_dog_mdns: :permanent,
             yellow_dog_dhcpv4: :permanent,
@@ -21,16 +32,18 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_identity: :permanent,
             yellow_dog_fingerprint: :permanent,
             yellow_dog_tasks: :permanent,
+            yellow_dog_server_agent: :permanent,
             yellow_dog_console: :permanent
           ]
         ],
         yellow_dog_netman: [
           include_executables_for: [:unix],
           applications: [
-            yellow_dog: :permanent,
+            yellow_dog_config: :permanent,
             yellow_dog_telemetry: :permanent,
             yellow_dog_dhcp_client: :permanent,
-            yellow_dog_mdns: :permanent,
+            yellow_dog_resolved: :permanent,
+            yellow_dog_netman_agent: :permanent,
             yellow_dog_netman: :permanent
           ]
         ],
@@ -49,6 +62,9 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_identity: :permanent,
             yellow_dog_fingerprint: :permanent,
             yellow_dog_tasks: :permanent,
+            yellow_dog_management_core: :permanent,
+            yellow_dog_server_agent: :permanent,
+            yellow_dog_netman_agent: :permanent,
             yellow_dog_console: :permanent
           ]
         ]

@@ -9,6 +9,7 @@ defmodule YellowDog.Console.Components.Sidebar do
   use YellowDog.Console, :live_component
 
   @section_prefixes %{
+    "Management" => ["/management"],
     "Servers" => ["/server/"],
     "Tools" => ["/tool/"],
     "System" => ["/system/"],
@@ -69,6 +70,7 @@ defmodule YellowDog.Console.Components.Sidebar do
 
       <div class="yd-sidebar-panel w-80">
         <ul class="nested-menu nested-menu-bordered p-4">
+          <.sidebar_management :if={@section == "Management"} current_path={@current_path} />
           <.sidebar_servers :if={@section == "Servers"} current_path={@current_path} />
           <.sidebar_tools :if={@section == "Tools"} current_path={@current_path} />
           <.sidebar_system :if={@section == "System"} current_path={@current_path} />
@@ -80,6 +82,48 @@ defmodule YellowDog.Console.Components.Sidebar do
         </ul>
       </div>
     </div>
+    """
+  end
+
+  defp sidebar_management(assigns) do
+    ~H"""
+    <li class="nested-menu-title">Management</li>
+    <li>
+      <.link navigate="/management" class={active?(@current_path, "/management", :exact)}>
+        <.dm_mdi name="view-dashboard" class="w-5 h-5" />
+        <span>Overview</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/management/servers" class={active?(@current_path, "/management/servers")}>
+        <.dm_mdi name="server-network" class="w-5 h-5" />
+        <span>Servers</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/management/netman" class={active?(@current_path, "/management/netman")}>
+        <.dm_mdi name="lan" class="w-5 h-5" />
+        <span>Netman</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/management/profiles" class={active?(@current_path, "/management/profiles")}>
+        <.dm_mdi name="playlist-check" class="w-5 h-5" />
+        <span>Profiles</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/management/config" class={active?(@current_path, "/management/config")}>
+        <.dm_mdi name="cog" class="w-5 h-5" />
+        <span>Config</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate="/management/events" class={active?(@current_path, "/management/events")}>
+        <.dm_mdi name="timeline-text" class="w-5 h-5" />
+        <span>Events</span>
+      </.link>
+    </li>
     """
   end
 

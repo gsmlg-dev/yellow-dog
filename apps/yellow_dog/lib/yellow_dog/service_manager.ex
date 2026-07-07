@@ -8,27 +8,8 @@ defmodule YellowDog.ServiceManager do
 
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
-  @services [:dns, :mdns, :dhcpv4, :dhcpv6, :netboot, :identity]
-
-  # Supervisor modules (used for start/stop)
-  @service_supervisors %{
-    dns: YellowDog.Dns.Supervisor,
-    mdns: YellowDog.Mdns.Supervisor,
-    dhcpv4: YellowDog.Dhcpv4.Supervisor,
-    dhcpv6: YellowDog.Dhcpv6.Supervisor,
-    netboot: YellowDog.Netboot.Supervisor,
-    identity: YellowDogIdentity.Supervisor
-  }
-
-  # Process registration names (supervisors register with these names, not their module names)
-  @service_process_names %{
-    dns: YellowDog.Dns,
-    mdns: YellowDog.Mdns,
-    dhcpv4: YellowDog.Dhcpv4,
-    dhcpv6: YellowDog.Dhcpv6,
-    netboot: YellowDog.Netboot.Supervisor,
-    identity: YellowDogIdentity.Supervisor
-  }
+  alias YellowDog.Server.ProfileResolver
+  alias YellowDog.Server.ServiceRegistry
 
   @doc """
   Gets the status of all services.
@@ -38,7 +19,7 @@ defmodule YellowDog.ServiceManager do
   """
   @spec get_all_status() :: %{atom() => map()}
   def get_all_status do
-    Map.new(@services, fn service -> {service, get_service_status(service)} end)
+    Map.new(list_services(), fn service -> {service, get_service_status(service)} end)
   end
 
   @doc """
@@ -51,43 +32,36 @@ defmodule YellowDog.ServiceManager do
   - Map with service status details
   """
   @spec get_service_status(atom()) :: map()
-  def get_service_status(service) when service in @services do
-    enabled = YellowDog.Config.service_enabled?(service)
-
-    status = %{
-      enabled: enabled,
-      running: false,
-      uptime: nil,
-      config: YellowDog.Config.get_service(service),
-      stats: %{}
-    }
-
-    if enabled do
-      case get_supervisor_status(service) do
-        {:ok, supervisor_info} ->
-          Map.merge(status, supervisor_info)
-
-        {:error, _reason} ->
-          status
-      end
-    else
-      status
-    end
-  end
-
   def get_service_status(service) do
-    :telemetry.execute(
-      [:yellow_dog, :service, :error],
-      %{count: 1},
-      %{
-        source: __MODULE__,
-        reason: :unknown_service,
-        service: inspect(service),
-        severity: :warning
-      }
-    )
+    case ServiceRegistry.fetch(service) do
+      {:ok, metadata} ->
+        enabled = service_enabled?(service)
 
-    %{error: "Unknown service"}
+        status = %{
+          enabled: enabled,
+          running: false,
+          uptime: nil,
+          config: YellowDog.Config.get_service(service),
+          stats: %{},
+          metadata: metadata
+        }
+
+        if enabled do
+          case get_supervisor_status(service, metadata) do
+            {:ok, supervisor_info} ->
+              Map.merge(status, supervisor_info)
+
+            {:error, _reason} ->
+              status
+          end
+        else
+          status
+        end
+
+      :error ->
+        emit_unknown_service(service)
+        %{error: "Unknown service"}
+    end
   end
 
   @doc """
@@ -97,7 +71,7 @@ defmodule YellowDog.ServiceManager do
   - List of service atoms
   """
   @spec list_services() :: [atom()]
-  def list_services, do: @services
+  def list_services, do: ServiceRegistry.list_services()
 
   @doc """
   Starts a service that is currently not running.
@@ -112,33 +86,26 @@ defmodule YellowDog.ServiceManager do
   - `{:error, reason}` if start failed
   """
   @spec start_service(atom()) :: :ok | {:error, term()}
-  def start_service(service) when service in @services do
-    # Enable the service in config
-    YellowDog.Config.set_service_enabled(service, true)
-
-    # Start the supervisor via YellowDog.Application
-    supervisor_module = Map.get(@service_supervisors, service)
-
-    case YellowDog.Application.start_service_supervisor(service, supervisor_module) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   def start_service(service) do
-    :telemetry.execute(
-      [:yellow_dog, :service, :error],
-      %{count: 1},
-      %{
-        source: __MODULE__,
-        reason: :unknown_service,
-        service: inspect(service),
-        severity: :warning
-      }
-    )
+    case ServiceRegistry.fetch(service) do
+      {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
+        # Enable the service in config
+        YellowDog.Config.set_service_enabled(service, true)
 
-    {:error, :unknown_service}
+        # Start the supervisor via YellowDog.Application
+        case YellowDog.Application.start_service_supervisor(service, supervisor_module) do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, _metadata} ->
+        {:error, :not_controllable}
+
+      :error ->
+        emit_unknown_service(service)
+        {:error, :unknown_service}
+    end
   end
 
   @doc """
@@ -152,33 +119,26 @@ defmodule YellowDog.ServiceManager do
   - `{:error, reason}` if stop failed
   """
   @spec stop_service(atom()) :: :ok | {:error, term()}
-  def stop_service(service) when service in @services do
-    # Disable the service in config
-    YellowDog.Config.set_service_enabled(service, false)
-
-    # Stop the supervisor
-    supervisor_module = Map.get(@service_supervisors, service)
-
-    case YellowDog.Application.stop_service_supervisor(service, supervisor_module) do
-      :ok -> :ok
-      {:error, :not_found} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   def stop_service(service) do
-    :telemetry.execute(
-      [:yellow_dog, :service, :error],
-      %{count: 1},
-      %{
-        source: __MODULE__,
-        reason: :unknown_service,
-        service: inspect(service),
-        severity: :warning
-      }
-    )
+    case ServiceRegistry.fetch(service) do
+      {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
+        # Disable the service in config
+        YellowDog.Config.set_service_enabled(service, false)
 
-    {:error, :unknown_service}
+        # Stop the supervisor
+        case YellowDog.Application.stop_service_supervisor(service, supervisor_module) do
+          :ok -> :ok
+          {:error, :not_found} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, _metadata} ->
+        {:error, :not_controllable}
+
+      :error ->
+        emit_unknown_service(service)
+        {:error, :unknown_service}
+    end
   end
 
   @doc """
@@ -192,7 +152,7 @@ defmodule YellowDog.ServiceManager do
   """
   @spec get_service_stats(atom()) :: map()
   def get_service_stats(:mdns) do
-    if YellowDog.Config.service_enabled?(:mdns) do
+    if service_enabled?(:mdns) do
       safe_service_call(YellowDog.Mdns.MessageCache, :stats, [])
     else
       %{error: "Service disabled"}
@@ -200,7 +160,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   def get_service_stats(:dhcpv4) do
-    if YellowDog.Config.service_enabled?(:dhcpv4) do
+    if service_enabled?(:dhcpv4) do
       safe_service_call(YellowDog.Dhcpv4.LeaseManager, :stats, [])
     else
       %{error: "Service disabled"}
@@ -208,7 +168,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   def get_service_stats(:dhcpv6) do
-    if YellowDog.Config.service_enabled?(:dhcpv6) do
+    if service_enabled?(:dhcpv6) do
       safe_service_call(YellowDog.Dhcpv6.LeaseManager, :stats, [])
     else
       %{error: "Service disabled"}
@@ -216,7 +176,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   def get_service_stats(:dns) do
-    if YellowDog.Config.service_enabled?(:dns) do
+    if service_enabled?(:dns) do
       %{info: "DNS statistics not yet implemented"}
     else
       %{error: "Service disabled"}
@@ -224,7 +184,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   def get_service_stats(:netboot) do
-    if YellowDog.Config.service_enabled?(:netboot) do
+    if service_enabled?(:netboot) do
       %{info: "Netboot statistics not yet implemented"}
     else
       %{error: "Service disabled"}
@@ -232,8 +192,24 @@ defmodule YellowDog.ServiceManager do
   end
 
   def get_service_stats(:identity) do
-    if YellowDog.Config.service_enabled?(:identity) do
+    if service_enabled?(:identity) do
       %{info: "Identity statistics not yet implemented"}
+    else
+      %{error: "Service disabled"}
+    end
+  end
+
+  def get_service_stats(:fingerprint) do
+    if service_enabled?(:fingerprint) do
+      safe_service_call(YellowDog.Fingerprint, :stats, [])
+    else
+      %{error: "Service disabled"}
+    end
+  end
+
+  def get_service_stats(:server_agent) do
+    if service_enabled?(:server_agent) do
+      %{info: "Server agent statistics not yet implemented"}
     else
       %{error: "Service disabled"}
     end
@@ -259,7 +235,7 @@ defmodule YellowDog.ServiceManager do
     output = ["=== YellowDog Services Status ===\n"]
 
     service_outputs =
-      @services
+      list_services()
       |> Enum.map(fn service ->
         service_status = Map.get(status, service)
         format_service_status(service, service_status)
@@ -269,18 +245,28 @@ defmodule YellowDog.ServiceManager do
     |> Enum.join("\n")
   end
 
-  def format_status(service) when service in @services do
-    status = get_service_status(service)
-    format_service_status(service, status)
-  end
+  def format_status(service) do
+    case ServiceRegistry.fetch(service) do
+      {:ok, _metadata} ->
+        status = get_service_status(service)
+        format_service_status(service, status)
 
-  def format_status(_service), do: "Unknown service"
+      :error ->
+        "Unknown service"
+    end
+  end
 
   # Private functions
 
-  defp get_supervisor_status(service) do
+  defp service_enabled?(service) do
+    ProfileResolver.resolve()
+    |> Map.fetch!(:services)
+    |> Map.get(service, YellowDog.Config.service_enabled?(service))
+  end
+
+  defp get_supervisor_status(service, metadata) do
     # Use the actual process registration name (supervisors register as YellowDog.Dns, not YellowDog.Dns.Supervisor)
-    process_name = Map.get(@service_process_names, service)
+    process_name = metadata.process_name
 
     case Process.whereis(process_name) do
       nil ->
@@ -474,5 +460,18 @@ defmodule YellowDog.ServiceManager do
       %{error: "Service not running: #{Exception.message(e)}"}
   catch
     :exit, {:noproc, _} -> %{error: "Service not running"}
+  end
+
+  defp emit_unknown_service(service) do
+    :telemetry.execute(
+      [:yellow_dog, :service, :error],
+      %{count: 1},
+      %{
+        source: __MODULE__,
+        reason: :unknown_service,
+        service: inspect(service),
+        severity: :warning
+      }
+    )
   end
 end

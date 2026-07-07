@@ -44,6 +44,18 @@ defmodule YellowDog.Console.Router do
     get "/", PageController, :home
   end
 
+  # Management section — service-node and Netman management foundation
+  scope "/management", YellowDog.Console do
+    pipe_through :browser
+
+    live "/", ManagementLive.Index, :overview
+    live "/servers", ManagementLive.Index, :servers
+    live "/netman", ManagementLive.Index, :netman
+    live "/profiles", ManagementLive.Index, :profiles
+    live "/config", ManagementLive.Index, :config
+    live "/events", ManagementLive.Index, :events
+  end
+
   # Server section — protocol services, identity, fingerprint
   scope "/server", YellowDog.Console do
     pipe_through :browser

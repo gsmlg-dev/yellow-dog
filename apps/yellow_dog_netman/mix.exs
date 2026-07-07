@@ -43,7 +43,7 @@ defmodule YellowDog.Netman.MixProject do
 
   defp deps do
     [
-      {:yellow_dog, in_umbrella: true},
+      {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:yellow_dog_dhcp_client, in_umbrella: true},
       {:yellow_dog_resolved, in_umbrella: true},
