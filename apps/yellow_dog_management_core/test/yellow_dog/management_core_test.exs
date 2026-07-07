@@ -97,6 +97,12 @@ defmodule YellowDog.ManagementCoreTest do
              features: %{interfaces: true, routes: true, dns_client: true, vpn: true},
              apply_mode: :managed
            } = find_profile(ManagementCore.list_netman_profiles(), :vpn_gateway)
+
+    assert %NetmanProfile{
+             name: :vm,
+             features: %{interfaces: true, dhcp_client: false, routes: true, vpn: false},
+             apply_mode: :managed
+           } = find_profile(ManagementCore.list_netman_profiles(), :vm)
   end
 
   test "records concrete management events" do

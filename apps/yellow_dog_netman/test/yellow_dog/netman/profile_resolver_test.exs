@@ -51,6 +51,46 @@ defmodule YellowDog.Netman.ProfileResolverTest do
              } = resolved
     end
 
+    test "bare_metal defaults to managed networking features" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_netman" => %{"profile" => "bare_metal"}
+        })
+
+      assert %{
+               profile: :bare_metal,
+               apply_mode: :managed,
+               features: %{
+                 interfaces: true,
+                 dhcp_client: true,
+                 dns_client: true,
+                 routes: true,
+                 link_state: true,
+                 vpn: false
+               }
+             } = resolved
+    end
+
+    test "vm defaults to static host networking without DHCP client" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_netman" => %{"profile" => "vm"}
+        })
+
+      assert %{
+               profile: :vm,
+               apply_mode: :managed,
+               features: %{
+                 interfaces: true,
+                 dhcp_client: false,
+                 dns_client: true,
+                 routes: true,
+                 link_state: true,
+                 vpn: false
+               }
+             } = resolved
+    end
+
     test "vpn_gateway sets vpn feature as configuration state only" do
       resolved =
         ProfileResolver.resolve(%{
@@ -64,6 +104,26 @@ defmodule YellowDog.Netman.ProfileResolverTest do
              } = resolved
 
       assert resolved.features.dhcp_client == false
+    end
+
+    test "observe_only defaults to observe apply mode and passive features" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_netman" => %{"profile" => "observe_only"}
+        })
+
+      assert %{
+               profile: :observe_only,
+               apply_mode: :observe,
+               features: %{
+                 interfaces: true,
+                 dhcp_client: false,
+                 dns_client: false,
+                 routes: false,
+                 link_state: true,
+                 vpn: false
+               }
+             } = resolved
     end
 
     test "explicit feature flags and apply mode override profile defaults" do
@@ -101,7 +161,8 @@ defmodule YellowDog.Netman.ProfileResolverTest do
                  routes: false,
                  link_state: true,
                  vpn: false
-               }
+               },
+               apply_mode: :managed
              } = resolved
     end
   end

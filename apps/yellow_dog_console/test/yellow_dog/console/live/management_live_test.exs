@@ -1,5 +1,5 @@
 defmodule YellowDog.Console.ManagementLiveTest do
-  use YellowDog.Console.ConnCase, async: true
+  use YellowDog.Console.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
@@ -11,6 +11,16 @@ defmodule YellowDog.Console.ManagementLiveTest do
     {"/management/config", "Management Config"},
     {"/management/events", "Management Events"}
   ]
+
+  setup do
+    YellowDog.Management.Servers.reset()
+    YellowDog.Management.Netmans.reset()
+
+    on_exit(fn ->
+      YellowDog.Management.Servers.reset()
+      YellowDog.Management.Netmans.reset()
+    end)
+  end
 
   test "management routes mount successfully", %{conn: conn} do
     for {path, title} <- @pages do
@@ -50,8 +60,9 @@ defmodule YellowDog.Console.ManagementLiveTest do
       {"/management/servers", ["Profile", "Status", "Services", "Last Seen"]},
       {"/management/netman", ["Profile", "Status", "Features", "Apply Mode", "Last Seen"]},
       {"/management/profiles", ["Server Profiles", "Netman Profiles"]},
-      {"/management/config", ["Config Versions", "Applied Status"]},
-      {"/management/events", ["Management Events"]}
+      {"/management/config",
+       ["Published Versions", "Pending Changes", "Applied Status", "Drift"]},
+      {"/management/events", ["Server Events", "Netman Events", "Audit Logs"]}
     ]
 
     for {path, expected_strings} <- assertions do
@@ -61,5 +72,45 @@ defmodule YellowDog.Console.ManagementLiveTest do
         assert html =~ expected
       end
     end
+  end
+
+  test "management pages render facade-backed records and events", %{conn: conn} do
+    {:ok, _server} =
+      YellowDog.ManagementCore.register_server(%{
+        id: "srv-cloud-dns-01",
+        name: "Cloud DNS 01",
+        profile: :cloud_dns,
+        status: :online,
+        services: %{dns: true, server_agent: true},
+        last_seen_at: ~U[2026-07-07 00:00:00Z]
+      })
+
+    {:ok, _netman} =
+      YellowDog.ManagementCore.register_netman(%{
+        id: "netman-cloud-app-01",
+        name: "Cloud App 01 Netman",
+        profile: :cloud_server,
+        status: :degraded,
+        features: %{interfaces: true, routes: true},
+        apply_mode: :observe_first,
+        last_seen_at: ~U[2026-07-07 00:00:00Z]
+      })
+
+    {:ok, _view, servers_html} = live(conn, "/management/servers")
+    assert servers_html =~ "srv-cloud-dns-01"
+    assert servers_html =~ "Cloud DNS 01"
+    assert servers_html =~ "cloud dns"
+    assert servers_html =~ "dns"
+    assert servers_html =~ "server agent"
+
+    {:ok, _view, netman_html} = live(conn, "/management/netman")
+    assert netman_html =~ "netman-cloud-app-01"
+    assert netman_html =~ "Cloud App 01 Netman"
+    assert netman_html =~ "cloud server"
+    assert netman_html =~ "observe first"
+
+    {:ok, _view, events_html} = live(conn, "/management/events")
+    assert events_html =~ "Server registered"
+    assert events_html =~ "Netman registered"
   end
 end

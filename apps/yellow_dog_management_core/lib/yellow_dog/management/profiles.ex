@@ -90,14 +90,13 @@ defmodule YellowDog.Management.Profiles do
         "Virtual machine network manager",
         [
           :interfaces,
-          :dhcp_client,
           :dns_client,
           :routes,
           :link_state,
           :local_status,
           :netman_agent
         ],
-        :observe_first
+        :managed
       ),
       netman_profile(
         :vpn_gateway,

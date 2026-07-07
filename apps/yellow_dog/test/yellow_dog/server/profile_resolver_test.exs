@@ -53,6 +53,69 @@ defmodule YellowDog.Server.ProfileResolverTest do
              } = resolved
     end
 
+    test "dns_only enables DNS and server agent only" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_server" => %{"profile" => "dns_only"}
+        })
+
+      assert %{
+               profile: :dns_only,
+               services: %{
+                 dns: true,
+                 mdns: false,
+                 dhcpv4: false,
+                 dhcpv6: false,
+                 netboot: false,
+                 identity: false,
+                 fingerprint: false,
+                 server_agent: true
+               }
+             } = resolved
+    end
+
+    test "dhcp_only enables DHCP services and server agent only" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_server" => %{"profile" => "dhcp_only"}
+        })
+
+      assert %{
+               profile: :dhcp_only,
+               services: %{
+                 dns: false,
+                 mdns: false,
+                 dhcpv4: true,
+                 dhcpv6: true,
+                 netboot: false,
+                 identity: false,
+                 fingerprint: false,
+                 server_agent: true
+               }
+             } = resolved
+    end
+
+    test "netboot_only enables netboot and server agent only" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_server" => %{"profile" => "netboot_only"}
+        })
+
+      assert %{
+               profile: :netboot_only,
+               services: %{
+                 dns: false,
+                 mdns: false,
+                 dhcpv4: false,
+                 dhcpv6: false,
+                 netboot: true,
+                 identity: false,
+                 fingerprint: false,
+                 server_agent: true
+               }
+             } = resolved
+    end
+
     test "explicit service flags override profile defaults including false" do
       resolved =
         ProfileResolver.resolve(%{
@@ -123,6 +186,30 @@ defmodule YellowDog.Server.ProfileResolverTest do
                  dhcpv6: false,
                  netboot: true,
                  identity: false,
+                 fingerprint: false,
+                 server_agent: false
+               }
+             } = resolved
+    end
+
+    test "uses legacy defaults when core flags are omitted" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "core" => %{
+            "dns" => false
+          }
+        })
+
+      assert %{
+               profile: :custom,
+               source: :legacy_core,
+               services: %{
+                 dns: false,
+                 mdns: true,
+                 dhcpv4: true,
+                 dhcpv6: true,
+                 netboot: false,
+                 identity: true,
                  fingerprint: false,
                  server_agent: false
                }

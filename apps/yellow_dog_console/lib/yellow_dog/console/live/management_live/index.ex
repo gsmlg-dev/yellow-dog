@@ -208,9 +208,15 @@ defmodule YellowDog.Console.ManagementLive.Index do
   defp config(assigns) do
     ~H"""
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <.card title="Config Versions">
+      <.card title="Published Versions">
         <p class="text-sm text-on-surface-variant">
           Published server and Netman config versions will appear here.
+        </p>
+      </.card>
+
+      <.card title="Pending Changes">
+        <p class="text-sm text-on-surface-variant">
+          Draft profile and service configuration changes will appear here.
         </p>
       </.card>
 
@@ -219,21 +225,52 @@ defmodule YellowDog.Console.ManagementLive.Index do
           Applied version status and drift checks will appear here.
         </p>
       </.card>
+
+      <.card title="Drift">
+        <p class="text-sm text-on-surface-variant">
+          Server and Netman configuration drift checks will appear here.
+        </p>
+      </.card>
     </div>
     """
   end
 
   defp events(assigns) do
+    assigns =
+      assign(assigns,
+        server_events: filter_events(assigns.events, :server),
+        netman_events: filter_events(assigns.events, :netman)
+      )
+
     ~H"""
-    <.card title="Management Events">
-      <.events_list events={@events} />
-    </.card>
+    <div class="space-y-6">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <.card title="Server Events">
+          <.events_list events={@server_events} empty_text="No server events recorded yet." />
+        </.card>
+
+        <.card title="Netman Events">
+          <.events_list events={@netman_events} empty_text="No Netman events recorded yet." />
+        </.card>
+      </div>
+
+      <.card title="Audit Logs">
+        <p class="text-sm text-on-surface-variant">
+          Management audit log entries will appear here.
+        </p>
+      </.card>
+    </div>
     """
   end
 
   defp events_list(assigns) do
+    assigns =
+      assign_new(assigns, :empty_text, fn ->
+        "No management events recorded yet."
+      end)
+
     ~H"""
-    <.empty_state :if={@events == []} text="No management events recorded yet." />
+    <.empty_state :if={@events == []} text={@empty_text} />
     <div class="divide-y divide-outline-variant">
       <div :for={event <- @events} class="py-3">
         <div class="flex flex-wrap items-center gap-2">
@@ -246,6 +283,10 @@ defmodule YellowDog.Console.ManagementLive.Index do
       </div>
     </div>
     """
+  end
+
+  defp filter_events(events, source) do
+    Enum.filter(events, &(raw_field(&1, :source) == source))
   end
 
   defp empty_state(assigns) do
