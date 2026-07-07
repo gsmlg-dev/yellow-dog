@@ -13,6 +13,8 @@ RUN apt-get update && \
       ca-certificates \
       curl \
       git \
+      nodejs \
+      npm \
       perl && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
       sh -s -- -y --profile minimal --default-toolchain 1.91.1 && \
@@ -24,7 +26,10 @@ WORKDIR /app
 
 ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.2
+ARG MIX_RELEASE_NAME=yellow_dog_server
 # WORKAROUND(upstream): gsmlg-dev/ex_turso#6
+ENV MIX_ENV="${MIX_ENV}"
+ENV MIX_RELEASE_NAME="${MIX_RELEASE_NAME}"
 ENV EX_TURSO_BUILD=1
 
 # Install hex and rebar (cached unless base image changes)
@@ -38,16 +43,23 @@ COPY apps/ex_dhcp/mix.exs apps/ex_dhcp/mix.exs
 COPY apps/ex_dns/mix.exs apps/ex_dns/mix.exs
 COPY apps/geo_ip_db/mix.exs apps/geo_ip_db/mix.exs
 COPY apps/yellow_dog/mix.exs apps/yellow_dog/mix.exs
+COPY apps/yellow_dog_config/mix.exs apps/yellow_dog_config/mix.exs
+COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
 COPY apps/yellow_dog_dhcp_client/mix.exs apps/yellow_dog_dhcp_client/mix.exs
 COPY apps/yellow_dog_dhcpv4/mix.exs apps/yellow_dog_dhcpv4/mix.exs
 COPY apps/yellow_dog_dhcpv6/mix.exs apps/yellow_dog_dhcpv6/mix.exs
 COPY apps/yellow_dog_dns/mix.exs apps/yellow_dog_dns/mix.exs
+COPY apps/yellow_dog_dns_provider/mix.exs apps/yellow_dog_dns_provider/mix.exs
 COPY apps/yellow_dog_fingerprint/mix.exs apps/yellow_dog_fingerprint/mix.exs
 COPY apps/yellow_dog_identity/mix.exs apps/yellow_dog_identity/mix.exs
+COPY apps/yellow_dog_management_core/mix.exs apps/yellow_dog_management_core/mix.exs
 COPY apps/yellow_dog_mdns/mix.exs apps/yellow_dog_mdns/mix.exs
 COPY apps/yellow_dog_netboot/mix.exs apps/yellow_dog_netboot/mix.exs
 COPY apps/yellow_dog_netman/mix.exs apps/yellow_dog_netman/mix.exs
-COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
+COPY apps/yellow_dog_netman_agent/mix.exs apps/yellow_dog_netman_agent/mix.exs
+COPY apps/yellow_dog_resolved/mix.exs apps/yellow_dog_resolved/mix.exs
+COPY apps/yellow_dog_server_agent/mix.exs apps/yellow_dog_server_agent/mix.exs
+COPY apps/yellow_dog_store/mix.exs apps/yellow_dog_store/mix.exs
 COPY apps/yellow_dog_tasks/mix.exs apps/yellow_dog_tasks/mix.exs
 COPY apps/yellow_dog_telemetry/mix.exs apps/yellow_dog_telemetry/mix.exs
 COPY config config
@@ -66,19 +78,28 @@ RUN cd apps/yellow_dog_netman/native/netlink_helper && \
 # Copy full source
 COPY . .
 
-# Build Rust netlink_helper port binary for netman
-RUN cd apps/yellow_dog_netman/native/netlink_helper && \
-    cargo build --release --quiet && \
-    mkdir -p ../../priv/native && \
-    cp target/release/netlink_helper ../../priv/native/ && \
-    chmod 755 ../../priv/native/netlink_helper
+RUN if [ "${MIX_RELEASE_NAME}" = "yellow_dog_netman" ]; then \
+      cd apps/yellow_dog_netman/native/netlink_helper && \
+      cargo build --release --quiet && \
+      mkdir -p ../../priv/native && \
+      cp target/release/netlink_helper ../../priv/native/ && \
+      chmod 755 ../../priv/native/netlink_helper; \
+    fi
 
-RUN mix release yellow_dog --version "${RELEASE_VERSION}"
+RUN if [ "${MIX_RELEASE_NAME}" = "yellow_dog_management_core" ] || [ "${MIX_RELEASE_NAME}" = "yellow_dog_server" ]; then \
+      cd apps/yellow_dog_console && \
+      mix assets.setup && \
+      mix assets.deploy; \
+    fi
+
+RUN mix release "${MIX_RELEASE_NAME}" --version "${RELEASE_VERSION}" --overwrite
 
 FROM docker.io/library/debian:trixie-slim
 
 ARG RELEASE_VERSION=1.1.2
+ARG MIX_RELEASE_NAME=yellow_dog_server
 ENV RELEASE_VERSION="${RELEASE_VERSION}"
+ENV MIX_RELEASE_NAME="${MIX_RELEASE_NAME}"
 
 LABEL org.opencontainers.image.source="https://github.com/gsmlg-dev/yellow-dog"
 LABEL org.opencontainers.image.version="${RELEASE_VERSION}"
@@ -126,10 +147,10 @@ RUN apt-get update && \
              /run/yellowdog && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/_build/prod/rel/yellow_dog /app
+COPY --from=builder /app/_build/prod/rel/${MIX_RELEASE_NAME} /app
 COPY priv/yellow_dog_default_config.toml /etc/yellowdog/config.toml
 COPY priv/yellow_dog_tasks_config.toml /etc/yellowdog/tasks.toml
 
 EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 
-CMD ["/app/bin/yellow_dog", "start"]
+CMD ["/bin/sh", "-c", "exec /app/bin/${MIX_RELEASE_NAME} start"]
