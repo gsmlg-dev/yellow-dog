@@ -72,7 +72,7 @@ defmodule YellowDog.Console.Layouts do
     assigns = assign(assigns, :nav_sections, @nav_sections)
 
     ~H"""
-    <.dm_navbar class="bg-primary text-primary-content border-b border-outline-variant">
+    <.dm_navbar class="appbar-primary appbar-bordered">
       <:start_part>
         <button
           class="btn btn-ghost lg:hidden"

@@ -451,6 +451,11 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
   # ============================================================================
 
   describe "ARIA accessibility: layout components" do
+    test "navbar uses primary appbar styling", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/server/dashboard")
+      assert html =~ ~s(class="navbar appbar-primary appbar-bordered")
+    end
+
     test "navbar has theme switcher component", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
       assert html =~ "theme-toggle" or html =~ "theme-switcher" or html =~ "dm_theme_switcher"

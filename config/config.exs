@@ -10,6 +10,8 @@
 
 import Config
 
+repo_root = Path.expand("..", __DIR__)
+
 config :yellow_dog_tasks, time_zone_database: Tz.TimeZoneDatabase
 
 config :yellow_dog_console,
@@ -28,11 +30,11 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   live_view: [signing_salt: "yellow_dog_console_secret"]
 
 config :duskmoon_bundler,
-  resolve_dirs: ["node_modules", "deps"],
+  resolve_dirs: [Path.join(repo_root, "node_modules"), Path.join(repo_root, "deps")],
   target: :es2020,
   sourcemap: :hidden
 
-console_app = Path.expand("../apps/yellow_dog_console", __DIR__)
+console_app = Path.join(repo_root, "apps/yellow_dog_console")
 console_assets = Path.join(console_app, "assets")
 
 config :duskmoon_bundler, :yellow_dog_console,
