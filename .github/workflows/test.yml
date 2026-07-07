@@ -47,5 +47,11 @@ jobs:
           mix local.rebar --force
           mix deps.get
 
+      - name: Build console assets
+        working-directory: apps/yellow_dog_console
+        run: |
+          mix assets.setup
+          mix assets.build
+
       - name: Run tests
         run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration --exclude property
