@@ -7,16 +7,16 @@ on:
     branches: [ main ]
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version to test (e.g. 1.2.3, runs against tag v<version>)'
-        required: true
+      release_version:
+        description: 'Optional Mix release version override (e.g. 1.2.3)'
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.version || 'source' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.release_version || 'source' }}
   cancel-in-progress: true
 
 jobs:
@@ -55,7 +55,9 @@ jobs:
         run: mix compile
 
       - name: Run E2E tests (${{ matrix.service }})
-        run: MIX_ENV=test mix test.e2e.${{ matrix.service }}
+        env:
+          MIX_ENV: test
+        run: mix test.e2e.${{ matrix.service }}
         timeout-minutes: 5
 
   e2e-all:
@@ -90,19 +92,34 @@ jobs:
         run: mix compile
 
       - name: Run all E2E tests
-        run: MIX_ENV=test mix test.e2e
+        env:
+          MIX_ENV: test
+        run: mix test.e2e
         timeout-minutes: 10
 
-  e2e-release:
-    name: E2E Tests (release v${{ inputs.version }})
-    if: github.event_name == 'workflow_dispatch'
+  release-e2e:
+    name: E2E Release (${{ matrix.release.label }})
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        release:
+          - label: management_core
+            name: yellow_dog_management_core
+          - label: server
+            name: yellow_dog_server
+          - label: netman
+            name: yellow_dog_netman
+            needs_rust: true
+    env:
+      MIX_ENV: prod
+      SECRET_KEY_BASE: release-smoke-secret-key-base-release-smoke-secret-key-base
+      RELEASE_VERSION: ${{ inputs.release_version || '' }}
 
     steps:
-      - name: Checkout release tag
+      - name: Checkout code
         uses: actions/checkout@v6
-        with:
-          ref: v${{ inputs.version }}
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
@@ -110,21 +127,34 @@ jobs:
           elixir-version: '1.18'
           otp-version: '28'
 
+      - name: Install Rust toolchain
+        if: matrix.release.needs_rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        run: sudo apt-get update && sudo apt-get install -y inotify-tools
+
       - name: Restore dependencies cache
         uses: actions/cache@v5
         with:
           path: |
+            ~/.hex
+            ~/.cache/rebar3
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
+            apps/abyss/native/dhcp_socket/target
+            apps/yellow_dog_netman/native/netlink_helper/target
+          key: ${{ runner.os }}-release-e2e-${{ matrix.release.label }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-release-e2e-${{ matrix.release.label }}-
+            ${{ runner.os }}-release-e2e-
 
       - name: Install dependencies
-        run: mix deps.get
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get --only prod
 
-      - name: Compile
-        run: mix compile
-
-      - name: Run all E2E tests
-        run: MIX_ENV=test mix test.e2e
+      - name: Build release and run E2E smoke checks
+        run: scripts/e2e/release_smoke.sh ${{ matrix.release.name }}
         timeout-minutes: 10
