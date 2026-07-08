@@ -6,8 +6,12 @@ defmodule YellowDog.Management.Netmans do
   use Agent
 
   alias YellowDog.Management.Event
+  alias YellowDog.Management.InputSanitizer
   alias YellowDog.Management.Netman
   alias YellowDog.Management.Profiles
+
+  @max_events 500
+  @max_records 1_000
 
   @type register_attrs :: map() | keyword() | Netman.t()
 
@@ -48,23 +52,29 @@ defmodule YellowDog.Management.Netmans do
   def register(attrs) do
     with {:ok, netman} <- build_netman(attrs) do
       Agent.get_and_update(__MODULE__, fn state ->
-        netman = preserve_registration_time(netman, Map.get(state.netmans, netman.id))
+        existing = Map.get(state.netmans, netman.id)
 
-        event =
-          Event.new(%{
-            source: :netman,
-            source_id: netman.id,
-            type: :netman_registered,
-            message: "Netman registered"
-          })
+        if is_nil(existing) and map_size(state.netmans) >= @max_records do
+          {{:error, :registry_full}, state}
+        else
+          netman = preserve_registration_time(netman, existing)
 
-        state = %{
-          state
-          | netmans: Map.put(state.netmans, netman.id, netman),
-            events: [event | state.events]
-        }
+          event =
+            Event.new(%{
+              source: :netman,
+              source_id: netman.id,
+              type: :netman_registered,
+              message: "Netman registered"
+            })
 
-        {{:ok, netman}, state}
+          state = %{
+            state
+            | netmans: Map.put(state.netmans, netman.id, netman),
+              events: record_event(state.events, event)
+          }
+
+          {{:ok, netman}, state}
+        end
       end)
     end
   end
@@ -75,6 +85,7 @@ defmodule YellowDog.Management.Netmans do
       case Map.fetch(state.netmans, id) do
         {:ok, netman} ->
           now = DateTime.utc_now(:second)
+          status = InputSanitizer.status(status)
           updated = %{netman | status: status, last_seen_at: now, updated_at: now}
 
           event =
@@ -89,7 +100,7 @@ defmodule YellowDog.Management.Netmans do
           state = %{
             state
             | netmans: Map.put(state.netmans, id, updated),
-              events: [event | state.events]
+              events: record_event(state.events, event)
           }
 
           {{:ok, updated}, state}
@@ -109,6 +120,11 @@ defmodule YellowDog.Management.Netmans do
 
   defp initial_state, do: %{netmans: %{}, events: []}
 
+  defp record_event(events, event) do
+    [event | events]
+    |> Enum.take(@max_events)
+  end
+
   defp fetch(records, id) do
     case Map.fetch(records, id) do
       {:ok, record} -> {:ok, record}
@@ -119,30 +135,40 @@ defmodule YellowDog.Management.Netmans do
   defp build_netman(%Netman{} = netman) do
     now = DateTime.utc_now(:second)
 
-    {:ok,
-     %{
-       netman
-       | profile: normalize_profile(netman.profile),
-         registered_at: netman.registered_at || now,
-         updated_at: netman.updated_at || now
-     }}
+    with {:ok, id} <- InputSanitizer.required_string(netman.id, :id) do
+      {:ok,
+       %{
+         netman
+         | id: id,
+           name: InputSanitizer.optional_string(netman.name),
+           profile: normalize_profile(netman.profile),
+           apply_mode: normalize_apply_mode(netman.apply_mode),
+           status: InputSanitizer.status(netman.status),
+           features: InputSanitizer.flags(netman.features, Profiles.netman_feature_keys()),
+           metadata: InputSanitizer.metadata(netman.metadata),
+           last_seen_at: InputSanitizer.datetime(netman.last_seen_at),
+           registered_at: netman.registered_at || now,
+           updated_at: netman.updated_at || now
+       }}
+    end
   end
 
   defp build_netman(attrs) when is_list(attrs) or is_map(attrs) do
     attrs = attrs_map(attrs)
     now = DateTime.utc_now(:second)
 
-    with {:ok, id} <- fetch_required_string(attrs, :id) do
+    with {:ok, id} <- InputSanitizer.required_string(get_attr(attrs, :id), :id) do
       {:ok,
        %Netman{
          id: id,
-         name: get_attr(attrs, :name),
+         name: InputSanitizer.optional_string(get_attr(attrs, :name)),
          profile: normalize_profile(get_attr(attrs, :profile, :custom)),
-         apply_mode: get_attr(attrs, :apply_mode),
-         status: get_attr(attrs, :status, :registered),
-         features: get_attr(attrs, :features, %{}),
-         metadata: get_attr(attrs, :metadata, %{}),
-         last_seen_at: get_attr(attrs, :last_seen_at),
+         apply_mode: normalize_apply_mode(get_attr(attrs, :apply_mode)),
+         status: InputSanitizer.status(get_attr(attrs, :status, :registered)),
+         features:
+           InputSanitizer.flags(get_attr(attrs, :features, %{}), Profiles.netman_feature_keys()),
+         metadata: InputSanitizer.metadata(get_attr(attrs, :metadata, %{})),
+         last_seen_at: InputSanitizer.datetime(get_attr(attrs, :last_seen_at)),
          registered_at: now,
          updated_at: now
        }}
@@ -158,25 +184,37 @@ defmodule YellowDog.Management.Netmans do
   defp attrs_map(attrs) when is_list(attrs), do: Map.new(attrs)
   defp attrs_map(attrs) when is_map(attrs), do: attrs
 
-  defp fetch_required_string(attrs, key) do
-    case get_attr(attrs, key) do
-      value when is_binary(value) and value != "" -> {:ok, value}
-      _value -> {:error, {:required, key}}
-    end
-  end
-
   defp get_attr(attrs, key, default \\ nil) do
     Map.get(attrs, key, Map.get(attrs, Atom.to_string(key), default))
   end
+
+  defp normalize_apply_mode(mode) when mode in [:managed, :observe_first, :observe], do: mode
+
+  defp normalize_apply_mode(mode) when is_binary(mode) do
+    case mode do
+      "managed" -> :managed
+      "observe_first" -> :observe_first
+      "observe" -> :observe
+      _mode -> nil
+    end
+  end
+
+  defp normalize_apply_mode(_mode), do: nil
 
   defp normalize_profile(profile) when is_binary(profile) do
     Profiles.list_netman_profiles()
     |> Enum.find(&(Atom.to_string(&1.name) == profile))
     |> case do
-      nil -> profile
+      nil -> :custom
       profile -> profile.name
     end
   end
 
-  defp normalize_profile(profile), do: profile
+  defp normalize_profile(profile) when is_atom(profile) do
+    if Enum.any?(Profiles.list_netman_profiles(), &(&1.name == profile)),
+      do: profile,
+      else: :custom
+  end
+
+  defp normalize_profile(_profile), do: :custom
 end

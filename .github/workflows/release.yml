@@ -32,6 +32,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       RELEASE_TAG: v${{ inputs.version }}
+      GIT_REF: ${{ inputs.git_ref }}
     steps:
       - name: Checkout repo at ${{ inputs.git_ref }}
         uses: actions/checkout@v6
@@ -42,8 +43,19 @@ jobs:
       - name: Validate release version
         run: |
           set -euo pipefail
-          if [[ "${VERSION}" == v* ]]; then
-            echo "version input must not include a leading v" >&2
+
+          if [[ ! "${VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version input must be a semver value without a leading v" >&2
+            exit 1
+          fi
+
+          if [[ "${GIT_REF}" =~ (^/|/$|\\.\\.|@\\{|\\\\|[[:space:]]|^-) ]]; then
+            echo "git_ref contains unsafe characters" >&2
+            exit 1
+          fi
+
+          if ! git check-ref-format --allow-onelevel "${GIT_REF}" >/dev/null; then
+            echo "git_ref is not a valid git ref name" >&2
             exit 1
           fi
 
@@ -64,7 +76,7 @@ jobs:
             echo "mix.exs is already at ${VERSION}; tagging current ref"
           else
             git commit -m "chore(release): v${VERSION}"
-            git push origin "HEAD:${{ inputs.git_ref }}"
+            git push origin "HEAD:${GIT_REF}"
           fi
 
           if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
@@ -211,9 +223,10 @@ jobs:
       - name: Upload release tarball
         env:
           GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ steps.package.outputs.artifact }}
         run: |
           set -euo pipefail
-          gh release upload "${RELEASE_TAG}" "${{ steps.package.outputs.artifact }}" --clobber
+          gh release upload "${RELEASE_TAG}" "${ARTIFACT}" --clobber
 
   docker-image:
     name: Build and publish ${{ matrix.image_label }} Docker image
@@ -349,12 +362,19 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "${RELEASE_TAG}" --json body --jq '.body' > release-body.md
+          mapfile -t note_files < <(find docker-notes -maxdepth 1 -type f -name 'docker-image-*.md' | sort)
+
+          if [ "${#note_files[@]}" -eq 0 ]; then
+            echo "no Docker image notes found" >&2
+            exit 1
+          fi
 
           {
             printf '## Docker images\n\n'
-            cat docker-notes/docker-image-management-core.md
-            printf '\n\n'
-            cat docker-notes/docker-image-server.md
+            for note_file in "${note_files[@]}"; do
+              cat "${note_file}"
+              printf '\n\n'
+            done
           } > docker-image-notes.md
 
           awk '

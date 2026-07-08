@@ -23,10 +23,14 @@ defmodule YellowDog.Management.Profiles do
     :dns_client,
     :routes,
     :link_state,
-    :local_status,
-    :netman_agent,
     :vpn
   ]
+
+  @doc "Lists server service keys supported by management core."
+  def server_service_keys, do: @server_service_keys
+
+  @doc "Lists Netman feature keys supported by management core."
+  def netman_feature_keys, do: @netman_feature_keys
 
   @doc "Lists server profiles supported by management core."
   def list_server_profiles do
@@ -51,9 +55,7 @@ defmodule YellowDog.Management.Profiles do
           :dhcp_client,
           :dns_client,
           :routes,
-          :link_state,
-          :local_status,
-          :netman_agent
+          :link_state
         ],
         :managed
       ),
@@ -65,9 +67,7 @@ defmodule YellowDog.Management.Profiles do
           :dhcp_client,
           :dns_client,
           :routes,
-          :link_state,
-          :local_status,
-          :netman_agent
+          :link_state
         ],
         :observe_first
       ),
@@ -79,9 +79,7 @@ defmodule YellowDog.Management.Profiles do
           :dhcp_client,
           :dns_client,
           :routes,
-          :link_state,
-          :local_status,
-          :netman_agent
+          :link_state
         ],
         :managed
       ),
@@ -92,25 +90,23 @@ defmodule YellowDog.Management.Profiles do
           :interfaces,
           :dns_client,
           :routes,
-          :link_state,
-          :local_status,
-          :netman_agent
+          :link_state
         ],
         :managed
       ),
       netman_profile(
         :vpn_gateway,
         "Future VPN gateway network manager",
-        [:interfaces, :routes, :dns_client, :link_state, :local_status, :netman_agent, :vpn],
+        [:interfaces, :routes, :dns_client, :link_state, :vpn],
         :managed
       ),
       netman_profile(
         :observe_only,
         "Observe-only network manager",
-        [:interfaces, :routes, :link_state, :local_status, :netman_agent],
-        :observe_only
+        [:interfaces, :link_state],
+        :observe
       ),
-      netman_profile(:custom, "Custom network manager", [], :custom)
+      netman_profile(:custom, "Custom network manager", [], :managed)
     ]
   end
 

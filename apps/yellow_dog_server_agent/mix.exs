@@ -18,7 +18,7 @@ defmodule YellowDog.ServerAgent.MixProject do
 
   def application do
     [
-      mod: {YellowDog.ServerAgent.Supervisor, []},
+      mod: {YellowDog.ServerAgent.Application, []},
       extra_applications: [:logger]
     ]
   end

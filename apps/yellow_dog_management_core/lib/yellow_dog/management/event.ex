@@ -28,6 +28,8 @@ defmodule YellowDog.Management.Event do
 
   @doc false
   def new(attrs) do
+    # Per-node monotonic sequence numbers are only for local in-memory ordering.
+    # Persistent or distributed storage must not treat them as a global clock.
     sequence = System.unique_integer([:positive, :monotonic])
 
     %__MODULE__{

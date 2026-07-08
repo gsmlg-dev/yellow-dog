@@ -609,6 +609,9 @@ defmodule YellowDog.Application do
         [
           data_dir: Path.join(data_dir, "fingerprint")
         ]
+
+      :server_agent ->
+        []
     end
   end
 

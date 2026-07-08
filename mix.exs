@@ -32,7 +32,7 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_identity: :permanent,
             yellow_dog_fingerprint: :permanent,
             yellow_dog_tasks: :permanent,
-            yellow_dog_server_agent: :permanent,
+            yellow_dog_server_agent: :load,
             yellow_dog_console: :permanent
           ]
         ],
@@ -43,7 +43,7 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_telemetry: :permanent,
             yellow_dog_dhcp_client: :permanent,
             yellow_dog_resolved: :permanent,
-            yellow_dog_netman_agent: :permanent,
+            yellow_dog_netman_agent: :load,
             yellow_dog_netman: :permanent
           ]
         ],
@@ -63,8 +63,8 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_fingerprint: :permanent,
             yellow_dog_tasks: :permanent,
             yellow_dog_management_core: :permanent,
-            yellow_dog_server_agent: :permanent,
-            yellow_dog_netman_agent: :permanent,
+            yellow_dog_server_agent: :load,
+            yellow_dog_netman_agent: :load,
             yellow_dog_console: :permanent
           ]
         ]

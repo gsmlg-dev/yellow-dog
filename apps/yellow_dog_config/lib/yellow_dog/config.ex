@@ -366,7 +366,8 @@ defmodule YellowDog.Config do
   @spec update(service_name(), map()) :: :ok
   def update(service, new_config) do
     Agent.update(__MODULE__, fn state ->
-      put_in(state, [to_string(service)], new_config)
+      key = if Map.has_key?(state, service), do: service, else: to_string(service)
+      Map.put(state, key, new_config)
     end)
   end
 

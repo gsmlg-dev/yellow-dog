@@ -70,7 +70,14 @@ defmodule YellowDog.Console.Layouts do
   ]
 
   defp navbar(assigns) do
-    assigns = assign(assigns, :nav_sections, @nav_sections)
+    nav_sections =
+      if YellowDog.Console.Plugs.ManagementReleaseOnly.management_release_only?() do
+        Enum.take(@nav_sections, 1)
+      else
+        @nav_sections
+      end
+
+    assigns = assign(assigns, :nav_sections, nav_sections)
 
     ~H"""
     <.dm_navbar class="appbar-primary appbar-bordered">

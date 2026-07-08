@@ -19,7 +19,11 @@ defmodule YellowDog.ServiceManager do
   """
   @spec get_all_status() :: %{atom() => map()}
   def get_all_status do
-    Map.new(list_services(), fn service -> {service, get_service_status(service)} end)
+    service_flags = resolved_service_flags()
+
+    Map.new(list_services(), fn service ->
+      {service, get_service_status(service, service_flags)}
+    end)
   end
 
   @doc """
@@ -33,9 +37,13 @@ defmodule YellowDog.ServiceManager do
   """
   @spec get_service_status(atom()) :: map()
   def get_service_status(service) do
+    get_service_status(service, resolved_service_flags())
+  end
+
+  defp get_service_status(service, service_flags) do
     case ServiceRegistry.fetch(service) do
       {:ok, metadata} ->
-        enabled = service_enabled?(service)
+        enabled = service_enabled?(service_flags, service)
 
         status = %{
           enabled: enabled,
@@ -47,7 +55,7 @@ defmodule YellowDog.ServiceManager do
         }
 
         if enabled do
-          case get_supervisor_status(service, metadata) do
+          case get_supervisor_status(service, metadata, service_flags) do
             {:ok, supervisor_info} ->
               Map.merge(status, supervisor_info)
 
@@ -90,7 +98,7 @@ defmodule YellowDog.ServiceManager do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
         # Enable the service in config
-        YellowDog.Config.set_service_enabled(service, true)
+        set_service_enabled(service, true)
 
         # Start the supervisor via YellowDog.Application
         case YellowDog.Application.start_service_supervisor(service, supervisor_module) do
@@ -123,7 +131,7 @@ defmodule YellowDog.ServiceManager do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
         # Disable the service in config
-        YellowDog.Config.set_service_enabled(service, false)
+        set_service_enabled(service, false)
 
         # Stop the supervisor
         case YellowDog.Application.stop_service_supervisor(service, supervisor_module) do
@@ -151,71 +159,73 @@ defmodule YellowDog.ServiceManager do
   - Map with service-specific statistics
   """
   @spec get_service_stats(atom()) :: map()
-  def get_service_stats(:mdns) do
-    if service_enabled?(:mdns) do
+  def get_service_stats(service), do: get_service_stats(service, resolved_service_flags())
+
+  defp get_service_stats(:mdns, service_flags) do
+    if service_enabled?(service_flags, :mdns) do
       safe_service_call(YellowDog.Mdns.MessageCache, :stats, [])
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:dhcpv4) do
-    if service_enabled?(:dhcpv4) do
+  defp get_service_stats(:dhcpv4, service_flags) do
+    if service_enabled?(service_flags, :dhcpv4) do
       safe_service_call(YellowDog.Dhcpv4.LeaseManager, :stats, [])
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:dhcpv6) do
-    if service_enabled?(:dhcpv6) do
+  defp get_service_stats(:dhcpv6, service_flags) do
+    if service_enabled?(service_flags, :dhcpv6) do
       safe_service_call(YellowDog.Dhcpv6.LeaseManager, :stats, [])
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:dns) do
-    if service_enabled?(:dns) do
+  defp get_service_stats(:dns, service_flags) do
+    if service_enabled?(service_flags, :dns) do
       %{info: "DNS statistics not yet implemented"}
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:netboot) do
-    if service_enabled?(:netboot) do
+  defp get_service_stats(:netboot, service_flags) do
+    if service_enabled?(service_flags, :netboot) do
       %{info: "Netboot statistics not yet implemented"}
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:identity) do
-    if service_enabled?(:identity) do
+  defp get_service_stats(:identity, service_flags) do
+    if service_enabled?(service_flags, :identity) do
       %{info: "Identity statistics not yet implemented"}
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:fingerprint) do
-    if service_enabled?(:fingerprint) do
+  defp get_service_stats(:fingerprint, service_flags) do
+    if service_enabled?(service_flags, :fingerprint) do
       safe_service_call(YellowDog.Fingerprint, :stats, [])
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(:server_agent) do
-    if service_enabled?(:server_agent) do
+  defp get_service_stats(:server_agent, service_flags) do
+    if service_enabled?(service_flags, :server_agent) do
       %{info: "Server agent statistics not yet implemented"}
     else
       %{error: "Service disabled"}
     end
   end
 
-  def get_service_stats(_service) do
+  defp get_service_stats(_service, _service_flags) do
     %{error: "Unknown service"}
   end
 
@@ -258,13 +268,48 @@ defmodule YellowDog.ServiceManager do
 
   # Private functions
 
-  defp service_enabled?(service) do
+  defp resolved_service_flags do
     ProfileResolver.resolve()
     |> Map.fetch!(:services)
-    |> Map.get(service, YellowDog.Config.service_enabled?(service))
   end
 
-  defp get_supervisor_status(service, metadata) do
+  defp set_service_enabled(service, enabled) do
+    config = YellowDog.Config.get_all()
+
+    case get_value(config, :yellow_dog_server, nil) do
+      server_config when is_map(server_config) ->
+        server_config
+        |> put_server_service_flag(service, enabled)
+        |> then(&YellowDog.Config.update(:yellow_dog_server, &1))
+
+      _other ->
+        YellowDog.Config.set_service_enabled(service, enabled)
+    end
+  end
+
+  defp put_server_service_flag(server_config, service, enabled) do
+    services = get_value(server_config, :services, %{})
+    services = put_preserving_key_shape(services, service, enabled)
+
+    put_preserving_key_shape(server_config, :services, services)
+  end
+
+  defp put_preserving_key_shape(map, key, value) do
+    cond do
+      Map.has_key?(map, key) -> Map.put(map, key, value)
+      is_atom(key) -> Map.put(map, Atom.to_string(key), value)
+      true -> Map.put(map, key, value)
+    end
+  end
+
+  defp service_enabled?(service_flags, service) do
+    case Map.fetch(service_flags, service) do
+      {:ok, enabled} -> enabled
+      :error -> YellowDog.Config.service_enabled?(service)
+    end
+  end
+
+  defp get_supervisor_status(service, metadata, service_flags) do
     # Use the actual process registration name (supervisors register as YellowDog.Dns, not YellowDog.Dns.Supervisor)
     process_name = metadata.process_name
 
@@ -287,7 +332,7 @@ defmodule YellowDog.ServiceManager do
           start_time = get_process_start_time(pid)
           uptime = calculate_uptime(start_time)
 
-          stats = get_service_stats(service)
+          stats = get_service_stats(service, service_flags)
 
           {:ok,
            %{

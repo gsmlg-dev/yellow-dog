@@ -78,7 +78,7 @@ defmodule YellowDog.Server.ServiceRegistry do
       module: YellowDog.ServerAgent,
       supervisor: YellowDog.ServerAgent.Supervisor,
       process_name: YellowDog.ServerAgent.Supervisor,
-      controllable?: false
+      controllable?: true
     }
   ]
 

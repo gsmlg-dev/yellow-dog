@@ -25,7 +25,7 @@ defmodule YellowDog.Netman.ProfileResolver do
   """
   @spec resolve(map()) :: map()
   def resolve(config) when is_map(config) do
-    netman_config = ConfigHelpers.get_value(config, :yellow_dog_netman, %{})
+    netman_config = ConfigHelpers.get_value(config, :yellow_dog_netman, default_netman_config())
     resolve_netman_config(netman_config)
   end
 
@@ -36,6 +36,13 @@ defmodule YellowDog.Netman.ProfileResolver do
   """
   @spec profiles() :: [atom()]
   def profiles, do: @profiles
+
+  defp default_netman_config do
+    %{
+      "profile" => "local_server",
+      "management" => %{"enabled" => true}
+    }
+  end
 
   defp resolve_netman_config(netman_config) when is_map(netman_config) do
     profile = parse_profile(ConfigHelpers.get_value(netman_config, :profile, "custom"))
@@ -134,7 +141,7 @@ defmodule YellowDog.Netman.ProfileResolver do
   defp apply_overrides(defaults, overrides) when is_map(overrides) do
     Enum.reduce(FeatureRegistry.list_features(), defaults, fn feature, acc ->
       if has_config_key?(overrides, feature) do
-        Map.put(acc, feature, ConfigHelpers.get_value(overrides, feature))
+        Map.put(acc, feature, boolean_override(overrides, feature))
       else
         acc
       end
@@ -145,5 +152,12 @@ defmodule YellowDog.Netman.ProfileResolver do
 
   defp has_config_key?(map, key) do
     Map.has_key?(map, key) or Map.has_key?(map, to_string(key))
+  end
+
+  defp boolean_override(map, key) do
+    case ConfigHelpers.get_value(map, key) do
+      value when is_boolean(value) -> value
+      _value -> false
+    end
   end
 end

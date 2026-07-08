@@ -3,14 +3,6 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
   use Supervisor
 
-  @behaviour Application
-
-  @impl Application
-  def start(_type, args), do: start_link(args)
-
-  @impl Application
-  def stop(_state), do: :ok
-
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end

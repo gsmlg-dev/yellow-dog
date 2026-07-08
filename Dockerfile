@@ -32,6 +32,11 @@ ENV MIX_ENV="${MIX_ENV}"
 ENV MIX_RELEASE_NAME="${MIX_RELEASE_NAME}"
 ENV EX_TURSO_BUILD=1
 
+RUN case "${MIX_RELEASE_NAME}" in \
+      yellow_dog_management_core|yellow_dog_server|yellow_dog_netman) ;; \
+      *) echo "invalid MIX_RELEASE_NAME: ${MIX_RELEASE_NAME}" >&2; exit 1 ;; \
+    esac
+
 # Install hex and rebar (cached unless base image changes)
 RUN mix local.hex --force && \
     mix local.rebar --force
@@ -147,10 +152,17 @@ RUN apt-get update && \
              /run/yellowdog && \
     rm -rf /var/lib/apt/lists/*
 
+RUN case "${MIX_RELEASE_NAME}" in \
+      yellow_dog_management_core|yellow_dog_server|yellow_dog_netman) ;; \
+      *) echo "invalid MIX_RELEASE_NAME: ${MIX_RELEASE_NAME}" >&2; exit 1 ;; \
+    esac
+
 COPY --from=builder /app/_build/prod/rel/${MIX_RELEASE_NAME} /app
 COPY priv/yellow_dog_default_config.toml /etc/yellowdog/config.toml
 COPY priv/yellow_dog_tasks_config.toml /etc/yellowdog/tasks.toml
 
+RUN ln -s "/app/bin/${MIX_RELEASE_NAME}" /usr/local/bin/yellow_dog_release
+
 EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 
-CMD ["/bin/sh", "-c", "exec /app/bin/${MIX_RELEASE_NAME} start"]
+CMD ["/usr/local/bin/yellow_dog_release", "start"]

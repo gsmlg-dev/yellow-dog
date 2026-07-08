@@ -28,14 +28,17 @@ defmodule YellowDog.Console.Router do
     }
 
     plug YellowDog.Console.Plugs.BasicAuth
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
   pipeline :boot do
     plug :accepts, ["html", "json", "text"]
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
   scope "/", YellowDog.Console do

@@ -143,6 +143,24 @@ defmodule YellowDog.Netman.ProfileResolverTest do
       assert resolved.features.interfaces == true
     end
 
+    test "non-boolean explicit feature flags fail closed" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_netman" => %{
+            "profile" => "cloud_server",
+            "features" => %{
+              "interfaces" => "false",
+              "routes" => true,
+              "vpn" => 1
+            }
+          }
+        })
+
+      assert resolved.features.interfaces == false
+      assert resolved.features.routes == true
+      assert resolved.features.vpn == false
+    end
+
     test "custom profile starts from disabled feature defaults" do
       resolved =
         ProfileResolver.resolve(%{

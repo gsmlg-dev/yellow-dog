@@ -137,6 +137,24 @@ defmodule YellowDog.Server.ProfileResolverTest do
       assert resolved.services.dhcpv4 == true
     end
 
+    test "non-boolean explicit service flags fail closed" do
+      resolved =
+        ProfileResolver.resolve(%{
+          "yellow_dog_server" => %{
+            "profile" => "local_network",
+            "services" => %{
+              "dns" => "false",
+              "mdns" => true,
+              "dhcpv4" => 1
+            }
+          }
+        })
+
+      assert resolved.services.dns == false
+      assert resolved.services.mdns == true
+      assert resolved.services.dhcpv4 == false
+    end
+
     test "custom profile starts from disabled service defaults" do
       resolved =
         ProfileResolver.resolve(%{

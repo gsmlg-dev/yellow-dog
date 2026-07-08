@@ -130,7 +130,7 @@ defmodule YellowDog.Server.ProfileResolver do
   defp apply_overrides(defaults, overrides) when is_map(overrides) do
     Enum.reduce(ServiceRegistry.list_services(), defaults, fn service, acc ->
       if has_config_key?(overrides, service) do
-        Map.put(acc, service, ConfigHelpers.get_value(overrides, service))
+        Map.put(acc, service, boolean_override(overrides, service))
       else
         acc
       end
@@ -141,5 +141,12 @@ defmodule YellowDog.Server.ProfileResolver do
 
   defp has_config_key?(map, key) do
     Map.has_key?(map, key) or Map.has_key?(map, to_string(key))
+  end
+
+  defp boolean_override(map, key) do
+    case ConfigHelpers.get_value(map, key) do
+      value when is_boolean(value) -> value
+      _value -> false
+    end
   end
 end

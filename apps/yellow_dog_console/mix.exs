@@ -38,6 +38,8 @@ defmodule YellowDog.Console.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
+    yellow_dog_runtime? = Mix.env() != :prod
+
     [
       {:phoenix, "~> 1.8.1"},
       {:phoenix_pubsub, "~> 2.1"},
@@ -59,21 +61,21 @@ defmodule YellowDog.Console.MixProject do
       {:toml, "~> 0.7"},
 
       # YellowDog dependencies
-      {:yellow_dog_management_core, in_umbrella: true},
-      {:yellow_dog, in_umbrella: true},
-      {:yellow_dog_store, in_umbrella: true},
-      {:yellow_dog_mdns, in_umbrella: true},
-      {:yellow_dog_dhcpv4, in_umbrella: true},
-      {:yellow_dog_dhcpv6, in_umbrella: true},
-      {:yellow_dog_dns, in_umbrella: true},
-      {:yellow_dog_tasks, in_umbrella: true},
-      {:geo_ip_db, in_umbrella: true},
-      {:yellow_dog_fingerprint, in_umbrella: true},
-      {:yellow_dog_netboot, in_umbrella: true},
-      {:yellow_dog_identity, in_umbrella: true},
-      {:yellow_dog_dns_provider, in_umbrella: true},
-      {:yellow_dog_dhcp_client, in_umbrella: true},
-      {:yellow_dog_netman, in_umbrella: true},
+      {:yellow_dog_management_core, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_store, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_mdns, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_dhcpv4, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_dhcpv6, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_dns, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_tasks, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:geo_ip_db, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_fingerprint, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_netboot, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_identity, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_dns_provider, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_dhcp_client, in_umbrella: true, runtime: yellow_dog_runtime?},
+      {:yellow_dog_netman, in_umbrella: true, runtime: yellow_dog_runtime?},
       {:gsmlg_whois, "~> 0.5"},
       {:gsmlg_mac, "~> 0.1"},
 

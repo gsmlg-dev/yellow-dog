@@ -6,8 +6,12 @@ defmodule YellowDog.Management.Servers do
   use Agent
 
   alias YellowDog.Management.Event
+  alias YellowDog.Management.InputSanitizer
   alias YellowDog.Management.Profiles
   alias YellowDog.Management.Server
+
+  @max_events 500
+  @max_records 1_000
 
   @type register_attrs :: map() | keyword() | Server.t()
 
@@ -48,23 +52,29 @@ defmodule YellowDog.Management.Servers do
   def register(attrs) do
     with {:ok, server} <- build_server(attrs) do
       Agent.get_and_update(__MODULE__, fn state ->
-        server = preserve_registration_time(server, Map.get(state.servers, server.id))
+        existing = Map.get(state.servers, server.id)
 
-        event =
-          Event.new(%{
-            source: :server,
-            source_id: server.id,
-            type: :server_registered,
-            message: "Server registered"
-          })
+        if is_nil(existing) and map_size(state.servers) >= @max_records do
+          {{:error, :registry_full}, state}
+        else
+          server = preserve_registration_time(server, existing)
 
-        state = %{
-          state
-          | servers: Map.put(state.servers, server.id, server),
-            events: [event | state.events]
-        }
+          event =
+            Event.new(%{
+              source: :server,
+              source_id: server.id,
+              type: :server_registered,
+              message: "Server registered"
+            })
 
-        {{:ok, server}, state}
+          state = %{
+            state
+            | servers: Map.put(state.servers, server.id, server),
+              events: record_event(state.events, event)
+          }
+
+          {{:ok, server}, state}
+        end
       end)
     end
   end
@@ -75,6 +85,7 @@ defmodule YellowDog.Management.Servers do
       case Map.fetch(state.servers, id) do
         {:ok, server} ->
           now = DateTime.utc_now(:second)
+          status = InputSanitizer.status(status)
           updated = %{server | status: status, last_seen_at: now, updated_at: now}
 
           event =
@@ -89,7 +100,7 @@ defmodule YellowDog.Management.Servers do
           state = %{
             state
             | servers: Map.put(state.servers, id, updated),
-              events: [event | state.events]
+              events: record_event(state.events, event)
           }
 
           {{:ok, updated}, state}
@@ -109,6 +120,11 @@ defmodule YellowDog.Management.Servers do
 
   defp initial_state, do: %{servers: %{}, events: []}
 
+  defp record_event(events, event) do
+    [event | events]
+    |> Enum.take(@max_events)
+  end
+
   defp fetch(records, id) do
     case Map.fetch(records, id) do
       {:ok, record} -> {:ok, record}
@@ -119,29 +135,38 @@ defmodule YellowDog.Management.Servers do
   defp build_server(%Server{} = server) do
     now = DateTime.utc_now(:second)
 
-    {:ok,
-     %{
-       server
-       | profile: normalize_profile(server.profile),
-         registered_at: server.registered_at || now,
-         updated_at: server.updated_at || now
-     }}
+    with {:ok, id} <- InputSanitizer.required_string(server.id, :id) do
+      {:ok,
+       %{
+         server
+         | id: id,
+           name: InputSanitizer.optional_string(server.name),
+           profile: normalize_profile(server.profile),
+           status: InputSanitizer.status(server.status),
+           services: InputSanitizer.flags(server.services, Profiles.server_service_keys()),
+           metadata: InputSanitizer.metadata(server.metadata),
+           last_seen_at: InputSanitizer.datetime(server.last_seen_at),
+           registered_at: server.registered_at || now,
+           updated_at: server.updated_at || now
+       }}
+    end
   end
 
   defp build_server(attrs) when is_list(attrs) or is_map(attrs) do
     attrs = attrs_map(attrs)
     now = DateTime.utc_now(:second)
 
-    with {:ok, id} <- fetch_required_string(attrs, :id) do
+    with {:ok, id} <- InputSanitizer.required_string(get_attr(attrs, :id), :id) do
       {:ok,
        %Server{
          id: id,
-         name: get_attr(attrs, :name),
+         name: InputSanitizer.optional_string(get_attr(attrs, :name)),
          profile: normalize_profile(get_attr(attrs, :profile, :custom)),
-         status: get_attr(attrs, :status, :registered),
-         services: get_attr(attrs, :services, %{}),
-         metadata: get_attr(attrs, :metadata, %{}),
-         last_seen_at: get_attr(attrs, :last_seen_at),
+         status: InputSanitizer.status(get_attr(attrs, :status, :registered)),
+         services:
+           InputSanitizer.flags(get_attr(attrs, :services, %{}), Profiles.server_service_keys()),
+         metadata: InputSanitizer.metadata(get_attr(attrs, :metadata, %{})),
+         last_seen_at: InputSanitizer.datetime(get_attr(attrs, :last_seen_at)),
          registered_at: now,
          updated_at: now
        }}
@@ -157,13 +182,6 @@ defmodule YellowDog.Management.Servers do
   defp attrs_map(attrs) when is_list(attrs), do: Map.new(attrs)
   defp attrs_map(attrs) when is_map(attrs), do: attrs
 
-  defp fetch_required_string(attrs, key) do
-    case get_attr(attrs, key) do
-      value when is_binary(value) and value != "" -> {:ok, value}
-      _value -> {:error, {:required, key}}
-    end
-  end
-
   defp get_attr(attrs, key, default \\ nil) do
     Map.get(attrs, key, Map.get(attrs, Atom.to_string(key), default))
   end
@@ -172,10 +190,16 @@ defmodule YellowDog.Management.Servers do
     Profiles.list_server_profiles()
     |> Enum.find(&(Atom.to_string(&1.name) == profile))
     |> case do
-      nil -> profile
+      nil -> :custom
       profile -> profile.name
     end
   end
 
-  defp normalize_profile(profile), do: profile
+  defp normalize_profile(profile) when is_atom(profile) do
+    if Enum.any?(Profiles.list_server_profiles(), &(&1.name == profile)),
+      do: profile,
+      else: :custom
+  end
+
+  defp normalize_profile(_profile), do: :custom
 end
