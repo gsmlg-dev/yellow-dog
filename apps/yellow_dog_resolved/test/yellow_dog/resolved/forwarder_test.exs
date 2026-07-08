@@ -330,8 +330,9 @@ defmodule YellowDog.Resolved.ForwarderTest do
       query = build_query("timeout-telem.example.com")
       Forwarder.forward(query, 2000)
 
-      assert_received {[:yellow_dog, :resolved, :forward, :exception], ^ref, %{duration: _},
-                       %{upstream: _, reason: :timeout}}
+      assert_receive {[:yellow_dog, :resolved, :forward, :exception], ^ref, %{duration: _},
+                      %{upstream: _, reason: :timeout}},
+                     1000
 
       GenServer.stop(pid)
     end
