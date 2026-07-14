@@ -254,3 +254,7 @@ if console_url = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_URL") do
 
   config :yellow_dog_netman, :console, console_config
 end
+
+if netman_console_token = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_TOKEN") do
+  config :yellow_dog_console, :netman_socket_token, netman_console_token
+end

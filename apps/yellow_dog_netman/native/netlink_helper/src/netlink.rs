@@ -663,7 +663,7 @@ mod tests {
     /// Build a minimal valid netlink message header (16 bytes).
     fn make_nlmsghdr(len: u32, msg_type: u16) -> Vec<u8> {
         let mut buf = vec![0u8; len as usize];
-        buf[0..4].copy_from_slice(&(len as u32).to_ne_bytes());
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
         buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
         buf
     }
@@ -1854,6 +1854,7 @@ mod tests {
     // --- Rule with Source and Destination NLAs ---
 
     /// Build an RTM_NEWRULE with source and destination NLAs.
+    #[allow(clippy::too_many_arguments)]
     fn make_rtm_newrule_with_src_dst(
         family: u8,
         dst_len: u8,

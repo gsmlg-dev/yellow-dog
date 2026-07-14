@@ -22,7 +22,9 @@ defmodule YellowDog.Netman.Supervisor do
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
+    apply_mode = Keyword.get(opts, :apply_mode, :managed)
+
     children =
       [
         {Registry, keys: :unique, name: YellowDog.Netman.Registry},
@@ -30,12 +32,21 @@ defmodule YellowDog.Netman.Supervisor do
         {YellowDog.Netman.EventBus, []},
         {YellowDog.Netman.ProfileStore, []},
         {YellowDog.Netman.Connection.Supervisor, []},
-        {YellowDog.Netman.Connection.LeaseCoordinator, []},
-        {YellowDog.Netman.ReconciliationEngine, []},
-        {YellowDog.Netman.API.Supervisor, []}
-      ] ++ console_client_child()
+        {YellowDog.Netman.Connection.LeaseCoordinator, []}
+      ]
+      |> maybe_add_reconciliation_engine(apply_mode)
+      |> Kernel.++([{YellowDog.Netman.API.Supervisor, []}])
+      |> Kernel.++(console_client_child())
 
     Supervisor.init(children, strategy: :rest_for_one)
+  end
+
+  defp maybe_add_reconciliation_engine(children, mode) when mode in [:observe, :observe_first] do
+    children
+  end
+
+  defp maybe_add_reconciliation_engine(children, _apply_mode) do
+    children ++ [{YellowDog.Netman.ReconciliationEngine, []}]
   end
 
   defp console_client_child do

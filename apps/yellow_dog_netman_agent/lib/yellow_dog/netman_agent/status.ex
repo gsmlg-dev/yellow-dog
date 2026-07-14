@@ -1,0 +1,42 @@
+defmodule YellowDog.NetmanAgent.Status do
+  @moduledoc """
+  Local status snapshot builder for the Netman agent skeleton.
+  """
+
+  alias YellowDog.NetmanAgent.Heartbeat
+
+  @doc "Builds a status snapshot from local supervised state only."
+  def snapshot do
+    case Process.whereis(Heartbeat) do
+      nil ->
+        base_snapshot(false, :stopped)
+
+      pid ->
+        running_snapshot(pid)
+    end
+  end
+
+  defp running_snapshot(pid) do
+    heartbeat = Heartbeat.snapshot(pid)
+
+    true
+    |> base_snapshot(heartbeat.status)
+    |> Map.merge(%{
+      agent_id: heartbeat.agent_id,
+      started_at: heartbeat.started_at,
+      last_heartbeat_at: heartbeat.last_heartbeat_at
+    })
+  catch
+    :exit, _reason -> base_snapshot(false, :stopped)
+  end
+
+  defp base_snapshot(running?, status) do
+    %{
+      agent: :yellow_dog_netman,
+      running: running?,
+      status: status,
+      management_core: :not_configured,
+      capabilities: [:heartbeat, :status_snapshot]
+    }
+  end
+end

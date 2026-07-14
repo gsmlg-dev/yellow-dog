@@ -11,6 +11,7 @@ defmodule YellowDog.Console.NetmanRegistry do
   @table __MODULE__
   @pubsub YellowDog.Console.PubSub
   @topic "netman:presence"
+  @max_clients 1_000
 
   ## Public API
 
@@ -80,24 +81,37 @@ defmodule YellowDog.Console.NetmanRegistry do
     Phoenix.PubSub.subscribe(@pubsub, @topic)
   end
 
+  @doc false
+  def reset do
+    GenServer.call(__MODULE__, :reset)
+  end
+
   ## GenServer callbacks
 
   @impl true
   def init(_opts) do
-    table = :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+    table = :ets.new(@table, [:named_table, :set, :protected, read_concurrency: true])
     {:ok, %{table: table}}
   end
 
   @impl true
   def handle_cast({:register, client_info}, state) do
-    :ets.insert(@table, {client_info.node_id, client_info})
-    broadcast({:netman_joined, client_info})
+    with {:ok, client_info} <- normalize_client_info(client_info),
+         true <- can_store_client?(client_info.node_id) do
+      :ets.insert(@table, {client_info.node_id, client_info})
+      broadcast({:netman_joined, client_info})
+    end
+
     {:noreply, state}
   end
 
   def handle_cast({:update, client_info}, state) do
-    :ets.insert(@table, {client_info.node_id, client_info})
-    broadcast({:netman_updated, client_info})
+    with {:ok, client_info} <- normalize_client_info(client_info),
+         true <- can_store_client?(client_info.node_id) do
+      :ets.insert(@table, {client_info.node_id, client_info})
+      broadcast({:netman_updated, client_info})
+    end
+
     {:noreply, state}
   end
 
@@ -127,7 +141,24 @@ defmodule YellowDog.Console.NetmanRegistry do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_call(:reset, _from, state) do
+    :ets.delete_all_objects(@table)
+    {:reply, :ok, state}
+  end
+
   defp broadcast(message) do
     Phoenix.PubSub.broadcast(@pubsub, @topic, message)
+  end
+
+  defp normalize_client_info(%{node_id: node_id} = client_info)
+       when is_binary(node_id) and node_id != "" and byte_size(node_id) <= 128 do
+    {:ok, client_info}
+  end
+
+  defp normalize_client_info(_client_info), do: :error
+
+  defp can_store_client?(node_id) do
+    :ets.member(@table, node_id) or :ets.info(@table, :size) < @max_clients
   end
 end

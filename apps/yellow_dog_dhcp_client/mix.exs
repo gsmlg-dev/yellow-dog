@@ -24,7 +24,7 @@ defmodule YellowDog.DhcpClient.MixProject do
 
   defp deps do
     [
-      {:yellow_dog, in_umbrella: true},
+      {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:abyss, in_umbrella: true},
       {:ex_dhcp, in_umbrella: true},

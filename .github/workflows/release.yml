@@ -32,6 +32,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       RELEASE_TAG: v${{ inputs.version }}
+      GIT_REF: ${{ inputs.git_ref }}
     steps:
       - name: Checkout repo at ${{ inputs.git_ref }}
         uses: actions/checkout@v6
@@ -42,8 +43,19 @@ jobs:
       - name: Validate release version
         run: |
           set -euo pipefail
-          if [[ "${VERSION}" == v* ]]; then
-            echo "version input must not include a leading v" >&2
+
+          if [[ ! "${VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version input must be a semver value without a leading v" >&2
+            exit 1
+          fi
+
+          if [[ "${GIT_REF}" =~ (^/|/$|\\.\\.|@\\{|\\\\|[[:space:]]|^-) ]]; then
+            echo "git_ref contains unsafe characters" >&2
+            exit 1
+          fi
+
+          if ! git check-ref-format --allow-onelevel "${GIT_REF}" >/dev/null; then
+            echo "git_ref is not a valid git ref name" >&2
             exit 1
           fi
 
@@ -64,7 +76,7 @@ jobs:
             echo "mix.exs is already at ${VERSION}; tagging current ref"
           else
             git commit -m "chore(release): v${VERSION}"
-            git push origin "HEAD:${{ inputs.git_ref }}"
+            git push origin "HEAD:${GIT_REF}"
           fi
 
           if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
@@ -102,26 +114,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - product_slug: yellow-dog
+          - product_slug: yellow-dog-management-core
+            mix_release: yellow_dog_management_core
+            platform: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - product_slug: yellow-dog-server
             mix_release: yellow_dog_server
             platform: linux
             arch: amd64
             runner: ubuntu-latest
-          - product_slug: yellow-dog
+          - product_slug: yellow-dog-server
             mix_release: yellow_dog_server
             platform: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-          - product_slug: yellow-dog
-            mix_release: yellow_dog_server
-            platform: macos
-            arch: amd64
-            runner: macos-15-intel
-          - product_slug: yellow-dog
-            mix_release: yellow_dog_server
-            platform: macos
-            arch: arm64
-            runner: macos-15
           - product_slug: yellow-dog-netman
             mix_release: yellow_dog_netman
             platform: linux
@@ -193,7 +200,7 @@ jobs:
           chmod 755 apps/yellow_dog_netman/priv/native/netlink_helper
 
       - name: Build console assets
-        if: matrix.mix_release == 'yellow_dog_server'
+        if: matrix.mix_release == 'yellow_dog_management_core' || matrix.mix_release == 'yellow_dog_server'
         working-directory: apps/yellow_dog_console
         run: |
           set -euo pipefail
@@ -216,21 +223,39 @@ jobs:
       - name: Upload release tarball
         env:
           GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ steps.package.outputs.artifact }}
         run: |
           set -euo pipefail
-          gh release upload "${RELEASE_TAG}" "${{ steps.package.outputs.artifact }}" --clobber
+          gh release upload "${RELEASE_TAG}" "${ARTIFACT}" --clobber
 
   docker-image:
-    name: Build and publish Docker image
+    name: Build and publish ${{ matrix.image_label }} Docker image
     needs: create-release
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_key: management-core
+            image_label: management_core
+            mix_release: yellow_dog_management_core
+            image_suffix: -management-core
+            image_title: YellowDog Management Core
+          - image_key: server
+            image_label: server
+            mix_release: yellow_dog_server
+            image_suffix: ''
+            image_title: YellowDog Server
     env:
       VERSION: ${{ needs.create-release.outputs.version }}
       RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
       REGISTRY: ghcr.io
+      IMAGE_KEY: ${{ matrix.image_key }}
+      IMAGE_SUFFIX: ${{ matrix.image_suffix }}
+      IMAGE_TITLE: ${{ matrix.image_title }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v6
@@ -242,7 +267,8 @@ jobs:
         id: image
         run: |
           set -euo pipefail
-          image_name="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          base_image_name="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          image_name="${base_image_name}${IMAGE_SUFFIX}"
           echo "name=${image_name}" >> "$GITHUB_OUTPUT"
           echo "ref=${REGISTRY}/${image_name}" >> "$GITHUB_OUTPUT"
 
@@ -269,26 +295,27 @@ jobs:
           push: true
           build-args: |
             RELEASE_VERSION=${{ env.VERSION }}
+            MIX_RELEASE_NAME=${{ matrix.mix_release }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=${{ matrix.image_title }}
           tags: |
             ${{ steps.image.outputs.ref }}:${{ env.VERSION }}
             ${{ steps.image.outputs.ref }}:${{ env.RELEASE_TAG }}
             ${{ steps.image.outputs.ref }}:latest
 
-      - name: Add Docker image info to release notes
+      - name: Prepare Docker image release note
         env:
-          GH_TOKEN: ${{ github.token }}
           IMAGE_REF: ${{ steps.image.outputs.ref }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          gh release view "${RELEASE_TAG}" --json body --jq '.body' > release-body.md
+          note_file="docker-image-${IMAGE_KEY}.md"
 
-          cat > docker-image-notes.md <<EOF
-          ## Docker image
+          cat > "${note_file}" <<EOF
+          ### ${IMAGE_TITLE}
 
           Pull the release image:
 
@@ -303,8 +330,55 @@ jobs:
           Digest: \`${IMAGE_REF}@${IMAGE_DIGEST}\`
           EOF
 
+      - name: Upload Docker image note
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-note-${{ matrix.image_key }}
+          path: docker-image-${{ matrix.image_key }}.md
+          retention-days: 1
+
+  update-docker-release-notes:
+    name: Update Docker image release notes
+    needs:
+      - create-release
+      - docker-image
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
+    steps:
+      - name: Download Docker image notes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: docker-note-*
+          path: docker-notes
+          merge-multiple: true
+
+      - name: Add Docker image info to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "${RELEASE_TAG}" --json body --jq '.body' > release-body.md
+          mapfile -t note_files < <(find docker-notes -maxdepth 1 -type f -name 'docker-image-*.md' | sort)
+
+          if [ "${#note_files[@]}" -eq 0 ]; then
+            echo "no Docker image notes found" >&2
+            exit 1
+          fi
+
+          {
+            printf '## Docker images\n\n'
+            for note_file in "${note_files[@]}"; do
+              cat "${note_file}"
+              printf '\n\n'
+            done
+          } > docker-image-notes.md
+
           awk '
-            /^## Docker image$/ { skip = 1; next }
+            $0 == "## Docker image" || $0 == "## Docker images" { skip = 1; next }
             /^## / && skip { skip = 0 }
             !skip { print }
           ' release-body.md > release-body-base.md

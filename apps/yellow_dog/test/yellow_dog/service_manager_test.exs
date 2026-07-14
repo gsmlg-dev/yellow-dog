@@ -96,7 +96,7 @@ defmodule YellowDog.ServiceManagerTest do
       services = ServiceManager.list_services()
 
       assert is_list(services)
-      assert length(services) == 6
+      assert length(services) == 8
     end
 
     test "includes all expected services" do
@@ -108,6 +108,8 @@ defmodule YellowDog.ServiceManagerTest do
       assert :dhcpv6 in services
       assert :netboot in services
       assert :identity in services
+      assert :fingerprint in services
+      assert :server_agent in services
     end
 
     test "returns atoms" do
@@ -125,6 +127,21 @@ defmodule YellowDog.ServiceManagerTest do
 
       assert is_map(status)
       assert Map.has_key?(status, :enabled)
+    end
+
+    test "includes registry metadata for known services" do
+      status = ServiceManager.get_service_status(:server_agent)
+
+      assert %{
+               metadata: %{
+                 name: :server_agent,
+                 label: "Server Agent",
+                 application: :yellow_dog_server_agent,
+                 available?: available?
+               }
+             } = status
+
+      assert available? in [true, false]
     end
 
     test "returns map for mdns service" do
@@ -194,7 +211,7 @@ defmodule YellowDog.ServiceManagerTest do
       all_status = ServiceManager.get_all_status()
 
       assert is_map(all_status)
-      assert map_size(all_status) == 6
+      assert map_size(all_status) == 8
     end
 
     test "includes all services as keys" do
@@ -206,6 +223,8 @@ defmodule YellowDog.ServiceManagerTest do
       assert Map.has_key?(all_status, :dhcpv6)
       assert Map.has_key?(all_status, :netboot)
       assert Map.has_key?(all_status, :identity)
+      assert Map.has_key?(all_status, :fingerprint)
+      assert Map.has_key?(all_status, :server_agent)
     end
 
     test "each service has status map" do
@@ -328,6 +347,84 @@ defmodule YellowDog.ServiceManagerTest do
       assert result == {:error, :unknown_service}
     end
 
+    test "start_service accepts server agent when available in the release" do
+      result =
+        try do
+          ServiceManager.start_service(:server_agent)
+        rescue
+          ArgumentError -> {:error, :supervisor_not_running}
+        catch
+          :exit, _ -> {:error, :supervisor_not_running}
+        end
+
+      assert result in [:ok, {:error, :supervisor_not_running}, {:error, :module_not_available}]
+    end
+
+    test "stop_service accepts server agent when available in the release" do
+      result =
+        try do
+          ServiceManager.stop_service(:server_agent)
+        rescue
+          _ -> {:error, :supervisor_not_running}
+        catch
+          :exit, _ -> {:error, :supervisor_not_running}
+        end
+
+      assert result in [:ok, {:error, :not_found}, {:error, :supervisor_not_running}]
+    end
+
+    test "start_service updates active yellow_dog_server service flags" do
+      original = YellowDog.Config.get_all()
+
+      on_exit(fn ->
+        restore_config(original)
+      end)
+
+      YellowDog.Config.update(:yellow_dog_server, %{
+        "profile" => "custom",
+        "services" => %{"dns" => false}
+      })
+
+      try do
+        ServiceManager.start_service(:dns)
+      rescue
+        ArgumentError -> :ok
+      catch
+        :exit, _ -> :ok
+      end
+
+      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
+               true
+
+      assert ServiceManager.get_service_status(:dns).enabled == true
+    end
+
+    test "stop_service updates active yellow_dog_server service flags" do
+      original = YellowDog.Config.get_all()
+
+      on_exit(fn ->
+        restore_config(original)
+      end)
+
+      YellowDog.Config.update(:yellow_dog_server, %{
+        "profile" => "custom",
+        "services" => %{"dns" => true}
+      })
+
+      try do
+        ServiceManager.stop_service(:dns)
+      rescue
+        _ -> :ok
+      catch
+        :exit, _ -> :ok
+      end
+
+      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
+               false
+
+      assert ServiceManager.get_service_status(:dns).enabled == false
+    end
+
     test "start_service accepts valid service atoms" do
       # start_service needs the full YellowDog supervisor tree
       # It will fail because YellowDog.Supervisor is not running
@@ -407,6 +504,13 @@ defmodule YellowDog.ServiceManagerTest do
       if output =~ "Config:" do
         assert output =~ "pools" or output =~ ":"
       end
+    end
+  end
+
+  defp restore_config(config) do
+    case Process.whereis(YellowDog.Config) do
+      nil -> YellowDog.Config.start_link(config)
+      _pid -> Agent.update(YellowDog.Config, fn _state -> config end)
     end
   end
 end

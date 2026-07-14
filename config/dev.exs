@@ -137,3 +137,5 @@ config :yellow_dog_netman, :console,
   enabled: true,
   url: "ws://localhost:4270/netman/ws/websocket",
   token: "dev-token"
+
+config :yellow_dog_console, :netman_socket_token, "dev-token"

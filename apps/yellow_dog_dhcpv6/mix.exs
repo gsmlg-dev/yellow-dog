@@ -28,6 +28,7 @@ defmodule YellowDog.Dhcpv6.MixProject do
     [
       # Core dependencies
       {:yellow_dog, in_umbrella: true},
+      {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
 

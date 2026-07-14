@@ -456,24 +456,42 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       on_exit(fn ->
         :ets.delete(:netman_links, iface)
         Connection.Supervisor.stop_connection(iface)
-        ProfileStore.delete(profile_id)
+        delete_profile_without_event(profile_id)
       end)
+
+      # Register the profile without publishing a profile change event. This
+      # keeps the test in control of when ReconciliationEngine reactivates the
+      # failed FSM.
+      put_profile_without_event(profile_id, profile)
 
       # Start connection — DHCP fails on fake interface → FSM reaches :failed
       {:ok, fsm_pid} = Connection.Supervisor.start_connection(iface, profile)
-      ProfileStore.put(profile_id, profile)
-      Process.sleep(500)
 
       # Verify FSM is in :failed state
-      {:ok, fsm_state} = Connection.FSM.get_state(fsm_pid)
-      assert fsm_state.state == :failed
+      assert :ok = wait_for_fsm_state(fsm_pid, :failed, 2_000)
+
+      test_pid = self()
+      handler_id = {__MODULE__, :failed_fsm_reactivate, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
 
       # Reconcile:
       #   connection_active?(iface) → FSM.get_state → {:ok, %{state: :failed}} → false (line 374)
       #   → diff generated → apply_diff → find_connection finds existing FSM
       #   → Connection.FSM.activate(pid) called (line 302)
       send(recon_pid, :periodic_reconcile)
-      Process.sleep(300)
+      assert_receive {:recon_done, %{diffs_count: count, applied_count: applied}}, 2000
+      assert count >= 1
+      assert applied >= 1
 
       assert Process.alive?(recon_pid)
     end
@@ -2375,6 +2393,45 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
         })
 
       assert result == :ok
+    end
+  end
+
+  defp put_profile_without_event(profile_id, profile) do
+    :sys.replace_state(ProfileStore, fn state ->
+      %{state | profiles: Map.put(state.profiles, profile_id, profile)}
+    end)
+  end
+
+  defp delete_profile_without_event(profile_id) do
+    :sys.replace_state(ProfileStore, fn state ->
+      %{state | profiles: Map.delete(state.profiles, profile_id)}
+    end)
+  end
+
+  defp wait_for_fsm_state(fsm_pid, expected_state, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    wait_for_fsm_state_until(fsm_pid, expected_state, deadline)
+  end
+
+  defp wait_for_fsm_state_until(fsm_pid, expected_state, deadline) do
+    case Connection.FSM.get_state(fsm_pid) do
+      {:ok, %{state: ^expected_state}} ->
+        :ok
+
+      {:ok, %{state: state}} ->
+        maybe_retry_fsm_state(fsm_pid, expected_state, deadline, state)
+
+      other ->
+        maybe_retry_fsm_state(fsm_pid, expected_state, deadline, other)
+    end
+  end
+
+  defp maybe_retry_fsm_state(fsm_pid, expected_state, deadline, last_state) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      {:error, {:unexpected_state, last_state}}
+    else
+      Process.sleep(20)
+      wait_for_fsm_state_until(fsm_pid, expected_state, deadline)
     end
   end
 end

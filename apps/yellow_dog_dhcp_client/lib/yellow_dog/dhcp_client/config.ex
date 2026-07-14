@@ -193,7 +193,9 @@ defmodule YellowDog.DhcpClient.Config do
         try do
           YellowDog.Config.get("dhcp_client") || %{}
         rescue
-          _ -> %{}
+          _error -> %{}
+        catch
+          :exit, _reason -> %{}
         end
 
       config when is_map(config) ->

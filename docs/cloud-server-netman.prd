@@ -1,0 +1,759 @@
+# PRD: YellowDog Management Refactor
+
+## 1. Title
+
+**YellowDog Refactor: Profile-driven Management System for `yellow_dog_management_core`, `yellow_dog_server`, and `yellow_dog_netman`**
+
+## 2. Background
+
+YellowDog is currently an Elixir umbrella project providing DNS, DHCP, mDNS, netboot, identity, fingerprinting, Netman, telemetry, store, and a Phoenix LiveView console. The existing runtime model already has separate releases for `yellow_dog_server` and `yellow_dog_netman`, plus a combined `yellow_dog` release. ([GitHub][1])
+
+The current server service model is partly dynamic, but still too local-server oriented. `YellowDog.ServiceManager` hardcodes services such as `:dns`, `:mdns`, `:dhcpv4`, `:dhcpv6`, `:netboot`, and `:identity`; `YellowDog.Config.service_enabled?/1` currently reads legacy `[core]` service flags. ([GitHub][2])
+
+The console currently depends directly on many runtime service apps, including DNS, DHCP, mDNS, netboot, identity, fingerprint, DHCP client, and Netman. That is acceptable for the current local console, but the new architecture needs the console to become the management UI for server and Netman service instances. ([GitHub][3])
+
+## 3. Product Decision
+
+YellowDog will be refactored into **three YellowDog-prefixed top-level runtimes**:
+
+```text
+yellow_dog_management_core
+yellow_dog_server
+yellow_dog_netman
+```
+
+There will be **no generic domain role called `Node`** and no module such as:
+
+```text
+YellowDog.Domain.Node
+```
+
+There will also be **no separate runtime apps** for:
+
+```text
+yellow_dog_cloud_dns
+yellow_dog_local_server
+```
+
+Instead:
+
+```text
+Cloud DNS server = yellow_dog_server with profile = cloud_dns
+Local network server = yellow_dog_server with profile = local_network
+Cloud/local/bare-metal/VPN host network manager = yellow_dog_netman with profile-driven features
+```
+
+## 4. Goals
+
+The refactor must provide:
+
+```text
+1. A new yellow_dog_management_core runtime.
+2. A profile-driven yellow_dog_server runtime.
+3. A profile-driven yellow_dog_netman runtime.
+4. A console Management module for managing service nodes.
+5. Concrete management concepts for servers and Netman instances.
+6. Config profile support for server services and Netman features.
+7. Backward compatibility with legacy [core] service flags during migration.
+8. A safe foundation for future cloud management, local server sync, cloud DNS, and VPN management.
+```
+
+## 5. Non-goals
+
+This first refactor must **not**:
+
+```text
+1. Rewrite DNS, DHCP, mDNS, TFTP/netboot, identity, or Netman protocol internals.
+2. Introduce YellowDog.Domain.Node or another generic node role abstraction.
+3. Add separate yellow_dog_cloud_dns or yellow_dog_local_server apps.
+4. Require database migrations in the first PR.
+5. Replace the current store layer.
+6. Implement full mTLS enrollment yet.
+7. Implement full cloud sync protocol yet.
+8. Implement VPN tunnel management yet.
+9. Change low-level UDP behavior or bypass Abyss.
+```
+
+The repo’s agent guidance explicitly says UDP operations must go through the Abyss abstraction and warns against raw `:gen_udp` outside approved areas. It also requires runtime config to go through `YellowDog.Config` APIs rather than direct `Application.get_env/3` for user-facing config. ([GitHub][4])
+
+## 6. Target Architecture
+
+```text
+                         ┌────────────────────────────────────────┐
+                         │ yellow_dog_management_core              │
+                         │                                        │
+                         │ Console Management module               │
+                         │ Server registry                         │
+                         │ Netman registry                         │
+                         │ Server profiles                         │
+                         │ Netman profiles                         │
+                         │ Config publishing foundation            │
+                         │ Events/status foundation                │
+                         └───────────────────┬────────────────────┘
+                                             │
+                    desired config profiles  │ status/events
+                                             │
+             ┌───────────────────────────────┴───────────────────────────────┐
+             │                                                               │
+┌────────────▼─────────────┐                                   ┌─────────────▼────────────┐
+│ yellow_dog_server         │                                   │ yellow_dog_netman         │
+│ configurable service node │                                   │ configurable net manager  │
+│ profile-driven services   │                                   │ profile-driven features   │
+└──────────────────────────┘                                   └──────────────────────────┘
+```
+
+## 7. Runtime Responsibilities
+
+### 7.1 `yellow_dog_management_core`
+
+Owns management state and console-facing management APIs.
+
+Responsibilities:
+
+```text
+Server management
+Netman management
+Server profiles
+Netman profiles
+Config versions
+Management events
+Management console pages
+Future enrollment/sync gateway
+Future audit logs
+Future command queue
+```
+
+It must use **concrete resources**:
+
+```text
+YellowDog.Management.Server
+YellowDog.Management.ServerProfile
+YellowDog.Management.Netman
+YellowDog.Management.NetmanProfile
+YellowDog.Management.ServerConfigVersion
+YellowDog.Management.NetmanConfigVersion
+YellowDog.Management.Event
+```
+
+It must not define:
+
+```text
+YellowDog.Domain.Node
+YellowDog.Node
+YellowDog.NodeRole
+YellowDog.NodeProfile
+```
+
+### 7.2 `yellow_dog_server`
+
+Runs server-side services. A server instance starts services according to its config profile.
+
+Server services:
+
+```text
+dns
+mdns
+dhcpv4
+dhcpv6
+netboot
+identity
+fingerprint
+server_agent
+telemetry
+store/cache
+```
+
+Initial server profiles:
+
+```text
+cloud_dns
+local_network
+dns_only
+dhcp_only
+netboot_only
+custom
+```
+
+Profile meaning:
+
+```text
+cloud_dns:
+  dns = true
+  server_agent = true
+  everything else = false
+
+local_network:
+  dns = true
+  mdns = true
+  dhcpv4 = true
+  dhcpv6 = true
+  netboot = true
+  identity = true
+  fingerprint = true
+  server_agent = true
+
+custom:
+  no defaults except safe minimums; explicit flags decide service startup
+```
+
+### 7.3 `yellow_dog_netman`
+
+Runs network-management features on any managed host. It is not only local. It may run on local servers, cloud servers, VMs, bare-metal machines, and future VPN gateways.
+
+Netman features:
+
+```text
+interfaces
+dhcp_client
+dns_client
+routes
+link_state
+local_status
+netman_agent
+vpn       # reserved for future
+```
+
+Initial Netman profiles:
+
+```text
+local_server
+cloud_server
+bare_metal
+vm
+vpn_gateway
+observe_only
+custom
+```
+
+Profile meaning:
+
+```text
+local_server:
+  interfaces = true
+  dhcp_client = true
+  dns_client = true
+  routes = true
+  vpn = false
+  apply_mode = managed
+
+cloud_server:
+  interfaces = true
+  dhcp_client = true
+  dns_client = true
+  routes = true
+  vpn = false
+  apply_mode = observe_first
+
+vpn_gateway:
+  interfaces = true
+  routes = true
+  dns_client = true
+  vpn = true
+  apply_mode = managed
+```
+
+VPN should be modeled as future config only. No tunnel implementation in the first PR.
+
+## 8. Console Requirement
+
+The console must gain a top-level **Management** module/section.
+
+Do **not** call it “Node Management” as a product/domain.
+
+Target navigation:
+
+```text
+Management
+├── Overview
+├── Servers
+│   ├── All Servers
+│   ├── Server Profiles
+│   ├── Service Status
+│   ├── DNS Servers
+│   ├── DHCP Servers
+│   ├── Cloud DNS Servers
+│   └── Local Network Servers
+│
+├── Netman
+│   ├── All Netman
+│   ├── Netman Profiles
+│   ├── Interfaces
+│   ├── Routes
+│   ├── DNS Client
+│   ├── DHCP Client
+│   └── VPN          # future placeholder
+│
+├── Config
+│   ├── Published Versions
+│   ├── Pending Changes
+│   ├── Applied Status
+│   └── Drift
+│
+└── Events
+    ├── Server Events
+    ├── Netman Events
+    └── Audit Logs
+```
+
+First PR can implement the route/page skeleton and management context facade. Full UI workflows can come later.
+
+The repo’s agent guidance says console work should use Phoenix LiveView/DuskMoon components and avoid overriding upstream design tokens or raw styling patterns. ([GitHub][4])
+
+## 9. Configuration Model
+
+### 9.1 New `yellow_dog_server` config shape
+
+Example: cloud DNS server.
+
+```toml
+[yellow_dog_server]
+id = "srv-cloud-dns-01"
+name = "Cloud DNS 01"
+profile = "cloud_dns"
+
+[yellow_dog_server.management]
+core_url = "https://core.yellowdog.example"
+
+[yellow_dog_server.services]
+dns = true
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+netboot = false
+identity = false
+fingerprint = false
+server_agent = true
+
+[yellow_dog_server.dns]
+mode = "authoritative"
+source = "yellow_dog_management_core"
+```
+
+Example: local network server.
+
+```toml
+[yellow_dog_server]
+id = "srv-office-01"
+name = "Office Local Server"
+profile = "local_network"
+
+[yellow_dog_server.management]
+core_url = "https://core.yellowdog.example"
+site = "office"
+
+[yellow_dog_server.services]
+dns = true
+mdns = true
+dhcpv4 = true
+dhcpv6 = true
+netboot = true
+identity = true
+fingerprint = true
+server_agent = true
+```
+
+Example: custom server.
+
+```toml
+[yellow_dog_server]
+id = "srv-custom-01"
+name = "Custom DNS/mDNS Server"
+profile = "custom"
+
+[yellow_dog_server.services]
+dns = true
+mdns = true
+dhcpv4 = false
+dhcpv6 = false
+netboot = false
+identity = false
+fingerprint = false
+server_agent = true
+```
+
+### 9.2 New `yellow_dog_netman` config shape
+
+Example: cloud server Netman.
+
+```toml
+[yellow_dog_netman]
+id = "netman-cloud-app-01"
+name = "Cloud App 01 Netman"
+profile = "cloud_server"
+
+[yellow_dog_netman.management]
+core_url = "https://core.yellowdog.example"
+
+[yellow_dog_netman.features]
+interfaces = true
+dhcp_client = true
+dns_client = true
+routes = true
+vpn = false
+
+[yellow_dog_netman.mode]
+apply = "observe_first"
+```
+
+Example: future VPN gateway profile.
+
+```toml
+[yellow_dog_netman]
+id = "netman-vpn-01"
+name = "VPN Gateway 01"
+profile = "vpn_gateway"
+
+[yellow_dog_netman.features]
+interfaces = true
+routes = true
+dns_client = true
+dhcp_client = false
+vpn = true
+
+[yellow_dog_netman.vpn]
+backend = "wireguard"
+role = "hub"
+```
+
+### 9.3 Backward compatibility
+
+Legacy config must continue to work:
+
+```toml
+[core]
+dns = true
+mdns = true
+dhcpv4 = true
+dhcpv6 = true
+netboot = false
+identity = true
+```
+
+Resolution order:
+
+```text
+1. Load TOML using existing YellowDog.Config.
+2. If [yellow_dog_server] exists, resolve server profile from it.
+3. Else fall back to legacy [core] flags.
+4. Apply explicit [yellow_dog_server.services] overrides.
+5. ServiceManager starts/stops services from resolved result.
+```
+
+## 10. Required New/Changed Apps
+
+### Add
+
+```text
+apps/yellow_dog_management_core
+apps/yellow_dog_server_agent
+apps/yellow_dog_netman_agent
+```
+
+Optional but recommended for first PR:
+
+```text
+apps/yellow_dog_sync
+```
+
+If added, `yellow_dog_sync` must contain only shared message structs/envelopes. It must not introduce a generic node domain model.
+
+### Change
+
+```text
+apps/yellow_dog
+apps/yellow_dog_config
+apps/yellow_dog_console
+apps/yellow_dog_netman
+root mix.exs
+AGENTS.md / CLAUDE.md docs if architecture table changes
+```
+
+## 11. Required Modules
+
+### Management core
+
+```text
+YellowDog.ManagementCore.Application
+YellowDog.Management.Server
+YellowDog.Management.ServerProfile
+YellowDog.Management.Netman
+YellowDog.Management.NetmanProfile
+YellowDog.Management.ConfigVersion
+YellowDog.Management.Event
+YellowDog.Management.Servers
+YellowDog.Management.Netmans
+YellowDog.Management.Profiles
+```
+
+First PR may use in-memory storage or static fixtures. Do not add database migrations yet.
+
+### Server profile
+
+```text
+YellowDog.Server.ProfileResolver
+YellowDog.Server.ServiceRegistry
+```
+
+### Netman profile
+
+```text
+YellowDog.Netman.ProfileResolver
+YellowDog.Netman.FeatureRegistry
+```
+
+### Agents
+
+```text
+YellowDog.ServerAgent
+YellowDog.ServerAgent.Supervisor
+
+YellowDog.NetmanAgent
+YellowDog.NetmanAgent.Supervisor
+```
+
+Agents in first PR can be skeletons:
+
+```text
+start_link/1
+child_spec/1
+heartbeat struct
+local status snapshot
+TODO for enrollment/sync
+```
+
+## 12. Release Changes
+
+Current root release config already contains `yellow_dog_server` and `yellow_dog_netman`. Add `yellow_dog_management_core` and keep existing releases compiling. ([GitHub][5])
+
+Target release shape:
+
+```elixir
+releases: [
+  yellow_dog_management_core: [
+    include_executables_for: [:unix],
+    applications: [
+      yellow_dog_management_core: :permanent,
+      yellow_dog_console: :permanent,
+      yellow_dog_config: :permanent,
+      yellow_dog_telemetry: :permanent
+    ]
+  ],
+
+  yellow_dog_server: [
+    include_executables_for: [:unix],
+    applications: [
+      yellow_dog: :permanent,
+      yellow_dog_config: :permanent,
+      yellow_dog_telemetry: :permanent,
+      yellow_dog_store: :permanent,
+      yellow_dog_dns: :permanent,
+      yellow_dog_mdns: :permanent,
+      yellow_dog_dhcpv4: :permanent,
+      yellow_dog_dhcpv6: :permanent,
+      yellow_dog_netboot: :permanent,
+      yellow_dog_identity: :permanent,
+      yellow_dog_fingerprint: :permanent,
+      yellow_dog_tasks: :permanent,
+      yellow_dog_server_agent: :permanent
+    ]
+  ],
+
+  yellow_dog_netman: [
+    include_executables_for: [:unix],
+    applications: [
+      yellow_dog_config: :permanent,
+      yellow_dog_telemetry: :permanent,
+      yellow_dog_dhcp_client: :permanent,
+      yellow_dog_resolved: :permanent,
+      yellow_dog_netman: :permanent,
+      yellow_dog_netman_agent: :permanent
+    ]
+  ]
+]
+```
+
+The combined `yellow_dog` release may remain for development compatibility but should not be the primary production target.
+
+## 13. Implementation Milestones
+
+### Milestone 1: Documentation and architecture guardrails
+
+Deliver:
+
+```text
+docs/architecture/yellow-dog-management-refactor.md
+Update AGENTS.md app table if new apps are added
+Update CLAUDE.md release/application table if new apps are added
+```
+
+Acceptance:
+
+```text
+Architecture doc explicitly says:
+  - only three top-level runtimes
+  - no YellowDog.Domain.Node
+  - no cloud/local server app split
+  - server and Netman are profile-driven
+```
+
+### Milestone 2: Config/profile foundation
+
+Deliver:
+
+```text
+YellowDog.Server.ProfileResolver
+YellowDog.Server.ServiceRegistry
+YellowDog.Netman.ProfileResolver
+YellowDog.Netman.FeatureRegistry
+Config support for [yellow_dog_server] and [yellow_dog_netman]
+Legacy [core] fallback preserved
+```
+
+Acceptance:
+
+```text
+cloud_dns server profile resolves to dns + server_agent only
+local_network server profile resolves to DNS/DHCP/mDNS/netboot/identity/fingerprint/server_agent
+custom server profile respects explicit service flags
+cloud_server Netman profile resolves to observe-first network features
+vpn_gateway profile resolves vpn = true but does not implement VPN
+legacy [core] tests still pass
+```
+
+### Milestone 3: Management core skeleton
+
+Deliver:
+
+```text
+apps/yellow_dog_management_core
+Concrete management structs/contexts:
+  Server
+  ServerProfile
+  Netman
+  NetmanProfile
+  ConfigVersion
+  Event
+No generic Node struct
+No DB migrations
+```
+
+Acceptance:
+
+```text
+Management contexts can list/register/update server and Netman records in memory
+Typespecs and docs describe service-node management
+No runtime service/protocol dependency required inside management_core
+```
+
+### Milestone 4: Console Management module skeleton
+
+Deliver:
+
+```text
+Management top-level nav/route
+Management overview page
+Management > Servers page
+Management > Netman page
+Management > Profiles page
+Management > Config page
+Management > Events page
+```
+
+Acceptance:
+
+```text
+Pages compile
+No direct protocol socket work
+No raw styling overrides
+Pages use management_core facade/stub data
+Existing console pages still compile
+```
+
+### Milestone 5: Agent skeletons
+
+Deliver:
+
+```text
+apps/yellow_dog_server_agent
+apps/yellow_dog_netman_agent
+Heartbeat structs
+Status snapshot functions
+Supervisors
+Release wiring
+```
+
+Acceptance:
+
+```text
+yellow_dog_server release includes server_agent
+yellow_dog_netman release includes netman_agent
+Agents do not make real network calls yet unless explicitly configured
+Agents can be disabled in test/config
+```
+
+## 14. Testing Requirements
+
+Run at minimum:
+
+```bash
+mix format --check-formatted
+mix compile --warnings-as-errors
+mix test
+```
+
+For console changes:
+
+```bash
+cd apps/yellow_dog_console
+mix test
+mix assets.build
+```
+
+For profile resolver changes:
+
+```bash
+mix test apps/yellow_dog/test/yellow_dog/server/profile_resolver_test.exs
+mix test apps/yellow_dog_netman/test/yellow_dog/netman/profile_resolver_test.exs
+```
+
+E2E protocol tests are not required for pure profile skeleton changes unless protocol service startup behavior changes. If service startup behavior changes, run targeted E2E tests:
+
+```bash
+mix test.e2e.dns
+mix test.e2e.mdns
+mix test.e2e.dhcpv4
+mix test.e2e.dhcpv6
+mix test.e2e.netboot
+```
+
+## 15. Hard Constraints
+
+```text
+1. Do not define YellowDog.Domain.Node.
+2. Do not create yellow_dog_cloud_dns.
+3. Do not create yellow_dog_local_server.
+4. Do not use raw :gen_udp outside allowed areas.
+5. Do not change protocol packet handling in this refactor.
+6. Do not make yellow_dog_netman depend on yellow_dog_store.
+7. Do not introduce database migrations in first PR.
+8. Do not break legacy [core] config.
+9. Do not remove existing yellow_dog_server or yellow_dog_netman releases.
+10. Do not make console management pages depend directly on protocol internals.
+```
+
+## 16. Definition of Done for First PR
+
+The first PR is done when:
+
+```text
+1. PRD/architecture docs are committed.
+2. New management_core app compiles.
+3. New server_agent and netman_agent skeleton apps compile.
+4. Server profile resolver exists with tests.
+5. Netman profile resolver exists with tests.
+6. Service registry replaces or wraps the hardcoded service list safely.
+7. Console has Management route/page skeletons.
+8. Root release config includes yellow_dog_management_core.
+9. Existing tests pass or failures are documented with exact causes.
+10. No generic Node abstraction was introduced.
+```

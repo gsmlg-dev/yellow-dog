@@ -28,20 +28,35 @@ defmodule YellowDog.Console.Router do
     }
 
     plug YellowDog.Console.Plugs.BasicAuth
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
   pipeline :boot do
     plug :accepts, ["html", "json", "text"]
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
   scope "/", YellowDog.Console do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  # Management section — service-node and Netman management foundation
+  scope "/management", YellowDog.Console do
+    pipe_through :browser
+
+    live "/", ManagementLive.Index, :overview
+    live "/servers", ManagementLive.Index, :servers
+    live "/netman", ManagementLive.Index, :netman
+    live "/profiles", ManagementLive.Index, :profiles
+    live "/config", ManagementLive.Index, :config
+    live "/events", ManagementLive.Index, :events
   end
 
   # Server section — protocol services, identity, fingerprint

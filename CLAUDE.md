@@ -10,18 +10,23 @@ When working on files within a specific sub-app (`apps/<app_name>/`), read that 
 
 Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0.
 
-### Two Products, Three Releases
+### Three Top-Level Runtimes
 
-The umbrella builds separate Mix releases (root `mix.exs`):
+The umbrella builds three primary YellowDog runtime releases (root `mix.exs`):
 
-- **`yellow_dog_server`** — server product: DNS, mDNS, DHCPv4/v6, netboot, identity, fingerprinting, console
-- **`yellow_dog_netman`** — client product: NetworkManager replacement (netman, dhcp_client, mdns). Does NOT include Store or Concord
-- **`yellow_dog`** — combined release with everything
+- **`yellow_dog_management_core`** — management state and console-facing management APIs
+- **`yellow_dog_server`** — profile-driven server runtime: DNS, mDNS, DHCPv4/v6, netboot, identity, fingerprinting, server agent, console
+- **`yellow_dog_netman`** — profile-driven network manager runtime (netman, dhcp_client, resolved, netman agent). Does NOT include Store, Concord, or the core server orchestrator
 
-### Applications (19 total)
+The combined **`yellow_dog`** release remains for development compatibility.
+
+### Applications
 
 | App | Location | Purpose |
 |-----|----------|---------|
+| **YellowDog.ManagementCore** | `apps/yellow_dog_management_core/` | In-memory management foundation for server/Netman records, profiles, config versions, and events |
+| **YellowDog.ServerAgent** | `apps/yellow_dog_server_agent/` | Skeleton local status/heartbeat agent for `yellow_dog_server` |
+| **YellowDog.NetmanAgent** | `apps/yellow_dog_netman_agent/` | Skeleton local status/heartbeat agent for `yellow_dog_netman` |
 | **YellowDog** | `apps/yellow_dog/` | Core: orchestration, service manager, rate limiter |
 | **YellowDog.Config** | `apps/yellow_dog_config/` | TOML config loading, schema, validation, writer |
 | **YellowDog.Store** | `apps/yellow_dog_store/` | Unified data backend: Concord (Raft KV) + ETS cache facade, domain modules (Lease, Zone, Device, Rpz, Host, Cache), GenStage event bridge |
@@ -46,8 +51,8 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ### Key Architecture Decisions
 
-- Only four apps have `Application` modules: `yellow_dog` (core — starts/manages all server-side protocol apps), `yellow_dog_netman` (separate netman release entry point), `yellow_dog_console` (Phoenix), and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Everything else is a library application
-- Services are conditionally started by `YellowDog.Application` via `service_enabled?(config, :service_name)` from TOML config
+- Runtime `Application` modules exist for `yellow_dog_management_core`, `yellow_dog`, `yellow_dog_netman`, `yellow_dog_console`, `yellow_dog_server_agent`, `yellow_dog_netman_agent`, and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Most protocol apps remain library applications started by `YellowDog.Application`
+- Server services are conditionally started by `YellowDog.Application` through `YellowDog.Server.ProfileResolver`, which supports `[yellow_dog_server]` profiles and falls back to legacy `[core]` flags
 - Infrastructure libs (abyss, ex_dns, ex_dhcp) are **in-umbrella** with shared build paths
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
 - **Store** (`yellow_dog_store`) wraps Concord (Raft-based embedded KV) behind typed facade modules. Concord is the source of truth; ETS is the always-on local read cache (write-through). See `apps/yellow_dog_store/CLAUDE.md` for the full data-flow contract
@@ -116,7 +121,7 @@ YellowDog (core: orchestration) → yellow_dog_config + yellow_dog_store + abyss
 ├── YellowDog.Netboot     → abyss + telemetry
 ├── YellowDog.Fingerprint → store + telemetry
 ├── YellowDog.Identity    → store + telemetry
-├── YellowDog.DhcpClient  → ex_dhcp + abyss + telemetry   (no store)
+├── YellowDog.DhcpClient  → config + ex_dhcp + abyss + telemetry   (no store)
 ├── YellowDog.Resolved    → abyss + ex_dns                (no store, no core)
 ├── YellowDog.Netman      → dhcp_client + resolved + ex_dhcp + telemetry (no store)
 └── YellowDogConsole      → phoenix + all service apps + store + geo_ip_db

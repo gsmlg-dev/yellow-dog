@@ -41,6 +41,7 @@ defmodule YellowDog.MixProject do
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
 
       # Development and test dependencies
+      {:yellow_dog_server_agent, in_umbrella: true, only: [:test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.0", only: [:test]}
