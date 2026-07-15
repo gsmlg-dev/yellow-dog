@@ -6,6 +6,8 @@ defmodule YellowDog.ManagementCore.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      YellowDog.Management.ManifestStore,
+      YellowDog.Management.EventStore,
       YellowDog.Management.Servers,
       YellowDog.Management.Netmans
     ]

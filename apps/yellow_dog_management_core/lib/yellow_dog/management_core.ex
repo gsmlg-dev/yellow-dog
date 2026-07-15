@@ -2,11 +2,11 @@ defmodule YellowDog.ManagementCore do
   @moduledoc """
   Public facade for YellowDog management state.
 
-  This first foundation keeps data in memory behind concrete server and Netman
-  contexts so a persistent backend can replace the storage without changing the
+  Concrete server and Netman contexts persist their state without changing the
   console-facing API.
   """
 
+  alias YellowDog.Management.EventStore
   alias YellowDog.Management.Netmans
   alias YellowDog.Management.Profiles
   alias YellowDog.Management.Servers
@@ -41,10 +41,6 @@ defmodule YellowDog.ManagementCore do
   @doc "Lists concrete Netman profiles."
   def list_netman_profiles, do: Profiles.list_netman_profiles()
 
-  @doc "Lists management events recorded by the in-memory registries."
-  def list_events do
-    [Servers.events(), Netmans.events()]
-    |> List.flatten()
-    |> Enum.sort_by(& &1.sequence)
-  end
+  @doc "Lists management events in deterministic global order."
+  def list_events, do: EventStore.list()
 end

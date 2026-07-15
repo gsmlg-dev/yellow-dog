@@ -1,23 +1,40 @@
 defmodule YellowDog.Management.Netmans do
   @moduledoc """
-  In-memory registry for concrete managed Netman instances.
+  Durable registry for concrete managed Netman instances.
   """
 
   use Agent
 
+  require Logger
+
   alias YellowDog.Management.Event
+  alias YellowDog.Management.EventStore
   alias YellowDog.Management.InputSanitizer
+  alias YellowDog.Management.ManifestStore
   alias YellowDog.Management.Netman
   alias YellowDog.Management.Profiles
+  alias YellowDog.Management.Storage.AtomicJson
+  alias YellowDog.Management.Storage.Path, as: StoragePath
 
-  @max_events 500
-  @max_records 1_000
+  @default_max_records 1_000
+  @registration_keys Enum.sort([
+                       "apply_mode",
+                       "features",
+                       "id",
+                       "last_seen_at",
+                       "metadata",
+                       "name",
+                       "profile",
+                       "registered_at",
+                       "status",
+                       "updated_at"
+                     ])
 
   @type register_attrs :: map() | keyword() | Netman.t()
 
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
-    Agent.start_link(fn -> initial_state() end, name: name)
+    Agent.start_link(fn -> load_state() end, name: name)
   end
 
   def child_spec(opts) do
@@ -27,10 +44,8 @@ defmodule YellowDog.Management.Netmans do
     }
   end
 
-  @doc "Clears the in-memory registry. Intended for focused tests."
-  def reset do
-    Agent.update(__MODULE__, fn _state -> initial_state() end)
-  end
+  @doc "Clears the in-memory registry without deleting durable manifests."
+  def reset, do: Agent.update(__MODULE__, fn _state -> %{netmans: %{}} end)
 
   @doc "Lists registered Netman instances sorted by id."
   def list do
@@ -43,9 +58,7 @@ defmodule YellowDog.Management.Netmans do
 
   @doc "Fetches a registered Netman by id."
   def get(id) do
-    Agent.get(__MODULE__, fn %{netmans: netmans} ->
-      fetch(netmans, id)
-    end)
+    Agent.get(__MODULE__, fn %{netmans: netmans} -> fetch(netmans, id) end)
   end
 
   @doc "Registers or replaces a Netman record."
@@ -54,26 +67,23 @@ defmodule YellowDog.Management.Netmans do
       Agent.get_and_update(__MODULE__, fn state ->
         existing = Map.get(state.netmans, netman.id)
 
-        if is_nil(existing) and map_size(state.netmans) >= @max_records do
+        if is_nil(existing) and map_size(state.netmans) >= max_records() do
           {{:error, :registry_full}, state}
         else
           netman = preserve_registration_time(netman, existing)
 
-          event =
-            Event.new(%{
-              source: :netman,
-              source_id: netman.id,
-              type: :netman_registered,
-              message: "Netman registered"
-            })
-
-          state = %{
-            state
-            | netmans: Map.put(state.netmans, netman.id, netman),
-              events: record_event(state.events, event)
+          event_attrs = %{
+            source: :netman,
+            source_id: netman.id,
+            type: :netman_registered,
+            message: "Netman registered"
           }
 
-          {{:ok, netman}, state}
+          with :ok <- persist_with_event(netman, event_attrs) do
+            {{:ok, netman}, %{state | netmans: Map.put(state.netmans, netman.id, netman)}}
+          else
+            {:error, _reason} = error -> {error, state}
+          end
         end
       end)
     end
@@ -88,22 +98,19 @@ defmodule YellowDog.Management.Netmans do
           status = InputSanitizer.status(status)
           updated = %{netman | status: status, last_seen_at: now, updated_at: now}
 
-          event =
-            Event.new(%{
-              source: :netman,
-              source_id: id,
-              type: :netman_status_updated,
-              message: "Netman status updated",
-              metadata: %{status: status}
-            })
-
-          state = %{
-            state
-            | netmans: Map.put(state.netmans, id, updated),
-              events: record_event(state.events, event)
+          event_attrs = %{
+            source: :netman,
+            source_id: id,
+            type: :netman_status_updated,
+            message: "Netman status updated",
+            metadata: %{status: status}
           }
 
-          {{:ok, updated}, state}
+          with :ok <- persist_with_event(updated, event_attrs) do
+            {{:ok, updated}, %{state | netmans: Map.put(state.netmans, updated.id, updated)}}
+          else
+            {:error, _reason} = error -> {error, state}
+          end
 
         :error ->
           {{:error, :not_found}, state}
@@ -111,19 +118,157 @@ defmodule YellowDog.Management.Netmans do
     end)
   end
 
-  @doc "Lists events recorded by the Netman registry."
+  @doc false
   def events do
-    Agent.get(__MODULE__, fn %{events: events} ->
-      Enum.reverse(events)
-    end)
+    EventStore.list()
+    |> Enum.filter(&(&1.source == :netman))
   end
 
-  defp initial_state, do: %{netmans: %{}, events: []}
+  defp load_state do
+    netmans =
+      with {:ok, root} <- StoragePath.root() do
+        root
+        |> Path.join("netmans/*/manifest.json")
+        |> Path.wildcard()
+        |> Enum.reduce(%{}, &load_manifest/2)
+      else
+        _error -> %{}
+      end
 
-  defp record_event(events, event) do
-    [event | events]
-    |> Enum.take(@max_events)
+    %{netmans: netmans}
   end
+
+  defp load_manifest(path, netmans) do
+    case AtomicJson.read(path) do
+      {:ok, manifest} when is_map(manifest) ->
+        case Map.fetch(manifest, "registration") do
+          {:ok, registration} -> load_registration(registration, path, netmans)
+          :error -> netmans
+        end
+
+      _invalid ->
+        malformed_manifest(path, netmans)
+    end
+  end
+
+  defp load_registration(registration, path, netmans) do
+    case from_registration(registration, path) do
+      {:ok, netman} -> Map.put(netmans, netman.id, netman)
+      :error -> malformed_manifest(path, netmans)
+    end
+  end
+
+  defp malformed_manifest(path, netmans) do
+    Logger.warning("Ignoring malformed Netman registration manifest: #{path}")
+    netmans
+  end
+
+  defp persist_with_event(netman, event_attrs) do
+    with {:ok, path} <- StoragePath.netman_manifest(netman.id),
+         {:ok, _event} <-
+           ManifestStore.update_section_with(
+             path,
+             "registration",
+             fn _current -> to_registration(netman) end,
+             fn -> EventStore.append(event_attrs) end
+           ) do
+      :ok
+    end
+  end
+
+  defp to_registration(netman) do
+    %{
+      "id" => netman.id,
+      "name" => netman.name,
+      "profile" => Atom.to_string(netman.profile),
+      "apply_mode" => encode_apply_mode(netman.apply_mode),
+      "status" => Event.encode_scalar(netman.status),
+      "features" => Map.new(netman.features, fn {key, value} -> {Atom.to_string(key), value} end),
+      "metadata" => Event.encode_metadata(netman.metadata),
+      "last_seen_at" => Event.encode_datetime(netman.last_seen_at),
+      "registered_at" => Event.encode_datetime(netman.registered_at),
+      "updated_at" => Event.encode_datetime(netman.updated_at)
+    }
+  end
+
+  defp from_registration(value, path) when is_map(value) do
+    with true <- Enum.sort(Map.keys(value)) == @registration_keys,
+         {:ok, id} <- InputSanitizer.required_string(value["id"], :id),
+         {:ok, expected_path} <- StoragePath.netman_manifest(id),
+         true <- expected_path == path,
+         {:ok, name} <- decode_name(value["name"]),
+         {:ok, profile} <- decode_profile(value["profile"]),
+         {:ok, apply_mode} <- decode_apply_mode(value["apply_mode"]),
+         {:ok, status} <- Event.decode_scalar(value["status"]),
+         true <- InputSanitizer.status(status) == status,
+         {:ok, features} <- decode_flags(value["features"], Profiles.netman_feature_keys()),
+         {:ok, metadata} <- Event.decode_metadata(value["metadata"]),
+         true <- InputSanitizer.metadata(metadata) == metadata,
+         {:ok, last_seen_at} <- Event.decode_optional_datetime(value["last_seen_at"]),
+         {:ok, registered_at} <- decode_required_datetime(value["registered_at"]),
+         {:ok, updated_at} <- decode_required_datetime(value["updated_at"]) do
+      {:ok,
+       %Netman{
+         id: id,
+         name: name,
+         profile: profile,
+         apply_mode: apply_mode,
+         status: status,
+         features: features,
+         metadata: metadata,
+         last_seen_at: last_seen_at,
+         registered_at: registered_at,
+         updated_at: updated_at
+       }}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp from_registration(_value, _path), do: :error
+
+  defp decode_name(nil), do: {:ok, nil}
+
+  defp decode_name(value) when is_binary(value) do
+    if InputSanitizer.optional_string(value) == value, do: {:ok, value}, else: :error
+  end
+
+  defp decode_name(_value), do: :error
+
+  defp decode_profile(value) when is_binary(value) do
+    case Enum.find(Profiles.list_netman_profiles(), &(Atom.to_string(&1.name) == value)) do
+      nil -> :error
+      profile -> {:ok, profile.name}
+    end
+  end
+
+  defp decode_profile(_value), do: :error
+
+  defp encode_apply_mode(nil), do: nil
+  defp encode_apply_mode(mode), do: Atom.to_string(mode)
+
+  defp decode_apply_mode(nil), do: {:ok, nil}
+  defp decode_apply_mode("managed"), do: {:ok, :managed}
+  defp decode_apply_mode("observe_first"), do: {:ok, :observe_first}
+  defp decode_apply_mode("observe"), do: {:ok, :observe}
+  defp decode_apply_mode(_mode), do: :error
+
+  defp decode_flags(value, known_keys) when is_map(value) do
+    known_by_name = Map.new(known_keys, &{Atom.to_string(&1), &1})
+
+    if Enum.all?(value, fn {key, flag} ->
+         Map.has_key?(known_by_name, key) and is_boolean(flag)
+       end) do
+      {:ok, Map.new(value, fn {key, flag} -> {Map.fetch!(known_by_name, key), flag} end)}
+    else
+      :error
+    end
+  end
+
+  defp decode_flags(_value, _known_keys), do: :error
+
+  defp decode_required_datetime(nil), do: :error
+  defp decode_required_datetime(value), do: Event.decode_optional_datetime(value)
 
   defp fetch(records, id) do
     case Map.fetch(records, id) do
@@ -217,4 +362,11 @@ defmodule YellowDog.Management.Netmans do
   end
 
   defp normalize_profile(_profile), do: :custom
+
+  defp max_records do
+    case Application.get_env(:yellow_dog_management_core, :max_netmans, @default_max_records) do
+      limit when is_integer(limit) and limit > 0 -> limit
+      _invalid -> @default_max_records
+    end
+  end
 end

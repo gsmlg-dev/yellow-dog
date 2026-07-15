@@ -2,17 +2,41 @@ defmodule YellowDog.ManagementCoreTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Management.Event
+  alias YellowDog.Management.EventStore
+  alias YellowDog.Management.ManifestStore
   alias YellowDog.Management.Netman
+  alias YellowDog.Management.Netmans
   alias YellowDog.Management.NetmanProfile
   alias YellowDog.Management.Server
+  alias YellowDog.Management.Servers
   alias YellowDog.Management.ServerProfile
   alias YellowDog.ManagementCore
 
   setup do
-    YellowDog.Management.Servers.reset()
-    YellowDog.Management.Netmans.reset()
+    previous_env =
+      Map.new([:data_dir, :max_servers, :max_netmans, :max_events], fn key ->
+        {key, Application.fetch_env(:yellow_dog_management_core, key)}
+      end)
 
-    :ok
+    data_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "yellow-dog-management-core-#{System.unique_integer([:positive])}"
+      )
+
+    Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
+    Application.delete_env(:yellow_dog_management_core, :max_servers)
+    Application.delete_env(:yellow_dog_management_core, :max_netmans)
+    Application.delete_env(:yellow_dog_management_core, :max_events)
+    restart_management_children()
+
+    on_exit(fn ->
+      Enum.each(previous_env, fn {key, value} -> restore_env(key, value) end)
+      restart_management_children()
+      File.rm_rf(data_dir)
+    end)
+
+    %{data_dir: data_dir}
   end
 
   test "registers, lists, fetches, and updates servers in memory" do
@@ -135,7 +159,11 @@ defmodule YellowDog.ManagementCoreTest do
            ] = ManagementCore.list_events()
   end
 
-  test "caps in-memory events per registry" do
+  test "returns the newest configured event slice without deleting older event files", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :max_events, 5)
+
     assert {:ok, %Server{}} =
              ManagementCore.register_server(%{
                id: "srv-capped",
@@ -143,7 +171,7 @@ defmodule YellowDog.ManagementCoreTest do
                profile: :dns_only
              })
 
-    for index <- 1..505 do
+    for index <- 1..7 do
       status_name = "status_#{index}"
 
       assert {:ok, %Server{status: status}} =
@@ -154,13 +182,19 @@ defmodule YellowDog.ManagementCoreTest do
 
     events = ManagementCore.list_events()
 
-    assert length(events) == 500
+    assert length(events) == 5
     refute Enum.any?(events, &(&1.type == :server_registered))
-    assert hd(events).metadata.status == "status_6"
+    assert hd(events).metadata.status == "status_3"
+
+    event_files = Path.wildcard(Path.join([data_dir, "management", "events", "*.json"]))
+    assert length(event_files) == 8
   end
 
-  test "caps in-memory service registries while allowing replacement" do
-    for index <- 1..1_000 do
+  test "uses configured service limits, allows replacement, and defaults invalid limits" do
+    Application.put_env(:yellow_dog_management_core, :max_servers, 2)
+    Application.put_env(:yellow_dog_management_core, :max_netmans, 2)
+
+    for index <- 1..2 do
       id = "srv-#{index}"
 
       assert {:ok, %Server{id: ^id}} =
@@ -173,8 +207,8 @@ defmodule YellowDog.ManagementCoreTest do
 
     assert {:error, :registry_full} =
              ManagementCore.register_server(%{
-               id: "srv-1001",
-               name: "Server 1001",
+               id: "srv-3",
+               name: "Server 3",
                profile: :dns_only
              })
 
@@ -185,7 +219,12 @@ defmodule YellowDog.ManagementCoreTest do
                profile: :cloud_dns
              })
 
-    for index <- 1..1_000 do
+    Application.put_env(:yellow_dog_management_core, :max_servers, 0)
+
+    assert {:ok, %Server{id: "srv-3"}} =
+             ManagementCore.register_server(%{id: "srv-3", profile: :dns_only})
+
+    for index <- 1..2 do
       id = "netman-#{index}"
 
       assert {:ok, %Netman{id: ^id}} =
@@ -198,8 +237,8 @@ defmodule YellowDog.ManagementCoreTest do
 
     assert {:error, :registry_full} =
              ManagementCore.register_netman(%{
-               id: "netman-1001",
-               name: "Netman 1001",
+               id: "netman-3",
+               name: "Netman 3",
                profile: :vm
              })
 
@@ -209,6 +248,11 @@ defmodule YellowDog.ManagementCoreTest do
                name: "Netman Replacement",
                profile: :bare_metal
              })
+
+    Application.put_env(:yellow_dog_management_core, :max_netmans, "invalid")
+
+    assert {:ok, %Netman{id: "netman-3"}} =
+             ManagementCore.register_netman(%{id: "netman-3", profile: :vm})
   end
 
   test "sanitizes concrete registry payloads before storing them" do
@@ -281,4 +325,19 @@ defmodule YellowDog.ManagementCoreTest do
   defp find_profile(profiles, name) do
     Enum.find(profiles, &(&1.name == name))
   end
+
+  defp restart_management_children do
+    Enum.each([Servers, Netmans, EventStore, ManifestStore], fn child_id ->
+      :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, child_id)
+    end)
+
+    Enum.each([ManifestStore, EventStore, Servers, Netmans], fn child_id ->
+      {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
+    end)
+  end
+
+  defp restore_env(key, {:ok, value}),
+    do: Application.put_env(:yellow_dog_management_core, key, value)
+
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
 end
