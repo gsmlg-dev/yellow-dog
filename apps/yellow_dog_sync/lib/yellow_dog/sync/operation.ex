@@ -81,10 +81,10 @@ defmodule YellowDog.Sync.Operation do
     "blobs" => "blob",
     "bytes" => "byte",
     "certs" => "cert",
-    "certificates" => "certificate"
+    "certificates" => "certificate",
+    "keys" => "key"
   }
   @private_key_prefixes MapSet.new(~w(private tls secret signing))
-  @material_compact_aliases MapSet.new(~w(privatekey tlskey secretkey signingkey pkcs12 pfx))
   @separatorless_material_roots ~w(raw payload body bodies content blob byte bytes cert certificate pem pkcs12 pfx)
   @material_reference_suffixes ~w(uri url digest hash id ref)
 
@@ -1354,7 +1354,8 @@ defmodule YellowDog.Sync.Operation do
     case parsed_setting_name(name) do
       {:ok, tokens, compact} ->
         Enum.any?(tokens, &MapSet.member?(@material_tokens, &1)) or
-          private_key_tokens?(tokens) or separatorless_material?(tokens, compact)
+          private_key_tokens?(tokens) or pkcs12_tokens?(tokens) or
+          separatorless_material?(tokens, compact)
 
       _ ->
         false
@@ -1398,8 +1399,15 @@ defmodule YellowDog.Sync.Operation do
     end)
   end
 
+  defp pkcs12_tokens?(tokens) do
+    tokens
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(&(&1 == ["pkcs", "12"]))
+  end
+
   defp separatorless_material?([_token], compact) do
-    MapSet.member?(@material_compact_aliases, compact) or
+    compact_material_root?(compact) or
+      not is_nil(separatorless_reference_suffix(compact)) or
       Enum.any?(@separatorless_material_roots, fn root ->
         String.starts_with?(compact, root) or String.ends_with?(compact, root)
       end)
@@ -1408,11 +1416,24 @@ defmodule YellowDog.Sync.Operation do
   defp separatorless_material?(_tokens, _compact), do: false
 
   defp separatorless_reference_suffix(compact) do
-    roots = @separatorless_material_roots ++ MapSet.to_list(@material_compact_aliases)
-
     Enum.find(@material_reference_suffixes, fn suffix ->
-      Enum.any?(roots, &(compact == &1 <> suffix))
+      if String.ends_with?(compact, suffix) do
+        compact
+        |> String.replace_suffix(suffix, "")
+        |> compact_material_root?()
+      else
+        false
+      end
     end)
+  end
+
+  defp compact_material_root?(compact) do
+    singular = Map.get(@material_plural_tokens, compact, compact)
+
+    MapSet.member?(@material_tokens, singular) or
+      Enum.any?(@private_key_prefixes, fn prefix ->
+        compact in [prefix <> "key", prefix <> "keys"]
+      end)
   end
 
   defp reference_form(suffix) when suffix in ["uri", "url"], do: :uri

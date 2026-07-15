@@ -1344,6 +1344,59 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "setting material grammar normalizes plural private-key and PKCS12 aliases" do
+    forbidden_names = [
+      "privateKeys",
+      "privatekeys",
+      "tls_keys",
+      "tlskeys",
+      "secretkeys",
+      "signingkeys",
+      "pkcs-12"
+    ]
+
+    for name <- forbidden_names do
+      payload = setting_payload(name, %{"type" => "string", "value" => "YWJjZA=="})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    invalid_references = [
+      setting_payload("tlskeyref", %{"type" => "string", "value" => ""}),
+      setting_payload("privatekeydigest", %{
+        "type" => "string",
+        "value" => "not-a-digest"
+      })
+    ]
+
+    for payload <- invalid_references do
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
+  test "setting material grammar validates plural compact and separated references" do
+    uri = "https://content.example.test/reference"
+
+    valid_references = [
+      {"payloadsuri", uri},
+      {"payloads_uri", uri},
+      {"payloadsUri", uri},
+      {"contentsdigest", digest()},
+      {"contents_digest", digest()},
+      {"contentsDigest", digest()},
+      {"blobsref", "blob-1"},
+      {"blobs_ref", "blob-1"},
+      {"blobsRef", "blob-1"},
+      {"certificatesuri", uri},
+      {"certificates_uri", uri},
+      {"certificatesUri", uri}
+    ]
+
+    for {name, value} <- valid_references do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+  end
+
   test "setting material grammar allows unrelated names with interior root text" do
     for name <- ["scope_mode", "type_map", "drawing_mode", "uncertainty_mode"] do
       payload = setting_payload(name, %{"type" => "string", "value" => "enabled"})
