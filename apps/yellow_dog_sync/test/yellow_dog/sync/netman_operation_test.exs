@@ -159,6 +159,11 @@ defmodule YellowDog.Sync.NetmanOperationTest do
       config_state("delivered"),
       config_state("applying"),
       config_state("applying", %{"previous_version" => 1, "previous_revision" => @revision}),
+      config_state("applying", %{
+        "version" => 9_223_372_036_854_775_807,
+        "previous_version" => 9_223_372_036_854_775_806,
+        "previous_revision" => @revision
+      }),
       config_state("applied", %{"applied_revision" => @revision}),
       config_state("applied", %{
         "applied_revision" => @revision,
@@ -166,7 +171,24 @@ defmodule YellowDog.Sync.NetmanOperationTest do
         "previous_revision" => @revision
       }),
       config_state("failed", %{
+        "failure" => %{"phase" => "delivery", "reason" => "delivery failed"}
+      }),
+      config_state("failed", %{
         "failure" => %{"phase" => "validation", "reason" => "invalid config"}
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "apply", "reason" => "first apply failed"}
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "apply", "reason" => "activation failed"},
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "restore command failed"
+        }
       }),
       config_state("failed", %{
         "previous_version" => 1,
@@ -207,8 +229,20 @@ defmodule YellowDog.Sync.NetmanOperationTest do
       config_state("delivered", %{"previous_version" => 1, "previous_revision" => @revision}),
       config_state("applying", %{"previous_version" => 1}),
       config_state("applying", %{"previous_revision" => @revision}),
+      config_state("applying", %{"previous_version" => 2, "previous_revision" => @revision}),
+      config_state("applying", %{"previous_version" => 3, "previous_revision" => @revision}),
       config_state("applied"),
       config_state("applied", %{"applied_revision" => @revision, "previous_version" => 1}),
+      config_state("applied", %{
+        "applied_revision" => @revision,
+        "previous_version" => 2,
+        "previous_revision" => @revision
+      }),
+      config_state("applied", %{
+        "applied_revision" => @revision,
+        "previous_version" => 3,
+        "previous_revision" => @revision
+      }),
       config_state("failed"),
       config_state("failed", %{
         "previous_version" => 1,
@@ -235,6 +269,64 @@ defmodule YellowDog.Sync.NetmanOperationTest do
           "restored_version" => nil,
           "restored_revision" => nil,
           "reason" => String.duplicate("x", 1_025)
+        }
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "delivery", "reason" => "delivery failed"},
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "failed"
+        }
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "validation", "reason" => "invalid"},
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 1,
+          "restored_revision" => @revision,
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "rollback", "reason" => "rollback failed"}
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "rollback", "reason" => "rollback failed"},
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 1,
+          "restored_revision" => @revision,
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "previous_version" => 2,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "apply", "reason" => "failed"},
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 2,
+          "restored_revision" => @revision,
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "previous_version" => 3,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "apply", "reason" => "failed"},
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 3,
+          "restored_revision" => @revision,
+          "reason" => nil
         }
       })
     ]

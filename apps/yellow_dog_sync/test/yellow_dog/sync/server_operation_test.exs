@@ -1980,17 +1980,35 @@ defmodule YellowDog.Sync.ServerOperationTest do
         "previous_revision" => digest()
       }),
       config_state("failed", %{
+        "failure" => %{"phase" => "delivery", "reason" => "delivery failed"}
+      }),
+      config_state("failed", %{
         "failure" => %{"phase" => "validation", "reason" => "invalid setting"}
       }),
       config_state("failed", %{
+        "failure" => %{"phase" => "apply", "reason" => "first apply failed"}
+      }),
+      config_state("failed", %{
+        "version" => 9_223_372_036_854_775_807,
         "failure" => config_failure(),
-        "previous_version" => 9_223_372_036_854_775_807,
+        "previous_version" => 9_223_372_036_854_775_806,
         "previous_revision" => digest(),
         "rollback" => %{
           "succeeded" => true,
-          "restored_version" => 9_223_372_036_854_775_807,
+          "restored_version" => 9_223_372_036_854_775_806,
           "restored_revision" => digest(),
           "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "rollback failed"
         }
       }),
       config_state("failed", %{
@@ -2020,9 +2038,21 @@ defmodule YellowDog.Sync.ServerOperationTest do
       config_state("applying", %{"previous_version" => 0, "previous_revision" => digest()}),
       config_state("applying", %{"previous_version" => 1}),
       config_state("applying", %{"previous_revision" => digest()}),
+      config_state("applying", %{"previous_version" => 2, "previous_revision" => digest()}),
+      config_state("applying", %{"previous_version" => 3, "previous_revision" => digest()}),
       config_state("applying", %{"failure" => config_failure()}),
       config_state("applied"),
       config_state("applied", %{"applied_revision" => digest(), "previous_version" => 1}),
+      config_state("applied", %{
+        "applied_revision" => digest(),
+        "previous_version" => 2,
+        "previous_revision" => digest()
+      }),
+      config_state("applied", %{
+        "applied_revision" => digest(),
+        "previous_version" => 3,
+        "previous_revision" => digest()
+      }),
       config_state("applied", %{"applied_revision" => digest(), "failure" => config_failure()}),
       config_state("failed"),
       config_state("failed", %{"applied_revision" => digest(), "failure" => config_failure()}),
@@ -2039,6 +2069,64 @@ defmodule YellowDog.Sync.ServerOperationTest do
           "restored_version" => nil,
           "restored_revision" => nil,
           "reason" => "failed"
+        }
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "delivery", "reason" => "delivery failed"},
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "failed"
+        }
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "validation", "reason" => "invalid"},
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 1,
+          "restored_revision" => digest(),
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "rollback", "reason" => "rollback failed"}
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "rollback", "reason" => "rollback failed"},
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 1,
+          "restored_revision" => digest(),
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 2,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 2,
+          "restored_revision" => digest(),
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 3,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 3,
+          "restored_revision" => digest(),
+          "reason" => nil
         }
       }),
       config_state("failed", %{

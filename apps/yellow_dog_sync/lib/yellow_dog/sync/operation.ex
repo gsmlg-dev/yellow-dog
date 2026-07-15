@@ -1812,48 +1812,68 @@ defmodule YellowDog.Sync.Operation do
        when is_binary(applied_revision),
        do: coherent_previous_pair?(state)
 
-  defp coherent_config_state?(%{
-         "state" => "failed",
+  defp coherent_config_state?(%{"state" => "failed"} = state),
+    do: coherent_failed_config_state?(state)
+
+  defp coherent_config_state?(_state), do: false
+
+  defp coherent_previous_pair?(%{
+         "version" => version,
+         "previous_version" => nil,
+         "previous_revision" => nil
+       })
+       when is_integer(version),
+       do: true
+
+  defp coherent_previous_pair?(%{
+         "version" => version,
+         "previous_version" => previous_version,
+         "previous_revision" => previous_revision
+       })
+       when is_integer(version) and is_integer(previous_version) and previous_version < version and
+              is_binary(previous_revision),
+       do: true
+
+  defp coherent_previous_pair?(_state), do: false
+
+  defp coherent_failed_config_state?(%{
          "applied_revision" => nil,
          "previous_version" => nil,
          "previous_revision" => nil,
-         "failure" => failure,
+         "failure" => %{"phase" => phase},
          "rollback" => nil
        })
-       when is_map(failure),
+       when phase in ["delivery", "validation", "apply"],
        do: true
 
-  defp coherent_config_state?(%{
-         "state" => "failed",
+  defp coherent_failed_config_state?(%{
+         "version" => version,
          "applied_revision" => nil,
          "previous_version" => previous_version,
          "previous_revision" => previous_revision,
-         "failure" => failure,
+         "failure" => %{"phase" => "apply"},
          "rollback" => rollback
        })
-       when is_integer(previous_version) and is_binary(previous_revision) and is_map(failure) and
-              is_map(rollback),
+       when is_integer(version) and is_integer(previous_version) and previous_version < version and
+              is_binary(previous_revision) and is_map(rollback),
        do:
          not rollback["succeeded"] or
            (rollback["restored_version"] == previous_version and
               rollback["restored_revision"] == previous_revision)
 
-  defp coherent_config_state?(_state), do: false
-
-  defp coherent_previous_pair?(%{
-         "previous_version" => nil,
-         "previous_revision" => nil
-       }),
-       do: true
-
-  defp coherent_previous_pair?(%{
+  defp coherent_failed_config_state?(%{
+         "version" => version,
+         "applied_revision" => nil,
          "previous_version" => previous_version,
-         "previous_revision" => previous_revision
+         "previous_revision" => previous_revision,
+         "failure" => %{"phase" => "rollback"},
+         "rollback" => %{"succeeded" => false}
        })
-       when is_integer(previous_version) and is_binary(previous_revision),
+       when is_integer(version) and is_integer(previous_version) and previous_version < version and
+              is_binary(previous_revision),
        do: true
 
-  defp coherent_previous_pair?(_state), do: false
+  defp coherent_failed_config_state?(_state), do: false
 
   defp coherent_rollback?(%{
          "succeeded" => true,

@@ -9,6 +9,18 @@ defmodule YellowDog.Sync.Envelope do
   @protocol_version 1
   @max_config_version 9_223_372_036_854_775_807
   @uuid_pattern ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+  @wire_keys [
+    "protocol_version",
+    "request_id",
+    "target_type",
+    "target_id",
+    "operation",
+    "expected_revision",
+    "idempotency_key",
+    "payload",
+    "payload_digest",
+    "sent_at"
+  ]
 
   @enforce_keys [
     :protocol_version,
@@ -67,6 +79,7 @@ defmodule YellowDog.Sync.Envelope do
   @spec from_wire(map()) :: {:ok, t()} | {:error, Error.t()}
   def from_wire(wire) when is_map(wire) do
     with {:ok, wire} <- Bounds.map(wire),
+         {:ok, wire} <- exact_wire(wire),
          {:ok, protocol_version} <-
            fetch_and_validate(wire, "protocol_version", &protocol_version/1),
          {:ok, request_id} <- fetch_and_validate(wire, "request_id", &uuid/1),
@@ -77,7 +90,8 @@ defmodule YellowDog.Sync.Envelope do
          {:ok, payload} <- fetch_and_validate(wire, "payload", &payload/1),
          {:ok, payload_digest} <- fetch_and_validate(wire, "payload_digest", &Digest.validate/1),
          :ok <- Digest.verify(payload, payload_digest),
-         {:ok, expected_revision} <- expected_revision(Map.get(wire, "expected_revision")),
+         {:ok, expected_revision} <-
+           fetch_and_validate(wire, "expected_revision", &expected_revision/1),
          {:ok, config_version} <- config_version(Map.get(wire, "config_version")),
          {:ok, sent_at} <- fetch_and_validate(wire, "sent_at", &sent_at/1) do
       {:ok,
@@ -232,6 +246,14 @@ defmodule YellowDog.Sync.Envelope do
     else
       _ -> invalid_error()
     end
+  end
+
+  defp exact_wire(wire) do
+    keys = Map.keys(wire) |> Enum.sort()
+    base_keys = Enum.sort(@wire_keys)
+    versioned_keys = Enum.sort(["config_version" | @wire_keys])
+
+    if keys in [base_keys, versioned_keys], do: {:ok, wire}, else: invalid_error()
   end
 
   defp validate_target_type(_target_type, nil), do: :ok

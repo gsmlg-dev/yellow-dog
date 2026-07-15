@@ -102,11 +102,44 @@ defmodule YellowDog.Sync.EnvelopeTest do
     assert {:ok, %Envelope{payload: ^payload}} = Envelope.decode(encoded_envelope)
   end
 
-  test "rejects missing required fields with a stable error" do
-    wire =
-      envelope(:server, "server-east-1", %{}) |> Envelope.to_wire() |> Map.delete("request_id")
+  test "direct decode rejects every missing required envelope key" do
+    wire = envelope(:server, "server-east-1", %{}) |> Envelope.to_wire()
 
-    assert_invalid(Envelope.from_wire(wire))
+    for key <- Map.keys(wire) do
+      malformed = Map.delete(wire, key)
+
+      assert_invalid(Sync.decode(Jason.encode!(malformed)))
+      assert_invalid(Envelope.from_wire(malformed))
+    end
+  end
+
+  test "direct decode rejects unknown envelope keys" do
+    base = envelope(:server, "server-east-1", %{}) |> Envelope.to_wire()
+
+    versioned =
+      envelope(:server, "server-east-1", %{},
+        operation: "server.settings.update",
+        config_version: 1
+      )
+      |> Envelope.to_wire()
+
+    for wire <- [base, versioned], key <- ["unexpected", "config_versions"] do
+      malformed = Map.put(wire, key, true)
+
+      assert_invalid(Sync.decode(Jason.encode!(malformed)))
+      assert_invalid(Envelope.from_wire(malformed))
+    end
+  end
+
+  test "direct decode accepts only the optional config version key" do
+    wire =
+      envelope(:server, "server-east-1", %{},
+        operation: "server.settings.update",
+        config_version: 1
+      )
+      |> Envelope.to_wire()
+
+    assert {:ok, %Envelope{config_version: 1}} = Sync.decode(Jason.encode!(wire))
   end
 
   test "rejects unsupported protocol versions and malformed lowercase UUIDs" do
