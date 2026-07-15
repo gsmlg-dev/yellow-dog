@@ -11,6 +11,7 @@ defmodule YellowDog.Sync.EnvelopeTest do
   @request_id "7f12c5d1-6a5d-4b2e-9a75-4a6d5d8f18c0"
   @idempotency_key "47b8f6f4-9293-4a20-9327-1a15d87fe427"
   @sent_at ~U[2026-07-16 08:30:00.123456Z]
+  @max_config_version 9_223_372_036_854_775_807
 
   test "JSON round trips a Server envelope through the typed facade" do
     envelope = envelope(:server, "server-east-1", %{"services" => ["dns", "dhcpv4"]})
@@ -42,6 +43,42 @@ defmodule YellowDog.Sync.EnvelopeTest do
 
     assert {:ok, %Envelope{target_type: :netman, expected_revision: ^expected_revision}} =
              Envelope.decode(encoded)
+  end
+
+  test "round trips positive config version boundaries" do
+    for version <- [1, @max_config_version] do
+      envelope =
+        envelope(:server, "server-east-1", %{},
+          operation: "server.settings.update",
+          config_version: version
+        )
+
+      assert Envelope.to_wire(envelope)["config_version"] == version
+      assert {:ok, encoded} = Envelope.encode(envelope)
+      assert {:ok, decoded} = Envelope.decode(encoded)
+      assert Map.fetch!(decoded, :config_version) == version
+    end
+  end
+
+  test "rejects invalid config version boundaries" do
+    for version <- [0, -1, @max_config_version + 1, "1", 1.0] do
+      envelope =
+        envelope(:server, "server-east-1", %{},
+          operation: "server.settings.update",
+          config_version: version
+        )
+
+      assert_invalid(Envelope.encode(envelope))
+      assert_invalid(Envelope.from_wire(Envelope.to_wire(envelope)))
+    end
+  end
+
+  test "omits config version when it is not present" do
+    envelope = envelope(:server, "server-east-1", %{})
+
+    refute Map.has_key?(Envelope.to_wire(envelope), "config_version")
+    assert {:ok, encoded} = Envelope.encode(envelope)
+    refute Map.has_key?(Jason.decode!(encoded), "config_version")
   end
 
   test "round trips an envelope payload at the canonical nesting limit" do
@@ -167,7 +204,7 @@ defmodule YellowDog.Sync.EnvelopeTest do
   end
 
   defp envelope(target_type, target_id, payload, overrides \\ []) do
-    %Envelope{
+    envelope = %Envelope{
       protocol_version: 1,
       request_id: Keyword.get(overrides, :request_id, @request_id),
       target_type: target_type,
@@ -179,6 +216,8 @@ defmodule YellowDog.Sync.EnvelopeTest do
       expected_revision: Keyword.get(overrides, :expected_revision),
       sent_at: Keyword.get(overrides, :sent_at, @sent_at)
     }
+
+    Map.put(envelope, :config_version, Keyword.get(overrides, :config_version))
   end
 
   defp digest(payload) do

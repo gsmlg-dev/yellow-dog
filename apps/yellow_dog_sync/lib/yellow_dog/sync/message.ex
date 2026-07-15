@@ -77,6 +77,7 @@ defmodule YellowDog.Sync.Message do
       :version,
       :digest,
       :applied_revision,
+      :previous_version,
       :previous_revision,
       :failure,
       :rollback,
@@ -425,7 +426,7 @@ defmodule YellowDog.Sync.Message do
   defp envelope_wire(_type, _envelope, _kind), do: invalid_error()
 
   defp decode_envelope(wire, kind, module) do
-    with {:ok, wire} <- exact_map(wire, @envelope_keys),
+    with {:ok, wire} <- exact_map(wire, envelope_keys(kind)),
          {:ok, envelope} <- Envelope.from_wire(wire),
          {:ok, envelope} <- Operation.validate_envelope(envelope, kind) do
       {:ok, struct!(module, envelope: envelope)}
@@ -488,6 +489,7 @@ defmodule YellowDog.Sync.Message do
       "version" => message.version,
       "digest" => message.digest,
       "applied_revision" => message.applied_revision,
+      "previous_version" => message.previous_version,
       "previous_revision" => message.previous_revision,
       "failure" => message.failure,
       "rollback" => message.rollback
@@ -505,6 +507,7 @@ defmodule YellowDog.Sync.Message do
          version: state["version"],
          digest: state["digest"],
          applied_revision: state["applied_revision"],
+         previous_version: state["previous_version"],
          previous_revision: state["previous_revision"],
          failure: state["failure"],
          rollback: state["rollback"],
@@ -514,12 +517,11 @@ defmodule YellowDog.Sync.Message do
   end
 
   defp encode_config_state(state)
-       when state in [:desired, :delivered, :applying, :applied, :failed],
+       when state in [:delivered, :applying, :applied, :failed],
        do: Atom.to_string(state)
 
   defp encode_config_state(_state), do: nil
 
-  defp decode_config_state("desired"), do: {:ok, :desired}
   defp decode_config_state("delivered"), do: {:ok, :delivered}
   defp decode_config_state("applying"), do: {:ok, :applying}
   defp decode_config_state("applied"), do: {:ok, :applied}
@@ -619,6 +621,9 @@ defmodule YellowDog.Sync.Message do
   end
 
   defp exact_map(_value, _keys), do: invalid_error()
+
+  defp envelope_keys(:config), do: ["config_version" | @envelope_keys]
+  defp envelope_keys(kind) when kind in [:query, :command], do: @envelope_keys
 
   defp target_type(value) do
     with {:ok, target_type} <- target_type_atom(value) do

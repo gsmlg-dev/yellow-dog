@@ -155,6 +155,7 @@ defmodule YellowDog.Sync.Operation do
           {:ok, Envelope.t()} | {:error, Error.t()}
   def validate_envelope(%Envelope{} = envelope, kind) do
     with {:ok, _encoded} <- Envelope.encode(envelope),
+         :ok <- validate_config_version(envelope.config_version, kind),
          {:ok, _payload} <-
            validate_payload(envelope.operation, envelope.target_type, kind, envelope.payload) do
       {:ok, envelope}
@@ -438,10 +439,11 @@ defmodule YellowDog.Sync.Operation do
 
   defp config_state_shape do
     object(%{
-      "state" => enum(["desired", "delivered", "applying", "applied", "failed"]),
-      "version" => :id,
+      "state" => enum(["delivered", "applying", "applied", "failed"]),
+      "version" => positive_integer(),
       "digest" => :digest,
       "applied_revision" => nullable(:digest),
+      "previous_version" => nullable(positive_integer()),
       "previous_revision" => nullable(:digest),
       "failure" => nullable(config_failure()),
       "rollback" => nullable(rollback_result())
@@ -1085,6 +1087,7 @@ defmodule YellowDog.Sync.Operation do
     shape =
       object(%{
         "succeeded" => :boolean,
+        "restored_version" => nullable(positive_integer()),
         "restored_revision" => nullable(:digest),
         "reason" => nullable(:nonempty_text)
       })
@@ -1501,6 +1504,14 @@ defmodule YellowDog.Sync.Operation do
       ])
 
   defp nonnegative_integer, do: {:integer, 0, @max_integer}
+  defp positive_integer, do: {:integer, 1, @max_integer}
+
+  defp validate_config_version(version, :config)
+       when is_integer(version) and version >= 1 and version <= @max_integer,
+       do: :ok
+
+  defp validate_config_version(nil, kind) when kind in [:query, :command], do: :ok
+  defp validate_config_version(_version, _kind), do: invalid_error()
 
   defp validate_bounded(value, validator) do
     case validator.(value) do
@@ -1771,27 +1782,40 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp coherent_config_state?(%{
-         "state" => state,
+         "state" => "delivered",
          "applied_revision" => nil,
+         "previous_version" => nil,
          "previous_revision" => nil,
          "failure" => nil,
          "rollback" => nil
-       })
-       when state in ["desired", "delivered", "applying"],
+       }),
        do: true
 
-  defp coherent_config_state?(%{
-         "state" => "applied",
-         "applied_revision" => applied_revision,
-         "failure" => nil,
-         "rollback" => nil
-       })
+  defp coherent_config_state?(
+         %{
+           "state" => "applying",
+           "applied_revision" => nil,
+           "failure" => nil,
+           "rollback" => nil
+         } = state
+       ),
+       do: coherent_previous_pair?(state)
+
+  defp coherent_config_state?(
+         %{
+           "state" => "applied",
+           "applied_revision" => applied_revision,
+           "failure" => nil,
+           "rollback" => nil
+         } = state
+       )
        when is_binary(applied_revision),
-       do: true
+       do: coherent_previous_pair?(state)
 
   defp coherent_config_state?(%{
          "state" => "failed",
          "applied_revision" => nil,
+         "previous_version" => nil,
          "previous_revision" => nil,
          "failure" => failure,
          "rollback" => nil
@@ -1802,25 +1826,47 @@ defmodule YellowDog.Sync.Operation do
   defp coherent_config_state?(%{
          "state" => "failed",
          "applied_revision" => nil,
+         "previous_version" => previous_version,
          "previous_revision" => previous_revision,
          "failure" => failure,
          "rollback" => rollback
        })
-       when is_binary(previous_revision) and is_map(failure) and is_map(rollback),
-       do: not rollback["succeeded"] or rollback["restored_revision"] == previous_revision
+       when is_integer(previous_version) and is_binary(previous_revision) and is_map(failure) and
+              is_map(rollback),
+       do:
+         not rollback["succeeded"] or
+           (rollback["restored_version"] == previous_version and
+              rollback["restored_revision"] == previous_revision)
 
   defp coherent_config_state?(_state), do: false
 
+  defp coherent_previous_pair?(%{
+         "previous_version" => nil,
+         "previous_revision" => nil
+       }),
+       do: true
+
+  defp coherent_previous_pair?(%{
+         "previous_version" => previous_version,
+         "previous_revision" => previous_revision
+       })
+       when is_integer(previous_version) and is_binary(previous_revision),
+       do: true
+
+  defp coherent_previous_pair?(_state), do: false
+
   defp coherent_rollback?(%{
          "succeeded" => true,
+         "restored_version" => restored_version,
          "restored_revision" => restored_revision,
          "reason" => nil
        })
-       when is_binary(restored_revision),
+       when is_integer(restored_version) and is_binary(restored_revision),
        do: true
 
   defp coherent_rollback?(%{
          "succeeded" => false,
+         "restored_version" => nil,
          "restored_revision" => nil,
          "reason" => reason
        })

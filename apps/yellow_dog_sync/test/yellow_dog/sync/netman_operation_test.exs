@@ -154,6 +154,114 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     end
   end
 
+  test "config state enforces the full Netman lifecycle matrix" do
+    accepted = [
+      config_state("delivered"),
+      config_state("applying"),
+      config_state("applying", %{"previous_version" => 1, "previous_revision" => @revision}),
+      config_state("applied", %{"applied_revision" => @revision}),
+      config_state("applied", %{
+        "applied_revision" => @revision,
+        "previous_version" => 1,
+        "previous_revision" => @revision
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "validation", "reason" => "invalid config"}
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "apply", "reason" => "activation failed"},
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 1,
+          "restored_revision" => @revision,
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "rollback", "reason" => "rollback failed"},
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "restore command failed"
+        }
+      })
+    ]
+
+    for state <- accepted do
+      assert {:ok, ^state} =
+               Operation.validate_result(
+                 "netman.resolved.config.update",
+                 :netman,
+                 :config,
+                 state
+               )
+    end
+
+    rejected = [
+      config_state("desired"),
+      config_state("delivered", %{"previous_version" => 1, "previous_revision" => @revision}),
+      config_state("applying", %{"previous_version" => 1}),
+      config_state("applying", %{"previous_revision" => @revision}),
+      config_state("applied"),
+      config_state("applied", %{"applied_revision" => @revision, "previous_version" => 1}),
+      config_state("failed"),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "apply", "reason" => "failed"}
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "apply", "reason" => "failed"},
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 2,
+          "restored_revision" => @revision,
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "previous_version" => 1,
+        "previous_revision" => @revision,
+        "failure" => %{"phase" => "rollback", "reason" => "failed"},
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => String.duplicate("x", 1_025)
+        }
+      })
+    ]
+
+    for state <- rejected do
+      assert_invalid(
+        Operation.validate_result(
+          "netman.resolved.config.update",
+          :netman,
+          :config,
+          state
+        )
+      )
+    end
+
+    for invalid_version <- ["version-1", 0, -1, 9_223_372_036_854_775_808] do
+      assert_invalid(
+        Operation.validate_result(
+          "netman.resolved.config.update",
+          :netman,
+          :config,
+          config_state("delivered", %{"version" => invalid_version})
+        )
+      )
+    end
+  end
+
   defp valid(schema) do
     case schema do
       :empty ->
@@ -366,16 +474,20 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     %{"items" => [item], "revision" => @revision, "observed_at" => @observed_at}
   end
 
-  defp config_state do
-    %{
-      "state" => "desired",
-      "version" => "version-1",
-      "digest" => @revision,
-      "applied_revision" => nil,
-      "previous_revision" => nil,
-      "failure" => nil,
-      "rollback" => nil
-    }
+  defp config_state(state \\ "delivered", overrides \\ %{}) do
+    Map.merge(
+      %{
+        "state" => state,
+        "version" => 2,
+        "digest" => @revision,
+        "applied_revision" => nil,
+        "previous_version" => nil,
+        "previous_revision" => nil,
+        "failure" => nil,
+        "rollback" => nil
+      },
+      overrides
+    )
   end
 
   defp assert_invalid(result) do

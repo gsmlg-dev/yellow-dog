@@ -7,6 +7,7 @@ defmodule YellowDog.Sync.Envelope do
   alias YellowDog.Sync.Error
 
   @protocol_version 1
+  @max_config_version 9_223_372_036_854_775_807
   @uuid_pattern ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
 
   @enforce_keys [
@@ -20,7 +21,7 @@ defmodule YellowDog.Sync.Envelope do
     :payload_digest,
     :sent_at
   ]
-  defstruct @enforce_keys ++ [expected_revision: nil]
+  defstruct @enforce_keys ++ [expected_revision: nil, config_version: nil]
 
   @type target_type :: :server | :netman
 
@@ -34,6 +35,7 @@ defmodule YellowDog.Sync.Envelope do
           payload: term(),
           payload_digest: String.t(),
           expected_revision: String.t() | nil,
+          config_version: pos_integer() | nil,
           sent_at: DateTime.t()
         }
 
@@ -76,6 +78,7 @@ defmodule YellowDog.Sync.Envelope do
          {:ok, payload_digest} <- fetch_and_validate(wire, "payload_digest", &Digest.validate/1),
          :ok <- Digest.verify(payload, payload_digest),
          {:ok, expected_revision} <- expected_revision(Map.get(wire, "expected_revision")),
+         {:ok, config_version} <- config_version(Map.get(wire, "config_version")),
          {:ok, sent_at} <- fetch_and_validate(wire, "sent_at", &sent_at/1) do
       {:ok,
        %__MODULE__{
@@ -88,6 +91,7 @@ defmodule YellowDog.Sync.Envelope do
          payload: payload,
          payload_digest: payload_digest,
          expected_revision: expected_revision,
+         config_version: config_version,
          sent_at: sent_at
        }}
     else
@@ -99,7 +103,7 @@ defmodule YellowDog.Sync.Envelope do
 
   @spec to_wire(t()) :: map()
   def to_wire(%__MODULE__{} = envelope) do
-    %{
+    wire = %{
       "protocol_version" => envelope.protocol_version,
       "request_id" => envelope.request_id,
       "target_type" => Atom.to_string(envelope.target_type),
@@ -111,6 +115,12 @@ defmodule YellowDog.Sync.Envelope do
       "payload_digest" => envelope.payload_digest,
       "sent_at" => DateTime.to_iso8601(envelope.sent_at)
     }
+
+    if is_nil(envelope.config_version) do
+      wire
+    else
+      Map.put(wire, "config_version", envelope.config_version)
+    end
   end
 
   defp validate(envelope) do
@@ -124,6 +134,7 @@ defmodule YellowDog.Sync.Envelope do
          {:ok, payload_digest} <- Digest.validate(envelope.payload_digest),
          :ok <- Digest.verify(payload, payload_digest),
          {:ok, expected_revision} <- expected_revision(envelope.expected_revision),
+         {:ok, config_version} <- config_version(envelope.config_version),
          {:ok, sent_at} <- sent_at(envelope.sent_at) do
       {:ok,
        %__MODULE__{
@@ -136,6 +147,7 @@ defmodule YellowDog.Sync.Envelope do
          payload: payload,
          payload_digest: payload_digest,
          expected_revision: expected_revision,
+         config_version: config_version,
          sent_at: sent_at
        }}
     else
@@ -190,6 +202,14 @@ defmodule YellowDog.Sync.Envelope do
 
   defp expected_revision(nil), do: {:ok, nil}
   defp expected_revision(value), do: Digest.validate(value)
+
+  defp config_version(nil), do: {:ok, nil}
+
+  defp config_version(value)
+       when is_integer(value) and value >= 1 and value <= @max_config_version,
+       do: {:ok, value}
+
+  defp config_version(_value), do: invalid_error()
 
   defp sent_at(%DateTime{utc_offset: 0, std_offset: 0} = value), do: {:ok, value}
   defp sent_at(%DateTime{}), do: invalid_error()

@@ -686,9 +686,10 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
   defp config_state do
     %{
       "state" => "applied",
-      "version" => "version-1",
+      "version" => 1,
       "digest" => @revision,
       "applied_revision" => @revision,
+      "previous_version" => nil,
       "previous_revision" => nil,
       "failure" => nil,
       "rollback" => nil
@@ -1968,22 +1969,37 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
   test "config state enforces the lifecycle matrix" do
     accepted = [
-      config_state("desired"),
       config_state("delivered"),
+      config_state("delivered", %{"version" => 9_223_372_036_854_775_807}),
       config_state("applying"),
+      config_state("applying", %{"previous_version" => 1, "previous_revision" => digest()}),
       config_state("applied", %{"applied_revision" => digest()}),
-      config_state("applied", %{"applied_revision" => digest(), "previous_revision" => digest()}),
-      config_state("failed", %{"failure" => config_failure()}),
+      config_state("applied", %{
+        "applied_revision" => digest(),
+        "previous_version" => 1,
+        "previous_revision" => digest()
+      }),
       config_state("failed", %{
-        "failure" => config_failure(),
-        "previous_revision" => digest(),
-        "rollback" => %{"succeeded" => true, "restored_revision" => digest(), "reason" => nil}
+        "failure" => %{"phase" => "validation", "reason" => "invalid setting"}
       }),
       config_state("failed", %{
         "failure" => config_failure(),
+        "previous_version" => 9_223_372_036_854_775_807,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 9_223_372_036_854_775_807,
+          "restored_revision" => digest(),
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => %{"phase" => "rollback", "reason" => "rollback failed"},
+        "previous_version" => 1,
         "previous_revision" => digest(),
         "rollback" => %{
           "succeeded" => false,
+          "restored_version" => nil,
           "restored_revision" => nil,
           "reason" => "rollback failed"
         }
@@ -1992,28 +2008,81 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
     for state <- accepted do
       assert {:ok, ^state} = Operation.validate_schema(:config_state, state)
+
+      assert {:ok, ^state} =
+               Operation.validate_result("server.settings.update", :server, :config, state)
     end
 
     contradictory = [
-      config_state("desired", %{"failure" => config_failure()}),
+      config_state("desired"),
       config_state("delivered", %{"applied_revision" => digest()}),
+      config_state("delivered", %{"previous_version" => 1, "previous_revision" => digest()}),
+      config_state("applying", %{"previous_version" => 0, "previous_revision" => digest()}),
+      config_state("applying", %{"previous_version" => 1}),
       config_state("applying", %{"previous_revision" => digest()}),
+      config_state("applying", %{"failure" => config_failure()}),
       config_state("applied"),
+      config_state("applied", %{"applied_revision" => digest(), "previous_version" => 1}),
       config_state("applied", %{"applied_revision" => digest(), "failure" => config_failure()}),
       config_state("failed"),
       config_state("failed", %{"applied_revision" => digest(), "failure" => config_failure()}),
       config_state("failed", %{"failure" => config_failure(), "previous_revision" => digest()}),
       config_state("failed", %{
         "failure" => config_failure(),
-        "rollback" => %{"succeeded" => false, "restored_revision" => nil, "reason" => "failed"}
+        "previous_version" => 1,
+        "previous_revision" => digest()
       }),
       config_state("failed", %{
         "failure" => config_failure(),
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "failed"
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 1,
         "previous_revision" => digest(),
         "rollback" => %{
           "succeeded" => true,
+          "restored_version" => 0,
+          "restored_revision" => digest(),
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 2,
+          "restored_revision" => digest(),
+          "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_version" => 1,
           "restored_revision" => String.duplicate("b", 64),
           "reason" => nil
+        }
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_version" => 1,
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_version" => 1,
+          "restored_revision" => nil,
+          "reason" => "failed"
         }
       })
     ]
@@ -2021,6 +2090,31 @@ defmodule YellowDog.Sync.ServerOperationTest do
     for state <- contradictory do
       assert_invalid(Operation.validate_schema(:config_state, state))
     end
+
+    for invalid_version <- ["version-1", 0, -1, 9_223_372_036_854_775_808] do
+      assert_invalid(
+        Operation.validate_result(
+          "server.settings.update",
+          :server,
+          :config,
+          config_state("delivered", %{"version" => invalid_version})
+        )
+      )
+    end
+
+    assert_invalid(
+      Operation.validate_result(
+        "server.settings.update",
+        :server,
+        :config,
+        config_state("failed", %{
+          "failure" => %{
+            "phase" => "validation",
+            "reason" => String.duplicate("x", 1_025)
+          }
+        })
+      )
+    )
   end
 
   test "DNS zone import accepts exactly one strict source" do
@@ -2116,9 +2210,10 @@ defmodule YellowDog.Sync.ServerOperationTest do
     Map.merge(
       %{
         "state" => state,
-        "version" => "version-1",
+        "version" => 2,
         "digest" => digest(),
         "applied_revision" => nil,
+        "previous_version" => nil,
         "previous_revision" => nil,
         "failure" => nil,
         "rollback" => nil

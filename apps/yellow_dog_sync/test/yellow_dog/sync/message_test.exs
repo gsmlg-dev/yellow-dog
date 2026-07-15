@@ -59,9 +59,10 @@ defmodule YellowDog.Sync.MessageTest do
       target_id: "server-1",
       operation: "server.settings.update",
       state: :applied,
-      version: "version-1",
+      version: 1,
       digest: String.duplicate("a", 64),
       applied_revision: String.duplicate("b", 64),
+      previous_version: nil,
       previous_revision: nil,
       failure: nil,
       rollback: nil,
@@ -110,7 +111,7 @@ defmodule YellowDog.Sync.MessageTest do
 
         %ConfigDelivery{} ->
           %ConfigDelivery{
-            envelope: envelope("server.settings.update", settings_config())
+            envelope: envelope("server.settings.update", settings_config(), config_version: 1)
           }
 
         message ->
@@ -136,6 +137,53 @@ defmodule YellowDog.Sync.MessageTest do
     assert_invalid(Message.encode(%ConfigDelivery{envelope: command_as_config}))
   end
 
+  test "config delivery requires a positive config version" do
+    missing = envelope("server.settings.update", settings_config())
+
+    assert_invalid(Message.encode(%ConfigDelivery{envelope: missing}))
+
+    assert_invalid(
+      Message.decode(
+        Jason.encode!(%{"type" => "config_delivery", "payload" => Envelope.to_wire(missing)})
+      )
+    )
+
+    for version <- [1, 9_223_372_036_854_775_807] do
+      envelope =
+        envelope("server.settings.update", settings_config(), config_version: version)
+
+      message = %ConfigDelivery{envelope: envelope}
+      assert {:ok, encoded} = Message.encode(message)
+      assert get_in(Jason.decode!(encoded), ["payload", "config_version"]) == version
+      assert {:ok, ^message} = Message.decode(encoded)
+    end
+  end
+
+  test "query and command envelope encodings remain unchanged" do
+    messages = [
+      %Query{envelope: envelope("server.runtime.services.list", %{})},
+      %Command{
+        envelope: envelope("server.runtime.services.start", %{"service" => "dns"})
+      }
+    ]
+
+    for message <- messages do
+      assert {:ok, encoded} = Message.encode(message)
+      refute get_in(Jason.decode!(encoded), ["payload"]) |> Map.has_key?("config_version")
+    end
+
+    versioned_query =
+      envelope("server.runtime.services.list", %{}, config_version: 1)
+
+    assert_invalid(Message.encode(%Query{envelope: versioned_query}))
+
+    assert_invalid(
+      Message.decode(
+        Jason.encode!(%{"type" => "query", "payload" => Envelope.to_wire(versioned_query)})
+      )
+    )
+  end
+
   test "message boundaries revalidate the complete envelope" do
     envelope = %{
       envelope("server.runtime.services.list", %{})
@@ -157,7 +205,7 @@ defmodule YellowDog.Sync.MessageTest do
 
   test "message wrapper preserves an envelope payload at the reviewed depth limit" do
     payload = depth_limit_payload()
-    envelope = envelope("server.settings.update", payload)
+    envelope = envelope("server.settings.update", payload, config_version: 1)
 
     assert {:ok, _encoded_envelope} = Envelope.encode(envelope)
     assert {:ok, encoded_message} = Message.encode(%ConfigDelivery{envelope: envelope})
@@ -234,7 +282,7 @@ defmodule YellowDog.Sync.MessageTest do
 
     for entry <- invalid_entries do
       payload = %{"service" => "dns", "entries" => [entry]}
-      envelope = envelope("server.settings.update", payload)
+      envelope = envelope("server.settings.update", payload, config_version: 1)
       message = %ConfigDelivery{envelope: envelope}
       wire = %{"type" => "config_delivery", "payload" => Envelope.to_wire(envelope)}
 
@@ -276,6 +324,7 @@ defmodule YellowDog.Sync.MessageTest do
       version: "version-1",
       digest: String.duplicate("a", 64),
       applied_revision: nil,
+      previous_version: nil,
       previous_revision: nil,
       failure: nil,
       rollback: nil,
@@ -303,6 +352,38 @@ defmodule YellowDog.Sync.MessageTest do
 
     assert_invalid(Message.encode(state))
     assert_invalid(Message.decode(Jason.encode!(wire)))
+  end
+
+  test "round trips the complete Server and Netman config state matrix" do
+    for {target_type, operation} <- [
+          {:server, "server.settings.update"},
+          {:netman, "netman.resolved.config.update"}
+        ],
+        attrs <- valid_config_states() do
+      message = config_state_message(target_type, operation, attrs)
+
+      assert {:ok, encoded} = Message.encode(message)
+      assert {:ok, ^message} = Message.decode(encoded)
+    end
+  end
+
+  test "rejects desired config state acknowledgements" do
+    legacy_desired = %ConfigState{
+      target_type: :server,
+      target_id: "server-1",
+      operation: "server.settings.update",
+      state: :desired,
+      version: 1,
+      digest: String.duplicate("a", 64),
+      applied_revision: nil,
+      previous_version: nil,
+      previous_revision: nil,
+      failure: nil,
+      rollback: nil,
+      observed_at: @sent_at
+    }
+
+    assert_invalid(Message.encode(legacy_desired))
   end
 
   test "invalid operation results and journal values cannot cross the message boundary" do
@@ -420,7 +501,7 @@ defmodule YellowDog.Sync.MessageTest do
   defp envelope(operation, payload, overrides \\ []) do
     target_type = Keyword.get(overrides, :target_type, :server)
 
-    %Envelope{
+    envelope = %Envelope{
       protocol_version: 1,
       request_id: @request_id,
       target_type: target_type,
@@ -432,6 +513,69 @@ defmodule YellowDog.Sync.MessageTest do
       expected_revision: nil,
       sent_at: @sent_at
     }
+
+    Map.put(envelope, :config_version, Keyword.get(overrides, :config_version))
+  end
+
+  defp valid_config_states do
+    revision = String.duplicate("b", 64)
+
+    [
+      %{state: :delivered},
+      %{state: :applying},
+      %{state: :applying, previous_version: 1, previous_revision: revision},
+      %{state: :applied, applied_revision: revision},
+      %{
+        state: :applied,
+        applied_revision: revision,
+        previous_version: 1,
+        previous_revision: revision
+      },
+      %{state: :failed, failure: %{"phase" => "validation", "reason" => "invalid config"}},
+      %{
+        state: :failed,
+        previous_version: 1,
+        previous_revision: revision,
+        failure: %{"phase" => "apply", "reason" => "activation failed"},
+        rollback: %{
+          "succeeded" => true,
+          "restored_version" => 1,
+          "restored_revision" => revision,
+          "reason" => nil
+        }
+      },
+      %{
+        state: :failed,
+        previous_version: 1,
+        previous_revision: revision,
+        failure: %{"phase" => "rollback", "reason" => "rollback failed"},
+        rollback: %{
+          "succeeded" => false,
+          "restored_version" => nil,
+          "restored_revision" => nil,
+          "reason" => "restore command failed"
+        }
+      }
+    ]
+  end
+
+  defp config_state_message(target_type, operation, attrs) do
+    message = %ConfigState{
+      target_type: target_type,
+      target_id: if(target_type == :server, do: "server-1", else: "netman-1"),
+      operation: operation,
+      state: Map.fetch!(attrs, :state),
+      version: 2,
+      digest: String.duplicate("a", 64),
+      applied_revision: Map.get(attrs, :applied_revision),
+      previous_version: Map.get(attrs, :previous_version),
+      previous_revision: Map.get(attrs, :previous_revision),
+      failure: Map.get(attrs, :failure),
+      rollback: Map.get(attrs, :rollback),
+      observed_at: @sent_at
+    }
+
+    message
   end
 
   defp digest(payload) do
