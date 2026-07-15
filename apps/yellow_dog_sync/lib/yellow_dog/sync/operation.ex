@@ -88,7 +88,9 @@ defmodule YellowDog.Sync.Operation do
   }
   @private_key_prefixes MapSet.new(~w(private tls secret signing))
   @separatorless_material_roots ~w(raw payload body bodies content blob byte bytes cert certificate pem pkcs12 pfx)
-  @material_reference_suffixes ~w(reference digest hash uri url ref id)
+  @material_reference_suffixes ~w(digest hash uri url ref id)
+  @glued_reference_suffixes ~w(reference digest hash uri url ref id)
+  @canonical_setting_key ~r/\A[a-z][a-z0-9]*(?:_[a-z0-9]+)*\z/
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
@@ -1296,13 +1298,12 @@ defmodule YellowDog.Sync.Operation do
 
   defp safe_setting_name?(name) do
     with {:ok, name} <- Bounds.message(name),
-         {:ok, normalized} <- normalize_unicode(name),
-         true <- printable_setting_text?(normalized),
-         canonical <- normalize_transport_name(normalized),
+         true <- Regex.match?(@canonical_setting_key, name),
+         canonical <- normalize_transport_name(name),
          true <- canonical != "",
          false <- Enum.any?(@forbidden_setting_phrases, &String.contains?(canonical, &1)),
-         true <- safe_setting_tokens?(normalized) do
-      normalized
+         true <- safe_setting_tokens?(name) do
+      name
       |> setting_name_tokens()
       |> Enum.all?(&(not MapSet.member?(@forbidden_setting_tokens, &1)))
     else
@@ -1311,19 +1312,9 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp setting_name_tokens(name) do
-    case normalize_unicode(name) do
-      {:ok, normalized} ->
-        normalized
-        |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
-        |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
-        |> String.downcase()
-        |> String.split(~r/[^a-z0-9]+/u, trim: true)
-        |> Enum.map(&normalize_material_token/1)
-        |> normalize_material_tokens()
-
-      _ ->
-        []
-    end
+    name
+    |> String.split("_")
+    |> Enum.map(&normalize_material_token/1)
   end
 
   defp safe_setting_tokens?(name) do
@@ -1363,16 +1354,16 @@ defmodule YellowDog.Sync.Operation do
   defp safe_material_setting_value?(_reference_form, _value), do: false
 
   defp parsed_setting_name(name) do
-    with {:ok, normalized} <- normalize_unicode(name),
-         [_ | _] = tokens <- setting_name_tokens(normalized) do
-      {base_tokens, suffix} = split_setting_reference(tokens)
-
+    with true <- is_binary(name) and Regex.match?(@canonical_setting_key, name),
+         [_ | _] = tokens <- setting_name_tokens(name),
+         {:ok, base_tokens, suffix} <-
+           split_setting_reference(tokens, not String.contains?(name, "_")) do
       {:ok,
        %{
          base: Enum.join(base_tokens),
          base_tokens: base_tokens,
          reference_form: reference_form(suffix),
-         separatorless?: Regex.match?(~r/\A[a-z0-9]+\z/i, normalized),
+         separatorless?: not String.contains?(name, "_"),
          tokens: tokens
        }}
     else
@@ -1380,45 +1371,48 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
-  defp split_setting_reference(tokens) do
+  defp split_setting_reference(tokens, separatorless?) do
     case List.pop_at(tokens, -1) do
       {suffix, base_tokens} when suffix in @material_reference_suffixes ->
-        {base_tokens, suffix}
-
-      {compact, []} ->
-        split_compact_reference(compact)
+        {:ok, base_tokens, suffix}
 
       _ ->
-        {tokens, nil}
+        if glued_reference_suffix?(tokens, separatorless?) do
+          :error
+        else
+          {:ok, tokens, nil}
+        end
     end
   end
 
-  defp split_compact_reference(compact) do
-    case Enum.find(@material_reference_suffixes, &String.ends_with?(compact, &1)) do
-      nil ->
-        {[compact], nil}
+  defp glued_reference_suffix?(tokens, separatorless?) do
+    case List.pop_at(tokens, -1) do
+      {last, prefix} ->
+        Enum.any?(@glued_reference_suffixes, fn suffix ->
+          if last != suffix and String.ends_with?(last, suffix) do
+            stem = last |> String.replace_suffix(suffix, "") |> normalize_material_token()
+            stem != "" and material_tokens?(prefix ++ [stem], separatorless?)
+          else
+            false
+          end
+        end)
 
-      suffix ->
-        base = compact |> String.replace_suffix(suffix, "") |> normalize_material_token()
-        {[base], suffix}
+      _ ->
+        false
     end
   end
 
   defp normalize_material_token(token), do: Map.get(@material_plural_tokens, token, token)
 
-  defp normalize_material_tokens(["pkcs", "12" | rest]),
-    do: ["pkcs12" | normalize_material_tokens(rest)]
-
-  defp normalize_material_tokens([token | rest]),
-    do: [token | normalize_material_tokens(rest)]
-
-  defp normalize_material_tokens([]), do: []
-
   defp material_setting?(parsed) do
-    Enum.any?(parsed.base_tokens, &MapSet.member?(@material_tokens, &1)) or
-      private_key_tokens?(parsed.base_tokens) or
-      Enum.any?(parsed.base_tokens, &compact_material_base?/1) or
-      (parsed.separatorless? and compact_material_base?(parsed.base))
+    material_tokens?(parsed.base_tokens, parsed.separatorless?)
+  end
+
+  defp material_tokens?(tokens, separatorless?) do
+    Enum.any?(tokens, &MapSet.member?(@material_tokens, &1)) or
+      private_key_tokens?(tokens) or
+      Enum.any?(tokens, &compact_material_base?/1) or
+      (separatorless? and compact_material_base?(Enum.join(tokens)))
   end
 
   defp private_key_tokens?(tokens) do
@@ -1447,7 +1441,7 @@ defmodule YellowDog.Sync.Operation do
 
   defp reference_form(suffix) when suffix in ["uri", "url"], do: :uri
   defp reference_form(suffix) when suffix in ["digest", "hash"], do: :digest
-  defp reference_form(suffix) when suffix in ["id", "ref", "reference"], do: :id
+  defp reference_form(suffix) when suffix in ["id", "ref"], do: :id
   defp reference_form(_suffix), do: nil
 
   defp valid_material_reference?(:uri, value), do: validate_provider_endpoint(value) == :ok

@@ -1290,11 +1290,6 @@ defmodule YellowDog.Sync.ServerOperationTest do
         "value" => "https://ca.example.test/certificate"
       }),
       setting_payload("payload_digest", %{"type" => "string", "value" => digest()}),
-      setting_payload("blobdigest", %{"type" => "string", "value" => digest()}),
-      setting_payload("contenturi", %{
-        "type" => "string",
-        "value" => "https://content.example.test/reference"
-      }),
       setting_payload("blob_ref", %{"type" => "string", "value" => "blob-1"})
     ]
 
@@ -1319,6 +1314,18 @@ defmodule YellowDog.Sync.ServerOperationTest do
     ]
 
     for payload <- invalid_references do
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    noncanonical_references = [
+      setting_payload("blobdigest", %{"type" => "string", "value" => digest()}),
+      setting_payload("contenturi", %{
+        "type" => "string",
+        "value" => "https://content.example.test/reference"
+      })
+    ]
+
+    for payload <- noncanonical_references do
       assert_invalid(Operation.validate_schema(:server_settings_config, payload))
     end
   end
@@ -1373,31 +1380,37 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
-  test "setting material grammar validates plural compact and separated references" do
+  test "setting material grammar accepts canonical plural references only" do
     uri = "https://content.example.test/reference"
 
     valid_references = [
-      {"payloadsuri", uri},
       {"payloads_uri", uri},
-      {"payloadsUri", uri},
-      {"contentsdigest", digest()},
       {"contents_digest", digest()},
-      {"contentsDigest", digest()},
-      {"blobsref", "blob-1"},
       {"blobs_ref", "blob-1"},
-      {"blobsRef", "blob-1"},
-      {"certificatesuri", uri},
-      {"certificates_uri", uri},
-      {"certificatesUri", uri}
+      {"certificates_uri", uri}
     ]
 
     for {name, value} <- valid_references do
       payload = setting_payload(name, %{"type" => "string", "value" => value})
       assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
     end
+
+    for {name, value} <- [
+          {"payloadsuri", uri},
+          {"payloadsUri", uri},
+          {"contentsdigest", digest()},
+          {"contentsDigest", digest()},
+          {"blobsref", "blob-1"},
+          {"blobsRef", "blob-1"},
+          {"certificatesuri", uri},
+          {"certificatesUri", uri}
+        ] do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
   end
 
-  test "setting material grammar composes tokenized material references" do
+  test "setting material grammar accepts canonical tokenized references only" do
     invalid_references = [
       {"privatekey_digest", "not-a-digest"},
       {"privatekeys_digest", "not-a-digest"},
@@ -1420,9 +1433,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
       {"privatekeys_digest", digest()},
       {"tlskey_uri", uri},
       {"blobstore_uri", uri},
-      {"rawdataDigest", digest()},
       {"certificatebytes_hash", digest()},
-      {"tlskeyreference", "tls-key-1"},
       {"tlskey_ref", "tls-key-1"},
       {"blobstore_ref", "blob-store-1"}
     ]
@@ -1430,6 +1441,14 @@ defmodule YellowDog.Sync.ServerOperationTest do
     for {name, value} <- valid_references do
       payload = setting_payload(name, %{"type" => "string", "value" => value})
       assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+
+    for {name, value} <- [
+          {"rawdataDigest", digest()},
+          {"tlskeyreference", "tls-key-1"}
+        ] do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
     end
   end
 
@@ -1459,6 +1478,8 @@ defmodule YellowDog.Sync.ServerOperationTest do
     invalid_references = [
       {"request_payload_cache_digest", "not-a-digest"},
       {"client_tls_key_digest", "not-a-digest"},
+      {"client_secret_key_uri", "YWJjZA=="},
+      {"client_private_key_digest", "not-a-digest"},
       {"backup_blob_store_uri", "YWJjZA=="},
       {"request_payload_cache_id", ""}
     ]
@@ -1482,6 +1503,78 @@ defmodule YellowDog.Sync.ServerOperationTest do
         ] do
       payload = setting_payload(name, %{"type" => "string", "value" => value})
       assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+  end
+
+  test "setting keys require canonical lowercase snake case on the wire" do
+    noncanonical_keys = [
+      "archive_PFXs_bundle",
+      "tls_PEMs_bundle",
+      "archivePFXsBundle",
+      "archive_PFXs_digest",
+      "Payload",
+      "payload-key",
+      "payload__cache",
+      "payload_",
+      "_payload",
+      "ｐayload",
+      "payload_缓存"
+    ]
+
+    for name <- noncanonical_keys do
+      payload = setting_payload(name, %{"type" => "boolean", "value" => true})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
+  test "setting keys reject glued reference suffixes" do
+    uri = "https://config.example.test/material/reference"
+
+    for {name, value} <- [
+          {"client_tls_keyref", "client-key-1"},
+          {"client_tls_keydigest", digest()},
+          {"client_secret_keyuri", uri},
+          {"client_privatekeydigest", digest()},
+          {"request_payload_cachedigest", digest()}
+        ] do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
+  test "canonical material references validate typed values" do
+    uri = "https://config.example.test/material/reference"
+
+    valid_references = [
+      {"client_tls_key_ref", "client-key-1"},
+      {"client_tls_key_digest", digest()},
+      {"client_secret_key_uri", uri},
+      {"client_private_key_digest", digest()},
+      {"request_payload_cache_digest", digest()},
+      {"archive_pfxs_ref", "archive-pfx-1"}
+    ]
+
+    for {name, value} <- valid_references do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+
+    for payload <- [
+          setting_payload("archive_pfxs_ref", %{"type" => "string", "value" => ""}),
+          setting_payload("archive_pfxs_ref", %{
+            "type" => "string",
+            "value" => "/etc/archive.pfx"
+          }),
+          setting_payload("archive_pfxs_bundle", %{
+            "type" => "string",
+            "value" => "YWJjZA=="
+          }),
+          setting_payload("tls_pems_bundle", %{
+            "type" => "string",
+            "value" => "YWJjZA=="
+          })
+        ] do
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
     end
   end
 
