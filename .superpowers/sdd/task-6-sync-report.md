@@ -4,6 +4,7 @@
 
 - Base: `52516a4f1cd2f06c35966b9a4e603d78bb505bb7`
 - Review follow-up parent: `01e5f9069cd5ca90ca1e97b4e71d9fe9a70db14a`
+- Second review follow-up parent: `5500c5e137e8bf080814eb1411148c7ba5acd107`
 - Branch: `codex/service-node-remote-management`
 - Ownership: `apps/yellow_dog_sync` contract modules and focused tests only
 - No management-core, console, root configuration, protocol packet, or network changes were made.
@@ -18,6 +19,7 @@
 - Coupled failure phases to pre-apply, apply, and rollback field requirements.
 - Required every present previous version to be earlier than the current version.
 - Made direct Envelope decoding exact: all base keys are required and only `config_version` is optional.
+- Distinguished an omitted direct Envelope `config_version` from explicit JSON `null`; omission remains internal `nil`, while a present value must satisfy the positive integer bound.
 - Restricted agent config acknowledgements to `delivered`, `applying`, `applied`, and `failed`; `desired` remains management-owned.
 - Preserved operation catalogs, target/digest fields, payload schemas, canonical bounds, atom safety, and stable invalid errors.
 
@@ -51,6 +53,20 @@ Review GREEN evidence:
 
 - Focused contract files: `79 tests, 0 failures`
 - Full `yellow_dog_sync`: `106 tests, 0 failures`
+- `MIX_ENV=test mix compile --warnings-as-errors --force`: passed after compiling 11 files
+- `mix format --check-formatted` on the seven owned Elixir files: passed
+- Credo strict on Sync `lib/**/*.ex` and `test/**/*.exs`: checked 21 files, no issues
+
+### Second Review Follow-up
+
+Second-review RED was captured with the focused Envelope test command before the corrective implementation: `19 tests, 1 failure`.
+
+The failure demonstrated that direct Envelope decoding treated an explicit JSON `null` `config_version` as if the key were omitted. The omission round-trip test already passed during RED.
+
+Second-review GREEN evidence:
+
+- Focused `envelope_test.exs`: `19 tests, 0 failures`
+- Full `yellow_dog_sync`: `108 tests, 0 failures`
 - `MIX_ENV=test mix compile --warnings-as-errors --force`: passed after compiling 11 files
 - `mix format --check-formatted` on the seven owned Elixir files: passed
 - Credo strict on Sync `lib/**/*.ex` and `test/**/*.exs`: checked 21 files, no issues

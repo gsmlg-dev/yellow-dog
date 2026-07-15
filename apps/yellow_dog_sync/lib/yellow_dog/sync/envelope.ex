@@ -92,7 +92,7 @@ defmodule YellowDog.Sync.Envelope do
          :ok <- Digest.verify(payload, payload_digest),
          {:ok, expected_revision} <-
            fetch_and_validate(wire, "expected_revision", &expected_revision/1),
-         {:ok, config_version} <- config_version(Map.get(wire, "config_version")),
+         {:ok, config_version} <- config_version_from_wire(wire),
          {:ok, sent_at} <- fetch_and_validate(wire, "sent_at", &sent_at/1) do
       {:ok,
        %__MODULE__{
@@ -224,6 +224,14 @@ defmodule YellowDog.Sync.Envelope do
        do: {:ok, value}
 
   defp config_version(_value), do: invalid_error()
+
+  defp config_version_from_wire(wire) do
+    case Map.fetch(wire, "config_version") do
+      :error -> {:ok, nil}
+      {:ok, nil} -> invalid_error()
+      {:ok, value} -> config_version(value)
+    end
+  end
 
   defp sent_at(%DateTime{utc_offset: 0, std_offset: 0} = value), do: {:ok, value}
   defp sent_at(%DateTime{}), do: invalid_error()

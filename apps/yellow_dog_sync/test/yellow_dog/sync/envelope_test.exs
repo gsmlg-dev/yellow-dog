@@ -142,6 +142,26 @@ defmodule YellowDog.Sync.EnvelopeTest do
     assert {:ok, %Envelope{config_version: 1}} = Sync.decode(Jason.encode!(wire))
   end
 
+  test "direct decode rejects an explicit null config version" do
+    wire =
+      envelope(:server, "server-east-1", %{}, operation: "server.settings.update")
+      |> Envelope.to_wire()
+      |> Map.put("config_version", nil)
+
+    assert_invalid(Envelope.from_wire(wire))
+    assert_invalid(Sync.decode(Jason.encode!(wire)))
+  end
+
+  test "direct decode preserves an omitted config version" do
+    wire = envelope(:server, "server-east-1", %{}) |> Envelope.to_wire()
+    refute Map.has_key?(wire, "config_version")
+
+    assert {:ok, %Envelope{config_version: nil}} = Envelope.from_wire(wire)
+    assert {:ok, %Envelope{config_version: nil} = decoded} = Sync.decode(Jason.encode!(wire))
+    assert {:ok, reencoded} = Sync.encode(decoded)
+    refute Map.has_key?(Jason.decode!(reencoded), "config_version")
+  end
+
   test "rejects unsupported protocol versions and malformed lowercase UUIDs" do
     unsupported =
       envelope(:server, "server-east-1", %{})
