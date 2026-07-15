@@ -38,7 +38,7 @@ defmodule YellowDog.Sync.Error do
 
   def new(code, message, details) when code in @codes do
     with {:ok, message} <- Bounds.message(message),
-         {:ok, details} <- Bounds.map(details) do
+         {:ok, details} <- Bounds.details(details) do
       %__MODULE__{code: code, message: message, details: details}
     end
   end

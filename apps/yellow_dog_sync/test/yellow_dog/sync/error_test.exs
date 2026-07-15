@@ -17,8 +17,8 @@ defmodule YellowDog.Sync.ErrorTest do
 
   test "constructs every accepted stable error code" do
     for code <- @codes do
-      assert %Error{code: ^code, message: "failed", details: %{field: "target_id"}} =
-               Error.new(code, "failed", %{field: "target_id"})
+      assert %Error{code: ^code, message: "failed", details: %{"field" => "target_id"}} =
+               Error.new(code, "failed", %{"field" => "target_id"})
     end
   end
 
@@ -36,13 +36,18 @@ defmodule YellowDog.Sync.ErrorTest do
   end
 
   test "encodes stable wire error codes" do
-    error = Error.new(:conflict, "stale revision", %{field: "expected_revision"})
+    error = Error.new(:conflict, "stale revision", %{"field" => "expected_revision"})
 
     assert %{
              "code" => "conflict",
              "message" => "stale revision",
-             "details" => %{field: "expected_revision"}
+             "details" => %{"field" => "expected_revision"}
            } = Error.to_wire(error)
+  end
+
+  test "rejects constructed errors with invalid nested details" do
+    assert {:error, %Error{code: :invalid}} =
+             Error.new(:invalid, "invalid input", %{"nested" => %{"value" => :atom}})
   end
 
   test "decodes error details at every approved nested boundary" do
