@@ -1089,7 +1089,6 @@ defmodule YellowDog.Sync.ServerOperationTest do
           "content",
           "blob",
           "bytes",
-          "data",
           "pid",
           "ref",
           "port",
@@ -1245,6 +1244,14 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "tls_certificate",
       "privateKey",
       "certificateBytes",
+      "rawpayload",
+      "payloadbody",
+      "blobcontent",
+      "blobdata",
+      "blobbytes",
+      "certificatebytes",
+      "payloadstore",
+      "tls_pem",
       fullwidth_raw
     ]
 
@@ -1263,7 +1270,8 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "https://api.example.test/v1",
       "192.0.2.0/24",
       "example.test",
-      "identifier-1"
+      "identifier-1",
+      "database-primary"
     ]
 
     for value <- valid_values do
@@ -1274,6 +1282,9 @@ defmodule YellowDog.Sync.ServerOperationTest do
     valid_references = [
       setting_payload("private_network", %{"type" => "boolean", "value" => true}),
       setting_payload("payloads", %{"type" => "boolean", "value" => false}),
+      setting_payload("rawpayload", %{"type" => "integer", "value" => 2}),
+      setting_payload("blobcontent", %{"type" => "null", "value" => nil}),
+      setting_payload("data", %{"type" => "string", "value" => "ordinary data label"}),
       setting_payload("certificate_authority_uri", %{
         "type" => "string",
         "value" => "https://ca.example.test/certificate"
@@ -1296,6 +1307,8 @@ defmodule YellowDog.Sync.ServerOperationTest do
         "value" => "HTTPS://ca.example.test/certificate"
       }),
       setting_payload("payload_digest", %{"type" => "string", "value" => "not-a-digest"}),
+      setting_payload("blobdigest", %{"type" => "string", "value" => "not-a-digest"}),
+      setting_payload("contenturi", %{"type" => "string", "value" => "YWJjZA=="}),
       setting_payload("blob_ref", %{"type" => "string", "value" => "/etc/blob"}),
       setting_payload("content_uri", %{"type" => "list", "items" => ["https://example.test"]})
     ]
@@ -1317,7 +1330,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "https://provider.example.test/api/v1",
       "http://192.0.2.10:8080/provider",
       "https://[2001:db8::10]:8443/provider",
-      "https://provider.example.test/api%2Fv1?mode=full%20sync"
+      "https://provider.example.test/api/v1?mode=full&active=true"
     ]
 
     for endpoint <- valid_endpoints do
@@ -1334,8 +1347,18 @@ defmodule YellowDog.Sync.ServerOperationTest do
         "provider.example.test"
       ])
 
+    fullwidth_traversal =
+      IO.iodata_to_binary([
+        "https://provider.example.test/a/",
+        <<0xFF0E::utf8>>,
+        <<0xFF0E::utf8>>,
+        <<0xFF0F::utf8>>,
+        "config"
+      ])
+
     invalid_endpoints = [
       fullwidth_endpoint,
+      fullwidth_traversal,
       "/etc/yellow-dog/provider",
       "ftp://provider.example.test/config",
       "HTTPS://provider.example.test/config",
@@ -1352,6 +1375,19 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "https://provider.example.test:/config",
       "https://provider.example.test/%ZZ",
       "https://provider.example.test/%2fconfig",
+      "https://provider.example.test/%41",
+      "https://provider.example.test/%7E",
+      "https://provider.example.test/%00",
+      "https://provider.example.test/%0A",
+      "https://provider.example.test/%7F",
+      "https://provider.example.test/config?value=%41",
+      "https://provider.example.test/%2E/config",
+      "https://provider.example.test/%2E%2E/config",
+      "https://provider.example.test/./config",
+      "https://provider.example.test/../config",
+      "https://provider.example.test/a/../config",
+      "https://provider.example.test/a/./config",
+      "https://provider.example.test/a\\config",
       "https://provider.example.test/config#fragment",
       "https://provider example.test/config",
       "https://provider.example.test/white space"

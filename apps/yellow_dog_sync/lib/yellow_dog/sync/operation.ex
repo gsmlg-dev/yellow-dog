@@ -71,12 +71,8 @@ defmodule YellowDog.Sync.Operation do
                                expectedrevision localpath filepath pathname etstable kernelhandle
                                kernelmanagerhandle managerhandle
                              )
-  @material_setting_tokens MapSet.new(
-                             ~w(payload content blob body byte raw cert certificate data material)
-                           )
-  @material_setting_compounds ~w(
-                                blobstore bytebuffer rawdata tlscert privatekey privatematerial
-                              )
+  @material_compact_roots ~w(raw payload body bodies content blob byte cert certificate pem privatekey)
+  @material_reference_suffixes ~w(uri url digest hash id ref)
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
@@ -1041,6 +1037,13 @@ defmodule YellowDog.Sync.Operation do
           depth
         )
 
+      %{"type" => "null", "value" => nil} ->
+        validate_type(
+          value,
+          object(%{"type" => {:literal, "null"}, "value" => {:literal, nil}}),
+          depth
+        )
+
       %{"type" => "list", "items" => _items} ->
         validate_type(
           value,
@@ -1302,13 +1305,13 @@ defmodule YellowDog.Sync.Operation do
     tokens = setting_name_tokens(name)
 
     not Enum.any?(tokens, &(&1 in ["ref", "reference"])) or
-      (material_setting_name?(name) and List.last(tokens) == "ref")
+      (material_setting_name?(name) and setting_reference_form(name) == :id)
   end
 
   defp safe_setting_value?(name, value) do
     if material_setting_name?(name) do
       case value do
-        %{"type" => type} when type in ["boolean", "integer"] ->
+        %{"type" => type} when type in ["boolean", "integer", "null"] ->
           true
 
         %{"type" => "string", "value" => value} ->
@@ -1326,45 +1329,34 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp material_setting_name?(name) do
-    case normalize_unicode(name) do
-      {:ok, normalized} ->
-        canonical = normalize_transport_name(normalized)
-        tokens = normalized |> setting_name_tokens() |> Enum.map(&material_stem/1)
-
-        Enum.any?(@material_setting_compounds, &String.contains?(canonical, &1)) or
-          Enum.any?(tokens, &MapSet.member?(@material_setting_tokens, &1))
-
-      _ ->
-        false
+    case compact_setting_name(name) do
+      {:ok, compact} -> Enum.any?(@material_compact_roots, &String.contains?(compact, &1))
+      _ -> false
     end
   end
 
-  defp material_stem("payloads"), do: "payload"
-  defp material_stem("contents"), do: "content"
-  defp material_stem("blobs"), do: "blob"
-  defp material_stem("bodies"), do: "body"
-  defp material_stem("bytes"), do: "byte"
-  defp material_stem("certs"), do: "cert"
-  defp material_stem("certificates"), do: "certificate"
-  defp material_stem(token), do: token
-
   defp setting_reference_form(name) do
-    case normalize_unicode(name) do
-      {:ok, normalized} ->
-        normalized
-        |> setting_name_tokens()
-        |> List.last()
-        |> case do
-          suffix when suffix in ["uri", "url"] -> :uri
-          suffix when suffix in ["digest", "hash"] -> :digest
-          suffix when suffix in ["id", "ref"] -> :id
-          _suffix -> nil
-        end
+    case compact_setting_name(name) do
+      {:ok, compact} ->
+        @material_reference_suffixes
+        |> Enum.find(&String.ends_with?(compact, &1))
+        |> reference_form()
 
       _ ->
         nil
     end
   end
+
+  defp compact_setting_name(name) do
+    with {:ok, normalized} <- normalize_unicode(name) do
+      {:ok, normalize_transport_name(normalized)}
+    end
+  end
+
+  defp reference_form(suffix) when suffix in ["uri", "url"], do: :uri
+  defp reference_form(suffix) when suffix in ["digest", "hash"], do: :digest
+  defp reference_form(suffix) when suffix in ["id", "ref"], do: :id
+  defp reference_form(_suffix), do: nil
 
   defp valid_material_reference?(:uri, value), do: validate_provider_endpoint(value) == :ok
   defp valid_material_reference?(:digest, value), do: normalize(Digest.validate(value)) == :ok
@@ -1768,7 +1760,8 @@ defmodule YellowDog.Sync.Operation do
 
   defp supported_http_uri?(value) do
     with true <- String.starts_with?(value, ["http://", "https://"]),
-         true <- valid_percent_encoding?(value),
+         false <- String.contains?(value, "%"),
+         false <- String.contains?(value, "\\"),
          false <- Regex.match?(~r/[\s\p{C}]/u, value),
          {:ok, %URI{} = uri} <- URI.new(value),
          %URI{scheme: scheme, host: host, port: port, userinfo: nil, fragment: nil} <- uri,
@@ -1776,6 +1769,7 @@ defmodule YellowDog.Sync.Operation do
          true <- is_binary(host),
          true <- valid_provider_host?(host),
          true <- valid_provider_port?(port),
+         true <- safe_uri_path?(uri.path),
          true <- URI.to_string(uri) == value do
       true
     else
@@ -1783,7 +1777,13 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
-  defp valid_percent_encoding?(value), do: not Regex.match?(~r/%(?![0-9A-F]{2})/, value)
+  defp safe_uri_path?(nil), do: true
+
+  defp safe_uri_path?(path) do
+    path
+    |> String.split("/", trim: false)
+    |> Enum.all?(&(&1 not in [".", ".."]))
+  end
 
   defp valid_provider_host?(host) do
     case :inet.parse_address(String.to_charlist(host)) do
