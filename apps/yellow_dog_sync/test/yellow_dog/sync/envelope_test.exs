@@ -44,6 +44,27 @@ defmodule YellowDog.Sync.EnvelopeTest do
              Envelope.decode(encoded)
   end
 
+  test "round trips an envelope payload at the canonical nesting limit" do
+    envelope = envelope(:server, "server-east-1", nested_payload(8))
+
+    assert {:ok, encoded} = Envelope.encode(envelope)
+    assert {:ok, %Envelope{payload: payload}} = Envelope.decode(encoded)
+    assert payload == nested_payload(8)
+  end
+
+  test "round trips a near-limit payload when its envelope exceeds one MiB" do
+    payload = near_max_payload()
+    assert {:ok, encoded_payload} = Codec.encode(payload)
+    assert byte_size(encoded_payload) <= Bounds.max_payload_bytes()
+
+    envelope = envelope(:server, "server-east-1", payload)
+    assert {:ok, encoded_envelope} = Envelope.encode(envelope)
+    assert byte_size(encoded_envelope) > Bounds.max_payload_bytes()
+    assert byte_size(encoded_envelope) <= Codec.max_document_bytes()
+
+    assert {:ok, %Envelope{payload: ^payload}} = Envelope.decode(encoded_envelope)
+  end
+
   test "rejects missing required fields with a stable error" do
     wire =
       envelope(:server, "server-east-1", %{}) |> Envelope.to_wire() |> Map.delete("request_id")
@@ -92,6 +113,7 @@ defmodule YellowDog.Sync.EnvelopeTest do
       |> Envelope.to_wire()
       |> Map.put("payload_digest", String.duplicate("0", 64))
 
+    assert_invalid(Envelope.encode(envelope(:server, "server-east-1", oversized_payload)))
     assert_invalid(Envelope.from_wire(oversized))
     assert_invalid(Envelope.from_wire(incorrect_digest))
   end
@@ -171,6 +193,18 @@ defmodule YellowDog.Sync.EnvelopeTest do
       {Integer.to_string(index), List.duplicate(string, 11)}
     end)
   end
+
+  defp near_max_payload do
+    string = String.duplicate("x", Bounds.max_message_bytes())
+
+    Map.new(1..Bounds.max_map_entries(), fn index ->
+      count = if index <= 20, do: 11, else: 10
+      {Integer.to_string(index), List.duplicate(string, count)}
+    end)
+  end
+
+  defp nested_payload(1), do: %{"value" => "ok"}
+  defp nested_payload(depth), do: %{"nested" => nested_payload(depth - 1)}
 
   defp add_entries_to_exceed_map_limit(map) do
     entries_to_add = Bounds.max_map_entries() - map_size(map) + 1

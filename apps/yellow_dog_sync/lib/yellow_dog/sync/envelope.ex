@@ -40,7 +40,7 @@ defmodule YellowDog.Sync.Envelope do
   @spec encode(t()) :: {:ok, binary()} | {:error, Error.t()}
   def encode(%__MODULE__{} = envelope) do
     with {:ok, envelope} <- validate(envelope) do
-      Codec.encode(to_wire(envelope))
+      Codec.encode_envelope(to_wire(envelope))
     end
   end
 
@@ -51,7 +51,7 @@ defmodule YellowDog.Sync.Envelope do
 
   @spec decode(binary(), target_type() | nil) :: {:ok, t()} | {:error, Error.t()}
   def decode(payload, expected_type) when expected_type in [:server, :netman, nil] do
-    with {:ok, wire} <- Codec.decode(payload),
+    with {:ok, wire} <- Codec.decode_envelope(payload),
          {:ok, envelope} <- from_wire(wire),
          :ok <- validate_target_type(envelope.target_type, expected_type) do
       {:ok, envelope}
