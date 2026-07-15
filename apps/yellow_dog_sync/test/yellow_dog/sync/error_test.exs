@@ -44,4 +44,67 @@ defmodule YellowDog.Sync.ErrorTest do
              "details" => %{field: "expected_revision"}
            } = Error.to_wire(error)
   end
+
+  test "decodes error details at every approved nested boundary" do
+    nested_map = Map.new(1..100, fn index -> {Integer.to_string(index), "value"} end)
+    nested_list = List.duplicate("value", 1_000)
+
+    details = %{
+      "map" => nested_map,
+      "list" => nested_list,
+      "depth" => nested_details(7),
+      "message" => String.duplicate("m", 1_024),
+      "scalars" => [nil, true, false, 42, 3.14]
+    }
+
+    assert {:ok, %Error{details: ^details}} =
+             Error.from_wire(%{
+               "code" => "invalid",
+               "message" => "invalid input",
+               "details" => details
+             })
+  end
+
+  test "rejects error details beyond nested map list string and depth limits" do
+    oversized_map = Map.new(1..101, fn index -> {Integer.to_string(index), "value"} end)
+    oversized_list = List.duplicate("value", 1_001)
+    oversized_string = String.duplicate("v", 1_025)
+    oversized_key = String.duplicate("k", 1_025)
+
+    for details <- [
+          %{"nested" => oversized_map},
+          %{"nested" => oversized_list},
+          %{"nested" => %{"value" => oversized_string}},
+          %{oversized_key => "value"},
+          %{"nested" => %{"value" => <<255>>}},
+          %{<<255>> => "value"},
+          %{"nested" => nested_details(8)}
+        ] do
+      assert {:error, %Error{code: :invalid}} =
+               Error.from_wire(%{
+                 "code" => "invalid",
+                 "message" => "invalid input",
+                 "details" => details
+               })
+    end
+  end
+
+  test "rejects error details outside JSON-safe values" do
+    for details <- [
+          %{field: "atom key"},
+          %{"value" => :atom},
+          %{"value" => {"tuple"}},
+          %{"value" => self()}
+        ] do
+      assert {:error, %Error{code: :invalid}} =
+               Error.from_wire(%{
+                 "code" => "invalid",
+                 "message" => "invalid input",
+                 "details" => details
+               })
+    end
+  end
+
+  defp nested_details(1), do: %{"value" => "ok"}
+  defp nested_details(depth), do: %{"nested" => nested_details(depth - 1)}
 end

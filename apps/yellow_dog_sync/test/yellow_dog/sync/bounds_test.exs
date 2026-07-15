@@ -47,6 +47,12 @@ defmodule YellowDog.Sync.BoundsTest do
     assert_invalid(Bounds.list(Enum.to_list(1..(Bounds.max_list_entries() + 1))))
   end
 
+  test "rejects the first list element beyond the maximum" do
+    list = List.duplicate(:value, Bounds.max_list_entries() + 1)
+
+    assert_invalid(Bounds.list(list))
+  end
+
   test "accepts payloads at the maximum size and rejects larger payloads" do
     assert {:ok, payload} = Bounds.payload(:binary.copy(<<0>>, Bounds.max_payload_bytes()))
     assert byte_size(payload) == Bounds.max_payload_bytes()

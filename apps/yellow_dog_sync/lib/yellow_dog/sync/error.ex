@@ -49,7 +49,7 @@ defmodule YellowDog.Sync.Error do
   def from_wire(%{"code" => code} = wire) when is_binary(code) do
     with {:ok, code} <- decode_code(code),
          {:ok, message} <- Bounds.message(Map.get(wire, "message", "")),
-         {:ok, details} <- Bounds.map(Map.get(wire, "details", %{})) do
+         {:ok, details} <- Bounds.details(Map.get(wire, "details", %{})) do
       {:ok, %__MODULE__{code: code, message: message, details: details}}
     end
   end
