@@ -156,44 +156,119 @@ defmodule YellowDog.Sync.NetmanOperationTest do
 
   defp valid(schema) do
     case schema do
-      :empty -> %{}
-      :profile_list_query -> %{}
-      :profile_ref -> %{"profile_id" => "office"}
-      :profile_validate -> profile()
-      :profile_put -> profile()
-      :profile_rollback -> %{"profile_id" => "office", "target_revision" => @revision}
-      :network_links_query -> %{}
-      :network_addresses_query -> %{}
-      :network_routes_query -> %{}
-      :network_connection_query -> %{"connection_id" => "uplink"}
-      :profile_patch -> profile_patch()
-      :connection_ref -> %{"connection_id" => "uplink"}
-      :resolved_config_update -> resolved_config()
-      :resolved_config_rollback -> %{"target_revision" => @revision}
-      :dhcp_client_connection_ref -> %{"connection_id" => "uplink"}
-      :runtime_capabilities -> %{"capabilities" => ["runtime.apply_mode"]}
-      :apply_mode -> %{"mode" => "managed"}
-      :reconciliation_health -> %{"status" => "healthy", "pending_changes" => 0}
-      :profile_list -> list_result(profile())
-      :profile_revision -> %{"profile_id" => "office", "revision" => @revision}
-      :profile_history -> list_result(profile_history())
-      :profile_validation -> %{"profile_id" => "office", "valid" => true, "errors" => []}
-      :profile_activation_result -> profile_activation()
-      :network_link_list -> list_result(network_link())
-      :network_address_list -> list_result(network_address())
-      :network_route_list -> list_result(network_route())
-      :network_connection_state -> connection_state()
-      :connection_activation_result -> connection_state()
-      :resolved_upstream_list -> list_result(resolved_upstream())
-      :resolved_search_domain_list -> list_result(resolved_search_domain())
-      :resolved_cache -> resolved_cache()
-      :resolved_counters -> %{"hits" => 5, "misses" => 1}
-      :config_state -> config_state()
-      :cache_clear_result -> %{"cleared_entries" => 4}
-      :dhcp_client_fsm -> %{"connection_id" => "uplink", "state" => "bound"}
-      :dhcp_client_lease_list -> list_result(dhcp_client_lease())
-      :lease_release_result -> %{"family" => "ipv4", "lease_id" => "lease-1", "released" => true}
-      :vpn_resolved_profile -> %{"profile_id" => "vpn-default", "state" => "resolved"}
+      :empty ->
+        %{}
+
+      :profile_list_query ->
+        %{}
+
+      :profile_ref ->
+        %{"profile_id" => "office"}
+
+      :profile_validate ->
+        profile()
+
+      :profile_put ->
+        profile()
+
+      :profile_rollback ->
+        %{"profile_id" => "office", "target_revision" => @revision}
+
+      :network_links_query ->
+        %{}
+
+      :network_addresses_query ->
+        %{}
+
+      :network_routes_query ->
+        %{}
+
+      :network_connection_query ->
+        %{"connection_id" => "uplink"}
+
+      :profile_patch ->
+        profile_patch()
+
+      :connection_ref ->
+        %{"connection_id" => "uplink"}
+
+      :resolved_config_update ->
+        resolved_config()
+
+      :resolved_config_rollback ->
+        %{"target_revision" => @revision}
+
+      :dhcp_client_connection_ref ->
+        %{"connection_id" => "uplink"}
+
+      :runtime_capabilities ->
+        %{"capabilities" => ["runtime.apply_mode"]}
+
+      :apply_mode ->
+        %{"mode" => "managed"}
+
+      :reconciliation_health ->
+        %{"status" => "healthy", "pending_changes" => 0}
+
+      :profile_list ->
+        list_result(profile())
+
+      :profile_revision ->
+        %{"profile_id" => "office", "revision" => @revision}
+
+      :profile_history ->
+        list_result(profile_history())
+
+      :profile_validation ->
+        %{"profile_id" => "office", "valid" => true, "errors" => []}
+
+      :profile_activation_result ->
+        profile_activation()
+
+      :network_link_list ->
+        list_result(network_link())
+
+      :network_address_list ->
+        list_result(network_address())
+
+      :network_route_list ->
+        list_result(network_route())
+
+      :network_connection_state ->
+        connection_state()
+
+      :connection_activation_result ->
+        connection_state()
+
+      :resolved_upstream_list ->
+        list_result(resolved_upstream())
+
+      :resolved_search_domain_list ->
+        list_result(resolved_search_domain())
+
+      :resolved_cache ->
+        resolved_cache()
+
+      :resolved_counters ->
+        %{"hits" => 5, "misses" => 1}
+
+      :config_state ->
+        config_state()
+
+      :cache_clear_result ->
+        %{"cleared_entries" => 4}
+
+      :dhcp_client_fsm ->
+        %{"connection_id" => "uplink", "state" => "bound"}
+
+      :dhcp_client_lease_list ->
+        list_result(dhcp_client_lease())
+
+      :lease_release_result ->
+        lease_release_result()
+
+      :vpn_resolved_profile ->
+        %{"profile_id" => "vpn-default", "state" => "resolved"}
     end
   end
 
@@ -276,6 +351,15 @@ defmodule YellowDog.Sync.NetmanOperationTest do
 
   defp dhcp_client_lease do
     %{"connection_id" => "uplink", "address" => "192.0.2.10", "expires_at" => @observed_at}
+  end
+
+  defp lease_release_result do
+    %{
+      "family" => "ipv4",
+      "lease_id" => "lease-1",
+      "address" => "192.0.2.20",
+      "released" => true
+    }
   end
 
   defp list_result(item) do

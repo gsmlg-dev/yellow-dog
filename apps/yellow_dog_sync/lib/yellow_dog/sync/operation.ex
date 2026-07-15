@@ -1,6 +1,8 @@
 defmodule YellowDog.Sync.Operation do
   @moduledoc false
 
+  import Bitwise
+
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
@@ -66,6 +68,11 @@ defmodule YellowDog.Sync.Operation do
                                 path file pid ref reference port ets table kernel manager handle
                                 blob content bytes data
                               ))
+  @forbidden_setting_phrases ~w(
+                               expectedrevision localpath filepath pathname payloadbody blobbytes
+                               blobcontent blobdata etstable kernelhandle kernelmanagerhandle
+                               managerhandle privatekey
+                             )
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
@@ -380,8 +387,7 @@ defmodule YellowDog.Sync.Operation do
         "revision" => :digest
       })
 
-  defp schema_spec(:lease_release_result),
-    do: object(%{"family" => family(), "lease_id" => :id, "released" => :boolean})
+  defp schema_spec(:lease_release_result), do: :lease_release_result
 
   defp schema_spec(:cache_clear_result),
     do: object(%{"cleared_entries" => nonnegative_integer()})
@@ -463,15 +469,17 @@ defmodule YellowDog.Sync.Operation do
     })
   end
 
-  defp dns_record do
+  defp dns_record, do: :dns_record
+
+  defp dns_record_shape do
     object(%{
       "view_name" => :id,
       "zone_name" => :domain,
       "record_id" => :id,
-      "name" => :domain_label,
+      "name" => :dns_owner,
       "type" => enum(["A", "AAAA", "CNAME", "MX", "NS", "PTR", "SRV", "TXT"]),
       "ttl" => {:integer, 0, 2_147_483_647},
-      "values" => list(:nonempty_text)
+      "values" => list(:text)
     })
   end
 
@@ -487,7 +495,7 @@ defmodule YellowDog.Sync.Operation do
     object(%{
       "provider_id" => :id,
       "provider_type" => enum(["route53", "cloudflare", "rfc2136"]),
-      "endpoint" => nullable(:nonempty_text),
+      "endpoint" => nullable(:provider_endpoint),
       "credential_ref" => :id
     })
   end
@@ -579,7 +587,9 @@ defmodule YellowDog.Sync.Operation do
     })
   end
 
-  defp dhcp_lease_item do
+  defp dhcp_lease_item, do: :dhcp_lease_item
+
+  defp dhcp_lease_item_shape do
     object(%{
       "family" => family(),
       "lease_id" => :id,
@@ -822,7 +832,7 @@ defmodule YellowDog.Sync.Operation do
        when is_integer(value) and value >= minimum and value <= maximum,
        do: :ok
 
-  defp validate_type(value, :id, _depth), do: validate_nonempty(value, &Bounds.id/1)
+  defp validate_type(value, :id, _depth), do: validate_identifier(value)
   defp validate_type(value, :text, _depth), do: validate_bounded(value, &Bounds.message/1)
 
   defp validate_type(value, :nonempty_text, _depth),
@@ -856,7 +866,9 @@ defmodule YellowDog.Sync.Operation do
 
   defp validate_type(value, :setting_text, depth) do
     with :ok <- validate_type(value, :text, depth),
-         false <- local_path_value?(value) do
+         {:ok, normalized} <- normalize_unicode(value),
+         false <- raw_transport_body?(normalized),
+         false <- local_path_value?(normalized) do
       :ok
     else
       _ -> invalid_error()
@@ -865,9 +877,8 @@ defmodule YellowDog.Sync.Operation do
 
   defp validate_type(value, :filename, _depth) do
     with :ok <- validate_type(value, :nonempty_text, 0),
-         true <- value not in [".", ".."],
-         true <- Path.basename(value) == value,
-         false <- String.contains?(value, ["/", "\\"]) do
+         {:ok, normalized} <- normalize_unicode(value),
+         false <- identifier_path_value?(normalized) do
       :ok
     else
       _ -> invalid_error()
@@ -884,6 +895,16 @@ defmodule YellowDog.Sync.Operation do
       _ -> invalid_error()
     end
   end
+
+  defp validate_type(value, :dns_owner, _depth) do
+    if value in ["@", "*"] do
+      :ok
+    else
+      validate_dns_name(value)
+    end
+  end
+
+  defp validate_type(value, :provider_endpoint, _depth), do: validate_provider_endpoint(value)
 
   defp validate_type(value, :service_type, _depth) do
     with :ok <- validate_dns_name(value),
@@ -913,7 +934,44 @@ defmodule YellowDog.Sync.Operation do
          {:ok, family} <- wire_family(value["family"]),
          {:ok, ^family} <- cidr_family(value["subnet"]),
          {:ok, ^family} <- ip_family(value["start_address"]),
-         {:ok, ^family} <- ip_family(value["end_address"]) do
+         {:ok, ^family} <- ip_family(value["end_address"]),
+         true <- coherent_pool_range?(value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :lease_release_result, depth) do
+    shape =
+      object(%{
+        "family" => family(),
+        "lease_id" => :id,
+        "address" => :ip,
+        "released" => :boolean
+      })
+
+    with :ok <- validate_type(value, shape, depth),
+         true <- coherent_family_address?(value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :dhcp_lease_item, depth) do
+    with :ok <- validate_type(value, dhcp_lease_item_shape(), depth),
+         true <- coherent_family_address?(value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :dns_record, depth) do
+    with :ok <- validate_type(value, dns_record_shape(), depth),
+         [_ | _] <- value["values"],
+         true <- Enum.all?(value["values"], &valid_dns_rdata?(value["type"], &1)) do
       :ok
     else
       _ -> invalid_error()
@@ -1204,6 +1262,7 @@ defmodule YellowDog.Sync.Operation do
 
   defp safe_key?(key) when is_binary(key) do
     with {:ok, key} <- Bounds.message(key),
+         {:ok, key} <- normalize_unicode(key),
          normalized when normalized != "" <- normalize_transport_name(key) do
       not MapSet.member?(@forbidden_keys, normalized)
     else
@@ -1214,10 +1273,16 @@ defmodule YellowDog.Sync.Operation do
   defp safe_key?(_key), do: false
 
   defp safe_setting_name?(name) do
-    safe_key?(name) and
-      name
+    with true <- safe_key?(name),
+         {:ok, normalized} <- normalize_unicode(name),
+         canonical <- normalize_transport_name(normalized),
+         false <- Enum.any?(@forbidden_setting_phrases, &String.contains?(canonical, &1)) do
+      normalized
       |> setting_name_tokens()
       |> Enum.all?(&(not MapSet.member?(@forbidden_setting_tokens, &1)))
+    else
+      _ -> false
+    end
   end
 
   defp setting_name_tokens(name) do
@@ -1225,6 +1290,26 @@ defmodule YellowDog.Sync.Operation do
     |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
     |> String.downcase()
     |> String.split(~r/[^a-z0-9]+/u, trim: true)
+  end
+
+  defp validate_identifier(value) do
+    with :ok <- validate_nonempty(value, &Bounds.id/1),
+         {:ok, normalized} <- normalize_unicode(value),
+         false <- identifier_path_value?(normalized) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_provider_endpoint(value) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         {:ok, normalized} <- normalize_unicode(value),
+         true <- supported_http_uri?(normalized) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
   end
 
   defp object(required, optional \\ %{}), do: {:object, required, optional}
@@ -1334,6 +1419,62 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
+  defp coherent_family_address?(%{"family" => family, "address" => address}) do
+    with {:ok, expected} <- wire_family(family),
+         {:ok, actual} <- ip_family(address) do
+      expected == actual
+    else
+      _ -> false
+    end
+  end
+
+  defp coherent_family_address?(_value), do: false
+
+  defp coherent_pool_range?(%{
+         "subnet" => subnet,
+         "start_address" => start_address,
+         "end_address" => end_address
+       }) do
+    with {:ok, subnet_address, prefix, bits} <- parse_cidr(subnet),
+         {:ok, start_address} <- parse_address(start_address),
+         {:ok, end_address} <- parse_address(end_address),
+         true <- tuple_size(subnet_address) == tuple_size(start_address),
+         true <- tuple_size(subnet_address) == tuple_size(end_address) do
+      host_bits = bits - prefix
+      subnet_integer = address_integer(subnet_address)
+      first = (subnet_integer >>> host_bits) <<< host_bits
+      last = first + (1 <<< host_bits) - 1
+      start_integer = address_integer(start_address)
+      end_integer = address_integer(end_address)
+
+      start_integer >= first and start_integer <= last and end_integer >= first and
+        end_integer <= last and start_integer <= end_integer
+    else
+      _ -> false
+    end
+  end
+
+  defp coherent_pool_range?(_value), do: false
+
+  defp parse_cidr(value) do
+    with [address, prefix] <- String.split(value, "/", parts: 2),
+         {:ok, parsed} <- parse_address(address),
+         {prefix, ""} <- Integer.parse(prefix),
+         true <- valid_prefix?(parsed, prefix) do
+      bits = if tuple_size(parsed) == 4, do: 32, else: 128
+      {:ok, parsed, prefix, bits}
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp parse_address(value), do: :inet.parse_address(String.to_charlist(value))
+
+  defp address_integer(address) do
+    base = if tuple_size(address) == 4, do: 256, else: 65_536
+    address |> Tuple.to_list() |> Enum.reduce(0, &(&2 * base + &1))
+  end
+
   defp parsed_family(address) when tuple_size(address) == 4, do: {:ok, :ipv4}
   defp parsed_family(address) when tuple_size(address) == 8, do: {:ok, :ipv6}
   defp parsed_family(_address), do: invalid_error()
@@ -1365,6 +1506,42 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp valid_dns_label?(_label), do: false
+
+  defp valid_dns_rdata?("A", value), do: valid_ip_family?(value, :ipv4)
+  defp valid_dns_rdata?("AAAA", value), do: valid_ip_family?(value, :ipv6)
+
+  defp valid_dns_rdata?(type, value) when type in ["CNAME", "NS", "PTR"],
+    do: validate_dns_name(value) == :ok
+
+  defp valid_dns_rdata?("MX", value) do
+    case String.split(value, " ", trim: false) do
+      [priority, exchange] -> valid_dns_integer?(priority) and validate_dns_name(exchange) == :ok
+      _ -> false
+    end
+  end
+
+  defp valid_dns_rdata?("SRV", value) do
+    case String.split(value, " ", trim: false) do
+      [priority, weight, port, target] ->
+        Enum.all?([priority, weight, port], &valid_dns_integer?/1) and
+          validate_dns_name(target) == :ok
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_dns_rdata?("TXT", _value), do: true
+  defp valid_dns_rdata?(_type, _value), do: false
+
+  defp valid_ip_family?(value, family), do: ip_family(value) == {:ok, family}
+
+  defp valid_dns_integer?(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer in 0..65_535 -> Integer.to_string(integer) == value
+      _ -> false
+    end
+  end
 
   defp coherent_config_state?(%{
          "state" => state,
@@ -1403,7 +1580,7 @@ defmodule YellowDog.Sync.Operation do
          "rollback" => rollback
        })
        when is_binary(previous_revision) and is_map(failure) and is_map(rollback),
-       do: true
+       do: not rollback["succeeded"] or rollback["restored_revision"] == previous_revision
 
   defp coherent_config_state?(_state), do: false
 
@@ -1432,9 +1609,42 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp local_path_value?(value) do
+    not supported_http_uri?(value) and not valid_cidr_value?(value) and
+      identifier_path_value?(value)
+  end
+
+  defp identifier_path_value?(value) do
     String.contains?(value, ["/", "\\"]) or
       Regex.match?(~r/\A[A-Za-z]:/, value) or
       value in [".", "..", "~"]
+  end
+
+  defp supported_http_uri?(value) do
+    case URI.new(value) do
+      {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_cidr_value?(value), do: validate_cidr(value) == :ok
+
+  defp raw_transport_body?(value) do
+    value
+    |> String.upcase()
+    |> String.contains?("-----BEGIN ")
+  end
+
+  defp normalize_unicode(value) do
+    case :unicode.characters_to_nfkc_binary(value) do
+      normalized when is_binary(normalized) -> {:ok, normalized}
+      _ -> invalid_error()
+    end
+  rescue
+    _ -> invalid_error()
   end
 
   defp normalize({:ok, _value}), do: :ok

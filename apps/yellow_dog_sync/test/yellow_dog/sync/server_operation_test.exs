@@ -389,7 +389,12 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         }
 
       :lease_release_result ->
-        %{"family" => "ipv4", "lease_id" => "lease-1", "released" => true}
+        %{
+          "family" => "ipv4",
+          "lease_id" => "lease-1",
+          "address" => "192.0.2.20",
+          "released" => true
+        }
 
       :cache_clear_result ->
         %{"cleared_entries" => 4}
@@ -1131,6 +1136,95 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "typed identifiers and provider metadata reject local paths" do
+    probes = [
+      {:service_ref, %{"service" => "/etc/shadow"}},
+      {:connection_ref, %{"connection_id" => "C:\\Windows\\System32"}},
+      {:dns_provider_write,
+       %{
+         "provider_id" => "route53",
+         "provider_type" => "route53",
+         "endpoint" => "/etc/yellow-dog/provider",
+         "credential_ref" => "secret-1"
+       }},
+      {:dns_zone_import,
+       %{
+         "view_name" => "default",
+         "zone_name" => "example.test",
+         "source_type" => "snapshot",
+         "source_id" => "../snapshot.zone",
+         "source_revision" => digest()
+       }}
+    ]
+
+    for {schema, value} <- probes do
+      assert_invalid(Operation.validate_schema(schema, value))
+    end
+
+    provider = %{
+      "provider_id" => "route53",
+      "provider_type" => "route53",
+      "endpoint" => "https://provider.example.test/api/v1",
+      "credential_ref" => "secret-1"
+    }
+
+    assert {:ok, ^provider} = Operation.validate_schema(:dns_provider_write, provider)
+  end
+
+  test "settings use Unicode-aware semantic and path validation with URI and CIDR exceptions" do
+    fullwidth_path = IO.iodata_to_binary(["p", <<0xFF41::utf8>>, "th"])
+    fullwidth_slash = <<0xFF0F::utf8>>
+
+    forbidden_names = [
+      "expectedRevision",
+      "localPath",
+      "payloadBody",
+      "blobBytes",
+      "managerHandle",
+      fullwidth_path
+    ]
+
+    for name <- forbidden_names do
+      payload = setting_payload(name, %{"type" => "string", "value" => "value"})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    forbidden_values = [
+      "/etc/shadow",
+      "C:\\Windows\\System32",
+      "\\\\server\\share\\config",
+      "../snapshot.zone",
+      fullwidth_slash <> "etc" <> fullwidth_slash <> "shadow",
+      "-----BEGIN PRIVATE KEY-----\nraw\n-----END PRIVATE KEY-----",
+      "-----BEGIN CERTIFICATE-----\nraw\n-----END CERTIFICATE-----"
+    ]
+
+    for value <- forbidden_values do
+      payload = setting_payload("safe_setting", %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    valid = %{
+      "service" => "dns",
+      "entries" => [
+        %{
+          "key" => "api_uri",
+          "value" => %{"type" => "string", "value" => "https://api.example.test/v1/config"}
+        },
+        %{
+          "key" => "allowed_cidr",
+          "value" => %{"type" => "string", "value" => "192.0.2.0/24"}
+        },
+        %{
+          "key" => "allowed_ipv6_cidr",
+          "value" => %{"type" => "string", "value" => "2001:db8::/64"}
+        }
+      ]
+    }
+
+    assert {:ok, ^valid} = Operation.validate_schema(:server_settings_config, valid)
+  end
+
   test "DHCP pool address families are coherent" do
     ipv4 = Fixtures.valid(:dhcp_pool_write)
 
@@ -1150,6 +1244,62 @@ defmodule YellowDog.Sync.ServerOperationTest do
       ipv6_mismatch = Map.put(ipv6, field, ipv4[field])
       assert_invalid(Operation.validate_schema(:dhcp_pool_write, ipv4_mismatch))
       assert_invalid(Operation.validate_schema(:dhcp_pool_write, ipv6_mismatch))
+    end
+  end
+
+  test "DHCP pools enforce subnet membership and ordered ranges" do
+    ipv4 = Fixtures.valid(:dhcp_pool_write)
+
+    ipv6 = %{
+      ipv4
+      | "family" => "ipv6",
+        "subnet" => "2001:db8::/64",
+        "start_address" => "2001:db8::20",
+        "end_address" => "2001:db8::100"
+    }
+
+    invalid = [
+      %{ipv4 | "start_address" => "198.51.100.20"},
+      %{ipv4 | "end_address" => "198.51.100.100"},
+      %{ipv4 | "start_address" => "192.0.2.100", "end_address" => "192.0.2.20"},
+      %{ipv6 | "start_address" => "2001:db9::20"},
+      %{ipv6 | "end_address" => "2001:db9::100"},
+      %{ipv6 | "start_address" => "2001:db8::100", "end_address" => "2001:db8::20"}
+    ]
+
+    for pool <- invalid do
+      assert_invalid(Operation.validate_schema(:dhcp_pool_write, pool))
+    end
+  end
+
+  test "DHCP typed lease values enforce family and address coherence" do
+    ipv4_result = Fixtures.valid(:lease_release_result)
+    ipv6_result = %{ipv4_result | "family" => "ipv6", "address" => "2001:db8::20"}
+
+    assert {:ok, ^ipv4_result} = Operation.validate_schema(:lease_release_result, ipv4_result)
+    assert {:ok, ^ipv6_result} = Operation.validate_schema(:lease_release_result, ipv6_result)
+
+    assert_invalid(
+      Operation.validate_schema(:lease_release_result, %{
+        ipv4_result
+        | "address" => "2001:db8::20"
+      })
+    )
+
+    assert_invalid(
+      Operation.validate_schema(:lease_release_result, %{ipv6_result | "address" => "192.0.2.20"})
+    )
+
+    lease_list = Fixtures.valid(:dhcp_lease_list)
+    [lease] = lease_list["items"]
+
+    for mismatch <- [
+          %{lease | "address" => "2001:db8::20"},
+          %{lease | "family" => "ipv6", "address" => "192.0.2.20"}
+        ] do
+      assert_invalid(
+        Operation.validate_schema(:dhcp_lease_list, %{lease_list | "items" => [mismatch]})
+      )
     end
   end
 
@@ -1188,6 +1338,46 @@ defmodule YellowDog.Sync.ServerOperationTest do
           "zone_name" => name
         })
       )
+    end
+  end
+
+  test "DNS records enforce owner and type-specific RDATA grammar" do
+    base = Fixtures.valid(:dns_record_write)
+
+    valid = [
+      {"A", "www", ["192.0.2.10"]},
+      {"AAAA", "www", ["2001:db8::10"]},
+      {"CNAME", "alias", ["target.example.test."]},
+      {"NS", "@", ["ns1.example.test."]},
+      {"PTR", "10", ["host.example.test."]},
+      {"MX", "@", ["10 mail.example.test."]},
+      {"SRV", "_sip._tcp", ["10 20 5060 sip.example.test."]},
+      {"TXT", "_service._tcp", ["bounded text"]}
+    ]
+
+    for {type, name, values} <- valid do
+      record = %{base | "type" => type, "name" => name, "values" => values}
+      assert {:ok, ^record} = Operation.validate_schema(:dns_record_write, record)
+    end
+
+    invalid = [
+      {"A", "www", ["2001:db8::10"]},
+      {"AAAA", "www", ["192.0.2.10"]},
+      {"CNAME", "alias", ["not a domain"]},
+      {"NS", "@", ["/etc/resolv.conf"]},
+      {"PTR", "10", [""]},
+      {"MX", "@", ["mail.example.test."]},
+      {"MX", "@", ["70000 mail.example.test."]},
+      {"SRV", "_sip._tcp", ["arbitrary text"]},
+      {"SRV", "_sip._tcp", ["10 20 70000 sip.example.test."]},
+      {"TXT", "txt", [String.duplicate("x", 1_025)]},
+      {"CAA", "@", ["0 issue letsencrypt.org"]},
+      {"A", "bad_name", ["192.0.2.10"]}
+    ]
+
+    for {type, name, values} <- invalid do
+      record = %{base | "type" => type, "name" => name, "values" => values}
+      assert_invalid(Operation.validate_schema(:dns_record_write, record))
     end
   end
 
@@ -1271,6 +1461,15 @@ defmodule YellowDog.Sync.ServerOperationTest do
       config_state("failed", %{
         "failure" => config_failure(),
         "rollback" => %{"succeeded" => false, "restored_revision" => nil, "reason" => "failed"}
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => true,
+          "restored_revision" => String.duplicate("b", 64),
+          "reason" => nil
+        }
       })
     ]
 
@@ -1384,6 +1583,10 @@ defmodule YellowDog.Sync.ServerOperationTest do
   end
 
   defp config_failure, do: %{"phase" => "apply", "reason" => "invalid setting"}
+
+  defp setting_payload(key, value) do
+    %{"service" => "dns", "entries" => [%{"key" => key, "value" => value}]}
+  end
 
   defp assert_invalid(result) do
     assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} = result
