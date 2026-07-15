@@ -1,9 +1,724 @@
+defmodule YellowDog.Sync.OperationSchemaFixtures do
+  @moduledoc false
+
+  @revision String.duplicate("a", 64)
+  @observed_at "2026-07-16T08:30:00Z"
+
+  @list_schemas [
+    :service_list,
+    :dns_view_list,
+    :dns_zone_list,
+    :dns_record_list,
+    :dns_acl_list,
+    :dns_provider_list,
+    :dns_log_list,
+    :dhcp_pool_list,
+    :dhcp_lease_list,
+    :dhcp_activity_list,
+    :mdns_service_list,
+    :mdns_discovery_list,
+    :mdns_monitor_list,
+    :netboot_profile_list,
+    :netboot_device_list,
+    :netboot_asset_list,
+    :netboot_transfer_list,
+    :netboot_log_list,
+    :identity_host_list,
+    :identity_approval_list,
+    :identity_token_list,
+    :identity_audit_list,
+    :profile_list,
+    :profile_history,
+    :network_link_list,
+    :network_address_list,
+    :network_route_list,
+    :resolved_upstream_list,
+    :resolved_search_domain_list,
+    :dhcp_client_lease_list
+  ]
+
+  def schemas do
+    operations =
+      Map.values(YellowDog.Sync.ServerOperation.all()) ++
+        Map.values(YellowDog.Sync.NetmanOperation.all())
+
+    operations
+    |> Enum.flat_map(&[&1.payload_schema, &1.result_schema])
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  def valid(schema) when schema in @list_schemas do
+    %{"items" => [list_item(schema)], "revision" => @revision, "observed_at" => @observed_at}
+  end
+
+  def valid(:empty), do: %{}
+
+  def valid(schema) do
+    case schema do
+      :dns_view_list_query ->
+        %{}
+
+      :dns_zone_list_query ->
+        %{"view_name" => "default"}
+
+      :dns_record_list_query ->
+        %{"view_name" => "default", "zone_name" => "example.test"}
+
+      :dns_acl_list_query ->
+        %{}
+
+      :dns_provider_list_query ->
+        %{}
+
+      :dns_log_list_query ->
+        %{"view_name" => "default"}
+
+      :dns_metrics_query ->
+        %{}
+
+      :dhcp_pool_list_query ->
+        %{"family" => "ipv4"}
+
+      :dhcp_lease_list_query ->
+        %{"family" => "ipv4"}
+
+      :dhcp_activity_query ->
+        %{"family" => "ipv4"}
+
+      :dhcp_status_query ->
+        %{"family" => "ipv4"}
+
+      :mdns_service_list_query ->
+        %{}
+
+      :mdns_discovery_query ->
+        %{}
+
+      :mdns_monitor_query ->
+        %{}
+
+      :netboot_profile_list_query ->
+        %{}
+
+      :netboot_device_list_query ->
+        %{}
+
+      :netboot_asset_list_query ->
+        %{}
+
+      :netboot_transfer_list_query ->
+        %{}
+
+      :netboot_log_list_query ->
+        %{}
+
+      :identity_host_list_query ->
+        %{}
+
+      :identity_approval_list_query ->
+        %{}
+
+      :identity_token_list_query ->
+        %{}
+
+      :identity_audit_query ->
+        %{}
+
+      :settings_query ->
+        %{"service" => "dns"}
+
+      :profile_list_query ->
+        %{}
+
+      :network_links_query ->
+        %{}
+
+      :network_addresses_query ->
+        %{}
+
+      :network_routes_query ->
+        %{}
+
+      :network_connection_query ->
+        %{"connection_id" => "uplink"}
+
+      :service_ref ->
+        %{"service" => "dns"}
+
+      :dns_view_ref ->
+        %{"view_name" => "default"}
+
+      :dns_zone_ref ->
+        %{"view_name" => "default", "zone_name" => "example.test"}
+
+      :dns_record_ref ->
+        dns_record_ref()
+
+      :dns_acl_ref ->
+        %{"acl_id" => "trusted"}
+
+      :dns_provider_ref ->
+        %{"provider_id" => "route53"}
+
+      :dhcp_pool_ref ->
+        %{"family" => "ipv4", "pool_id" => "office"}
+
+      :dhcp_force_delete ->
+        %{"family" => "ipv4", "pool_id" => "office", "force" => true}
+
+      :dhcp_lease_ref ->
+        %{"family" => "ipv4", "lease_id" => "lease-1"}
+
+      :mdns_service_ref ->
+        %{"service_id" => "printer"}
+
+      :netboot_profile_ref ->
+        %{"profile_id" => "linux"}
+
+      :netboot_device_ref ->
+        %{"device_id" => "device-1"}
+
+      :netboot_asset_ref ->
+        %{"asset_id" => "installer"}
+
+      :netboot_asset_rescan ->
+        %{"scope" => "all"}
+
+      :identity_host_ref ->
+        %{"host_id" => "host-1"}
+
+      :identity_token_ref ->
+        %{"token_id" => "token-1"}
+
+      :settings_rollback ->
+        %{"service" => "dns", "target_revision" => @revision}
+
+      :profile_ref ->
+        %{"profile_id" => "office"}
+
+      :profile_rollback ->
+        %{"profile_id" => "office", "target_revision" => @revision}
+
+      :connection_ref ->
+        %{"connection_id" => "uplink"}
+
+      :dhcp_client_connection_ref ->
+        %{"connection_id" => "uplink"}
+
+      :resolved_config_rollback ->
+        %{"target_revision" => @revision}
+
+      :dns_view_write ->
+        dns_view()
+
+      :dns_zone_write ->
+        dns_zone()
+
+      :dns_record_write ->
+        dns_record()
+
+      :dns_acl_write ->
+        dns_acl()
+
+      :dns_provider_write ->
+        dns_provider()
+
+      :dns_zone_import ->
+        %{
+          "view_name" => "default",
+          "zone_name" => "example.test",
+          "filename" => "example.test.zone",
+          "size" => 42,
+          "blob_digest" => @revision
+        }
+
+      :dns_zone_sync ->
+        %{"view_name" => "default", "zone_name" => "example.test", "provider_id" => "route53"}
+
+      :dns_conflict_resolution ->
+        %{"conflict_id" => "conflict-1", "resolution" => "use_local"}
+
+      :dhcp_pool_write ->
+        dhcp_pool()
+
+      :mdns_service_register ->
+        mdns_service()
+
+      :mdns_service_update ->
+        mdns_service()
+
+      :mdns_service_toggle ->
+        %{"service_id" => "printer", "enabled" => true}
+
+      :netboot_profile_write ->
+        netboot_profile()
+
+      :netboot_device_write ->
+        netboot_device()
+
+      :netboot_asset_upload ->
+        %{
+          "asset_id" => "installer",
+          "filename" => "installer.ipxe",
+          "size" => 42,
+          "blob_digest" => @revision
+        }
+
+      :identity_token_create ->
+        %{"token_id" => "token-1", "label" => "automation", "expires_at" => nil}
+
+      :identity_policy_set ->
+        %{"policies" => [identity_policy()]}
+
+      :server_settings_config ->
+        settings_config()
+
+      :profile_validate ->
+        netman_profile()
+
+      :profile_put ->
+        netman_profile()
+
+      :profile_patch ->
+        %{
+          "profile_id" => "office",
+          "changes" => [
+            %{
+              "field" => "gateway",
+              "interface" => "eth0",
+              "value" => "192.0.2.1"
+            }
+          ]
+        }
+
+      :resolved_config_update ->
+        %{"upstreams" => ["1.1.1.1"], "search_domains" => ["example.test"]}
+
+      :runtime_capabilities ->
+        %{"capabilities" => ["runtime.services"]}
+
+      :runtime_health ->
+        %{"status" => "healthy", "checks" => [%{"name" => "dns", "status" => "healthy"}]}
+
+      :runtime_stats ->
+        %{"requests" => 10, "errors" => 0}
+
+      :dns_metrics ->
+        %{"queries" => 10, "failures" => 0}
+
+      :dns_import_result ->
+        %{
+          "view_name" => "default",
+          "zone_name" => "example.test",
+          "imported_records" => 4,
+          "revision" => @revision
+        }
+
+      :dns_sync_result ->
+        %{
+          "view_name" => "default",
+          "zone_name" => "example.test",
+          "changed_records" => 2,
+          "revision" => @revision
+        }
+
+      :dhcp_status ->
+        %{"family" => "ipv4", "status" => "running"}
+
+      :mdns_cache ->
+        %{"entries" => [%{"name" => "printer.local", "type" => "A", "values" => ["192.0.2.20"]}]}
+
+      :effective_settings ->
+        %{"service" => "dns", "entries" => [setting_entry()]}
+
+      :settings_source ->
+        %{"service" => "dns", "source" => "managed"}
+
+      :settings_revision ->
+        %{"service" => "dns", "revision" => @revision}
+
+      :settings_validation ->
+        %{"service" => "dns", "valid" => true, "errors" => []}
+
+      :apply_mode ->
+        %{"mode" => "managed"}
+
+      :reconciliation_health ->
+        %{"status" => "healthy", "pending_changes" => 0}
+
+      :profile_revision ->
+        %{"profile_id" => "office", "revision" => @revision}
+
+      :network_connection_state ->
+        %{"connection_id" => "uplink", "state" => "activated"}
+
+      :resolved_cache ->
+        %{
+          "entries" => [
+            %{"domain" => "example.test", "address" => "192.0.2.10", "expires_at" => @observed_at}
+          ]
+        }
+
+      :resolved_counters ->
+        %{"hits" => 5, "misses" => 1}
+
+      :dhcp_client_fsm ->
+        %{"connection_id" => "uplink", "state" => "bound"}
+
+      :vpn_resolved_profile ->
+        %{"profile_id" => "vpn-default", "state" => "resolved"}
+
+      :service_command_result ->
+        %{"service" => "dns", "state" => "running"}
+
+      :revisioned_resource ->
+        %{
+          "resource_type" => "dns_view",
+          "resource_id" => "default",
+          "revision" => @revision,
+          "resource" => dns_view()
+        }
+
+      :deleted_resource ->
+        %{"resource_type" => "dns_view", "resource_id" => "default", "revision" => @revision}
+
+      :lease_release_result ->
+        %{"family" => "ipv4", "lease_id" => "lease-1", "released" => true}
+
+      :cache_clear_result ->
+        %{"cleared_entries" => 4}
+
+      :netboot_asset ->
+        netboot_asset()
+
+      :netboot_asset_rescan_result ->
+        %{"scope" => "all", "discovered_assets" => 2}
+
+      :identity_token_create_result ->
+        %{"token_id" => "token-1", "secret" => "one-time-token", "expires_at" => nil}
+
+      :profile_validation ->
+        %{"profile_id" => "office", "valid" => true, "errors" => []}
+
+      :profile_activation_result ->
+        %{"profile_id" => "office", "revision" => @revision, "state" => "activated"}
+
+      :connection_activation_result ->
+        %{"connection_id" => "uplink", "state" => "activated"}
+
+      :config_state ->
+        config_state()
+    end
+  end
+
+  def depth_limit_payload do
+    %{
+      "service" => "dns",
+      "entries" => [
+        %{
+          "key" => "nested",
+          "value" => %{
+            "type" => "object",
+            "entries" => [
+              %{
+                "key" => "leaf",
+                "value" => %{"type" => "list", "items" => ["value"]}
+              }
+            ]
+          }
+        }
+      ]
+    }
+  end
+
+  def valid_result(name, :revisioned_resource) do
+    {resource_type, resource_id, resource} = operation_resource(name)
+
+    %{
+      "resource_type" => resource_type,
+      "resource_id" => resource_id,
+      "revision" => @revision,
+      "resource" => resource
+    }
+  end
+
+  def valid_result(name, :deleted_resource) do
+    {resource_type, resource_id, _resource} = operation_resource(name)
+
+    %{
+      "resource_type" => resource_type,
+      "resource_id" => resource_id,
+      "revision" => @revision
+    }
+  end
+
+  def valid_result(_name, schema), do: valid(schema)
+
+  defp list_item(:service_list), do: %{"service" => "dns", "state" => "running"}
+  defp list_item(:dns_view_list), do: dns_view()
+  defp list_item(:dns_zone_list), do: dns_zone()
+  defp list_item(:dns_record_list), do: dns_record()
+  defp list_item(:dns_acl_list), do: dns_acl()
+  defp list_item(:dns_provider_list), do: dns_provider()
+
+  defp list_item(:dns_log_list),
+    do: %{
+      "log_id" => "log-1",
+      "query_name" => "example.test",
+      "action" => "answered",
+      "occurred_at" => @observed_at
+    }
+
+  defp list_item(:dhcp_pool_list), do: dhcp_pool()
+
+  defp list_item(:dhcp_lease_list),
+    do: %{
+      "family" => "ipv4",
+      "lease_id" => "lease-1",
+      "address" => "192.0.2.20",
+      "state" => "active"
+    }
+
+  defp list_item(:dhcp_activity_list),
+    do: %{
+      "activity_id" => "activity-1",
+      "family" => "ipv4",
+      "action" => "lease_granted",
+      "occurred_at" => @observed_at
+    }
+
+  defp list_item(:mdns_service_list), do: mdns_service()
+
+  defp list_item(:mdns_discovery_list),
+    do: %{"name" => "printer.local", "service_type" => "_ipp._tcp", "address" => "192.0.2.20"}
+
+  defp list_item(:mdns_monitor_list),
+    do: %{
+      "event_id" => "event-1",
+      "name" => "printer.local",
+      "action" => "discovered",
+      "occurred_at" => @observed_at
+    }
+
+  defp list_item(:netboot_profile_list), do: netboot_profile()
+  defp list_item(:netboot_device_list), do: netboot_device()
+  defp list_item(:netboot_asset_list), do: netboot_asset()
+
+  defp list_item(:netboot_transfer_list),
+    do: %{
+      "transfer_id" => "transfer-1",
+      "asset_id" => "installer",
+      "device_id" => "device-1",
+      "state" => "completed"
+    }
+
+  defp list_item(:netboot_log_list),
+    do: %{
+      "log_id" => "log-1",
+      "device_id" => "device-1",
+      "message" => "served",
+      "occurred_at" => @observed_at
+    }
+
+  defp list_item(:identity_host_list),
+    do: %{"host_id" => "host-1", "name" => "edge", "state" => "approved", "revision" => @revision}
+
+  defp list_item(:identity_approval_list),
+    do: %{"approval_id" => "approval-1", "host_id" => "host-1", "state" => "approved"}
+
+  defp list_item(:identity_token_list),
+    do: %{"token_id" => "token-1", "label" => "automation", "state" => "active"}
+
+  defp list_item(:identity_audit_list),
+    do: %{
+      "audit_id" => "audit-1",
+      "action" => "host_approved",
+      "subject_id" => "host-1",
+      "occurred_at" => @observed_at
+    }
+
+  defp list_item(:profile_list), do: netman_profile()
+
+  defp list_item(:profile_history),
+    do: %{"profile_id" => "office", "revision" => @revision, "activated_at" => @observed_at}
+
+  defp list_item(:network_link_list),
+    do: %{"link_id" => "eth0", "name" => "eth0", "state" => "up"}
+
+  defp list_item(:network_address_list),
+    do: %{"link_id" => "eth0", "address" => "192.0.2.10/24", "scope" => "global"}
+
+  defp list_item(:network_route_list),
+    do: %{"destination" => "0.0.0.0/0", "gateway" => "192.0.2.1", "link_id" => "eth0"}
+
+  defp list_item(:resolved_upstream_list), do: %{"address" => "1.1.1.1", "source" => "managed"}
+
+  defp list_item(:resolved_search_domain_list),
+    do: %{"domain" => "example.test", "routing_only" => false}
+
+  defp list_item(:dhcp_client_lease_list),
+    do: %{"connection_id" => "uplink", "address" => "192.0.2.10", "expires_at" => @observed_at}
+
+  defp dns_record_ref,
+    do: %{"view_name" => "default", "zone_name" => "example.test", "record_id" => "www-a"}
+
+  defp dns_view,
+    do: %{"view_name" => "default", "match_clients" => ["0.0.0.0/0"], "recursion" => false}
+
+  defp dns_zone,
+    do: %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "zone_type" => "authoritative",
+      "provider_id" => nil
+    }
+
+  defp dns_record,
+    do:
+      Map.merge(dns_record_ref(), %{
+        "name" => "www",
+        "type" => "A",
+        "ttl" => 300,
+        "values" => ["192.0.2.10"]
+      })
+
+  defp dns_acl, do: %{"acl_id" => "trusted", "networks" => ["192.0.2.0/24"], "action" => "allow"}
+
+  defp dns_provider,
+    do: %{
+      "provider_id" => "route53",
+      "provider_type" => "route53",
+      "endpoint" => nil,
+      "credential_ref" => "secret-1"
+    }
+
+  defp dhcp_pool,
+    do: %{
+      "family" => "ipv4",
+      "pool_id" => "office",
+      "subnet" => "192.0.2.0/24",
+      "start_address" => "192.0.2.20",
+      "end_address" => "192.0.2.100",
+      "lease_seconds" => 3600
+    }
+
+  defp mdns_service,
+    do: %{
+      "service_id" => "printer",
+      "name" => "Printer",
+      "service_type" => "_ipp._tcp",
+      "service_port" => 631,
+      "txt" => [%{"key" => "note", "value" => "Office"}]
+    }
+
+  defp netboot_profile,
+    do: %{
+      "profile_id" => "linux",
+      "name" => "Linux",
+      "boot_asset_id" => "installer",
+      "arguments" => ["console=tty0"]
+    }
+
+  defp netboot_device,
+    do: %{"device_id" => "device-1", "profile_id" => "linux", "mac" => "02:00:00:00:00:01"}
+
+  defp netboot_asset,
+    do: %{
+      "asset_id" => "installer",
+      "filename" => "installer.ipxe",
+      "size" => 42,
+      "blob_digest" => @revision
+    }
+
+  defp identity_policy,
+    do: %{"policy_id" => "default", "action" => "require_approval", "enabled" => true}
+
+  defp netman_profile,
+    do: %{
+      "profile_id" => "office",
+      "name" => "Office",
+      "interfaces" => [
+        %{
+          "name" => "eth0",
+          "method" => "static",
+          "addresses" => ["192.0.2.10/24"],
+          "gateway" => "192.0.2.1"
+        }
+      ]
+    }
+
+  defp setting_entry,
+    do: %{"key" => "listen", "value" => %{"type" => "string", "value" => "0.0.0.0"}}
+
+  defp settings_config, do: %{"service" => "dns", "entries" => [setting_entry()]}
+
+  defp config_state do
+    %{
+      "state" => "applied",
+      "version" => "version-1",
+      "digest" => @revision,
+      "applied_revision" => @revision,
+      "previous_revision" => nil,
+      "failure" => nil,
+      "rollback" => nil
+    }
+  end
+
+  defp operation_resource(name) do
+    cond do
+      String.contains?(name, ".dns.views.") ->
+        {"dns_view", "default", dns_view()}
+
+      String.contains?(name, ".dns.zones.") or String.contains?(name, ".dns.conflicts.") ->
+        {"dns_zone", "example.test", dns_zone()}
+
+      String.contains?(name, ".dns.records.") ->
+        {"dns_record", "www-a", dns_record()}
+
+      String.contains?(name, ".dns.acls.") ->
+        {"dns_acl", "trusted", dns_acl()}
+
+      String.contains?(name, ".dns.providers.") ->
+        {"dns_provider", "route53", dns_provider()}
+
+      String.contains?(name, ".dhcp.pools.") ->
+        {"dhcp_pool", "office", dhcp_pool()}
+
+      String.contains?(name, ".mdns.services.") ->
+        {"mdns_service", "printer", mdns_service()}
+
+      String.contains?(name, ".netboot.profiles.") ->
+        {"netboot_profile", "linux", netboot_profile()}
+
+      String.contains?(name, ".netboot.devices.") ->
+        {"netboot_device", "device-1", netboot_device()}
+
+      String.contains?(name, ".netboot.assets.") ->
+        {"netboot_asset", "installer", netboot_asset()}
+
+      String.contains?(name, ".identity.hosts.") ->
+        {"identity_host", "host-1", list_item(:identity_host_list)}
+
+      String.contains?(name, ".identity.tokens.") ->
+        {"identity_token", "token-1", list_item(:identity_token_list)}
+
+      String.contains?(name, ".identity.policies.") ->
+        {"identity_policy", "default", identity_policy()}
+
+      String.contains?(name, ".profiles.") ->
+        {"netman_profile", "office", netman_profile()}
+    end
+  end
+end
+
 defmodule YellowDog.Sync.ServerOperationTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Sync.Error
   alias YellowDog.Sync.Operation
   alias YellowDog.Sync.ServerOperation
+  alias YellowDog.Sync.OperationSchemaFixtures, as: Fixtures
 
   @operations [
     {"server.runtime.capabilities.get", :query, "runtime.capabilities", :empty,
@@ -174,8 +889,11 @@ defmodule YellowDog.Sync.ServerOperationTest do
                 online?: ^online?
               } = operation} = ServerOperation.fetch(name)
 
-      assert {:ok, _payload} = Operation.validate_payload(operation, example(payload_schema))
-      assert {:ok, _result} = Operation.validate_result(operation, example(result_schema))
+      assert {:ok, _payload} =
+               Operation.validate_payload(operation, Fixtures.valid(payload_schema))
+
+      assert {:ok, _result} =
+               Operation.validate_result(operation, Fixtures.valid_result(name, result_schema))
     end
   end
 
@@ -236,194 +954,117 @@ defmodule YellowDog.Sync.ServerOperationTest do
     )
   end
 
-  defp example(:empty), do: %{}
+  test "blob metadata schemas reject cross-domain payloads" do
+    dns_import = Fixtures.valid(:dns_zone_import)
+    asset_upload = Fixtures.valid(:netboot_asset_upload)
 
-  defp example(schema) when schema in [:dns_zone_import, :netboot_asset_upload] do
-    %{
-      "resource_id" => "resource-1",
-      "filename" => "asset.bin",
-      "size" => 42,
-      "blob_digest" => digest()
-    }
+    assert_invalid(Operation.validate_schema(:dns_zone_import, asset_upload))
+    assert_invalid(Operation.validate_schema(:netboot_asset_upload, dns_import))
   end
 
-  defp example(schema) do
-    cond do
-      schema == :config_state ->
-        config_state()
+  test "every catalog schema has a strict valid missing extraneous and malformed shape" do
+    schemas = Fixtures.schemas()
+    assert length(schemas) == 136
 
-      schema == :mdns_service_toggle ->
-        %{"resource_id" => "resource-1", "enabled" => true}
+    for schema <- schemas do
+      valid = Fixtures.valid(schema)
+      assert {:ok, ^valid} = Operation.validate_schema(schema, valid)
+      assert_invalid(Operation.validate_schema(schema, Map.put(valid, "unexpected", true)))
 
-      schema in result_list_schemas() ->
-        snapshot(%{"items" => []})
-
-      schema in result_value_schemas() ->
-        snapshot(%{"value" => %{}})
-
-      schema in ref_schemas() ->
-        %{"resource_id" => "resource-1"}
-
-      schema in write_schemas() ->
-        %{"resource_id" => "resource-1", "value" => %{}}
-
-      schema in query_schemas() ->
-        %{}
-
-      schema in command_result_schemas() ->
-        %{"resource_id" => "resource-1", "revision" => digest(), "value" => %{}}
-
-      true ->
-        raise "missing example for #{inspect(schema)}"
+      if map_size(valid) > 0 do
+        first_key = valid |> Map.keys() |> Enum.sort() |> hd()
+        assert_invalid(Operation.validate_schema(schema, Map.delete(valid, first_key)))
+        assert_invalid(Operation.validate_schema(schema, Map.put(valid, first_key, make_ref())))
+      else
+        assert_invalid(Operation.validate_schema(schema, []))
+      end
     end
   end
 
-  defp query_schemas do
-    [
-      :dns_view_list_query,
-      :dns_zone_list_query,
-      :dns_record_list_query,
-      :dns_acl_list_query,
-      :dns_provider_list_query,
-      :dns_log_list_query,
-      :dns_metrics_query,
-      :dhcp_pool_list_query,
-      :dhcp_lease_list_query,
-      :dhcp_activity_query,
-      :dhcp_status_query,
-      :mdns_service_list_query,
-      :mdns_discovery_query,
-      :mdns_monitor_query,
-      :netboot_profile_list_query,
-      :netboot_device_list_query,
-      :netboot_asset_list_query,
-      :netboot_transfer_list_query,
-      :netboot_log_list_query,
-      :identity_host_list_query,
-      :identity_approval_list_query,
-      :identity_token_list_query,
-      :identity_audit_query,
-      :settings_query
-    ]
+  test "forbidden transport keys and values are rejected at any nesting level" do
+    profile = Fixtures.valid(:profile_put)
+
+    for forbidden <- [
+          "expected_revision",
+          "path",
+          "file",
+          "pathname",
+          "pid",
+          "ref",
+          "ets",
+          "table",
+          "kernel_handle",
+          "manager_handle",
+          "blob",
+          "content",
+          "bytes",
+          "data"
+        ] do
+      nested = put_in(profile, ["interfaces", Access.at(0), forbidden], "forbidden")
+      assert_invalid(Operation.validate_schema(:profile_put, nested))
+    end
+
+    port = Port.open({:spawn, "cat"}, [])
+
+    try do
+      for forbidden_value <- [self(), make_ref(), port] do
+        malformed = put_in(profile, ["interfaces", Access.at(0), "gateway"], forbidden_value)
+        assert_invalid(Operation.validate_schema(:profile_put, malformed))
+      end
+    after
+      if Port.info(port), do: Port.close(port)
+    end
   end
 
-  defp ref_schemas do
-    [
-      :service_ref,
-      :dns_view_ref,
-      :dns_zone_ref,
-      :dns_record_ref,
-      :dns_acl_ref,
-      :dns_provider_ref,
-      :dhcp_pool_ref,
-      :dhcp_force_delete,
-      :dhcp_lease_ref,
-      :mdns_service_ref,
-      :netboot_profile_ref,
-      :netboot_device_ref,
-      :netboot_asset_ref,
-      :netboot_asset_rescan,
-      :identity_host_ref,
-      :identity_token_ref,
-      :settings_rollback
-    ]
+  test "reviewer probes reject profile transport fields and arbitrary DNS list items" do
+    profile = Fixtures.valid(:profile_put)
+
+    for payload <- [
+          Map.put(profile, "expected_revision", digest()),
+          put_in(profile, ["interfaces", Access.at(0), "path"], "/etc/network"),
+          put_in(profile, ["interfaces", Access.at(0), "blob"], "raw")
+        ] do
+      assert_invalid(
+        Operation.validate_payload("netman.profiles.put", :netman, :command, payload)
+      )
+    end
+
+    valid_result = Fixtures.valid(:dns_view_list)
+
+    valid_item = hd(valid_result["items"])
+
+    for item <- [%{"path" => "/tmp/view"}, %{"blob" => "raw"}] do
+      result = %{valid_result | "items" => [valid_item, item]}
+
+      assert_invalid(Operation.validate_result("server.dns.views.list", :server, :query, result))
+    end
   end
 
-  defp write_schemas do
-    [
-      :dns_view_write,
-      :dns_zone_write,
-      :dns_record_write,
-      :dns_acl_write,
-      :dns_provider_write,
-      :dns_zone_sync,
-      :dns_conflict_resolution,
-      :dhcp_pool_write,
-      :mdns_service_register,
-      :mdns_service_update,
-      :mdns_service_toggle,
-      :netboot_profile_write,
-      :netboot_device_write,
-      :identity_token_create,
-      :identity_policy_set,
-      :server_settings_config
-    ]
-  end
+  test "rejects oversized values and collections and cross-domain shapes" do
+    profile = Fixtures.valid(:profile_put)
+    oversized_text = %{profile | "name" => String.duplicate("x", 1_025)}
 
-  defp result_list_schemas do
-    [
-      :service_list,
-      :dns_view_list,
-      :dns_zone_list,
-      :dns_record_list,
-      :dns_acl_list,
-      :dns_provider_list,
-      :dns_log_list,
-      :dhcp_pool_list,
-      :dhcp_lease_list,
-      :dhcp_activity_list,
-      :mdns_service_list,
-      :mdns_discovery_list,
-      :mdns_monitor_list,
-      :netboot_profile_list,
-      :netboot_device_list,
-      :netboot_asset_list,
-      :netboot_transfer_list,
-      :netboot_log_list,
-      :identity_host_list,
-      :identity_approval_list,
-      :identity_token_list,
-      :identity_audit_list
-    ]
-  end
-
-  defp result_value_schemas do
-    [
-      :runtime_capabilities,
-      :runtime_health,
-      :runtime_stats,
-      :dns_metrics,
-      :dhcp_status,
-      :mdns_cache,
-      :effective_settings,
-      :settings_source,
-      :settings_revision,
-      :settings_validation
-    ]
-  end
-
-  defp command_result_schemas do
-    [
-      :service_command_result,
-      :revisioned_resource,
-      :deleted_resource,
-      :dns_import_result,
-      :dns_sync_result,
-      :lease_release_result,
-      :cache_clear_result,
-      :netboot_asset,
-      :netboot_asset_rescan_result,
-      :identity_token_create_result
-    ]
-  end
-
-  defp snapshot(value),
-    do: Map.merge(value, %{"revision" => digest(), "observed_at" => timestamp()})
-
-  defp config_state do
-    %{
-      "state" => "applied",
-      "version" => "version-1",
-      "digest" => digest(),
-      "applied_revision" => digest(),
-      "previous_revision" => nil,
-      "failure" => nil,
-      "rollback" => nil
+    oversized_collection = %{
+      profile
+      | "interfaces" => List.duplicate(hd(profile["interfaces"]), 1_001)
     }
+
+    assert_invalid(Operation.validate_schema(:profile_put, oversized_text))
+    assert_invalid(Operation.validate_schema(:profile_put, oversized_collection))
+    assert_invalid(Operation.validate_schema(:dns_view_write, profile))
+    assert_invalid(Operation.validate_schema(:profile_put, Fixtures.valid(:dns_view_write)))
+
+    assert_invalid(
+      Operation.validate_result(
+        "server.dns.zones.create",
+        :server,
+        :command,
+        Fixtures.valid(:revisioned_resource)
+      )
+    )
   end
 
   defp digest, do: String.duplicate("a", 64)
-  defp timestamp, do: "2026-07-16T08:30:00Z"
 
   defp assert_invalid(result) do
     assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} = result

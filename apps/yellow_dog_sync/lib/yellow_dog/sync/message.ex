@@ -9,6 +9,22 @@ defmodule YellowDog.Sync.Message do
   alias YellowDog.Sync.Operation
 
   @uuid_pattern ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+  @message_types ~w(hello heartbeat status query command result config_delivery config_state journal event)
+  @max_wrapper_bytes byte_size(~s({"payload":,"type":"config_delivery"}))
+  @max_message_document_bytes Codec.max_document_bytes() + @max_wrapper_bytes
+  @max_message_depth Bounds.max_error_details_depth() + 2
+  @envelope_keys [
+    "protocol_version",
+    "request_id",
+    "target_type",
+    "target_id",
+    "operation",
+    "expected_revision",
+    "idempotency_key",
+    "payload",
+    "payload_digest",
+    "sent_at"
+  ]
 
   defmodule Hello do
     @enforce_keys [:identity]
@@ -96,17 +112,37 @@ defmodule YellowDog.Sync.Message do
 
   @spec encode(t()) :: {:ok, binary()} | {:error, Error.t()}
   def encode(message) do
-    with {:ok, wire} <- to_wire(message) do
-      Codec.encode_envelope(wire)
+    with {:ok, wire} <- to_wire(message),
+         {:ok, wire} <- exact_map(wire, ["type", "payload"]),
+         true <- wire["type"] in @message_types,
+         {:ok, encoded_payload} <- Codec.encode_envelope(wire["payload"]),
+         {:ok, encoded_type} <- Codec.encode(wire["type"]),
+         encoded <-
+           IO.iodata_to_binary([
+             "{\"payload\":",
+             encoded_payload,
+             ",\"type\":",
+             encoded_type,
+             "}"
+           ]),
+         {:ok, encoded} <- message_document(encoded) do
+      {:ok, encoded}
     else
       _ -> invalid_error()
     end
   end
 
+  @spec max_document_bytes() :: pos_integer()
+  def max_document_bytes, do: @max_message_document_bytes
+
   @spec decode(binary()) :: {:ok, t()} | {:error, Error.t()}
   def decode(payload) do
-    with {:ok, wire} <- Codec.decode_envelope(payload),
-         {:ok, wire} <- exact_map(wire, ["type", "payload"]) do
+    with {:ok, payload} <- message_document(payload),
+         :ok <- preflight(payload, @max_message_depth),
+         {:ok, wire} <- Jason.decode(payload),
+         {:ok, wire} <- exact_map(wire, ["type", "payload"]),
+         true <- wire["type"] in @message_types,
+         {:ok, _encoded_payload} <- Codec.encode_envelope(wire["payload"]) do
       from_wire(wire)
     else
       _ -> invalid_error()
@@ -142,6 +178,7 @@ defmodule YellowDog.Sync.Message do
          {:ok, target_id} <- valid_id(message.target_id),
          {:ok, state} <- status_state(message.state),
          {:ok, details} <- Bounds.details(message.details),
+         :ok <- Operation.validate_transport(details),
          {:ok, observed_at} <- utc_datetime(message.observed_at) do
       tagged("status", %{
         "target_type" => target_type,
@@ -262,6 +299,7 @@ defmodule YellowDog.Sync.Message do
          {:ok, target_id} <- valid_id(wire["target_id"]),
          {:ok, state} <- status_state(wire["state"]),
          {:ok, details} <- Bounds.details(wire["details"]),
+         :ok <- Operation.validate_transport(details),
          {:ok, observed_at} <- utc_datetime(wire["observed_at"]) do
       {:ok,
        %Status{
@@ -387,7 +425,8 @@ defmodule YellowDog.Sync.Message do
   defp envelope_wire(_type, _envelope, _kind), do: invalid_error()
 
   defp decode_envelope(wire, kind, module) do
-    with {:ok, envelope} <- Envelope.from_wire(wire),
+    with {:ok, wire} <- exact_map(wire, @envelope_keys),
+         {:ok, envelope} <- Envelope.from_wire(wire),
          {:ok, envelope} <- Operation.validate_envelope(envelope, kind) do
       {:ok, struct!(module, envelope: envelope)}
     else
@@ -410,9 +449,10 @@ defmodule YellowDog.Sync.Message do
   end
 
   defp result_value(_operation, nil, %Error{} = error) do
-    wire = Error.to_wire(error)
-
-    with {:ok, _wire} <- error_wire(wire),
+    with :ok <- Operation.validate_transport(error.details),
+         %Error{} = error <- Error.new(error.code, error.message, error.details),
+         wire <- Error.to_wire(error),
+         {:ok, _wire} <- error_wire(wire),
          {:ok, _error} <- Error.from_wire(wire) do
       {:ok, nil, wire}
     else
@@ -430,7 +470,8 @@ defmodule YellowDog.Sync.Message do
 
   defp result_from_wire(_operation, nil, wire) when is_map(wire) do
     with {:ok, wire} <- error_wire(wire),
-         {:ok, error} <- Error.from_wire(wire) do
+         {:ok, error} <- Error.from_wire(wire),
+         :ok <- Operation.validate_transport(error.details) do
       {:ok, nil, error}
     else
       _ -> invalid_error()
@@ -628,6 +669,7 @@ defmodule YellowDog.Sync.Message do
 
   defp bounded_map(value) when is_map(value) do
     with {:ok, _value} <- Bounds.map(value),
+         :ok <- Operation.validate_transport(value),
          {:ok, encoded} <- Codec.encode(value),
          {:ok, _encoded} <- Bounds.payload(encoded) do
       {:ok, value}
@@ -651,6 +693,47 @@ defmodule YellowDog.Sync.Message do
   end
 
   defp utc_datetime(_value), do: invalid_error()
+
+  defp message_document(payload)
+       when is_binary(payload) and byte_size(payload) <= @max_message_document_bytes,
+       do: {:ok, payload}
+
+  defp message_document(_payload), do: invalid_error()
+
+  defp preflight(payload, maximum_depth), do: scan(payload, 0, false, maximum_depth)
+
+  defp scan(<<>>, _depth, _in_string, _maximum_depth), do: :ok
+
+  defp scan(<<92, _escaped, rest::binary>>, depth, true, maximum_depth),
+    do: scan(rest, depth, true, maximum_depth)
+
+  defp scan(<<92>>, _depth, true, _maximum_depth), do: :ok
+
+  defp scan(<<?\", rest::binary>>, depth, true, maximum_depth),
+    do: scan(rest, depth, false, maximum_depth)
+
+  defp scan(<<_byte, rest::binary>>, depth, true, maximum_depth),
+    do: scan(rest, depth, true, maximum_depth)
+
+  defp scan(<<?\", rest::binary>>, depth, false, maximum_depth),
+    do: scan(rest, depth, true, maximum_depth)
+
+  defp scan(<<byte, rest::binary>>, depth, false, maximum_depth) when byte in [?{, ?[] do
+    next_depth = depth + 1
+
+    if next_depth <= maximum_depth do
+      scan(rest, next_depth, false, maximum_depth)
+    else
+      invalid_error()
+    end
+  end
+
+  defp scan(<<byte, rest::binary>>, depth, false, maximum_depth) when byte in [?}, ?]] do
+    scan(rest, max(depth - 1, 0), false, maximum_depth)
+  end
+
+  defp scan(<<_byte, rest::binary>>, depth, false, maximum_depth),
+    do: scan(rest, depth, false, maximum_depth)
 
   defp invalid_error, do: {:error, Error.new(:invalid, "invalid value", %{})}
 end

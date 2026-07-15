@@ -63,6 +63,7 @@ defmodule YellowDog.Sync.NetmanOperation do
                                     online?} ->
                 {name,
                  %Operation{
+                   name: name,
                    target_type: :netman,
                    kind: kind,
                    capability: capability,

@@ -5,6 +5,9 @@ defmodule YellowDog.Sync.NetmanOperationTest do
   alias YellowDog.Sync.NetmanOperation
   alias YellowDog.Sync.Operation
 
+  @revision String.duplicate("b", 64)
+  @observed_at "2026-07-16T08:30:00Z"
+
   @operations [
     {"netman.runtime.capabilities.get", :query, "runtime.capabilities", :empty,
      :runtime_capabilities, true},
@@ -74,8 +77,11 @@ defmodule YellowDog.Sync.NetmanOperationTest do
                 online?: ^online?
               } = operation} = NetmanOperation.fetch(name)
 
-      assert {:ok, _payload} = Operation.validate_payload(operation, example(payload_schema))
-      assert {:ok, _result} = Operation.validate_result(operation, example(result_schema))
+      assert {:ok, _payload} =
+               Operation.validate_payload(operation, valid(payload_schema))
+
+      assert {:ok, _result} =
+               Operation.validate_result(operation, valid_result(name, result_schema))
     end
   end
 
@@ -87,14 +93,10 @@ defmodule YellowDog.Sync.NetmanOperationTest do
 
   test "rejects unknown operations without creating atoms" do
     _ = NetmanOperation.fetch("netman.runtime.capabilities.get")
+    _last_warmup_name = reject_unknown_batch("warmup")
     initial_atom_count = :erlang.system_info(:atom_count)
 
-    last_name =
-      Enum.reduce(1..500, nil, fn index, _last_name ->
-        name = "netman.unknown.#{index}_#{System.unique_integer([:positive])}"
-        assert_invalid(NetmanOperation.fetch(name))
-        name
-      end)
+    last_name = reject_unknown_batch("measured")
 
     assert :erlang.system_info(:atom_count) == initial_atom_count
     assert_raise ArgumentError, fn -> String.to_existing_atom(last_name) end
@@ -119,107 +121,171 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     assert_invalid(Operation.validate_result("netman.profiles.put", :server, :command, %{}))
   end
 
-  defp example(:empty), do: %{}
+  test "profile patches enforce field-specific values" do
+    valid_changes = [
+      %{"field" => "name", "value" => "Office"},
+      %{"field" => "method", "interface" => "eth0", "value" => "static"},
+      %{"field" => "addresses", "interface" => "eth0", "value" => ["192.0.2.10/24"]},
+      %{"field" => "gateway", "interface" => "eth0", "value" => "192.0.2.1"}
+    ]
 
-  defp example(schema) do
-    cond do
-      schema == :config_state ->
-        config_state()
+    for change <- valid_changes do
+      assert {:ok, _payload} =
+               Operation.validate_schema(:profile_patch, %{
+                 "profile_id" => "office",
+                 "changes" => [change]
+               })
+    end
 
-      schema in list_results() ->
-        snapshot(%{"items" => []})
-
-      schema in value_results() ->
-        snapshot(%{"value" => %{}})
-
-      schema in refs() ->
-        %{"resource_id" => "resource-1"}
-
-      schema in writes() ->
-        %{"resource_id" => "resource-1", "value" => %{}}
-
-      schema in queries() ->
-        %{}
-
-      schema in command_results() ->
-        %{"resource_id" => "resource-1", "revision" => digest(), "value" => %{}}
-
-      true ->
-        raise "missing example for #{inspect(schema)}"
+    for change <- [
+          %{"field" => "name", "value" => true},
+          %{"field" => "method", "interface" => "eth0", "value" => "Office"},
+          %{"field" => "addresses", "interface" => "eth0", "value" => "192.0.2.10/24"},
+          %{"field" => "gateway", "interface" => "eth0", "value" => ["192.0.2.1"]},
+          %{"field" => "method", "value" => "dhcp"},
+          %{"field" => "name", "interface" => "eth0", "value" => "Office"}
+        ] do
+      assert_invalid(
+        Operation.validate_schema(:profile_patch, %{
+          "profile_id" => "office",
+          "changes" => [change]
+        })
+      )
     end
   end
 
-  defp queries do
-    [
-      :profile_list_query,
-      :network_links_query,
-      :network_addresses_query,
-      :network_routes_query,
-      :network_connection_query
-    ]
+  defp valid(schema) do
+    case schema do
+      :empty -> %{}
+      :profile_list_query -> %{}
+      :profile_ref -> %{"profile_id" => "office"}
+      :profile_validate -> profile()
+      :profile_put -> profile()
+      :profile_rollback -> %{"profile_id" => "office", "target_revision" => @revision}
+      :network_links_query -> %{}
+      :network_addresses_query -> %{}
+      :network_routes_query -> %{}
+      :network_connection_query -> %{"connection_id" => "uplink"}
+      :profile_patch -> profile_patch()
+      :connection_ref -> %{"connection_id" => "uplink"}
+      :resolved_config_update -> resolved_config()
+      :resolved_config_rollback -> %{"target_revision" => @revision}
+      :dhcp_client_connection_ref -> %{"connection_id" => "uplink"}
+      :runtime_capabilities -> %{"capabilities" => ["runtime.apply_mode"]}
+      :apply_mode -> %{"mode" => "managed"}
+      :reconciliation_health -> %{"status" => "healthy", "pending_changes" => 0}
+      :profile_list -> list_result(profile())
+      :profile_revision -> %{"profile_id" => "office", "revision" => @revision}
+      :profile_history -> list_result(profile_history())
+      :profile_validation -> %{"profile_id" => "office", "valid" => true, "errors" => []}
+      :profile_activation_result -> profile_activation()
+      :network_link_list -> list_result(network_link())
+      :network_address_list -> list_result(network_address())
+      :network_route_list -> list_result(network_route())
+      :network_connection_state -> connection_state()
+      :connection_activation_result -> connection_state()
+      :resolved_upstream_list -> list_result(resolved_upstream())
+      :resolved_search_domain_list -> list_result(resolved_search_domain())
+      :resolved_cache -> resolved_cache()
+      :resolved_counters -> %{"hits" => 5, "misses" => 1}
+      :config_state -> config_state()
+      :cache_clear_result -> %{"cleared_entries" => 4}
+      :dhcp_client_fsm -> %{"connection_id" => "uplink", "state" => "bound"}
+      :dhcp_client_lease_list -> list_result(dhcp_client_lease())
+      :lease_release_result -> %{"family" => "ipv4", "lease_id" => "lease-1", "released" => true}
+      :vpn_resolved_profile -> %{"profile_id" => "vpn-default", "state" => "resolved"}
+    end
   end
 
-  defp refs do
-    [
-      :profile_ref,
-      :profile_rollback,
-      :connection_ref,
-      :dhcp_client_connection_ref,
-      :resolved_config_rollback
-    ]
+  defp valid_result(_name, :revisioned_resource) do
+    %{
+      "resource_type" => "netman_profile",
+      "resource_id" => "office",
+      "revision" => @revision,
+      "resource" => profile()
+    }
   end
 
-  defp writes do
-    [:profile_validate, :profile_put, :profile_patch, :resolved_config_update]
+  defp valid_result(_name, :deleted_resource) do
+    %{
+      "resource_type" => "netman_profile",
+      "resource_id" => "office",
+      "revision" => @revision
+    }
   end
 
-  defp list_results do
-    [
-      :profile_list,
-      :profile_history,
-      :network_link_list,
-      :network_address_list,
-      :network_route_list,
-      :resolved_upstream_list,
-      :resolved_search_domain_list,
-      :dhcp_client_lease_list
-    ]
+  defp valid_result(_name, schema), do: valid(schema)
+
+  defp profile do
+    %{
+      "profile_id" => "office",
+      "name" => "Office",
+      "interfaces" => [
+        %{
+          "name" => "eth0",
+          "method" => "static",
+          "addresses" => ["192.0.2.10/24"],
+          "gateway" => "192.0.2.1"
+        }
+      ]
+    }
   end
 
-  defp value_results do
-    [
-      :runtime_capabilities,
-      :apply_mode,
-      :reconciliation_health,
-      :profile_revision,
-      :network_connection_state,
-      :resolved_cache,
-      :resolved_counters,
-      :dhcp_client_fsm,
-      :vpn_resolved_profile
-    ]
+  defp profile_patch do
+    %{
+      "profile_id" => "office",
+      "changes" => [
+        %{"field" => "gateway", "interface" => "eth0", "value" => "192.0.2.1"}
+      ]
+    }
   end
 
-  defp command_results do
-    [
-      :profile_validation,
-      :revisioned_resource,
-      :deleted_resource,
-      :profile_activation_result,
-      :connection_activation_result,
-      :cache_clear_result,
-      :lease_release_result
-    ]
+  defp resolved_config,
+    do: %{"upstreams" => ["1.1.1.1"], "search_domains" => ["example.test"]}
+
+  defp profile_history,
+    do: %{"profile_id" => "office", "revision" => @revision, "activated_at" => @observed_at}
+
+  defp profile_activation,
+    do: %{"profile_id" => "office", "revision" => @revision, "state" => "activated"}
+
+  defp network_link, do: %{"link_id" => "eth0", "name" => "eth0", "state" => "up"}
+
+  defp network_address,
+    do: %{"link_id" => "eth0", "address" => "192.0.2.10/24", "scope" => "global"}
+
+  defp network_route,
+    do: %{"destination" => "0.0.0.0/0", "gateway" => "192.0.2.1", "link_id" => "eth0"}
+
+  defp connection_state, do: %{"connection_id" => "uplink", "state" => "activated"}
+  defp resolved_upstream, do: %{"address" => "1.1.1.1", "source" => "managed"}
+  defp resolved_search_domain, do: %{"domain" => "example.test", "routing_only" => false}
+
+  defp resolved_cache do
+    %{
+      "entries" => [
+        %{
+          "domain" => "example.test",
+          "address" => "192.0.2.10",
+          "expires_at" => @observed_at
+        }
+      ]
+    }
   end
 
-  defp snapshot(value),
-    do: Map.merge(value, %{"revision" => digest(), "observed_at" => timestamp()})
+  defp dhcp_client_lease do
+    %{"connection_id" => "uplink", "address" => "192.0.2.10", "expires_at" => @observed_at}
+  end
+
+  defp list_result(item) do
+    %{"items" => [item], "revision" => @revision, "observed_at" => @observed_at}
+  end
 
   defp config_state do
     %{
       "state" => "desired",
       "version" => "version-1",
-      "digest" => digest(),
+      "digest" => @revision,
       "applied_revision" => nil,
       "previous_revision" => nil,
       "failure" => nil,
@@ -227,10 +293,15 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     }
   end
 
-  defp digest, do: String.duplicate("b", 64)
-  defp timestamp, do: "2026-07-16T08:30:00Z"
-
   defp assert_invalid(result) do
     assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} = result
+  end
+
+  defp reject_unknown_batch(label) do
+    Enum.reduce(1..500, nil, fn index, _last_name ->
+      name = "netman.unknown.#{label}.#{index}_#{System.unique_integer([:positive])}"
+      assert_invalid(NetmanOperation.fetch(name))
+      name
+    end)
   end
 end

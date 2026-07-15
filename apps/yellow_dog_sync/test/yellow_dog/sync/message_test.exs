@@ -101,15 +101,16 @@ defmodule YellowDog.Sync.MessageTest do
           %Query{envelope: envelope("server.runtime.services.list", %{})}
 
         %Command{} ->
-          %Command{envelope: envelope("server.runtime.services.start", %{"resource_id" => "dns"})}
+          %Command{
+            envelope: envelope("server.runtime.services.start", %{"service" => "dns"})
+          }
 
         %Result{} = result ->
           %{result | value: snapshot([])}
 
         %ConfigDelivery{} ->
           %ConfigDelivery{
-            envelope:
-              envelope("server.settings.update", %{"resource_id" => "dns", "value" => %{}})
+            envelope: envelope("server.settings.update", settings_config())
           }
 
         message ->
@@ -142,6 +143,113 @@ defmodule YellowDog.Sync.MessageTest do
     }
 
     assert_invalid(Message.encode(%Query{envelope: envelope}))
+  end
+
+  test "decode rejects extraneous fields inside a nested envelope" do
+    message = %Query{envelope: envelope("server.runtime.services.list", %{})}
+    assert {:ok, encoded} = Message.encode(message)
+
+    wire = Jason.decode!(encoded)
+    malformed = put_in(wire, ["payload", "unexpected"], true)
+
+    assert_invalid(Message.decode(Jason.encode!(malformed)))
+  end
+
+  test "message wrapper preserves an envelope payload at the reviewed depth limit" do
+    payload = depth_limit_payload()
+    envelope = envelope("server.settings.update", payload)
+
+    assert {:ok, _encoded_envelope} = Envelope.encode(envelope)
+    assert {:ok, encoded_message} = Message.encode(%ConfigDelivery{envelope: envelope})
+    assert {:ok, %ConfigDelivery{envelope: decoded}} = Message.decode(encoded_message)
+    assert decoded.payload == payload
+  end
+
+  test "malformed Result errors return stable invalid values without raising" do
+    malformed_errors = [
+      %Error{code: :unknown, message: "bad", details: %{}},
+      %Error{code: :invalid, message: 42, details: %{}},
+      %Error{code: :invalid, message: "bad", details: []},
+      %Error{code: :invalid, message: String.duplicate("x", 1_025), details: %{}},
+      %Error{code: :invalid, message: "bad", details: %{"path" => "/etc/yellow-dog"}}
+    ]
+
+    for malformed_error <- malformed_errors do
+      result = %Result{
+        request_id: @request_id,
+        target_type: :server,
+        operation: "server.runtime.services.list",
+        value: nil,
+        error: malformed_error
+      }
+
+      assert_invalid(Message.encode(result))
+    end
+  end
+
+  test "invalid operation payloads cannot decode to dispatchable messages" do
+    payload = %{
+      "resource_id" => "office",
+      "value" => %{"path" => "/etc/network", "blob" => "raw"}
+    }
+
+    envelope = envelope("netman.profiles.put", payload, target_type: :netman)
+    encoded = Jason.encode!(%{"type" => "command", "payload" => Envelope.to_wire(envelope)})
+
+    assert_invalid(Message.decode(encoded))
+  end
+
+  test "invalid operation results and journal values cannot cross the message boundary" do
+    result = dns_view_list()
+    invalid_result = %{result | "items" => [%{"path" => "/tmp/view", "blob" => "raw"}]}
+
+    message = %Result{
+      request_id: @request_id,
+      target_type: :server,
+      operation: "server.dns.views.list",
+      value: invalid_result,
+      error: nil
+    }
+
+    journal = %Journal{
+      target_type: :server,
+      target_id: "server-1",
+      entries: [
+        %{
+          "request_id" => @request_id,
+          "operation" => "server.dns.views.list",
+          "status" => "completed",
+          "result" => invalid_result,
+          "error" => nil
+        }
+      ]
+    }
+
+    assert_invalid(Message.encode(message))
+    assert_invalid(Message.encode(journal))
+
+    result_wire = %{
+      "type" => "result",
+      "payload" => %{
+        "request_id" => @request_id,
+        "target_type" => "server",
+        "operation" => "server.dns.views.list",
+        "value" => invalid_result,
+        "error" => nil
+      }
+    }
+
+    journal_wire = %{
+      "type" => "journal",
+      "payload" => %{
+        "target_type" => "server",
+        "target_id" => "server-1",
+        "entries" => journal.entries
+      }
+    }
+
+    assert_invalid(Message.decode(Jason.encode!(result_wire)))
+    assert_invalid(Message.decode(Jason.encode!(journal_wire)))
   end
 
   test "result and journal validate operation-specific result values" do
@@ -200,6 +308,7 @@ defmodule YellowDog.Sync.MessageTest do
 
     assert_invalid(Message.encode(oversized))
     assert_invalid(Message.decode("not json"))
+    assert_invalid(Message.decode(String.duplicate(" ", Message.max_document_bytes() + 1)))
   end
 
   defp envelope(operation, payload, overrides \\ []) do
@@ -229,6 +338,52 @@ defmodule YellowDog.Sync.MessageTest do
       "items" => items,
       "revision" => String.duplicate("a", 64),
       "observed_at" => DateTime.to_iso8601(@sent_at)
+    }
+  end
+
+  defp dns_view_list do
+    %{
+      "items" => [
+        %{
+          "view_name" => "default",
+          "match_clients" => ["0.0.0.0/0"],
+          "recursion" => false
+        }
+      ],
+      "revision" => String.duplicate("a", 64),
+      "observed_at" => DateTime.to_iso8601(@sent_at)
+    }
+  end
+
+  defp settings_config do
+    %{
+      "service" => "dns",
+      "entries" => [
+        %{
+          "key" => "listen",
+          "value" => %{"type" => "string", "value" => "0.0.0.0"}
+        }
+      ]
+    }
+  end
+
+  defp depth_limit_payload do
+    %{
+      "service" => "dns",
+      "entries" => [
+        %{
+          "key" => "nested",
+          "value" => %{
+            "type" => "object",
+            "entries" => [
+              %{
+                "key" => "leaf",
+                "value" => %{"type" => "list", "items" => ["value"]}
+              }
+            ]
+          }
+        }
+      ]
     }
   end
 

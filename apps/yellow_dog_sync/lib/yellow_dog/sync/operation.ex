@@ -2,13 +2,14 @@ defmodule YellowDog.Sync.Operation do
   @moduledoc false
 
   alias YellowDog.Sync.Bounds
-  alias YellowDog.Sync.Codec
   alias YellowDog.Sync.Digest
+  alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
   alias YellowDog.Sync.NetmanOperation
   alias YellowDog.Sync.ServerOperation
 
   @enforce_keys [
+    :name,
     :target_type,
     :kind,
     :capability,
@@ -20,6 +21,7 @@ defmodule YellowDog.Sync.Operation do
 
   @type kind :: :query | :command | :config
   @type t :: %__MODULE__{
+          name: String.t(),
           target_type: :server | :netman,
           kind: kind(),
           capability: String.t(),
@@ -28,159 +30,55 @@ defmodule YellowDog.Sync.Operation do
           online?: boolean()
         }
 
-  @query_schemas [
-    :dns_view_list_query,
-    :dns_zone_list_query,
-    :dns_record_list_query,
-    :dns_acl_list_query,
-    :dns_provider_list_query,
-    :dns_log_list_query,
-    :dns_metrics_query,
-    :dhcp_pool_list_query,
-    :dhcp_lease_list_query,
-    :dhcp_activity_query,
-    :dhcp_status_query,
-    :mdns_service_list_query,
-    :mdns_discovery_query,
-    :mdns_monitor_query,
-    :netboot_profile_list_query,
-    :netboot_device_list_query,
-    :netboot_asset_list_query,
-    :netboot_transfer_list_query,
-    :netboot_log_list_query,
-    :identity_host_list_query,
-    :identity_approval_list_query,
-    :identity_token_list_query,
-    :identity_audit_query,
-    :settings_query,
-    :profile_list_query,
-    :network_links_query,
-    :network_addresses_query,
-    :network_routes_query,
-    :network_connection_query
-  ]
+  @max_schema_depth 8
+  @max_collection_size 100
+  @max_integer 9_223_372_036_854_775_807
 
-  @ref_schemas [
-    :service_ref,
-    :dns_view_ref,
-    :dns_zone_ref,
-    :dns_record_ref,
-    :dns_acl_ref,
-    :dns_provider_ref,
-    :dhcp_pool_ref,
-    :dhcp_force_delete,
-    :dhcp_lease_ref,
-    :mdns_service_ref,
-    :netboot_profile_ref,
-    :netboot_device_ref,
-    :netboot_asset_ref,
-    :netboot_asset_rescan,
-    :identity_host_ref,
-    :identity_token_ref,
-    :settings_rollback,
-    :profile_ref,
-    :profile_rollback,
-    :connection_ref,
-    :dhcp_client_connection_ref,
-    :resolved_config_rollback
-  ]
-
-  @write_schemas [
-    :dns_view_write,
-    :dns_zone_write,
-    :dns_record_write,
-    :dns_acl_write,
-    :dns_provider_write,
-    :dns_zone_sync,
-    :dns_conflict_resolution,
-    :dhcp_pool_write,
-    :mdns_service_register,
-    :mdns_service_update,
-    :netboot_profile_write,
-    :netboot_device_write,
-    :identity_token_create,
-    :identity_policy_set,
-    :server_settings_config,
-    :profile_validate,
-    :profile_put,
-    :profile_patch,
-    :resolved_config_update
-  ]
-
-  @list_result_schemas [
-    :service_list,
-    :dns_view_list,
-    :dns_zone_list,
-    :dns_record_list,
-    :dns_acl_list,
-    :dns_provider_list,
-    :dns_log_list,
-    :dhcp_pool_list,
-    :dhcp_lease_list,
-    :dhcp_activity_list,
-    :mdns_service_list,
-    :mdns_discovery_list,
-    :mdns_monitor_list,
-    :netboot_profile_list,
-    :netboot_device_list,
-    :netboot_asset_list,
-    :netboot_transfer_list,
-    :netboot_log_list,
-    :identity_host_list,
-    :identity_approval_list,
-    :identity_token_list,
-    :identity_audit_list,
-    :profile_list,
-    :profile_history,
-    :network_link_list,
-    :network_address_list,
-    :network_route_list,
-    :resolved_upstream_list,
-    :resolved_search_domain_list,
-    :dhcp_client_lease_list
-  ]
-
-  @value_result_schemas [
-    :runtime_capabilities,
-    :runtime_health,
-    :runtime_stats,
-    :dns_metrics,
-    :dhcp_status,
-    :mdns_cache,
-    :effective_settings,
-    :settings_source,
-    :settings_revision,
-    :settings_validation,
-    :apply_mode,
-    :reconciliation_health,
-    :profile_revision,
-    :network_connection_state,
-    :resolved_cache,
-    :resolved_counters,
-    :dhcp_client_fsm,
-    :vpn_resolved_profile
-  ]
-
-  @command_result_schemas [
-    :service_command_result,
-    :revisioned_resource,
-    :deleted_resource,
-    :dns_import_result,
-    :dns_sync_result,
-    :lease_release_result,
-    :cache_clear_result,
-    :netboot_asset,
-    :netboot_asset_rescan_result,
-    :identity_token_create_result,
-    :profile_validation,
-    :profile_activation_result,
-    :connection_activation_result
-  ]
+  @forbidden_keys MapSet.new([
+                    "expected_revision",
+                    "path",
+                    "local_path",
+                    "file_path",
+                    "pathname",
+                    "file",
+                    "pid",
+                    "process_id",
+                    "ref",
+                    "reference",
+                    "port",
+                    "ets",
+                    "ets_table",
+                    "table",
+                    "table_id",
+                    "kernel_handle",
+                    "manager_handle",
+                    "handle",
+                    "blob",
+                    "content",
+                    "bytes",
+                    "data"
+                  ])
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
   def lookup("netman." <> _rest = name), do: NetmanOperation.fetch(name)
   def lookup(_name), do: invalid_error()
+
+  @spec validate_schema(atom(), term()) :: {:ok, term()} | {:error, Error.t()}
+  def validate_schema(schema, value) when is_atom(schema) do
+    with spec when not is_nil(spec) <- schema_spec(schema),
+         :ok <- validate_transport(value),
+         :ok <- validate_type(value, spec, @max_schema_depth) do
+      {:ok, value}
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  def validate_schema(_schema, _value), do: invalid_error()
+
+  @spec validate_transport(term()) :: :ok | {:error, Error.t()}
+  def validate_transport(value), do: transport_safe(value, @max_schema_depth)
 
   @spec validate_payload(t(), term()) :: {:ok, term()} | {:error, Error.t()}
   def validate_payload(%__MODULE__{payload_schema: schema}, payload),
@@ -199,8 +97,14 @@ defmodule YellowDog.Sync.Operation do
   end
 
   @spec validate_result(t(), term()) :: {:ok, term()} | {:error, Error.t()}
-  def validate_result(%__MODULE__{result_schema: schema}, result),
-    do: validate_schema(schema, result)
+  def validate_result(%__MODULE__{} = operation, result) do
+    with {:ok, result} <- validate_schema(operation.result_schema, result),
+         :ok <- validate_result_domain(operation, result) do
+      {:ok, result}
+    else
+      _ -> invalid_error()
+    end
+  end
 
   def validate_result(_operation, _result), do: invalid_error()
 
@@ -214,10 +118,10 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
-  @spec validate_envelope(YellowDog.Sync.Envelope.t(), kind()) ::
-          {:ok, YellowDog.Sync.Envelope.t()} | {:error, Error.t()}
-  def validate_envelope(%YellowDog.Sync.Envelope{} = envelope, kind) do
-    with {:ok, _encoded} <- YellowDog.Sync.Envelope.encode(envelope),
+  @spec validate_envelope(Envelope.t(), kind()) ::
+          {:ok, Envelope.t()} | {:error, Error.t()}
+  def validate_envelope(%Envelope{} = envelope, kind) do
+    with {:ok, _encoded} <- Envelope.encode(envelope),
          {:ok, _payload} <-
            validate_payload(envelope.operation, envelope.target_type, kind, envelope.payload) do
       {:ok, envelope}
@@ -226,213 +130,1018 @@ defmodule YellowDog.Sync.Operation do
 
   def validate_envelope(_envelope, _kind), do: invalid_error()
 
-  defp validate_schema(:empty, value), do: exact_map(value, [])
+  defp schema_spec(:empty), do: object(%{})
 
-  defp validate_schema(schema, value) when schema in @query_schemas do
-    with {:ok, value} <- allowed_map(value, ["scope", "filter", "cursor", "limit"]),
-         :ok <- optional_text(value, "scope"),
-         :ok <- optional_text(value, "filter"),
-         :ok <- optional_text(value, "cursor"),
-         :ok <- optional_limit(value, "limit") do
-      {:ok, value}
+  defp schema_spec(:dns_view_list_query), do: query(%{})
+  defp schema_spec(:dns_zone_list_query), do: query(%{"view_name" => :id})
+
+  defp schema_spec(:dns_record_list_query),
+    do: query(%{"view_name" => :id, "zone_name" => :domain})
+
+  defp schema_spec(:dns_acl_list_query), do: query(%{})
+  defp schema_spec(:dns_provider_list_query), do: query(%{})
+  defp schema_spec(:dns_log_list_query), do: query(%{"view_name" => :id})
+  defp schema_spec(:dns_metrics_query), do: query(%{})
+  defp schema_spec(:dhcp_pool_list_query), do: family_query()
+  defp schema_spec(:dhcp_lease_list_query), do: family_query()
+  defp schema_spec(:dhcp_activity_query), do: family_query()
+  defp schema_spec(:dhcp_status_query), do: family_query()
+  defp schema_spec(:mdns_service_list_query), do: query(%{})
+  defp schema_spec(:mdns_discovery_query), do: query(%{})
+  defp schema_spec(:mdns_monitor_query), do: query(%{})
+  defp schema_spec(:netboot_profile_list_query), do: query(%{})
+  defp schema_spec(:netboot_device_list_query), do: query(%{})
+  defp schema_spec(:netboot_asset_list_query), do: query(%{})
+  defp schema_spec(:netboot_transfer_list_query), do: query(%{})
+  defp schema_spec(:netboot_log_list_query), do: query(%{})
+  defp schema_spec(:identity_host_list_query), do: query(%{})
+  defp schema_spec(:identity_approval_list_query), do: query(%{})
+  defp schema_spec(:identity_token_list_query), do: query(%{})
+  defp schema_spec(:identity_audit_query), do: query(%{})
+  defp schema_spec(:settings_query), do: query(%{"service" => :id})
+  defp schema_spec(:profile_list_query), do: query(%{})
+  defp schema_spec(:network_links_query), do: query(%{})
+  defp schema_spec(:network_addresses_query), do: query(%{})
+  defp schema_spec(:network_routes_query), do: query(%{})
+  defp schema_spec(:network_connection_query), do: query(%{"connection_id" => :id})
+
+  defp schema_spec(:service_ref), do: object(%{"service" => :id})
+  defp schema_spec(:dns_view_ref), do: object(%{"view_name" => :id})
+
+  defp schema_spec(:dns_zone_ref),
+    do: object(%{"view_name" => :id, "zone_name" => :domain})
+
+  defp schema_spec(:dns_record_ref), do: dns_record_ref()
+  defp schema_spec(:dns_acl_ref), do: object(%{"acl_id" => :id})
+  defp schema_spec(:dns_provider_ref), do: object(%{"provider_id" => :id})
+  defp schema_spec(:dhcp_pool_ref), do: family_ref("pool_id")
+
+  defp schema_spec(:dhcp_force_delete),
+    do: object(%{"family" => family(), "pool_id" => :id, "force" => {:literal, true}})
+
+  defp schema_spec(:dhcp_lease_ref), do: family_ref("lease_id")
+  defp schema_spec(:mdns_service_ref), do: object(%{"service_id" => :id})
+  defp schema_spec(:netboot_profile_ref), do: object(%{"profile_id" => :id})
+  defp schema_spec(:netboot_device_ref), do: object(%{"device_id" => :id})
+  defp schema_spec(:netboot_asset_ref), do: object(%{"asset_id" => :id})
+  defp schema_spec(:netboot_asset_rescan), do: object(%{"scope" => enum(["all", "missing"])})
+  defp schema_spec(:identity_host_ref), do: object(%{"host_id" => :id})
+  defp schema_spec(:identity_token_ref), do: object(%{"token_id" => :id})
+
+  defp schema_spec(:settings_rollback),
+    do: object(%{"service" => :id, "target_revision" => :digest})
+
+  defp schema_spec(:profile_ref), do: object(%{"profile_id" => :id})
+
+  defp schema_spec(:profile_rollback),
+    do: object(%{"profile_id" => :id, "target_revision" => :digest})
+
+  defp schema_spec(:connection_ref), do: object(%{"connection_id" => :id})
+  defp schema_spec(:dhcp_client_connection_ref), do: object(%{"connection_id" => :id})
+  defp schema_spec(:resolved_config_rollback), do: object(%{"target_revision" => :digest})
+
+  defp schema_spec(:dns_view_write), do: dns_view()
+  defp schema_spec(:dns_zone_write), do: dns_zone()
+  defp schema_spec(:dns_record_write), do: dns_record()
+  defp schema_spec(:dns_acl_write), do: dns_acl()
+  defp schema_spec(:dns_provider_write), do: dns_provider()
+
+  defp schema_spec(:dns_zone_import) do
+    object(%{
+      "view_name" => :id,
+      "zone_name" => :domain,
+      "filename" => :filename,
+      "size" => nonnegative_integer(),
+      "blob_digest" => :digest
+    })
+  end
+
+  defp schema_spec(:dns_zone_sync),
+    do: object(%{"view_name" => :id, "zone_name" => :domain, "provider_id" => :id})
+
+  defp schema_spec(:dns_conflict_resolution),
+    do: object(%{"conflict_id" => :id, "resolution" => enum(["use_local", "use_cloud"])})
+
+  defp schema_spec(:dhcp_pool_write), do: dhcp_pool()
+  defp schema_spec(:mdns_service_register), do: mdns_service()
+  defp schema_spec(:mdns_service_update), do: mdns_service()
+
+  defp schema_spec(:mdns_service_toggle),
+    do: object(%{"service_id" => :id, "enabled" => :boolean})
+
+  defp schema_spec(:netboot_profile_write), do: netboot_profile()
+  defp schema_spec(:netboot_device_write), do: netboot_device()
+
+  defp schema_spec(:netboot_asset_upload) do
+    object(%{
+      "asset_id" => :id,
+      "filename" => :filename,
+      "size" => nonnegative_integer(),
+      "blob_digest" => :digest
+    })
+  end
+
+  defp schema_spec(:identity_token_create),
+    do:
+      object(%{
+        "token_id" => :id,
+        "label" => :nonempty_text,
+        "expires_at" => nullable(:utc_datetime)
+      })
+
+  defp schema_spec(:identity_policy_set),
+    do: object(%{"policies" => list(identity_policy())})
+
+  defp schema_spec(:server_settings_config), do: settings_document()
+  defp schema_spec(:profile_validate), do: netman_profile()
+  defp schema_spec(:profile_put), do: netman_profile()
+
+  defp schema_spec(:profile_patch),
+    do:
+      object(%{
+        "profile_id" => :id,
+        "changes" => list(:profile_change)
+      })
+
+  defp schema_spec(:resolved_config_update),
+    do: object(%{"upstreams" => list(:ip), "search_domains" => list(:domain)})
+
+  defp schema_spec(:service_list), do: list_result(service_item())
+  defp schema_spec(:dns_view_list), do: list_result(dns_view())
+  defp schema_spec(:dns_zone_list), do: list_result(dns_zone())
+  defp schema_spec(:dns_record_list), do: list_result(dns_record())
+  defp schema_spec(:dns_acl_list), do: list_result(dns_acl())
+  defp schema_spec(:dns_provider_list), do: list_result(dns_provider())
+  defp schema_spec(:dns_log_list), do: list_result(dns_log_item())
+  defp schema_spec(:dhcp_pool_list), do: list_result(dhcp_pool())
+  defp schema_spec(:dhcp_lease_list), do: list_result(dhcp_lease_item())
+  defp schema_spec(:dhcp_activity_list), do: list_result(dhcp_activity_item())
+  defp schema_spec(:mdns_service_list), do: list_result(mdns_service())
+  defp schema_spec(:mdns_discovery_list), do: list_result(mdns_discovery_item())
+  defp schema_spec(:mdns_monitor_list), do: list_result(mdns_monitor_item())
+  defp schema_spec(:netboot_profile_list), do: list_result(netboot_profile())
+  defp schema_spec(:netboot_device_list), do: list_result(netboot_device())
+  defp schema_spec(:netboot_asset_list), do: list_result(netboot_asset())
+  defp schema_spec(:netboot_transfer_list), do: list_result(netboot_transfer_item())
+  defp schema_spec(:netboot_log_list), do: list_result(netboot_log_item())
+  defp schema_spec(:identity_host_list), do: list_result(identity_host_item())
+  defp schema_spec(:identity_approval_list), do: list_result(identity_approval_item())
+  defp schema_spec(:identity_token_list), do: list_result(identity_token_item())
+  defp schema_spec(:identity_audit_list), do: list_result(identity_audit_item())
+  defp schema_spec(:profile_list), do: list_result(netman_profile())
+  defp schema_spec(:profile_history), do: list_result(profile_history_item())
+  defp schema_spec(:network_link_list), do: list_result(network_link_item())
+  defp schema_spec(:network_address_list), do: list_result(network_address_item())
+  defp schema_spec(:network_route_list), do: list_result(network_route_item())
+  defp schema_spec(:resolved_upstream_list), do: list_result(resolved_upstream_item())
+
+  defp schema_spec(:resolved_search_domain_list),
+    do: list_result(resolved_search_domain_item())
+
+  defp schema_spec(:dhcp_client_lease_list), do: list_result(dhcp_client_lease_item())
+
+  defp schema_spec(:runtime_capabilities),
+    do: object(%{"capabilities" => list(:nonempty_text)})
+
+  defp schema_spec(:runtime_health),
+    do: object(%{"status" => health(), "checks" => list(health_check())})
+
+  defp schema_spec(:runtime_stats),
+    do: object(%{"requests" => nonnegative_integer(), "errors" => nonnegative_integer()})
+
+  defp schema_spec(:dns_metrics),
+    do: object(%{"queries" => nonnegative_integer(), "failures" => nonnegative_integer()})
+
+  defp schema_spec(:dhcp_status),
+    do: object(%{"family" => family(), "status" => service_state()})
+
+  defp schema_spec(:mdns_cache),
+    do: object(%{"entries" => list(mdns_cache_item())})
+
+  defp schema_spec(:effective_settings), do: settings_document()
+
+  defp schema_spec(:settings_source),
+    do: object(%{"service" => :id, "source" => enum(["managed", "local", "default"])})
+
+  defp schema_spec(:settings_revision),
+    do: object(%{"service" => :id, "revision" => :digest})
+
+  defp schema_spec(:settings_validation),
+    do: object(%{"service" => :id, "valid" => :boolean, "errors" => list(validation_error())})
+
+  defp schema_spec(:apply_mode), do: object(%{"mode" => enum(["managed", "standalone"])})
+
+  defp schema_spec(:reconciliation_health),
+    do: object(%{"status" => health(), "pending_changes" => nonnegative_integer()})
+
+  defp schema_spec(:profile_revision),
+    do: object(%{"profile_id" => :id, "revision" => :digest})
+
+  defp schema_spec(:network_connection_state),
+    do: object(%{"connection_id" => :id, "state" => connection_state()})
+
+  defp schema_spec(:resolved_cache),
+    do: object(%{"entries" => list(resolved_cache_item())})
+
+  defp schema_spec(:resolved_counters),
+    do: object(%{"hits" => nonnegative_integer(), "misses" => nonnegative_integer()})
+
+  defp schema_spec(:dhcp_client_fsm),
+    do:
+      object(%{
+        "connection_id" => :id,
+        "state" => enum(["init", "selecting", "requesting", "bound", "renewing", "rebinding"])
+      })
+
+  defp schema_spec(:vpn_resolved_profile),
+    do: object(%{"profile_id" => :id, "state" => enum(["resolved", "unavailable"])})
+
+  defp schema_spec(:service_command_result),
+    do: object(%{"service" => :id, "state" => service_state()})
+
+  defp schema_spec(:revisioned_resource), do: :revisioned_resource
+  defp schema_spec(:deleted_resource), do: :deleted_resource
+
+  defp schema_spec(:dns_import_result),
+    do:
+      object(%{
+        "view_name" => :id,
+        "zone_name" => :domain,
+        "imported_records" => nonnegative_integer(),
+        "revision" => :digest
+      })
+
+  defp schema_spec(:dns_sync_result),
+    do:
+      object(%{
+        "view_name" => :id,
+        "zone_name" => :domain,
+        "changed_records" => nonnegative_integer(),
+        "revision" => :digest
+      })
+
+  defp schema_spec(:lease_release_result),
+    do: object(%{"family" => family(), "lease_id" => :id, "released" => :boolean})
+
+  defp schema_spec(:cache_clear_result),
+    do: object(%{"cleared_entries" => nonnegative_integer()})
+
+  defp schema_spec(:netboot_asset), do: netboot_asset()
+
+  defp schema_spec(:netboot_asset_rescan_result),
+    do:
+      object(%{"scope" => enum(["all", "missing"]), "discovered_assets" => nonnegative_integer()})
+
+  defp schema_spec(:identity_token_create_result),
+    do:
+      object(%{
+        "token_id" => :id,
+        "secret" => :nonempty_text,
+        "expires_at" => nullable(:utc_datetime)
+      })
+
+  defp schema_spec(:profile_validation),
+    do: object(%{"profile_id" => :id, "valid" => :boolean, "errors" => list(validation_error())})
+
+  defp schema_spec(:profile_activation_result),
+    do: object(%{"profile_id" => :id, "revision" => :digest, "state" => connection_state()})
+
+  defp schema_spec(:connection_activation_result),
+    do: object(%{"connection_id" => :id, "state" => connection_state()})
+
+  defp schema_spec(:config_state) do
+    object(%{
+      "state" => enum(["desired", "delivered", "applying", "applied", "failed"]),
+      "version" => :id,
+      "digest" => :digest,
+      "applied_revision" => nullable(:digest),
+      "previous_revision" => nullable(:digest),
+      "failure" => nullable(config_failure()),
+      "rollback" => nullable(rollback_result())
+    })
+  end
+
+  defp schema_spec(_schema), do: nil
+
+  defp query(required) do
+    object(required, %{
+      "cursor" => :id,
+      "limit" => {:integer, 1, @max_collection_size}
+    })
+  end
+
+  defp family_query, do: query(%{"family" => family()})
+  defp family_ref(id_key), do: object(%{"family" => family(), id_key => :id})
+
+  defp list_result(item) do
+    object(%{
+      "items" => list(item, Bounds.max_list_entries()),
+      "revision" => :digest,
+      "observed_at" => :utc_datetime
+    })
+  end
+
+  defp dns_record_ref do
+    object(%{"view_name" => :id, "zone_name" => :domain, "record_id" => :id})
+  end
+
+  defp dns_view do
+    object(%{
+      "view_name" => :id,
+      "match_clients" => list(:cidr),
+      "recursion" => :boolean
+    })
+  end
+
+  defp dns_zone do
+    object(%{
+      "view_name" => :id,
+      "zone_name" => :domain,
+      "zone_type" => enum(["authoritative", "forward"]),
+      "provider_id" => nullable(:id)
+    })
+  end
+
+  defp dns_record do
+    object(%{
+      "view_name" => :id,
+      "zone_name" => :domain,
+      "record_id" => :id,
+      "name" => :domain_label,
+      "type" => enum(["A", "AAAA", "CNAME", "MX", "NS", "PTR", "SRV", "TXT"]),
+      "ttl" => {:integer, 0, 2_147_483_647},
+      "values" => list(:nonempty_text)
+    })
+  end
+
+  defp dns_acl do
+    object(%{
+      "acl_id" => :id,
+      "networks" => list(:cidr),
+      "action" => enum(["allow", "deny"])
+    })
+  end
+
+  defp dns_provider do
+    object(%{
+      "provider_id" => :id,
+      "provider_type" => enum(["route53", "cloudflare", "rfc2136"]),
+      "endpoint" => nullable(:nonempty_text),
+      "credential_ref" => :id
+    })
+  end
+
+  defp dhcp_pool do
+    object(%{
+      "family" => family(),
+      "pool_id" => :id,
+      "subnet" => :cidr,
+      "start_address" => :ip,
+      "end_address" => :ip,
+      "lease_seconds" => {:integer, 60, 31_536_000}
+    })
+  end
+
+  defp mdns_service do
+    object(%{
+      "service_id" => :id,
+      "name" => :nonempty_text,
+      "service_type" => :service_type,
+      "service_port" => {:integer, 1, 65_535},
+      "txt" => list(object(%{"key" => :id, "value" => :text}))
+    })
+  end
+
+  defp netboot_profile do
+    object(%{
+      "profile_id" => :id,
+      "name" => :nonempty_text,
+      "boot_asset_id" => :id,
+      "arguments" => list(:text)
+    })
+  end
+
+  defp netboot_device do
+    object(%{"device_id" => :id, "profile_id" => :id, "mac" => :mac})
+  end
+
+  defp netboot_asset do
+    object(%{
+      "asset_id" => :id,
+      "filename" => :filename,
+      "size" => nonnegative_integer(),
+      "blob_digest" => :digest
+    })
+  end
+
+  defp identity_policy do
+    object(%{
+      "policy_id" => :id,
+      "action" => enum(["require_approval", "allow", "deny"]),
+      "enabled" => :boolean
+    })
+  end
+
+  defp settings_document do
+    object(%{"service" => :id, "entries" => list(setting_entry())})
+  end
+
+  defp setting_entry, do: object(%{"key" => :id, "value" => :setting_value})
+
+  defp netman_profile do
+    object(%{
+      "profile_id" => :id,
+      "name" => :nonempty_text,
+      "interfaces" => list(interface_profile())
+    })
+  end
+
+  defp interface_profile do
+    object(%{
+      "name" => :id,
+      "method" => enum(["dhcp", "static", "disabled"]),
+      "addresses" => list(:cidr),
+      "gateway" => nullable(:ip)
+    })
+  end
+
+  defp service_item, do: object(%{"service" => :id, "state" => service_state()})
+
+  defp dns_log_item do
+    object(%{
+      "log_id" => :id,
+      "query_name" => :domain,
+      "action" => enum(["answered", "forwarded", "refused", "failed"]),
+      "occurred_at" => :utc_datetime
+    })
+  end
+
+  defp dhcp_lease_item do
+    object(%{
+      "family" => family(),
+      "lease_id" => :id,
+      "address" => :ip,
+      "state" => enum(["active", "expired", "released"])
+    })
+  end
+
+  defp dhcp_activity_item do
+    object(%{
+      "activity_id" => :id,
+      "family" => family(),
+      "action" => enum(["lease_granted", "lease_renewed", "lease_released", "lease_expired"]),
+      "occurred_at" => :utc_datetime
+    })
+  end
+
+  defp mdns_discovery_item do
+    object(%{"name" => :domain, "service_type" => :service_type, "address" => :ip})
+  end
+
+  defp mdns_monitor_item do
+    object(%{
+      "event_id" => :id,
+      "name" => :domain,
+      "action" => enum(["discovered", "updated", "expired"]),
+      "occurred_at" => :utc_datetime
+    })
+  end
+
+  defp mdns_cache_item do
+    object(%{
+      "name" => :domain,
+      "type" => enum(["A", "AAAA", "PTR", "SRV", "TXT"]),
+      "values" => list(:nonempty_text)
+    })
+  end
+
+  defp netboot_transfer_item do
+    object(%{
+      "transfer_id" => :id,
+      "asset_id" => :id,
+      "device_id" => :id,
+      "state" => enum(["pending", "active", "completed", "failed"])
+    })
+  end
+
+  defp netboot_log_item do
+    object(%{
+      "log_id" => :id,
+      "device_id" => :id,
+      "message" => :text,
+      "occurred_at" => :utc_datetime
+    })
+  end
+
+  defp identity_host_item do
+    object(%{
+      "host_id" => :id,
+      "name" => :nonempty_text,
+      "state" => enum(["pending", "approved", "revoked"]),
+      "revision" => :digest
+    })
+  end
+
+  defp identity_approval_item do
+    object(%{
+      "approval_id" => :id,
+      "host_id" => :id,
+      "state" => enum(["pending", "approved", "revoked"])
+    })
+  end
+
+  defp identity_token_item do
+    object(%{
+      "token_id" => :id,
+      "label" => :nonempty_text,
+      "state" => enum(["active", "revoked", "expired"])
+    })
+  end
+
+  defp identity_audit_item do
+    object(%{
+      "audit_id" => :id,
+      "action" => :id,
+      "subject_id" => :id,
+      "occurred_at" => :utc_datetime
+    })
+  end
+
+  defp profile_history_item do
+    object(%{"profile_id" => :id, "revision" => :digest, "activated_at" => :utc_datetime})
+  end
+
+  defp network_link_item do
+    object(%{"link_id" => :id, "name" => :id, "state" => enum(["up", "down", "unknown"])})
+  end
+
+  defp network_address_item do
+    object(%{"link_id" => :id, "address" => :cidr, "scope" => enum(["global", "link", "host"])})
+  end
+
+  defp network_route_item do
+    object(%{"destination" => :cidr, "gateway" => :ip, "link_id" => :id})
+  end
+
+  defp resolved_upstream_item do
+    object(%{"address" => :ip, "source" => enum(["managed", "dhcp", "static"])})
+  end
+
+  defp resolved_search_domain_item do
+    object(%{"domain" => :domain, "routing_only" => :boolean})
+  end
+
+  defp resolved_cache_item do
+    object(%{"domain" => :domain, "address" => :ip, "expires_at" => :utc_datetime})
+  end
+
+  defp dhcp_client_lease_item do
+    object(%{"connection_id" => :id, "address" => :ip, "expires_at" => :utc_datetime})
+  end
+
+  defp health_check, do: object(%{"name" => :id, "status" => health()})
+  defp validation_error, do: object(%{"field" => :id, "message" => :text})
+
+  defp config_failure do
+    object(%{
+      "phase" => enum(["delivery", "validation", "apply", "rollback"]),
+      "reason" => :text
+    })
+  end
+
+  defp rollback_result do
+    object(%{
+      "succeeded" => :boolean,
+      "restored_revision" => nullable(:digest),
+      "reason" => nullable(:text)
+    })
+  end
+
+  defp validate_result_domain(
+         %__MODULE__{name: name, result_schema: schema},
+         %{"resource_type" => resource_type}
+       )
+       when schema in [:revisioned_resource, :deleted_resource] do
+    if operation_resource_type(name) == resource_type, do: :ok, else: invalid_error()
+  end
+
+  defp validate_result_domain(_operation, _result), do: :ok
+
+  defp operation_resource_type(name) do
+    cond do
+      String.contains?(name, ".dns.views.") ->
+        "dns_view"
+
+      String.contains?(name, ".dns.zones.") or String.contains?(name, ".dns.conflicts.") ->
+        "dns_zone"
+
+      String.contains?(name, ".dns.records.") ->
+        "dns_record"
+
+      String.contains?(name, ".dns.acls.") ->
+        "dns_acl"
+
+      String.contains?(name, ".dns.providers.") ->
+        "dns_provider"
+
+      String.contains?(name, ".dhcp.pools.") ->
+        "dhcp_pool"
+
+      String.contains?(name, ".mdns.services.") ->
+        "mdns_service"
+
+      String.contains?(name, ".netboot.profiles.") ->
+        "netboot_profile"
+
+      String.contains?(name, ".netboot.devices.") ->
+        "netboot_device"
+
+      String.contains?(name, ".netboot.assets.") ->
+        "netboot_asset"
+
+      String.contains?(name, ".identity.hosts.") ->
+        "identity_host"
+
+      String.contains?(name, ".identity.tokens.") ->
+        "identity_token"
+
+      String.contains?(name, ".identity.policies.") ->
+        "identity_policy"
+
+      String.contains?(name, ".profiles.") ->
+        "netman_profile"
+
+      true ->
+        nil
+    end
+  end
+
+  defp validate_type(value, {:object, required, optional}, depth)
+       when is_map(value) and depth > 0 do
+    with {:ok, _value} <- Bounds.map(value),
+         true <- Enum.all?(Map.keys(value), &is_binary/1),
+         true <- Enum.all?(Map.keys(required), &Map.has_key?(value, &1)),
+         true <-
+           Enum.all?(Map.keys(value), &(Map.has_key?(required, &1) or Map.has_key?(optional, &1))) do
+      Enum.reduce_while(value, :ok, fn {key, nested}, :ok ->
+        spec = Map.get(required, key, Map.get(optional, key))
+
+        case validate_type(nested, spec, depth - 1) do
+          :ok -> {:cont, :ok}
+          _ -> {:halt, invalid_error()}
+        end
+      end)
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(schema, value) when schema in @ref_schemas do
-    with {:ok, value} <- exact_map(value, ["resource_id"]),
-         {:ok, _resource_id} <- valid_id(value["resource_id"]) do
-      {:ok, value}
+  defp validate_type(value, {:list, item, maximum}, depth) when depth > 0 do
+    with {:ok, values} <- Bounds.list(value),
+         true <- length(values) <= maximum do
+      Enum.reduce_while(values, :ok, fn nested, :ok ->
+        case validate_type(nested, item, depth - 1) do
+          :ok -> {:cont, :ok}
+          _ -> {:halt, invalid_error()}
+        end
+      end)
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(:mdns_service_toggle, value) do
-    with {:ok, value} <- exact_map(value, ["resource_id", "enabled"]),
-         {:ok, _resource_id} <- valid_id(value["resource_id"]),
-         true <- is_boolean(value["enabled"]) do
-      {:ok, value}
+  defp validate_type(nil, {:nullable, _spec}, _depth), do: :ok
+  defp validate_type(value, {:nullable, spec}, depth), do: validate_type(value, spec, depth)
+
+  defp validate_type(value, {:enum, values}, _depth) do
+    if value in values, do: :ok, else: invalid_error()
+  end
+
+  defp validate_type(value, {:literal, value}, _depth), do: :ok
+
+  defp validate_type(value, {:integer, minimum, maximum}, _depth)
+       when is_integer(value) and value >= minimum and value <= maximum,
+       do: :ok
+
+  defp validate_type(value, :id, _depth), do: validate_nonempty(value, &Bounds.id/1)
+  defp validate_type(value, :text, _depth), do: validate_bounded(value, &Bounds.message/1)
+
+  defp validate_type(value, :nonempty_text, _depth),
+    do: validate_nonempty(value, &Bounds.message/1)
+
+  defp validate_type(value, :digest, _depth), do: normalize(Digest.validate(value))
+  defp validate_type(value, :utc_datetime, _depth), do: validate_utc_datetime(value)
+  defp validate_type(value, :boolean, _depth) when is_boolean(value), do: :ok
+
+  defp validate_type(value, :scalar, _depth)
+       when is_nil(value) or is_boolean(value) or is_integer(value) or is_float(value),
+       do: :ok
+
+  defp validate_type(value, :scalar, depth) when is_binary(value),
+    do: validate_type(value, :text, depth)
+
+  defp validate_type(value, :filename, _depth) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         true <- value not in [".", ".."],
+         true <- Path.basename(value) == value,
+         false <- String.contains?(value, ["/", "\\"]) do
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(schema, value) when schema in @write_schemas do
-    with {:ok, value} <- exact_map(value, ["resource_id", "value"]),
-         {:ok, _resource_id} <- valid_id(value["resource_id"]),
-         {:ok, _value} <- bounded_map(value["value"]) do
-      {:ok, value}
+  defp validate_type(value, :domain, _depth) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         false <- String.contains?(value, ["/", "\\", " "]) do
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(schema, value) when schema in [:dns_zone_import, :netboot_asset_upload] do
-    with {:ok, value} <-
-           exact_map(value, ["resource_id", "filename", "size", "blob_digest"]),
-         {:ok, _resource_id} <- valid_id(value["resource_id"]),
-         {:ok, _filename} <- nonempty_text(value["filename"]),
-         true <- is_integer(value["size"]) and value["size"] >= 0,
-         {:ok, _digest} <- Digest.validate(value["blob_digest"]) do
-      {:ok, value}
+  defp validate_type(value, :domain_label, _depth) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         true <- Regex.match?(~r/\A(?:@|\*|[A-Za-z0-9_-]+)\z/, value) do
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(schema, value) when schema in @list_result_schemas do
-    with {:ok, value} <- exact_map(value, ["items", "revision", "observed_at"]),
-         {:ok, items} <- Bounds.list(value["items"]),
-         :ok <- validate_items(items),
-         {:ok, _revision} <- Digest.validate(value["revision"]),
-         {:ok, _observed_at} <- utc_datetime(value["observed_at"]) do
-      {:ok, value}
+  defp validate_type(value, :service_type, _depth) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         true <- Regex.match?(~r/\A_[A-Za-z0-9-]+\._(?:tcp|udp)\z/, value) do
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(schema, value) when schema in @value_result_schemas do
-    with {:ok, value} <- exact_map(value, ["value", "revision", "observed_at"]),
-         {:ok, _nested_value} <- bounded_map(value["value"]),
-         {:ok, _revision} <- Digest.validate(value["revision"]),
-         {:ok, _observed_at} <- utc_datetime(value["observed_at"]) do
-      {:ok, value}
+  defp validate_type(value, :ip, _depth), do: validate_ip(value)
+  defp validate_type(value, :cidr, _depth), do: validate_cidr(value)
+
+  defp validate_type(value, :mac, _depth) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         true <- Regex.match?(~r/\A(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\z/, value) do
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_schema(schema, value) when schema in @command_result_schemas do
-    with {:ok, value} <- exact_map(value, ["resource_id", "revision", "value"]),
-         {:ok, _resource_id} <- valid_id(value["resource_id"]),
-         {:ok, _revision} <- Digest.validate(value["revision"]),
-         {:ok, _nested_value} <- bounded_map(value["value"]) do
-      {:ok, value}
-    else
-      _ -> invalid_error()
-    end
-  end
+  defp validate_type(value, :setting_value, depth) when depth > 0 do
+    case value do
+      %{"type" => "string", "value" => _value} ->
+        validate_type(value, object(%{"type" => {:literal, "string"}, "value" => :text}), depth)
 
-  defp validate_schema(:config_state, value) do
-    keys = [
-      "state",
-      "version",
-      "digest",
-      "applied_revision",
-      "previous_revision",
-      "failure",
-      "rollback"
-    ]
+      %{"type" => "integer", "value" => _value} ->
+        validate_type(
+          value,
+          object(%{
+            "type" => {:literal, "integer"},
+            "value" => {:integer, -@max_integer, @max_integer}
+          }),
+          depth
+        )
 
-    with {:ok, value} <- exact_map(value, keys),
-         true <- value["state"] in ["desired", "delivered", "applying", "applied", "failed"],
-         {:ok, _version} <- valid_id(value["version"]),
-         {:ok, _digest} <- Digest.validate(value["digest"]),
-         :ok <- optional_digest(value["applied_revision"]),
-         :ok <- optional_digest(value["previous_revision"]),
-         :ok <- optional_details(value["failure"]),
-         :ok <- optional_details(value["rollback"]) do
-      {:ok, value}
-    else
-      _ -> invalid_error()
-    end
-  end
+      %{"type" => "boolean", "value" => _value} ->
+        validate_type(
+          value,
+          object(%{"type" => {:literal, "boolean"}, "value" => :boolean}),
+          depth
+        )
 
-  defp validate_schema(_schema, _value), do: invalid_error()
+      %{"type" => "list", "items" => _items} ->
+        validate_type(
+          value,
+          object(%{"type" => {:literal, "list"}, "items" => list(:scalar)}),
+          depth
+        )
 
-  defp exact_map(value, keys) when is_map(value) do
-    if Map.keys(value) |> Enum.sort() == Enum.sort(keys), do: {:ok, value}, else: invalid_error()
-  end
-
-  defp exact_map(_value, _keys), do: invalid_error()
-
-  defp allowed_map(value, keys) when is_map(value) do
-    if Enum.all?(Map.keys(value), &(&1 in keys)), do: {:ok, value}, else: invalid_error()
-  end
-
-  defp allowed_map(_value, _keys), do: invalid_error()
-
-  defp valid_id(value) do
-    with {:ok, value} <- Bounds.id(value),
-         true <- value != "" do
-      {:ok, value}
-    else
-      _ -> invalid_error()
-    end
-  end
-
-  defp nonempty_text(value) do
-    with {:ok, value} <- Bounds.message(value),
-         true <- value != "" do
-      {:ok, value}
-    else
-      _ -> invalid_error()
-    end
-  end
-
-  defp optional_text(value, key) do
-    case Map.fetch(value, key) do
-      :error -> :ok
-      {:ok, text} -> normalize_validation(Bounds.message(text))
-    end
-  end
-
-  defp optional_limit(value, key) do
-    case Map.fetch(value, key) do
-      :error ->
-        :ok
-
-      {:ok, limit} when is_integer(limit) and limit > 0 ->
-        if limit <= Bounds.max_list_entries(), do: :ok, else: invalid_error()
+      %{"type" => "object", "entries" => _entries} ->
+        validate_type(
+          value,
+          object(%{"type" => {:literal, "object"}, "entries" => list(setting_entry())}),
+          depth
+        )
 
       _ ->
         invalid_error()
     end
   end
 
-  defp bounded_map(value) when is_map(value) do
+  defp validate_type(%{"field" => "name"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{"field" => {:literal, "name"}, "value" => :nonempty_text}),
+      depth
+    )
+  end
+
+  defp validate_type(%{"field" => "method"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{
+        "field" => {:literal, "method"},
+        "interface" => :id,
+        "value" => enum(["dhcp", "static", "disabled"])
+      }),
+      depth
+    )
+  end
+
+  defp validate_type(%{"field" => "addresses"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{
+        "field" => {:literal, "addresses"},
+        "interface" => :id,
+        "value" => list(:cidr)
+      }),
+      depth
+    )
+  end
+
+  defp validate_type(%{"field" => "gateway"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{
+        "field" => {:literal, "gateway"},
+        "interface" => :id,
+        "value" => nullable(:ip)
+      }),
+      depth
+    )
+  end
+
+  defp validate_type(value, :revisioned_resource, depth) when is_map(value) and depth > 0 do
     with {:ok, _value} <- Bounds.map(value),
-         {:ok, encoded} <- Codec.encode(value),
-         {:ok, _encoded} <- Bounds.payload(encoded) do
-      {:ok, value}
+         true <-
+           Map.keys(value) |> Enum.sort() == [
+             "resource",
+             "resource_id",
+             "resource_type",
+             "revision"
+           ],
+         :ok <- validate_type(value["resource_type"], resource_type(), depth - 1),
+         :ok <- validate_type(value["resource_id"], :id, depth - 1),
+         :ok <- validate_type(value["revision"], :digest, depth - 1),
+         spec when not is_nil(spec) <- resource_spec(value["resource_type"]),
+         :ok <- validate_type(value["resource"], spec, depth - 1) do
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp bounded_map(_value), do: invalid_error()
-
-  defp validate_items(items) do
-    Enum.reduce_while(items, :ok, fn item, :ok ->
-      case bounded_map(item) do
-        {:ok, _item} -> {:cont, :ok}
-        _ -> {:halt, invalid_error()}
-      end
-    end)
+  defp validate_type(value, :deleted_resource, depth) do
+    validate_type(
+      value,
+      object(%{"resource_type" => resource_type(), "resource_id" => :id, "revision" => :digest}),
+      depth
+    )
   end
 
-  defp utc_datetime(value) when is_binary(value) do
-    with {:ok, datetime, 0} <- DateTime.from_iso8601(value),
+  defp validate_type(_value, _spec, _depth), do: invalid_error()
+
+  defp resource_spec("dns_view"), do: dns_view()
+  defp resource_spec("dns_zone"), do: dns_zone()
+  defp resource_spec("dns_record"), do: dns_record()
+  defp resource_spec("dns_acl"), do: dns_acl()
+  defp resource_spec("dns_provider"), do: dns_provider()
+  defp resource_spec("dhcp_pool"), do: dhcp_pool()
+  defp resource_spec("mdns_service"), do: mdns_service()
+  defp resource_spec("netboot_profile"), do: netboot_profile()
+  defp resource_spec("netboot_device"), do: netboot_device()
+  defp resource_spec("netboot_asset"), do: netboot_asset()
+  defp resource_spec("identity_host"), do: identity_host_item()
+  defp resource_spec("identity_token"), do: identity_token_item()
+  defp resource_spec("identity_policy"), do: identity_policy()
+  defp resource_spec("netman_profile"), do: netman_profile()
+  defp resource_spec(_resource_type), do: nil
+
+  defp transport_safe(value, depth) when is_map(value) and depth > 0 do
+    with {:ok, _value} <- Bounds.map(value),
+         true <- Enum.all?(Map.keys(value), &safe_key?/1) do
+      Enum.reduce_while(value, :ok, fn {_key, nested}, :ok ->
+        case transport_safe(nested, depth - 1) do
+          :ok -> {:cont, :ok}
+          _ -> {:halt, invalid_error()}
+        end
+      end)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp transport_safe(value, depth) when is_list(value) and depth > 0 do
+    with {:ok, values} <- Bounds.list(value) do
+      Enum.reduce_while(values, :ok, fn nested, :ok ->
+        case transport_safe(nested, depth - 1) do
+          :ok -> {:cont, :ok}
+          _ -> {:halt, invalid_error()}
+        end
+      end)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp transport_safe(value, _depth)
+       when is_binary(value) or is_integer(value) or is_float(value) or is_boolean(value) or
+              is_nil(value),
+       do: :ok
+
+  defp transport_safe(_value, _depth), do: invalid_error()
+
+  defp safe_key?(key) when is_binary(key), do: not MapSet.member?(@forbidden_keys, key)
+  defp safe_key?(_key), do: false
+
+  defp object(required, optional \\ %{}), do: {:object, required, optional}
+  defp list(item, maximum \\ @max_collection_size), do: {:list, item, maximum}
+  defp nullable(spec), do: {:nullable, spec}
+  defp enum(values), do: {:enum, values}
+  defp family, do: enum(["ipv4", "ipv6"])
+  defp health, do: enum(["healthy", "degraded", "unhealthy"])
+  defp service_state, do: enum(["running", "stopped", "failed"])
+  defp connection_state, do: enum(["activated", "deactivated", "failed"])
+
+  defp resource_type,
+    do:
+      enum([
+        "dns_view",
+        "dns_zone",
+        "dns_record",
+        "dns_acl",
+        "dns_provider",
+        "dhcp_pool",
+        "mdns_service",
+        "netboot_profile",
+        "netboot_device",
+        "netboot_asset",
+        "identity_host",
+        "identity_token",
+        "identity_policy",
+        "netman_profile"
+      ])
+
+  defp nonnegative_integer, do: {:integer, 0, @max_integer}
+
+  defp validate_bounded(value, validator) do
+    case validator.(value) do
+      {:ok, _value} -> :ok
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_nonempty(value, validator) do
+    with {:ok, value} <- validator.(value),
+         true <- value != "" do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_utc_datetime(value) when is_binary(value) do
+    with {:ok, _datetime, 0} <- DateTime.from_iso8601(value),
          true <- String.ends_with?(value, "Z") do
-      {:ok, datetime}
+      :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp utc_datetime(_value), do: invalid_error()
+  defp validate_utc_datetime(_value), do: invalid_error()
 
-  defp optional_digest(nil), do: :ok
-  defp optional_digest(value), do: normalize_validation(Digest.validate(value))
+  defp validate_ip(value) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         {:ok, _address} <- :inet.parse_address(String.to_charlist(value)) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
 
-  defp optional_details(nil), do: :ok
-  defp optional_details(value), do: normalize_validation(Bounds.details(value))
+  defp validate_cidr(value) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         [address, prefix] <- String.split(value, "/", parts: 2),
+         {:ok, parsed} <- :inet.parse_address(String.to_charlist(address)),
+         {prefix, ""} <- Integer.parse(prefix),
+         true <- valid_prefix?(parsed, prefix) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
 
-  defp normalize_validation({:ok, _value}), do: :ok
-  defp normalize_validation(_error), do: invalid_error()
+  defp valid_prefix?(address, prefix) when tuple_size(address) == 4, do: prefix in 0..32
+  defp valid_prefix?(address, prefix) when tuple_size(address) == 8, do: prefix in 0..128
+  defp valid_prefix?(_address, _prefix), do: false
+
+  defp normalize({:ok, _value}), do: :ok
+  defp normalize(_error), do: invalid_error()
 
   defp invalid_error, do: {:error, Error.new(:invalid, "invalid value", %{})}
 end

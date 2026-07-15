@@ -163,6 +163,7 @@ defmodule YellowDog.Sync.ServerOperation do
                                     online?} ->
                 {name,
                  %Operation{
+                   name: name,
                    target_type: :server,
                    kind: kind,
                    capability: capability,
