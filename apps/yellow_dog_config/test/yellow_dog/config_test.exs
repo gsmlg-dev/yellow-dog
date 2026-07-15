@@ -69,8 +69,11 @@ defmodule YellowDog.ConfigTest do
   defp restore_env(key, {:ok, value}), do: Application.put_env(:yellow_dog, key, value)
   defp restore_env(key, :error), do: Application.delete_env(:yellow_dog, key)
 
-  defp umbrella_root do
-    File.cwd!()
+  defp data_root do
+    :yellow_dog_config
+    |> Application.app_dir()
+    |> Path.join("../..")
+    |> Path.expand()
   end
 
   describe "Config Loading" do
@@ -121,6 +124,7 @@ defmodule YellowDog.ConfigTest do
       previous_data_dir = Application.fetch_env(:yellow_dog, :data_dir)
       previous_config_file_path = Application.fetch_env(:yellow_dog, :config_file_path)
       previous_agent_state = config_agent_state()
+      previous_cwd = File.cwd!()
 
       stop_config_agent()
 
@@ -131,9 +135,12 @@ defmodule YellowDog.ConfigTest do
         )
 
       config_file_path = Path.join(temp_dir, "yellow-dog.toml")
+      alternate_cwd = Path.join(temp_dir, "different-working-directory")
       File.mkdir_p!(temp_dir)
+      File.mkdir_p!(alternate_cwd)
 
       on_exit(fn ->
+        File.cd!(previous_cwd)
         restore_env(:data_dir, previous_data_dir)
         restore_env(:config_file_path, previous_config_file_path)
         stop_config_agent()
@@ -141,7 +148,7 @@ defmodule YellowDog.ConfigTest do
         File.rm_rf(temp_dir)
       end)
 
-      %{config_file_path: config_file_path}
+      %{alternate_cwd: alternate_cwd, config_file_path: config_file_path}
     end
 
     test "uses the app data directory override when the Config Agent is absent", %{
@@ -156,6 +163,7 @@ defmodule YellowDog.ConfigTest do
     end
 
     test "loads data_dir from config_file_path when the Config Agent is absent", %{
+      alternate_cwd: alternate_cwd,
       config_file_path: config_file_path
     } do
       Application.delete_env(:yellow_dog, :data_dir)
@@ -163,15 +171,62 @@ defmodule YellowDog.ConfigTest do
       assert :ok = File.write(config_file_path, "data_dir = \"from-toml\"\n")
 
       assert Process.whereis(YellowDog.Config) == nil
-      assert YellowDog.Config.get_data_dir() == Path.join(umbrella_root(), "from-toml")
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "from-toml")
+
+      File.cd!(alternate_cwd)
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "from-toml")
     end
 
-    test "uses the canonical default when the Config Agent is absent" do
+    test "keeps an absolute data_dir from config_file_path", %{config_file_path: config_file_path} do
+      Application.delete_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :config_file_path, config_file_path)
+      assert :ok = File.write(config_file_path, "data_dir = \"/tmp/yellow-dog-from-toml\"\n")
+
+      assert Process.whereis(YellowDog.Config) == nil
+      assert YellowDog.Config.get_data_dir() == "/tmp/yellow-dog-from-toml"
+    end
+
+    test "uses the canonical default when the Config Agent is absent", %{
+      alternate_cwd: alternate_cwd
+    } do
       Application.delete_env(:yellow_dog, :data_dir)
       Application.delete_env(:yellow_dog, :config_file_path)
 
       assert Process.whereis(YellowDog.Config) == nil
-      assert YellowDog.Config.get_data_dir() == Path.join(umbrella_root(), "data")
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "data")
+
+      File.cd!(alternate_cwd)
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "data")
+    end
+
+    test "prefers an existing Config Agent value over config_file_path", %{
+      config_file_path: config_file_path
+    } do
+      Application.delete_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :config_file_path, config_file_path)
+      assert :ok = File.write(config_file_path, "data_dir = \"from-toml\"\n")
+      assert {:ok, _pid} = YellowDog.Config.start_link(%{"data_dir" => "from-agent"})
+
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "from-agent")
+    end
+
+    test "uses the default when the configured TOML file is missing" do
+      Application.delete_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :config_file_path, "/missing/yellow-dog.toml")
+
+      assert Process.whereis(YellowDog.Config) == nil
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "data")
+    end
+
+    test "uses the default when the configured TOML file is malformed", %{
+      config_file_path: config_file_path
+    } do
+      Application.delete_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :config_file_path, config_file_path)
+      assert :ok = File.write(config_file_path, "data_dir = [\n")
+
+      assert Process.whereis(YellowDog.Config) == nil
+      assert YellowDog.Config.get_data_dir() == Path.join(data_root(), "data")
     end
   end
 

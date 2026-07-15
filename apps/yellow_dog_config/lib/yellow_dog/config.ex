@@ -548,6 +548,8 @@ defmodule YellowDog.Config do
   # Resolves a relative data_dir to the umbrella root so that all apps
   # share a single data directory instead of each creating their own
   # under apps/<app_name>/data/.
+  @fallback_data_root "/var/lib/yellow-dog"
+
   defp resolve_data_dir("/" <> _ = absolute), do: absolute
 
   defp resolve_data_dir(relative) when is_binary(relative) do
@@ -557,14 +559,14 @@ defmodule YellowDog.Config do
   defp resolve_data_dir(_relative), do: resolve_data_dir("data")
 
   defp umbrella_root do
-    case yellow_dog_app_dir() do
+    case application_dir(:yellow_dog) || application_dir(:yellow_dog_config) do
       app_dir when is_binary(app_dir) -> app_dir |> Path.join("../..") |> Path.expand()
-      nil -> File.cwd!()
+      nil -> @fallback_data_root
     end
   end
 
-  defp yellow_dog_app_dir do
-    Application.app_dir(:yellow_dog)
+  defp application_dir(application) do
+    Application.app_dir(application)
   rescue
     ArgumentError -> nil
   end

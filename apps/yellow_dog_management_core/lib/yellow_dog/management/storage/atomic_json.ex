@@ -160,24 +160,30 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     ])
   end
 
-  defp temporary_name(path) do
-    case Application.get_env(:yellow_dog_management_core, :atomic_json_temp_name) do
-      generator when is_function(generator, 1) -> generator.(path)
-      _other -> ".#{Path.basename(path)}.#{random_suffix()}.tmp"
+  if Mix.env() == :test do
+    defp temporary_name(path) do
+      case Application.get_env(:yellow_dog_management_core, :atomic_json_temp_name) do
+        generator when is_function(generator, 1) -> generator.(path)
+        _other -> ".#{Path.basename(path)}.#{random_suffix()}.tmp"
+      end
     end
+
+    defp file_ops do
+      Application.get_env(
+        :yellow_dog_management_core,
+        :atomic_json_file_ops,
+        YellowDog.Management.Storage.AtomicJson.FileOps
+      )
+    end
+  else
+    defp temporary_name(path), do: ".#{Path.basename(path)}.#{random_suffix()}.tmp"
+
+    defp file_ops, do: YellowDog.Management.Storage.AtomicJson.FileOps
   end
 
   defp random_suffix do
     :crypto.strong_rand_bytes(18)
     |> Base.url_encode64(padding: false)
-  end
-
-  defp file_ops do
-    Application.get_env(
-      :yellow_dog_management_core,
-      :atomic_json_file_ops,
-      YellowDog.Management.Storage.AtomicJson.FileOps
-    )
   end
 
   defp not_found,
