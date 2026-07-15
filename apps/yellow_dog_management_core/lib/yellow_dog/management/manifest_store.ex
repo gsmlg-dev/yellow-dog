@@ -24,14 +24,18 @@ defmodule YellowDog.Management.ManifestStore do
   def update_section(path, section, updater)
       when is_binary(path) and is_binary(section) and section != "" and
              is_function(updater, 1) do
-    GenServer.call(__MODULE__, {:update_section, path, section, updater})
+    GenServer.call(__MODULE__, {:update_section, path, section, updater}, :infinity)
   end
 
   @doc false
   def update_section_with(path, section, updater, after_write)
       when is_binary(path) and is_binary(section) and section != "" and
              is_function(updater, 1) and is_function(after_write, 0) do
-    GenServer.call(__MODULE__, {:update_section_with, path, section, updater, after_write})
+    GenServer.call(
+      __MODULE__,
+      {:update_section_with, path, section, updater, after_write},
+      :infinity
+    )
   end
 
   @impl true

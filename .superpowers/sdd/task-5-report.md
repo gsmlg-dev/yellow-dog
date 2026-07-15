@@ -29,6 +29,11 @@ were made by Task 5.
 - Both registries preserve their existing facade return shapes, preserve
   `registered_at` during replacement, allow replacement when full, and publish
   Agent state only after manifest and event persistence succeeds.
+- Serialized registration and status mutations use one definitive wait contract
+  from the outer Agent through `ManifestStore` to `EventStore`. A slow inner
+  write cannot outlive an independent outer timeout and publish a delayed orphan
+  event; unavailable or killed processes still fail immediately and trigger the
+  existing registration-section rollback.
 - If event persistence fails after a registration-section write,
   `ManifestStore` restores only the previous registration section or removes
   that section for a new registration. It re-reads the current manifest during
@@ -45,17 +50,20 @@ were made by Task 5.
   files before returning events, advances past create-only filename collisions,
   and reconstructs the next sequence only from fully decoded records whose
   event identity matches their filename.
-- `list_events/0` retains only a configured-size candidate filename set while
-  scanning each batch, decodes only bounded batches, and backfills from older
-  candidates when newer files are malformed. It returns the newest configured
-  valid slice sorted by `{sequence, occurred_at, id}` without deleting older
-  immutable event files.
+- `list_events/0` traverses the event directory once, validates each candidate,
+  and retains only the newest configured number of valid events in a bounded
+  ordered set. It returns that slice in ascending
+  `{sequence, occurred_at, id}` order without deleting older immutable files or
+  repeatedly rescanning malformed backfill candidates.
 - Event and registration-section decoding is strict about owned shape, enums,
   source/type coherence, filename identity, timestamps, paths, IDs, sequence,
   message, and metadata limits. Unrelated top-level manifest sections are
   accepted and preserved. Built-in status atoms remain atoms; arbitrary status
-  atoms are normalized to bounded strings before state or disk publication, and
-  decoding never creates atoms from disk.
+  atoms are normalized to bounded strings before state or disk publication.
+  Arbitrary metadata atom keys and values are likewise normalized to bounded
+  strings, while the established `:site` metadata key and built-in status enum
+  values retain their existing representation. Decoding never creates atoms
+  from disk.
 - Limits use explicit application environment keys `:max_servers`,
   `:max_netmans`, and `:max_events`, with defaults `1000`, `1000`, and `500`.
   Invalid, non-positive, and oversized values fall back to those defaults.
@@ -182,6 +190,61 @@ devenv shell -- bash -lc \
 Result: exit `0`; `9 tests, 0 failures`, including custom-atom normalization
 before write and oversized configured-limit fallback.
 
+## Second Re-review Fix Evidence
+
+The second review fix was developed after `52516a4f`; neither prior Task 5
+commit was amended.
+
+### RED 8: Equal nested mutation timeouts
+
+A deterministic successful event write was blocked for 5.25 seconds, beyond
+the former shared five-second defaults. The focused test failed because the
+facade caller had exited and `Servers` terminated while its nested
+`ManifestStore` call timed out. Releasing the blocked immutable create could
+then complete outside the failed outer call, proving the delayed-orphan window.
+
+### RED 9: Arbitrary atom metadata
+
+Registering `%{rack: "r1", tier: :edge}` returned the atom-bearing map
+unchanged instead of the durable canonical representation
+`%{"rack" => "r1", "tier" => "edge"}`. The focused test failed before disk
+restart or the fresh-BEAM check, proving normalization did not happen at the
+input boundary.
+
+### RED 10: Quadratic malformed backfill
+
+The partial-fill event test seeds valid sequences `20` and `21`, malformed
+sequences `2..19`, and the older valid sequence `1` with `:max_events` set to
+three. BEAM call tracing counted `19` calls to `File.ls/1` for one
+`list_events/0` operation instead of the required single traversal.
+
+The three focused RED tests completed with exit `2`; `15 tests, 3 failures,
+12 excluded`.
+
+### GREEN: Second re-review regressions
+
+The mutation chain now uses `:infinity` consistently for the outer registry
+mutation, serialized manifest commit, and inner event append. This is not an
+arbitrary extended deadline: the facade waits for one definitive inner result.
+Missing and killed `EventStore` processes still return immediately through the
+existing caught exit path.
+
+The delayed test crosses the former deadline, confirms the facade caller and
+original registry process are alive, releases the write, and verifies coherent
+success in memory, manifest, immutable event history, and after restart.
+
+The metadata test verifies canonical strings at registration and after registry
+restart, then starts a fresh `mix run --no-compile --no-start` BEAM that loads
+the same manifest and returns the exact canonical map without relying on atoms
+created by the test process.
+
+The event selector now performs one instrumented `File.ls/1` traversal and
+retains only the newest three valid event records. The same focused command that
+produced RED completed with exit `0`; `15 tests, 0 failures, 12 excluded`.
+
+Complete durability and hardening files then passed with `15 tests, 0 failures`,
+including unavailable and killed-EventStore rollback behavior.
+
 ## Final Verification
 
 Strict compile:
@@ -201,7 +264,7 @@ devenv shell -- bash -lc \
   'cd apps/yellow_dog_management_core && mix test'
 ```
 
-Result: exit `0`; `33 tests, 0 failures`.
+Result: exit `0`; `36 tests, 0 failures`.
 
 Owned-file format check:
 

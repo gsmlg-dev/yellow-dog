@@ -63,58 +63,66 @@ defmodule YellowDog.Management.Servers do
   @doc "Registers or replaces a server record."
   def register(attrs) do
     with {:ok, server} <- build_server(attrs) do
-      Agent.get_and_update(__MODULE__, fn state ->
-        existing = Map.get(state.servers, server.id)
+      Agent.get_and_update(
+        __MODULE__,
+        fn state ->
+          existing = Map.get(state.servers, server.id)
 
-        if is_nil(existing) and map_size(state.servers) >= max_records() do
-          {{:error, :registry_full}, state}
-        else
-          server = preserve_registration_time(server, existing)
-
-          event_attrs = %{
-            source: :server,
-            source_id: server.id,
-            type: :server_registered,
-            message: "Server registered"
-          }
-
-          with :ok <- persist_with_event(server, event_attrs) do
-            {{:ok, server}, %{state | servers: Map.put(state.servers, server.id, server)}}
+          if is_nil(existing) and map_size(state.servers) >= max_records() do
+            {{:error, :registry_full}, state}
           else
-            {:error, _reason} = error -> {error, state}
+            server = preserve_registration_time(server, existing)
+
+            event_attrs = %{
+              source: :server,
+              source_id: server.id,
+              type: :server_registered,
+              message: "Server registered"
+            }
+
+            with :ok <- persist_with_event(server, event_attrs) do
+              {{:ok, server}, %{state | servers: Map.put(state.servers, server.id, server)}}
+            else
+              {:error, _reason} = error -> {error, state}
+            end
           end
-        end
-      end)
+        end,
+        :infinity
+      )
     end
   end
 
   @doc "Updates a registered server status."
   def update_status(id, status) do
-    Agent.get_and_update(__MODULE__, fn state ->
-      case Map.fetch(state.servers, id) do
-        {:ok, server} ->
-          now = DateTime.utc_now(:second)
-          status = InputSanitizer.status(status)
-          updated = %{server | status: status, last_seen_at: now, updated_at: now}
+    Agent.get_and_update(
+      __MODULE__,
+      fn state ->
+        case Map.fetch(state.servers, id) do
+          {:ok, server} ->
+            now = DateTime.utc_now(:second)
+            status = InputSanitizer.status(status)
+            updated = %{server | status: status, last_seen_at: now, updated_at: now}
 
-          event_attrs = %{
-            source: :server,
-            source_id: id,
-            type: :server_status_updated,
-            message: "Server status updated",
-            metadata: %{status: status}
-          }
+            event_attrs = %{
+              source: :server,
+              source_id: id,
+              type: :server_status_updated,
+              message: "Server status updated",
+              metadata: %{status: status}
+            }
 
-          with :ok <- persist_with_event(updated, event_attrs) do
-            {{:ok, updated}, %{state | servers: Map.put(state.servers, updated.id, updated)}}
-          else
-            {:error, _reason} = error -> {error, state}
-          end
+            with :ok <- persist_with_event(updated, event_attrs) do
+              {{:ok, updated}, %{state | servers: Map.put(state.servers, updated.id, updated)}}
+            else
+              {:error, _reason} = error -> {error, state}
+            end
 
-        :error ->
-          {{:error, :not_found}, state}
-      end
-    end)
+          :error ->
+            {{:error, :not_found}, state}
+        end
+      end,
+      :infinity
+    )
   end
 
   @doc false

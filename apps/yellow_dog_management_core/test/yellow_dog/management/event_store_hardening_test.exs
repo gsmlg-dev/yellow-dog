@@ -121,6 +121,23 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
     assert Enum.map(ManagementCore.list_events(), & &1.sequence) == [1, 2, 3]
   end
 
+  test "partial malformed backfill traverses the event directory once", %{data_dir: data_dir} do
+    Application.put_env(:yellow_dog_management_core, :max_events, 3)
+
+    for sequence <- [1, 20, 21] do
+      write_event(data_dir, "evt-#{sequence}.json", event_map(sequence))
+    end
+
+    for sequence <- 2..19 do
+      write_event(data_dir, "evt-#{sequence}.json", %{"malformed" => sequence})
+    end
+
+    {events, traversal_count} = traced_event_list()
+
+    assert Enum.map(events, & &1.sequence) == [1, 20, 21]
+    assert traversal_count == 1
+  end
+
   defp event_map(sequence) do
     Event.new(
       %{
@@ -138,6 +155,29 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
     path = Path.join([data_dir, "management", "events", filename])
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, Jason.encode!(value))
+  end
+
+  defp traced_event_list do
+    event_store_pid = Process.whereis(EventStore)
+    :erlang.trace(event_store_pid, true, [:call])
+    :erlang.trace_pattern({File, :ls, 1}, true, [])
+
+    try do
+      events = ManagementCore.list_events()
+      {events, collect_file_ls_calls(event_store_pid, 0)}
+    after
+      :erlang.trace(event_store_pid, false, [:call])
+      :erlang.trace_pattern({File, :ls, 1}, false, [])
+    end
+  end
+
+  defp collect_file_ls_calls(event_store_pid, count) do
+    receive do
+      {:trace, ^event_store_pid, :call, {File, :ls, [_directory]}} ->
+        collect_file_ls_calls(event_store_pid, count + 1)
+    after
+      0 -> count
+    end
   end
 
   defp restart_management_children do

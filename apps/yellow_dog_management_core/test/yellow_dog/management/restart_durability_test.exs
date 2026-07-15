@@ -138,6 +138,45 @@ defmodule YellowDog.Management.RestartDurabilityTest do
             }} = ManagementCore.get_netman("netman-restart")
   end
 
+  test "atom metadata is canonical before write and survives a fresh BEAM", %{
+    data_dir: data_dir
+  } do
+    canonical_metadata = %{"rack" => "r1", "tier" => "edge"}
+
+    assert {:ok, %Server{metadata: ^canonical_metadata}} =
+             ManagementCore.register_server(%{
+               id: "srv-fresh-beam-metadata",
+               metadata: %{rack: "r1", tier: :edge}
+             })
+
+    restart_child(Servers)
+
+    assert {:ok, %Server{metadata: ^canonical_metadata}} =
+             ManagementCore.get_server("srv-fresh-beam-metadata")
+
+    script = """
+    Application.put_env(:yellow_dog_management_core, :data_dir, #{inspect(data_dir)})
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+    {:ok, server} = YellowDog.ManagementCore.get_server("srv-fresh-beam-metadata")
+    IO.puts("FRESH_METADATA=" <> Jason.encode!(server.metadata))
+    """
+
+    mix = System.find_executable("mix")
+    assert is_binary(mix)
+
+    assert {output, 0} =
+             System.cmd(
+               mix,
+               ["run", "--no-compile", "--no-start", "-e", script],
+               cd: File.cwd!(),
+               env: [{"MIX_ENV", "test"}],
+               stderr_to_stdout: true
+             )
+
+    assert [_, encoded_metadata] = Regex.run(~r/FRESH_METADATA=(\{[^\n]+\})/, output)
+    assert Jason.decode!(encoded_metadata) == canonical_metadata
+  end
+
   test "events keep one global deterministic order across restarts" do
     assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-events"})
     assert {:ok, %Netman{}} = ManagementCore.register_netman(%{id: "netman-events"})
@@ -380,6 +419,60 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     assert manifest == %{"config_lifecycle" => lifecycle}
   end
 
+  test "a delayed EventStore commit cannot outlive the facade mutation", %{data_dir: data_dir} do
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      __MODULE__.DelayedSuccessfulEventFileOps
+    )
+
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
+
+    test_pid = self()
+    servers_pid = Process.whereis(Servers)
+
+    {caller_pid, caller_ref} =
+      spawn_monitor(fn ->
+        result = ManagementCore.register_server(%{id: "srv-delayed-event"})
+        send(test_pid, {:delayed_registration_result, self(), result})
+      end)
+
+    assert_receive {:event_write_blocked, event_store_pid}
+
+    Process.sleep(5_250)
+
+    caller_survived? = Process.alive?(caller_pid)
+    registry_survived? = Process.whereis(Servers) == servers_pid and Process.alive?(servers_pid)
+    send(event_store_pid, :continue_event_write)
+
+    assert caller_survived?
+    assert registry_survived?
+
+    assert_receive {:delayed_registration_result, ^caller_pid,
+                    {:ok, %Server{id: "srv-delayed-event"}}},
+                   2_000
+
+    assert_receive {:DOWN, ^caller_ref, :process, ^caller_pid, :normal}
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-delayed-event")
+
+    assert {:ok, %{"registration" => %{"id" => "srv-delayed-event"}}} =
+             AtomicJson.read(manifest_path)
+
+    assert [%{source_id: "srv-delayed-event"}] = ManagementCore.list_events()
+
+    event_paths = Path.wildcard(Path.join([data_dir, "management", "events", "*.json"]))
+    assert length(event_paths) == 1
+
+    restart_child(Servers)
+    restart_child(EventStore)
+
+    assert {:ok, %Server{id: "srv-delayed-event"}} =
+             ManagementCore.get_server("srv-delayed-event")
+
+    assert [%{source_id: "srv-delayed-event"}] = ManagementCore.list_events()
+  end
+
   test "event filename collisions are skipped without wedging future appends", %{
     data_dir: data_dir
   } do
@@ -509,6 +602,27 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
         receive do
           :continue_event_write -> {:error, :eacces}
+        end
+      else
+        YellowDog.Management.Storage.AtomicJson.FileOps.open(path)
+      end
+    end
+
+    defdelegate write(device, contents), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate sync(device), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate close(device), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate rename(source, target), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate rm(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+  end
+
+  defmodule DelayedSuccessfulEventFileOps do
+    def open(path) do
+      if String.contains?(path, "/events/") do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :atomic_json_file_ops_owner)
+        send(owner, {:event_write_blocked, self()})
+
+        receive do
+          :continue_event_write -> YellowDog.Management.Storage.AtomicJson.FileOps.open(path)
         end
       else
         YellowDog.Management.Storage.AtomicJson.FileOps.open(path)

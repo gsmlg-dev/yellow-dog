@@ -64,58 +64,66 @@ defmodule YellowDog.Management.Netmans do
   @doc "Registers or replaces a Netman record."
   def register(attrs) do
     with {:ok, netman} <- build_netman(attrs) do
-      Agent.get_and_update(__MODULE__, fn state ->
-        existing = Map.get(state.netmans, netman.id)
+      Agent.get_and_update(
+        __MODULE__,
+        fn state ->
+          existing = Map.get(state.netmans, netman.id)
 
-        if is_nil(existing) and map_size(state.netmans) >= max_records() do
-          {{:error, :registry_full}, state}
-        else
-          netman = preserve_registration_time(netman, existing)
-
-          event_attrs = %{
-            source: :netman,
-            source_id: netman.id,
-            type: :netman_registered,
-            message: "Netman registered"
-          }
-
-          with :ok <- persist_with_event(netman, event_attrs) do
-            {{:ok, netman}, %{state | netmans: Map.put(state.netmans, netman.id, netman)}}
+          if is_nil(existing) and map_size(state.netmans) >= max_records() do
+            {{:error, :registry_full}, state}
           else
-            {:error, _reason} = error -> {error, state}
+            netman = preserve_registration_time(netman, existing)
+
+            event_attrs = %{
+              source: :netman,
+              source_id: netman.id,
+              type: :netman_registered,
+              message: "Netman registered"
+            }
+
+            with :ok <- persist_with_event(netman, event_attrs) do
+              {{:ok, netman}, %{state | netmans: Map.put(state.netmans, netman.id, netman)}}
+            else
+              {:error, _reason} = error -> {error, state}
+            end
           end
-        end
-      end)
+        end,
+        :infinity
+      )
     end
   end
 
   @doc "Updates a registered Netman status."
   def update_status(id, status) do
-    Agent.get_and_update(__MODULE__, fn state ->
-      case Map.fetch(state.netmans, id) do
-        {:ok, netman} ->
-          now = DateTime.utc_now(:second)
-          status = InputSanitizer.status(status)
-          updated = %{netman | status: status, last_seen_at: now, updated_at: now}
+    Agent.get_and_update(
+      __MODULE__,
+      fn state ->
+        case Map.fetch(state.netmans, id) do
+          {:ok, netman} ->
+            now = DateTime.utc_now(:second)
+            status = InputSanitizer.status(status)
+            updated = %{netman | status: status, last_seen_at: now, updated_at: now}
 
-          event_attrs = %{
-            source: :netman,
-            source_id: id,
-            type: :netman_status_updated,
-            message: "Netman status updated",
-            metadata: %{status: status}
-          }
+            event_attrs = %{
+              source: :netman,
+              source_id: id,
+              type: :netman_status_updated,
+              message: "Netman status updated",
+              metadata: %{status: status}
+            }
 
-          with :ok <- persist_with_event(updated, event_attrs) do
-            {{:ok, updated}, %{state | netmans: Map.put(state.netmans, updated.id, updated)}}
-          else
-            {:error, _reason} = error -> {error, state}
-          end
+            with :ok <- persist_with_event(updated, event_attrs) do
+              {{:ok, updated}, %{state | netmans: Map.put(state.netmans, updated.id, updated)}}
+            else
+              {:error, _reason} = error -> {error, state}
+            end
 
-        :error ->
-          {{:error, :not_found}, state}
-      end
-    end)
+          :error ->
+            {{:error, :not_found}, state}
+        end
+      end,
+      :infinity
+    )
   end
 
   @doc false

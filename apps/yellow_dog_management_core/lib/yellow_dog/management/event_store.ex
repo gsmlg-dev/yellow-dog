@@ -30,7 +30,7 @@ defmodule YellowDog.Management.EventStore do
   end
 
   @doc false
-  def append(attrs), do: GenServer.call(__MODULE__, {:append, attrs})
+  def append(attrs), do: GenServer.call(__MODULE__, {:append, attrs}, :infinity)
 
   @doc false
   def list, do: GenServer.call(__MODULE__, :list)
@@ -78,42 +78,34 @@ defmodule YellowDog.Management.EventStore do
   end
 
   defp read_events(limit) do
-    with {:ok, directory} <- events_directory() do
-      directory
-      |> collect_valid_events(limit, @max_sequence + 1, [])
-      |> Enum.sort_by(&{&1.sequence, &1.occurred_at, &1.id})
+    with {:ok, directory} <- events_directory(),
+         {:ok, filenames} <- File.ls(directory) do
+      filenames
+      |> Enum.reduce(:gb_sets.empty(), fn filename, events ->
+        retain_valid_event(events, directory, filename, limit)
+      end)
+      |> :gb_sets.to_list()
+      |> Enum.map(&elem(&1, 1))
     else
+      {:error, :enoent} -> []
       _error -> []
     end
   end
 
-  defp collect_valid_events(_directory, limit, _before_sequence, events)
-       when length(events) >= limit,
-       do: Enum.take(events, limit)
+  defp retain_valid_event(events, directory, filename, limit) do
+    with {:ok, _sequence} <- event_file_sequence(filename),
+         {:ok, event} <- read_event(Path.join(directory, filename)) do
+      event_key = {event.sequence, event.occurred_at, event.id}
+      events = :gb_sets.add({event_key, event}, events)
 
-  defp collect_valid_events(directory, limit, before_sequence, events) do
-    remaining = limit - length(events)
-    candidates = select_candidates(directory, remaining, before_sequence)
-
-    case candidates do
-      [] ->
+      if :gb_sets.size(events) > limit do
+        {_oldest, events} = :gb_sets.take_smallest(events)
         events
-
-      _candidates ->
-        events =
-          Enum.reduce_while(candidates, events, fn {_sequence, path}, acc ->
-            if length(acc) >= limit do
-              {:halt, acc}
-            else
-              case read_event(path) do
-                {:ok, event} -> {:cont, [event | acc]}
-                :error -> {:cont, acc}
-              end
-            end
-          end)
-
-        {oldest_sequence, _path} = List.last(candidates)
-        collect_valid_events(directory, limit, oldest_sequence, events)
+      else
+        events
+      end
+    else
+      _invalid -> events
     end
   end
 

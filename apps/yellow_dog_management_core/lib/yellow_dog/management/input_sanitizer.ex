@@ -8,6 +8,7 @@ defmodule YellowDog.Management.InputSanitizer do
   @max_metadata_key_bytes 64
   @max_metadata_value_bytes 256
   @stable_status_atoms [:registered, :online, :offline]
+  @stable_metadata_keys [:site]
 
   def required_string(value, key) when is_binary(value) and value != "" do
     if byte_size(value) <= @max_id_bytes do
@@ -70,7 +71,8 @@ defmodule YellowDog.Management.InputSanitizer do
     end
   end
 
-  defp metadata_key(key) when is_atom(key), do: {:ok, key}
+  defp metadata_key(key) when key in @stable_metadata_keys, do: {:ok, key}
+  defp metadata_key(key) when is_atom(key), do: key |> Atom.to_string() |> metadata_key()
 
   defp metadata_key(key) when is_binary(key) and key != "" do
     {:ok, trim_binary(key, @max_metadata_key_bytes)}
@@ -82,8 +84,12 @@ defmodule YellowDog.Management.InputSanitizer do
     {:ok, trim_binary(value, @max_metadata_value_bytes)}
   end
 
-  defp metadata_value(value)
-       when is_boolean(value) or is_integer(value) or is_float(value) or is_atom(value) do
+  defp metadata_value(value) when value in @stable_status_atoms, do: {:ok, value}
+
+  defp metadata_value(value) when is_atom(value),
+    do: value |> Atom.to_string() |> metadata_value()
+
+  defp metadata_value(value) when is_boolean(value) or is_integer(value) or is_float(value) do
     {:ok, value}
   end
 
