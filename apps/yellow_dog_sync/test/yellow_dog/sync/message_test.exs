@@ -200,29 +200,37 @@ defmodule YellowDog.Sync.MessageTest do
   end
 
   test "config delivery rejects normalized forbidden setting names and local path values" do
-    invalid_entries = [
-      %{"key" => "local_path", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
-      %{"key" => "expected_revision", "value" => %{"type" => "string", "value" => "other"}},
-      %{"key" => "Path", "value" => %{"type" => "string", "value" => "other"}},
-      %{"key" => "Content", "value" => %{"type" => "string", "value" => "raw"}},
-      %{"key" => "shadow_file", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
-      %{
-        "key" => "nested",
-        "value" => %{"type" => "object", "entries" => [], "Path" => "/etc/shadow"}
-      },
-      %{
-        "key" => "nested",
-        "value" => %{"type" => "object", "entries" => [], "Content" => "raw"}
-      },
-      %{
-        "key" => "tls_certificate",
-        "value" => %{"type" => "string", "value" => <<0, 1, 2, 3>>}
-      },
-      %{
-        "key" => "rawPayload",
-        "value" => %{"type" => "string", "value" => "YWJjZA=="}
-      }
-    ]
+    material_entries =
+      for key <-
+            ~w(payloads contents blobs certificates bodies byteBuffer tlsCert rawdata blobstore) do
+        %{"key" => key, "value" => %{"type" => "string", "value" => "YWJjZA=="}}
+      end
+
+    invalid_entries =
+      material_entries ++
+        [
+          %{"key" => "local_path", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+          %{"key" => "expected_revision", "value" => %{"type" => "string", "value" => "other"}},
+          %{"key" => "Path", "value" => %{"type" => "string", "value" => "other"}},
+          %{"key" => "Content", "value" => %{"type" => "string", "value" => "raw"}},
+          %{"key" => "shadow_file", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+          %{
+            "key" => "nested",
+            "value" => %{"type" => "object", "entries" => [], "Path" => "/etc/shadow"}
+          },
+          %{
+            "key" => "nested",
+            "value" => %{"type" => "object", "entries" => [], "Content" => "raw"}
+          },
+          %{
+            "key" => "tls_certificate",
+            "value" => %{"type" => "string", "value" => <<0, 1, 2, 3>>}
+          },
+          %{
+            "key" => "rawPayload",
+            "value" => %{"type" => "string", "value" => "YWJjZA=="}
+          }
+        ]
 
     for entry <- invalid_entries do
       payload = %{"service" => "dns", "entries" => [entry]}

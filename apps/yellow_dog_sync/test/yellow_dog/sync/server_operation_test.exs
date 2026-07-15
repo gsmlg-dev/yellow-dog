@@ -1232,6 +1232,15 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "rawPayload",
       "raw_payload",
       "raw-payload",
+      "payloads",
+      "contents",
+      "blobs",
+      "blobstore",
+      "bodies",
+      "byteBuffer",
+      "tlsCert",
+      "rawdata",
+      "certificates",
       "payload_body",
       "tls_certificate",
       "privateKey",
@@ -1261,6 +1270,39 @@ defmodule YellowDog.Sync.ServerOperationTest do
       payload = setting_payload("ordinary_setting", %{"type" => "string", "value" => value})
       assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
     end
+
+    valid_references = [
+      setting_payload("private_network", %{"type" => "boolean", "value" => true}),
+      setting_payload("payloads", %{"type" => "boolean", "value" => false}),
+      setting_payload("certificate_authority_uri", %{
+        "type" => "string",
+        "value" => "https://ca.example.test/certificate"
+      }),
+      setting_payload("payload_digest", %{"type" => "string", "value" => digest()}),
+      setting_payload("blob_ref", %{"type" => "string", "value" => "blob-1"})
+    ]
+
+    for payload <- valid_references do
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+
+    invalid_references = [
+      setting_payload("certificate_authority_uri", %{
+        "type" => "string",
+        "value" => "YWJjZA=="
+      }),
+      setting_payload("certificate_authority_uri", %{
+        "type" => "string",
+        "value" => "HTTPS://ca.example.test/certificate"
+      }),
+      setting_payload("payload_digest", %{"type" => "string", "value" => "not-a-digest"}),
+      setting_payload("blob_ref", %{"type" => "string", "value" => "/etc/blob"}),
+      setting_payload("content_uri", %{"type" => "list", "items" => ["https://example.test"]})
+    ]
+
+    for payload <- invalid_references do
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
   end
 
   test "provider endpoints require canonical usable HTTP or HTTPS URIs" do
@@ -1274,7 +1316,8 @@ defmodule YellowDog.Sync.ServerOperationTest do
     valid_endpoints = [
       "https://provider.example.test/api/v1",
       "http://192.0.2.10:8080/provider",
-      "https://[2001:db8::10]:8443/provider"
+      "https://[2001:db8::10]:8443/provider",
+      "https://provider.example.test/api%2Fv1?mode=full%20sync"
     ]
 
     for endpoint <- valid_endpoints do
@@ -1295,6 +1338,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
       fullwidth_endpoint,
       "/etc/yellow-dog/provider",
       "ftp://provider.example.test/config",
+      "HTTPS://provider.example.test/config",
       "https://user:secret@provider.example.test/config",
       "https://",
       "https://.",
@@ -1305,7 +1349,12 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "https://provider.example.test:0/config",
       "https://provider.example.test:65536/config",
       "https://provider.example.test:invalid/config",
-      "https://provider example.test/config"
+      "https://provider.example.test:/config",
+      "https://provider.example.test/%ZZ",
+      "https://provider.example.test/%2fconfig",
+      "https://provider.example.test/config#fragment",
+      "https://provider example.test/config",
+      "https://provider.example.test/white space"
     ]
 
     for endpoint <- invalid_endpoints do
@@ -1480,7 +1529,13 @@ defmodule YellowDog.Sync.ServerOperationTest do
       {"A", "*.sub.example", ["192.0.2.10"]},
       {"CNAME", "alias", ["target.example.test."]},
       {"MX", "@", ["0 ."]},
+      {"MX", "@", ["10 mail1.example.test.", "20 mail2.example.test."]},
       {"SRV", "_sip._tcp", ["10 20 5060 sip.example.test."]},
+      {"SRV", "_sip._tcp",
+       [
+         "10 20 5060 sip1.example.test.",
+         "20 10 5060 sip2.example.test."
+       ]},
       {"SRV", "_sip._udp.example", ["0 0 0 ."]}
     ]
 
@@ -1501,9 +1556,13 @@ defmodule YellowDog.Sync.ServerOperationTest do
       {"CNAME", "alias", ["target.example.test. other.example.test."]},
       {"MX", "@", ["10 ."]},
       {"MX", "@", ["0 . extra"]},
+      {"MX", "@", ["0 .", "10 mail.example.test."]},
+      {"MX", "@", ["0 .", "0 ."]},
       {"SRV", "_sip._tcp", ["0 0 5060 ."]},
       {"SRV", "_sip._tcp", ["0 1 0 ."]},
-      {"SRV", "_sip._tcp", ["0 0 0 . extra"]}
+      {"SRV", "_sip._tcp", ["0 0 0 . extra"]},
+      {"SRV", "_sip._tcp", ["0 0 0 .", "10 20 5060 sip.example.test."]},
+      {"SRV", "_sip._tcp", ["0 0 0 .", "0 0 0 ."]}
     ]
 
     for {type, name, values} <- invalid do
