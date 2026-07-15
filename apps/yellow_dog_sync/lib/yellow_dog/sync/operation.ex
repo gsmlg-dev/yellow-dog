@@ -1318,7 +1318,8 @@ defmodule YellowDog.Sync.Operation do
         |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
         |> String.downcase()
         |> String.split(~r/[^a-z0-9]+/u, trim: true)
-        |> Enum.map(&Map.get(@material_plural_tokens, &1, &1))
+        |> Enum.map(&normalize_material_token/1)
+        |> normalize_material_tokens()
 
       _ ->
         []
@@ -1326,57 +1327,54 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp safe_setting_tokens?(name) do
-    tokens = setting_name_tokens(name)
+    with {:ok, parsed} <- parsed_setting_name(name) do
+      material? = material_setting?(parsed)
 
-    not Enum.any?(tokens, &(&1 in ["ref", "reference"])) or
-      (material_setting_name?(name) and setting_reference_form(name) == :id)
+      not Enum.any?(parsed.tokens, &(&1 in ["ref", "reference"])) or
+        (material? and parsed.reference_form == :id)
+    else
+      _ -> false
+    end
   end
 
   defp safe_setting_value?(name, value) do
-    if material_setting_name?(name) do
-      case value do
-        %{"type" => type} when type in ["boolean", "integer", "null"] ->
-          true
-
-        %{"type" => "string", "value" => value} ->
-          valid_material_reference?(setting_reference_form(name), value)
-
-        %{"type" => type} when type in ["list", "object"] ->
-          false
-
-        _ ->
-          false
+    with {:ok, parsed} <- parsed_setting_name(name) do
+      if material_setting?(parsed) do
+        safe_material_setting_value?(parsed.reference_form, value)
+      else
+        true
       end
     else
-      true
+      _ -> false
     end
   end
 
-  defp material_setting_name?(name) do
-    case parsed_setting_name(name) do
-      {:ok, %{base: base}} ->
-        compact_material_base?(base)
+  defp safe_material_setting_value?(nil, %{"type" => type})
+       when type in ["boolean", "integer", "null"],
+       do: true
 
-      _ ->
-        false
-    end
-  end
+  defp safe_material_setting_value?(reference_form, %{"type" => "string", "value" => value}),
+    do: valid_material_reference?(reference_form, value)
 
-  defp setting_reference_form(name) do
-    case parsed_setting_name(name) do
-      {:ok, %{reference_form: reference_form}} ->
-        reference_form
+  defp safe_material_setting_value?(_reference_form, %{"type" => type})
+       when type in ["list", "object"],
+       do: false
 
-      _ ->
-        nil
-    end
-  end
+  defp safe_material_setting_value?(_reference_form, _value), do: false
 
   defp parsed_setting_name(name) do
     with {:ok, normalized} <- normalize_unicode(name),
          [_ | _] = tokens <- setting_name_tokens(normalized) do
-      {base, suffix} = split_setting_reference(tokens)
-      {:ok, %{base: base, reference_form: reference_form(suffix)}}
+      {base_tokens, suffix} = split_setting_reference(tokens)
+
+      {:ok,
+       %{
+         base: Enum.join(base_tokens),
+         base_tokens: base_tokens,
+         reference_form: reference_form(suffix),
+         separatorless?: Regex.match?(~r/\A[a-z0-9]+\z/i, normalized),
+         tokens: tokens
+       }}
     else
       _ -> :error
     end
@@ -1385,21 +1383,50 @@ defmodule YellowDog.Sync.Operation do
   defp split_setting_reference(tokens) do
     case List.pop_at(tokens, -1) do
       {suffix, base_tokens} when suffix in @material_reference_suffixes ->
-        {Enum.join(base_tokens), suffix}
+        {base_tokens, suffix}
 
       {compact, []} ->
         split_compact_reference(compact)
 
       _ ->
-        {Enum.join(tokens), nil}
+        {tokens, nil}
     end
   end
 
   defp split_compact_reference(compact) do
     case Enum.find(@material_reference_suffixes, &String.ends_with?(compact, &1)) do
-      nil -> {compact, nil}
-      suffix -> {String.replace_suffix(compact, suffix, ""), suffix}
+      nil ->
+        {[compact], nil}
+
+      suffix ->
+        base = compact |> String.replace_suffix(suffix, "") |> normalize_material_token()
+        {[base], suffix}
     end
+  end
+
+  defp normalize_material_token(token), do: Map.get(@material_plural_tokens, token, token)
+
+  defp normalize_material_tokens(["pkcs", "12" | rest]),
+    do: ["pkcs12" | normalize_material_tokens(rest)]
+
+  defp normalize_material_tokens([token | rest]),
+    do: [token | normalize_material_tokens(rest)]
+
+  defp normalize_material_tokens([]), do: []
+
+  defp material_setting?(parsed) do
+    Enum.any?(parsed.base_tokens, &MapSet.member?(@material_tokens, &1)) or
+      private_key_tokens?(parsed.base_tokens) or
+      Enum.any?(parsed.base_tokens, &compact_material_base?/1) or
+      (parsed.separatorless? and compact_material_base?(parsed.base))
+  end
+
+  defp private_key_tokens?(tokens) do
+    tokens
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(fn [prefix, suffix] ->
+      MapSet.member?(@private_key_prefixes, prefix) and suffix == "key"
+    end)
   end
 
   defp compact_material_base?(compact) do

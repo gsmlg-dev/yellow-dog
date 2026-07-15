@@ -202,7 +202,7 @@ defmodule YellowDog.Sync.MessageTest do
   test "config delivery rejects normalized forbidden setting names and local path values" do
     material_entries =
       for key <-
-            ~w(payloads contents blobs certificates bodies byteBuffer tlsCert rawdata blobstore rawpayload payloadbody blobcontent blobdata blobbytes certificatebytes payloadstore tls_pem tlsKey secretKey signingKey privatekey tlskey secretkey signingkey privateKeys privatekeys tls_keys tlskeys secretkeys signingkeys pkcs12 pkcs-12 pfx PEMs PFXs payload_valid certificate_grid) do
+            ~w(payloads contents blobs certificates bodies byteBuffer tlsCert rawdata blobstore rawpayload payloadbody blobcontent blobdata blobbytes certificatebytes payloadstore tls_pem tlsKey secretKey signingKey privatekey tlskey secretkey signingkey privateKeys privatekeys tls_keys tlskeys secretkeys signingkeys pkcs12 pkcs-12 pfx PEMs PFXs request_payload_cache server_certificate_bundle client_tls_key_store archive_pfx_bundle tls_pem_bundle payload_valid certificate_grid) do
         %{"key" => key, "value" => %{"type" => "string", "value" => "YWJjZA=="}}
       end
 

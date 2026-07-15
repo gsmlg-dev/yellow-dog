@@ -1440,6 +1440,51 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "setting material grammar detects wrapped material tokens" do
+    forbidden_names = [
+      "request_payload_cache",
+      "server_certificate_bundle",
+      "client_tls_key_store",
+      "archive_pfx_bundle",
+      "tls_pem_bundle"
+    ]
+
+    for name <- forbidden_names do
+      payload = setting_payload(name, %{"type" => "string", "value" => "YWJjZA=="})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
+  test "setting material grammar validates wrapped typed references" do
+    invalid_references = [
+      {"request_payload_cache_digest", "not-a-digest"},
+      {"client_tls_key_digest", "not-a-digest"},
+      {"backup_blob_store_uri", "YWJjZA=="},
+      {"request_payload_cache_id", ""}
+    ]
+
+    for {name, value} <- invalid_references do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    for {name, value} <- [
+          {"request_payload_cache_digest", %{"type" => "boolean", "value" => true}},
+          {"client_tls_key_ref", %{"type" => "integer", "value" => 1}}
+        ] do
+      payload = setting_payload(name, value)
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    for {name, value} <- [
+          {"client_tls_key_ref", "client-tls-key-1"},
+          {"request_payload_cache_ref", "request-payload-cache-1"}
+        ] do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+  end
+
   test "setting material grammar allows unrelated names with interior root text" do
     for name <- ["scope_mode", "type_map", "drawing_mode", "uncertainty_mode"] do
       payload = setting_payload(name, %{"type" => "string", "value" => "enabled"})
