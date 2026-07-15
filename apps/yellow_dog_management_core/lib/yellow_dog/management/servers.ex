@@ -63,6 +63,8 @@ defmodule YellowDog.Management.Servers do
   @doc "Registers or replaces a server record."
   def register(attrs) do
     with {:ok, server} <- build_server(attrs) do
+      deadline = EventStore.operation_deadline()
+
       Agent.get_and_update(
         __MODULE__,
         fn state ->
@@ -80,20 +82,24 @@ defmodule YellowDog.Management.Servers do
               message: "Server registered"
             }
 
-            with :ok <- persist_with_event(server, event_attrs) do
+            with :ok <- persist_with_event(server, event_attrs, deadline) do
               {{:ok, server}, %{state | servers: Map.put(state.servers, server.id, server)}}
             else
               {:error, _reason} = error -> {error, state}
             end
           end
         end,
-        :infinity
+        EventStore.call_timeout(deadline, 3)
       )
     end
+  catch
+    :exit, {:timeout, _reason} -> EventStore.timeout_result()
   end
 
   @doc "Updates a registered server status."
   def update_status(id, status) do
+    deadline = EventStore.operation_deadline()
+
     Agent.get_and_update(
       __MODULE__,
       fn state ->
@@ -111,7 +117,7 @@ defmodule YellowDog.Management.Servers do
               metadata: %{status: status}
             }
 
-            with :ok <- persist_with_event(updated, event_attrs) do
+            with :ok <- persist_with_event(updated, event_attrs, deadline) do
               {{:ok, updated}, %{state | servers: Map.put(state.servers, updated.id, updated)}}
             else
               {:error, _reason} = error -> {error, state}
@@ -121,8 +127,10 @@ defmodule YellowDog.Management.Servers do
             {{:error, :not_found}, state}
         end
       end,
-      :infinity
+      EventStore.call_timeout(deadline, 3)
     )
+  catch
+    :exit, {:timeout, _reason} -> EventStore.timeout_result()
   end
 
   @doc false
@@ -170,14 +178,15 @@ defmodule YellowDog.Management.Servers do
     servers
   end
 
-  defp persist_with_event(server, event_attrs) do
+  defp persist_with_event(server, event_attrs, deadline) do
     with {:ok, path} <- StoragePath.server_manifest(server.id),
          {:ok, _event} <-
            ManifestStore.update_section_with(
              path,
              "registration",
              fn _current -> to_registration(server) end,
-             fn -> EventStore.append(event_attrs) end
+             fn -> EventStore.append(event_attrs, deadline) end,
+             deadline
            ) do
       :ok
     end

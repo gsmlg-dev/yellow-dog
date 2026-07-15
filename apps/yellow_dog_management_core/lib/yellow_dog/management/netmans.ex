@@ -64,6 +64,8 @@ defmodule YellowDog.Management.Netmans do
   @doc "Registers or replaces a Netman record."
   def register(attrs) do
     with {:ok, netman} <- build_netman(attrs) do
+      deadline = EventStore.operation_deadline()
+
       Agent.get_and_update(
         __MODULE__,
         fn state ->
@@ -81,20 +83,24 @@ defmodule YellowDog.Management.Netmans do
               message: "Netman registered"
             }
 
-            with :ok <- persist_with_event(netman, event_attrs) do
+            with :ok <- persist_with_event(netman, event_attrs, deadline) do
               {{:ok, netman}, %{state | netmans: Map.put(state.netmans, netman.id, netman)}}
             else
               {:error, _reason} = error -> {error, state}
             end
           end
         end,
-        :infinity
+        EventStore.call_timeout(deadline, 3)
       )
     end
+  catch
+    :exit, {:timeout, _reason} -> EventStore.timeout_result()
   end
 
   @doc "Updates a registered Netman status."
   def update_status(id, status) do
+    deadline = EventStore.operation_deadline()
+
     Agent.get_and_update(
       __MODULE__,
       fn state ->
@@ -112,7 +118,7 @@ defmodule YellowDog.Management.Netmans do
               metadata: %{status: status}
             }
 
-            with :ok <- persist_with_event(updated, event_attrs) do
+            with :ok <- persist_with_event(updated, event_attrs, deadline) do
               {{:ok, updated}, %{state | netmans: Map.put(state.netmans, updated.id, updated)}}
             else
               {:error, _reason} = error -> {error, state}
@@ -122,8 +128,10 @@ defmodule YellowDog.Management.Netmans do
             {{:error, :not_found}, state}
         end
       end,
-      :infinity
+      EventStore.call_timeout(deadline, 3)
     )
+  catch
+    :exit, {:timeout, _reason} -> EventStore.timeout_result()
   end
 
   @doc false
@@ -171,14 +179,15 @@ defmodule YellowDog.Management.Netmans do
     netmans
   end
 
-  defp persist_with_event(netman, event_attrs) do
+  defp persist_with_event(netman, event_attrs, deadline) do
     with {:ok, path} <- StoragePath.netman_manifest(netman.id),
          {:ok, _event} <-
            ManifestStore.update_section_with(
              path,
              "registration",
              fn _current -> to_registration(netman) end,
-             fn -> EventStore.append(event_attrs) end
+             fn -> EventStore.append(event_attrs, deadline) end,
+             deadline
            ) do
       :ok
     end

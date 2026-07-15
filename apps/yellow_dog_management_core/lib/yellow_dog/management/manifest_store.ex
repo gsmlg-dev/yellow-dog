@@ -5,6 +5,7 @@ defmodule YellowDog.Management.ManifestStore do
 
   require Logger
 
+  alias YellowDog.Management.EventStore
   alias YellowDog.Management.Storage.AtomicJson
   alias YellowDog.Sync.Error
 
@@ -24,17 +25,37 @@ defmodule YellowDog.Management.ManifestStore do
   def update_section(path, section, updater)
       when is_binary(path) and is_binary(section) and section != "" and
              is_function(updater, 1) do
-    GenServer.call(__MODULE__, {:update_section, path, section, updater}, :infinity)
+    deadline = EventStore.operation_deadline()
+
+    bounded_call(
+      {:update_section, path, section, updater},
+      deadline,
+      3
+    )
   end
 
   @doc false
   def update_section_with(path, section, updater, after_write)
       when is_binary(path) and is_binary(section) and section != "" and
              is_function(updater, 1) and is_function(after_write, 0) do
-    GenServer.call(
-      __MODULE__,
+    update_section_with(
+      path,
+      section,
+      updater,
+      after_write,
+      EventStore.operation_deadline()
+    )
+  end
+
+  @doc false
+  def update_section_with(path, section, updater, after_write, deadline)
+      when is_binary(path) and is_binary(section) and section != "" and
+             is_function(updater, 1) and is_function(after_write, 0) and
+             is_integer(deadline) do
+    bounded_call(
       {:update_section_with, path, section, updater, after_write},
-      :infinity
+      deadline,
+      2
     )
   end
 
@@ -99,6 +120,12 @@ defmodule YellowDog.Management.ManifestStore do
     _exception -> invalid_manifest()
   end
 
+  defp bounded_call(request, deadline, margin_stages) do
+    GenServer.call(__MODULE__, request, EventStore.call_timeout(deadline, margin_stages))
+  catch
+    :exit, {:timeout, _reason} -> EventStore.timeout_result()
+  end
+
   defp run_after_write(after_write) do
     case after_write.() do
       :ok -> :ok
@@ -109,6 +136,7 @@ defmodule YellowDog.Management.ManifestStore do
   rescue
     _exception -> internal_error()
   catch
+    :exit, {:timeout, _reason} -> EventStore.timeout_result()
     :exit, _reason -> internal_error()
     :throw, _reason -> internal_error()
   end

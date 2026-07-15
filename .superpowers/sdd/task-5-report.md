@@ -29,11 +29,12 @@ were made by Task 5.
 - Both registries preserve their existing facade return shapes, preserve
   `registered_at` during replacement, allow replacement when full, and publish
   Agent state only after manifest and event persistence succeeds.
-- Serialized registration and status mutations use one definitive wait contract
-  from the outer Agent through `ManifestStore` to `EventStore`. A slow inner
-  write cannot outlive an independent outer timeout and publish a delayed orphan
-  event; unavailable or killed processes still fail immediately and trigger the
-  existing registration-section rollback.
+- Serialized registration and status mutations derive one absolute monotonic
+  deadline from the configurable `:event_write_timeout_ms` setting, whose
+  documented default is 5000 ms. Invalid or non-positive values use that
+  default. The EventStore, manifest, and registry call timeouts add one, two,
+  and three 20% cleanup/transport margins respectively from the same operation
+  timeout, avoiding equal competing deadlines and unbounded waits.
 - If event persistence fails after a registration-section write,
   `ManifestStore` restores only the previous registration section or removes
   that section for a new registration. It re-reads the current manifest during
@@ -41,15 +42,22 @@ were made by Task 5.
   updates serialize behind the entire registration/event operation. This
   prevents a later registry restart from exposing unpublished registration
   state without overwriting lifecycle state.
-- `ManifestStore` converts exceptions, throws, and process exits from the
-  post-manifest event commit into the stable `:internal` persistence error.
-  An unavailable or crashing `EventStore` therefore does not terminate the
-  manifest coordinator, concrete registry, or caller, and rollback still runs.
+- `ManifestStore` converts operation timeouts into the stable `:timeout`
+  persistence error and other exceptions, throws, and process exits into the
+  stable `:internal` error. An unavailable or crashing `EventStore` therefore
+  does not terminate the manifest coordinator, concrete registry, or caller,
+  and rollback still runs.
 - `YellowDog.Management.EventStore` is supervised before both registries. It
   serializes global sequence allocation, writes immutable `evt-<sequence>.json`
   files before returning events, advances past create-only filename collisions,
   and reconstructs the next sequence only from fully decoded records whose
   event identity matches their filename.
+- Event creation runs in an EventStore-owned linked and monitored worker. A
+  queued expired request is rejected before starting that worker. At the
+  deadline, EventStore kills an unfinished worker, waits for its `DOWN`, removes
+  any newly owned final event path, and only then replies or processes queued
+  list requests. A completed write observed after its deadline follows the same
+  cleanup path.
 - `list_events/0` traverses the event directory once, validates each candidate,
   and retains only the newest configured number of valid events in a bounded
   ordered set. It returns that slice in ascending
@@ -223,11 +231,13 @@ The three focused RED tests completed with exit `2`; `15 tests, 3 failures,
 
 ### GREEN: Second re-review regressions
 
-The mutation chain now uses `:infinity` consistently for the outer registry
-mutation, serialized manifest commit, and inner event append. This is not an
-arbitrary extended deadline: the facade waits for one definitive inner result.
-Missing and killed `EventStore` processes still return immediately through the
-existing caught exit path.
+At this review stage, the mutation chain used `:infinity` consistently for the
+outer registry mutation, serialized manifest commit, and inner event append.
+Missing and killed `EventStore` processes still returned immediately through
+the existing caught exit path.
+
+This historical implementation was subsequently superseded by the bounded
+deadline and owned-worker design documented in the third re-review section.
 
 The delayed test crosses the former deadline, confirms the facade caller and
 original registry process are alive, releases the write, and verifies coherent
@@ -245,6 +255,47 @@ produced RED completed with exit `0`; `15 tests, 0 failures, 12 excluded`.
 Complete durability and hardening files then passed with `15 tests, 0 failures`,
 including unavailable and killed-EventStore rollback behavior.
 
+## Third Re-review Fix Evidence
+
+The third review fix was developed after Task 5 commit `01e5f906`; no prior
+commit was amended.
+
+### RED 11: Suspended EventStore request
+
+The first regression configures `:event_write_timeout_ms` to 100 ms, suspends
+the live EventStore, starts a facade registration, and proves its append request
+is already queued in the EventStore mailbox. The old unbounded chain did not
+return any result within the test's 500 ms bound.
+
+### RED 12: Permanently slow started write
+
+The second regression opens and writes the final event file, then blocks its
+sync operation for 600 ms. The old implementation performed that filesystem
+operation in EventStore itself and did not return within 500 ms. The focused
+RED command completed with exit `2`; `13 tests, 2 failures, 11 excluded`.
+
+### GREEN: Owned deadline and cancellation
+
+Event append requests now carry the absolute deadline derived at the registry
+entry point. The suspended EventStore request times out through the caller-side
+transport margin, ManifestStore rolls back the registration section, and the
+registry caller receives `%Error{code: :timeout}`. Servers, ManifestStore, and
+the application supervisor remain the same live processes and are responsive
+while EventStore is still suspended. After resume, the expired queued request
+is processed as a no-op and cannot create a delayed event.
+
+For a write that starts before the deadline, EventStore owns a linked monitored
+worker. On timeout it sends the untrappable kill exit, waits for the monitor
+`DOWN`, removes the newly created final event path, and then replies. The test
+queues `list_events/0` while the valid-looking final file exists and proves the
+list returns `[]` only after cleanup. A later registration succeeds, and after
+waiting beyond the original 600 ms delay the only manifest/event belongs to
+that later successful registration.
+
+The focused command then completed with exit `0`; `13 tests, 0 failures,
+11 excluded`. The complete restart durability file passed with
+`13 tests, 0 failures`, retaining unavailable and killed-process rollback.
+
 ## Final Verification
 
 Strict compile:
@@ -252,7 +303,7 @@ Strict compile:
 ```sh
 devenv shell -- bash -lc \
   'cd apps/yellow_dog_management_core && \
-   MIX_ENV=test mix compile --warnings-as-errors'
+   MIX_ENV=test mix compile --force --warnings-as-errors'
 ```
 
 Result: exit `0`, with warnings treated as errors.
@@ -264,7 +315,7 @@ devenv shell -- bash -lc \
   'cd apps/yellow_dog_management_core && mix test'
 ```
 
-Result: exit `0`; `36 tests, 0 failures`.
+Result: exit `0`; `37 tests, 0 failures`.
 
 Owned-file format check:
 

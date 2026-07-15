@@ -15,7 +15,14 @@ defmodule YellowDog.Management.RestartDurabilityTest do
   setup do
     previous_env =
       Map.new(
-        [:data_dir, :max_events, :atomic_json_file_ops, :atomic_json_file_ops_owner],
+        [
+          :data_dir,
+          :max_events,
+          :event_write_timeout_ms,
+          :event_write_test_delay_ms,
+          :atomic_json_file_ops,
+          :atomic_json_file_ops_owner
+        ],
         fn key ->
           {key, Application.fetch_env(:yellow_dog_management_core, key)}
         end
@@ -29,6 +36,8 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
     Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
     Application.delete_env(:yellow_dog_management_core, :max_events)
+    Application.delete_env(:yellow_dog_management_core, :event_write_timeout_ms)
+    Application.delete_env(:yellow_dog_management_core, :event_write_test_delay_ms)
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops_owner)
     restart_management_children()
@@ -397,7 +406,8 @@ defmodule YellowDog.Management.RestartDurabilityTest do
         ManagementCore.register_server(%{id: "srv-event-store-crash"})
       end)
 
-    assert_receive {:event_write_blocked, ^old_event_store_pid}
+    assert_receive {:event_write_blocked, event_worker_pid}
+    assert event_worker_pid != old_event_store_pid
     Process.exit(old_event_store_pid, :kill)
 
     assert {:error, %Error{code: :internal}} = Task.await(registration)
@@ -419,58 +429,146 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     assert manifest == %{"config_lifecycle" => lifecycle}
   end
 
-  test "a delayed EventStore commit cannot outlive the facade mutation", %{data_dir: data_dir} do
+  test "a queued expired append cannot write after EventStore resumes", %{data_dir: data_dir} do
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+
+    event_store_pid = Process.whereis(EventStore)
+    servers_pid = Process.whereis(Servers)
+    manifest_store_pid = Process.whereis(ManifestStore)
+    supervisor_pid = Process.whereis(YellowDog.ManagementCore.Supervisor)
+    test_pid = self()
+
+    :ok = :sys.suspend(event_store_pid)
+
+    {caller_pid, caller_ref} =
+      spawn_monitor(fn ->
+        result = ManagementCore.register_server(%{id: "srv-expired-queued-event"})
+        send(test_pid, {:queued_registration_result, self(), result})
+      end)
+
+    try do
+      assert_event_append_queued(event_store_pid)
+
+      assert_receive {:queued_registration_result, ^caller_pid, {:error, %Error{code: :timeout}}},
+                     500
+
+      assert_receive {:DOWN, ^caller_ref, :process, ^caller_pid, :normal}
+
+      assert Process.whereis(Servers) == servers_pid
+      assert Process.whereis(ManifestStore) == manifest_store_pid
+      assert Process.whereis(YellowDog.ManagementCore.Supervisor) == supervisor_pid
+      assert Process.alive?(servers_pid)
+      assert Process.alive?(manifest_store_pid)
+      assert Process.alive?(supervisor_pid)
+
+      assert {:error, :not_found} =
+               ManagementCore.get_server("srv-expired-queued-event")
+
+      assert [] = ManagementCore.list_servers()
+
+      assert {:ok, probe_path} = StoragePath.server_manifest("srv-timeout-probe")
+
+      assert {:ok, %{"desired_version" => 1}} =
+               ManifestStore.update_section(probe_path, "config_lifecycle", fn _current ->
+                 %{"desired_version" => 1}
+               end)
+
+      assert {:ok, registration_path} =
+               StoragePath.server_manifest("srv-expired-queued-event")
+
+      refute File.exists?(registration_path)
+      assert event_files(data_dir) == []
+    after
+      :ok = :sys.resume(event_store_pid)
+    end
+
+    :sys.get_state(event_store_pid)
+    Process.sleep(250)
+
+    assert [] = ManagementCore.list_events()
+    assert event_files(data_dir) == []
+
+    assert {:ok, registration_path} =
+             StoragePath.server_manifest("srv-expired-queued-event")
+
+    refute File.exists?(registration_path)
+  end
+
+  test "a started event write is killed and cleaned at its deadline", %{data_dir: data_dir} do
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :event_write_test_delay_ms, 600)
+
     Application.put_env(
       :yellow_dog_management_core,
       :atomic_json_file_ops,
-      __MODULE__.DelayedSuccessfulEventFileOps
+      __MODULE__.SlowEventFileOps
     )
 
     Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
 
     test_pid = self()
+    event_store_pid = Process.whereis(EventStore)
     servers_pid = Process.whereis(Servers)
+    manifest_store_pid = Process.whereis(ManifestStore)
+    started_at = System.monotonic_time(:millisecond)
 
     {caller_pid, caller_ref} =
       spawn_monitor(fn ->
-        result = ManagementCore.register_server(%{id: "srv-delayed-event"})
-        send(test_pid, {:delayed_registration_result, self(), result})
+        result = ManagementCore.register_server(%{id: "srv-slow-event"})
+        elapsed = System.monotonic_time(:millisecond) - started_at
+        send(test_pid, {:slow_registration_result, self(), result, elapsed})
       end)
 
-    assert_receive {:event_write_blocked, event_store_pid}
+    assert_receive {:event_write_started, worker_pid, event_path}
+    assert Process.alive?(worker_pid)
+    assert File.exists?(event_path)
 
-    Process.sleep(5_250)
+    {list_caller_pid, list_caller_ref} =
+      spawn_monitor(fn ->
+        send(test_pid, {:queued_event_list_result, self(), ManagementCore.list_events()})
+      end)
 
-    caller_survived? = Process.alive?(caller_pid)
-    registry_survived? = Process.whereis(Servers) == servers_pid and Process.alive?(servers_pid)
-    send(event_store_pid, :continue_event_write)
+    assert_event_list_queued(event_store_pid)
 
-    assert caller_survived?
-    assert registry_survived?
+    assert_receive {:slow_registration_result, ^caller_pid, {:error, %Error{code: :timeout}},
+                    elapsed},
+                   500
 
-    assert_receive {:delayed_registration_result, ^caller_pid,
-                    {:ok, %Server{id: "srv-delayed-event"}}},
-                   2_000
+    assert elapsed < 500
 
     assert_receive {:DOWN, ^caller_ref, :process, ^caller_pid, :normal}
+    assert_receive {:queued_event_list_result, ^list_caller_pid, []}
+    assert_receive {:DOWN, ^list_caller_ref, :process, ^list_caller_pid, :normal}
+    refute Process.alive?(worker_pid)
 
-    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-delayed-event")
+    assert Process.whereis(Servers) == servers_pid
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert Process.alive?(servers_pid)
+    assert Process.alive?(manifest_store_pid)
+    assert {:error, :not_found} = ManagementCore.get_server("srv-slow-event")
+    assert [] = ManagementCore.list_servers()
+    assert [] = ManagementCore.list_events()
+    refute File.exists?(event_path)
 
-    assert {:ok, %{"registration" => %{"id" => "srv-delayed-event"}}} =
-             AtomicJson.read(manifest_path)
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-slow-event")
+    refute File.exists?(manifest_path)
 
-    assert [%{source_id: "srv-delayed-event"}] = ManagementCore.list_events()
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
+    Application.delete_env(:yellow_dog_management_core, :event_write_test_delay_ms)
 
-    event_paths = Path.wildcard(Path.join([data_dir, "management", "events", "*.json"]))
-    assert length(event_paths) == 1
+    assert {:ok, %Server{id: "srv-after-event-timeout"}} =
+             ManagementCore.register_server(%{id: "srv-after-event-timeout"})
 
-    restart_child(Servers)
-    restart_child(EventStore)
+    assert {:ok, %Server{id: "srv-after-event-timeout"}} =
+             ManagementCore.get_server("srv-after-event-timeout")
 
-    assert {:ok, %Server{id: "srv-delayed-event"}} =
-             ManagementCore.get_server("srv-delayed-event")
+    assert [%Server{id: "srv-after-event-timeout"}] = ManagementCore.list_servers()
+    assert [%{source_id: "srv-after-event-timeout"}] = ManagementCore.list_events()
 
-    assert [%{source_id: "srv-delayed-event"}] = ManagementCore.list_events()
+    Process.sleep(700)
+
+    assert [%{source_id: "srv-after-event-timeout"}] = ManagementCore.list_events()
+    assert length(event_files(data_dir)) == 1
   end
 
   test "event filename collisions are skipped without wedging future appends", %{
@@ -540,6 +638,43 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     path = Path.join([data_dir | segments])
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, contents)
+  end
+
+  defp event_files(data_dir) do
+    Path.wildcard(Path.join([data_dir, "management", "events", "*.json"]))
+  end
+
+  defp assert_event_append_queued(event_store_pid) do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+
+    wait_until(deadline, fn ->
+      {:messages, messages} = Process.info(event_store_pid, :messages)
+
+      Enum.any?(messages, fn
+        {:"$gen_call", _from, {:append, _attrs}} ->
+          true
+
+        {:"$gen_call", _from, {:append, _attrs, request_deadline}}
+        when is_integer(request_deadline) ->
+          true
+
+        _message ->
+          false
+      end)
+    end)
+  end
+
+  defp assert_event_list_queued(event_store_pid) do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+
+    wait_until(deadline, fn ->
+      {:messages, messages} = Process.info(event_store_pid, :messages)
+
+      Enum.any?(messages, fn
+        {:"$gen_call", _from, :list} -> true
+        _message -> false
+      end)
+    end)
   end
 
   defp assert_manifest_update_queued(path) do
@@ -615,22 +750,32 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     defdelegate rm(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
   end
 
-  defmodule DelayedSuccessfulEventFileOps do
+  defmodule SlowEventFileOps do
     def open(path) do
       if String.contains?(path, "/events/") do
-        owner = Application.fetch_env!(:yellow_dog_management_core, :atomic_json_file_ops_owner)
-        send(owner, {:event_write_blocked, self()})
-
-        receive do
-          :continue_event_write -> YellowDog.Management.Storage.AtomicJson.FileOps.open(path)
-        end
+        Process.put(:event_write_path, path)
+        YellowDog.Management.Storage.AtomicJson.FileOps.open(path)
       else
         YellowDog.Management.Storage.AtomicJson.FileOps.open(path)
       end
     end
 
     defdelegate write(device, contents), to: YellowDog.Management.Storage.AtomicJson.FileOps
-    defdelegate sync(device), to: YellowDog.Management.Storage.AtomicJson.FileOps
+
+    def sync(device) do
+      case Process.get(:event_write_path) do
+        path when is_binary(path) ->
+          owner = Application.fetch_env!(:yellow_dog_management_core, :atomic_json_file_ops_owner)
+          delay = Application.fetch_env!(:yellow_dog_management_core, :event_write_test_delay_ms)
+          send(owner, {:event_write_started, self(), path})
+          Process.sleep(delay)
+          YellowDog.Management.Storage.AtomicJson.FileOps.sync(device)
+
+        _other ->
+          YellowDog.Management.Storage.AtomicJson.FileOps.sync(device)
+      end
+    end
+
     defdelegate close(device), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate rename(source, target), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate rm(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
