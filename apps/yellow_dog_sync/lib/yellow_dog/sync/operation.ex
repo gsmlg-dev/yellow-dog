@@ -71,7 +71,21 @@ defmodule YellowDog.Sync.Operation do
                                expectedrevision localpath filepath pathname etstable kernelhandle
                                kernelmanagerhandle managerhandle
                              )
-  @material_compact_roots ~w(raw payload body bodies content blob byte cert certificate pem privatekey)
+  @material_tokens MapSet.new(
+                     ~w(raw payload body content blob byte cert certificate pem pkcs12 pfx)
+                   )
+  @material_plural_tokens %{
+    "payloads" => "payload",
+    "bodies" => "body",
+    "contents" => "content",
+    "blobs" => "blob",
+    "bytes" => "byte",
+    "certs" => "cert",
+    "certificates" => "certificate"
+  }
+  @private_key_prefixes MapSet.new(~w(private tls secret signing))
+  @material_compact_aliases MapSet.new(~w(privatekey tlskey secretkey signingkey pkcs12 pfx))
+  @separatorless_material_roots ~w(raw payload body bodies content blob byte bytes cert certificate pem pkcs12 pfx)
   @material_reference_suffixes ~w(uri url digest hash id ref)
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
@@ -1295,10 +1309,18 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp setting_name_tokens(name) do
-    name
-    |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
-    |> String.downcase()
-    |> String.split(~r/[^a-z0-9]+/u, trim: true)
+    case normalize_unicode(name) do
+      {:ok, normalized} ->
+        normalized
+        |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+        |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
+        |> String.downcase()
+        |> String.split(~r/[^a-z0-9]+/u, trim: true)
+        |> Enum.map(&Map.get(@material_plural_tokens, &1, &1))
+
+      _ ->
+        []
+    end
   end
 
   defp safe_setting_tokens?(name) do
@@ -1329,28 +1351,68 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp material_setting_name?(name) do
-    case compact_setting_name(name) do
-      {:ok, compact} -> Enum.any?(@material_compact_roots, &String.contains?(compact, &1))
-      _ -> false
+    case parsed_setting_name(name) do
+      {:ok, tokens, compact} ->
+        Enum.any?(tokens, &MapSet.member?(@material_tokens, &1)) or
+          private_key_tokens?(tokens) or separatorless_material?(tokens, compact)
+
+      _ ->
+        false
     end
   end
 
   defp setting_reference_form(name) do
-    case compact_setting_name(name) do
-      {:ok, compact} ->
-        @material_reference_suffixes
-        |> Enum.find(&String.ends_with?(compact, &1))
-        |> reference_form()
+    case parsed_setting_name(name) do
+      {:ok, tokens, compact} ->
+        token_suffix = List.last(tokens)
+
+        cond do
+          token_suffix in @material_reference_suffixes ->
+            reference_form(token_suffix)
+
+          length(tokens) == 1 ->
+            compact
+            |> separatorless_reference_suffix()
+            |> reference_form()
+
+          true ->
+            nil
+        end
 
       _ ->
         nil
     end
   end
 
-  defp compact_setting_name(name) do
+  defp parsed_setting_name(name) do
     with {:ok, normalized} <- normalize_unicode(name) do
-      {:ok, normalize_transport_name(normalized)}
+      {:ok, setting_name_tokens(normalized), normalize_transport_name(normalized)}
     end
+  end
+
+  defp private_key_tokens?(tokens) do
+    tokens
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(fn [prefix, suffix] ->
+      MapSet.member?(@private_key_prefixes, prefix) and suffix == "key"
+    end)
+  end
+
+  defp separatorless_material?([_token], compact) do
+    MapSet.member?(@material_compact_aliases, compact) or
+      Enum.any?(@separatorless_material_roots, fn root ->
+        String.starts_with?(compact, root) or String.ends_with?(compact, root)
+      end)
+  end
+
+  defp separatorless_material?(_tokens, _compact), do: false
+
+  defp separatorless_reference_suffix(compact) do
+    roots = @separatorless_material_roots ++ MapSet.to_list(@material_compact_aliases)
+
+    Enum.find(@material_reference_suffixes, fn suffix ->
+      Enum.any?(roots, &(compact == &1 <> suffix))
+    end)
   end
 
   defp reference_form(suffix) when suffix in ["uri", "url"], do: :uri

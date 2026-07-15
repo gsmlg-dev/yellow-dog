@@ -1290,6 +1290,11 @@ defmodule YellowDog.Sync.ServerOperationTest do
         "value" => "https://ca.example.test/certificate"
       }),
       setting_payload("payload_digest", %{"type" => "string", "value" => digest()}),
+      setting_payload("blobdigest", %{"type" => "string", "value" => digest()}),
+      setting_payload("contenturi", %{
+        "type" => "string",
+        "value" => "https://content.example.test/reference"
+      }),
       setting_payload("blob_ref", %{"type" => "string", "value" => "blob-1"})
     ]
 
@@ -1316,6 +1321,48 @@ defmodule YellowDog.Sync.ServerOperationTest do
     for payload <- invalid_references do
       assert_invalid(Operation.validate_schema(:server_settings_config, payload))
     end
+  end
+
+  test "setting material grammar rejects aliases and non-reference suffix words" do
+    forbidden_names = [
+      "payload_valid",
+      "certificate_grid",
+      "tlsKey",
+      "secretKey",
+      "signingKey",
+      "privatekey",
+      "tlskey",
+      "secretkey",
+      "signingkey",
+      "pkcs12",
+      "pfx"
+    ]
+
+    for name <- forbidden_names do
+      payload = setting_payload(name, %{"type" => "string", "value" => "YWJjZA=="})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
+  test "setting material grammar allows unrelated names with interior root text" do
+    for name <- ["scope_mode", "type_map", "drawing_mode", "uncertainty_mode"] do
+      payload = setting_payload(name, %{"type" => "string", "value" => "enabled"})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+
+    private_network = setting_payload("private_network", %{"type" => "boolean", "value" => true})
+
+    certificate_uri =
+      setting_payload("certificate_authority_uri", %{
+        "type" => "string",
+        "value" => "https://ca.example.test/certificate"
+      })
+
+    assert {:ok, ^private_network} =
+             Operation.validate_schema(:server_settings_config, private_network)
+
+    assert {:ok, ^certificate_uri} =
+             Operation.validate_schema(:server_settings_config, certificate_uri)
   end
 
   test "provider endpoints require canonical usable HTTP or HTTPS URIs" do
