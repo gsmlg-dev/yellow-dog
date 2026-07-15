@@ -82,11 +82,13 @@ defmodule YellowDog.Sync.Operation do
     "bytes" => "byte",
     "certs" => "cert",
     "certificates" => "certificate",
-    "keys" => "key"
+    "keys" => "key",
+    "pems" => "pem",
+    "pfxs" => "pfx"
   }
   @private_key_prefixes MapSet.new(~w(private tls secret signing))
   @separatorless_material_roots ~w(raw payload body bodies content blob byte bytes cert certificate pem pkcs12 pfx)
-  @material_reference_suffixes ~w(uri url digest hash id ref)
+  @material_reference_suffixes ~w(reference digest hash uri url ref id)
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
@@ -1352,10 +1354,8 @@ defmodule YellowDog.Sync.Operation do
 
   defp material_setting_name?(name) do
     case parsed_setting_name(name) do
-      {:ok, tokens, compact} ->
-        Enum.any?(tokens, &MapSet.member?(@material_tokens, &1)) or
-          private_key_tokens?(tokens) or pkcs12_tokens?(tokens) or
-          separatorless_material?(tokens, compact)
+      {:ok, %{base: base}} ->
+        compact_material_base?(base)
 
       _ ->
         false
@@ -1364,21 +1364,8 @@ defmodule YellowDog.Sync.Operation do
 
   defp setting_reference_form(name) do
     case parsed_setting_name(name) do
-      {:ok, tokens, compact} ->
-        token_suffix = List.last(tokens)
-
-        cond do
-          token_suffix in @material_reference_suffixes ->
-            reference_form(token_suffix)
-
-          length(tokens) == 1 ->
-            compact
-            |> separatorless_reference_suffix()
-            |> reference_form()
-
-          true ->
-            nil
-        end
+      {:ok, %{reference_form: reference_form}} ->
+        reference_form
 
       _ ->
         nil
@@ -1386,45 +1373,40 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp parsed_setting_name(name) do
-    with {:ok, normalized} <- normalize_unicode(name) do
-      {:ok, setting_name_tokens(normalized), normalize_transport_name(normalized)}
+    with {:ok, normalized} <- normalize_unicode(name),
+         [_ | _] = tokens <- setting_name_tokens(normalized) do
+      {base, suffix} = split_setting_reference(tokens)
+      {:ok, %{base: base, reference_form: reference_form(suffix)}}
+    else
+      _ -> :error
     end
   end
 
-  defp private_key_tokens?(tokens) do
-    tokens
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.any?(fn [prefix, suffix] ->
-      MapSet.member?(@private_key_prefixes, prefix) and suffix == "key"
-    end)
+  defp split_setting_reference(tokens) do
+    case List.pop_at(tokens, -1) do
+      {suffix, base_tokens} when suffix in @material_reference_suffixes ->
+        {Enum.join(base_tokens), suffix}
+
+      {compact, []} ->
+        split_compact_reference(compact)
+
+      _ ->
+        {Enum.join(tokens), nil}
+    end
   end
 
-  defp pkcs12_tokens?(tokens) do
-    tokens
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.any?(&(&1 == ["pkcs", "12"]))
+  defp split_compact_reference(compact) do
+    case Enum.find(@material_reference_suffixes, &String.ends_with?(compact, &1)) do
+      nil -> {compact, nil}
+      suffix -> {String.replace_suffix(compact, suffix, ""), suffix}
+    end
   end
 
-  defp separatorless_material?([_token], compact) do
+  defp compact_material_base?(compact) do
     compact_material_root?(compact) or
-      not is_nil(separatorless_reference_suffix(compact)) or
       Enum.any?(@separatorless_material_roots, fn root ->
         String.starts_with?(compact, root) or String.ends_with?(compact, root)
       end)
-  end
-
-  defp separatorless_material?(_tokens, _compact), do: false
-
-  defp separatorless_reference_suffix(compact) do
-    Enum.find(@material_reference_suffixes, fn suffix ->
-      if String.ends_with?(compact, suffix) do
-        compact
-        |> String.replace_suffix(suffix, "")
-        |> compact_material_root?()
-      else
-        false
-      end
-    end)
   end
 
   defp compact_material_root?(compact) do
@@ -1438,7 +1420,7 @@ defmodule YellowDog.Sync.Operation do
 
   defp reference_form(suffix) when suffix in ["uri", "url"], do: :uri
   defp reference_form(suffix) when suffix in ["digest", "hash"], do: :digest
-  defp reference_form(suffix) when suffix in ["id", "ref"], do: :id
+  defp reference_form(suffix) when suffix in ["id", "ref", "reference"], do: :id
   defp reference_form(_suffix), do: nil
 
   defp valid_material_reference?(:uri, value), do: validate_provider_endpoint(value) == :ok

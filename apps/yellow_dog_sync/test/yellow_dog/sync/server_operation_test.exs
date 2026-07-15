@@ -1397,6 +1397,49 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "setting material grammar composes tokenized material references" do
+    invalid_references = [
+      {"privatekey_digest", "not-a-digest"},
+      {"privatekeys_digest", "not-a-digest"},
+      {"tlskey_uri", "YWJjZA=="},
+      {"blobstore_uri", "YWJjZA=="},
+      {"rawdataDigest", "not-a-digest"},
+      {"certificatebytes_hash", "not-a-digest"},
+      {"tlskeyreference", ""}
+    ]
+
+    for {name, value} <- invalid_references do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    uri = "https://config.example.test/material/reference"
+
+    valid_references = [
+      {"privatekey_digest", digest()},
+      {"privatekeys_digest", digest()},
+      {"tlskey_uri", uri},
+      {"blobstore_uri", uri},
+      {"rawdataDigest", digest()},
+      {"certificatebytes_hash", digest()},
+      {"tlskeyreference", "tls-key-1"},
+      {"tlskey_ref", "tls-key-1"},
+      {"blobstore_ref", "blob-store-1"}
+    ]
+
+    for {name, value} <- valid_references do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+  end
+
+  test "setting material grammar normalizes PEM and PFX acronym plurals" do
+    for name <- ["PEMs", "PFXs"] do
+      payload = setting_payload(name, %{"type" => "string", "value" => "YWJjZA=="})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
   test "setting material grammar allows unrelated names with interior root text" do
     for name <- ["scope_mode", "type_map", "drawing_mode", "uncertainty_mode"] do
       payload = setting_payload(name, %{"type" => "string", "value" => "enabled"})
