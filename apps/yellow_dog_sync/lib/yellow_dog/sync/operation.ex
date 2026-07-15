@@ -1410,16 +1410,18 @@ defmodule YellowDog.Sync.Operation do
 
   defp material_tokens?(tokens, separatorless?) do
     Enum.any?(tokens, &MapSet.member?(@material_tokens, &1)) or
-      private_key_tokens?(tokens) or
+      material_token_sequence?(tokens) or
       Enum.any?(tokens, &compact_material_base?/1) or
       (separatorless? and compact_material_base?(Enum.join(tokens)))
   end
 
-  defp private_key_tokens?(tokens) do
+  defp material_token_sequence?(tokens) do
     tokens
     |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.any?(fn [prefix, suffix] ->
-      MapSet.member?(@private_key_prefixes, prefix) and suffix == "key"
+    |> Enum.any?(fn
+      ["pkcs", "12"] -> true
+      [prefix, "key"] -> MapSet.member?(@private_key_prefixes, prefix)
+      _pair -> false
     end)
   end
 

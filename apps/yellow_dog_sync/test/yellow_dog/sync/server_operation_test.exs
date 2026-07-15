@@ -1578,6 +1578,44 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "canonical PKCS 12 token sequences enforce material reference rules" do
+    uri = "https://config.example.test/material/archive"
+
+    for payload <- [
+          setting_payload("pkcs_12", %{"type" => "string", "value" => "YWJjZA=="}),
+          setting_payload("archive_pkcs_12_bundle", %{
+            "type" => "string",
+            "value" => "YWJjZA=="
+          }),
+          setting_payload("archive_pkcs_12_digest", %{
+            "type" => "string",
+            "value" => "not-a-digest"
+          }),
+          setting_payload("archive_pkcs_12_uri", %{
+            "type" => "string",
+            "value" => "YWJjZA=="
+          }),
+          setting_payload("archive_pkcs_12_id", %{"type" => "string", "value" => ""}),
+          setting_payload("archive_pkcs_12_ref", %{"type" => "string", "value" => ""}),
+          setting_payload("archive_pkcs_12_ref", %{
+            "type" => "string",
+            "value" => "/etc/archive.p12"
+          })
+        ] do
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    for {name, value} <- [
+          {"archive_pkcs_12_digest", digest()},
+          {"archive_pkcs_12_uri", uri},
+          {"archive_pkcs_12_id", "archive-pkcs12-1"},
+          {"archive_pkcs_12_ref", "archive-pkcs12-1"}
+        ] do
+      payload = setting_payload(name, %{"type" => "string", "value" => value})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+  end
+
   test "setting material grammar allows unrelated names with interior root text" do
     for name <- ["scope_mode", "type_map", "drawing_mode", "uncertainty_mode"] do
       payload = setting_payload(name, %{"type" => "string", "value" => "enabled"})
