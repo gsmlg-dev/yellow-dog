@@ -35,29 +35,37 @@ defmodule YellowDog.Sync.Operation do
   @max_integer 9_223_372_036_854_775_807
 
   @forbidden_keys MapSet.new([
-                    "expected_revision",
+                    "expectedrevision",
                     "path",
-                    "local_path",
-                    "file_path",
+                    "localpath",
+                    "filepath",
                     "pathname",
                     "file",
                     "pid",
-                    "process_id",
+                    "processid",
                     "ref",
                     "reference",
                     "port",
                     "ets",
-                    "ets_table",
+                    "etstable",
                     "table",
-                    "table_id",
-                    "kernel_handle",
-                    "manager_handle",
+                    "tableid",
+                    "kernelhandle",
+                    "kernelmanagerhandle",
+                    "managerhandle",
                     "handle",
                     "blob",
+                    "blobbytes",
+                    "blobcontent",
+                    "blobdata",
                     "content",
                     "bytes",
                     "data"
                   ])
+  @forbidden_setting_tokens MapSet.new(~w(
+                                path file pid ref reference port ets table kernel manager handle
+                                blob content bytes data
+                              ))
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
@@ -206,15 +214,7 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:dns_acl_write), do: dns_acl()
   defp schema_spec(:dns_provider_write), do: dns_provider()
 
-  defp schema_spec(:dns_zone_import) do
-    object(%{
-      "view_name" => :id,
-      "zone_name" => :domain,
-      "filename" => :filename,
-      "size" => nonnegative_integer(),
-      "blob_digest" => :digest
-    })
-  end
+  defp schema_spec(:dns_zone_import), do: :dns_zone_import
 
   defp schema_spec(:dns_zone_sync),
     do: object(%{"view_name" => :id, "zone_name" => :domain, "provider_id" => :id})
@@ -409,7 +409,10 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:connection_activation_result),
     do: object(%{"connection_id" => :id, "state" => connection_state()})
 
-  defp schema_spec(:config_state) do
+  defp schema_spec(:config_state), do: :config_state
+  defp schema_spec(_schema), do: nil
+
+  defp config_state_shape do
     object(%{
       "state" => enum(["desired", "delivered", "applying", "applied", "failed"]),
       "version" => :id,
@@ -420,8 +423,6 @@ defmodule YellowDog.Sync.Operation do
       "rollback" => nullable(rollback_result())
     })
   end
-
-  defp schema_spec(_schema), do: nil
 
   defp query(required) do
     object(required, %{
@@ -491,7 +492,9 @@ defmodule YellowDog.Sync.Operation do
     })
   end
 
-  defp dhcp_pool do
+  defp dhcp_pool, do: :dhcp_pool
+
+  defp dhcp_pool_shape do
     object(%{
       "family" => family(),
       "pool_id" => :id,
@@ -546,7 +549,7 @@ defmodule YellowDog.Sync.Operation do
     object(%{"service" => :id, "entries" => list(setting_entry())})
   end
 
-  defp setting_entry, do: object(%{"key" => :id, "value" => :setting_value})
+  defp setting_entry, do: :setting_entry
 
   defp netman_profile do
     object(%{
@@ -705,16 +708,12 @@ defmodule YellowDog.Sync.Operation do
   defp config_failure do
     object(%{
       "phase" => enum(["delivery", "validation", "apply", "rollback"]),
-      "reason" => :text
+      "reason" => :nonempty_text
     })
   end
 
   defp rollback_result do
-    object(%{
-      "succeeded" => :boolean,
-      "restored_revision" => nullable(:digest),
-      "reason" => nullable(:text)
-    })
+    :rollback_result
   end
 
   defp validate_result_domain(
@@ -834,11 +833,35 @@ defmodule YellowDog.Sync.Operation do
   defp validate_type(value, :boolean, _depth) when is_boolean(value), do: :ok
 
   defp validate_type(value, :scalar, _depth)
-       when is_nil(value) or is_boolean(value) or is_integer(value) or is_float(value),
+       when is_nil(value) or is_boolean(value) or is_float(value),
+       do: :ok
+
+  defp validate_type(value, :scalar, _depth)
+       when is_integer(value) and value >= -@max_integer and value <= @max_integer,
        do: :ok
 
   defp validate_type(value, :scalar, depth) when is_binary(value),
     do: validate_type(value, :text, depth)
+
+  defp validate_type(value, :setting_scalar, _depth)
+       when is_nil(value) or is_boolean(value) or is_float(value),
+       do: :ok
+
+  defp validate_type(value, :setting_scalar, _depth)
+       when is_integer(value) and value >= -@max_integer and value <= @max_integer,
+       do: :ok
+
+  defp validate_type(value, :setting_scalar, depth) when is_binary(value),
+    do: validate_type(value, :setting_text, depth)
+
+  defp validate_type(value, :setting_text, depth) do
+    with :ok <- validate_type(value, :text, depth),
+         false <- local_path_value?(value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
 
   defp validate_type(value, :filename, _depth) do
     with :ok <- validate_type(value, :nonempty_text, 0),
@@ -851,18 +874,11 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
-  defp validate_type(value, :domain, _depth) do
-    with :ok <- validate_type(value, :nonempty_text, 0),
-         false <- String.contains?(value, ["/", "\\", " "]) do
-      :ok
-    else
-      _ -> invalid_error()
-    end
-  end
+  defp validate_type(value, :domain, _depth), do: validate_dns_name(value)
 
   defp validate_type(value, :domain_label, _depth) do
     with :ok <- validate_type(value, :nonempty_text, 0),
-         true <- Regex.match?(~r/\A(?:@|\*|[A-Za-z0-9_-]+)\z/, value) do
+         true <- value in ["@", "*"] or valid_dns_label?(value) do
       :ok
     else
       _ -> invalid_error()
@@ -870,8 +886,10 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp validate_type(value, :service_type, _depth) do
-    with :ok <- validate_type(value, :nonempty_text, 0),
-         true <- Regex.match?(~r/\A_[A-Za-z0-9-]+\._(?:tcp|udp)\z/, value) do
+    with :ok <- validate_dns_name(value),
+         [service, protocol] <- String.split(value, "."),
+         true <- String.starts_with?(service, "_"),
+         true <- protocol in ["_tcp", "_udp"] do
       :ok
     else
       _ -> invalid_error()
@@ -890,10 +908,60 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
+  defp validate_type(value, :dhcp_pool, depth) do
+    with :ok <- validate_type(value, dhcp_pool_shape(), depth),
+         {:ok, family} <- wire_family(value["family"]),
+         {:ok, ^family} <- cidr_family(value["subnet"]),
+         {:ok, ^family} <- ip_family(value["start_address"]),
+         {:ok, ^family} <- ip_family(value["end_address"]) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :dns_zone_import, depth) do
+    source =
+      object(%{
+        "view_name" => :id,
+        "zone_name" => :domain,
+        "source_type" => enum(["provider", "snapshot"]),
+        "source_id" => :id,
+        "source_revision" => :digest
+      })
+
+    blob =
+      object(%{
+        "view_name" => :id,
+        "zone_name" => :domain,
+        "filename" => :filename,
+        "size" => nonnegative_integer(),
+        "blob_digest" => :digest
+      })
+
+    case validate_type(value, source, depth) do
+      :ok -> :ok
+      _ -> validate_type(value, blob, depth)
+    end
+  end
+
+  defp validate_type(value, :setting_entry, depth) do
+    with :ok <- validate_type(value, object(%{"key" => :id, "value" => :setting_value}), depth),
+         true <- safe_setting_name?(value["key"]) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
   defp validate_type(value, :setting_value, depth) when depth > 0 do
     case value do
       %{"type" => "string", "value" => _value} ->
-        validate_type(value, object(%{"type" => {:literal, "string"}, "value" => :text}), depth)
+        validate_type(
+          value,
+          object(%{"type" => {:literal, "string"}, "value" => :setting_text}),
+          depth
+        )
 
       %{"type" => "integer", "value" => _value} ->
         validate_type(
@@ -915,7 +983,7 @@ defmodule YellowDog.Sync.Operation do
       %{"type" => "list", "items" => _items} ->
         validate_type(
           value,
-          object(%{"type" => {:literal, "list"}, "items" => list(:scalar)}),
+          object(%{"type" => {:literal, "list"}, "items" => list(:setting_scalar)}),
           depth
         )
 
@@ -928,6 +996,31 @@ defmodule YellowDog.Sync.Operation do
 
       _ ->
         invalid_error()
+    end
+  end
+
+  defp validate_type(value, :rollback_result, depth) do
+    shape =
+      object(%{
+        "succeeded" => :boolean,
+        "restored_revision" => nullable(:digest),
+        "reason" => nullable(:nonempty_text)
+      })
+
+    with :ok <- validate_type(value, shape, depth),
+         true <- coherent_rollback?(value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :config_state, depth) do
+    with :ok <- validate_type(value, config_state_shape(), depth),
+         true <- coherent_config_state?(value) do
+      :ok
+    else
+      _ -> invalid_error()
     end
   end
 
@@ -988,19 +1081,35 @@ defmodule YellowDog.Sync.Operation do
          :ok <- validate_type(value["resource_id"], :id, depth - 1),
          :ok <- validate_type(value["revision"], :digest, depth - 1),
          spec when not is_nil(spec) <- resource_spec(value["resource_type"]),
-         :ok <- validate_type(value["resource"], spec, depth - 1) do
+         :ok <- validate_type(value["resource"], spec, depth - 1),
+         {:ok, identifier} <- resource_identifier(value["resource_type"], value["resource"]),
+         true <- value["resource_id"] == identifier do
       :ok
     else
       _ -> invalid_error()
     end
   end
 
-  defp validate_type(value, :deleted_resource, depth) do
-    validate_type(
-      value,
-      object(%{"resource_type" => resource_type(), "resource_id" => :id, "revision" => :digest}),
-      depth
-    )
+  defp validate_type(value, :deleted_resource, depth) when is_map(value) and depth > 0 do
+    with {:ok, _value} <- Bounds.map(value),
+         true <-
+           Map.keys(value) |> Enum.sort() == [
+             "resource_id",
+             "resource_ref",
+             "resource_type",
+             "revision"
+           ],
+         :ok <- validate_type(value["resource_type"], resource_type(), depth - 1),
+         :ok <- validate_type(value["resource_id"], :id, depth - 1),
+         :ok <- validate_type(value["revision"], :digest, depth - 1),
+         spec when not is_nil(spec) <- resource_ref_spec(value["resource_type"]),
+         :ok <- validate_type(value["resource_ref"], spec, depth - 1),
+         {:ok, identifier} <- resource_identifier(value["resource_type"], value["resource_ref"]),
+         true <- value["resource_id"] == identifier do
+      :ok
+    else
+      _ -> invalid_error()
+    end
   end
 
   defp validate_type(_value, _spec, _depth), do: invalid_error()
@@ -1020,6 +1129,41 @@ defmodule YellowDog.Sync.Operation do
   defp resource_spec("identity_policy"), do: identity_policy()
   defp resource_spec("netman_profile"), do: netman_profile()
   defp resource_spec(_resource_type), do: nil
+
+  defp resource_ref_spec("dns_view"), do: object(%{"view_name" => :id})
+
+  defp resource_ref_spec("dns_zone"),
+    do: object(%{"view_name" => :id, "zone_name" => :domain})
+
+  defp resource_ref_spec("dns_record"), do: dns_record_ref()
+  defp resource_ref_spec("dns_acl"), do: object(%{"acl_id" => :id})
+  defp resource_ref_spec("dns_provider"), do: object(%{"provider_id" => :id})
+  defp resource_ref_spec("dhcp_pool"), do: family_ref("pool_id")
+  defp resource_ref_spec("mdns_service"), do: object(%{"service_id" => :id})
+  defp resource_ref_spec("netboot_profile"), do: object(%{"profile_id" => :id})
+  defp resource_ref_spec("netboot_device"), do: object(%{"device_id" => :id})
+  defp resource_ref_spec("netboot_asset"), do: object(%{"asset_id" => :id})
+  defp resource_ref_spec("identity_host"), do: object(%{"host_id" => :id})
+  defp resource_ref_spec("identity_token"), do: object(%{"token_id" => :id})
+  defp resource_ref_spec("identity_policy"), do: object(%{"policy_id" => :id})
+  defp resource_ref_spec("netman_profile"), do: object(%{"profile_id" => :id})
+  defp resource_ref_spec(_resource_type), do: nil
+
+  defp resource_identifier("dns_view", resource), do: Map.fetch(resource, "view_name")
+  defp resource_identifier("dns_zone", resource), do: Map.fetch(resource, "zone_name")
+  defp resource_identifier("dns_record", resource), do: Map.fetch(resource, "record_id")
+  defp resource_identifier("dns_acl", resource), do: Map.fetch(resource, "acl_id")
+  defp resource_identifier("dns_provider", resource), do: Map.fetch(resource, "provider_id")
+  defp resource_identifier("dhcp_pool", resource), do: Map.fetch(resource, "pool_id")
+  defp resource_identifier("mdns_service", resource), do: Map.fetch(resource, "service_id")
+  defp resource_identifier("netboot_profile", resource), do: Map.fetch(resource, "profile_id")
+  defp resource_identifier("netboot_device", resource), do: Map.fetch(resource, "device_id")
+  defp resource_identifier("netboot_asset", resource), do: Map.fetch(resource, "asset_id")
+  defp resource_identifier("identity_host", resource), do: Map.fetch(resource, "host_id")
+  defp resource_identifier("identity_token", resource), do: Map.fetch(resource, "token_id")
+  defp resource_identifier("identity_policy", resource), do: Map.fetch(resource, "policy_id")
+  defp resource_identifier("netman_profile", resource), do: Map.fetch(resource, "profile_id")
+  defp resource_identifier(_resource_type, _resource), do: :error
 
   defp transport_safe(value, depth) when is_map(value) and depth > 0 do
     with {:ok, _value} <- Bounds.map(value),
@@ -1049,14 +1193,39 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp transport_safe(value, _depth)
-       when is_binary(value) or is_integer(value) or is_float(value) or is_boolean(value) or
-              is_nil(value),
+       when is_binary(value) or is_float(value) or is_boolean(value) or is_nil(value),
+       do: :ok
+
+  defp transport_safe(value, _depth)
+       when is_integer(value) and value >= -@max_integer and value <= @max_integer,
        do: :ok
 
   defp transport_safe(_value, _depth), do: invalid_error()
 
-  defp safe_key?(key) when is_binary(key), do: not MapSet.member?(@forbidden_keys, key)
+  defp safe_key?(key) when is_binary(key) do
+    with {:ok, key} <- Bounds.message(key),
+         normalized when normalized != "" <- normalize_transport_name(key) do
+      not MapSet.member?(@forbidden_keys, normalized)
+    else
+      _ -> false
+    end
+  end
+
   defp safe_key?(_key), do: false
+
+  defp safe_setting_name?(name) do
+    safe_key?(name) and
+      name
+      |> setting_name_tokens()
+      |> Enum.all?(&(not MapSet.member?(@forbidden_setting_tokens, &1)))
+  end
+
+  defp setting_name_tokens(name) do
+    name
+    |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
+    |> String.downcase()
+    |> String.split(~r/[^a-z0-9]+/u, trim: true)
+  end
 
   defp object(required, optional \\ %{}), do: {:object, required, optional}
   defp list(item, maximum \\ @max_collection_size), do: {:list, item, maximum}
@@ -1139,6 +1308,134 @@ defmodule YellowDog.Sync.Operation do
   defp valid_prefix?(address, prefix) when tuple_size(address) == 4, do: prefix in 0..32
   defp valid_prefix?(address, prefix) when tuple_size(address) == 8, do: prefix in 0..128
   defp valid_prefix?(_address, _prefix), do: false
+
+  defp wire_family("ipv4"), do: {:ok, :ipv4}
+  defp wire_family("ipv6"), do: {:ok, :ipv6}
+  defp wire_family(_family), do: invalid_error()
+
+  defp ip_family(value) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         {:ok, parsed} <- :inet.parse_address(String.to_charlist(value)) do
+      parsed_family(parsed)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp cidr_family(value) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         [address, prefix] <- String.split(value, "/", parts: 2),
+         {:ok, parsed} <- :inet.parse_address(String.to_charlist(address)),
+         {prefix, ""} <- Integer.parse(prefix),
+         true <- valid_prefix?(parsed, prefix) do
+      parsed_family(parsed)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp parsed_family(address) when tuple_size(address) == 4, do: {:ok, :ipv4}
+  defp parsed_family(address) when tuple_size(address) == 8, do: {:ok, :ipv6}
+  defp parsed_family(_address), do: invalid_error()
+
+  defp validate_dns_name(value) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         name <- strip_optional_trailing_dot(value),
+         true <- name != "",
+         true <- byte_size(name) <= 253,
+         labels <- String.split(name, ".", trim: false),
+         true <- Enum.all?(labels, &valid_dns_label?/1) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp strip_optional_trailing_dot(value) do
+    if String.ends_with?(value, ".") do
+      binary_part(value, 0, byte_size(value) - 1)
+    else
+      value
+    end
+  end
+
+  defp valid_dns_label?(label) when byte_size(label) in 1..63 do
+    Regex.match?(~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\z/, label) or
+      Regex.match?(~r/\A_[A-Za-z0-9](?:[A-Za-z0-9-]{0,60}[A-Za-z0-9])?\z/, label)
+  end
+
+  defp valid_dns_label?(_label), do: false
+
+  defp coherent_config_state?(%{
+         "state" => state,
+         "applied_revision" => nil,
+         "previous_revision" => nil,
+         "failure" => nil,
+         "rollback" => nil
+       })
+       when state in ["desired", "delivered", "applying"],
+       do: true
+
+  defp coherent_config_state?(%{
+         "state" => "applied",
+         "applied_revision" => applied_revision,
+         "failure" => nil,
+         "rollback" => nil
+       })
+       when is_binary(applied_revision),
+       do: true
+
+  defp coherent_config_state?(%{
+         "state" => "failed",
+         "applied_revision" => nil,
+         "previous_revision" => nil,
+         "failure" => failure,
+         "rollback" => nil
+       })
+       when is_map(failure),
+       do: true
+
+  defp coherent_config_state?(%{
+         "state" => "failed",
+         "applied_revision" => nil,
+         "previous_revision" => previous_revision,
+         "failure" => failure,
+         "rollback" => rollback
+       })
+       when is_binary(previous_revision) and is_map(failure) and is_map(rollback),
+       do: true
+
+  defp coherent_config_state?(_state), do: false
+
+  defp coherent_rollback?(%{
+         "succeeded" => true,
+         "restored_revision" => restored_revision,
+         "reason" => nil
+       })
+       when is_binary(restored_revision),
+       do: true
+
+  defp coherent_rollback?(%{
+         "succeeded" => false,
+         "restored_revision" => nil,
+         "reason" => reason
+       })
+       when is_binary(reason),
+       do: true
+
+  defp coherent_rollback?(_rollback), do: false
+
+  defp normalize_transport_name(value) do
+    value
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]/u, "")
+  end
+
+  defp local_path_value?(value) do
+    String.contains?(value, ["/", "\\"]) or
+      Regex.match?(~r/\A[A-Za-z]:/, value) or
+      value in [".", "..", "~"]
+  end
 
   defp normalize({:ok, _value}), do: :ok
   defp normalize(_error), do: invalid_error()

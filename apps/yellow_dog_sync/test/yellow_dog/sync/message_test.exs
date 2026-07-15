@@ -199,6 +199,96 @@ defmodule YellowDog.Sync.MessageTest do
     assert_invalid(Message.decode(encoded))
   end
 
+  test "config delivery rejects normalized forbidden setting names and local path values" do
+    invalid_entries = [
+      %{"key" => "local_path", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+      %{"key" => "expected_revision", "value" => %{"type" => "string", "value" => "other"}},
+      %{"key" => "Path", "value" => %{"type" => "string", "value" => "other"}},
+      %{"key" => "Content", "value" => %{"type" => "string", "value" => "raw"}},
+      %{"key" => "shadow_file", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+      %{
+        "key" => "nested",
+        "value" => %{"type" => "object", "entries" => [], "Path" => "/etc/shadow"}
+      },
+      %{
+        "key" => "nested",
+        "value" => %{"type" => "object", "entries" => [], "Content" => "raw"}
+      }
+    ]
+
+    for entry <- invalid_entries do
+      payload = %{"service" => "dns", "entries" => [entry]}
+      envelope = envelope("server.settings.update", payload)
+      message = %ConfigDelivery{envelope: envelope}
+      wire = %{"type" => "config_delivery", "payload" => Envelope.to_wire(envelope)}
+
+      assert_invalid(Message.encode(message))
+      assert_invalid(Message.decode(Jason.encode!(wire)))
+    end
+  end
+
+  test "DNS zone import source and blob alternatives round trip as commands" do
+    source = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "source_type" => "provider",
+      "source_id" => "route53",
+      "source_revision" => String.duplicate("a", 64)
+    }
+
+    blob = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "filename" => "example.test.zone",
+      "size" => 42,
+      "blob_digest" => String.duplicate("a", 64)
+    }
+
+    for payload <- [source, blob] do
+      message = %Command{envelope: envelope("server.dns.zones.import", payload)}
+      assert {:ok, encoded} = Message.encode(message)
+      assert {:ok, ^message} = Message.decode(encoded)
+    end
+  end
+
+  test "config state lifecycle contradictions fail at encode and decode boundaries" do
+    state = %ConfigState{
+      target_type: :server,
+      target_id: "server-1",
+      operation: "server.settings.update",
+      state: :applied,
+      version: "version-1",
+      digest: String.duplicate("a", 64),
+      applied_revision: nil,
+      previous_revision: nil,
+      failure: nil,
+      rollback: nil,
+      observed_at: @sent_at
+    }
+
+    wire = %{
+      "type" => "config_state",
+      "payload" => %{
+        "target_type" => "server",
+        "target_id" => "server-1",
+        "operation" => "server.settings.update",
+        "state" => %{
+          "state" => "applied",
+          "version" => "version-1",
+          "digest" => String.duplicate("a", 64),
+          "applied_revision" => nil,
+          "previous_revision" => nil,
+          "failure" => nil,
+          "rollback" => nil
+        },
+        "observed_at" => DateTime.to_iso8601(@sent_at)
+      }
+    }
+
+    assert_invalid(Message.encode(state))
+    assert_invalid(Message.decode(Jason.encode!(wire)))
+  end
+
   test "invalid operation results and journal values cannot cross the message boundary" do
     result = dns_view_list()
     invalid_result = %{result | "items" => [%{"path" => "/tmp/view", "blob" => "raw"}]}

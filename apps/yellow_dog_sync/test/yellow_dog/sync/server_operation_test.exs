@@ -381,7 +381,12 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         }
 
       :deleted_resource ->
-        %{"resource_type" => "dns_view", "resource_id" => "default", "revision" => @revision}
+        %{
+          "resource_type" => "dns_view",
+          "resource_id" => "default",
+          "resource_ref" => %{"view_name" => "default"},
+          "revision" => @revision
+        }
 
       :lease_release_result ->
         %{"family" => "ipv4", "lease_id" => "lease-1", "released" => true}
@@ -444,16 +449,36 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
   end
 
   def valid_result(name, :deleted_resource) do
-    {resource_type, resource_id, _resource} = operation_resource(name)
+    {resource_type, resource_id, resource} = operation_resource(name)
 
     %{
       "resource_type" => resource_type,
       "resource_id" => resource_id,
+      "resource_ref" => resource_ref(resource_type, resource),
       "revision" => @revision
     }
   end
 
   def valid_result(_name, schema), do: valid(schema)
+
+  def resource_domains do
+    [
+      {"dns_view", "default", dns_view()},
+      {"dns_zone", "example.test", dns_zone()},
+      {"dns_record", "www-a", dns_record()},
+      {"dns_acl", "trusted", dns_acl()},
+      {"dns_provider", "route53", dns_provider()},
+      {"dhcp_pool", "office", dhcp_pool()},
+      {"mdns_service", "printer", mdns_service()},
+      {"netboot_profile", "linux", netboot_profile()},
+      {"netboot_device", "device-1", netboot_device()},
+      {"netboot_asset", "installer", netboot_asset()},
+      {"identity_host", "host-1", list_item(:identity_host_list)},
+      {"identity_token", "token-1", list_item(:identity_token_list)},
+      {"identity_policy", "default", identity_policy()},
+      {"netman_profile", "office", netman_profile()}
+    ]
+  end
 
   defp list_item(:service_list), do: %{"service" => "dns", "state" => "running"}
   defp list_item(:dns_view_list), do: dns_view()
@@ -710,6 +735,24 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         {"netman_profile", "office", netman_profile()}
     end
   end
+
+  defp resource_ref("dns_view", resource), do: Map.take(resource, ["view_name"])
+  defp resource_ref("dns_zone", resource), do: Map.take(resource, ["view_name", "zone_name"])
+
+  defp resource_ref("dns_record", resource),
+    do: Map.take(resource, ["view_name", "zone_name", "record_id"])
+
+  defp resource_ref("dns_acl", resource), do: Map.take(resource, ["acl_id"])
+  defp resource_ref("dns_provider", resource), do: Map.take(resource, ["provider_id"])
+  defp resource_ref("dhcp_pool", resource), do: Map.take(resource, ["family", "pool_id"])
+  defp resource_ref("mdns_service", resource), do: Map.take(resource, ["service_id"])
+  defp resource_ref("netboot_profile", resource), do: Map.take(resource, ["profile_id"])
+  defp resource_ref("netboot_device", resource), do: Map.take(resource, ["device_id"])
+  defp resource_ref("netboot_asset", resource), do: Map.take(resource, ["asset_id"])
+  defp resource_ref("identity_host", resource), do: Map.take(resource, ["host_id"])
+  defp resource_ref("identity_token", resource), do: Map.take(resource, ["token_id"])
+  defp resource_ref("identity_policy", resource), do: Map.take(resource, ["policy_id"])
+  defp resource_ref("netman_profile", resource), do: Map.take(resource, ["profile_id"])
 end
 
 defmodule YellowDog.Sync.ServerOperationTest do
@@ -1016,6 +1059,247 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "forbidden transport names are case and separator insensitive" do
+    for forbidden <- [
+          "Path",
+          "localPath",
+          "local_path",
+          "expected-revision",
+          "Content",
+          "blob_bytes",
+          "etsTable",
+          "managerHandle"
+        ] do
+      assert_invalid(Operation.validate_transport(%{forbidden => "forbidden"}))
+    end
+  end
+
+  test "settings reject semantic transport names local paths and recursively oversized integers" do
+    huge_integer = String.to_integer(String.duplicate("9", 1_001))
+
+    for forbidden_name <- [
+          "local_path",
+          "path",
+          "expected_revision",
+          "content",
+          "blob",
+          "bytes",
+          "data",
+          "pid",
+          "ref",
+          "port",
+          "ets_table",
+          "table",
+          "kernel_handle",
+          "manager_handle",
+          "pidFile",
+          "resource_ref",
+          "listen_port",
+          "blobDigest"
+        ] do
+      payload = %{
+        "service" => "dns",
+        "entries" => [
+          %{"key" => forbidden_name, "value" => %{"type" => "string", "value" => "value"}}
+        ]
+      }
+
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    invalid_entries = [
+      %{"key" => "local_path", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+      %{"key" => "expected_revision", "value" => %{"type" => "string", "value" => digest()}},
+      %{"key" => "Path", "value" => %{"type" => "string", "value" => "relative"}},
+      %{"key" => "Content", "value" => %{"type" => "string", "value" => "raw"}},
+      %{"key" => "shadow_file", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+      %{"key" => "nested", "value" => %{"type" => "list", "items" => [huge_integer]}},
+      %{
+        "key" => "nested",
+        "value" => %{
+          "type" => "object",
+          "entries" => [
+            %{"key" => "limit", "value" => %{"type" => "integer", "value" => huge_integer}}
+          ]
+        }
+      }
+    ]
+
+    for entry <- invalid_entries do
+      payload = %{"service" => "dns", "entries" => [entry]}
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+  end
+
+  test "DHCP pool address families are coherent" do
+    ipv4 = Fixtures.valid(:dhcp_pool_write)
+
+    ipv6 = %{
+      ipv4
+      | "family" => "ipv6",
+        "subnet" => "2001:db8::/64",
+        "start_address" => "2001:db8::20",
+        "end_address" => "2001:db8::100"
+    }
+
+    assert {:ok, ^ipv4} = Operation.validate_schema(:dhcp_pool_write, ipv4)
+    assert {:ok, ^ipv6} = Operation.validate_schema(:dhcp_pool_write, ipv6)
+
+    for field <- ["subnet", "start_address", "end_address"] do
+      ipv4_mismatch = Map.put(ipv4, field, ipv6[field])
+      ipv6_mismatch = Map.put(ipv6, field, ipv4[field])
+      assert_invalid(Operation.validate_schema(:dhcp_pool_write, ipv4_mismatch))
+      assert_invalid(Operation.validate_schema(:dhcp_pool_write, ipv6_mismatch))
+    end
+  end
+
+  test "DNS names enforce total and label bounds and service-label syntax" do
+    label63 = String.duplicate("a", 63)
+    max_name = Enum.join([label63, label63, label63, String.duplicate("a", 61)], ".")
+
+    for name <- ["example.test", "example.test.", "_ipp._tcp.local", max_name] do
+      assert {:ok, _value} =
+               Operation.validate_schema(:dns_zone_ref, %{
+                 "view_name" => "default",
+                 "zone_name" => name
+               })
+    end
+
+    invalid_names = [
+      "",
+      ".",
+      "..",
+      "example..test",
+      "example.test..",
+      "-bad.test",
+      "bad-.test",
+      "bad_name.test",
+      String.duplicate("a", 64) <> ".test",
+      max_name <> "a",
+      "white space.test",
+      "slash/test",
+      "control\n.test"
+    ]
+
+    for name <- invalid_names do
+      assert_invalid(
+        Operation.validate_schema(:dns_zone_ref, %{
+          "view_name" => "default",
+          "zone_name" => name
+        })
+      )
+    end
+  end
+
+  test "revisioned and deleted resource IDs match every typed resource identifier" do
+    for {resource_type, resource_id, resource} <- Fixtures.resource_domains() do
+      revisioned = %{
+        "resource_type" => resource_type,
+        "resource_id" => resource_id,
+        "revision" => digest(),
+        "resource" => resource
+      }
+
+      deleted = %{
+        "resource_type" => resource_type,
+        "resource_id" => resource_id,
+        "resource_ref" => resource_ref(resource_type, resource),
+        "revision" => digest()
+      }
+
+      assert {:ok, ^revisioned} = Operation.validate_schema(:revisioned_resource, revisioned)
+      assert {:ok, ^deleted} = Operation.validate_schema(:deleted_resource, deleted)
+
+      assert_invalid(
+        Operation.validate_schema(:revisioned_resource, %{revisioned | "resource_id" => "other"})
+      )
+
+      assert_invalid(
+        Operation.validate_schema(:deleted_resource, %{deleted | "resource_id" => "other"})
+      )
+    end
+
+    view = Fixtures.valid_result("server.dns.views.create", :revisioned_resource)
+
+    assert_invalid(
+      Operation.validate_result(
+        "server.dns.views.create",
+        :server,
+        :command,
+        %{view | "resource_id" => "other"}
+      )
+    )
+  end
+
+  test "config state enforces the lifecycle matrix" do
+    accepted = [
+      config_state("desired"),
+      config_state("delivered"),
+      config_state("applying"),
+      config_state("applied", %{"applied_revision" => digest()}),
+      config_state("applied", %{"applied_revision" => digest(), "previous_revision" => digest()}),
+      config_state("failed", %{"failure" => config_failure()}),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_revision" => digest(),
+        "rollback" => %{"succeeded" => true, "restored_revision" => digest(), "reason" => nil}
+      }),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "previous_revision" => digest(),
+        "rollback" => %{
+          "succeeded" => false,
+          "restored_revision" => nil,
+          "reason" => "rollback failed"
+        }
+      })
+    ]
+
+    for state <- accepted do
+      assert {:ok, ^state} = Operation.validate_schema(:config_state, state)
+    end
+
+    contradictory = [
+      config_state("desired", %{"failure" => config_failure()}),
+      config_state("delivered", %{"applied_revision" => digest()}),
+      config_state("applying", %{"previous_revision" => digest()}),
+      config_state("applied"),
+      config_state("applied", %{"applied_revision" => digest(), "failure" => config_failure()}),
+      config_state("failed"),
+      config_state("failed", %{"applied_revision" => digest(), "failure" => config_failure()}),
+      config_state("failed", %{"failure" => config_failure(), "previous_revision" => digest()}),
+      config_state("failed", %{
+        "failure" => config_failure(),
+        "rollback" => %{"succeeded" => false, "restored_revision" => nil, "reason" => "failed"}
+      })
+    ]
+
+    for state <- contradictory do
+      assert_invalid(Operation.validate_schema(:config_state, state))
+    end
+  end
+
+  test "DNS zone import accepts exactly one strict source" do
+    source = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "source_type" => "provider",
+      "source_id" => "route53",
+      "source_revision" => digest()
+    }
+
+    blob = Fixtures.valid(:dns_zone_import)
+
+    assert {:ok, ^source} = Operation.validate_schema(:dns_zone_import, source)
+    assert {:ok, ^blob} = Operation.validate_schema(:dns_zone_import, blob)
+    assert_invalid(Operation.validate_schema(:dns_zone_import, Map.merge(source, blob)))
+    assert_invalid(Operation.validate_schema(:dns_zone_import, Map.drop(source, ["source_id"])))
+
+    for forbidden <- ["path", "Content", "blob_bytes"] do
+      assert_invalid(Operation.validate_schema(:dns_zone_import, Map.put(blob, forbidden, "raw")))
+    end
+  end
+
   test "reviewer probes reject profile transport fields and arbitrary DNS list items" do
     profile = Fixtures.valid(:profile_put)
 
@@ -1065,6 +1349,41 @@ defmodule YellowDog.Sync.ServerOperationTest do
   end
 
   defp digest, do: String.duplicate("a", 64)
+
+  defp resource_ref("dns_view", resource), do: Map.take(resource, ["view_name"])
+  defp resource_ref("dns_zone", resource), do: Map.take(resource, ["view_name", "zone_name"])
+
+  defp resource_ref("dns_record", resource),
+    do: Map.take(resource, ["view_name", "zone_name", "record_id"])
+
+  defp resource_ref("dns_acl", resource), do: Map.take(resource, ["acl_id"])
+  defp resource_ref("dns_provider", resource), do: Map.take(resource, ["provider_id"])
+  defp resource_ref("dhcp_pool", resource), do: Map.take(resource, ["family", "pool_id"])
+  defp resource_ref("mdns_service", resource), do: Map.take(resource, ["service_id"])
+  defp resource_ref("netboot_profile", resource), do: Map.take(resource, ["profile_id"])
+  defp resource_ref("netboot_device", resource), do: Map.take(resource, ["device_id"])
+  defp resource_ref("netboot_asset", resource), do: Map.take(resource, ["asset_id"])
+  defp resource_ref("identity_host", resource), do: Map.take(resource, ["host_id"])
+  defp resource_ref("identity_token", resource), do: Map.take(resource, ["token_id"])
+  defp resource_ref("identity_policy", resource), do: Map.take(resource, ["policy_id"])
+  defp resource_ref("netman_profile", resource), do: Map.take(resource, ["profile_id"])
+
+  defp config_state(state, overrides \\ %{}) do
+    Map.merge(
+      %{
+        "state" => state,
+        "version" => "version-1",
+        "digest" => digest(),
+        "applied_revision" => nil,
+        "previous_revision" => nil,
+        "failure" => nil,
+        "rollback" => nil
+      },
+      overrides
+    )
+  end
+
+  defp config_failure, do: %{"phase" => "apply", "reason" => "invalid setting"}
 
   defp assert_invalid(result) do
     assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} = result

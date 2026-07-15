@@ -210,6 +210,7 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     %{
       "resource_type" => "netman_profile",
       "resource_id" => "office",
+      "resource_ref" => %{"profile_id" => "office"},
       "revision" => @revision
     }
   end
