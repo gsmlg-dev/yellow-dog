@@ -25,6 +25,9 @@ defmodule YellowDog.ManagementCore.MixProject do
 
   defp deps do
     [
+      {:yellow_dog_config, in_umbrella: true},
+      {:yellow_dog_sync, in_umbrella: true},
+      {:jason, "~> 1.2"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
