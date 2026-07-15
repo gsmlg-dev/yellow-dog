@@ -64,7 +64,8 @@ defmodule YellowDog.Sync.Envelope do
 
   @spec from_wire(map()) :: {:ok, t()} | {:error, Error.t()}
   def from_wire(wire) when is_map(wire) do
-    with {:ok, protocol_version} <-
+    with {:ok, wire} <- Bounds.map(wire),
+         {:ok, protocol_version} <-
            fetch_and_validate(wire, "protocol_version", &protocol_version/1),
          {:ok, request_id} <- fetch_and_validate(wire, "request_id", &uuid/1),
          {:ok, target_type} <- fetch_and_validate(wire, "target_type", &target_type/1),

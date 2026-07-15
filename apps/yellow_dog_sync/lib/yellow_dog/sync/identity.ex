@@ -8,11 +8,29 @@ defmodule YellowDog.Sync.Identity do
   defmodule Server do
     @enforce_keys [:id, :name, :version, :profile, :capabilities, :config_revision]
     defstruct @enforce_keys
+
+    @type t :: %__MODULE__{
+            id: String.t(),
+            name: String.t(),
+            version: String.t(),
+            profile: String.t(),
+            capabilities: [String.t()],
+            config_revision: String.t()
+          }
   end
 
   defmodule Netman do
     @enforce_keys [:id, :name, :version, :profile, :capabilities, :config_revision]
     defstruct @enforce_keys
+
+    @type t :: %__MODULE__{
+            id: String.t(),
+            name: String.t(),
+            version: String.t(),
+            profile: String.t(),
+            capabilities: [String.t()],
+            config_revision: String.t()
+          }
   end
 
   @type t :: Server.t() | Netman.t()
@@ -22,8 +40,14 @@ defmodule YellowDog.Sync.Identity do
   def to_wire(%Netman{} = identity), do: to_wire(identity, "netman")
 
   @spec from_wire(map()) :: {:ok, t()} | {:error, Error.t()}
-  def from_wire(%{"target_type" => "server"} = wire), do: decode(Server, wire)
-  def from_wire(%{"target_type" => "netman"} = wire), do: decode(Netman, wire)
+  def from_wire(wire) when is_map(wire) do
+    with {:ok, wire} <- Bounds.map(wire) do
+      decode_wire(wire)
+    else
+      _ -> invalid_error()
+    end
+  end
+
   def from_wire(_wire), do: invalid_error()
 
   @spec from_wire(map(), :server | :netman) :: {:ok, t()} | {:error, Error.t()}
@@ -37,6 +61,10 @@ defmodule YellowDog.Sync.Identity do
   end
 
   def from_wire(_wire, _expected_type), do: invalid_error()
+
+  defp decode_wire(%{"target_type" => "server"} = wire), do: decode(Server, wire)
+  defp decode_wire(%{"target_type" => "netman"} = wire), do: decode(Netman, wire)
+  defp decode_wire(_wire), do: invalid_error()
 
   defp to_wire(identity, target_type) do
     %{

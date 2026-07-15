@@ -3,6 +3,7 @@ defmodule YellowDog.Sync.EnvelopeTest do
 
   alias YellowDog.Sync
   alias YellowDog.Sync.Bounds
+  alias YellowDog.Sync.Codec
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
@@ -77,13 +78,14 @@ defmodule YellowDog.Sync.EnvelopeTest do
     assert_invalid(Envelope.decode(Jason.encode!(netman), :server))
   end
 
-  test "rejects payloads over the approved byte limit and incorrect digests" do
-    oversized_payload = %{"data" => String.duplicate("x", Bounds.max_payload_bytes())}
+  test "rejects payloads over the approved aggregate byte limit and incorrect digests" do
+    oversized_payload = aggregate_payload_over_limit()
+    assert {:ok, encoded_payload} = Codec.encode(oversized_payload)
+    assert byte_size(encoded_payload) > Bounds.max_payload_bytes()
 
     oversized =
-      envelope(:server, "server-east-1", %{})
+      envelope(:server, "server-east-1", oversized_payload)
       |> Envelope.to_wire()
-      |> Map.put("payload", oversized_payload)
 
     incorrect_digest =
       envelope(:server, "server-east-1", %{})
@@ -92,6 +94,16 @@ defmodule YellowDog.Sync.EnvelopeTest do
 
     assert_invalid(Envelope.from_wire(oversized))
     assert_invalid(Envelope.from_wire(incorrect_digest))
+  end
+
+  test "rejects direct envelope maps over the approved entry limit" do
+    oversized =
+      envelope(:server, "server-east-1", %{})
+      |> Envelope.to_wire()
+      |> add_entries_to_exceed_map_limit()
+
+    assert map_size(oversized) > Bounds.max_map_entries()
+    assert_invalid(Envelope.from_wire(oversized))
   end
 
   test "rejects non-UTC timestamps and malformed JSON with stable errors" do
@@ -150,6 +162,22 @@ defmodule YellowDog.Sync.EnvelopeTest do
   defp digest(payload) do
     {:ok, digest} = Digest.calculate(payload)
     digest
+  end
+
+  defp aggregate_payload_over_limit do
+    string = String.duplicate("x", Bounds.max_message_bytes())
+
+    Map.new(1..Bounds.max_map_entries(), fn index ->
+      {Integer.to_string(index), List.duplicate(string, 11)}
+    end)
+  end
+
+  defp add_entries_to_exceed_map_limit(map) do
+    entries_to_add = Bounds.max_map_entries() - map_size(map) + 1
+
+    Enum.reduce(1..entries_to_add, map, fn index, map ->
+      Map.put(map, "unexpected_#{index}", nil)
+    end)
   end
 
   defp assert_invalid(result) do
