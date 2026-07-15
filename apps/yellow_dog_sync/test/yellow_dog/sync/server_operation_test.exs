@@ -1225,6 +1225,96 @@ defmodule YellowDog.Sync.ServerOperationTest do
     assert {:ok, ^valid} = Operation.validate_schema(:server_settings_config, valid)
   end
 
+  test "settings reject raw material names and non-printable string content" do
+    fullwidth_raw = IO.iodata_to_binary(["r", <<0xFF41::utf8>>, "wPayload"])
+
+    forbidden_names = [
+      "rawPayload",
+      "raw_payload",
+      "raw-payload",
+      "payload_body",
+      "tls_certificate",
+      "privateKey",
+      "certificateBytes",
+      fullwidth_raw
+    ]
+
+    for name <- forbidden_names do
+      payload = setting_payload(name, %{"type" => "string", "value" => "YWJjZA=="})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    for value <- [<<0, 1, 2, 3>>, "printable\ncontrol", "tab\tcontrol", <<0x7F>>] do
+      payload = setting_payload("ordinary_setting", %{"type" => "string", "value" => value})
+      assert_invalid(Operation.validate_schema(:server_settings_config, payload))
+    end
+
+    valid_values = [
+      "ordinary printable value",
+      "https://api.example.test/v1",
+      "192.0.2.0/24",
+      "example.test",
+      "identifier-1"
+    ]
+
+    for value <- valid_values do
+      payload = setting_payload("ordinary_setting", %{"type" => "string", "value" => value})
+      assert {:ok, ^payload} = Operation.validate_schema(:server_settings_config, payload)
+    end
+  end
+
+  test "provider endpoints require canonical usable HTTP or HTTPS URIs" do
+    base = %{
+      "provider_id" => "route53",
+      "provider_type" => "route53",
+      "endpoint" => nil,
+      "credential_ref" => "secret-1"
+    }
+
+    valid_endpoints = [
+      "https://provider.example.test/api/v1",
+      "http://192.0.2.10:8080/provider",
+      "https://[2001:db8::10]:8443/provider"
+    ]
+
+    for endpoint <- valid_endpoints do
+      provider = %{base | "endpoint" => endpoint}
+      assert {:ok, ^provider} = Operation.validate_schema(:dns_provider_write, provider)
+    end
+
+    fullwidth_endpoint =
+      IO.iodata_to_binary([
+        "https",
+        <<0xFF1A::utf8>>,
+        <<0xFF0F::utf8>>,
+        <<0xFF0F::utf8>>,
+        "provider.example.test"
+      ])
+
+    invalid_endpoints = [
+      fullwidth_endpoint,
+      "/etc/yellow-dog/provider",
+      "ftp://provider.example.test/config",
+      "https://user:secret@provider.example.test/config",
+      "https://",
+      "https://.",
+      "https://bad..example.test",
+      "https://-bad.example.test",
+      "https://bad-.example.test",
+      "https://999.999.999.999/config",
+      "https://provider.example.test:0/config",
+      "https://provider.example.test:65536/config",
+      "https://provider.example.test:invalid/config",
+      "https://provider example.test/config"
+    ]
+
+    for endpoint <- invalid_endpoints do
+      assert_invalid(
+        Operation.validate_schema(:dns_provider_write, %{base | "endpoint" => endpoint})
+      )
+    end
+  end
+
   test "DHCP pool address families are coherent" do
     ipv4 = Fixtures.valid(:dhcp_pool_write)
 
@@ -1373,6 +1463,47 @@ defmodule YellowDog.Sync.ServerOperationTest do
       {"TXT", "txt", [String.duplicate("x", 1_025)]},
       {"CAA", "@", ["0 issue letsencrypt.org"]},
       {"A", "bad_name", ["192.0.2.10"]}
+    ]
+
+    for {type, name, values} <- invalid do
+      record = %{base | "type" => type, "name" => name, "values" => values}
+      assert_invalid(Operation.validate_schema(:dns_record_write, record))
+    end
+  end
+
+  test "DNS records enforce wildcard, SRV owner, and root target semantics" do
+    base = Fixtures.valid(:dns_record_write)
+
+    valid = [
+      {"A", "*", ["192.0.2.10"]},
+      {"A", "*.sub", ["192.0.2.10"]},
+      {"A", "*.sub.example", ["192.0.2.10"]},
+      {"CNAME", "alias", ["target.example.test."]},
+      {"MX", "@", ["0 ."]},
+      {"SRV", "_sip._tcp", ["10 20 5060 sip.example.test."]},
+      {"SRV", "_sip._udp.example", ["0 0 0 ."]}
+    ]
+
+    for {type, name, values} <- valid do
+      record = %{base | "type" => type, "name" => name, "values" => values}
+      assert {:ok, ^record} = Operation.validate_schema(:dns_record_write, record)
+    end
+
+    invalid = [
+      {"A", "www.*", ["192.0.2.10"]},
+      {"A", "foo*", ["192.0.2.10"]},
+      {"A", "*foo.sub", ["192.0.2.10"]},
+      {"A", "sub.*.example", ["192.0.2.10"]},
+      {"SRV", "www", ["10 20 5060 sip.example.test."]},
+      {"SRV", "_sip._http", ["10 20 5060 sip.example.test."]},
+      {"SRV", "_sip._tcp.bad_name", ["10 20 5060 sip.example.test."]},
+      {"CNAME", "alias", ["target.example.test.", "other.example.test."]},
+      {"CNAME", "alias", ["target.example.test. other.example.test."]},
+      {"MX", "@", ["10 ."]},
+      {"MX", "@", ["0 . extra"]},
+      {"SRV", "_sip._tcp", ["0 0 5060 ."]},
+      {"SRV", "_sip._tcp", ["0 1 0 ."]},
+      {"SRV", "_sip._tcp", ["0 0 0 . extra"]}
     ]
 
     for {type, name, values} <- invalid do

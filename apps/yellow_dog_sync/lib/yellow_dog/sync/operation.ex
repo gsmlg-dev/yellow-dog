@@ -66,12 +66,12 @@ defmodule YellowDog.Sync.Operation do
                   ])
   @forbidden_setting_tokens MapSet.new(~w(
                                 path file pid ref reference port ets table kernel manager handle
-                                blob content bytes data
+                                blob content bytes data raw payload body certificate private pem
                               ))
   @forbidden_setting_phrases ~w(
                                expectedrevision localpath filepath pathname payloadbody blobbytes
                                blobcontent blobdata etstable kernelhandle kernelmanagerhandle
-                               managerhandle privatekey
+                               managerhandle privatekey rawpayload tlscertificate certificatebytes
                              )
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
@@ -867,6 +867,7 @@ defmodule YellowDog.Sync.Operation do
   defp validate_type(value, :setting_text, depth) do
     with :ok <- validate_type(value, :text, depth),
          {:ok, normalized} <- normalize_unicode(value),
+         true <- printable_setting_text?(normalized),
          false <- raw_transport_body?(normalized),
          false <- local_path_value?(normalized) do
       :ok
@@ -897,11 +898,7 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp validate_type(value, :dns_owner, _depth) do
-    if value in ["@", "*"] do
-      :ok
-    else
-      validate_dns_name(value)
-    end
+    validate_dns_owner(value)
   end
 
   defp validate_type(value, :provider_endpoint, _depth), do: validate_provider_endpoint(value)
@@ -971,7 +968,8 @@ defmodule YellowDog.Sync.Operation do
   defp validate_type(value, :dns_record, depth) do
     with :ok <- validate_type(value, dns_record_shape(), depth),
          [_ | _] <- value["values"],
-         true <- Enum.all?(value["values"], &valid_dns_rdata?(value["type"], &1)) do
+         true <- valid_dns_record_owner?(value["type"], value["name"]),
+         true <- valid_dns_record_values?(value["type"], value["values"]) do
       :ok
     else
       _ -> invalid_error()
@@ -1275,6 +1273,7 @@ defmodule YellowDog.Sync.Operation do
   defp safe_setting_name?(name) do
     with true <- safe_key?(name),
          {:ok, normalized} <- normalize_unicode(name),
+         true <- printable_setting_text?(normalized),
          canonical <- normalize_transport_name(normalized),
          false <- Enum.any?(@forbidden_setting_phrases, &String.contains?(canonical, &1)) do
       normalized
@@ -1305,7 +1304,8 @@ defmodule YellowDog.Sync.Operation do
   defp validate_provider_endpoint(value) do
     with :ok <- validate_type(value, :nonempty_text, 0),
          {:ok, normalized} <- normalize_unicode(value),
-         true <- supported_http_uri?(normalized) do
+         true <- normalized == value,
+         true <- supported_http_uri?(value) do
       :ok
     else
       _ -> invalid_error()
@@ -1507,6 +1507,38 @@ defmodule YellowDog.Sync.Operation do
 
   defp valid_dns_label?(_label), do: false
 
+  defp validate_dns_owner("@"), do: :ok
+  defp validate_dns_owner("*"), do: :ok
+
+  defp validate_dns_owner("*." <> remainder) do
+    validate_dns_name(remainder)
+  end
+
+  defp validate_dns_owner(value), do: validate_dns_name(value)
+
+  defp valid_dns_record_owner?("SRV", owner), do: valid_srv_owner?(owner)
+  defp valid_dns_record_owner?(_type, _owner), do: true
+
+  defp valid_srv_owner?(owner) do
+    owner = strip_optional_trailing_dot(owner)
+
+    case String.split(owner, ".", trim: false) do
+      [service, protocol | domain_labels] ->
+        String.starts_with?(service, "_") and valid_dns_label?(service) and
+          protocol in ["_tcp", "_udp"] and
+          Enum.all?(domain_labels, &valid_dns_host_label?/1)
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_dns_record_values?("CNAME", [value]), do: valid_dns_rdata?("CNAME", value)
+  defp valid_dns_record_values?("CNAME", _values), do: false
+
+  defp valid_dns_record_values?(type, values),
+    do: Enum.all?(values, &valid_dns_rdata?(type, &1))
+
   defp valid_dns_rdata?("A", value), do: valid_ip_family?(value, :ipv4)
   defp valid_dns_rdata?("AAAA", value), do: valid_ip_family?(value, :ipv6)
 
@@ -1515,13 +1547,25 @@ defmodule YellowDog.Sync.Operation do
 
   defp valid_dns_rdata?("MX", value) do
     case String.split(value, " ", trim: false) do
-      [priority, exchange] -> valid_dns_integer?(priority) and validate_dns_name(exchange) == :ok
-      _ -> false
+      [priority, "."] ->
+        parse_dns_integer(priority) == {:ok, 0}
+
+      [priority, exchange] ->
+        valid_dns_integer?(priority) and validate_dns_name(exchange) == :ok
+
+      _ ->
+        false
     end
   end
 
   defp valid_dns_rdata?("SRV", value) do
     case String.split(value, " ", trim: false) do
+      ["0", "0", "0", "."] ->
+        true
+
+      [_priority, _weight, _port, "."] ->
+        false
+
       [priority, weight, port, target] ->
         Enum.all?([priority, weight, port], &valid_dns_integer?/1) and
           validate_dns_name(target) == :ok
@@ -1537,9 +1581,16 @@ defmodule YellowDog.Sync.Operation do
   defp valid_ip_family?(value, family), do: ip_family(value) == {:ok, family}
 
   defp valid_dns_integer?(value) do
+    match?({:ok, _integer}, parse_dns_integer(value))
+  end
+
+  defp parse_dns_integer(value) do
     case Integer.parse(value) do
-      {integer, ""} when integer in 0..65_535 -> Integer.to_string(integer) == value
-      _ -> false
+      {integer, ""} when integer in 0..65_535 ->
+        if Integer.to_string(integer) == value, do: {:ok, integer}, else: :error
+
+      _ ->
+        :error
     end
   end
 
@@ -1621,14 +1672,40 @@ defmodule YellowDog.Sync.Operation do
 
   defp supported_http_uri?(value) do
     case URI.new(value) do
-      {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
-      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
-        true
+      {:ok, %URI{scheme: scheme, host: host, port: port, userinfo: nil}}
+      when scheme in ["http", "https"] and is_binary(host) ->
+        valid_provider_host?(host) and valid_provider_port?(port)
 
       _ ->
         false
     end
   end
+
+  defp valid_provider_host?(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, address} when tuple_size(address) in [4, 8] -> true
+      _ -> not Regex.match?(~r/\A[0-9.]+\z/, host) and valid_dns_host?(host)
+    end
+  end
+
+  defp valid_dns_host?(host) do
+    host = strip_optional_trailing_dot(host)
+
+    host != "" and byte_size(host) <= 253 and
+      host
+      |> String.split(".", trim: false)
+      |> Enum.all?(&valid_dns_host_label?/1)
+  end
+
+  defp valid_dns_host_label?(label) when byte_size(label) in 1..63 do
+    Regex.match?(~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\z/, label)
+  end
+
+  defp valid_dns_host_label?(_label), do: false
+
+  defp valid_provider_port?(nil), do: true
+  defp valid_provider_port?(port) when is_integer(port), do: port in 1..65_535
+  defp valid_provider_port?(_port), do: false
 
   defp valid_cidr_value?(value), do: validate_cidr(value) == :ok
 
@@ -1637,6 +1714,8 @@ defmodule YellowDog.Sync.Operation do
     |> String.upcase()
     |> String.contains?("-----BEGIN ")
   end
+
+  defp printable_setting_text?(value), do: not Regex.match?(~r/\p{C}/u, value)
 
   defp normalize_unicode(value) do
     case :unicode.characters_to_nfkc_binary(value) do

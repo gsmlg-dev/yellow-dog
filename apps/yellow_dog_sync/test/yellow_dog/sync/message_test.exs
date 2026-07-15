@@ -213,6 +213,14 @@ defmodule YellowDog.Sync.MessageTest do
       %{
         "key" => "nested",
         "value" => %{"type" => "object", "entries" => [], "Content" => "raw"}
+      },
+      %{
+        "key" => "tls_certificate",
+        "value" => %{"type" => "string", "value" => <<0, 1, 2, 3>>}
+      },
+      %{
+        "key" => "rawPayload",
+        "value" => %{"type" => "string", "value" => "YWJjZA=="}
       }
     ]
 
