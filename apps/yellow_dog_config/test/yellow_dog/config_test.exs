@@ -41,6 +41,38 @@ defmodule YellowDog.ConfigTest do
     end
   end
 
+  defp config_agent_state do
+    case Process.whereis(YellowDog.Config) do
+      nil -> nil
+      _pid -> YellowDog.Config.get_all()
+    end
+  end
+
+  defp stop_config_agent do
+    case Process.whereis(YellowDog.Config) do
+      nil ->
+        :ok
+
+      pid ->
+        Process.exit(pid, :kill)
+        wait_for_unregister(YellowDog.Config, 100)
+    end
+  end
+
+  defp restore_config_agent(nil), do: :ok
+
+  defp restore_config_agent(state) do
+    {:ok, _pid} = YellowDog.Config.start_link(state)
+    :ok
+  end
+
+  defp restore_env(key, {:ok, value}), do: Application.put_env(:yellow_dog, key, value)
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog, key)
+
+  defp umbrella_root do
+    File.cwd!()
+  end
+
   describe "Config Loading" do
     test "successfully loads valid TOML config file" do
       {:ok, config} = ConfigHelper.load_test_config("valid_config")
@@ -81,6 +113,65 @@ defmodule YellowDog.ConfigTest do
       assert core_config["mdns"] == false
       assert core_config["dhcpv4"] == false
       assert core_config["dhcpv6"] == false
+    end
+  end
+
+  describe "Data directory without Config Agent" do
+    setup do
+      previous_data_dir = Application.fetch_env(:yellow_dog, :data_dir)
+      previous_config_file_path = Application.fetch_env(:yellow_dog, :config_file_path)
+      previous_agent_state = config_agent_state()
+
+      stop_config_agent()
+
+      temp_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "yellow-dog-config-data-dir-#{System.unique_integer([:positive])}"
+        )
+
+      config_file_path = Path.join(temp_dir, "yellow-dog.toml")
+      File.mkdir_p!(temp_dir)
+
+      on_exit(fn ->
+        restore_env(:data_dir, previous_data_dir)
+        restore_env(:config_file_path, previous_config_file_path)
+        stop_config_agent()
+        restore_config_agent(previous_agent_state)
+        File.rm_rf(temp_dir)
+      end)
+
+      %{config_file_path: config_file_path}
+    end
+
+    test "uses the app data directory override when the Config Agent is absent", %{
+      config_file_path: config_file_path
+    } do
+      Application.put_env(:yellow_dog, :data_dir, "/tmp/yellow-dog-override")
+      Application.put_env(:yellow_dog, :config_file_path, config_file_path)
+      assert :ok = File.write(config_file_path, "data_dir = \"ignored-by-override\"\n")
+
+      assert Process.whereis(YellowDog.Config) == nil
+      assert YellowDog.Config.get_data_dir() == "/tmp/yellow-dog-override"
+    end
+
+    test "loads data_dir from config_file_path when the Config Agent is absent", %{
+      config_file_path: config_file_path
+    } do
+      Application.delete_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :config_file_path, config_file_path)
+      assert :ok = File.write(config_file_path, "data_dir = \"from-toml\"\n")
+
+      assert Process.whereis(YellowDog.Config) == nil
+      assert YellowDog.Config.get_data_dir() == Path.join(umbrella_root(), "from-toml")
+    end
+
+    test "uses the canonical default when the Config Agent is absent" do
+      Application.delete_env(:yellow_dog, :data_dir)
+      Application.delete_env(:yellow_dog, :config_file_path)
+
+      assert Process.whereis(YellowDog.Config) == nil
+      assert YellowDog.Config.get_data_dir() == Path.join(umbrella_root(), "data")
     end
   end
 

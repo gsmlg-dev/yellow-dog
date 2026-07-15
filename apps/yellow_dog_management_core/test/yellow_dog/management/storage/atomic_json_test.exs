@@ -6,6 +6,15 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
 
   setup do
     previous_data_dir = Application.get_env(:yellow_dog_management_core, :data_dir)
+    previous_file_ops = Application.fetch_env(:yellow_dog_management_core, :atomic_json_file_ops)
+
+    previous_temp_name =
+      Application.fetch_env(:yellow_dog_management_core, :atomic_json_temp_name)
+
+    previous_failure = Application.fetch_env(:yellow_dog_management_core, :atomic_json_failure)
+
+    previous_owner =
+      Application.fetch_env(:yellow_dog_management_core, :atomic_json_file_ops_owner)
 
     data_dir =
       Path.join(
@@ -17,6 +26,10 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
 
     on_exit(fn ->
       restore_data_dir(previous_data_dir)
+      restore_env(:atomic_json_file_ops, previous_file_ops)
+      restore_env(:atomic_json_temp_name, previous_temp_name)
+      restore_env(:atomic_json_failure, previous_failure)
+      restore_env(:atomic_json_file_ops_owner, previous_owner)
       File.rm_rf(data_dir)
     end)
 
@@ -80,6 +93,67 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
     refute File.exists?(invalid_path)
   end
 
+  test "cleans immutable files and closes descriptors after injected post-open failures" do
+    for {failure, event_id} <- [write: "evt-46", sync: "evt-47", close: "evt-48"] do
+      flush_close_notifications()
+      assert {:ok, path} = StoragePath.event(event_id)
+      inject_file_failure(failure)
+
+      assert {:error, %{code: :internal}} = AtomicJson.create(path, %{"event" => "registered"})
+      assert_receive {:atomic_json_file_ops, :close, _device}
+      refute File.exists?(path)
+
+      clear_file_failure()
+      assert {:ok, ^path} = AtomicJson.create(path, %{"event" => "registered"})
+      assert {:ok, %{"event" => "registered"}} = AtomicJson.read(path)
+    end
+  end
+
+  test "preserves mutable targets and cleans temporary files after injected failures" do
+    assert {:ok, path} = StoragePath.server_manifest("server-02")
+    assert {:ok, ^path} = AtomicJson.replace(path, %{"revision" => 1})
+
+    for failure <- [:write, :sync, :close, :rename] do
+      flush_close_notifications()
+      inject_file_failure(failure)
+
+      assert {:error, %{code: :internal}} = AtomicJson.replace(path, %{"revision" => 2})
+      assert_receive {:atomic_json_file_ops, :close, _device}
+      assert {:ok, %{"revision" => 1}} = AtomicJson.read(path)
+
+      assert {:ok, names} = File.ls(Path.dirname(path))
+      refute Enum.any?(names, &String.ends_with?(&1, ".tmp"))
+
+      clear_file_failure()
+    end
+  end
+
+  test "retries deterministic collisions beyond ten stale temporary files" do
+    assert {:ok, path} = StoragePath.netman_manifest("netman-02")
+    assert :ok = File.mkdir_p(Path.dirname(path))
+
+    counter = :counters.new(1, [])
+
+    Application.put_env(:yellow_dog_management_core, :atomic_json_temp_name, fn target ->
+      :counters.add(counter, 1, 1)
+      sequence = :counters.get(counter, 1)
+      ".#{Path.basename(target)}.forced-#{sequence}.tmp"
+    end)
+
+    for sequence <- 1..10 do
+      stale_path = Path.join(Path.dirname(path), ".#{Path.basename(path)}.forced-#{sequence}.tmp")
+      assert :ok = File.write(stale_path, "{stale")
+    end
+
+    assert {:ok, ^path} = AtomicJson.replace(path, %{"revision" => 2})
+    assert {:ok, %{"revision" => 2}} = AtomicJson.read(path)
+
+    for sequence <- 1..10 do
+      stale_path = Path.join(Path.dirname(path), ".#{Path.basename(path)}.forced-#{sequence}.tmp")
+      assert File.exists?(stale_path)
+    end
+  end
+
   test "removes a complete temporary file when replacement cannot rename it", %{
     data_dir: data_dir
   } do
@@ -110,4 +184,61 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
 
   defp restore_data_dir(value),
     do: Application.put_env(:yellow_dog_management_core, :data_dir, value)
+
+  defp inject_file_failure(failure) do
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, __MODULE__.FileOps)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
+    Application.put_env(:yellow_dog_management_core, :atomic_json_failure, failure)
+  end
+
+  defp clear_file_failure do
+    Application.put_env(:yellow_dog_management_core, :atomic_json_failure, nil)
+  end
+
+  defp flush_close_notifications do
+    receive do
+      {:atomic_json_file_ops, :close, _device} -> flush_close_notifications()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp restore_env(key, {:ok, value}),
+    do: Application.put_env(:yellow_dog_management_core, key, value)
+
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
+end
+
+defmodule YellowDog.Management.Storage.AtomicJsonTest.FileOps do
+  def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
+
+  def write(device, contents) do
+    if failure?(:write), do: {:error, :injected_write}, else: :file.write(device, contents)
+  end
+
+  def sync(device) do
+    if failure?(:sync), do: {:error, :injected_sync}, else: :file.sync(device)
+  end
+
+  def close(device) do
+    result = :file.close(device)
+    notify_close(device)
+    if failure?(:close), do: {:error, :injected_close}, else: result
+  end
+
+  def rename(source, target) do
+    if failure?(:rename), do: {:error, :injected_rename}, else: :file.rename(source, target)
+  end
+
+  def rm(path), do: File.rm(path)
+
+  defp failure?(failure),
+    do: Application.get_env(:yellow_dog_management_core, :atomic_json_failure) == failure
+
+  defp notify_close(device) do
+    case Application.get_env(:yellow_dog_management_core, :atomic_json_file_ops_owner) do
+      pid when is_pid(pid) -> send(pid, {:atomic_json_file_ops, :close, device})
+      _other -> :ok
+    end
+  end
 end

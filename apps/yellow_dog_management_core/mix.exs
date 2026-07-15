@@ -19,7 +19,7 @@ defmodule YellowDog.ManagementCore.MixProject do
   def application do
     [
       mod: {YellowDog.ManagementCore.Application, []},
-      extra_applications: [:logger]
+      extra_applications: [:crypto, :logger]
     ]
   end
 

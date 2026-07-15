@@ -444,21 +444,42 @@ defmodule YellowDog.Config do
   """
   @spec get_data_dir() :: String.t()
   def get_data_dir do
-    # Priority: CLI/ENV (set in runtime.exs) > config file > default
     dir =
       case Application.get_env(:yellow_dog, :data_dir) do
-        nil ->
-          # Fall back to config file or default
-          case get("data_dir") do
-            nil -> "data"
-            dir -> dir
-          end
-
-        dir ->
-          dir
+        dir when is_binary(dir) and dir != "" -> dir
+        _other -> configured_data_dir() || "data"
       end
 
     resolve_data_dir(dir)
+  end
+
+  defp configured_data_dir do
+    agent_data_dir() || config_file_data_dir()
+  end
+
+  defp agent_data_dir do
+    if Process.whereis(__MODULE__) do
+      try do
+        case get("data_dir") do
+          dir when is_binary(dir) and dir != "" -> dir
+          _other -> nil
+        end
+      catch
+        :exit, _reason -> nil
+      end
+    end
+  end
+
+  defp config_file_data_dir do
+    with path when is_binary(path) <- Application.get_env(:yellow_dog, :config_file_path),
+         {:ok, config} <- load(path),
+         dir when is_binary(dir) and dir != "" <- Map.get(config, "data_dir") do
+      dir
+    else
+      _other -> nil
+    end
+  rescue
+    _exception -> nil
   end
 
   @doc """
@@ -529,12 +550,22 @@ defmodule YellowDog.Config do
   # under apps/<app_name>/data/.
   defp resolve_data_dir("/" <> _ = absolute), do: absolute
 
-  defp resolve_data_dir(relative) do
-    umbrella_root =
-      Application.app_dir(:yellow_dog)
-      |> Path.join("../..")
-      |> Path.expand()
+  defp resolve_data_dir(relative) when is_binary(relative) do
+    Path.join(umbrella_root(), relative)
+  end
 
-    Path.join(umbrella_root, relative)
+  defp resolve_data_dir(_relative), do: resolve_data_dir("data")
+
+  defp umbrella_root do
+    case yellow_dog_app_dir() do
+      app_dir when is_binary(app_dir) -> app_dir |> Path.join("../..") |> Path.expand()
+      nil -> File.cwd!()
+    end
+  end
+
+  defp yellow_dog_app_dir do
+    Application.app_dir(:yellow_dog)
+  rescue
+    ArgumentError -> nil
   end
 end
