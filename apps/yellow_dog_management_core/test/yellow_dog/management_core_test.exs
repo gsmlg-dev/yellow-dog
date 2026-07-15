@@ -10,6 +10,8 @@ defmodule YellowDog.ManagementCoreTest do
   alias YellowDog.Management.Server
   alias YellowDog.Management.Servers
   alias YellowDog.Management.ServerProfile
+  alias YellowDog.Management.Storage.AtomicJson
+  alias YellowDog.Management.Storage.Path, as: StoragePath
   alias YellowDog.ManagementCore
 
   setup do
@@ -253,6 +255,51 @@ defmodule YellowDog.ManagementCoreTest do
 
     assert {:ok, %Netman{id: "netman-3"}} =
              ManagementCore.register_netman(%{id: "netman-3", profile: :vm})
+  end
+
+  test "oversized configured limits use the documented bounded defaults" do
+    Application.put_env(:yellow_dog_management_core, :max_servers, 1_001)
+    Application.put_env(:yellow_dog_management_core, :max_netmans, 1_001)
+    Application.put_env(:yellow_dog_management_core, :max_events, 1_001)
+
+    for index <- 1..1_000 do
+      assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-bound-#{index}"})
+      assert {:ok, %Netman{}} = ManagementCore.register_netman(%{id: "netman-bound-#{index}"})
+    end
+
+    assert {:error, :registry_full} =
+             ManagementCore.register_server(%{id: "srv-bound-1001"})
+
+    assert {:error, :registry_full} =
+             ManagementCore.register_netman(%{id: "netman-bound-1001"})
+
+    assert length(ManagementCore.list_events()) == 500
+  end
+
+  test "normalizes custom status atoms to strings before durable writes" do
+    assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-custom-atom"})
+
+    custom_atom = String.to_atom("custom_status_#{System.unique_integer([:positive])}")
+    expected_status = Atom.to_string(custom_atom)
+
+    assert {:ok, %Server{status: ^expected_status}} =
+             ManagementCore.update_server_status("srv-custom-atom", custom_atom)
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-custom-atom")
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+    assert manifest["registration"]["status"] == %{
+             "type" => "string",
+             "value" => expected_status
+           }
+
+    restart_management_children()
+
+    assert {:ok, %Server{status: ^expected_status}} =
+             ManagementCore.get_server("srv-custom-atom")
+
+    assert %Event{metadata: %{status: ^expected_status}} =
+             Enum.find(ManagementCore.list_events(), &(&1.type == :server_status_updated))
   end
 
   test "sanitizes concrete registry payloads before storing them" do

@@ -7,6 +7,7 @@ defmodule YellowDog.Management.InputSanitizer do
   @max_metadata_entries 20
   @max_metadata_key_bytes 64
   @max_metadata_value_bytes 256
+  @stable_status_atoms [:registered, :online, :offline]
 
   def required_string(value, key) when is_binary(value) and value != "" do
     if byte_size(value) <= @max_id_bytes do
@@ -27,7 +28,8 @@ defmodule YellowDog.Management.InputSanitizer do
   def optional_string(value),
     do: value |> inspect(limit: 20, printable_limit: @max_name_bytes) |> optional_string()
 
-  def status(value) when is_atom(value), do: value
+  def status(value) when value in @stable_status_atoms, do: value
+  def status(value) when is_atom(value), do: value |> Atom.to_string() |> status()
   def status(value) when is_binary(value), do: trim_binary(value, @max_status_bytes)
 
   def status(value),

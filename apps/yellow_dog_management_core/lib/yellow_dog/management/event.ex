@@ -26,6 +26,14 @@ defmodule YellowDog.Management.Event do
           sequence: pos_integer()
         }
 
+  alias YellowDog.Management.Storage.Path, as: StoragePath
+
+  @max_sequence 9_223_372_036_854_775_807
+  @max_message_bytes 128
+  @max_metadata_entries 20
+  @max_metadata_key_bytes 64
+  @max_metadata_value_bytes 256
+
   @doc false
   def new(attrs) do
     sequence = System.unique_integer([:positive, :monotonic])
@@ -33,7 +41,7 @@ defmodule YellowDog.Management.Event do
   end
 
   @doc false
-  def new(attrs, sequence) when is_integer(sequence) and sequence > 0 do
+  def new(attrs, sequence) when is_integer(sequence) and sequence in 1..@max_sequence do
     %__MODULE__{
       id: "evt-#{sequence}",
       source: Map.fetch!(attrs, :source),
@@ -74,11 +82,13 @@ defmodule YellowDog.Management.Event do
         } = value
       ) do
     with true <- map_size(value) == 8,
-         true <- is_integer(sequence) and sequence > 0,
+         true <- is_integer(sequence) and sequence in 1..@max_sequence,
          true <- id == "evt-#{sequence}",
+         {:ok, _path} <- StoragePath.event(id),
          {:ok, source} <- decode_source(source),
-         {:ok, source_id} <- decode_source_id(source_id),
+         {:ok, source_id} <- decode_source_id(source, source_id),
          {:ok, type} <- decode_type(type),
+         true <- coherent_source_type?(source, type),
          {:ok, message} <- decode_message(message),
          {:ok, metadata} <- decode_metadata(metadata),
          {:ok, occurred_at} <- decode_datetime(occurred_at) do
@@ -111,7 +121,7 @@ defmodule YellowDog.Management.Event do
 
   @doc false
   def decode_metadata(entries) when is_list(entries) do
-    with {:ok, pairs} <- decode_metadata_entries(entries),
+    with {:ok, pairs} <- decode_metadata_entries(entries, @max_metadata_entries, []),
          metadata <- Map.new(pairs),
          true <- map_size(metadata) == length(pairs) do
       {:ok, metadata}
@@ -135,25 +145,47 @@ defmodule YellowDog.Management.Event do
     do: %{"type" => "datetime", "value" => DateTime.to_iso8601(value)}
 
   @doc false
-  def decode_scalar(%{"type" => "atom", "value" => value}) when is_binary(value) do
-    {:ok, String.to_existing_atom(value)}
-  rescue
-    ArgumentError -> :error
-  end
+  def decode_scalar(%{"type" => "atom", "value" => "registered"} = value)
+      when map_size(value) == 2,
+      do: {:ok, :registered}
 
-  def decode_scalar(%{"type" => "string", "value" => value}) when is_binary(value),
-    do: {:ok, value}
+  def decode_scalar(%{"type" => "atom", "value" => "online"} = value)
+      when map_size(value) == 2,
+      do: {:ok, :online}
 
-  def decode_scalar(%{"type" => "boolean", "value" => value}) when is_boolean(value),
-    do: {:ok, value}
+  def decode_scalar(%{"type" => "atom", "value" => "offline"} = value)
+      when map_size(value) == 2,
+      do: {:ok, :offline}
 
-  def decode_scalar(%{"type" => "integer", "value" => value}) when is_integer(value),
-    do: {:ok, value}
+  def decode_scalar(%{"type" => "atom", "value" => "status"} = value)
+      when map_size(value) == 2,
+      do: {:ok, :status}
 
-  def decode_scalar(%{"type" => "float", "value" => value}) when is_float(value),
-    do: {:ok, value}
+  def decode_scalar(%{"type" => "atom", "value" => "site"} = value)
+      when map_size(value) == 2,
+      do: {:ok, :site}
 
-  def decode_scalar(%{"type" => "datetime", "value" => value}), do: decode_datetime(value)
+  def decode_scalar(%{"type" => "string", "value" => value} = scalar)
+      when map_size(scalar) == 2 and is_binary(value),
+      do: {:ok, value}
+
+  def decode_scalar(%{"type" => "boolean", "value" => value} = scalar)
+      when map_size(scalar) == 2 and is_boolean(value),
+      do: {:ok, value}
+
+  def decode_scalar(%{"type" => "integer", "value" => value} = scalar)
+      when map_size(scalar) == 2 and is_integer(value) and
+             value in -@max_sequence..@max_sequence,
+      do: {:ok, value}
+
+  def decode_scalar(%{"type" => "float", "value" => value} = scalar)
+      when map_size(scalar) == 2 and is_float(value),
+      do: {:ok, value}
+
+  def decode_scalar(%{"type" => "datetime", "value" => value} = scalar)
+      when map_size(scalar) == 2,
+      do: decode_datetime(value)
+
   def decode_scalar(_value), do: :error
 
   @doc false
@@ -164,21 +196,26 @@ defmodule YellowDog.Management.Event do
   def decode_optional_datetime(nil), do: {:ok, nil}
   def decode_optional_datetime(value), do: decode_datetime(value)
 
-  defp decode_metadata_entries(entries) do
-    Enum.reduce_while(entries, {:ok, []}, fn
-      %{"key" => key, "value" => value} = entry, {:ok, pairs} when map_size(entry) == 2 ->
-        with {:ok, key} <- decode_scalar(key),
-             true <- is_atom(key) or is_binary(key),
-             {:ok, value} <- decode_scalar(value) do
-          {:cont, {:ok, [{key, value} | pairs]}}
-        else
-          _invalid -> {:halt, :error}
-        end
+  defp decode_metadata_entries([], _remaining, pairs), do: {:ok, Enum.reverse(pairs)}
+  defp decode_metadata_entries([_entry | _entries], 0, _pairs), do: :error
 
-      _entry, _acc ->
-        {:halt, :error}
-    end)
+  defp decode_metadata_entries(
+         [%{"key" => key, "value" => value} = entry | entries],
+         remaining,
+         pairs
+       )
+       when map_size(entry) == 2 do
+    with {:ok, key} <- decode_scalar(key),
+         true <- valid_metadata_key?(key),
+         {:ok, value} <- decode_scalar(value),
+         true <- valid_metadata_value?(value) do
+      decode_metadata_entries(entries, remaining - 1, [{key, value} | pairs])
+    else
+      _invalid -> :error
+    end
   end
+
+  defp decode_metadata_entries(_entries, _remaining, _pairs), do: :error
 
   defp decode_source("server"), do: {:ok, :server}
   defp decode_source("netman"), do: {:ok, :netman}
@@ -190,21 +227,64 @@ defmodule YellowDog.Management.Event do
   defp decode_type("netman_status_updated"), do: {:ok, :netman_status_updated}
   defp decode_type(_type), do: :error
 
-  defp decode_source_id(value) when is_binary(value) and value != "" and byte_size(value) <= 128,
-    do: {:ok, value}
+  defp decode_source_id(:server, value) do
+    with {:ok, _path} <- StoragePath.server_manifest(value), do: {:ok, value}
+  end
 
-  defp decode_source_id(_source_id), do: :error
+  defp decode_source_id(:netman, value) do
+    with {:ok, _path} <- StoragePath.netman_manifest(value), do: {:ok, value}
+  end
+
+  defp decode_source_id(_source, _source_id), do: :error
+
+  defp coherent_source_type?(:server, type),
+    do: type in [:server_registered, :server_status_updated]
+
+  defp coherent_source_type?(:netman, type),
+    do: type in [:netman_registered, :netman_status_updated]
 
   defp decode_message(nil), do: {:ok, nil}
-  defp decode_message(value) when is_binary(value) and byte_size(value) <= 128, do: {:ok, value}
+
+  defp decode_message(value)
+       when is_binary(value) and byte_size(value) <= @max_message_bytes,
+       do: if(String.valid?(value), do: {:ok, value}, else: :error)
+
   defp decode_message(_message), do: :error
 
   defp decode_datetime(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do
-      {:ok, datetime, 0} -> {:ok, datetime}
-      _invalid -> :error
+      {:ok, %DateTime{microsecond: {0, 0}} = datetime, 0} ->
+        unix = DateTime.to_unix(datetime)
+        if unix in 0..@max_sequence, do: {:ok, datetime}, else: :error
+
+      _invalid ->
+        :error
     end
   end
 
   defp decode_datetime(_value), do: :error
+
+  defp valid_metadata_key?(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> valid_metadata_key?()
+  end
+
+  defp valid_metadata_key?(value) when is_binary(value) do
+    value != "" and byte_size(value) <= @max_metadata_key_bytes and String.valid?(value)
+  end
+
+  defp valid_metadata_key?(_value), do: false
+
+  defp valid_metadata_value?(value) when is_binary(value),
+    do: byte_size(value) <= @max_metadata_value_bytes and String.valid?(value)
+
+  defp valid_metadata_value?(value)
+       when is_atom(value) or is_boolean(value) or is_integer(value) or is_float(value),
+       do: true
+
+  defp valid_metadata_value?(%DateTime{} = value),
+    do: match?({:ok, _datetime}, decode_datetime(DateTime.to_iso8601(value)))
+
+  defp valid_metadata_value?(_value), do: false
 end

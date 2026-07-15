@@ -104,6 +104,9 @@ defmodule YellowDog.Management.ManifestStore do
     end
   rescue
     _exception -> internal_error()
+  catch
+    :exit, _reason -> internal_error()
+    :throw, _reason -> internal_error()
   end
 
   defp rollback_section(path, section, previous_section, existed?) do

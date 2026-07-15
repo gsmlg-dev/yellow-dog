@@ -337,7 +337,7 @@ defmodule YellowDog.Management.Servers do
 
   defp max_records do
     case Application.get_env(:yellow_dog_management_core, :max_servers, @default_max_records) do
-      limit when is_integer(limit) and limit > 0 -> limit
+      limit when is_integer(limit) and limit in 1..@default_max_records -> limit
       _invalid -> @default_max_records
     end
   end

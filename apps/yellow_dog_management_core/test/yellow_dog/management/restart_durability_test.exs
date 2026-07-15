@@ -281,7 +281,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
         ManifestStore.update_section(server_path, "config_lifecycle", fn _current -> lifecycle end)
       end)
 
-    assert Task.yield(config_update, 50) == nil
+    assert_manifest_update_queued(server_path)
     send(event_store_pid, :continue_event_write)
 
     assert {:error, %Error{code: :internal}} = Task.await(registration)
@@ -297,20 +297,127 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     assert manifest["config_lifecycle"] == lifecycle
   end
 
-  test "an existing immutable event file is not overwritten or exposed", %{data_dir: data_dir} do
+  test "an unavailable EventStore returns an error and rolls registration back", %{
+    data_dir: data_dir
+  } do
+    assert {:ok, server_path} = StoragePath.server_manifest("srv-event-store-down")
+    lifecycle = %{"desired_version" => 12}
+
+    assert {:ok, ^lifecycle} =
+             ManifestStore.update_section(server_path, "config_lifecycle", fn _current ->
+               lifecycle
+             end)
+
+    servers_pid = Process.whereis(Servers)
+    manifest_store_pid = Process.whereis(ManifestStore)
+    assert :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, EventStore)
+
+    assert {:error, %Error{code: :internal}} =
+             ManagementCore.register_server(%{id: "srv-event-store-down"})
+
+    assert Process.whereis(Servers) == servers_pid
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert Process.alive?(servers_pid)
+    assert Process.alive?(manifest_store_pid)
+    assert {:error, :not_found} = ManagementCore.get_server("srv-event-store-down")
+
+    assert {:ok, manifest} = AtomicJson.read(server_path)
+    assert manifest == %{"config_lifecycle" => lifecycle}
+
+    assert {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, EventStore)
+    restart_child(Servers)
+
+    assert {:error, :not_found} = ManagementCore.get_server("srv-event-store-down")
+    assert [] = ManagementCore.list_events()
+    assert Path.wildcard(Path.join([data_dir, "management", "events", "*.json"])) == []
+  end
+
+  test "an EventStore crash returns an error and rolls registration back" do
+    assert {:ok, server_path} = StoragePath.server_manifest("srv-event-store-crash")
+    lifecycle = %{"desired_version" => 13}
+
+    assert {:ok, ^lifecycle} =
+             ManifestStore.update_section(server_path, "config_lifecycle", fn _current ->
+               lifecycle
+             end)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      __MODULE__.BlockingEventFailureFileOps
+    )
+
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
+
+    servers_pid = Process.whereis(Servers)
+    manifest_store_pid = Process.whereis(ManifestStore)
+    old_event_store_pid = Process.whereis(EventStore)
+
+    registration =
+      Task.async(fn ->
+        ManagementCore.register_server(%{id: "srv-event-store-crash"})
+      end)
+
+    assert_receive {:event_write_blocked, ^old_event_store_pid}
+    Process.exit(old_event_store_pid, :kill)
+
+    assert {:error, %Error{code: :internal}} = Task.await(registration)
+    assert Process.whereis(Servers) == servers_pid
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert Process.alive?(servers_pid)
+    assert Process.alive?(manifest_store_pid)
+    assert {:error, :not_found} = ManagementCore.get_server("srv-event-store-crash")
+
+    new_event_store_pid = wait_for_replacement(EventStore, old_event_store_pid)
+    assert Process.alive?(new_event_store_pid)
+
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
+    restart_child(Servers)
+
+    assert {:error, :not_found} = ManagementCore.get_server("srv-event-store-crash")
+    assert [] = ManagementCore.list_events()
+    assert {:ok, manifest} = AtomicJson.read(server_path)
+    assert manifest == %{"config_lifecycle" => lifecycle}
+  end
+
+  test "event filename collisions are skipped without wedging future appends", %{
+    data_dir: data_dir
+  } do
     event_path = Path.join([data_dir, "management", "events", "evt-1.json"])
     File.mkdir_p!(Path.dirname(event_path))
     File.write!(event_path, "occupied")
 
-    assert {:error, %Error{code: :conflict}} =
-             ManagementCore.register_server(%{id: "srv-event-conflict"})
+    for id <- ["srv-event-conflict-1", "srv-event-conflict-2", "srv-event-conflict-3"] do
+      assert {:ok, %Server{id: ^id}} = ManagementCore.register_server(%{id: id})
+    end
 
-    assert {:error, :not_found} = ManagementCore.get_server("srv-event-conflict")
     assert File.read!(event_path) == "occupied"
-    assert [] = ManagementCore.list_events()
+    assert Enum.map(ManagementCore.list_events(), & &1.sequence) == [2, 3, 4]
 
-    restart_child(Servers)
-    assert {:error, :not_found} = ManagementCore.get_server("srv-event-conflict")
+    restart_child(EventStore)
+    assert Enum.map(ManagementCore.list_events(), & &1.sequence) == [2, 3, 4]
+  end
+
+  test "a huge malformed event filename does not poison restart allocation", %{
+    data_dir: data_dir
+  } do
+    event_path =
+      Path.join([
+        data_dir,
+        "management",
+        "events",
+        "evt-9223372036854775807.json"
+      ])
+
+    File.mkdir_p!(Path.dirname(event_path))
+    File.write!(event_path, "malformed")
+
+    restart_child(EventStore)
+
+    assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-after-poison-1"})
+    assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-after-poison-2"})
+
+    assert Enum.map(ManagementCore.list_events(), & &1.sequence) == [1, 2]
   end
 
   test "an invalid event limit uses the documented default" do
@@ -340,6 +447,53 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     path = Path.join([data_dir | segments])
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, contents)
+  end
+
+  defp assert_manifest_update_queued(path) do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+    manifest_store_pid = Process.whereis(ManifestStore)
+
+    wait_until(deadline, fn ->
+      {:messages, messages} = Process.info(manifest_store_pid, :messages)
+
+      Enum.any?(messages, fn
+        {:"$gen_call", _from, {:update_section, ^path, "config_lifecycle", updater}}
+        when is_function(updater, 1) ->
+          true
+
+        _message ->
+          false
+      end)
+    end)
+  end
+
+  defp wait_for_replacement(module, old_pid) do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+
+    wait_until(deadline, fn ->
+      case Process.whereis(module) do
+        pid when is_pid(pid) and pid != old_pid -> {:ok, pid}
+        _other -> false
+      end
+    end)
+  end
+
+  defp wait_until(deadline, assertion) do
+    case assertion.() do
+      {:ok, value} ->
+        value
+
+      true ->
+        :ok
+
+      false ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(1)
+          wait_until(deadline, assertion)
+        else
+          flunk("timed out waiting for synchronized process state")
+        end
+    end
   end
 
   defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
