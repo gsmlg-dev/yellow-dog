@@ -11,6 +11,9 @@ defmodule YellowDog.ServiceManager do
   alias YellowDog.Server.ProfileResolver
   alias YellowDog.Server.ServiceRegistry
 
+  @production_dependencies %{application: YellowDog.Application}
+  @test_environment Mix.env() == :test
+
   @doc """
   Gets the status of all services.
 
@@ -97,14 +100,32 @@ defmodule YellowDog.ServiceManager do
   def start_service(service) do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
-        # Enable the service in config
+        previous_enabled = configured_service_enabled?(service)
         set_service_enabled(service, true)
 
-        # Start the supervisor via YellowDog.Application
-        case YellowDog.Application.start_service_supervisor(service, supervisor_module) do
-          {:ok, _pid} -> :ok
-          {:error, {:already_started, _pid}} -> :ok
-          {:error, reason} -> {:error, reason}
+        try do
+          case apply(dependencies().application, :start_service_supervisor, [
+                 service,
+                 supervisor_module
+               ]) do
+            {:ok, _pid} ->
+              :ok
+
+            {:error, {:already_started, _pid}} ->
+              :ok
+
+            {:error, reason} ->
+              set_service_enabled(service, previous_enabled)
+              {:error, reason}
+          end
+        rescue
+          exception ->
+            set_service_enabled(service, previous_enabled)
+            reraise exception, __STACKTRACE__
+        catch
+          kind, reason ->
+            set_service_enabled(service, previous_enabled)
+            :erlang.raise(kind, reason, __STACKTRACE__)
         end
 
       {:ok, _metadata} ->
@@ -130,14 +151,32 @@ defmodule YellowDog.ServiceManager do
   def stop_service(service) do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
-        # Disable the service in config
+        previous_enabled = configured_service_enabled?(service)
         set_service_enabled(service, false)
 
-        # Stop the supervisor
-        case YellowDog.Application.stop_service_supervisor(service, supervisor_module) do
-          :ok -> :ok
-          {:error, :not_found} -> :ok
-          {:error, reason} -> {:error, reason}
+        try do
+          case apply(dependencies().application, :stop_service_supervisor, [
+                 service,
+                 supervisor_module
+               ]) do
+            :ok ->
+              :ok
+
+            {:error, :not_found} ->
+              :ok
+
+            {:error, reason} ->
+              set_service_enabled(service, previous_enabled)
+              {:error, reason}
+          end
+        rescue
+          exception ->
+            set_service_enabled(service, previous_enabled)
+            reraise exception, __STACKTRACE__
+        catch
+          kind, reason ->
+            set_service_enabled(service, previous_enabled)
+            :erlang.raise(kind, reason, __STACKTRACE__)
         end
 
       {:ok, _metadata} ->
@@ -271,6 +310,32 @@ defmodule YellowDog.ServiceManager do
   defp resolved_service_flags do
     ProfileResolver.resolve()
     |> Map.fetch!(:services)
+  end
+
+  defp configured_service_enabled?(service) do
+    config = YellowDog.Config.get_all()
+
+    case get_value(config, :yellow_dog_server, nil) do
+      server_config when is_map(server_config) ->
+        server_config
+        |> get_value(:services, %{})
+        |> get_value(service, YellowDog.Config.service_enabled?(service))
+
+      _other ->
+        YellowDog.Config.service_enabled?(service)
+    end
+  end
+
+  if @test_environment do
+    defp dependencies do
+      config = Application.get_env(:yellow_dog, __MODULE__, [])
+
+      %{
+        application: Keyword.get(config, :application, @production_dependencies.application)
+      }
+    end
+  else
+    defp dependencies, do: @production_dependencies
   end
 
   defp set_service_enabled(service, enabled) do

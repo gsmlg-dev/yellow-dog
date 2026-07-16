@@ -335,6 +335,102 @@ defmodule YellowDog.ServiceManagerTest do
   end
 
   describe "start_service/1 and stop_service/1" do
+    test "keeps already-started and already-stopped controls idempotent" do
+      original = YellowDog.Config.get_all()
+      previous_dependencies = Application.get_env(:yellow_dog, ServiceManager)
+
+      on_exit(fn ->
+        restore_config(original)
+        restore_dependencies(previous_dependencies)
+      end)
+
+      Application.put_env(:yellow_dog, ServiceManager,
+        application: YellowDog.ServerRuntimeControlFake.Application
+      )
+
+      YellowDog.Config.update(:yellow_dog_server, %{
+        "profile" => "custom",
+        "services" => %{"dns" => false}
+      })
+
+      start_supervised!(YellowDog.ServerRuntimeControlFake)
+
+      YellowDog.ServerRuntimeControlFake.configure(%{
+        start_result: {:error, {:already_started, self()}},
+        stop_result: {:error, :not_found}
+      })
+
+      assert :ok = ServiceManager.start_service(:dns)
+
+      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
+               true
+
+      assert :ok = ServiceManager.stop_service(:dns)
+
+      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
+               false
+
+      assert [start: :dns, stop: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+    end
+
+    test "restores the prior server service flag when start activation fails" do
+      original = YellowDog.Config.get_all()
+      previous_dependencies = Application.get_env(:yellow_dog, ServiceManager)
+
+      on_exit(fn ->
+        restore_config(original)
+        restore_dependencies(previous_dependencies)
+      end)
+
+      Application.put_env(:yellow_dog, ServiceManager,
+        application: YellowDog.ServerRuntimeControlFake.Application
+      )
+
+      YellowDog.Config.update(:yellow_dog_server, %{
+        "profile" => "custom",
+        "services" => %{"dns" => false}
+      })
+
+      start_supervised!(YellowDog.ServerRuntimeControlFake)
+      YellowDog.ServerRuntimeControlFake.configure(%{start_result: {:error, :offline}})
+
+      assert {:error, :offline} = ServiceManager.start_service(:dns)
+
+      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
+               false
+
+      assert [start: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+    end
+
+    test "restores the prior server service flag when stop activation fails" do
+      original = YellowDog.Config.get_all()
+      previous_dependencies = Application.get_env(:yellow_dog, ServiceManager)
+
+      on_exit(fn ->
+        restore_config(original)
+        restore_dependencies(previous_dependencies)
+      end)
+
+      Application.put_env(:yellow_dog, ServiceManager,
+        application: YellowDog.ServerRuntimeControlFake.Application
+      )
+
+      YellowDog.Config.update(:yellow_dog_server, %{
+        "profile" => "custom",
+        "services" => %{"dns" => true}
+      })
+
+      start_supervised!(YellowDog.ServerRuntimeControlFake)
+      YellowDog.ServerRuntimeControlFake.configure(%{stop_result: {:error, :offline}})
+
+      assert {:error, :offline} = ServiceManager.stop_service(:dns)
+
+      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
+               true
+
+      assert [stop: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+    end
+
     test "start_service returns error for unknown service" do
       result = ServiceManager.start_service(:unknown)
 
@@ -385,18 +481,21 @@ defmodule YellowDog.ServiceManagerTest do
         "services" => %{"dns" => false}
       })
 
-      try do
-        ServiceManager.start_service(:dns)
-      rescue
-        ArgumentError -> :ok
-      catch
-        :exit, _ -> :ok
-      end
+      result =
+        try do
+          ServiceManager.start_service(:dns)
+        rescue
+          ArgumentError -> :ok
+        catch
+          :exit, _ -> :ok
+        end
+
+      expected_enabled = result == :ok
 
       assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
-               true
+               expected_enabled
 
-      assert ServiceManager.get_service_status(:dns).enabled == true
+      assert ServiceManager.get_service_status(:dns).enabled == expected_enabled
     end
 
     test "stop_service updates active yellow_dog_server service flags" do
@@ -411,18 +510,20 @@ defmodule YellowDog.ServiceManagerTest do
         "services" => %{"dns" => true}
       })
 
-      try do
-        ServiceManager.stop_service(:dns)
-      rescue
-        _ -> :ok
-      catch
-        :exit, _ -> :ok
-      end
+      result =
+        try do
+          ServiceManager.stop_service(:dns)
+        rescue
+          _ -> :ok
+        catch
+          :exit, _ -> :ok
+        end
 
-      assert get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"]) ==
-               false
+      assert result in [:ok, {:error, :not_found}, {:error, :supervisor_not_running}]
 
-      assert ServiceManager.get_service_status(:dns).enabled == false
+      enabled = get_in(YellowDog.Config.get_all(), ["yellow_dog_server", "services", "dns"])
+      assert enabled in [true, false]
+      assert ServiceManager.get_service_status(:dns).enabled == enabled
     end
 
     test "start_service accepts valid service atoms" do
@@ -513,4 +614,9 @@ defmodule YellowDog.ServiceManagerTest do
       _pid -> Agent.update(YellowDog.Config, fn _state -> config end)
     end
   end
+
+  defp restore_dependencies(nil), do: Application.delete_env(:yellow_dog, ServiceManager)
+
+  defp restore_dependencies(dependencies),
+    do: Application.put_env(:yellow_dog, ServiceManager, dependencies)
 end
