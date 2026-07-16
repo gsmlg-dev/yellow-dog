@@ -100,8 +100,7 @@ defmodule YellowDog.ServiceManager do
   def start_service(service) do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
-        previous_enabled = configured_service_enabled?(service)
-        set_service_enabled(service, true)
+        config_snapshot = set_service_enabled(service, true)
 
         try do
           case apply(dependencies().application, :start_service_supervisor, [
@@ -115,16 +114,16 @@ defmodule YellowDog.ServiceManager do
               :ok
 
             {:error, reason} ->
-              set_service_enabled(service, previous_enabled)
+              restore_service_flag(config_snapshot)
               {:error, reason}
           end
         rescue
           exception ->
-            set_service_enabled(service, previous_enabled)
+            restore_service_flag(config_snapshot)
             reraise exception, __STACKTRACE__
         catch
           kind, reason ->
-            set_service_enabled(service, previous_enabled)
+            restore_service_flag(config_snapshot)
             :erlang.raise(kind, reason, __STACKTRACE__)
         end
 
@@ -151,8 +150,7 @@ defmodule YellowDog.ServiceManager do
   def stop_service(service) do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, supervisor: supervisor_module}} ->
-        previous_enabled = configured_service_enabled?(service)
-        set_service_enabled(service, false)
+        config_snapshot = set_service_enabled(service, false)
 
         try do
           case apply(dependencies().application, :stop_service_supervisor, [
@@ -166,16 +164,16 @@ defmodule YellowDog.ServiceManager do
               :ok
 
             {:error, reason} ->
-              set_service_enabled(service, previous_enabled)
+              restore_service_flag(config_snapshot)
               {:error, reason}
           end
         rescue
           exception ->
-            set_service_enabled(service, previous_enabled)
+            restore_service_flag(config_snapshot)
             reraise exception, __STACKTRACE__
         catch
           kind, reason ->
-            set_service_enabled(service, previous_enabled)
+            restore_service_flag(config_snapshot)
             :erlang.raise(kind, reason, __STACKTRACE__)
         end
 
@@ -312,20 +310,6 @@ defmodule YellowDog.ServiceManager do
     |> Map.fetch!(:services)
   end
 
-  defp configured_service_enabled?(service) do
-    config = YellowDog.Config.get_all()
-
-    case get_value(config, :yellow_dog_server, nil) do
-      server_config when is_map(server_config) ->
-        server_config
-        |> get_value(:services, %{})
-        |> get_value(service, YellowDog.Config.service_enabled?(service))
-
-      _other ->
-        YellowDog.Config.service_enabled?(service)
-    end
-  end
-
   if @test_environment do
     defp dependencies do
       config = Application.get_env(:yellow_dog, __MODULE__, [])
@@ -339,31 +323,118 @@ defmodule YellowDog.ServiceManager do
   end
 
   defp set_service_enabled(service, enabled) do
-    config = YellowDog.Config.get_all()
+    Agent.get_and_update(YellowDog.Config, fn config ->
+      {snapshot, updated_config} = put_service_enabled(config, service, enabled)
+      {snapshot, updated_config}
+    end)
+  end
 
-    case get_value(config, :yellow_dog_server, nil) do
-      server_config when is_map(server_config) ->
-        server_config
-        |> put_server_service_flag(service, enabled)
-        |> then(&YellowDog.Config.update(:yellow_dog_server, &1))
+  defp put_service_enabled(config, service, enabled) do
+    case fetch_shaped(config, :yellow_dog_server) do
+      {:ok, server_key, server_config} when is_map(server_config) ->
+        {section_snapshot, updated_server_config} =
+          put_section_flag(server_config, :services, service, enabled)
 
-      _other ->
-        YellowDog.Config.set_service_enabled(service, enabled)
+        {{:server, server_key, section_snapshot},
+         Map.put(config, server_key, updated_server_config)}
+
+      _legacy ->
+        {section_snapshot, updated_config} = put_section_flag(config, :core, service, enabled)
+        {{:legacy, section_snapshot}, updated_config}
     end
   end
 
-  defp put_server_service_flag(server_config, service, enabled) do
-    services = get_value(server_config, :services, %{})
-    services = put_preserving_key_shape(services, service, enabled)
+  defp put_section_flag(container, section_name, service, enabled) do
+    case fetch_shaped(container, section_name) do
+      {:ok, section_key, section} when is_map(section) ->
+        {flag_snapshot, updated_section} = put_flag(section, service, enabled)
+        {{:section, section_key, flag_snapshot}, Map.put(container, section_key, updated_section)}
 
-    put_preserving_key_shape(server_config, :services, services)
+      {:ok, section_key, section_value} ->
+        service_key = Atom.to_string(service)
+
+        {{:section_value, section_key, section_value},
+         Map.put(container, section_key, %{service_key => enabled})}
+
+      :error ->
+        section_key = Atom.to_string(section_name)
+        service_key = Atom.to_string(service)
+
+        {{:section_absent, section_key, service_key},
+         Map.put(container, section_key, %{service_key => enabled})}
+    end
   end
 
-  defp put_preserving_key_shape(map, key, value) do
+  defp put_flag(section, service, enabled) do
+    case fetch_shaped(section, service) do
+      {:ok, service_key, value} ->
+        {{:flag, service_key, value}, Map.put(section, service_key, enabled)}
+
+      :error ->
+        service_key = Atom.to_string(service)
+        {{:flag_absent, service_key}, Map.put(section, service_key, enabled)}
+    end
+  end
+
+  defp restore_service_flag({:server, server_key, section_snapshot}) do
+    Agent.update(YellowDog.Config, fn config ->
+      case Map.fetch(config, server_key) do
+        {:ok, server_config} when is_map(server_config) ->
+          Map.put(config, server_key, restore_section_flag(server_config, section_snapshot))
+
+        _missing_or_changed ->
+          config
+      end
+    end)
+  end
+
+  defp restore_service_flag({:legacy, section_snapshot}) do
+    Agent.update(YellowDog.Config, &restore_section_flag(&1, section_snapshot))
+  end
+
+  defp restore_section_flag(container, {:section, section_key, flag_snapshot}) do
+    case Map.fetch(container, section_key) do
+      {:ok, section} when is_map(section) ->
+        Map.put(container, section_key, restore_flag(section, flag_snapshot))
+
+      _missing_or_changed ->
+        container
+    end
+  end
+
+  defp restore_section_flag(container, {:section_value, section_key, section_value}) do
+    Map.put(container, section_key, section_value)
+  end
+
+  defp restore_section_flag(container, {:section_absent, section_key, service_key}) do
+    case Map.fetch(container, section_key) do
+      {:ok, section} when is_map(section) ->
+        restored_section = Map.delete(section, service_key)
+
+        if map_size(restored_section) == 0 do
+          Map.delete(container, section_key)
+        else
+          Map.put(container, section_key, restored_section)
+        end
+
+      _missing_or_changed ->
+        container
+    end
+  end
+
+  defp restore_flag(section, {:flag, service_key, value}),
+    do: Map.put(section, service_key, value)
+
+  defp restore_flag(section, {:flag_absent, service_key}),
+    do: Map.delete(section, service_key)
+
+  defp fetch_shaped(map, key) do
+    string_key = Atom.to_string(key)
+
     cond do
-      Map.has_key?(map, key) -> Map.put(map, key, value)
-      is_atom(key) -> Map.put(map, Atom.to_string(key), value)
-      true -> Map.put(map, key, value)
+      Map.has_key?(map, key) -> {:ok, key, Map.fetch!(map, key)}
+      Map.has_key?(map, string_key) -> {:ok, string_key, Map.fetch!(map, string_key)}
+      true -> :error
     end
   end
 

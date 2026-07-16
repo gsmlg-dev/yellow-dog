@@ -118,6 +118,62 @@ defmodule YellowDog.Server.Control.RuntimeTest do
     assert [stop: :dns, start: :dns] = ServerRuntimeControlFake.take_calls()
   end
 
+  test "bounds raised, thrown, and exited single-phase controls" do
+    for phase <- [:start, :stop], failure <- [:raise, :throw, :exit] do
+      secret = "#{phase}-#{failure}-runtime-secret"
+      result_key = if phase == :start, do: :start_result, else: :stop_result
+      operation = "server.runtime.services.#{phase}"
+      expected_details = %{Atom.to_string(phase) => "failed"}
+
+      ServerRuntimeControlFake.configure(
+        %{start_result: :ok, stop_result: :ok}
+        |> Map.put(result_key, failure_action(failure, secret))
+      )
+
+      result = Runtime.dispatch(operation, %{"service" => "dns"})
+
+      assert_bounded_apply_failure(result, expected_details, secret)
+      assert [{^phase, :dns}] = ServerRuntimeControlFake.take_calls()
+    end
+  end
+
+  test "bounds every restart stop-phase exception and skips start" do
+    for failure <- [:raise, :throw, :exit] do
+      secret = "restart-stop-#{failure}-runtime-secret"
+
+      ServerRuntimeControlFake.configure(%{
+        stop_result: failure_action(failure, secret),
+        start_result: :ok
+      })
+
+      result = Runtime.dispatch("server.runtime.services.restart", %{"service" => "dns"})
+
+      assert_bounded_apply_failure(
+        result,
+        %{"stop" => "failed", "start" => "not_run"},
+        secret
+      )
+
+      assert [stop: :dns] = ServerRuntimeControlFake.take_calls()
+    end
+  end
+
+  test "bounds every restart start-phase exception after a successful stop" do
+    for failure <- [:raise, :throw, :exit] do
+      secret = "restart-start-#{failure}-runtime-secret"
+
+      ServerRuntimeControlFake.configure(%{
+        stop_result: :ok,
+        start_result: failure_action(failure, secret)
+      })
+
+      result = Runtime.dispatch("server.runtime.services.restart", %{"service" => "dns"})
+
+      assert_bounded_apply_failure(result, %{"stop" => "ok", "start" => "failed"}, secret)
+      assert [stop: :dns, start: :dns] = ServerRuntimeControlFake.take_calls()
+    end
+  end
+
   test "a stale dispatcher revision rejects before any ServiceManager mutation" do
     Application.put_env(:yellow_dog, Dispatcher, adapters: %{runtime: Runtime})
 
@@ -155,4 +211,20 @@ defmodule YellowDog.Server.Control.RuntimeTest do
 
   defp restore_env(module, nil), do: Application.delete_env(:yellow_dog, module)
   defp restore_env(module, config), do: Application.put_env(:yellow_dog, module, config)
+
+  defp failure_action(:raise, reason), do: {:raise, reason}
+  defp failure_action(:throw, reason), do: {:throw, reason}
+  defp failure_action(:exit, reason), do: {:exit, reason}
+
+  defp assert_bounded_apply_failure(result, expected_details, secret) do
+    assert {:error,
+            %Error{
+              code: :apply_failed,
+              message: "apply failed",
+              details: ^expected_details
+            } = error} = result
+
+    refute inspect(error) =~ secret
+    assert {:ok, ^error} = error |> Error.to_wire() |> Error.from_wire()
+  end
 end

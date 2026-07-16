@@ -57,30 +57,43 @@ defmodule YellowDog.Server.Control.Runtime do
   def current(_operation, _payload), do: unsupported_error()
 
   defp control("server.runtime.services.start", service, service_id) do
-    case apply(dependencies().service_manager, :start_service, [service.name]) do
+    case run_phase(:start, service.name) do
       :ok -> {:ok, command_result(service_id, "running")}
-      _ -> apply_failed(%{"start" => "failed"})
+      :failed -> apply_failed(%{"start" => "failed"})
     end
   end
 
   defp control("server.runtime.services.stop", service, service_id) do
-    case apply(dependencies().service_manager, :stop_service, [service.name]) do
+    case run_phase(:stop, service.name) do
       :ok -> {:ok, command_result(service_id, "stopped")}
-      _ -> apply_failed(%{"stop" => "failed"})
+      :failed -> apply_failed(%{"stop" => "failed"})
     end
   end
 
   defp control("server.runtime.services.restart", service, service_id) do
-    case apply(dependencies().service_manager, :stop_service, [service.name]) do
+    case run_phase(:stop, service.name) do
       :ok ->
-        case apply(dependencies().service_manager, :start_service, [service.name]) do
+        case run_phase(:start, service.name) do
           :ok -> {:ok, command_result(service_id, "running")}
-          _ -> apply_failed(%{"stop" => "ok", "start" => "failed"})
+          :failed -> apply_failed(%{"stop" => "ok", "start" => "failed"})
         end
 
-      _ ->
+      :failed ->
         apply_failed(%{"stop" => "failed", "start" => "not_run"})
     end
+  end
+
+  defp run_phase(phase, service) do
+    function = if phase == :start, do: :start_service, else: :stop_service
+
+    case apply(dependencies().service_manager, function, [service]) do
+      :ok -> :ok
+      _result -> :failed
+    end
+  rescue
+    _exception -> :failed
+  catch
+    _kind, _reason -> :failed
   end
 
   defp service_items do

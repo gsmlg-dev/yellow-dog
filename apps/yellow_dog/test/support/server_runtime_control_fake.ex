@@ -63,22 +63,30 @@ defmodule YellowDog.ServerRuntimeControlFake do
   end
 
   defp run_control(action, service, result_key, status) do
-    Agent.get_and_update(__MODULE__, fn state ->
-      result = Map.fetch!(state, result_key)
-      next_state = %{state | calls: [{action, service} | state.calls]}
+    result =
+      Agent.get_and_update(__MODULE__, fn state ->
+        result = Map.fetch!(state, result_key)
+        next_state = %{state | calls: [{action, service} | state.calls]}
 
-      next_state =
-        if result == :ok do
-          update_in(next_state, [:statuses, service], fn current ->
-            Map.merge(current || %{}, status)
-          end)
-        else
-          next_state
-        end
+        next_state =
+          if result == :ok do
+            update_in(next_state, [:statuses, service], fn current ->
+              Map.merge(current || %{}, status)
+            end)
+          else
+            next_state
+          end
 
-      {result, next_state}
-    end)
+        {result, next_state}
+      end)
+
+    run(result)
   end
+
+  defp run({:raise, reason}), do: raise(reason)
+  defp run({:throw, reason}), do: throw(reason)
+  defp run({:exit, reason}), do: exit(reason)
+  defp run(result), do: result
 end
 
 defmodule YellowDog.ServerRuntimeControlFake.ServiceManager do

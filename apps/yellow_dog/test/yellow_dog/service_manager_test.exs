@@ -335,6 +335,107 @@ defmodule YellowDog.ServiceManagerTest do
   end
 
   describe "start_service/1 and stop_service/1" do
+    test "failed stop restores inherited dns_only state instead of adding a legacy fallback override" do
+      initial_config = %{
+        "yellow_dog_server" => %{
+          "profile" => "dns_only",
+          "services" => %{},
+          "marker" => "preserve-server"
+        },
+        "core" => %{"dns" => false, "mdns" => false},
+        "marker" => "preserve-root"
+      }
+
+      setup_fake_application(initial_config)
+      YellowDog.ServerRuntimeControlFake.configure(%{stop_result: {:error, :offline}})
+
+      assert ServiceManager.get_service_status(:dns).enabled == true
+      assert {:error, :offline} = ServiceManager.stop_service(:dns)
+
+      assert YellowDog.Config.get_all() == initial_config
+      assert ServiceManager.get_service_status(:dns).enabled == true
+      assert [stop: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+    end
+
+    test "failed controls restore explicit atom and string server overrides exactly" do
+      setup_fake_application(%{})
+
+      configs = [
+        %{
+          yellow_dog_server: %{
+            profile: :custom,
+            services: %{dns: false, mdns: true},
+            marker: :atom_shape
+          },
+          marker: :preserve_root
+        },
+        %{
+          "yellow_dog_server" => %{
+            "profile" => "custom",
+            "services" => %{"dns" => false, "mdns" => true},
+            "marker" => "string-shape"
+          },
+          "marker" => "preserve-root"
+        }
+      ]
+
+      for initial_config <- configs do
+        restore_config(initial_config)
+        YellowDog.ServerRuntimeControlFake.configure(%{start_result: {:error, :offline}})
+
+        assert {:error, :offline} = ServiceManager.start_service(:dns)
+        assert YellowDog.Config.get_all() == initial_config
+        assert ServiceManager.get_service_status(:dns).enabled == false
+        assert [start: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+      end
+    end
+
+    test "failed controls restore absent and mixed-key legacy core flags exactly" do
+      setup_fake_application(%{})
+
+      configs = [
+        %{"marker" => "core-absent"},
+        %{"core" => %{"dns" => false, "mdns" => true}, "marker" => "string-core"},
+        %{core: %{dns: false, mdns: true}, marker: :atom_core}
+      ]
+
+      for initial_config <- configs do
+        restore_config(initial_config)
+        enabled_before = YellowDog.Server.ProfileResolver.resolve().services.dns
+        YellowDog.ServerRuntimeControlFake.configure(%{start_result: {:error, :offline}})
+
+        assert {:error, :offline} = ServiceManager.start_service(:dns)
+        assert YellowDog.Config.get_all() == initial_config
+        assert YellowDog.Server.ProfileResolver.resolve().services.dns == enabled_before
+        assert [start: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+      end
+    end
+
+    test "raise, throw, and exit restore an absent services section before propagating" do
+      initial_config = %{
+        yellow_dog_server: %{profile: :dns_only, marker: :preserve_server},
+        core: %{dns: false},
+        marker: :preserve_root
+      }
+
+      setup_fake_application(initial_config)
+      assert ServiceManager.get_service_status(:dns).enabled == true
+
+      for failure <- [:raise, :throw, :exit] do
+        secret = "service-manager-stop-#{failure}"
+        restore_config(initial_config)
+
+        YellowDog.ServerRuntimeControlFake.configure(%{
+          stop_result: failure_action(failure, secret)
+        })
+
+        assert_propagated_failure(failure, secret, fn -> ServiceManager.stop_service(:dns) end)
+        assert YellowDog.Config.get_all() == initial_config
+        assert ServiceManager.get_service_status(:dns).enabled == true
+        assert [stop: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
+      end
+    end
+
     test "keeps already-started and already-stopped controls idempotent" do
       original = YellowDog.Config.get_all()
       previous_dependencies = Application.get_env(:yellow_dog, ServiceManager)
@@ -619,4 +720,29 @@ defmodule YellowDog.ServiceManagerTest do
 
   defp restore_dependencies(dependencies),
     do: Application.put_env(:yellow_dog, ServiceManager, dependencies)
+
+  defp setup_fake_application(config) do
+    original = YellowDog.Config.get_all()
+    previous_dependencies = Application.get_env(:yellow_dog, ServiceManager)
+
+    on_exit(fn ->
+      restore_config(original)
+      restore_dependencies(previous_dependencies)
+    end)
+
+    Application.put_env(:yellow_dog, ServiceManager,
+      application: YellowDog.ServerRuntimeControlFake.Application
+    )
+
+    restore_config(config)
+    start_supervised!(YellowDog.ServerRuntimeControlFake)
+  end
+
+  defp failure_action(:raise, reason), do: {:raise, reason}
+  defp failure_action(:throw, reason), do: {:throw, reason}
+  defp failure_action(:exit, reason), do: {:exit, reason}
+
+  defp assert_propagated_failure(:raise, reason, fun), do: assert_raise(RuntimeError, reason, fun)
+  defp assert_propagated_failure(:throw, reason, fun), do: assert(catch_throw(fun.()) == reason)
+  defp assert_propagated_failure(:exit, reason, fun), do: assert(catch_exit(fun.()) == reason)
 end
