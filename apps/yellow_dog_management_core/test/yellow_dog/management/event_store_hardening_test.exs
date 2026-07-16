@@ -34,6 +34,7 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
 
   test "malformed event fields and filename identities are never exposed", %{data_dir: data_dir} do
     Application.put_env(:yellow_dog_management_core, :max_events, 100)
+    restart_child(EventStore)
 
     write_event(data_dir, "evt-1.json", event_map(1))
 
@@ -109,6 +110,7 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
     data_dir: data_dir
   } do
     Application.put_env(:yellow_dog_management_core, :max_events, 3)
+    restart_child(EventStore)
 
     for sequence <- 1..3 do
       write_event(data_dir, "evt-#{sequence}.json", event_map(sequence))
@@ -123,6 +125,7 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
 
   test "partial malformed backfill traverses the event directory once", %{data_dir: data_dir} do
     Application.put_env(:yellow_dog_management_core, :max_events, 3)
+    restart_child(EventStore)
 
     for sequence <- [1, 20, 21] do
       write_event(data_dir, "evt-#{sequence}.json", event_map(sequence))
@@ -148,13 +151,23 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
       },
       sequence
     )
-    |> Event.to_map()
+    |> Event.to_map(commit_token(sequence))
   end
 
   defp write_event(data_dir, filename, value) do
     path = Path.join([data_dir, "management", "events", filename])
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, Jason.encode!(value))
+  end
+
+  defp commit_token(sequence) do
+    :crypto.hash(:sha256, "event-fixture-#{sequence}")
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp restart_child(child_id) do
+    :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, child_id)
+    {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
   end
 
   defp traced_event_list do

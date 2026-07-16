@@ -33,6 +33,7 @@ defmodule YellowDog.Management.Event do
   @max_metadata_entries 20
   @max_metadata_key_bytes 64
   @max_metadata_value_bytes 256
+  @commit_token ~r/\A[A-Za-z0-9_-]{43}\z/
 
   @doc false
   def new(attrs) do
@@ -55,8 +56,9 @@ defmodule YellowDog.Management.Event do
   end
 
   @doc false
-  def to_map(%__MODULE__{} = event) do
+  def to_map(%__MODULE__{} = event, commit_token) when is_binary(commit_token) do
     %{
+      "commit_token" => commit_token,
       "id" => event.id,
       "source" => Atom.to_string(event.source),
       "source_id" => event.source_id,
@@ -69,8 +71,14 @@ defmodule YellowDog.Management.Event do
   end
 
   @doc false
-  def from_map(
+  def from_map(value) do
+    with {:ok, event, _commit_token} <- decode_record(value), do: {:ok, event}
+  end
+
+  @doc false
+  def decode_record(
         %{
+          "commit_token" => commit_token,
           "id" => id,
           "source" => source,
           "source_id" => source_id,
@@ -81,7 +89,8 @@ defmodule YellowDog.Management.Event do
           "sequence" => sequence
         } = value
       ) do
-    with true <- map_size(value) == 8,
+    with true <- map_size(value) == 9,
+         true <- valid_commit_token?(commit_token),
          true <- is_integer(sequence) and sequence in 1..@max_sequence,
          true <- id == "evt-#{sequence}",
          {:ok, _path} <- StoragePath.event(id),
@@ -102,13 +111,19 @@ defmodule YellowDog.Management.Event do
          metadata: metadata,
          occurred_at: occurred_at,
          sequence: sequence
-       }}
+       }, commit_token}
     else
       _invalid -> :error
     end
   end
 
-  def from_map(_value), do: :error
+  def decode_record(_value), do: :error
+
+  @doc false
+  def digest(value) when is_map(value) do
+    :crypto.hash(:sha256, :erlang.term_to_binary(value, [:deterministic]))
+    |> Base.url_encode64(padding: false)
+  end
 
   @doc false
   def encode_metadata(metadata) do
@@ -242,6 +257,9 @@ defmodule YellowDog.Management.Event do
 
   defp coherent_source_type?(:netman, type),
     do: type in [:netman_registered, :netman_status_updated]
+
+  defp valid_commit_token?(token) when is_binary(token), do: Regex.match?(@commit_token, token)
+  defp valid_commit_token?(_token), do: false
 
   defp decode_message(nil), do: {:ok, nil}
 

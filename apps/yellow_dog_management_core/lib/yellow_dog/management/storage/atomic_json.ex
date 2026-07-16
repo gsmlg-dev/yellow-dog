@@ -11,7 +11,15 @@ defmodule YellowDog.Management.Storage.AtomicJson do
 
   @spec read(Path.t()) :: result(term())
   def read(path) when is_binary(path) do
-    case File.read(path) do
+    read(path, file_ops())
+  end
+
+  def read(_path), do: invalid()
+
+  @doc false
+  @spec read(Path.t(), module()) :: result(term())
+  def read(path, ops) when is_binary(path) and is_atom(ops) do
+    case ops.read(path) do
       {:ok, contents} -> decode(contents)
       {:error, :enoent} -> not_found()
       {:error, reason} -> file_error(reason)
@@ -20,7 +28,7 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     _exception -> invalid()
   end
 
-  def read(_path), do: invalid()
+  def read(_path, _ops), do: invalid()
 
   @spec create(Path.t(), term()) :: result(Path.t())
   def create(path, value) when is_binary(path) do
@@ -44,10 +52,99 @@ defmodule YellowDog.Management.Storage.AtomicJson do
 
   def create(_path, _value), do: invalid()
 
+  @doc false
+  @spec stage(Path.t(), term()) :: result(Path.t())
+  def stage(path, value) when is_binary(path) do
+    stage(path, value, staging_path(path))
+  end
+
+  def stage(_path, _value), do: invalid()
+
+  @doc false
+  @spec stage(Path.t(), term(), Path.t()) :: result(Path.t())
+  def stage(path, value, staging_path)
+      when is_binary(path) and is_binary(staging_path) do
+    stage(path, value, staging_path, file_ops())
+  end
+
+  def stage(_path, _value, _staging_path), do: invalid()
+
+  @doc false
+  @spec stage(Path.t(), term(), Path.t(), module()) :: result(Path.t())
+  def stage(path, value, staging_path, ops)
+      when is_binary(path) and is_binary(staging_path) and is_atom(ops) do
+    with true <- valid_staging_path?(path, staging_path),
+         {:ok, contents} <- encode(value),
+         :ok <- mkdir_parent(path),
+         {:ok, device} <- ops.open(staging_path) do
+      case write_sync_close(ops, device, contents) do
+        :ok -> {:ok, staging_path}
+        {:error, reason} -> cleanup_path(ops, staging_path, reason)
+      end
+    else
+      false -> invalid()
+      {:error, %Error{}} = error -> error
+      {:error, :eexist} -> conflict()
+      {:error, reason} -> file_error(reason)
+    end
+  rescue
+    _exception -> invalid()
+  end
+
+  def stage(_path, _value, _staging_path, _ops), do: invalid()
+
+  @doc false
+  @spec staging_path(Path.t()) :: Path.t()
+  def staging_path(path) when is_binary(path) do
+    Path.join(Path.dirname(path), ".#{Path.basename(path)}.#{random_suffix()}.stage")
+  end
+
+  @doc false
+  @spec promote(Path.t(), Path.t()) :: result(Path.t())
+  def promote(staging_path, path)
+      when is_binary(staging_path) and is_binary(path) do
+    promote(staging_path, path, file_ops())
+  end
+
+  def promote(_staging_path, _path), do: invalid()
+
+  @doc false
+  @spec promote(Path.t(), Path.t(), module()) :: result(Path.t())
+  def promote(staging_path, path, ops)
+      when is_binary(staging_path) and is_binary(path) and is_atom(ops) do
+    if Path.dirname(staging_path) == Path.dirname(path) and staging_path != path do
+      result =
+        try do
+          case ops.link(staging_path, path) do
+            :ok -> {:ok, path}
+            {:error, :eexist} -> conflict()
+            {:error, reason} -> file_error(reason)
+          end
+        rescue
+          _exception -> file_error(:link_exception)
+        catch
+          _kind, _reason -> file_error(:link_exit)
+        end
+
+      best_effort_remove(ops, staging_path)
+      result
+    else
+      invalid()
+    end
+  end
+
+  def promote(_staging_path, _path, _ops), do: invalid()
+
   @spec replace(Path.t(), term()) :: result(Path.t())
   def replace(path, value) when is_binary(path) do
-    ops = file_ops()
+    replace(path, value, file_ops())
+  end
 
+  def replace(_path, _value), do: invalid()
+
+  @doc false
+  @spec replace(Path.t(), term(), module()) :: result(Path.t())
+  def replace(path, value, ops) when is_binary(path) and is_atom(ops) do
     with {:ok, contents} <- encode(value),
          :ok <- mkdir_parent(path),
          {:ok, temporary_path, device} <- open_temporary(path, ops) do
@@ -60,7 +157,7 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     _exception -> invalid()
   end
 
-  def replace(_path, _value), do: invalid()
+  def replace(_path, _value, _ops), do: invalid()
 
   defp decode(contents) do
     case Jason.decode(contents) do
@@ -160,6 +257,12 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     ])
   end
 
+  defp valid_staging_path?(path, staging_path) do
+    Path.dirname(staging_path) == Path.dirname(path) and
+      String.starts_with?(Path.basename(staging_path), ".#{Path.basename(path)}.") and
+      String.ends_with?(staging_path, ".stage") and staging_path != path
+  end
+
   if Mix.env() == :test do
     defp temporary_name(path) do
       case Application.get_env(:yellow_dog_management_core, :atomic_json_temp_name) do
@@ -204,10 +307,12 @@ end
 defmodule YellowDog.Management.Storage.AtomicJson.FileOps do
   @moduledoc false
 
+  def read(path), do: File.read(path)
   def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
   def write(device, contents), do: :file.write(device, contents)
   def sync(device), do: :file.sync(device)
   def close(device), do: :file.close(device)
   def rename(source, target), do: :file.rename(source, target)
+  def link(source, target), do: :file.make_link(source, target)
   def rm(path), do: File.rm(path)
 end

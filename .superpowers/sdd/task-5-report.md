@@ -6,10 +6,14 @@ Implemented Control Plane Task 5 on branch
 `codex/service-node-remote-management` from base commit `92a2fa49`.
 
 The implementation modifies the requested management-core source and test
-files plus two narrowly necessary management-core modules:
+files plus narrowly necessary management-core modules:
 `lib/yellow_dog/management/manifest_store.ex` provides shared-manifest
 serialization and `lib/yellow_dog/management/input_sanitizer.ex` normalizes
-status values before persistence. The required report is the only file outside
+status values before persistence. The fourth-review fix also updates the Task 4
+`lib/yellow_dog/management/storage/atomic_json.ex` helper and its focused test
+to add owned same-directory staging plus no-clobber hard-link promotion, and
+updates `event_store_hardening_test.exs` for tokenized event fixtures and
+snapshotted limits. The required report is the only file outside
 `apps/yellow_dog_management_core`. No Mnesia, database schema, protocol,
 generic Node/target registry, dependency, console, or root `mix.exs` changes
 were made by Task 5.
@@ -29,35 +33,43 @@ were made by Task 5.
 - Both registries preserve their existing facade return shapes, preserve
   `registered_at` during replacement, allow replacement when full, and publish
   Agent state only after manifest and event persistence succeeds.
-- Serialized registration and status mutations derive one absolute monotonic
-  deadline from the configurable `:event_write_timeout_ms` setting, whose
-  documented default is 5000 ms. Invalid or non-positive values use that
-  default. The EventStore, manifest, and registry call timeouts add one, two,
-  and three 20% cleanup/transport margins respectively from the same operation
-  timeout, avoiding equal competing deadlines and unbounded waits.
-- If event persistence fails after a registration-section write,
-  `ManifestStore` restores only the previous registration section or removes
-  that section for a new registration. It re-reads the current manifest during
-  rollback so unrelated sections are retained, and helper-based lifecycle
-  updates serialize behind the entire registration/event operation. This
-  prevents a later registry restart from exposing unpublished registration
-  state without overwriting lifecycle state.
+- EventStore snapshots the validated storage root, file adapter, test hook,
+  event limit, write bound, and transport margin into an owned named ETS table
+  at startup. The table disappears with EventStore. `:event_write_timeout_ms`
+  accepts `1..60_000` ms and otherwise falls back to 5000 ms. One operation
+  uses one snapshot and deadline: event calls wait through `D + M`, manifest
+  calls through `D + 2M`, and registry Agent calls through `D + 3M`.
+- EventStore reserves the exact sequence, public event fields, 32-byte random
+  commit token, deterministic content digest, final path, and unique staging
+  path before any manifest side effect. Commit tokens are strict 43-character
+  URL-safe strings on disk and remain internal to returned `%Event{}` values.
+- The registration update and a strict bounded
+  `"registration_audit_outbox"` marker are written in one atomic manifest
+  replacement. The marker records the exact tokenized event, digest, desired
+  registration digest, and previous registration or absence. Registry startup
+  reconciles this marker before decoding or exposing registration state.
+- ManifestStore owns event staging and promotion. A linked monitored worker
+  writes, syncs, and closes only the known same-directory `.stage` path.
+  ManifestStore then promotes with Linux same-filesystem `:file.make_link/2`,
+  which is atomic and no-clobber. Every promotion return, error, exit, or
+  exception is followed by a strict token, digest, and complete-content read of
+  the final path. Final paths are never deleted by cancellation or collision.
+- Exact final content commits the operation and permits clearing the outbox;
+  absent or foreign content restores only the prior registration and clears
+  the marker. Both paths re-read the current manifest so unrelated lifecycle
+  sections survive. A process death after promotion or after outbox clear is
+  reconciled by the enclosing caller as success; a death before promotion is
+  recovered from the durable marker on registry restart.
 - `ManifestStore` converts operation timeouts into the stable `:timeout`
   persistence error and other exceptions, throws, and process exits into the
   stable `:internal` error. An unavailable or crashing `EventStore` therefore
   does not terminate the manifest coordinator, concrete registry, or caller,
   and rollback still runs.
-- `YellowDog.Management.EventStore` is supervised before both registries. It
-  serializes global sequence allocation, writes immutable `evt-<sequence>.json`
-  files before returning events, advances past create-only filename collisions,
-  and reconstructs the next sequence only from fully decoded records whose
-  event identity matches their filename.
-- Event creation runs in an EventStore-owned linked and monitored worker. A
-  queued expired request is rejected before starting that worker. At the
-  deadline, EventStore kills an unfinished worker, waits for its `DOWN`, removes
-  any newly owned final event path, and only then replies or processes queued
-  list requests. A completed write observed after its deadline follows the same
-  cleanup path.
+- `YellowDog.Management.EventStore` remains the global sequence/list owner,
+  advances past occupied immutable filenames, and reconstructs allocation only
+  from fully decoded tokenized records whose event identity matches the
+  filename. Sequence gaps are accepted; sequence reuse after an allocator
+  restart cannot match an older reservation because tokens differ.
 - `list_events/0` traverses the event directory once, validates each candidate,
   and retains only the newest configured number of valid events in a bounded
   ordered set. It returns that slice in ascending
@@ -296,6 +308,77 @@ The focused command then completed with exit `0`; `13 tests, 0 failures,
 11 excluded`. The complete restart durability file passed with
 `13 tests, 0 failures`, retaining unavailable and killed-process rollback.
 
+## Fourth Review and Durable-Outbox Evidence
+
+The fourth-review work was developed after Task 5 commit `98ee7998`; no prior
+commit was amended.
+
+### RED 13: no owned staging/promotion primitive
+
+The focused AtomicJson test required writing a unique same-directory staging
+file, preserving an occupied final, and later promoting through a no-clobber
+operation. It failed with exit `2`; `1 test, 1 failure`, because
+`AtomicJson.stage/2` and `promote/2` were undefined.
+
+### RED 14: worker wrote the final path
+
+The first process-kill probe blocked after event sync and asserted the worker
+path ended in `.stage`. It failed with exit `2`; `1 test, 1 failure`, because
+the observed path was `events/evt-1.json`. This proved the worker still owned
+the immutable final path.
+
+### RED 15: expired ManifestStore work was not canceled
+
+A deterministic suspended-ManifestStore test queued a section updater, waited
+for its caller to receive a timeout, resumed the process, and required the
+updater to remain uncalled. It failed with exit `2`; `3 tests, 1 failure`, after
+receiving `:stale_manifest_updater_called`.
+
+### RED 16: missing commit identity
+
+A successful registration's immutable event was inspected for a bounded
+cryptographic token. The focused test failed with exit `2`; `1 test, 1 failure`
+because the eight-field event record had no `"commit_token"`.
+
+### Durable boundary probes
+
+The completed durability suite deterministically covers all ownership points:
+
+- kill ManifestStore after the registration+outbox atomic replace and before
+  staging; restart reconciliation restores the previous registration and
+  retains unrelated manifest sections;
+- kill ManifestStore while a fully synced staging worker is blocked; the linked
+  worker dies, the restarted store removes the stale stage, and no final event
+  is exposed;
+- kill ManifestStore after final promotion but before outbox clear; exact token
+  and complete-content reconciliation returns coherent success and startup
+  clears the marker while keeping registration;
+- kill ManifestStore after outbox clear but before reply; the enclosing caller
+  reads the exact final and committed registration and returns success;
+- write a foreign final with identical public fields and a different valid
+  token; it is preserved, never treated as this attempt, and the next sequence
+  succeeds;
+- make the hard-link adapter create the final and then return `:eio` or raise;
+  both outcomes reconcile as success from exact final content;
+- reserve sequence 1, restart EventStore, reserve sequence 1 again, and prove
+  the different token prevents the second reservation matching the first;
+- suspend EventStore and ManifestStore separately past a 100 ms deadline and
+  prove queued mutations later no-op while callers and registries remain alive;
+- run a 5.2-second staged write under a snapshotted 6000 ms bound while
+  EventStore list reads remain available and registry get/list calls wait past
+  OTP's default five seconds without exiting;
+- mutate timeout and storage-root environment values during operations and
+  prove the startup snapshot remains in effect; terminating EventStore removes
+  its ETS snapshot and restart loads the new bounded values;
+- seed stale `.stage` files and prove restart cleanup never changes an existing
+  immutable final.
+
+The first complete run after the outbox implementation found one timeout-code
+regression: a suspended ManifestStore returned `:internal` after an exact-final
+check instead of preserving the transport `:timeout`. The focused regression
+then passed after exact-final reconciliation retained its original fallback
+code.
+
 ## Final Verification
 
 Strict compile:
@@ -308,6 +391,14 @@ devenv shell -- bash -lc \
 
 Result: exit `0`, with warnings treated as errors.
 
+Production-mode strict compile also completed with exit `0`:
+
+```sh
+devenv shell -- bash -lc \
+  'cd apps/yellow_dog_management_core && \
+   MIX_ENV=prod mix compile --force --warnings-as-errors'
+```
+
 Complete management-core suite:
 
 ```sh
@@ -315,7 +406,7 @@ devenv shell -- bash -lc \
   'cd apps/yellow_dog_management_core && mix test'
 ```
 
-Result: exit `0`; `37 tests, 0 failures`.
+Result: exit `0`; `53 tests, 0 failures`.
 
 Owned-file format check:
 
@@ -327,11 +418,13 @@ devenv shell -- mix format --check-formatted \
   apps/yellow_dog_management_core/lib/yellow_dog/management/event_store.ex \
   apps/yellow_dog_management_core/lib/yellow_dog/management/input_sanitizer.ex \
   apps/yellow_dog_management_core/lib/yellow_dog/management/manifest_store.ex \
+  apps/yellow_dog_management_core/lib/yellow_dog/management/storage/atomic_json.ex \
   apps/yellow_dog_management_core/lib/yellow_dog/management_core/application.ex \
   apps/yellow_dog_management_core/lib/yellow_dog/management_core.ex \
   apps/yellow_dog_management_core/test/yellow_dog/management_core_test.exs \
   apps/yellow_dog_management_core/test/yellow_dog/management/restart_durability_test.exs \
-  apps/yellow_dog_management_core/test/yellow_dog/management/event_store_hardening_test.exs
+  apps/yellow_dog_management_core/test/yellow_dog/management/event_store_hardening_test.exs \
+  apps/yellow_dog_management_core/test/yellow_dog/management/storage/atomic_json_test.exs
 ```
 
 Result: exit `0`.
@@ -350,13 +443,19 @@ manifests/events were ignored while valid state remained available.
 
 ## Concerns
 
-The manifest/event pair cannot be made fully transactional with separate files.
-The implementation compensates for a returned event-write failure by restoring
-only the registration section. If the BEAM or host crashes after the manifest
-rename but before immutable event completion, the process cannot execute that
-compensation; restart may therefore observe the advanced registration section
-without its audit event. Likewise, if both event persistence and compensating
-filesystem persistence fail, memory remains unpublished and an error is logged,
-but manual disk repair may be required. Task 6 section updates are protected
-from Task 5 rollback when they use the shared serialized `ManifestStore` API;
-direct `AtomicJson.replace/2` calls must not be used for shared manifests.
+The durable outbox closes the single-process/BEAM-kill transaction gap but does
+not turn separate files into a power-loss transaction. The implementation
+requires a local Linux filesystem supporting same-filesystem hard links with
+atomic no-clobber semantics. Files are synced and closed before promotion, but
+parent directories are not fsynced. A whole-host crash or power loss can still
+violate the observed ordering of the manifest rename, hard link, and outbox
+clear. In particular, a durable outbox with no exact final is safely rolled
+back, and a durable exact final with an outbox is completed, but loss of a
+supposedly completed hard link after a durable outbox clear remains within the
+explicitly accepted whole-host/power-loss caveat.
+
+If both event persistence and compensating manifest persistence fail, memory
+remains unpublished and an error is logged, but manual disk repair may be
+required. Task 6 section updates are protected when they use the serialized
+`ManifestStore` interface; direct `AtomicJson.replace/2` calls must not be used
+for shared manifests.

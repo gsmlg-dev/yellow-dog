@@ -13,7 +13,6 @@ defmodule YellowDog.Management.Netmans do
   alias YellowDog.Management.ManifestStore
   alias YellowDog.Management.Netman
   alias YellowDog.Management.Profiles
-  alias YellowDog.Management.Storage.AtomicJson
   alias YellowDog.Management.Storage.Path, as: StoragePath
 
   @default_max_records 1_000
@@ -45,26 +44,39 @@ defmodule YellowDog.Management.Netmans do
   end
 
   @doc "Clears the in-memory registry without deleting durable manifests."
-  def reset, do: Agent.update(__MODULE__, fn _state -> %{netmans: %{}} end)
+  def reset,
+    do: Agent.update(__MODULE__, fn _state -> %{netmans: %{}} end, EventStore.read_call_timeout())
 
   @doc "Lists registered Netman instances sorted by id."
   def list do
-    Agent.get(__MODULE__, fn %{netmans: netmans} ->
-      netmans
-      |> Map.values()
-      |> Enum.sort_by(& &1.id)
-    end)
+    Agent.get(
+      __MODULE__,
+      fn %{netmans: netmans} ->
+        netmans
+        |> Map.values()
+        |> Enum.sort_by(& &1.id)
+      end,
+      EventStore.read_call_timeout()
+    )
+  catch
+    :exit, _reason -> []
   end
 
   @doc "Fetches a registered Netman by id."
   def get(id) do
-    Agent.get(__MODULE__, fn %{netmans: netmans} -> fetch(netmans, id) end)
+    Agent.get(
+      __MODULE__,
+      fn %{netmans: netmans} -> fetch(netmans, id) end,
+      EventStore.read_call_timeout()
+    )
+  catch
+    :exit, _reason -> {:error, :not_found}
   end
 
   @doc "Registers or replaces a Netman record."
   def register(attrs) do
     with {:ok, netman} <- build_netman(attrs) do
-      deadline = EventStore.operation_deadline()
+      {deadline, config} = EventStore.operation()
 
       Agent.get_and_update(
         __MODULE__,
@@ -83,14 +95,14 @@ defmodule YellowDog.Management.Netmans do
               message: "Netman registered"
             }
 
-            with :ok <- persist_with_event(netman, event_attrs, deadline) do
+            with :ok <- persist_with_event(netman, event_attrs, deadline, config) do
               {{:ok, netman}, %{state | netmans: Map.put(state.netmans, netman.id, netman)}}
             else
               {:error, _reason} = error -> {error, state}
             end
           end
         end,
-        EventStore.call_timeout(deadline, 3)
+        EventStore.call_timeout(deadline, 3, config)
       )
     end
   catch
@@ -99,7 +111,7 @@ defmodule YellowDog.Management.Netmans do
 
   @doc "Updates a registered Netman status."
   def update_status(id, status) do
-    deadline = EventStore.operation_deadline()
+    {deadline, config} = EventStore.operation()
 
     Agent.get_and_update(
       __MODULE__,
@@ -118,7 +130,7 @@ defmodule YellowDog.Management.Netmans do
               metadata: %{status: status}
             }
 
-            with :ok <- persist_with_event(updated, event_attrs, deadline) do
+            with :ok <- persist_with_event(updated, event_attrs, deadline, config) do
               {{:ok, updated}, %{state | netmans: Map.put(state.netmans, updated.id, updated)}}
             else
               {:error, _reason} = error -> {error, state}
@@ -128,7 +140,7 @@ defmodule YellowDog.Management.Netmans do
             {{:error, :not_found}, state}
         end
       end,
-      EventStore.call_timeout(deadline, 3)
+      EventStore.call_timeout(deadline, 3, config)
     )
   catch
     :exit, {:timeout, _reason} -> EventStore.timeout_result()
@@ -155,7 +167,7 @@ defmodule YellowDog.Management.Netmans do
   end
 
   defp load_manifest(path, netmans) do
-    case AtomicJson.read(path) do
+    case ManifestStore.reconcile_registration(path) do
       {:ok, manifest} when is_map(manifest) ->
         case Map.fetch(manifest, "registration") do
           {:ok, registration} -> load_registration(registration, path, netmans)
@@ -179,16 +191,13 @@ defmodule YellowDog.Management.Netmans do
     netmans
   end
 
-  defp persist_with_event(netman, event_attrs, deadline) do
-    with {:ok, path} <- StoragePath.netman_manifest(netman.id),
+  defp persist_with_event(netman, event_attrs, deadline, config) do
+    registration = to_registration(netman)
+
+    with {:ok, reservation} <- EventStore.reserve(event_attrs, deadline, config),
+         path <- Path.join([config.root, "netmans", netman.id, "manifest.json"]),
          {:ok, _event} <-
-           ManifestStore.update_section_with(
-             path,
-             "registration",
-             fn _current -> to_registration(netman) end,
-             fn -> EventStore.append(event_attrs, deadline) end,
-             deadline
-           ) do
+           ManifestStore.commit_registration(path, registration, reservation, deadline) do
       :ok
     end
   end
@@ -297,7 +306,8 @@ defmodule YellowDog.Management.Netmans do
   defp build_netman(%Netman{} = netman) do
     now = DateTime.utc_now(:second)
 
-    with {:ok, id} <- InputSanitizer.required_string(netman.id, :id) do
+    with {:ok, id} <- InputSanitizer.required_string(netman.id, :id),
+         {:ok, _path} <- StoragePath.netman_manifest(id) do
       {:ok,
        %{
          netman
@@ -319,7 +329,8 @@ defmodule YellowDog.Management.Netmans do
     attrs = attrs_map(attrs)
     now = DateTime.utc_now(:second)
 
-    with {:ok, id} <- InputSanitizer.required_string(get_attr(attrs, :id), :id) do
+    with {:ok, id} <- InputSanitizer.required_string(get_attr(attrs, :id), :id),
+         {:ok, _path} <- StoragePath.netman_manifest(id) do
       {:ok,
        %Netman{
          id: id,

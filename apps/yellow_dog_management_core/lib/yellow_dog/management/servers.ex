@@ -13,7 +13,6 @@ defmodule YellowDog.Management.Servers do
   alias YellowDog.Management.ManifestStore
   alias YellowDog.Management.Profiles
   alias YellowDog.Management.Server
-  alias YellowDog.Management.Storage.AtomicJson
   alias YellowDog.Management.Storage.Path, as: StoragePath
 
   @default_max_records 1_000
@@ -44,26 +43,39 @@ defmodule YellowDog.Management.Servers do
   end
 
   @doc "Clears the in-memory registry without deleting durable manifests."
-  def reset, do: Agent.update(__MODULE__, fn _state -> %{servers: %{}} end)
+  def reset,
+    do: Agent.update(__MODULE__, fn _state -> %{servers: %{}} end, EventStore.read_call_timeout())
 
   @doc "Lists registered servers sorted by id."
   def list do
-    Agent.get(__MODULE__, fn %{servers: servers} ->
-      servers
-      |> Map.values()
-      |> Enum.sort_by(& &1.id)
-    end)
+    Agent.get(
+      __MODULE__,
+      fn %{servers: servers} ->
+        servers
+        |> Map.values()
+        |> Enum.sort_by(& &1.id)
+      end,
+      EventStore.read_call_timeout()
+    )
+  catch
+    :exit, _reason -> []
   end
 
   @doc "Fetches a registered server by id."
   def get(id) do
-    Agent.get(__MODULE__, fn %{servers: servers} -> fetch(servers, id) end)
+    Agent.get(
+      __MODULE__,
+      fn %{servers: servers} -> fetch(servers, id) end,
+      EventStore.read_call_timeout()
+    )
+  catch
+    :exit, _reason -> {:error, :not_found}
   end
 
   @doc "Registers or replaces a server record."
   def register(attrs) do
     with {:ok, server} <- build_server(attrs) do
-      deadline = EventStore.operation_deadline()
+      {deadline, config} = EventStore.operation()
 
       Agent.get_and_update(
         __MODULE__,
@@ -82,14 +94,14 @@ defmodule YellowDog.Management.Servers do
               message: "Server registered"
             }
 
-            with :ok <- persist_with_event(server, event_attrs, deadline) do
+            with :ok <- persist_with_event(server, event_attrs, deadline, config) do
               {{:ok, server}, %{state | servers: Map.put(state.servers, server.id, server)}}
             else
               {:error, _reason} = error -> {error, state}
             end
           end
         end,
-        EventStore.call_timeout(deadline, 3)
+        EventStore.call_timeout(deadline, 3, config)
       )
     end
   catch
@@ -98,7 +110,7 @@ defmodule YellowDog.Management.Servers do
 
   @doc "Updates a registered server status."
   def update_status(id, status) do
-    deadline = EventStore.operation_deadline()
+    {deadline, config} = EventStore.operation()
 
     Agent.get_and_update(
       __MODULE__,
@@ -117,7 +129,7 @@ defmodule YellowDog.Management.Servers do
               metadata: %{status: status}
             }
 
-            with :ok <- persist_with_event(updated, event_attrs, deadline) do
+            with :ok <- persist_with_event(updated, event_attrs, deadline, config) do
               {{:ok, updated}, %{state | servers: Map.put(state.servers, updated.id, updated)}}
             else
               {:error, _reason} = error -> {error, state}
@@ -127,7 +139,7 @@ defmodule YellowDog.Management.Servers do
             {{:error, :not_found}, state}
         end
       end,
-      EventStore.call_timeout(deadline, 3)
+      EventStore.call_timeout(deadline, 3, config)
     )
   catch
     :exit, {:timeout, _reason} -> EventStore.timeout_result()
@@ -154,7 +166,7 @@ defmodule YellowDog.Management.Servers do
   end
 
   defp load_manifest(path, servers) do
-    case AtomicJson.read(path) do
+    case ManifestStore.reconcile_registration(path) do
       {:ok, manifest} when is_map(manifest) ->
         case Map.fetch(manifest, "registration") do
           {:ok, registration} -> load_registration(registration, path, servers)
@@ -178,16 +190,13 @@ defmodule YellowDog.Management.Servers do
     servers
   end
 
-  defp persist_with_event(server, event_attrs, deadline) do
-    with {:ok, path} <- StoragePath.server_manifest(server.id),
+  defp persist_with_event(server, event_attrs, deadline, config) do
+    registration = to_registration(server)
+
+    with {:ok, reservation} <- EventStore.reserve(event_attrs, deadline, config),
+         path <- Path.join([config.root, "servers", server.id, "manifest.json"]),
          {:ok, _event} <-
-           ManifestStore.update_section_with(
-             path,
-             "registration",
-             fn _current -> to_registration(server) end,
-             fn -> EventStore.append(event_attrs, deadline) end,
-             deadline
-           ) do
+           ManifestStore.commit_registration(path, registration, reservation, deadline) do
       :ok
     end
   end
@@ -284,7 +293,8 @@ defmodule YellowDog.Management.Servers do
   defp build_server(%Server{} = server) do
     now = DateTime.utc_now(:second)
 
-    with {:ok, id} <- InputSanitizer.required_string(server.id, :id) do
+    with {:ok, id} <- InputSanitizer.required_string(server.id, :id),
+         {:ok, _path} <- StoragePath.server_manifest(id) do
       {:ok,
        %{
          server
@@ -305,7 +315,8 @@ defmodule YellowDog.Management.Servers do
     attrs = attrs_map(attrs)
     now = DateTime.utc_now(:second)
 
-    with {:ok, id} <- InputSanitizer.required_string(get_attr(attrs, :id), :id) do
+    with {:ok, id} <- InputSanitizer.required_string(get_attr(attrs, :id), :id),
+         {:ok, _path} <- StoragePath.server_manifest(id) do
       {:ok,
        %Server{
          id: id,

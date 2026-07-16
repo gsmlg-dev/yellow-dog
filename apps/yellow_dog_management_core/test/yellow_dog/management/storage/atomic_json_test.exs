@@ -72,6 +72,27 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
     assert writer in 1..20
   end
 
+  test "stages immutable JSON and promotes it without clobbering an occupied final path" do
+    assert {:ok, path} = StoragePath.event("evt-49")
+
+    assert {:ok, staging_path} = AtomicJson.stage(path, %{"writer" => "owned"})
+    assert Path.dirname(staging_path) == Path.dirname(path)
+    assert String.ends_with?(staging_path, ".stage")
+    assert File.exists?(staging_path)
+    refute File.exists?(path)
+
+    assert :ok = File.write(path, Jason.encode!(%{"writer" => "external"}), [:exclusive])
+    assert {:error, %{code: :conflict}} = AtomicJson.promote(staging_path, path)
+    refute File.exists?(staging_path)
+    assert {:ok, %{"writer" => "external"}} = AtomicJson.read(path)
+
+    assert {:ok, second_staging_path} = AtomicJson.stage(path, %{"writer" => "owned"})
+    assert :ok = File.rm(path)
+    assert {:ok, ^path} = AtomicJson.promote(second_staging_path, path)
+    refute File.exists?(second_staging_path)
+    assert {:ok, %{"writer" => "owned"}} = AtomicJson.read(path)
+  end
+
   test "replaces a mutable manifest only after complete JSON is synced and closed" do
     assert {:ok, path} = StoragePath.server_manifest("server-01")
 
@@ -210,6 +231,7 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
 end
 
 defmodule YellowDog.Management.Storage.AtomicJsonTest.FileOps do
+  defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
   def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
 
   def write(device, contents) do
@@ -229,6 +251,8 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest.FileOps do
   def rename(source, target) do
     if failure?(:rename), do: {:error, :injected_rename}, else: :file.rename(source, target)
   end
+
+  def link(source, target), do: :file.make_link(source, target)
 
   def rm(path), do: File.rm(path)
 

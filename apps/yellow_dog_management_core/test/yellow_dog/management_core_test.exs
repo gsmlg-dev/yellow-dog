@@ -165,6 +165,7 @@ defmodule YellowDog.ManagementCoreTest do
     data_dir: data_dir
   } do
     Application.put_env(:yellow_dog_management_core, :max_events, 5)
+    restart_child(EventStore)
 
     assert {:ok, %Server{}} =
              ManagementCore.register_server(%{
@@ -261,6 +262,7 @@ defmodule YellowDog.ManagementCoreTest do
     Application.put_env(:yellow_dog_management_core, :max_servers, 1_001)
     Application.put_env(:yellow_dog_management_core, :max_netmans, 1_001)
     Application.put_env(:yellow_dog_management_core, :max_events, 1_001)
+    restart_child(EventStore)
 
     for index <- 1..1_000 do
       assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-bound-#{index}"})
@@ -381,6 +383,11 @@ defmodule YellowDog.ManagementCoreTest do
     Enum.each([ManifestStore, EventStore, Servers, Netmans], fn child_id ->
       {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)
+  end
+
+  defp restart_child(child_id) do
+    assert :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, child_id)
+    assert {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
   end
 
   defp restore_env(key, {:ok, value}),

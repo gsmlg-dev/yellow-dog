@@ -14,6 +14,8 @@ defmodule YellowDog.ManagementCore.Application do
 
     Supervisor.start_link(children,
       strategy: :one_for_one,
+      max_restarts: 10,
+      max_seconds: 5,
       name: YellowDog.ManagementCore.Supervisor
     )
   end
