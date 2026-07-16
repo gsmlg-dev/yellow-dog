@@ -36,6 +36,39 @@ defmodule YellowDog.ServerDnsControlFake do
     end)
   end
 
+  def control_views do
+    Agent.get_and_update(__MODULE__, fn state ->
+      stats_by_view = get_in(state, [:view_stats, :views]) || %{}
+
+      result =
+        case state.views do
+          views when is_list(views) ->
+            control_views =
+              Enum.map(views, fn
+                {name, _pid, _priority} ->
+                  details = Map.get(stats_by_view, name, %{})
+
+                  %{
+                    name: name,
+                    match_clients: Map.get(details, :match_clients, []),
+                    recursion: Map.get(details, :recursion_enabled, false)
+                  }
+
+                view when is_map(view) ->
+                  view
+              end)
+
+            {:ok, control_views}
+
+          other ->
+            other
+        end
+
+      {result, %{state | calls: [{:view_manager, :list_control_views, []} | state.calls]}}
+    end)
+    |> run()
+  end
+
   defp run({:raise, reason}), do: raise(reason)
   defp run({:throw, reason}), do: throw(reason)
   defp run({:exit, reason}), do: exit(reason)
@@ -87,11 +120,18 @@ defmodule YellowDog.ServerDnsControlFake.QueryLogger do
     do: YellowDog.ServerDnsControlFake.fetch(:logs, {:query_logger, :get_recent_logs, [opts]})
 
   def get_logs_by_view(view_name, opts) do
-    YellowDog.ServerDnsControlFake.fetch(
-      :logs,
-      {:query_logger, :get_logs_by_view, [view_name, opts]}
-    )
+    logs =
+      YellowDog.ServerDnsControlFake.fetch(
+        :logs,
+        {:query_logger, :get_logs_by_view, [view_name, opts]}
+      )
+
+    Enum.take(logs, Keyword.get(opts, :limit, 100))
   end
+
+  def control_snapshot(view_name),
+    do:
+      YellowDog.ServerDnsControlFake.fetch(:logs, {:query_logger, :control_snapshot, [view_name]})
 end
 
 defmodule YellowDog.ServerDnsControlFake.MetricsCollector do
@@ -109,6 +149,10 @@ defmodule YellowDog.ServerDnsControlFake.ViewManager do
 
   def stats,
     do: YellowDog.ServerDnsControlFake.fetch(:view_stats, {:view_manager, :stats, []})
+
+  def list_control_views do
+    YellowDog.ServerDnsControlFake.control_views()
+  end
 end
 
 defmodule YellowDog.ServerDnsControlFake.Clock do

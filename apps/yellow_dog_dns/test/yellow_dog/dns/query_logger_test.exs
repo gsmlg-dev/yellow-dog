@@ -225,6 +225,41 @@ defmodule YellowDog.Dns.QueryLoggerTest do
     end
   end
 
+  describe "control_snapshot/2" do
+    test "returns the complete bounded view snapshot before caller pagination", %{pid: pid} do
+      for index <- 1..7 do
+        view = if rem(index, 2) == 0, do: "external", else: "internal"
+        QueryLogger.log_query(pid, %{view: view, qname: "query#{index}.example", qtype: :a})
+      end
+
+      entries = QueryLogger.control_snapshot(pid, "internal")
+
+      assert Enum.map(entries, & &1.qname) == [
+               "query7.example",
+               "query5.example",
+               "query3.example",
+               "query1.example"
+             ]
+    end
+
+    test "caps a large owner snapshot at the wire collection bound" do
+      name = :"ql_control_cap_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid} = QueryLogger.start_link(name: name, buffer_size: 1_100)
+
+      for index <- 1..1_005 do
+        QueryLogger.log_query(pid, %{
+          view: "default",
+          qname: "query#{index}.example",
+          qtype: :a
+        })
+      end
+
+      assert length(QueryLogger.control_snapshot(pid, "default")) == 1_000
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "get_logs_by_qname/3" do
     test "filters by qname pattern", %{pid: pid} do
       QueryLogger.log_query(pid, %{qname: "www.example.com", qtype: :a})

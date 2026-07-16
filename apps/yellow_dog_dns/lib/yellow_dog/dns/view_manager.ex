@@ -274,6 +274,34 @@ defmodule YellowDog.Dns.ViewManager do
   end
 
   @doc """
+  Lists the canonical view fields supported by the server control wire schema.
+  """
+  @spec list_control_views() ::
+          {:ok, [%{name: String.t(), match_clients: [String.t()], recursion: boolean()}]}
+          | {:error, :unsupported_acl}
+  def list_control_views do
+    list_control_views(__MODULE__)
+  end
+
+  @spec list_control_views(Supervisor.supervisor()) ::
+          {:ok, [%{name: String.t(), match_clients: [String.t()], recursion: boolean()}]}
+          | {:error, :unsupported_acl}
+  def list_control_views(supervisor) do
+    supervisor
+    |> list_views()
+    |> Enum.reduce_while({:ok, []}, fn {name, pid, _priority}, {:ok, snapshots} ->
+      case View.control_snapshot(pid) do
+        {:ok, snapshot} -> {:cont, {:ok, [Map.put(snapshot, :name, name) | snapshots]}}
+        {:error, :unsupported_acl} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, snapshots} -> {:ok, Enum.reverse(snapshots)}
+      {:error, :unsupported_acl} = error -> error
+    end
+  end
+
+  @doc """
   Returns statistics for all views.
   """
   @spec stats() :: map()

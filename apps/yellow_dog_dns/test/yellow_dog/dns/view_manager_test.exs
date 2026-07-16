@@ -205,6 +205,46 @@ defmodule YellowDog.Dns.ViewManagerTest do
     end
   end
 
+  describe "list_control_views/1" do
+    @tag :capture_log
+    test "returns canonical control fields without process identifiers", %{supervisor: supervisor} do
+      view_name = "control_#{:rand.uniform(1_000_000)}"
+
+      {:ok, _pid} =
+        ViewManager.start_view(
+          supervisor,
+          name: view_name,
+          priority: 10,
+          acl: "localnets",
+          recursion_enabled: true
+        )
+
+      assert {:ok,
+              [
+                %{
+                  name: ^view_name,
+                  match_clients: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"],
+                  recursion: true
+                }
+              ]} = ViewManager.list_control_views(supervisor)
+    end
+
+    @tag :capture_log
+    test "rejects a view whose ACL cannot be represented by match CIDRs", %{
+      supervisor: supervisor
+    } do
+      {:ok, _pid} =
+        ViewManager.start_view(
+          supervisor,
+          name: "mixed_#{:rand.uniform(1_000_000)}",
+          priority: 10,
+          acl: [{:allow, {10, 0, 0, 0}, 8}, {:deny, {10, 1, 0, 0}, 16}]
+        )
+
+      assert {:error, :unsupported_acl} = ViewManager.list_control_views(supervisor)
+    end
+  end
+
   describe "stats/1" do
     @tag :capture_log
     test "returns empty stats when no views", %{supervisor: supervisor} do

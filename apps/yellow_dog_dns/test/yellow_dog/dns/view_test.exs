@@ -271,6 +271,58 @@ defmodule YellowDog.Dns.ViewTest do
     end
   end
 
+  describe "control_snapshot/1" do
+    @tag :capture_log
+    test "returns canonical match CIDRs and recursion without process state" do
+      view_name = "control_snapshot_#{:rand.uniform(1_000_000)}"
+
+      {:ok, pid} =
+        View.start_link(
+          name: view_name,
+          acl: [
+            {:allow, "2001:0db8:0000:0000::/32"},
+            {:allow, {10, 0, 0, 0}, 8},
+            {:allow, "10.0.0.0/8"}
+          ],
+          recursion_enabled: true
+        )
+
+      assert {:ok,
+              %{
+                match_clients: ["10.0.0.0/8", "2001:db8::/32"],
+                recursion: true
+              }} = View.control_snapshot(pid)
+
+      GenServer.stop(pid)
+    end
+
+    @tag :capture_log
+    test "maps the any ACL to both IP families" do
+      view_name = "control_any_#{:rand.uniform(1_000_000)}"
+      {:ok, pid} = View.start_link(name: view_name, acl: :any, recursion_enabled: false)
+
+      assert {:ok, %{match_clients: ["0.0.0.0/0", "::/0"], recursion: false}} =
+               View.control_snapshot(pid)
+
+      GenServer.stop(pid)
+    end
+
+    @tag :capture_log
+    test "rejects ACL semantics that a CIDR match list cannot represent" do
+      for rules <- [
+            [{:allow, "10.0.0.0/8"}, {:deny, "10.1.0.0/16"}],
+            [{:allow, {:geo, ["US"]}}]
+          ] do
+        view_name = "control_unsupported_#{:rand.uniform(1_000_000)}"
+        {:ok, pid} = View.start_link(name: view_name, acl: rules)
+
+        assert {:error, :unsupported_acl} = View.control_snapshot(pid)
+
+        GenServer.stop(pid)
+      end
+    end
+  end
+
   describe "register_rpz_zone/2" do
     @tag :capture_log
     test "registers an RPZ zone" do

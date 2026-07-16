@@ -124,6 +124,16 @@ defmodule YellowDog.Dns.View do
   end
 
   @doc """
+  Returns the view fields that can be represented by the server control wire schema.
+  """
+  @spec control_snapshot(pid()) ::
+          {:ok, %{match_clients: [String.t()], recursion: boolean()}}
+          | {:error, :unsupported_acl}
+  def control_snapshot(pid) do
+    GenServer.call(pid, :control_snapshot)
+  end
+
+  @doc """
   Invalidates cached answers at or below a zone name.
   """
   @spec invalidate_zone_cache(pid(), String.t()) :: :ok
@@ -336,6 +346,20 @@ defmodule YellowDog.Dns.View do
   def handle_call({:register_rpz_zone, rpz_name}, _from, state) do
     rpz_zones = [rpz_name | state.rpz_zones] |> Enum.uniq()
     {:reply, :ok, %{state | rpz_zones: rpz_zones}}
+  end
+
+  @impl true
+  def handle_call(:control_snapshot, _from, state) do
+    reply =
+      case control_match_clients(state.acl) do
+        {:ok, match_clients} ->
+          {:ok, %{match_clients: match_clients, recursion: state.recursion_enabled}}
+
+        :error ->
+          {:error, :unsupported_acl}
+      end
+
+    {:reply, reply, state}
   end
 
   @impl true
@@ -823,6 +847,95 @@ defmodule YellowDog.Dns.View do
   end
 
   defp parse_acl(_), do: :any
+
+  defp control_match_clients(:any), do: {:ok, ["0.0.0.0/0", "::/0"]}
+
+  defp control_match_clients({:named, "none"}), do: {:ok, []}
+
+  defp control_match_clients({:named, name}) do
+    case ACL.get_builtin(name) do
+      {:ok, acl} -> control_match_clients(acl)
+      {:error, :not_found} -> :error
+    end
+  end
+
+  defp control_match_clients(%ACL{rules: rules}) when is_list(rules) do
+    Enum.reduce_while(rules, {:ok, []}, fn rule, {:ok, cidrs} ->
+      case control_match_rule(rule) do
+        {:ok, rule_cidrs} -> {:cont, {:ok, rule_cidrs ++ cidrs}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, cidrs} -> {:ok, cidrs |> Enum.uniq() |> Enum.sort()}
+      :error -> :error
+    end
+  end
+
+  defp control_match_clients(_acl), do: :error
+
+  defp control_match_rule({:allow, :any}), do: {:ok, ["0.0.0.0/0", "::/0"]}
+
+  defp control_match_rule({:allow, ip, prefix}) when is_tuple(ip) and is_integer(prefix) do
+    with {:ok, cidr} <- canonical_cidr(ip, prefix), do: {:ok, [cidr]}
+  end
+
+  defp control_match_rule({:allow, ip}) when is_tuple(ip) and tuple_size(ip) in [4, 8] do
+    prefix = if tuple_size(ip) == 4, do: 32, else: 128
+    with {:ok, cidr} <- canonical_cidr(ip, prefix), do: {:ok, [cidr]}
+  end
+
+  defp control_match_rule({:allow, cidr}) when is_binary(cidr) do
+    with {:ok, {ip, prefix}} <- ACL.parse_cidr(cidr),
+         {:ok, canonical} <- canonical_cidr(ip, prefix) do
+      {:ok, [canonical]}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp control_match_rule(_rule), do: :error
+
+  defp canonical_cidr(ip, prefix) do
+    with {:ok, binary, bit_size} <- ip_binary(ip),
+         true <- prefix in 0..bit_size,
+         <<network_prefix::bitstring-size(prefix), _host::bitstring>> <- binary,
+         {:ok, network_ip} <- binary_ip(<<network_prefix::bitstring, 0::size(bit_size - prefix)>>) do
+      {:ok, "#{network_ip |> :inet.ntoa() |> to_string()}/#{prefix}"}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp ip_binary(ip) when is_tuple(ip) and tuple_size(ip) == 4 do
+    octets = Tuple.to_list(ip)
+
+    if Enum.all?(octets, &(is_integer(&1) and &1 in 0..255)) do
+      {:ok, :erlang.list_to_binary(octets), 32}
+    else
+      :error
+    end
+  end
+
+  defp ip_binary(ip) when is_tuple(ip) and tuple_size(ip) == 8 do
+    segments = Tuple.to_list(ip)
+
+    if Enum.all?(segments, &(is_integer(&1) and &1 in 0..65_535)) do
+      binary = Enum.reduce(segments, <<>>, fn segment, acc -> <<acc::binary, segment::16>> end)
+      {:ok, binary, 128}
+    else
+      :error
+    end
+  end
+
+  defp ip_binary(_ip), do: :error
+
+  defp binary_ip(<<a, b, c, d>>), do: {:ok, {a, b, c, d}}
+
+  defp binary_ip(<<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>),
+    do: {:ok, {a, b, c, d, e, f, g, h}}
+
+  defp binary_ip(_binary), do: :error
 
   defp acl_matches?(:any, _client_ip), do: true
 

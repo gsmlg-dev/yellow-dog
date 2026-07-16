@@ -96,6 +96,9 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert_valid_result("server.dns.views.list", result)
     refute inspect(result) =~ inspect(self())
     refute inspect(result) =~ "/var/lib/yellowdog"
+
+    assert [{:view_manager, :list_control_views, []}, {:clock, :utc_now, []}] =
+             ServerDnsControlFake.take_calls()
   end
 
   test "projects authoritative and forward zones in deterministic order" do
@@ -314,6 +317,30 @@ defmodule YellowDog.Server.Control.DnsTest do
     refute encoded =~ inspect(self())
   end
 
+  test "rejects mixed-action and geo ACLs instead of projecting altered policies" do
+    for acl <- [
+          %{
+            name: "mixed",
+            rules: [
+              %{action: "allow", network: "10.0.0.0/8"},
+              %{action: "deny", network: "10.1.0.0/16"}
+            ]
+          },
+          %{
+            name: "geo",
+            rules: [%{action: "allow", geo_countries: ["US", "CA"]}]
+          }
+        ] do
+      ServerDnsControlFake.configure(%{acls: [acl]})
+
+      assert {:error, %Error{code: :unsupported}} =
+               Dns.dispatch("server.dns.acls.list", %{})
+
+      assert {:error, %Error{code: :unsupported}} =
+               Dns.current("server.dns.acls.update", %{"acl_id" => acl.name})
+    end
+  end
+
   test "projects query logs and metrics through their read facades" do
     ServerDnsControlFake.configure(%{
       logs: [
@@ -369,7 +396,36 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert_valid_result("server.dns.metrics.get", metrics_result)
     refute inspect(log_result) =~ "must-not-leak"
 
-    assert {:query_logger, :get_logs_by_view, ["default", [limit: 10]]} in ServerDnsControlFake.take_calls()
+    assert {:query_logger, :control_snapshot, ["default"]} in ServerDnsControlFake.take_calls()
+  end
+
+  test "query-log revision is page-size independent and cursors reach older entries" do
+    ServerDnsControlFake.configure(%{
+      logs: [
+        log_entry("log-c", "c.example", ~U[2026-07-16 00:00:03Z]),
+        log_entry("log-a", "a.example", ~U[2026-07-16 00:00:01Z]),
+        log_entry("log-b", "b.example", ~U[2026-07-16 00:00:02Z])
+      ]
+    })
+
+    assert {:ok, one} =
+             Dns.dispatch("server.dns.logs.list", %{"view_name" => "default", "limit" => 1})
+
+    assert {:ok, two} =
+             Dns.dispatch("server.dns.logs.list", %{"view_name" => "default", "limit" => 2})
+
+    assert one["revision"] == two["revision"]
+    assert Enum.map(one["items"], & &1["log_id"]) == ["log-a"]
+
+    assert {:ok, older} =
+             Dns.dispatch("server.dns.logs.list", %{
+               "view_name" => "default",
+               "cursor" => "log-a",
+               "limit" => 2
+             })
+
+    assert Enum.map(older["items"], & &1["log_id"]) == ["log-b", "log-c"]
+    assert older["revision"] == one["revision"]
   end
 
   test "every approved read returns an exact Operation.validate_result shape" do
@@ -426,6 +482,57 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert {:ok, later} = Dns.dispatch("server.dns.views.list", %{})
     assert later["observed_at"] == "2026-07-16T12:34:56Z"
     assert later["revision"] == first["revision"]
+  end
+
+  test "sorts RRset values before calculating the collection revision" do
+    first = %{
+      owner: "www",
+      type: :a,
+      rrset: [%{rdata: {192, 0, 2, 2}, ttl: 60}, %{rdata: {192, 0, 2, 1}, ttl: 60}]
+    }
+
+    second = %{first | rrset: Enum.reverse(first.rrset)}
+
+    ServerDnsControlFake.configure(%{
+      records: %{{"default", "example.test"} => {:ok, [first]}}
+    })
+
+    assert {:ok, unsorted} =
+             Dns.dispatch("server.dns.records.list", %{
+               "view_name" => "default",
+               "zone_name" => "example.test"
+             })
+
+    ServerDnsControlFake.configure(%{
+      records: %{{"default", "example.test"} => {:ok, [second]}}
+    })
+
+    assert {:ok, reversed} =
+             Dns.dispatch("server.dns.records.list", %{
+               "view_name" => "default",
+               "zone_name" => "example.test"
+             })
+
+    assert hd(unsorted["items"])["values"] == ["192.0.2.1", "192.0.2.2"]
+    assert unsorted["revision"] == reversed["revision"]
+  end
+
+  test "validates projected reads and current snapshots before returning ok" do
+    ServerDnsControlFake.configure(%{
+      views: [{"a-valid", self(), 0}, {"default", self(), 1}],
+      view_stats: %{
+        views: %{
+          "a-valid" => %{match_clients: ["10.0.0.0/8"], recursion_enabled: false},
+          "default" => %{match_clients: ["not-a-cidr"], recursion_enabled: false}
+        }
+      }
+    })
+
+    assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} =
+             Dns.dispatch("server.dns.views.list", %{"limit" => 1})
+
+    assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} =
+             Dns.current("server.dns.views.update", %{"view_name" => "default"})
   end
 
   test "current snapshots use the same canonical view, zone, ACL, and provider resources" do
@@ -684,6 +791,16 @@ defmodule YellowDog.Server.Control.DnsTest do
   defp credential_ref(provider_id) do
     digest = :crypto.hash(:sha256, provider_id)
     "local-provider-" <> Base.encode16(digest, case: :lower)
+  end
+
+  defp log_entry(id, qname, timestamp) do
+    %{
+      id: id,
+      qname: qname,
+      response_code: :noerror,
+      resolution_type: :auth,
+      timestamp: timestamp
+    }
   end
 
   defp canonical_owner("@"), do: "@"

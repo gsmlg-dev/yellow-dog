@@ -24,6 +24,7 @@ defmodule YellowDog.Dns.QueryLogger do
   alias YellowDog.Telemetry
 
   @default_buffer_size 1000
+  @max_control_snapshot_entries 1000
   @pubsub_topic "dns:query_logs"
 
   defstruct [
@@ -159,6 +160,22 @@ defmodule YellowDog.Dns.QueryLogger do
   @spec get_logs_by_view(GenServer.server(), String.t(), keyword()) :: [Entry.t()]
   def get_logs_by_view(server, view, opts) do
     GenServer.call(server, {:get_logs_by_view, view, opts})
+  end
+
+  @doc """
+  Returns the bounded canonical collection used by server control pagination.
+
+  Pagination is intentionally left to the caller so collection revisions do not
+  depend on a requested page size or cursor.
+  """
+  @spec control_snapshot(String.t()) :: [Entry.t()]
+  def control_snapshot(view) do
+    control_snapshot(__MODULE__, view)
+  end
+
+  @spec control_snapshot(GenServer.server(), String.t()) :: [Entry.t()]
+  def control_snapshot(server, view) do
+    GenServer.call(server, {:control_snapshot, view})
   end
 
   @doc """
@@ -304,6 +321,17 @@ defmodule YellowDog.Dns.QueryLogger do
       |> buffer_newest_first()
       |> Enum.filter(fn entry -> entry.view == view end)
       |> Enum.take(limit)
+
+    {:reply, entries, state}
+  end
+
+  @impl true
+  def handle_call({:control_snapshot, view}, _from, state) do
+    entries =
+      state.buffer
+      |> buffer_newest_first()
+      |> Enum.filter(fn entry -> entry.view == view end)
+      |> Enum.take(@max_control_snapshot_entries)
 
     {:reply, entries, state}
   end

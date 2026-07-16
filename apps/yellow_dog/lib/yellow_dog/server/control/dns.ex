@@ -4,8 +4,12 @@ defmodule YellowDog.Server.Control.Dns do
   alias YellowDog.Server.Control.Revision
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Operation
+  alias YellowDog.Sync.ServerOperation
 
   @record_id_pattern ~r/\Arr-[0-9a-f]{64}\z/
+  @validation_observed_at "1970-01-01T00:00:00Z"
+  @validation_revision String.duplicate("0", 64)
   @mutation_operations [
     "server.dns.views.create",
     "server.dns.views.update",
@@ -46,13 +50,13 @@ defmodule YellowDog.Server.Control.Dns do
   @spec dispatch(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def dispatch("server.dns.views.list", payload) when is_map(payload) do
     with {:ok, items} <- read_views() do
-      list_result(items, payload, & &1["view_name"])
+      list_result("server.dns.views.list", items, payload, & &1["view_name"])
     end
   end
 
   def dispatch("server.dns.zones.list", %{"view_name" => view_name} = payload) do
     with {:ok, items} <- read_zones(view_name) do
-      list_result(items, payload, & &1["zone_name"])
+      list_result("server.dns.zones.list", items, payload, & &1["zone_name"])
     end
   end
 
@@ -61,31 +65,32 @@ defmodule YellowDog.Server.Control.Dns do
         %{"view_name" => view_name, "zone_name" => zone_name} = payload
       ) do
     with {:ok, items} <- read_records(view_name, zone_name) do
-      list_result(items, payload, & &1["record_id"])
+      list_result("server.dns.records.list", items, payload, & &1["record_id"])
     end
   end
 
   def dispatch("server.dns.acls.list", payload) when is_map(payload) do
     with {:ok, items} <- read_acls() do
-      list_result(items, payload, & &1["acl_id"])
+      list_result("server.dns.acls.list", items, payload, & &1["acl_id"])
     end
   end
 
   def dispatch("server.dns.providers.list", payload) when is_map(payload) do
     with {:ok, items} <- read_providers() do
-      list_result(items, payload, & &1["provider_id"])
+      list_result("server.dns.providers.list", items, payload, & &1["provider_id"])
     end
   end
 
   def dispatch("server.dns.logs.list", %{"view_name" => view_name} = payload) do
-    with {:ok, items} <- read_logs(view_name, payload) do
-      list_result(items, payload, & &1["log_id"])
+    with {:ok, items} <- read_logs(view_name) do
+      list_result("server.dns.logs.list", items, payload, & &1["log_id"])
     end
   end
 
   def dispatch("server.dns.metrics.get", %{}) do
     with {:ok, metrics} <- dependency_call(:metrics_collector, :get_metrics, []),
-         {:ok, result} <- metrics_result(metrics) do
+         {:ok, result} <- metrics_result(metrics),
+         {:ok, result} <- validate_operation_result("server.dns.metrics.get", result) do
       {:ok, result}
     end
   end
@@ -104,7 +109,11 @@ defmodule YellowDog.Server.Control.Dns do
              "server.dns.views.delete"
            ] do
     with {:ok, views} <- read_views() do
-      current_resource(operation, Enum.find(views, &(&1["view_name"] == view_name)))
+      current_resource(
+        operation,
+        Enum.find(views, &(&1["view_name"] == view_name)),
+        "server.dns.views.list"
+      )
     end
   end
 
@@ -120,7 +129,8 @@ defmodule YellowDog.Server.Control.Dns do
     with {:ok, zones} <- read_zones(view_name) do
       current_resource(
         operation,
-        Enum.find(zones, &(&1["zone_name"] == canonical_name(zone_name)))
+        Enum.find(zones, &(&1["zone_name"] == canonical_name(zone_name))),
+        "server.dns.zones.list"
       )
     end
   end
@@ -132,7 +142,11 @@ defmodule YellowDog.Server.Control.Dns do
              "server.dns.acls.delete"
            ] do
     with {:ok, acls} <- read_acls() do
-      current_resource(operation, Enum.find(acls, &(&1["acl_id"] == acl_id)))
+      current_resource(
+        operation,
+        Enum.find(acls, &(&1["acl_id"] == acl_id)),
+        "server.dns.acls.list"
+      )
     end
   end
 
@@ -143,7 +157,11 @@ defmodule YellowDog.Server.Control.Dns do
              "server.dns.providers.delete"
            ] do
     with {:ok, providers} <- read_providers() do
-      current_resource(operation, Enum.find(providers, &(&1["provider_id"] == provider_id)))
+      current_resource(
+        operation,
+        Enum.find(providers, &(&1["provider_id"] == provider_id)),
+        "server.dns.providers.list"
+      )
     end
   end
 
@@ -161,7 +179,8 @@ defmodule YellowDog.Server.Control.Dns do
              "server.dns.records.delete"
            ] do
     with :ok <- validate_record_reference(operation, payload),
-         {:ok, record} <- resolve_record_id(view_name, zone_name, requested_id) do
+         {:ok, record} <- resolve_record_id(view_name, zone_name, requested_id),
+         {:ok, record} <- validate_current_resource("server.dns.records.list", record) do
       {:ok, record}
     else
       {:error, %Error{code: :not_found}} when operation == "server.dns.records.create" ->
@@ -178,60 +197,51 @@ defmodule YellowDog.Server.Control.Dns do
   def current(operation, _payload) when operation in @mutation_operations, do: invalid_error()
   def current(_operation, _payload), do: unsupported_error()
 
-  defp current_resource(operation, nil) do
+  defp current_resource(operation, nil, _read_operation) do
     if String.ends_with?(operation, ".create"), do: {:ok, :missing}, else: not_found_error()
   end
 
-  defp current_resource(_operation, resource), do: {:ok, resource}
+  defp current_resource(_operation, resource, read_operation) do
+    validate_current_resource(read_operation, resource)
+  end
 
   defp read_views do
-    with {:ok, views} <- dependency_call(:view_manager, :list_views, []),
-         true <- is_list(views),
-         {:ok, stats} <- dependency_call(:view_manager, :stats, []),
-         true <- is_map(stats) do
-      stats_by_view = field(stats, :views, %{})
+    with {:ok, result} <- dependency_call(:view_manager, :list_control_views, []),
+         {:ok, views} <- unwrap_control_views(result) do
+      views
+      |> Enum.reduce_while({:ok, []}, fn view, {:ok, items} ->
+        case project_view(view) do
+          {:ok, item} -> {:cont, {:ok, [item | items]}}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, items} -> {:ok, Enum.sort_by(items, & &1["view_name"])}
+        {:error, %Error{}} = error -> error
+      end
+    end
+  end
 
-      items =
-        views
-        |> Enum.flat_map(&project_view(&1, stats_by_view))
-        |> Enum.sort_by(& &1["view_name"])
+  defp unwrap_control_views({:ok, views}) when is_list(views), do: {:ok, views}
+  defp unwrap_control_views({:error, :unsupported_acl}), do: unsupported_error()
+  defp unwrap_control_views(_result), do: apply_failed_error()
 
-      {:ok, items}
+  defp project_view(%{} = view) do
+    with name when is_binary(name) <- field(view, :name, field(view, :view_name)),
+         match_clients when is_list(match_clients) <- field(view, :match_clients),
+         recursion when is_boolean(recursion) <- field(view, :recursion) do
+      {:ok,
+       %{
+         "view_name" => name,
+         "match_clients" => match_clients,
+         "recursion" => recursion
+       }}
     else
-      {:error, %Error{}} = error -> error
-      _invalid -> apply_failed_error()
+      _invalid -> invalid_error()
     end
   end
 
-  defp project_view({name, _pid, _priority}, stats) when is_binary(name) do
-    details = map_field(stats, name, %{})
-
-    [
-      %{
-        "view_name" => name,
-        "match_clients" => string_list(field(details, :match_clients, [])),
-        "recursion" => field(details, :recursion_enabled, false) == true
-      }
-    ]
-  end
-
-  defp project_view(%{} = view, _stats) do
-    case field(view, :name, field(view, :view_name)) do
-      name when is_binary(name) ->
-        [
-          %{
-            "view_name" => name,
-            "match_clients" => string_list(field(view, :match_clients, [])),
-            "recursion" => field(view, :recursion_enabled, field(view, :recursion, false)) == true
-          }
-        ]
-
-      _invalid ->
-        []
-    end
-  end
-
-  defp project_view(_view, _stats), do: []
+  defp project_view(_view), do: invalid_error()
 
   defp read_zones(view_name) do
     with {:ok, result} <- dependency_call(:zone_store, :list_zones_for_view, [view_name]),
@@ -362,7 +372,7 @@ defmodule YellowDog.Server.Control.Dns do
       end
     end)
     |> case do
-      {:ok, values} -> {:ok, values |> Enum.reverse() |> Enum.uniq()}
+      {:ok, values} -> {:ok, values |> Enum.uniq() |> Enum.sort()}
       :error -> :error
     end
   end
@@ -516,8 +526,17 @@ defmodule YellowDog.Server.Control.Dns do
   defp read_acls do
     with {:ok, acls} <- dependency_call(:acl_registry, :list_acls, []),
          true <- is_list(acls) do
-      items = acls |> Enum.flat_map(&project_acl/1) |> Enum.sort_by(& &1["acl_id"])
-      {:ok, items}
+      acls
+      |> Enum.reduce_while({:ok, []}, fn acl, {:ok, items} ->
+        case project_acl(acl) do
+          {:ok, item} -> {:cont, {:ok, [item | items]}}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, items} -> {:ok, Enum.sort_by(items, & &1["acl_id"])}
+        {:error, %Error{}} = error -> error
+      end
     else
       {:error, %Error{}} = error -> error
       _invalid -> apply_failed_error()
@@ -527,41 +546,69 @@ defmodule YellowDog.Server.Control.Dns do
   defp project_acl(%{} = acl) do
     with acl_id when is_binary(acl_id) <- field(acl, :name, field(acl, :acl_id)),
          {:ok, action, networks} <- acl_fields(acl) do
-      [%{"acl_id" => acl_id, "networks" => networks, "action" => action}]
+      {:ok, %{"acl_id" => acl_id, "networks" => networks, "action" => action}}
     else
-      _invalid -> []
+      {:error, %Error{}} = error -> error
+      _invalid -> invalid_error()
     end
   end
 
-  defp project_acl(_acl), do: []
+  defp project_acl(_acl), do: invalid_error()
 
   defp acl_fields(acl) do
     rules = field(acl, :rules, [])
 
-    if is_list(rules) and rules != [] do
-      entries =
-        Enum.flat_map(rules, fn rule ->
-          case {wire_acl_action(field(rule, :action)), field(rule, :network)} do
-            {{:ok, action}, network} when is_binary(network) -> [{action, network}]
-            _invalid -> []
-          end
-        end)
+    cond do
+      not is_list(rules) ->
+        invalid_error()
 
-      case entries do
-        [{action, _network} | _rest] ->
-          networks = for {^action, network} <- entries, do: network
-          {:ok, action, Enum.sort(Enum.uniq(networks))}
+      rules != [] ->
+        acl_rule_fields(rules)
 
-        [] ->
-          :error
+      true ->
+        with {:ok, action} <- wire_acl_action(field(acl, :action, :deny)),
+             networks when is_list(networks) <- field(acl, :networks, []),
+             true <- Enum.all?(networks, &is_binary/1) do
+          {:ok, action, networks |> Enum.uniq() |> Enum.sort()}
+        else
+          _invalid -> invalid_error()
+        end
+    end
+  end
+
+  defp acl_rule_fields(rules) do
+    rules
+    |> Enum.reduce_while({:ok, []}, fn rule, {:ok, entries} ->
+      case acl_rule_field(rule) do
+        {:ok, entry} -> {:cont, {:ok, [entry | entries]}}
+        {:error, %Error{}} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> homogeneous_acl_fields(entries)
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp acl_rule_field(rule) do
+    if is_nil(field(rule, :geo_countries)) do
+      case {wire_acl_action(field(rule, :action)), field(rule, :network)} do
+        {{:ok, action}, network} when is_binary(network) -> {:ok, {action, network}}
+        _unrepresentable -> unsupported_error()
       end
     else
-      with {:ok, action} <- wire_acl_action(field(acl, :action, :deny)),
-           networks when is_list(networks) <- field(acl, :networks, []) do
-        {:ok, action, string_list(networks) |> Enum.sort()}
-      else
-        _invalid -> :error
-      end
+      unsupported_error()
+    end
+  end
+
+  defp homogeneous_acl_fields(entries) do
+    case entries |> Enum.map(&elem(&1, 0)) |> Enum.uniq() do
+      [action] ->
+        networks = entries |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort()
+        {:ok, action, networks}
+
+      _mixed_actions ->
+        unsupported_error()
     end
   end
 
@@ -611,11 +658,8 @@ defmodule YellowDog.Server.Control.Dns do
     "local-provider-" <> Base.encode16(digest, case: :lower)
   end
 
-  defp read_logs(view_name, payload) do
-    opts = if is_integer(payload["limit"]), do: [limit: payload["limit"]], else: []
-
-    with {:ok, logs} <-
-           dependency_call(:query_logger, :get_logs_by_view, [view_name, opts]),
+  defp read_logs(view_name) do
+    with {:ok, logs} <- dependency_call(:query_logger, :control_snapshot, [view_name]),
          true <- is_list(logs) do
       items = logs |> Enum.flat_map(&project_log/1) |> Enum.sort_by(& &1["log_id"])
       {:ok, items}
@@ -707,13 +751,45 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp failure_count(_responses), do: 0
 
-  defp list_result(items, payload, id_fun) do
+  defp list_result(operation_name, items, payload, id_fun) do
     bounded = sort_and_bound(items, id_fun)
 
     with {:ok, revision} <- Revision.calculate(bounded),
          {:ok, page} <- paginate(bounded, payload, id_fun),
          {:ok, observed_at} <- observation_time() do
-      {:ok, %{"items" => page, "revision" => revision, "observed_at" => observed_at}}
+      canonical_result = %{
+        "items" => bounded,
+        "revision" => revision,
+        "observed_at" => observed_at
+      }
+
+      with {:ok, _canonical_result} <-
+             validate_operation_result(operation_name, canonical_result) do
+        result = %{canonical_result | "items" => page}
+        validate_operation_result(operation_name, result)
+      end
+    end
+  end
+
+  defp validate_current_resource(read_operation, resource) do
+    validation_result = %{
+      "items" => [resource],
+      "revision" => @validation_revision,
+      "observed_at" => @validation_observed_at
+    }
+
+    case validate_operation_result(read_operation, validation_result) do
+      {:ok, _validation_result} -> {:ok, resource}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp validate_operation_result(operation_name, result) do
+    with {:ok, operation} <- ServerOperation.fetch(operation_name),
+         {:ok, validated} <- Operation.validate_result(operation, result) do
+      {:ok, validated}
+    else
+      _invalid -> invalid_error()
     end
   end
 
@@ -794,17 +870,6 @@ defmodule YellowDog.Server.Control.Dns do
   end
 
   defp field(_map, _key, default), do: default
-
-  defp map_field(map, key, default) when is_map(map) do
-    case Map.fetch(map, key) do
-      {:ok, value} -> value
-      :error when is_binary(key) -> Map.get(map, key, default)
-      :error -> default
-    end
-  end
-
-  defp string_list(values) when is_list(values), do: Enum.filter(values, &is_binary/1)
-  defp string_list(_values), do: []
 
   defp canonical_owner("@"), do: "@"
   defp canonical_owner(owner), do: canonical_name(owner)
