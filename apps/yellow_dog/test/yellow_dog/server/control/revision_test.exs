@@ -36,7 +36,7 @@ defmodule YellowDog.Server.Control.RevisionTest do
   test "redacts compact sensitive setting identifiers before generic normalization" do
     assert {:ok, operation} = ServerOperation.fetch("server.settings.effective.get")
 
-    for key <- ["apikey", "apiKey"] do
+    for key <- ["apikey", "apiKey", "dnspassword", "jwtsecret", "oauthcredential", "authbearer"] do
       settings = %{
         "service" => "dns",
         "entries" => [
@@ -57,6 +57,32 @@ defmodule YellowDog.Server.Control.RevisionTest do
                 ],
                 "service" => "dns"
               }} = Result.normalize(settings, operation)
+    end
+
+    for key <- ["listen", "tokenizer", "secretariat"] do
+      settings = %{
+        "service" => "dns",
+        "entries" => [
+          %{"key" => key, "value" => %{"type" => "string", "value" => "ordinary"}}
+        ]
+      }
+
+      assert {:ok, ^settings} = Result.normalize(settings, operation)
+    end
+  end
+
+  test "classifies sensitive assignment suffixes without matching middle substrings" do
+    for identifier <- ["servicePassword", "jwtSecret", "oauthCredential", "authBearer"] do
+      value = %{"message" => "#{identifier}=runtime-secret"}
+      assert_invalid(Result.normalize(value))
+      assert_invalid(Revision.calculate(value))
+    end
+
+    for assignment <- ["monkey=banana", "tokenizer=enabled", "secretariat=office"] do
+      value = %{"message" => assignment}
+      assert {:ok, ^value} = Result.normalize(value)
+      assert {:ok, revision} = Revision.calculate(value)
+      assert String.match?(revision, ~r/\A[0-9a-f]{64}\z/)
     end
   end
 

@@ -12,11 +12,12 @@ defmodule YellowDog.Server.Control.Result do
   @identifier_delimiter ~r/[^a-z0-9]+/u
   @bearer_credential ~r/\A[A-Za-z0-9._~+\/=\-]{4,}\z/u
   @safe_setting_reference_suffixes ~w(_ref _id _uri _url _digest _hash)
-  @sensitive_identifier_tokens MapSet.new(
-                                 ~w(password passwd passphrase token secret authorization credential private signing)
-                               )
-  @compact_sensitive_identifiers MapSet.new(
-                                   ~w(password passwd passphrase apikey accesstoken authtoken clientsecret credential authorization)
+  @sensitive_identifiers MapSet.new(
+                           ~w(password passwd passphrase token secret authorization credential private signing bearer apikey accesstoken authtoken clientsecret)
+                         )
+  @sensitive_identifier_suffixes ~w(
+                                   password passwd passphrase token secret credential bearer authorization
+                                   apikey privatekey secretkey signingkey tlskey
                                  )
   @tls_material_tokens MapSet.new(~w(key private secret cert certificate pem pkcs12 pfx))
   @redacted_setting_value %{"type" => "string", "value" => "[redacted]"}
@@ -262,7 +263,7 @@ defmodule YellowDog.Server.Control.Result do
 
       byte in [?:, ?=] ->
         identifier = if current == "", do: pending, else: current
-        sensitive_assignment_identifier?(identifier) or scan_assignments(rest, "", nil)
+        sensitive_identifier?(identifier) or scan_assignments(rest, "", nil)
 
       true ->
         scan_assignments(rest, "", nil)
@@ -577,23 +578,14 @@ defmodule YellowDog.Server.Control.Result do
     tokens = String.split(String.downcase(identifier), @identifier_delimiter, trim: true)
     compact = Enum.join(tokens)
 
-    MapSet.member?(@compact_sensitive_identifiers, compact) or
-      Enum.any?(tokens, &MapSet.member?(@sensitive_identifier_tokens, &1)) or
-      token_pair?(tokens, "api", "key") or tls_material?(tokens)
+    Enum.any?([compact | tokens], &sensitive_identifier_candidate?/1) or tls_material?(tokens)
   end
 
   defp sensitive_identifier?(_identifier), do: false
 
-  defp sensitive_assignment_identifier?(identifier) do
-    sensitive_identifier?(identifier) or
-      (is_binary(identifier) and
-         "bearer" in String.split(String.downcase(identifier), @identifier_delimiter, trim: true))
-  end
-
-  defp token_pair?(tokens, first, second) do
-    tokens
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.any?(&(&1 == [first, second]))
+  defp sensitive_identifier_candidate?(candidate) do
+    MapSet.member?(@sensitive_identifiers, candidate) or
+      Enum.any?(@sensitive_identifier_suffixes, &String.ends_with?(candidate, &1))
   end
 
   defp tls_material?(tokens) do

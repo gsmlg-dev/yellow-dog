@@ -384,6 +384,10 @@ defmodule YellowDog.Server.Control.DispatcherTest do
       "access_token=explicit-secret",
       "bearer=runtime-secret",
       "auth_bearer=runtime-secret",
+      "servicePassword=runtime-secret",
+      "jwtSecret=runtime-secret",
+      "oauthCredential=runtime-secret",
+      "authBearer=runtime-secret",
       "/+private/token",
       "/私密/token",
       "file:///var/lib/yellowdog/state",
@@ -394,6 +398,8 @@ defmodule YellowDog.Server.Control.DispatcherTest do
 
     accepted = [
       "monkey=banana",
+      "tokenizer=enabled",
+      "secretariat=office",
       "https://provider.example.test/api?next=/console",
       "https://provider.example.test/api?next=file:///var/lib/yellowdog/state",
       "https://example.test/redirect?next=(/console)",
@@ -482,6 +488,60 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     refute inspect(redacted) =~ secret
     refute inspect(redacted) =~ nested_secret
     refute inspect(redacted) =~ glued_secret
+  end
+
+  test "redacts prefixed sensitive setting suffixes at every nesting level" do
+    setting = fn key, value ->
+      %{"key" => key, "value" => %{"type" => "string", "value" => value}}
+    end
+
+    top_sensitive = ["dnspassword", "jwtsecret"]
+    nested_sensitive = ["oauthcredential", "authbearer"]
+    ordinary = [{"listen", "0.0.0.0"}, {"tokenizer", "enabled"}, {"secretariat", "office"}]
+
+    result = %{
+      "service" => "dns",
+      "entries" =>
+        Enum.map(top_sensitive, &setting.(&1, "value-for-#{&1}")) ++
+          Enum.map(ordinary, fn {key, value} -> setting.(key, value) end) ++
+          [
+            %{
+              "key" => "nested",
+              "value" => %{
+                "type" => "object",
+                "entries" => Enum.map(nested_sensitive, &setting.(&1, "value-for-#{&1}"))
+              }
+            }
+          ]
+    }
+
+    redacted_value = %{"type" => "string", "value" => "[redacted]"}
+
+    expected = %{
+      "service" => "dns",
+      "entries" =>
+        Enum.map(top_sensitive, &%{"key" => &1, "value" => redacted_value}) ++
+          Enum.map(ordinary, fn {key, value} -> setting.(key, value) end) ++
+          [
+            %{
+              "key" => "nested",
+              "value" => %{
+                "type" => "object",
+                "entries" =>
+                  Enum.map(nested_sensitive, &%{"key" => &1, "value" => redacted_value})
+              }
+            }
+          ]
+    }
+
+    assert {:ok, operation} = ServerOperation.fetch("server.settings.effective.get")
+    assert {:ok, ^result} = Operation.validate_result(operation, result)
+    YellowDog.ServerControlFake.configure(:settings, response: {:ok, result})
+
+    assert {:ok, ^expected} =
+             Control.dispatch(envelope("server.settings.effective.get", %{"service" => "dns"}))
+
+    assert {:ok, ^expected} = Operation.validate_result(operation, expected)
   end
 
   test "preserves safe managed setting references containing URL paths" do
