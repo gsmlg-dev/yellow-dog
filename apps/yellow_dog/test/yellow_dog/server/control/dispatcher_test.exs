@@ -382,14 +382,20 @@ defmodule YellowDog.Server.Control.DispatcherTest do
 
     rejected = [
       "access_token=explicit-secret",
+      "bearer=runtime-secret",
+      "auth_bearer=runtime-secret",
       "/+private/token",
       "/私密/token",
+      "file:///var/lib/yellowdog/state",
+      "https://alice:runtime-secret@example.test/api",
+      "https://alice:runtime%2Dsecret@example.test/api",
       "https://example.test/path?access_token=explicit-secret"
     ]
 
     accepted = [
       "monkey=banana",
       "https://provider.example.test/api?next=/console",
+      "https://provider.example.test/api?next=file:///var/lib/yellowdog/state",
       "https://example.test/redirect?next=(/console)",
       "https://provider.example.test/api/v1/resources"
     ]

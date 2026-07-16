@@ -76,6 +76,10 @@ defmodule YellowDog.Server.Control.RevisionTest do
           "api_key=server-control-secret",
           "Authorization: Bearer server-control-secret",
           "Bearer server-control-secret",
+          "bearer=runtime-secret",
+          "auth_bearer=runtime-secret",
+          "https://alice:runtime-secret@example.test/api",
+          "https://alice:runtime%2Dsecret@example.test/api",
           "https://example.test/path?access_token=explicit-secret"
         ] do
       assert_invalid(Result.normalize(%{message: text}))
@@ -92,6 +96,7 @@ defmodule YellowDog.Server.Control.RevisionTest do
       url: "https://example.test/assets/installer.img",
       redirect_url: "https://provider.example.test/api?next=/console",
       parenthesized_url: "https://example.test/redirect?next=(/console)",
+      file_query_url: "https://provider.example.test/api?next=file:///var/lib/yellowdog/state",
       diagnostic: "monkey=banana",
       token: "ydt_once_4f12d18b72a1"
     }

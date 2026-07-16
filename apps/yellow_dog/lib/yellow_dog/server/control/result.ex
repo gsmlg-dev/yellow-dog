@@ -211,7 +211,11 @@ defmodule YellowDog.Server.Control.Result do
   end
 
   defp sensitive_text?(value) do
-    secret_diagnostic?(value) or local_path?(value)
+    case classify_http_uri(value) do
+      :credentialed -> true
+      :safe -> secret_diagnostic?(value)
+      :not_http -> secret_diagnostic?(value) or local_path?(value)
+    end
   end
 
   defp secret_diagnostic?(value) do
@@ -221,23 +225,25 @@ defmodule YellowDog.Server.Control.Result do
   defp local_path?(value) do
     downcased = String.downcase(value)
 
-    cond do
-      String.contains?(downcased, "file://") -> true
-      complete_http_url?(value) -> false
-      true -> windows_absolute_path?(value) or unix_absolute_path?(value)
-    end
+    String.contains?(downcased, "file://") or windows_absolute_path?(value) or
+      unix_absolute_path?(value)
   end
 
-  defp complete_http_url?(value) do
+  defp classify_http_uri(value) do
     if Regex.match?(~r/\s/u, value) do
-      false
+      :not_http
     else
       case URI.parse(value) do
-        %URI{scheme: scheme, host: host} when scheme in ["http", "https"] ->
-          is_binary(host) and host != ""
+        %URI{scheme: scheme, host: host, userinfo: userinfo}
+        when is_binary(scheme) and is_binary(host) and host != "" ->
+          if String.downcase(scheme) in ["http", "https"] do
+            if is_binary(userinfo) and userinfo != "", do: :credentialed, else: :safe
+          else
+            :not_http
+          end
 
         _uri ->
-          false
+          :not_http
       end
     end
   end
@@ -256,7 +262,7 @@ defmodule YellowDog.Server.Control.Result do
 
       byte in [?:, ?=] ->
         identifier = if current == "", do: pending, else: current
-        sensitive_identifier?(identifier) or scan_assignments(rest, "", nil)
+        sensitive_assignment_identifier?(identifier) or scan_assignments(rest, "", nil)
 
       true ->
         scan_assignments(rest, "", nil)
@@ -577,6 +583,12 @@ defmodule YellowDog.Server.Control.Result do
   end
 
   defp sensitive_identifier?(_identifier), do: false
+
+  defp sensitive_assignment_identifier?(identifier) do
+    sensitive_identifier?(identifier) or
+      (is_binary(identifier) and
+         "bearer" in String.split(String.downcase(identifier), @identifier_delimiter, trim: true))
+  end
 
   defp token_pair?(tokens, first, second) do
     tokens
