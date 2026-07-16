@@ -1031,6 +1031,121 @@ defmodule YellowDog.Management.ConfigVersionsTest do
              ManagementCore.publish_server_config("srv-healthy", server_attrs(2))
   end
 
+  test "incoherent lifecycle counter and desired metadata block every facade path", %{
+    data_dir: data_dir
+  } do
+    cases = [
+      {"counter-without-versions", 1,
+       fn lifecycle ->
+         lifecycle
+         |> Map.put("counter", 5)
+         |> Map.put("desired_version", nil)
+         |> Map.put("applied_version", nil)
+         |> Map.put("versions", %{})
+       end},
+      {"counter-above-max", 1,
+       fn lifecycle ->
+         lifecycle
+         |> Map.put("counter", 2)
+         |> Map.put("desired_version", 2)
+       end},
+      {"nil-desired", 1,
+       fn lifecycle ->
+         Map.put(lifecycle, "desired_version", nil)
+       end},
+      {"stale-desired", 2,
+       fn lifecycle ->
+         Map.put(lifecycle, "desired_version", 1)
+       end}
+    ]
+
+    for {suffix, publish_count, tamper} <- cases do
+      server_id = "srv-lifecycle-#{suffix}"
+      register_server(server_id)
+
+      published =
+        Enum.map(1..publish_count, fn index ->
+          assert {:ok, version} =
+                   ManagementCore.publish_server_config(server_id, server_attrs(index))
+
+          version
+        end)
+
+      transition_version = List.last(published)
+      assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+      assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+      tampered_manifest =
+        Map.update!(manifest, "config_lifecycle", tamper)
+
+      assert {:ok, ^manifest_path} = AtomicJson.replace(manifest_path, tampered_manifest)
+
+      versions_dir =
+        Path.join([data_dir, "management", "servers", server_id, "versions"])
+
+      manifest_bytes = File.read!(manifest_path)
+      version_files = snapshot_files(versions_dir)
+
+      assert_error(
+        ManagementCore.get_server_config_version(server_id, transition_version.version),
+        :invalid
+      )
+
+      assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
+      assert_error(transition(transition_version, :delivered, 0), :invalid)
+
+      assert_error(
+        ManagementCore.publish_server_config(server_id, server_attrs(publish_count + 1)),
+        :invalid
+      )
+
+      assert File.read!(manifest_path) == manifest_bytes
+      assert snapshot_files(versions_dir) == version_files
+      refute filesystem_residue?(Path.dirname(manifest_path))
+    end
+  end
+
+  test "orphan version gaps remain valid and reserve monotonic version numbers", %{
+    data_dir: data_dir
+  } do
+    register_server("srv-lifecycle-orphan-gap")
+
+    versions_dir =
+      Path.join([
+        data_dir,
+        "management",
+        "servers",
+        "srv-lifecycle-orphan-gap",
+        "versions"
+      ])
+
+    File.mkdir_p!(versions_dir)
+    orphan_path = Path.join(versions_dir, "1-#{@digest_a}.json")
+    File.write!(orphan_path, "unreferenced orphan")
+
+    assert {:ok, %ConfigVersion{version: 2} = second} =
+             publish_server("srv-lifecycle-orphan-gap")
+
+    assert {:ok, ^second} =
+             ManagementCore.latest_desired_config(:server, "srv-lifecycle-orphan-gap")
+
+    assert {:ok, %ConfigVersion{version: 3} = third} =
+             ManagementCore.publish_server_config(
+               "srv-lifecycle-orphan-gap",
+               server_attrs(3)
+             )
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-lifecycle-orphan-gap")
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    lifecycle = manifest["config_lifecycle"]
+
+    assert lifecycle["counter"] == 3
+    assert lifecycle["desired_version"] == 3
+    assert Enum.sort(Map.keys(lifecycle["versions"])) == ["2", "3"]
+    assert File.exists?(orphan_path)
+    assert {:ok, ^third} = ManagementCore.get_server_config_version("srv-lifecycle-orphan-gap", 3)
+  end
+
   test "manifest write failure leaves an immutable orphan that retry never reuses", %{
     data_dir: data_dir
   } do
@@ -1525,6 +1640,13 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       {:error, :enoent} ->
         false
     end
+  end
+
+  defp snapshot_files(directory) do
+    directory
+    |> Path.join("*.json")
+    |> Path.wildcard()
+    |> Map.new(fn path -> {path, File.read!(path)} end)
   end
 
   defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)

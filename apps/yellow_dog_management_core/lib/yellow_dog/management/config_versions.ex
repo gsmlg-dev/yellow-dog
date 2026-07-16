@@ -256,7 +256,13 @@ defmodule YellowDog.Management.ConfigVersions do
          :ok <- optional_version(value["desired_version"]),
          :ok <- optional_version(value["applied_version"]),
          versions when is_map(versions) <- value["versions"],
-         :ok <- validate_lifecycle_entries(versions, value["counter"]) do
+         :ok <- validate_lifecycle_entries(versions, value["counter"]),
+         :ok <-
+           validate_lifecycle_coherence(
+             versions,
+             value["counter"],
+             value["desired_version"]
+           ) do
       {:ok, value}
     else
       _invalid -> invalid()
@@ -277,6 +283,23 @@ defmodule YellowDog.Management.ConfigVersions do
         _invalid -> {:halt, invalid()}
       end
     end)
+  end
+
+  defp validate_lifecycle_coherence(versions, counter, desired_version)
+       when map_size(versions) == 0 do
+    if counter == 0 and is_nil(desired_version), do: :ok, else: invalid()
+  end
+
+  defp validate_lifecycle_coherence(versions, counter, desired_version) do
+    max_referenced_version =
+      versions
+      |> Map.keys()
+      |> Enum.map(&String.to_integer/1)
+      |> Enum.max()
+
+    if counter == max_referenced_version and desired_version == counter,
+      do: :ok,
+      else: invalid()
   end
 
   defp load_versions(target_type, target_id, lifecycle, deadline, config) do
