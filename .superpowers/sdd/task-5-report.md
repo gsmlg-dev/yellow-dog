@@ -48,6 +48,15 @@ were made by Task 5.
   replacement. The marker records the exact tokenized event, digest, desired
   registration digest, and previous registration or absence. Registry startup
   reconciles this marker before decoding or exposing registration state.
+- Every mutable shared-manifest replacement or removal runs in one internal
+  linked monitored worker under the operation deadline. This includes initial
+  outbox creation, plain and conditional section updates, outbox clear, startup
+  reconciliation, and compensating rollback. ManifestStore kills and joins a
+  worker at the deadline, re-reads the exact target state, and classifies the
+  result as committed or not committed before continuing. A timed-out initial
+  outbox or section write is restored through the same helper under `D + M` and
+  verified before the original timeout is returned; unverified restoration is
+  reported as the stable internal persistence error instead.
 - ManifestStore owns event staging and promotion through separate linked,
   monitored workers. The staging worker writes, syncs, and closes only the
   known same-directory `.stage` path. The promotion worker rechecks the shared
@@ -437,6 +446,52 @@ The focused GREEN command completed with exit `0`; `3 tests, 0 failures,
 26 excluded`. The complete durability file then passed with `29 tests,
 0 failures`.
 
+## Sixth Review: Owned Manifest Write Deadlines
+
+This review fix was developed after Task 5 commit `0ea8597a`; no prior commit
+was amended.
+
+### RED 19: initial outbox rename outlived the caller
+
+A deterministic file adapter atomically renamed the initial registration plus
+`"registration_audit_outbox"` manifest and then blocked for 600 ms under a
+100 ms operation deadline. The focused test failed because the rename callback
+PID was exactly ManifestStore. The registry caller reached its transport
+timeout while the committed registration and pending outbox were still visible
+on disk.
+
+### RED 20: plain section rename outlived the caller
+
+The corresponding `update_section/3` test atomically installed a
+`"config_lifecycle"` section and blocked after rename. It failed for the same
+reason: ManifestStore performed the rename itself and the timed-out caller
+could immediately observe the stale section. The focused RED command completed
+with exit `2`; `2 tests, 2 failures, 29 excluded`.
+
+### GREEN: one owned mutable-manifest helper
+
+All mutable manifest writes now pass through `owned_manifest_write/4`. It runs
+replace or removal in one linked monitored worker, checks the absolute deadline
+before side effects, kills the worker at the deadline, waits for monitor
+`DOWN`, and then compares the exact final manifest state with the intended
+target for every worker result, exit, and timeout.
+
+Initial outbox and section writes treat any deadline crossing as failure even
+when the rename won. ManifestStore re-reads the current manifest, restores only
+the owned registration/outbox or section while preserving unrelated top-level
+keys, performs that compensation through the same worker protocol under the
+derived `D + M` cleanup deadline, and verifies the restored state. Outbox clear
+and startup reconciliation may accept a deadline-crossing write only when the
+exact coherent target is present. The existing ManifestStore `D + 2M` and
+registry `D + 3M` call bounds therefore remain outside worker termination and
+compensation.
+
+The focused GREEN command completed with exit `0`; `2 tests, 0 failures,
+29 excluded`. Both tests prove the worker is gone, ManifestStore and the facade
+remain responsive, no manifest/event appears immediately or after the original
+600 ms delay, and a subsequent mutation succeeds. The complete durability file
+passed with `31 tests, 0 failures`.
+
 ## Final Verification
 
 Strict compile:
@@ -464,7 +519,7 @@ devenv shell -- bash -lc \
   'cd apps/yellow_dog_management_core && mix test'
 ```
 
-Result: exit `0`; `54 tests, 0 failures`.
+Result: exit `0`; `56 tests, 0 failures`.
 
 Affected storage tests:
 

@@ -151,6 +151,7 @@ defmodule YellowDog.Management.ManifestStore do
 
   def handle_info({:event_stage_result, _token, _result}, state), do: {:noreply, state}
   def handle_info({:event_promote_result, _token, _result}, state), do: {:noreply, state}
+  def handle_info({:manifest_write_result, _token, _result}, state), do: {:noreply, state}
 
   defp update_section_with(path, section, updater, after_write, deadline, %Config{} = config) do
     bounded_call(
@@ -169,15 +170,11 @@ defmodule YellowDog.Management.ManifestStore do
          {:ok, manifest} <- reconcile_manifest(path, deadline, config),
          {:ok, previous_registration} <- previous_registration(manifest),
          outbox = build_outbox(registration, previous_registration, reservation),
-         :ok <- ensure_before_deadline(deadline),
-         {:ok, _path} <-
-           AtomicJson.replace(
-             path,
-             manifest
-             |> Map.put("registration", registration)
-             |> Map.put(@outbox_key, outbox),
-             config.file_ops
-           ) do
+         desired_manifest =
+           manifest
+           |> Map.put("registration", registration)
+           |> Map.put(@outbox_key, outbox),
+         :ok <- write_registration_outbox(path, desired_manifest, outbox, deadline, config) do
       test_hook(config, :after_outbox_write, %{path: path, reservation: reservation})
 
       result =
@@ -218,11 +215,13 @@ defmodule YellowDog.Management.ManifestStore do
          _registration,
          outbox,
          reservation,
-         _deadline,
+         deadline,
          {:error, _reason} = error
        ) do
-    rollback_outbox(path, outbox, reservation.config)
-    error
+    case rollback_outbox(path, outbox, deadline, reservation.config) do
+      :ok -> error
+      {:error, _reason} = rollback_error -> rollback_error
+    end
   end
 
   defp commit_event(reservation, deadline) do
@@ -432,13 +431,14 @@ defmodule YellowDog.Management.ManifestStore do
          {:ok, manifest, _existed?} <- read_manifest(path, reservation.config),
          true <- manifest["registration"] == registration,
          true <- manifest[@outbox_key] == outbox,
-         :ok <- ensure_before_deadline(deadline),
-         {:ok, _path} <-
-           AtomicJson.replace(
+         result <-
+           owned_manifest_write(
              path,
              Map.delete(manifest, @outbox_key),
-             reservation.config.file_ops
-           ) do
+             deadline,
+             reservation.config
+           ),
+         :ok <- accept_committed_manifest_write(result) do
       :ok
     else
       false -> invalid_manifest()
@@ -468,7 +468,8 @@ defmodule YellowDog.Management.ManifestStore do
           |> Map.delete(@outbox_key)
         end
 
-      with {:ok, _path} <- replace_or_remove(path, reconciled, config) do
+      with result <- owned_manifest_write(path, reconciled, deadline, config),
+           :ok <- accept_committed_manifest_write(result) do
         {:ok, reconciled}
       end
     end
@@ -518,15 +519,18 @@ defmodule YellowDog.Management.ManifestStore do
          {:ok, manifest} <- reconcile_manifest(path, deadline, config),
          previous_section = Map.fetch(manifest, section),
          {:ok, updated_section} <- apply_update(updater, Map.get(manifest, section)),
-         :ok <- ensure_before_deadline(deadline),
-         {:ok, _path} <-
-           AtomicJson.replace(path, Map.put(manifest, section, updated_section), config.file_ops) do
-      if deadline_expired?(deadline) do
-        rollback_section(path, section, previous_section, config)
-        EventStore.timeout_result()
-      else
-        {:ok, updated_section}
-      end
+         desired_manifest = Map.put(manifest, section, updated_section),
+         :ok <-
+           write_manifest_section(
+             path,
+             section,
+             previous_section,
+             updated_section,
+             desired_manifest,
+             deadline,
+             config
+           ) do
+      {:ok, updated_section}
     end
   end
 
@@ -535,9 +539,17 @@ defmodule YellowDog.Management.ManifestStore do
          {:ok, manifest} <- reconcile_manifest(path, deadline, config),
          previous_section = Map.fetch(manifest, section),
          {:ok, updated_section} <- apply_update(updater, Map.get(manifest, section)),
-         :ok <- ensure_before_deadline(deadline),
-         {:ok, _path} <-
-           AtomicJson.replace(path, Map.put(manifest, section, updated_section), config.file_ops) do
+         desired_manifest = Map.put(manifest, section, updated_section),
+         :ok <-
+           write_manifest_section(
+             path,
+             section,
+             previous_section,
+             updated_section,
+             desired_manifest,
+             deadline,
+             config
+           ) do
       result =
         if deadline_expired?(deadline),
           do: EventStore.timeout_result(),
@@ -551,8 +563,17 @@ defmodule YellowDog.Management.ManifestStore do
           success
 
         {:error, _reason} = error ->
-          rollback_section(path, section, previous_section, config)
-          error
+          case rollback_section(
+                 path,
+                 section,
+                 previous_section,
+                 updated_section,
+                 deadline,
+                 config
+               ) do
+            :ok -> error
+            {:error, _reason} = rollback_error -> rollback_error
+          end
       end
     end
   end
@@ -695,31 +716,166 @@ defmodule YellowDog.Management.ManifestStore do
     :throw, _reason -> internal_error()
   end
 
-  defp rollback_outbox(path, outbox, config) do
-    with {:ok, manifest, _existed?} <- read_manifest(path, config),
-         true <- manifest[@outbox_key] == outbox,
-         {:ok, previous_registration} <-
+  defp write_registration_outbox(path, desired_manifest, outbox, deadline, config) do
+    case owned_manifest_write(path, desired_manifest, deadline, config) do
+      {:ok, _path} ->
+        :ok
+
+      {:deadline, _commit_state} ->
+        case rollback_outbox(path, outbox, deadline, config) do
+          :ok -> EventStore.timeout_result()
+          {:error, _reason} = error -> error
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp write_manifest_section(
+         path,
+         section,
+         previous_section,
+         updated_section,
+         desired_manifest,
+         deadline,
+         config
+       ) do
+    case owned_manifest_write(path, desired_manifest, deadline, config) do
+      {:ok, _path} ->
+        :ok
+
+      {:deadline, _commit_state} ->
+        case rollback_section(
+               path,
+               section,
+               previous_section,
+               updated_section,
+               deadline,
+               config
+             ) do
+          :ok -> EventStore.timeout_result()
+          {:error, _reason} = error -> error
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp accept_committed_manifest_write({:ok, _path}), do: :ok
+  defp accept_committed_manifest_write({:deadline, :committed}), do: :ok
+
+  defp accept_committed_manifest_write({:deadline, :not_committed}),
+    do: EventStore.timeout_result()
+
+  defp accept_committed_manifest_write({:error, _reason} = error), do: error
+
+  defp rollback_outbox(path, outbox, deadline, config) do
+    with {:ok, previous_registration} <-
            decode_previous_registration(outbox["previous_registration"]),
-         restored <-
-           manifest
-           |> restore_registration(previous_registration)
-           |> Map.delete(@outbox_key),
-         {:ok, _path} <- replace_or_remove(path, restored, config) do
-      :ok
+         {:ok, manifest, _existed?} <- read_manifest(path, config) do
+      cond do
+        outbox_restored?(manifest, previous_registration) ->
+          :ok
+
+        manifest[@outbox_key] == outbox ->
+          restored =
+            manifest
+            |> restore_registration(previous_registration)
+            |> Map.delete(@outbox_key)
+
+          restore_manifest(
+            path,
+            restored,
+            recovery_deadline(deadline, config),
+            config,
+            fn -> verify_outbox_restored(path, previous_registration, config) end
+          )
+
+        true ->
+          internal_error()
+      end
     else
-      false -> :ok
       {:error, _reason} = error -> log_rollback_failure(path, error)
     end
   end
 
-  defp rollback_section(path, section, previous_section, config) do
-    with {:ok, manifest, _existed?} <- read_manifest(path, config),
-         restored = restore_section(manifest, section, previous_section),
-         {:ok, _path} <- replace_or_remove(path, restored, config) do
-      :ok
+  defp rollback_section(
+         path,
+         section,
+         previous_section,
+         updated_section,
+         deadline,
+         config
+       ) do
+    with {:ok, manifest, _existed?} <- read_manifest(path, config) do
+      case Map.fetch(manifest, section) do
+        ^previous_section ->
+          :ok
+
+        {:ok, ^updated_section} ->
+          restored = restore_section(manifest, section, previous_section)
+
+          restore_manifest(
+            path,
+            restored,
+            recovery_deadline(deadline, config),
+            config,
+            fn -> verify_section_restored(path, section, previous_section, config) end
+          )
+
+        _other ->
+          internal_error()
+      end
     else
       {:error, _reason} = error -> log_rollback_failure(path, error)
     end
+  end
+
+  defp restore_manifest(path, restored, deadline, config, verify) do
+    result = owned_manifest_write(path, restored, deadline, config)
+
+    case accept_committed_manifest_write(result) do
+      :ok ->
+        case verify.() do
+          :ok -> :ok
+          {:error, _reason} = error -> unverified_rollback(path, error)
+        end
+
+      {:error, _reason} = error ->
+        unverified_rollback(path, error)
+    end
+  end
+
+  defp unverified_rollback(path, error) do
+    log_rollback_failure(path, error)
+    internal_error()
+  end
+
+  defp verify_outbox_restored(path, previous_registration, config) do
+    with {:ok, manifest, _existed?} <- read_manifest(path, config),
+         true <- outbox_restored?(manifest, previous_registration) do
+      :ok
+    else
+      false -> internal_error()
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp verify_section_restored(path, section, previous_section, config) do
+    with {:ok, manifest, _existed?} <- read_manifest(path, config),
+         true <- Map.fetch(manifest, section) == previous_section do
+      :ok
+    else
+      false -> internal_error()
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp outbox_restored?(manifest, previous_registration) do
+    not Map.has_key?(manifest, @outbox_key) and
+      Map.fetch(manifest, "registration") == previous_registration
   end
 
   defp restore_registration(manifest, {:ok, registration}),
@@ -732,16 +888,147 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp restore_section(manifest, section, :error), do: Map.delete(manifest, section)
 
-  defp replace_or_remove(path, manifest, config) when map_size(manifest) == 0 do
-    case config.file_ops.rm(path) do
-      :ok -> {:ok, path}
-      {:error, :enoent} -> {:ok, path}
-      {:error, reason} -> {:error, reason}
+  defp recovery_deadline(deadline, config), do: deadline + config.transport_margin_ms
+
+  defp owned_manifest_write(path, manifest, deadline, config) do
+    owner = self()
+    token = make_ref()
+    target = manifest_target(manifest)
+
+    {worker_pid, monitor_ref} =
+      :erlang.spawn_opt(
+        fn ->
+          result =
+            with :ok <- ensure_before_deadline(deadline) do
+              perform_manifest_write(path, target, config)
+            end
+
+          send(owner, {:manifest_write_result, token, result})
+        end,
+        [:link, :monitor]
+      )
+
+    await_manifest_write(worker_pid, monitor_ref, token, path, target, deadline, config)
+  end
+
+  defp await_manifest_write(
+         worker_pid,
+         monitor_ref,
+         token,
+         path,
+         target,
+         deadline,
+         config
+       ) do
+    receive do
+      {:manifest_write_result, ^token, result} ->
+        await_manifest_worker_down(worker_pid, monitor_ref, token)
+        reconcile_manifest_write(path, target, result, deadline, config)
+
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        result = take_manifest_write_result(token, internal_error())
+        flush_manifest_worker_messages(worker_pid, token)
+        reconcile_manifest_write(path, target, result, deadline, config)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_manifest_worker_down(worker_pid, monitor_ref, token)
+        result = take_manifest_write_result(token, internal_error())
+        reconcile_manifest_write(path, target, result, deadline, config)
+    after
+      max(deadline - monotonic_ms(), 0) ->
+        Process.exit(worker_pid, :kill)
+        await_manifest_worker_down(worker_pid, monitor_ref, token)
+        reconcile_manifest_write(path, target, EventStore.timeout_result(), deadline, config)
     end
   end
 
-  defp replace_or_remove(path, manifest, config) do
+  defp await_manifest_worker_down(worker_pid, monitor_ref, token) do
+    receive do
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        flush_manifest_worker_messages(worker_pid, token)
+
+      {:manifest_write_result, ^token, _result} ->
+        await_manifest_worker_down(worker_pid, monitor_ref, token)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_manifest_worker_down(worker_pid, monitor_ref, token)
+    end
+  end
+
+  defp take_manifest_write_result(token, fallback) do
+    receive do
+      {:manifest_write_result, ^token, result} -> result
+    after
+      0 -> fallback
+    end
+  end
+
+  defp flush_manifest_worker_messages(worker_pid, token) do
+    receive do
+      {:EXIT, ^worker_pid, _reason} ->
+        flush_manifest_worker_messages(worker_pid, token)
+
+      {:manifest_write_result, ^token, _result} ->
+        flush_manifest_worker_messages(worker_pid, token)
+    after
+      0 -> :ok
+    end
+  end
+
+  defp reconcile_manifest_write(path, target, result, deadline, config) do
+    case manifest_target_matches?(path, target, config) do
+      {:ok, true} ->
+        if deadline_expired?(deadline), do: {:deadline, :committed}, else: {:ok, path}
+
+      {:ok, false} ->
+        if deadline_expired?(deadline) do
+          {:deadline, :not_committed}
+        else
+          manifest_write_failure(result)
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp manifest_write_failure({:error, %Error{}} = error), do: error
+  defp manifest_write_failure(_result), do: internal_error()
+
+  defp perform_manifest_write(path, {:present, manifest}, config) do
     AtomicJson.replace(path, manifest, config.file_ops)
+  end
+
+  defp perform_manifest_write(path, :absent, config) do
+    case config.file_ops.rm(path) do
+      :ok -> {:ok, path}
+      {:error, :enoent} -> {:ok, path}
+      {:error, _reason} -> internal_error()
+    end
+  rescue
+    _exception -> internal_error()
+  catch
+    _kind, _reason -> internal_error()
+  end
+
+  defp manifest_target(manifest) when map_size(manifest) == 0, do: :absent
+  defp manifest_target(manifest), do: {:present, manifest}
+
+  defp manifest_target_matches?(path, target, config) do
+    case read_manifest_state(path, config) do
+      {:ok, ^target} -> {:ok, true}
+      {:ok, _other} -> {:ok, false}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp read_manifest_state(path, config) do
+    case AtomicJson.read(path, config.file_ops) do
+      {:ok, manifest} when is_map(manifest) -> {:ok, {:present, manifest}}
+      {:ok, _invalid} -> invalid_manifest()
+      {:error, %Error{code: :not_found}} -> {:ok, :absent}
+      {:error, %Error{}} = error -> error
+    end
   end
 
   defp cleanup_staging(reservation) do

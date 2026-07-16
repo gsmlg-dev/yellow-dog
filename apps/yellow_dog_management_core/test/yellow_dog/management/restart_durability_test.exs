@@ -23,7 +23,8 @@ defmodule YellowDog.Management.RestartDurabilityTest do
           :event_store_test_hook,
           :atomic_json_file_ops,
           :atomic_json_file_ops_owner,
-          :atomic_json_link_result
+          :atomic_json_link_result,
+          :atomic_json_rename_delay_key
         ],
         fn key ->
           {key, Application.fetch_env(:yellow_dog_management_core, key)}
@@ -44,6 +45,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops_owner)
     Application.delete_env(:yellow_dog_management_core, :atomic_json_link_result)
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_rename_delay_key)
     restart_management_children()
 
     on_exit(fn ->
@@ -881,6 +883,138 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     refute File.exists?(manifest_path)
   end
 
+  test "a timed-out initial outbox rename is restored before registration returns", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :event_write_test_delay_ms, 600)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_rename_delay_key,
+      "registration_audit_outbox"
+    )
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      __MODULE__.DelayedManifestRenameFileOps
+    )
+
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
+    restart_child(EventStore)
+
+    manifest_store_pid = Process.whereis(ManifestStore)
+    servers_pid = Process.whereis(Servers)
+    started_at = System.monotonic_time(:millisecond)
+    test_pid = self()
+
+    {caller_pid, caller_ref} =
+      spawn_monitor(fn ->
+        result = ManagementCore.register_server(%{id: "srv-delayed-manifest-rename"})
+        elapsed = System.monotonic_time(:millisecond) - started_at
+        send(test_pid, {:delayed_manifest_registration_result, self(), result, elapsed})
+      end)
+
+    assert_receive {:manifest_rename_committed, rename_worker_pid, manifest_path,
+                    "registration_audit_outbox"}
+
+    assert rename_worker_pid != manifest_store_pid
+    assert {:ok, pending_manifest} = AtomicJson.read(manifest_path)
+    assert is_map(pending_manifest["registration"])
+    assert is_map(pending_manifest["registration_audit_outbox"])
+
+    assert_receive {:delayed_manifest_registration_result, ^caller_pid,
+                    {:error, %Error{code: :timeout}}, elapsed},
+                   500
+
+    assert elapsed < 500
+    assert_receive {:DOWN, ^caller_ref, :process, ^caller_pid, :normal}
+    refute Process.alive?(rename_worker_pid)
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert Process.whereis(Servers) == servers_pid
+    assert is_nil(:sys.get_state(manifest_store_pid, 200))
+
+    assert {:error, :not_found} = ManagementCore.get_server("srv-delayed-manifest-rename")
+    assert [] = ManagementCore.list_servers()
+    assert [] = ManagementCore.list_events()
+    assert event_files(data_dir) == []
+    refute File.exists?(manifest_path)
+
+    Process.sleep(700)
+
+    assert {:error, :not_found} = ManagementCore.get_server("srv-delayed-manifest-rename")
+    assert [] = ManagementCore.list_events()
+    refute File.exists?(manifest_path)
+
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
+    Application.delete_env(:yellow_dog_management_core, :event_write_test_delay_ms)
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_rename_delay_key)
+    restart_child(EventStore)
+
+    assert {:ok, %Server{id: "srv-after-manifest-timeout"}} =
+             ManagementCore.register_server(%{id: "srv-after-manifest-timeout"})
+
+    assert [%{source_id: "srv-after-manifest-timeout"}] = ManagementCore.list_events()
+  end
+
+  test "a timed-out plain section rename is restored before update returns" do
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :event_write_test_delay_ms, 600)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_rename_delay_key,
+      "config_lifecycle"
+    )
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      __MODULE__.DelayedManifestRenameFileOps
+    )
+
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
+    restart_child(EventStore)
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-delayed-section-rename")
+    manifest_store_pid = Process.whereis(ManifestStore)
+
+    update =
+      Task.async(fn ->
+        ManifestStore.update_section(manifest_path, "config_lifecycle", fn _current ->
+          %{"desired_version" => 1}
+        end)
+      end)
+
+    assert_receive {:manifest_rename_committed, rename_worker_pid, ^manifest_path,
+                    "config_lifecycle"}
+
+    assert rename_worker_pid != manifest_store_pid
+
+    assert {:ok, %{"config_lifecycle" => %{"desired_version" => 1}}} =
+             AtomicJson.read(manifest_path)
+
+    assert {:error, %Error{code: :timeout}} = Task.await(update, 500)
+    refute Process.alive?(rename_worker_pid)
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert is_nil(:sys.get_state(manifest_store_pid, 200))
+    refute File.exists?(manifest_path)
+
+    Process.sleep(700)
+    refute File.exists?(manifest_path)
+
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
+    Application.delete_env(:yellow_dog_management_core, :event_write_test_delay_ms)
+    Application.delete_env(:yellow_dog_management_core, :atomic_json_rename_delay_key)
+    restart_child(EventStore)
+
+    assert {:ok, %{"desired_version" => 2}} =
+             ManifestStore.update_section(manifest_path, "config_lifecycle", fn _current ->
+               %{"desired_version" => 2}
+             end)
+  end
+
   test "a queued expired append cannot write after EventStore resumes", %{data_dir: data_dir} do
     Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
     restart_child(EventStore)
@@ -1450,6 +1584,41 @@ defmodule YellowDog.Management.RestartDurabilityTest do
       end
     end
 
+    defdelegate rm(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+  end
+
+  defmodule DelayedManifestRenameFileOps do
+    defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate open(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate write(device, contents), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate sync(device), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate close(device), to: YellowDog.Management.Storage.AtomicJson.FileOps
+
+    def rename(source, target) do
+      delay_key =
+        Application.fetch_env!(:yellow_dog_management_core, :atomic_json_rename_delay_key)
+
+      delay? =
+        with {:ok, contents} <- File.read(source),
+             {:ok, manifest} when is_map(manifest) <- Jason.decode(contents) do
+          Map.has_key?(manifest, delay_key)
+        else
+          _unreadable -> false
+        end
+
+      result = YellowDog.Management.Storage.AtomicJson.FileOps.rename(source, target)
+
+      if delay? do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :atomic_json_file_ops_owner)
+        delay = Application.fetch_env!(:yellow_dog_management_core, :event_write_test_delay_ms)
+        send(owner, {:manifest_rename_committed, self(), target, delay_key})
+        Process.sleep(delay)
+      end
+
+      result
+    end
+
+    defdelegate link(source, target), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate rm(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
   end
 end
