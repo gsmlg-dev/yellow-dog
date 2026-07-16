@@ -37,12 +37,18 @@ defmodule YellowDog.Management.Storage.Path do
   def server_version(server_id, version, digest),
     do: version("servers", server_id, version, digest)
 
+  @spec server_versions(term()) :: result()
+  def server_versions(server_id), do: versions("servers", server_id)
+
   @spec netman_manifest(term()) :: result()
   def netman_manifest(netman_id), do: manifest("netmans", netman_id)
 
   @spec netman_version(term(), term(), term()) :: result()
   def netman_version(netman_id, version, digest),
     do: version("netmans", netman_id, version, digest)
+
+  @spec netman_versions(term()) :: result()
+  def netman_versions(netman_id), do: versions("netmans", netman_id)
 
   @spec command(term()) :: result()
   def command(request_id) do
@@ -97,6 +103,13 @@ defmodule YellowDog.Management.Storage.Path do
     end
   end
 
+  defp versions(target_directory, target_id) do
+    with {:ok, target_id} <- identifier(target_id),
+         {:ok, root} <- root() do
+      {:ok, Path.join([root, target_directory, target_id, "versions"])}
+    end
+  end
+
   defp snapshot(target_directory, target_id, domain) do
     with {:ok, target_id} <- identifier(target_id),
          {:ok, domain} <- domain(domain),
@@ -134,7 +147,7 @@ defmodule YellowDog.Management.Storage.Path do
     end
   end
 
-  defp version_number(value) when is_integer(value) and value >= 0 and value <= @max_version,
+  defp version_number(value) when is_integer(value) and value >= 1 and value <= @max_version,
     do: {:ok, value}
 
   defp version_number(_value), do: invalid()

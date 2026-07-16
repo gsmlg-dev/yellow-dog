@@ -49,6 +49,20 @@ defmodule YellowDog.Management.ManifestStore do
   end
 
   @doc false
+  def commit_section(path, section, commit)
+      when is_binary(path) and is_binary(section) and section != "" and
+             is_function(commit, 1) do
+    {deadline, config} = EventStore.operation()
+
+    bounded_call(
+      {:commit_section, path, section, commit, deadline, config},
+      deadline,
+      3,
+      config
+    )
+  end
+
+  @doc false
   def update_section_with(path, section, updater, after_write)
       when is_binary(path) and is_binary(section) and section != "" and
              is_function(updater, 1) and is_function(after_write, 0) do
@@ -118,6 +132,14 @@ defmodule YellowDog.Management.ManifestStore do
         state
       ) do
     {:reply, update_section_commit(path, section, updater, deadline, config), state}
+  end
+
+  def handle_call(
+        {:commit_section, path, section, commit, deadline, config},
+        _from,
+        state
+      ) do
+    {:reply, commit_section_commit(path, section, commit, deadline, config), state}
   end
 
   def handle_call(
@@ -534,6 +556,26 @@ defmodule YellowDog.Management.ManifestStore do
     end
   end
 
+  defp commit_section_commit(path, section, commit, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, manifest} <- reconcile_manifest(path, deadline, config),
+         previous_section = Map.fetch(manifest, section),
+         {:ok, updated_section, result} <- apply_commit(commit, Map.get(manifest, section)),
+         desired_manifest = Map.put(manifest, section, updated_section),
+         :ok <-
+           write_manifest_section(
+             path,
+             section,
+             previous_section,
+             updated_section,
+             desired_manifest,
+             deadline,
+             config
+           ) do
+      {:ok, result}
+    end
+  end
+
   defp update_section_with_commit(path, section, updater, after_write, deadline, config) do
     with :ok <- ensure_before_deadline(deadline),
          {:ok, manifest} <- reconcile_manifest(path, deadline, config),
@@ -699,6 +741,23 @@ defmodule YellowDog.Management.ManifestStore do
     end
   rescue
     _exception -> invalid_manifest()
+  end
+
+  defp apply_commit(commit, current_section) do
+    case commit.(current_section) do
+      {:ok, updated_section, result} when is_map(updated_section) ->
+        {:ok, updated_section, result}
+
+      {:error, %Error{}} = error ->
+        error
+
+      _invalid ->
+        invalid_manifest()
+    end
+  rescue
+    _exception -> invalid_manifest()
+  catch
+    _kind, _reason -> internal_error()
   end
 
   defp run_after_write(after_write) do

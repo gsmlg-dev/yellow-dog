@@ -9,7 +9,8 @@ defmodule YellowDog.ManagementCore.Application do
       YellowDog.Management.ManifestStore,
       YellowDog.Management.EventStore,
       YellowDog.Management.Servers,
-      YellowDog.Management.Netmans
+      YellowDog.Management.Netmans,
+      YellowDog.Management.ConfigVersions
     ]
 
     Supervisor.start_link(children,
