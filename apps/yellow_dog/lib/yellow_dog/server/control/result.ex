@@ -8,14 +8,16 @@ defmodule YellowDog.Server.Control.Result do
 
   @max_depth 8
   @max_integer 9_223_372_036_854_775_807
-  @http_url ~r{\bhttps?://[^\s<>"',()\[\]]+}iu
-  @secret_assignment ~r{\b(?:token|password|passwd|passphrase|secret|api[_-]?key|credential)\s*[:=]\s*\S+}iu
-  @authorization_secret ~r{\bauthorization\s*[:=]\s*\S+}iu
-  @bearer_secret ~r|\bbearer\s+[A-Za-z0-9._~+/=-]{4,}|iu
+  @max_assignment_identifier 64
+  @identifier_delimiter ~r/[^a-z0-9]+/u
+  @bearer_credential ~r/\A[A-Za-z0-9._~+\/=\-]{4,}\z/u
   @safe_setting_reference_suffixes ~w(_ref _id _uri _url _digest _hash)
-  @sensitive_setting_tokens MapSet.new(
-                              ~w(password passwd passphrase token secret authorization credential private signing)
-                            )
+  @sensitive_identifier_tokens MapSet.new(
+                                 ~w(password passwd passphrase token secret authorization credential private signing)
+                               )
+  @compact_sensitive_identifiers MapSet.new(
+                                   ~w(password passwd passphrase apikey accesstoken authtoken clientsecret credential authorization)
+                                 )
   @tls_material_tokens MapSet.new(~w(key private secret cert certificate pem pkcs12 pfx))
   @redacted_setting_value %{"type" => "string", "value" => "[redacted]"}
   @fixed_atoms MapSet.new([
@@ -213,21 +215,70 @@ defmodule YellowDog.Server.Control.Result do
   end
 
   defp secret_diagnostic?(value) do
-    Enum.any?(
-      [@secret_assignment, @authorization_secret, @bearer_secret],
-      &Regex.match?(&1, value)
-    )
+    secret_assignment?(value) or bearer_secret?(value)
   end
 
   defp local_path?(value) do
     downcased = String.downcase(value)
 
-    if String.contains?(downcased, "file://") do
-      true
-    else
-      without_urls = Regex.replace(@http_url, value, "")
-      windows_absolute_path?(without_urls) or unix_absolute_path?(without_urls)
+    cond do
+      String.contains?(downcased, "file://") -> true
+      complete_http_url?(value) -> false
+      true -> windows_absolute_path?(value) or unix_absolute_path?(value)
     end
+  end
+
+  defp complete_http_url?(value) do
+    if Regex.match?(~r/\s/u, value) do
+      false
+    else
+      case URI.parse(value) do
+        %URI{scheme: scheme, host: host} when scheme in ["http", "https"] ->
+          is_binary(host) and host != ""
+
+        _uri ->
+          false
+      end
+    end
+  end
+
+  defp secret_assignment?(value), do: scan_assignments(value, "", nil)
+
+  defp scan_assignments(<<>>, _current, _pending), do: false
+
+  defp scan_assignments(<<byte, rest::binary>>, current, pending) do
+    cond do
+      identifier_byte?(byte) ->
+        scan_assignments(rest, append_identifier(current, byte), nil)
+
+      ascii_whitespace?(byte) ->
+        scan_assignments(rest, "", if(current == "", do: pending, else: current))
+
+      byte in [?:, ?=] ->
+        identifier = if current == "", do: pending, else: current
+        sensitive_identifier?(identifier) or scan_assignments(rest, "", nil)
+
+      true ->
+        scan_assignments(rest, "", nil)
+    end
+  end
+
+  defp append_identifier(:too_long, _byte), do: :too_long
+
+  defp append_identifier(identifier, byte)
+       when byte_size(identifier) < @max_assignment_identifier,
+       do: identifier <> <<byte>>
+
+  defp append_identifier(_identifier, _byte), do: :too_long
+
+  defp bearer_secret?(value) do
+    value
+    |> String.split()
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(fn [scheme, credential] ->
+      String.downcase(String.trim(scheme, ":")) == "bearer" and
+        Regex.match?(@bearer_credential, credential)
+    end)
   end
 
   defp windows_absolute_path?(value) do
@@ -265,15 +316,16 @@ defmodule YellowDog.Server.Control.Result do
     next_index = index + 1
 
     boundary? and next_index < byte_size(value) and
-      path_segment_start?(:binary.at(value, next_index)) and not cidr_at?(value, index)
+      not ascii_whitespace?(:binary.at(value, next_index)) and not cidr_at?(value, index)
   end
 
   defp cidr_at?(value, slash_index) do
     prefix_start = scan_back(value, slash_index - 1)
     prefix = binary_part(value, prefix_start, slash_index - prefix_start)
-    prefix_length = scan_digits(value, slash_index + 1)
+    {prefix_length, suffix_index} = scan_digits(value, slash_index + 1)
 
     with {length, ""} <- Integer.parse(prefix_length),
+         true <- valid_cidr_suffix?(value, suffix_index),
          {:ok, address} <- :inet.parse_address(String.to_charlist(prefix)) do
       valid_prefix_length?(address, length)
     else
@@ -299,11 +351,15 @@ defmodule YellowDog.Server.Control.Result do
     if byte in ?0..?9 do
       scan_digits(value, index + 1, [byte | digits])
     else
-      digits |> Enum.reverse() |> List.to_string()
+      {digits |> Enum.reverse() |> List.to_string(), index}
     end
   end
 
-  defp scan_digits(_value, _index, digits), do: digits |> Enum.reverse() |> List.to_string()
+  defp scan_digits(_value, index, digits),
+    do: {digits |> Enum.reverse() |> List.to_string(), index}
+
+  defp valid_cidr_suffix?(value, index) when index == byte_size(value), do: true
+  defp valid_cidr_suffix?(value, index), do: not identifier_byte?(:binary.at(value, index))
 
   defp valid_prefix_length?(address, length) when tuple_size(address) == 4,
     do: length in 0..32
@@ -316,11 +372,13 @@ defmodule YellowDog.Server.Control.Result do
   defp ip_character?(byte),
     do: byte in ?0..?9 or byte in ?a..?f or byte in ?A..?F or byte in [?:, ?.]
 
-  defp path_segment_start?(byte),
-    do: ascii_alphanumeric?(byte) or byte in [?., ?_, ?-, ?~]
-
   defp ascii_alphanumeric?(byte),
     do: byte in ?0..?9 or byte in ?a..?z or byte in ?A..?Z
+
+  defp ascii_whitespace?(byte), do: byte in [?\s, ?\t, ?\r, ?\n]
+
+  defp identifier_byte?(byte),
+    do: ascii_alphanumeric?(byte) or byte in [?_, ?-]
 
   defp redact_settings_document(document, depth) when is_map(document) and depth > 0 do
     with {:ok, _document} <- Bounds.map(document) do
@@ -500,15 +558,25 @@ defmodule YellowDog.Server.Control.Result do
   defp bounded_raw_key(_key), do: invalid_error()
 
   defp sensitive_setting_key?(key) do
-    if Enum.any?(@safe_setting_reference_suffixes, &String.ends_with?(key, &1)) do
+    normalized = String.downcase(key)
+
+    if Enum.any?(@safe_setting_reference_suffixes, &String.ends_with?(normalized, &1)) do
       false
     else
-      tokens = String.split(String.downcase(key), ~r/[^a-z0-9]+/, trim: true)
-
-      Enum.any?(tokens, &MapSet.member?(@sensitive_setting_tokens, &1)) or
-        token_pair?(tokens, "api", "key") or tls_material?(tokens)
+      sensitive_identifier?(normalized)
     end
   end
+
+  defp sensitive_identifier?(identifier) when is_binary(identifier) and identifier != "" do
+    tokens = String.split(String.downcase(identifier), @identifier_delimiter, trim: true)
+    compact = Enum.join(tokens)
+
+    MapSet.member?(@compact_sensitive_identifiers, compact) or
+      Enum.any?(tokens, &MapSet.member?(@sensitive_identifier_tokens, &1)) or
+      token_pair?(tokens, "api", "key") or tls_material?(tokens)
+  end
+
+  defp sensitive_identifier?(_identifier), do: false
 
   defp token_pair?(tokens, first, second) do
     tokens

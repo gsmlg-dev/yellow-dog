@@ -5,6 +5,7 @@ defmodule YellowDog.Server.Control.RevisionTest do
   alias YellowDog.Server.Control.Revision
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.ServerOperation
 
   @revision String.duplicate("a", 64)
 
@@ -32,18 +33,50 @@ defmodule YellowDog.Server.Control.RevisionTest do
     assert_invalid(Result.normalize(%{name: <<255>>}))
   end
 
+  test "redacts compact sensitive setting identifiers before generic normalization" do
+    assert {:ok, operation} = ServerOperation.fetch("server.settings.effective.get")
+
+    for key <- ["apikey", "apiKey"] do
+      settings = %{
+        "service" => "dns",
+        "entries" => [
+          %{
+            "key" => key,
+            "value" => %{"type" => "string", "value" => "server-control-secret"}
+          }
+        ]
+      }
+
+      assert {:ok,
+              %{
+                "entries" => [
+                  %{
+                    "key" => ^key,
+                    "value" => %{"type" => "string", "value" => "[redacted]"}
+                  }
+                ],
+                "service" => "dns"
+              }} = Result.normalize(settings, operation)
+    end
+  end
+
   test "rejects sensitive diagnostics before output normalization or revision hashing" do
     for text <- [
           "failed to read /var/lib/yellowdog/runtime/state.json",
+          "failed to read /+private/token",
+          "failed to read /私密/token",
           "failed path:/var/lib/yellowdog/runtime/state.json",
           "failed path=/var/lib/yellowdog/runtime/state.json",
           "failed to read file:///var/lib/yellowdog/runtime/state.json",
           "failed to read C:\\ProgramData\\YellowDog\\state.json",
           "token=server-control-secret",
+          "access_token=explicit-secret",
+          "api-key=explicit-secret",
           "password = server-control-secret",
           "api_key=server-control-secret",
           "Authorization: Bearer server-control-secret",
-          "Bearer server-control-secret"
+          "Bearer server-control-secret",
+          "https://example.test/path?access_token=explicit-secret"
         ] do
       assert_invalid(Result.normalize(%{message: text}))
       assert_invalid(Revision.calculate(%{message: text}))
@@ -58,6 +91,8 @@ defmodule YellowDog.Server.Control.RevisionTest do
       resource_id: "images/server-1",
       url: "https://example.test/assets/installer.img",
       redirect_url: "https://provider.example.test/api?next=/console",
+      parenthesized_url: "https://example.test/redirect?next=(/console)",
+      diagnostic: "monkey=banana",
       token: "ydt_once_4f12d18b72a1"
     }
 

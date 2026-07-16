@@ -377,9 +377,42 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     refute inspect(response) =~ leaked_path
   end
 
+  test "classifies Netboot diagnostics without rejecting complete provider URLs" do
+    assert {:ok, operation} = ServerOperation.fetch("server.netboot.logs.list")
+
+    rejected = [
+      "access_token=explicit-secret",
+      "/+private/token",
+      "/私密/token",
+      "https://example.test/path?access_token=explicit-secret"
+    ]
+
+    accepted = [
+      "monkey=banana",
+      "https://provider.example.test/api?next=/console",
+      "https://example.test/redirect?next=(/console)",
+      "https://provider.example.test/api/v1/resources"
+    ]
+
+    for message <- rejected do
+      result = netboot_log_result(message)
+      assert {:ok, ^result} = Operation.validate_result(operation, result)
+      YellowDog.ServerControlFake.configure(:netboot, response: {:ok, result})
+      assert_invalid(Control.dispatch(envelope("server.netboot.logs.list", %{})))
+    end
+
+    for message <- accepted do
+      result = netboot_log_result(message)
+      assert {:ok, ^result} = Operation.validate_result(operation, result)
+      YellowDog.ServerControlFake.configure(:netboot, response: {:ok, result})
+      assert {:ok, ^result} = Control.dispatch(envelope("server.netboot.logs.list", %{}))
+    end
+  end
+
   test "redacts sensitive values in effective managed settings" do
     secret = "server-control-secret"
     nested_secret = "token=nested-server-control-secret"
+    glued_secret = "glued-server-control-secret"
 
     result = %{
       "service" => "dns",
@@ -389,12 +422,16 @@ defmodule YellowDog.Server.Control.DispatcherTest do
           "value" => %{"type" => "string", "value" => secret}
         },
         %{
+          "key" => "apikey",
+          "value" => %{"type" => "string", "value" => glued_secret}
+        },
+        %{
           "key" => "database",
           "value" => %{
             "type" => "object",
             "entries" => [
               %{
-                "key" => "api_key",
+                "key" => "clientsecret",
                 "value" => %{"type" => "string", "value" => nested_secret}
               }
             ]
@@ -416,12 +453,16 @@ defmodule YellowDog.Server.Control.DispatcherTest do
                   "value" => %{"type" => "string", "value" => "[redacted]"}
                 },
                 %{
+                  "key" => "apikey",
+                  "value" => %{"type" => "string", "value" => "[redacted]"}
+                },
+                %{
                   "key" => "database",
                   "value" => %{
                     "type" => "object",
                     "entries" => [
                       %{
-                        "key" => "api_key",
+                        "key" => "clientsecret",
                         "value" => %{"type" => "string", "value" => "[redacted]"}
                       }
                     ]
@@ -434,6 +475,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     assert {:ok, ^redacted} = Operation.validate_result(operation, redacted)
     refute inspect(redacted) =~ secret
     refute inspect(redacted) =~ nested_secret
+    refute inspect(redacted) =~ glued_secret
   end
 
   test "preserves safe managed setting references containing URL paths" do
@@ -585,6 +627,21 @@ defmodule YellowDog.Server.Control.DispatcherTest do
       expected_revision: Keyword.get(overrides, :expected_revision),
       config_version: Keyword.get(overrides, :config_version),
       sent_at: @sent_at
+    }
+  end
+
+  defp netboot_log_result(message) do
+    %{
+      "items" => [
+        %{
+          "log_id" => "log-1",
+          "device_id" => "device-1",
+          "message" => message,
+          "occurred_at" => "2026-07-16T00:00:00Z"
+        }
+      ],
+      "revision" => @revision,
+      "observed_at" => "2026-07-16T00:00:00Z"
     }
   end
 
