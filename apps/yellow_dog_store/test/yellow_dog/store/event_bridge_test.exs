@@ -1,9 +1,11 @@
 defmodule YellowDog.Store.EventBridgeTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Store.EventBridge
+  alias YellowDog.Store.{EventBridge, Key}
+  alias YellowDog.Store.Backend.Ets
 
   setup do
+    YellowDog.StoreHelper.setup_store()
     pid = start_supervised!({EventBridge, []})
     %{bridge: pid}
   end
@@ -200,6 +202,45 @@ defmodule YellowDog.Store.EventBridgeTest do
     end
   end
 
+  describe "notify_durable/6" do
+    test "replays a persisted pending event automatically after EventBridge restart", %{
+      bridge: bridge
+    } do
+      operation_id = "restart-operation"
+      cursor = 7
+      event_key = Key.zone_replacement_event(operation_id, cursor)
+      subject_key = "dns:view:default:zone:restart.example:rr:www:a"
+
+      {:ok, _ref} = EventBridge.subscribe(subject_key)
+      :ok = :sys.suspend(bridge)
+
+      assert :ok =
+               EventBridge.notify_durable(
+                 Ets,
+                 operation_id,
+                 cursor,
+                 :put,
+                 subject_key,
+                 %{address: {192, 0, 2, 1}}
+               )
+
+      assert {:ok, _persisted} = Ets.get(event_key, consistency: :strong)
+      Process.exit(bridge, :kill)
+      _restarted_bridge = wait_for_restarted_bridge(bridge)
+      {:ok, _ref} = EventBridge.subscribe(subject_key)
+
+      assert_receive {:store_event,
+                      %{
+                        operation_id: ^operation_id,
+                        cursor: ^cursor,
+                        key: ^subject_key
+                      } = delivered},
+                     2_000
+
+      assert_event_dispatched(event_key, delivered)
+    end
+  end
+
   describe "handler error resilience" do
     test "failing callback does not crash the EventBridge" do
       {:ok, _ref} =
@@ -223,6 +264,37 @@ defmodule YellowDog.Store.EventBridgeTest do
       send(Process.whereis(EventBridge), :unexpected_message)
       Process.sleep(50)
       assert Process.alive?(Process.whereis(EventBridge))
+    end
+  end
+
+  defp wait_for_restarted_bridge(previous, attempts \\ 100)
+
+  defp wait_for_restarted_bridge(_previous, 0), do: flunk("EventBridge did not restart")
+
+  defp wait_for_restarted_bridge(previous, attempts) do
+    case Process.whereis(EventBridge) do
+      pid when is_pid(pid) and pid != previous ->
+        pid
+
+      _pid ->
+        Process.sleep(10)
+        wait_for_restarted_bridge(previous, attempts - 1)
+    end
+  end
+
+  defp assert_event_dispatched(event_key, delivered, attempts \\ 100)
+
+  defp assert_event_dispatched(_event_key, _delivered, 0),
+    do: flunk("durable event was delivered without a durable acknowledgement")
+
+  defp assert_event_dispatched(event_key, delivered, attempts) do
+    case Ets.get(event_key, consistency: :strong) do
+      {:ok, %{dispatch_state: :dispatched, event: ^delivered}} ->
+        :ok
+
+      _pending ->
+        Process.sleep(10)
+        assert_event_dispatched(event_key, delivered, attempts - 1)
     end
   end
 end

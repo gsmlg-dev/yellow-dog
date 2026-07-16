@@ -30,18 +30,28 @@ files and root `mix.exs` remain untouched and unstaged.
   moves to events. Unknown results, including malformed backend replies, resolve
   only by a strong header reread; serials are never recomputed. `execute/6`
   strongly verifies the exact target metadata before reporting success.
-- Every event cursor first persists an immutable 24-hour event-log entry at
-  `event_log:zone-replacement:{operation_id}:{cursor}`. Recovery then dispatches
-  the persisted identity and advances the header cursor. Cursor zero is an
-  internal commit event; later cursors retain existing per-RR EventBridge
-  semantics. No precommit RR event is sent, and cleanup cannot remove replay data.
+- Every event cursor first persists a stable pending record at
+  `event_log:zone-replacement:{operation_id}:{cursor}` with no TTL. Recovery may
+  then advance the header cursor and clean its intent. EventBridge strongly scans
+  pending records at startup, retries transient backend unavailability, dispatches
+  automatically when a matching subscriber registers, and acknowledges dispatch
+  with an exact-value transaction before starting the 24-hour replay retention.
+  A crash before acknowledgement replays the same operation ID/cursor identity.
+  Cursor zero is an acknowledged internal commit audit event; later cursors retain
+  existing per-RR EventBridge semantics. No precommit RR event is sent.
+- Event recovery strongly loads and hashes all immutable plan chunks once per
+  recovery invocation, then indexes the verified operation tuple by cursor. A
+  restart revalidates once; processing is `O(chunks + events)` rather than
+  repeatedly reloading the whole plan for every event.
 - Unknown transitions accept only a valid later state with identical immutable
   header fields and monotonic phase/cursor progress. Cleanup replays chunk
   deletion and fences header deletion by the exact header value.
 - Every zone-scoped read/mutation invokes recovery under the same Phase 3B1
   `:global` lock. Post-recovery metadata/RR reads and scans use strong consistency.
-  Lazy legacy ID persistence recovers again under its per-zone lock and keeps one
-  captured backend through its CAS.
+  Lazy legacy ID persistence derives the authoritative view/origin from the
+  scanned key, rejects key/payload mismatches before locking or writing, recovers
+  again under that exact per-zone lock, and keeps one captured backend through
+  its CAS.
 
 ## Backend Guarantees
 
@@ -49,10 +59,15 @@ files and root `mix.exs` remain untouched and unstaged.
   idempotency key. Its intents and chunks are restart durable.
 - `Backend.Ets.txn/2` implements compare/success mixed operations for deterministic
   recovery after caller exits while the owning ETS table remains alive. It fully
-  validates compares, both operation branches, limits, and encoded size before
-  mutation. It does not claim VM-restart durability.
+  validates compares, both operation branches, supported option sets, positive
+  integer TTLs, limits, encoded size, and Concord-safe values before mutation. It
+  returns an error without raising or partially writing for malformed operations.
+  It does not claim VM-restart durability.
 - Backends without `txn/2` use the preserved Phase 3B1 batch/compensation path,
   including `replace_failed` and `rollback_failed` contracts.
+- The transaction-backed facade also normalizes internal recovery failures into
+  the documented `replace_failed` public shape while retaining the detailed
+  recovery reason inside it.
 
 ## TDD Evidence
 
@@ -84,11 +99,26 @@ event write ambiguity, eventual post-recovery reads, lazy-ID backend/recovery
 ordering, scanned-header key mismatch, weak transition fencing, and partial ETS
 mutation before malformed-operation rejection.
 
+Second-review regression RED, before the corrective production edits:
+
+```text
+devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/event_bridge_test.exs test/yellow_dog/store/zone_recovery_test.exs'
+exit 2: 44 tests, 5 failures
+```
+
+The failures reproduced loss of a persisted event across EventBridge restart,
+valid-put/invalid-TTL partial transaction behavior, a key-A/payload-B legacy ID
+scope violation, leaked `recovery_failed` facade errors, and quadratic event-plan
+reads (`8016` strong chunk reads for 1001 changes instead of `8`). The first full
+suite run also supplied RED for startup ordering: EventBridge raised when started
+before the ETS table (`404 tests, 6 failures`) rather than staying available and
+retrying the pending-event scan.
+
 Focused GREEN:
 
 ```text
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/zone_test.exs test/yellow_dog/store/zone_recovery_test.exs test/yellow_dog/store/event_bridge_test.exs'
-exit 0: 116 tests, 0 failures
+exit 0: 119 tests, 0 failures
 ```
 
 Coverage includes exits after intent creation, plan persistence, every apply
@@ -97,15 +127,18 @@ and after commit; malformed transaction replies; missing/corrupt applying plans;
 501/1001 records; count and byte chunking; old-or-new concurrent visibility;
 legacy put/replace/delete fencing; one serial increment; no precommit events;
 recovery idempotence; cleanup replay; durable event identity/replay; strong-read
-option enforcement; and exact ETS caller-process durability behavior. The Cluster
-test checks only the adapter's declared `:restart_durable` capability; it is not a
-live Concord restart or multi-node visibility test.
+option enforcement; automatic pending-event replay after EventBridge restart;
+transaction option prevalidation; key-derived legacy scope fencing; linear event
+plan reads (`8` chunks for 1001 changes); public error normalization; and exact ETS
+caller-process durability behavior. The Cluster test checks only the adapter's
+declared `:restart_durable` capability; it is not a live Concord restart or
+multi-node visibility test.
 
 ## Verification
 
 ```text
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test'
-exit 0: 26 properties, 401 tests, 0 failures, 9 skipped
+exit 0: 26 properties, 404 tests, 0 failures, 9 skipped
 
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && MIX_ENV=dev mix compile --force --warnings-as-errors'
 exit 0: compiled 36 files; generated yellow_dog_store
@@ -114,7 +147,7 @@ devenv shell -- bash -lc 'cd apps/yellow_dog_store && MIX_ENV=test mix compile -
 exit 0: compiled 36 files; generated yellow_dog_store
 
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix credo --strict'
-exit 0: 62 source files, 755 mods/funs, no issues
+exit 0: 62 source files, 797 mods/funs, no issues
 ```
 
 Scoped `mix format --check-formatted` and `git diff --check` also pass. Existing
@@ -128,10 +161,16 @@ deprecated legacy Key API warnings remain in key/property tests and are unrelate
   `EventBridge` but before consumers. This change therefore exposes synchronous
   `Zone.recover_pending_replacements/0` and recovers on every relevant access,
   but does not claim an automatic startup hook.
-- Event cursor semantics are at least once. A crash after notification initiation
-  and before cursor advancement may duplicate an already committed RR event. Such
-  duplicates carry the same operation ID/cursor, and durable replay has one entry
-  per cursor for the event-log retention period.
+- Event cursor semantics are at least once. Pending records do not expire; after
+  fan-out acknowledgement they remain replayable for 24 hours. A crash after
+  dispatch and before acknowledgement may duplicate an RR event with the same
+  operation ID/cursor. EventBridge subscriptions are process-local and must
+  re-register after bridge restart (Store's monitored consumers already do so);
+  registration automatically dispatches matching pending records without a
+  manual replay call. Acknowledgement covers subscribers matching at that
+  dispatch, not a durable per-consumer offset. Function callbacks retain the
+  existing asynchronous contract and are acknowledged when their supervised task
+  is accepted.
 - The shared lock coordinates Zone facade callers. Direct backend writes remain
   outside the contract, but corrupt applying plans are detected and retained for
   operator repair rather than guessed or deleted.

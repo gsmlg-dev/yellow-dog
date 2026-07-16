@@ -128,6 +128,49 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
     assert {:error, :not_found} = Ets.get("large")
   end
 
+  test "ETS transaction rejects invalid operation options before any mutation" do
+    Enum.each([0, -1, 1.5, :infinity], fn invalid_ttl ->
+      valid_key = "valid-before-#{inspect(invalid_ttl)}"
+      invalid_key = "invalid-ttl-#{inspect(invalid_ttl)}"
+
+      spec = %{
+        compare: [],
+        success: [
+          {:put, valid_key, :written, %{}},
+          {:put, invalid_key, :written, %{ttl: invalid_ttl}}
+        ],
+        failure: []
+      }
+
+      assert {:error, {:invalid_txn, :invalid_ttl}} = Ets.txn(spec)
+      assert {:error, :not_found} = Ets.get(valid_key)
+      assert {:error, :not_found} = Ets.get(invalid_key)
+    end)
+
+    assert {:error, {:invalid_txn, :unsupported_put_option}} =
+             Ets.txn(%{
+               compare: [],
+               success: [{:put, "leased", :value, %{lease: "lease-id"}}],
+               failure: []
+             })
+
+    assert {:error, {:invalid_txn, :unsupported_delete_option}} =
+             Ets.txn(%{
+               compare: [],
+               success: [{:delete, {:key, "delete"}, %{ttl: 60}}],
+               failure: []
+             })
+
+    assert {:ok, %{succeeded: true}} =
+             Ets.txn(%{
+               compare: [],
+               success: [{:put, "valid-ttl", :value, %{ttl: 60}}],
+               failure: []
+             })
+
+    assert {:ok, :value} = Ets.get("valid-ttl")
+  end
+
   test "backends state their exact recovery durability" do
     assert Ets.recovery_durability() == :caller_process_while_table_survives
     assert Cluster.recovery_durability() == :restart_durable
@@ -373,6 +416,10 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
       assert {:error, {:recovery_failed, {:corrupt_applying_plan, _reason}}} =
                Zone.list_records(@view, zone)
 
+      assert {:error,
+              {:replace_failed, {:recovery_failed, {:corrupt_applying_plan, _replace_reason}}}} =
+               Zone.replace_records(@view, zone, records(1))
+
       assert {:ok, ^header} = Ets.get(header_key)
       Backend.set_active(Ets)
       YellowDog.StoreHelper.clear_store()
@@ -382,20 +429,35 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
   test "1001 records recover after a caller exit and use bounded transaction specs" do
     zone = "thousand.example.com"
     :ok = Zone.create_zone(@view, zone, @soa, serial_strategy: :increment)
-    use_failure_backend([{:txn, {:apply, 4, :applying}, {:delegate_then_exit, :mid_plan}}])
+    use_failure_backend([{:txn, :finalize, {:delegate_then_exit, :after_finalize}}])
     {_pid, monitor} = spawn_replacement(zone, records(1001))
-    assert_receive {:DOWN, ^monitor, :process, _pid, :mid_plan}, 10_000
-
-    assert {:ok, stored} = Zone.list_records(@view, zone)
-    assert length(stored) == 1001
+    assert_receive {:DOWN, ^monitor, :process, _pid, :after_finalize}, 10_000
 
     apply_specs = apply_specs(FailureBackend.calls())
-    assert length(apply_specs) >= 8
+    assert length(apply_specs) == 8
 
     Enum.each(apply_specs, fn spec ->
       assert data_operation_count(spec) <= 127
       assert :erlang.external_size(spec) <= Zone.max_replacement_transaction_bytes()
     end)
+
+    {_header_key, header} = replacement_header(zone)
+    assert header.phase == :events
+    FailureBackend.reset()
+
+    assert {:ok, stored} = Zone.list_records(@view, zone)
+    assert length(stored) == 1001
+
+    plan_reads =
+      Enum.count(FailureBackend.calls(), fn
+        {:get, key, [consistency: :strong]} ->
+          String.starts_with?(key, Key.zone_replacement_plan_prefix(header.operation_id))
+
+        _call ->
+          false
+      end)
+
+    assert plan_reads == header.plan_count
   end
 
   test "byte-size chunking stays below the conservative transaction bound" do
@@ -497,6 +559,40 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
     assert is_integer(recovery_index)
     assert is_integer(cas_index)
     assert recovery_index < cas_index
+  end
+
+  test "legacy ID backfill rejects key and payload scope mismatch without taking payload lock" do
+    key_zone = "keyed-a.example.com"
+    payload_zone = "payload-b.example.com"
+    key = Key.zone(@view, key_zone)
+    :ok = Zone.create_zone(@view, payload_zone, @soa)
+    {:ok, payload} = Ets.get(Key.zone(@view, payload_zone))
+    malformed = Map.delete(payload, :id)
+    :ok = Ets.put(key, malformed)
+    use_failure_backend()
+
+    parent = self()
+
+    holder =
+      spawn(fn ->
+        :global.trans({{Zone, :zone, @view, payload_zone}, self()}, fn ->
+          send(parent, {:payload_lock_held, self()})
+
+          receive do
+            :release_payload_lock -> :ok
+          end
+        end)
+      end)
+
+    assert_receive {:payload_lock_held, ^holder}, 1_000
+    list_task = Task.async(fn -> Zone.list_zones_for_view(@view) end)
+    yielded = Task.yield(list_task, 500)
+    send(holder, :release_payload_lock)
+    completed = yielded || {:ok, Task.await(list_task, 2_000)}
+
+    assert completed == {:ok, {:error, {:invalid_zone_metadata_scope, key}}}
+    assert {:ok, ^malformed} = Ets.get(key, consistency: :strong)
+    assert FailureBackend.writes() == []
   end
 
   test "no events are published before finalization and recovery publishes committed changes" do

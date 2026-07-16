@@ -246,11 +246,19 @@ defmodule YellowDog.Store.Backend.Ets do
     end)
   end
 
-  defp validate_operation({:put, key, _value, opts}) when is_binary(key) and is_map(opts),
-    do: validate_key(key)
+  defp validate_operation({:put, key, _value, opts}) when is_binary(key) and is_map(opts) do
+    with :ok <- validate_key(key),
+         :ok <- validate_put_options(opts) do
+      :ok
+    end
+  end
 
-  defp validate_operation({:delete, {:key, key}, opts}) when is_binary(key) and is_map(opts),
-    do: validate_key(key)
+  defp validate_operation({:delete, {:key, key}, opts}) when is_binary(key) and is_map(opts) do
+    with :ok <- validate_key(key),
+         :ok <- validate_delete_options(opts) do
+      :ok
+    end
+  end
 
   defp validate_operation(_operation), do: {:error, {:invalid_txn, :unsupported_op}}
 
@@ -260,6 +268,23 @@ defmodule YellowDog.Store.Backend.Ets do
     do: {:error, {:invalid_txn, :key_too_large}}
 
   defp validate_key(_key), do: :ok
+
+  defp validate_put_options(opts) do
+    unsupported = Map.keys(opts) -- [:ttl]
+    ttl = Map.get(opts, :ttl)
+
+    cond do
+      unsupported != [] -> {:error, {:invalid_txn, :unsupported_put_option}}
+      is_nil(ttl) -> :ok
+      is_integer(ttl) and ttl > 0 -> :ok
+      true -> {:error, {:invalid_txn, :invalid_ttl}}
+    end
+  end
+
+  defp validate_delete_options(opts) when map_size(opts) == 0, do: :ok
+
+  defp validate_delete_options(_opts),
+    do: {:error, {:invalid_txn, :unsupported_delete_option}}
 
   defp compare_matches?({:exists, key, :==, expected}) when is_boolean(expected) do
     present? = match?({:ok, _value}, get(key))

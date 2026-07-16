@@ -8,22 +8,26 @@ defmodule YellowDog.Store.Zone.Recovery do
   @unknown_retries 3
 
   def recover(backend, view_name, zone) do
+    recover_with_event_plan(backend, view_name, zone, nil)
+  end
+
+  defp recover_with_event_plan(backend, view_name, zone, event_plan) do
     header_key = Key.zone_replacement_header(view_name, zone)
 
     case backend.get(header_key, consistency: :strong) do
-      {:ok, header} -> recover_header(backend, header_key, header, view_name, zone)
+      {:ok, header} -> recover_header(backend, header_key, header, view_name, zone, event_plan)
       {:error, :not_found} -> :ok
       {:error, reason} -> {:error, {:recovery_failed, {:header_read_failed, reason}}}
     end
   end
 
-  defp recover_header(backend, header_key, header, view_name, zone) do
+  defp recover_header(backend, header_key, header, view_name, zone, event_plan) do
     with :ok <- validate_header(header, view_name, zone) do
       case header.phase do
         :preparing -> recover_preparing(backend, header_key, header)
         :applying -> recover_applying(backend, header_key, header)
         :finalizing -> recover_finalizing(backend, header_key, header)
-        :events -> recover_events(backend, header_key, header)
+        :events -> recover_events(backend, header_key, header, event_plan)
         :cleanup -> recover_cleanup(backend, header_key, header)
       end
     else
@@ -133,13 +137,12 @@ defmodule YellowDog.Store.Zone.Recovery do
     end
   end
 
-  defp recover_events(backend, header_key, header) do
-    with {:ok, chunks} <- applying_plan(backend, header) do
-      operations = List.flatten(chunks)
+  defp recover_events(backend, header_key, header, cached_plan) do
+    with {:ok, event_plan} <- event_plan(backend, header, cached_plan) do
       cursor = header.event_state.cursor
 
       if cursor < header.event_state.count do
-        with :ok <- deliver_event(backend, header, operations, cursor) do
+        with :ok <- deliver_event(backend, header, event_plan.operations, cursor) do
           next_cursor = cursor + 1
           next_phase = if next_cursor == header.event_state.count, do: :cleanup, else: :events
 
@@ -150,7 +153,7 @@ defmodule YellowDog.Store.Zone.Recovery do
           }
 
           with :ok <- transition(backend, header_key, header, next_header) do
-            recover(backend, header.view_name, header.zone)
+            recover_with_event_plan(backend, header.view_name, header.zone, event_plan)
           end
         else
           {:error, reason} -> {:error, {:recovery_failed, reason}}
@@ -185,6 +188,32 @@ defmodule YellowDog.Store.Zone.Recovery do
     case load_plan(backend, header) do
       {:ok, chunks} -> {:ok, chunks}
       {:error, reason} -> {:error, {:corrupt_applying_plan, reason}}
+    end
+  end
+
+  defp event_plan(_backend, header, %{operation_id: operation_id} = cached)
+       when operation_id == header.operation_id and cached.plan_hash == header.plan_hash and
+              cached.plan_count == header.plan_count and
+              cached.changed_count == header.changed_count do
+    {:ok, cached}
+  end
+
+  defp event_plan(backend, header, _cached) do
+    with {:ok, chunks} <- applying_plan(backend, header) do
+      operations = chunks |> List.flatten() |> List.to_tuple()
+
+      if tuple_size(operations) == header.changed_count do
+        {:ok,
+         %{
+           operation_id: header.operation_id,
+           plan_hash: header.plan_hash,
+           plan_count: header.plan_count,
+           changed_count: header.changed_count,
+           operations: operations
+         }}
+      else
+        {:error, {:corrupt_applying_plan, :operation_count_mismatch}}
+      end
     end
   end
 
@@ -367,7 +396,8 @@ defmodule YellowDog.Store.Zone.Recovery do
                view_name: header.view_name,
                zone: header.zone,
                target_serial: header.target_serial
-             }
+             },
+             delivery: :audit
            ) do
       :telemetry.execute(
         [:yellow_dog, :store, :zone, :serial_incremented],
@@ -384,7 +414,12 @@ defmodule YellowDog.Store.Zone.Recovery do
   end
 
   defp deliver_event(backend, header, operations, cursor) do
-    case Enum.at(operations, cursor - 1) do
+    operation =
+      if cursor > 0 and cursor <= tuple_size(operations),
+        do: elem(operations, cursor - 1),
+        else: nil
+
+    case operation do
       {:put, key, value} ->
         with :ok <-
                EventBridge.notify_durable(

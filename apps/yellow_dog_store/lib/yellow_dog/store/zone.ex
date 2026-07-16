@@ -403,7 +403,7 @@ defmodule YellowDog.Store.Zone do
     with :ok <- recover_all_replacements(backend) do
       case backend.prefix_scan(prefix, consistency: :strong) do
         {:ok, entries} ->
-          with {:ok, zones} <- ensure_zone_ids(backend, entries, &extract_view_name_from_key/1) do
+          with {:ok, zones} <- ensure_zone_ids(backend, entries) do
             emit_operation_telemetry(start_time, :zone, :list, prefix, :strong)
             {:ok, zones}
           end
@@ -427,7 +427,7 @@ defmodule YellowDog.Store.Zone do
       with :ok <- recover_all_replacements(backend, view_name) do
         case backend.prefix_scan(prefix, consistency: :strong) do
           {:ok, entries} ->
-            with {:ok, zones} <- ensure_zone_ids(backend, entries, fn _key -> view_name end) do
+            with {:ok, zones} <- ensure_zone_ids(backend, entries) do
               emit_operation_telemetry(start_time, :zone, :list, prefix, :strong)
               {:ok, zones}
             end
@@ -526,11 +526,10 @@ defmodule YellowDog.Store.Zone do
                do_replace_records(backend, view_name, zone, desired_records)
              end)
            end) do
-        {:error, {:lock_failed, reason}} ->
-          {:error, {:replace_failed, {:lock_failed, reason}}}
-
-        result ->
-          result
+        {:ok, _result} = result -> result
+        {:error, {:replace_failed, _reason}} = error -> error
+        {:error, {:rollback_failed, _apply, _rollback}} = error -> error
+        {:error, reason} -> {:error, {:replace_failed, reason}}
       end
     else
       {:error, reason} -> {:error, {:replace_failed, reason}}
@@ -1214,23 +1213,18 @@ defmodule YellowDog.Store.Zone do
     String.contains?(key, ":zone:") and not String.contains?(key, ":rr:")
   end
 
-  # Extract view_name from key: "dns:view:{view_name}:zone:{zone_name}"
-  defp extract_view_name_from_key(key) do
-    case String.split(key, ":") do
-      ["dns", "view", view_name, "zone", _zone_name] -> view_name
-      ["dns", "view", view_name | _rest] -> view_name
-      _ -> "default"
-    end
-  end
-
-  defp ensure_zone_ids(backend, entries, view_name_for_key) do
+  defp ensure_zone_ids(backend, entries) do
     entries
     |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
     |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, zones} ->
-      zone = Map.put(value, :view_name, view_name_for_key.(key))
-
-      case ensure_zone_id(backend, key, zone) do
-        {:ok, zone} -> {:cont, {:ok, [zone | zones]}}
+      with {:ok, {view_name, origin}} <- zone_scope_from_key(key),
+           true <- is_map(value) and value[:origin] == origin,
+           zone = Map.put(value, :view_name, view_name),
+           {:ok, zone} <- ensure_zone_id(backend, key, zone, {view_name, origin}) do
+        {:cont, {:ok, [zone | zones]}}
+      else
+        false -> {:halt, {:error, {:invalid_zone_metadata_scope, key}}}
+        {:error, :invalid_scope} -> {:halt, {:error, {:invalid_zone_metadata_scope, key}}}
         {:error, _reason} = error -> {:halt, error}
       end
     end)
@@ -1240,29 +1234,38 @@ defmodule YellowDog.Store.Zone do
     end
   end
 
-  defp ensure_zone_id(_backend, _key, %{id: id} = zone) when is_binary(id) and id != "",
-    do: {:ok, zone}
+  defp zone_scope_from_key(key) do
+    case String.split(key, ":") do
+      ["dns", "view", view_name, "zone", origin] ->
+        case Key.canonical_zone_scope(view_name, origin) do
+          {:ok, {^view_name, ^origin} = scope} -> {:ok, scope}
+          {:error, :invalid_scope} -> {:error, :invalid_scope}
+        end
 
-  defp ensure_zone_id(backend, key, %{view_name: view_name, origin: origin} = zone) do
-    with {:ok, {view_name, origin}} <- Key.canonical_zone_scope(view_name, origin) do
-      case with_zone_lock(view_name, origin, fn ->
-             with :ok <- Recovery.recover(backend, view_name, origin) do
-               ensure_zone_id_locked(backend, key, zone, 3)
-             end
-           end) do
-        %{} = zone -> {:ok, zone}
-        {:error, _reason} = error -> error
-      end
-    else
-      _error -> {:ok, Map.put(zone, :id, generate_uuid())}
+      _parts ->
+        {:error, :invalid_scope}
     end
   end
 
-  defp ensure_zone_id(_backend, _key, zone), do: {:ok, Map.put(zone, :id, generate_uuid())}
+  defp ensure_zone_id(_backend, _key, %{id: id} = zone, _scope)
+       when is_binary(id) and id != "",
+       do: {:ok, zone}
 
-  defp ensure_zone_id_locked(_backend, _key, zone, 0), do: Map.put(zone, :id, generate_uuid())
+  defp ensure_zone_id(backend, key, zone, {view_name, origin} = scope) do
+    case with_zone_lock(view_name, origin, fn ->
+           with :ok <- Recovery.recover(backend, view_name, origin) do
+             ensure_zone_id_locked(backend, key, zone, scope, 3)
+           end
+         end) do
+      %{} = zone -> {:ok, zone}
+      {:error, _reason} = error -> error
+    end
+  end
 
-  defp ensure_zone_id_locked(backend, key, zone, retries) do
+  defp ensure_zone_id_locked(_backend, _key, zone, _scope, 0),
+    do: Map.put(zone, :id, generate_uuid())
+
+  defp ensure_zone_id_locked(backend, key, zone, scope, retries) do
     id = generate_uuid()
     now = System.system_time(:second)
     original = Map.delete(zone, :view_name)
@@ -1277,22 +1280,25 @@ defmodule YellowDog.Store.Zone do
         Map.put(zone, :id, id)
 
       {:error, :condition_failed} ->
-        reload_zone_with_view_name_locked(backend, key, zone.view_name, retries - 1)
+        reload_zone_with_view_name_locked(backend, key, scope, retries - 1)
 
       {:error, _} ->
         Map.put(zone, :id, id)
     end
   end
 
-  defp reload_zone_with_view_name_locked(backend, key, view_name, retries) do
+  defp reload_zone_with_view_name_locked(backend, key, {view_name, origin} = scope, retries) do
     case backend.get(key, consistency: :strong) do
-      {:ok, refreshed} ->
+      {:ok, %{origin: ^origin} = refreshed} ->
         refreshed = Map.put(refreshed, :view_name, view_name)
 
         case refreshed do
           %{id: id} when is_binary(id) and id != "" -> refreshed
-          _zone -> ensure_zone_id_locked(backend, key, refreshed, retries)
+          _zone -> ensure_zone_id_locked(backend, key, refreshed, scope, retries)
         end
+
+      {:ok, _mismatched} ->
+        {:error, {:invalid_zone_metadata_scope, key}}
 
       {:error, _} ->
         %{id: generate_uuid(), view_name: view_name}
