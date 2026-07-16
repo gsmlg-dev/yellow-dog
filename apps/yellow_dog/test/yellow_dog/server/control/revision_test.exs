@@ -32,6 +32,35 @@ defmodule YellowDog.Server.Control.RevisionTest do
     assert_invalid(Result.normalize(%{name: <<255>>}))
   end
 
+  test "rejects sensitive diagnostics before output normalization or revision hashing" do
+    for text <- [
+          "failed to read /var/lib/yellowdog/runtime/state.json",
+          "token=server-control-secret",
+          "password = server-control-secret",
+          "api_key=server-control-secret",
+          "Authorization: Bearer server-control-secret",
+          "Bearer server-control-secret"
+        ] do
+      assert_invalid(Result.normalize(%{message: text}))
+      assert_invalid(Revision.calculate(%{message: text}))
+    end
+  end
+
+  test "accepts network values, relative IDs, URLs, and opaque one-time tokens" do
+    value = %{
+      domain: "example.test",
+      ipv4_cidr: "192.0.2.0/24",
+      ipv6_cidr: "2001:db8::/64",
+      resource_id: "images/server-1",
+      url: "https://example.test/assets/installer.img",
+      token: "ydt_once_4f12d18b72a1"
+    }
+
+    assert {:ok, _normalized} = Result.normalize(value)
+    assert {:ok, revision} = Revision.calculate(value)
+    assert String.match?(revision, ~r/\A[0-9a-f]{64}\z/)
+  end
+
   test "rejects unsupported runtime terms and structs without codecs" do
     port = Port.open({:spawn, "cat"}, [])
     on_exit(fn -> if Port.info(port), do: Port.close(port) end)

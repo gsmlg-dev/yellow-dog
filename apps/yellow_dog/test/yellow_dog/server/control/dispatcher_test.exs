@@ -10,6 +10,8 @@ defmodule YellowDog.Server.Control.DispatcherTest do
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Operation
+  alias YellowDog.Sync.ServerOperation
 
   @request_id "00000000-0000-0000-0000-000000000001"
   @idempotency_key "00000000-0000-0000-0000-000000000002"
@@ -19,8 +21,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
   @fake_adapters %{
     runtime: YellowDog.ServerControlFake.Adapter.Runtime,
     dns: YellowDog.ServerControlFake.Adapter.Dns,
-    dhcpv4: YellowDog.ServerControlFake.Adapter.Dhcpv4,
-    dhcpv6: YellowDog.ServerControlFake.Adapter.Dhcpv6,
+    dhcp: YellowDog.ServerControlFake.Adapter.Dhcp,
     mdns: YellowDog.ServerControlFake.Adapter.Mdns,
     netboot: YellowDog.ServerControlFake.Adapter.Netboot,
     identity: YellowDog.ServerControlFake.Adapter.Identity,
@@ -81,12 +82,11 @@ defmodule YellowDog.Server.Control.DispatcherTest do
   test "routes every fixed operation domain to its distinct adapter" do
     listeners_before = listener_pids()
     adapter_error = Error.new(:not_found, "fake route", %{})
+    public_error = Error.new(:not_found, "resource not found", %{})
 
     cases = [
       {:runtime, nil, "server.runtime.capabilities.get", %{}},
       {:dns, :dns, "server.dns.metrics.get", %{}},
-      {:dhcpv4, :dhcpv4, "server.dhcp.status.get", %{"family" => "ipv4"}},
-      {:dhcpv6, :dhcpv6, "server.dhcp.status.get", %{"family" => "ipv6"}},
       {:mdns, :mdns, "server.mdns.cache.get", %{}},
       {:netboot, :netboot, "server.netboot.profiles.list", %{}},
       {:identity, :identity, "server.identity.policies.get", %{}},
@@ -96,7 +96,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     for {route, service, operation, payload} <- cases do
       YellowDog.ServerControlFake.configure(route, response: {:error, adapter_error})
 
-      assert {:error, ^adapter_error} = Control.dispatch(envelope(operation, payload))
+      assert {:error, ^public_error} = Control.dispatch(envelope(operation, payload))
 
       assert [{^route, :dispatch, ^operation, ^payload}] =
                YellowDog.ServerControlFake.take_calls()
@@ -107,13 +107,32 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     assert listener_pids() == listeners_before
   end
 
+  test "routes both DHCP families through one fixed facade with payload unchanged" do
+    adapter_error = Error.new(:not_found, "fake route", %{})
+    public_error = Error.new(:not_found, "resource not found", %{})
+
+    for {family, service} <- [{"ipv4", :dhcpv4}, {"ipv6", :dhcpv6}] do
+      payload = %{"family" => family}
+      YellowDog.ServerControlFake.configure(:dhcp, response: {:error, adapter_error})
+
+      assert {:error, ^public_error} =
+               Control.dispatch(envelope("server.dhcp.status.get", payload))
+
+      assert [{:dhcp, :dispatch, "server.dhcp.status.get", ^payload}] =
+               YellowDog.ServerControlFake.take_calls()
+
+      assert dependency_calls(service) == YellowDog.ServerControlFake.take_dependency_calls()
+    end
+  end
+
   test "enabled and available services dispatch through the injected fixed dependencies" do
     adapter_error = Error.new(:not_found, "fake route", %{})
+    public_error = Error.new(:not_found, "resource not found", %{})
     YellowDog.ServerControlFake.set_available(:dns, true)
     YellowDog.ServerControlFake.set_enabled(:dns, true)
     YellowDog.ServerControlFake.configure(:dns, response: {:error, adapter_error})
 
-    assert {:error, ^adapter_error} =
+    assert {:error, ^public_error} =
              Control.dispatch(envelope("server.dns.metrics.get", %{}))
 
     assert [{:dns, :dispatch, "server.dns.metrics.get", %{}}] =
@@ -153,12 +172,12 @@ defmodule YellowDog.Server.Control.DispatcherTest do
   end
 
   test "rejects test adapter overrides outside the fixed route keys" do
-    put_dispatcher_config(
-      adapters: %{caller_selected: YellowDog.ServerControlFake.Adapter.Runtime}
-    )
+    for route_key <- [:caller_selected, :dhcpv4, :dhcpv6] do
+      put_dispatcher_config(adapters: %{route_key => YellowDog.ServerControlFake.Adapter.Runtime})
 
-    assert_internal(Control.dispatch(envelope("server.runtime.capabilities.get", %{})))
-    assert [] = YellowDog.ServerControlFake.take_calls()
+      assert_internal(Control.dispatch(envelope("server.runtime.capabilities.get", %{})))
+      assert [] = YellowDog.ServerControlFake.take_calls()
+    end
   end
 
   test "rejects stale revisions before mutation and reports the current revision" do
@@ -285,6 +304,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     current = %{service: "dns", state: :running}
     updated = %{service: "dns", state: :stopped}
     query_error = Error.new(:not_found, "query completed", %{})
+    public_query_error = Error.new(:not_found, "resource not found", %{})
     assert {:ok, expected_revision} = Revision.calculate(current)
 
     YellowDog.ServerControlFake.configure(:runtime,
@@ -310,7 +330,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
         Control.dispatch(envelope("server.settings.source.get", %{"service" => "dns"}))
       end)
 
-    assert {:error, ^query_error} = Task.await(query, 500)
+    assert {:error, ^public_query_error} = Task.await(query, 500)
     send(mutation_dispatcher, {:release_dispatch, :runtime})
     assert {:ok, %{"service" => "dns", "state" => "stopped"}} = Task.await(mutation, 1_000)
   end
@@ -331,12 +351,50 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     end
   end
 
-  test "preserves validated typed adapter errors" do
-    adapter_error = Error.new(:timeout, "adapter timed out", %{"retryable" => true})
+  test "rejects a schema-valid Netboot log containing an absolute local path" do
+    leaked_path = "/var/lib/yellowdog/netboot/assets/installer.img"
+
+    result = %{
+      "items" => [
+        %{
+          "log_id" => "log-1",
+          "device_id" => "device-1",
+          "message" => "failed to serve #{leaked_path}",
+          "occurred_at" => "2026-07-16T00:00:00Z"
+        }
+      ],
+      "revision" => @revision,
+      "observed_at" => "2026-07-16T00:00:00Z"
+    }
+
+    assert {:ok, operation} = ServerOperation.fetch("server.netboot.logs.list")
+    assert {:ok, ^result} = Operation.validate_result(operation, result)
+
+    YellowDog.ServerControlFake.configure(:netboot, response: {:ok, result})
+
+    response = Control.dispatch(envelope("server.netboot.logs.list", %{}))
+    assert_invalid(response)
+    refute inspect(response) =~ leaked_path
+  end
+
+  test "rebuilds typed adapter errors without leaking message or details" do
+    leaked_token = "token=server-control-secret"
+    leaked_path = "/var/lib/yellowdog/runtime/state.json"
+
+    adapter_error =
+      Error.new(:timeout, "adapter timed out: #{leaked_token}", %{
+        "diagnostic" => "failed to read #{leaked_path}"
+      })
+
     YellowDog.ServerControlFake.configure(:runtime, response: {:error, adapter_error})
 
-    assert {:error, ^adapter_error} =
-             Control.dispatch(envelope("server.runtime.capabilities.get", %{}))
+    assert {:error,
+            %Error{code: :timeout, message: "operation timed out", details: %{}} = public_error} =
+             response = Control.dispatch(envelope("server.runtime.capabilities.get", %{}))
+
+    refute inspect(response) =~ leaked_token
+    refute inspect(response) =~ leaked_path
+    assert {:ok, ^public_error} = public_error |> Error.to_wire() |> Error.from_wire()
   end
 
   test "redacts mutation failures and releases serialization after raise, throw, and exit" do

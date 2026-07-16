@@ -7,6 +7,11 @@ defmodule YellowDog.Server.Control.Result do
 
   @max_depth 8
   @max_integer 9_223_372_036_854_775_807
+  @absolute_unix_path ~r{(?:\A|[\s"'=,(\[])/[A-Za-z0-9._-]+}u
+  @local_file_uri ~r{\bfile:///}iu
+  @secret_assignment ~r{\b(?:token|password|api[_-]?key)\s*[:=]\s*\S+}iu
+  @authorization_secret ~r{\bauthorization\s*[:=]\s*\S+}iu
+  @bearer_secret ~r|\bbearer\s+[A-Za-z0-9._~+/=-]{4,}|iu
   @fixed_atoms MapSet.new([
                  :A,
                  :AAAA,
@@ -104,10 +109,7 @@ defmodule YellowDog.Server.Control.Result do
   defp normalize(value, _depth) when is_struct(value), do: invalid_error()
 
   defp normalize(value, _depth) when is_binary(value) do
-    case Bounds.message(value) do
-      {:ok, value} -> {:ok, value}
-      _ -> invalid_error()
-    end
+    normalize_text(value)
   end
 
   defp normalize(value, _depth)
@@ -171,7 +173,7 @@ defmodule YellowDog.Server.Control.Result do
   defp normalize_key(key) when is_atom(key), do: key |> Atom.to_string() |> normalize_key()
 
   defp normalize_key(key) when is_binary(key) do
-    case Bounds.message(key) do
+    case normalize_text(key) do
       {:ok, ""} -> invalid_error()
       {:ok, key} -> {:ok, key}
       _ -> invalid_error()
@@ -179,6 +181,28 @@ defmodule YellowDog.Server.Control.Result do
   end
 
   defp normalize_key(_key), do: invalid_error()
+
+  defp normalize_text(value) do
+    with {:ok, value} <- Bounds.message(value),
+         false <- sensitive_text?(value) do
+      {:ok, value}
+    else
+      _invalid -> invalid_error()
+    end
+  end
+
+  defp sensitive_text?(value) do
+    Enum.any?(
+      [
+        @absolute_unix_path,
+        @local_file_uri,
+        @secret_assignment,
+        @authorization_secret,
+        @bearer_secret
+      ],
+      &Regex.match?(&1, value)
+    )
+  end
 
   defp normalize_list([], _depth, values), do: {:ok, Enum.reverse(values)}
 

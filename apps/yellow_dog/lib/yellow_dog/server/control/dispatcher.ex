@@ -3,8 +3,7 @@ defmodule YellowDog.Server.Control.Dispatcher do
 
   require Logger
 
-  alias YellowDog.Server.Control.Dhcpv4
-  alias YellowDog.Server.Control.Dhcpv6
+  alias YellowDog.Server.Control.Dhcp
   alias YellowDog.Server.Control.Dns
   alias YellowDog.Server.Control.Identity
   alias YellowDog.Server.Control.Mdns
@@ -23,8 +22,7 @@ defmodule YellowDog.Server.Control.Dispatcher do
   @production_adapters %{
     runtime: Runtime,
     dns: Dns,
-    dhcpv4: Dhcpv4,
-    dhcpv6: Dhcpv6,
+    dhcp: Dhcp,
     mdns: Mdns,
     netboot: Netboot,
     identity: Identity,
@@ -37,6 +35,18 @@ defmodule YellowDog.Server.Control.Dispatcher do
     profile_resolver: ProfileResolver
   }
   @mutation_lock_resource {__MODULE__, :mutations}
+
+  @adapter_error_messages %{
+    not_connected: "not connected",
+    not_found: "resource not found",
+    invalid: "invalid value",
+    conflict: "operation conflict",
+    unsupported: "unsupported operation",
+    timeout: "operation timed out",
+    apply_failed: "apply failed",
+    rollback_failed: "rollback failed",
+    internal: "internal error"
+  }
 
   @create_operations MapSet.new([
                        "server.dhcp.pools.create",
@@ -75,9 +85,8 @@ defmodule YellowDog.Server.Control.Dispatcher do
            ServerOperation.fetch(envelope.operation),
          {:ok, _validated} <- Operation.validate_envelope(envelope, operation.kind),
          {:ok, dependencies} <- dependencies(),
-         {:ok, adapter, service} <-
-           route(operation, envelope.payload, dependencies.adapters),
-         :ok <- ensure_service_available(service, dependencies),
+         {:ok, adapter, service} <- route(operation, dependencies.adapters),
+         :ok <- ensure_service_available(service, envelope.payload, dependencies),
          :ok <- ensure_adapter_available(adapter, operation.kind) do
       dispatch_operation(operation, envelope, adapter)
     else
@@ -86,31 +95,28 @@ defmodule YellowDog.Server.Control.Dispatcher do
     end
   end
 
-  defp route(%Operation{capability: "runtime." <> _rest}, _payload, adapters),
+  defp route(%Operation{capability: "runtime." <> _rest}, adapters),
     do: fetch_route(adapters, :runtime, nil)
 
-  defp route(%Operation{capability: "dns." <> _rest}, _payload, adapters),
+  defp route(%Operation{capability: "dns." <> _rest}, adapters),
     do: fetch_route(adapters, :dns, :dns)
 
-  defp route(%Operation{capability: "dhcp." <> _rest}, %{"family" => "ipv4"}, adapters),
-    do: fetch_route(adapters, :dhcpv4, :dhcpv4)
+  defp route(%Operation{capability: "dhcp." <> _rest}, adapters),
+    do: fetch_route(adapters, :dhcp, :dhcp)
 
-  defp route(%Operation{capability: "dhcp." <> _rest}, %{"family" => "ipv6"}, adapters),
-    do: fetch_route(adapters, :dhcpv6, :dhcpv6)
-
-  defp route(%Operation{capability: "mdns." <> _rest}, _payload, adapters),
+  defp route(%Operation{capability: "mdns." <> _rest}, adapters),
     do: fetch_route(adapters, :mdns, :mdns)
 
-  defp route(%Operation{capability: "netboot." <> _rest}, _payload, adapters),
+  defp route(%Operation{capability: "netboot." <> _rest}, adapters),
     do: fetch_route(adapters, :netboot, :netboot)
 
-  defp route(%Operation{capability: "identity." <> _rest}, _payload, adapters),
+  defp route(%Operation{capability: "identity." <> _rest}, adapters),
     do: fetch_route(adapters, :identity, :identity)
 
-  defp route(%Operation{capability: "settings." <> _rest}, _payload, adapters),
+  defp route(%Operation{capability: "settings." <> _rest}, adapters),
     do: fetch_route(adapters, :settings, nil)
 
-  defp route(_operation, _payload, _adapters), do: unsupported_error()
+  defp route(_operation, _adapters), do: unsupported_error()
 
   defp fetch_route(adapters, route_key, service) do
     case Map.fetch(adapters, route_key) do
@@ -119,9 +125,19 @@ defmodule YellowDog.Server.Control.Dispatcher do
     end
   end
 
-  defp ensure_service_available(nil, _dependencies), do: :ok
+  defp ensure_service_available(:dhcp, %{"family" => "ipv4"}, dependencies),
+    do: ensure_concrete_service_available(:dhcpv4, dependencies)
 
-  defp ensure_service_available(service, dependencies) do
+  defp ensure_service_available(:dhcp, %{"family" => "ipv6"}, dependencies),
+    do: ensure_concrete_service_available(:dhcpv6, dependencies)
+
+  defp ensure_service_available(:dhcp, _payload, _dependencies), do: unsupported_error()
+  defp ensure_service_available(nil, _payload, _dependencies), do: :ok
+
+  defp ensure_service_available(service, _payload, dependencies),
+    do: ensure_concrete_service_available(service, dependencies)
+
+  defp ensure_concrete_service_available(service, dependencies) do
     with {:ok, %{available?: true}} <-
            apply(dependencies.service_registry, :fetch, [service]),
          %{services: services} when is_map(services) <-
@@ -215,7 +231,7 @@ defmodule YellowDog.Server.Control.Dispatcher do
         Revision.check(envelope.expected_revision, current, revision_policy(operation))
 
       {:error, %Error{} = error} ->
-        validate_adapter_error(error)
+        sanitize_adapter_error(error)
 
       _other ->
         internal_error()
@@ -234,18 +250,17 @@ defmodule YellowDog.Server.Control.Dispatcher do
   end
 
   defp normalize_adapter_result({:error, %Error{} = error}, _operation) do
-    validate_adapter_error(error)
+    sanitize_adapter_error(error)
   end
 
   defp normalize_adapter_result(_result, _operation), do: internal_error()
 
-  defp validate_adapter_error(%Error{} = error) do
-    with wire when is_map(wire) <- Error.to_wire(error),
-         {:ok, validated} <- Error.from_wire(wire),
-         true <- validated == error do
+  defp sanitize_adapter_error(%Error{code: code}) do
+    with {:ok, message} <- Map.fetch(@adapter_error_messages, code),
+         %Error{} = error <- Error.new(code, message, %{}) do
       {:error, error}
     else
-      _ -> internal_error()
+      _invalid -> internal_error()
     end
   end
 

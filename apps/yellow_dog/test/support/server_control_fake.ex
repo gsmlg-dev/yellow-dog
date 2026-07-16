@@ -148,22 +148,13 @@ defmodule YellowDog.ServerControlFake.Adapter.Dns do
     do: YellowDog.ServerControlFake.dispatch(:dns, operation, payload)
 end
 
-defmodule YellowDog.ServerControlFake.Adapter.Dhcpv4 do
+defmodule YellowDog.ServerControlFake.Adapter.Dhcp do
   @moduledoc false
   def current(operation, payload),
-    do: YellowDog.ServerControlFake.current(:dhcpv4, operation, payload)
+    do: YellowDog.ServerControlFake.current(:dhcp, operation, payload)
 
   def dispatch(operation, payload),
-    do: YellowDog.ServerControlFake.dispatch(:dhcpv4, operation, payload)
-end
-
-defmodule YellowDog.ServerControlFake.Adapter.Dhcpv6 do
-  @moduledoc false
-  def current(operation, payload),
-    do: YellowDog.ServerControlFake.current(:dhcpv6, operation, payload)
-
-  def dispatch(operation, payload),
-    do: YellowDog.ServerControlFake.dispatch(:dhcpv6, operation, payload)
+    do: YellowDog.ServerControlFake.dispatch(:dhcp, operation, payload)
 end
 
 defmodule YellowDog.ServerControlFake.Adapter.Mdns do
