@@ -296,7 +296,7 @@ defmodule YellowDog.Management.ConfigVersions do
            :ok <- ensure_before_deadline(deadline) do
         {:cont, {:ok, Map.put(versions, version, config_version)}}
       else
-        {:error, %Error{code: :internal}} = error -> {:halt, error}
+        {:error, %Error{code: code}} = error when code in [:internal, :timeout] -> {:halt, error}
         _invalid -> {:halt, invalid()}
       end
     end)

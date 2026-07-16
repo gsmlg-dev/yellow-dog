@@ -715,6 +715,72 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_blocking_filesystem_timeout(:read, "srv-block-read", false, context.data_dir)
   end
 
+  test "blocking referenced immutable read returns timeout without mutation", %{
+    data_dir: data_dir
+  } do
+    register_server("srv-block-version-read")
+    assert {:ok, published} = publish_server("srv-block-version-read")
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-block-version-read")
+
+    assert {:ok, version_path} =
+             StoragePath.server_version(
+               "srv-block-version-read",
+               published.version,
+               published.digest
+             )
+
+    assert {:ok, manifest_before} = AtomicJson.read(manifest_path)
+    assert {:ok, immutable_before} = AtomicJson.read(version_path)
+
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_owner, self())
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :config_version_blocking_operation,
+      :version_read
+    )
+
+    install_event_store_config(
+      file_ops: __MODULE__.BlockingConfigFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 50
+    )
+
+    config_versions = Process.whereis(ConfigVersions)
+
+    read_task =
+      Task.async(fn ->
+        ManagementCore.get_server_config_version(
+          "srv-block-version-read",
+          published.version
+        )
+      end)
+
+    assert_receive {:config_filesystem_blocked, :version_read, worker_pid, ^version_path}, 1_000
+    result = Task.await(read_task, 1_000)
+    send(worker_pid, :release_config_filesystem)
+    :sys.get_state(config_versions)
+
+    assert_error(result, :timeout)
+    refute worker_pid == config_versions
+    refute Process.alive?(worker_pid)
+    assert {:ok, ^manifest_before} = AtomicJson.read(manifest_path)
+    assert {:ok, ^immutable_before} = AtomicJson.read(version_path)
+
+    target_dir =
+      Path.join([data_dir, "management", "servers", "srv-block-version-read"])
+
+    refute filesystem_residue?(target_dir)
+
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_operation, nil)
+
+    assert {:ok, ^published} =
+             ManagementCore.get_server_config_version(
+               "srv-block-version-read",
+               published.version
+             )
+  end
+
   test "blocking versions listing times out without wedging ConfigVersions", context do
     assert_blocking_filesystem_timeout(:list, "srv-block-list", false, context.data_dir)
   end
@@ -1734,7 +1800,8 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     alias YellowDog.Management.Storage.AtomicJson.FileOps
 
     def read(path) do
-      maybe_block(:read, path)
+      operation = if String.contains?(path, "/versions/"), do: :version_read, else: :read
+      maybe_block(operation, path)
       FileOps.read(path)
     end
 
