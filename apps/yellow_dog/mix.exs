@@ -10,6 +10,7 @@ defmodule YellowDog.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.18",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases()
@@ -31,6 +32,7 @@ defmodule YellowDog.MixProject do
       {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
+      {:yellow_dog_sync, in_umbrella: true},
       {:abyss, in_umbrella: true},
 
       # External dependencies for core functionality
@@ -53,4 +55,7 @@ defmodule YellowDog.MixProject do
       lint: ["credo --strict", "dialyzer"]
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 end
