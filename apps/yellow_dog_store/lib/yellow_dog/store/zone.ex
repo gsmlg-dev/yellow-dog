@@ -743,6 +743,7 @@ defmodule YellowDog.Store.Zone do
     lock_id = {{__MODULE__, :zone, view_name, zone}, self()}
 
     case :global.trans(lock_id, fun) do
+      :aborted -> {:error, {:lock_failed, :aborted}}
       {:aborted, reason} -> {:error, {:lock_failed, reason}}
       result -> result
     end
@@ -1048,11 +1049,11 @@ defmodule YellowDog.Store.Zone do
   end
 
   defp remove_new_records(backend, new_keys) do
-    Enum.reduce_while(new_keys, nil, fn key, nil ->
+    Enum.reduce(new_keys, nil, fn key, first_error ->
       case backend.delete(key) do
-        :ok -> {:cont, nil}
-        {:error, reason} -> {:halt, {:remove_new_failed, reason}}
-        _other -> {:halt, {:remove_new_failed, :invalid_result}}
+        :ok -> first_error
+        {:error, reason} -> first_error || {:remove_new_failed, reason}
+        _other -> first_error || {:remove_new_failed, :invalid_result}
       end
     end)
   end

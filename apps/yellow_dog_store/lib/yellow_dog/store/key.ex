@@ -7,11 +7,12 @@ defmodule YellowDog.Store.Key do
   arguments and canonical string keys.
   """
 
-  @known_rr_types ~w(a aaaa cname ns mx txt srv soa ptr caa ds rrsig nsec dnskey nsec3 nsec3param tlsa https svcb spf uri naptr)a
-  @view_pattern ~r/\A[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\z/
-  @dns_label_pattern ~r/\A[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?\z/
+  @view_pattern ~r/\A[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?\z/
+  @dns_label_pattern ~r/\A[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?\z/
+  @control_character_pattern ~r/[\x00-\x1F\x7F]/
+  @max_rr_type_bytes 64
 
-  @doc "Canonicalize and validate a view and DNS zone before key construction."
+  @doc "Validate a view and DNS zone, returning both key segments verbatim."
   @spec canonical_zone_scope(term(), term()) ::
           {:ok, {String.t(), String.t()}} | {:error, :invalid_scope}
   def canonical_zone_scope(view_name, zone_name) do
@@ -23,7 +24,7 @@ defmodule YellowDog.Store.Key do
     end
   end
 
-  @doc "Canonicalize and validate a DNS owner name before RR key construction."
+  @doc "Validate a DNS owner name, returning the key segment verbatim."
   @spec canonical_owner(term()) :: {:ok, String.t()} | {:error, :invalid_owner}
   def canonical_owner("@"), do: {:ok, "@"}
 
@@ -34,9 +35,17 @@ defmodule YellowDog.Store.Key do
     end
   end
 
-  @doc "Return whether an atom is a supported persisted DNS RR type."
+  @doc "Return whether an existing atom can be encoded safely in an RR key."
   @spec valid_rr_type?(term()) :: boolean()
-  def valid_rr_type?(type), do: type in @known_rr_types
+  def valid_rr_type?(type) when is_atom(type) and not is_nil(type) do
+    encoded = Atom.to_string(type)
+
+    String.valid?(encoded) and byte_size(encoded) in 1..@max_rr_type_bytes and
+      not String.contains?(encoded, ":") and
+      not Regex.match?(@control_character_pattern, encoded)
+  end
+
+  def valid_rr_type?(_type), do: false
 
   @doc "Build a DHCPv4 lease key from a MAC address."
   @spec lease_v4(String.t()) :: String.t()
@@ -199,15 +208,9 @@ defmodule YellowDog.Store.Key do
   end
 
   defp canonical_view(view_name) when is_binary(view_name) do
-    if String.valid?(view_name) do
-      canonical = String.downcase(view_name)
-
-      if String.trim(view_name) == view_name and byte_size(canonical) <= 253 and
-           Regex.match?(@view_pattern, canonical) do
-        {:ok, canonical}
-      else
-        :error
-      end
+    if String.valid?(view_name) and String.trim(view_name) == view_name and
+         byte_size(view_name) in 1..253 and Regex.match?(@view_pattern, view_name) do
+      {:ok, view_name}
     else
       :error
     end
@@ -216,15 +219,9 @@ defmodule YellowDog.Store.Key do
   defp canonical_view(_view_name), do: :error
 
   defp canonical_dns_name(name, allow_wildcard?) when is_binary(name) do
-    if String.valid?(name) do
-      canonical = canonical_dns_text(name)
-
-      if String.trim(name) == name and not String.ends_with?(name, "..") and
-           valid_dns_name?(canonical, allow_wildcard?) do
-        {:ok, canonical}
-      else
-        :error
-      end
+    if String.valid?(name) and String.trim(name) == name and
+         valid_dns_name?(name, allow_wildcard?) do
+      {:ok, name}
     else
       :error
     end
@@ -232,19 +229,14 @@ defmodule YellowDog.Store.Key do
 
   defp canonical_dns_name(_name, _allow_wildcard?), do: :error
 
-  defp canonical_dns_text("."), do: "."
-
-  defp canonical_dns_text(name) do
-    name
-    |> String.downcase()
-    |> String.trim_trailing(".")
-  end
-
   defp valid_dns_name?(".", _allow_wildcard?), do: true
 
   defp valid_dns_name?(name, allow_wildcard?) do
-    byte_size(name) in 1..253 and String.trim(name) == name and
-      name
+    validation_name = remove_optional_root_dot(name)
+    max_size = if String.ends_with?(name, "."), do: 254, else: 253
+
+    byte_size(name) in 1..max_size and
+      validation_name
       |> String.split(".")
       |> Enum.with_index()
       |> Enum.all?(fn
@@ -254,6 +246,14 @@ defmodule YellowDog.Store.Key do
         {label, _index} ->
           byte_size(label) in 1..63 and Regex.match?(@dns_label_pattern, label)
       end)
+  end
+
+  defp remove_optional_root_dot(name) do
+    if String.ends_with?(name, ".") do
+      binary_part(name, 0, byte_size(name) - 1)
+    else
+      name
+    end
   end
 
   # Re-chunk hex digits into colon-separated pairs: "aabbccddeeff" → "aa:bb:cc:dd:ee:ff"

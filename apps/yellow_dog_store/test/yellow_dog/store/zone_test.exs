@@ -95,7 +95,12 @@ defmodule YellowDog.Store.ZoneTest do
 
     assert_receive {:backend_barrier, ^ref, replace_pid}, 5_000
 
-    spawn(fn -> send(parent, {:mutation_result, ref, mutation.()}) end)
+    spawn(fn ->
+      send(parent, {:mutation_started, ref})
+      send(parent, {:mutation_result, ref, mutation.()})
+    end)
+
+    assert_receive {:mutation_started, ^ref}, 1_000
 
     {finished_while_blocked, mutation_result} =
       receive do
@@ -600,7 +605,8 @@ defmodule YellowDog.Store.ZoneTest do
       previous = strong_record_snapshot(@view, zone_name)
       {:ok, before_zone} = Zone.get_zone(@view, zone_name)
       start_event_bridge()
-      {:ok, _ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
+      {:ok, event_ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
+      on_exit(fn -> EventBridge.unsubscribe(event_ref) end)
       zone_key = Key.zone(@view, zone_name)
       use_failure_backend([{:put_if, zone_key, {:write_then_error, :serial_failed}}])
 
@@ -631,22 +637,46 @@ defmodule YellowDog.Store.ZoneTest do
                Zone.replace_records(@view, zone_name, [updated])
     end
 
-    test "canonicalizes scope and owner before deriving persisted keys" do
-      assert :ok =
-               Zone.create_zone("DEFAULT", "Canonical.Example.COM.", @test_soa,
-                 serial_strategy: :increment
-               )
+    test "preserves pre-existing verbatim metadata and RR keys" do
+      view_name = "DEFAULT"
+      zone_name = "Legacy.Example."
+      owner = "WWW.Legacy.Example."
+      zone_key = Key.zone(view_name, zone_name)
+      rr_key = Key.zone_rr(view_name, zone_name, owner, :a)
+      now = System.system_time(:second)
 
-      record = desired_record("WWW.", {192, 0, 2, 1})
+      zone = %{
+        id: "legacy-zone-id",
+        zone_type: :auth,
+        origin: zone_name,
+        soa: @test_soa,
+        default_ttl: 3600,
+        authoritative: true,
+        allow_dynamic_update: false,
+        serial_strategy: :increment,
+        cloud_mirror: nil,
+        created_at: now,
+        updated_at: now
+      }
+
+      old = desired_record(owner, {192, 0, 2, 1})
+      updated = desired_record(owner, {192, 0, 2, 2})
+      :ok = EtsBackend.put(zone_key, zone)
+      :ok = EtsBackend.put(rr_key, persisted_record(zone_name, old))
+
+      assert {:ok, %{origin: ^zone_name}} = Zone.get_zone(view_name, zone_name)
+      assert {:ok, %{owner: ^owner}} = Zone.get_rrset(view_name, zone_name, owner, :a)
+      assert :ok = Zone.update_zone(view_name, zone_name, %{default_ttl: 7200})
 
       assert {:ok, %{changed_count: 1}} =
-               Zone.replace_records("default", "canonical.example.com", [record])
+               Zone.replace_records(view_name, zone_name, [updated])
 
-      assert {:ok, stored} =
-               Zone.get_rrset("DEFAULT", "CANONICAL.EXAMPLE.COM.", "www", :a)
+      assert {:ok, %{rrset: rrset}} = Zone.get_rrset(view_name, zone_name, owner, :a)
+      assert rrset == updated.rrset
+      assert {:error, :not_found} = EtsBackend.get(Key.zone("default", "legacy.example"))
 
-      assert stored.owner == "www"
-      assert stored.zone == "canonical.example.com"
+      assert {:error, :not_found} =
+               EtsBackend.get(Key.zone_rr("default", "legacy.example", "www.legacy.example", :a))
     end
 
     test "rejects delimiter collisions and invalid DNS scope names before writes" do
@@ -667,21 +697,51 @@ defmodule YellowDog.Store.ZoneTest do
                  desired_record("www:a", {192, 0, 2, 1})
                ])
 
+      assert {:error, {:replace_failed, :invalid_record}} =
+               Zone.replace_records(@view, "example.com", [
+                 %{desired_record("www", {192, 0, 2, 1}) | type: :"a:injected"}
+               ])
+
       assert FailureBackend.writes() == []
     end
 
-    test "detects duplicate owner and type by final canonical persisted key" do
-      zone_name = "replace-canonical-duplicate.example.com"
+    test "detects duplicates by the final verbatim persisted key" do
+      zone_name = "replace-verbatim-duplicate.example.com"
       Zone.create_zone(@view, zone_name, @test_soa)
       use_failure_backend()
 
       assert {:error, {:replace_failed, :duplicate_record}} =
                Zone.replace_records(@view, zone_name, [
                  desired_record("WWW.", {192, 0, 2, 1}),
-                 desired_record("www", {192, 0, 2, 2})
+                 desired_record("WWW.", {192, 0, 2, 2})
                ])
 
       assert FailureBackend.writes() == []
+      FailureBackend.reset()
+
+      assert {:ok, %{changed_count: 2}} =
+               Zone.replace_records(@view, zone_name, [
+                 desired_record("WWW.", {192, 0, 2, 1}),
+                 desired_record("www", {192, 0, 2, 2})
+               ])
+
+      assert {:ok, _record} = Zone.get_rrset(@view, zone_name, "WWW.", :a)
+      assert {:ok, _record} = Zone.get_rrset(@view, zone_name, "www", :a)
+    end
+
+    test "replaces SSHFP RRsets" do
+      zone_name = "replace-sshfp.example.com"
+      first = %{owner: "host", type: :sshfp, rrset: [%{rdata: {1, 1, "first"}, ttl: 300}]}
+      second = %{first | rrset: [%{rdata: {4, 2, "second"}, ttl: 600}]}
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+
+      assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [first])
+      assert {:ok, %{rrset: first_rrset}} = Zone.get_rrset(@view, zone_name, "host", :sshfp)
+      assert first_rrset == first.rrset
+
+      assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [second])
+      assert {:ok, %{rrset: second_rrset}} = Zone.get_rrset(@view, zone_name, "host", :sshfp)
+      assert second_rrset == second.rrset
     end
 
     test "requires an authoritative auth zone" do
@@ -774,6 +834,31 @@ defmodule YellowDog.Store.ZoneTest do
                Zone.replace_records(@view, zone_name, [added, updated])
     end
 
+    test "continues removing introduced keys after the first removal fails" do
+      zone_name = "replace-remove-all-new.example.com"
+      old = desired_record("z-old", {192, 0, 2, 1})
+      updated = desired_record("z-old", {192, 0, 2, 2})
+      added_a = desired_record("a-new", {192, 0, 2, 3})
+      added_b = desired_record("b-new", {192, 0, 2, 4})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      key_a = Key.zone_rr(@view, zone_name, added_a.owner, added_a.type)
+      key_b = Key.zone_rr(@view, zone_name, added_b.owner, added_b.type)
+
+      use_failure_backend([
+        {:put_many, {:partial, 2, {:error, :batch_failed}}},
+        {:delete, key_a, {:error, :remove_failed}}
+      ])
+
+      assert {:error,
+              {:rollback_failed, {:put_many_failed, :batch_failed},
+               {:remove_new_failed, :remove_failed}}} =
+               Zone.replace_records(@view, zone_name, [added_a, added_b, updated])
+
+      assert {:error, :not_found} = EtsBackend.get(key_b)
+      assert {:delete, key_b} in FailureBackend.calls()
+    end
+
     test "verification scan failure reports rollback_failed" do
       zone_name = "replace-verification-failure.example.com"
       old = desired_record("www", {192, 0, 2, 1})
@@ -825,7 +910,7 @@ defmodule YellowDog.Store.ZoneTest do
 
       use_failure_backend([
         {:put_many, :pass},
-        {:put_many, {:partial, 0, {:error, :second_chunk_failed}}}
+        {:put_many, {:partial, 1, {:error, :second_chunk_failed}}}
       ])
 
       assert {:error, {:replace_failed, {:put_many_failed, :second_chunk_failed}}} =
@@ -833,6 +918,27 @@ defmodule YellowDog.Store.ZoneTest do
 
       assert strong_record_snapshot(@view, zone_name) == previous
       assert put_many_call_sizes() == [500, 1, 500, 1]
+    end
+
+    test "shared lock serializes concurrent replacements" do
+      zone_name = "replace-lock-replace.example.com"
+      old = desired_record("target", {192, 0, 2, 1})
+      first = desired_record("target", {192, 0, 2, 2})
+      added = desired_record("added", {192, 0, 2, 3})
+      second = desired_record("target", {192, 0, 2, 99})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+
+      {finished_while_blocked, result} =
+        run_blocked_replacement(zone_name, [added, first], fn ->
+          Zone.replace_records(@view, zone_name, [second])
+        end)
+
+      refute finished_while_blocked
+      assert {:ok, %{changed_count: 1}} = result
+      assert {:ok, %{rrset: rrset}} = Zone.get_rrset(@view, zone_name, "target", :a)
+      assert rrset == second.rrset
+      assert {:error, :not_found} = Zone.get_rrset(@view, zone_name, "added", :a)
     end
 
     test "shared lock keeps concurrent put after replacement compensation" do
@@ -951,7 +1057,7 @@ defmodule YellowDog.Store.ZoneTest do
       handler_id = {__MODULE__, make_ref()}
       zone_key = Key.zone(@view, zone_name)
 
-      {:ok, _ref} =
+      {:ok, event_ref} =
         EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*", fn event ->
           {:ok, zone} = EtsBackend.get(zone_key, consistency: :strong)
           send(parent, {:event_committed, event, zone.soa.serial})
@@ -968,7 +1074,10 @@ defmodule YellowDog.Store.ZoneTest do
           {parent, zone_key}
         )
 
-      on_exit(fn -> :telemetry.detach(handler_id) end)
+      on_exit(fn ->
+        EventBridge.unsubscribe(event_ref)
+        :telemetry.detach(handler_id)
+      end)
 
       assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [record])
 
@@ -988,7 +1097,8 @@ defmodule YellowDog.Store.ZoneTest do
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, stale.owner, stale.type, stale.rrset)
       start_event_bridge()
-      {:ok, _ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
+      {:ok, event_ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
+      on_exit(fn -> EventBridge.unsubscribe(event_ref) end)
 
       assert {:ok, %{changed_count: 2}} = Zone.replace_records(@view, zone_name, [added])
 
@@ -1027,6 +1137,20 @@ defmodule YellowDog.Store.ZoneTest do
                  "nonexistent.test-rr2.example.com",
                  :a
                )
+    end
+
+    test "puts, gets, and deletes SSHFP RRsets" do
+      zone_name = "sshfp-api.example.com"
+      rrset = [%{rdata: {4, 2, "abcdef"}, ttl: 300}]
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+
+      assert :ok = Zone.put_rrset(@view, zone_name, "host", :sshfp, rrset)
+
+      assert {:ok, %{rrset: ^rrset, type: :sshfp}} =
+               Zone.get_rrset(@view, zone_name, "host", :sshfp)
+
+      assert :ok = Zone.delete_rrset(@view, zone_name, "host", :sshfp)
+      assert {:error, :not_found} = Zone.get_rrset(@view, zone_name, "host", :sshfp)
     end
   end
 
@@ -1183,6 +1307,20 @@ defmodule YellowDog.Store.ZoneTest do
 
       assert :ok = Zone.import_zone(@view, "test-import.example.com", records)
       assert {:ok, _zone} = Zone.get_zone(@view, "test-import.example.com")
+    end
+
+    test "imports SSHFP RRsets" do
+      zone_name = "import-sshfp.example.com"
+      rrset = [%{rdata: {1, 2, "0123456789abcdef"}, ttl: 300}]
+
+      assert :ok =
+               Zone.import_zone(@view, zone_name, [
+                 %{owner: "@", type: :soa, rrset: [@test_soa]},
+                 %{owner: "host", type: :sshfp, rrset: rrset}
+               ])
+
+      assert {:ok, %{rrset: ^rrset, source: :import}} =
+               Zone.get_rrset(@view, zone_name, "host", :sshfp)
     end
   end
 
