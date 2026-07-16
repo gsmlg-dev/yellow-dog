@@ -328,7 +328,7 @@ defmodule YellowDog.Management.ConfigVersions do
   defp validate_pointers(lifecycle, versions) do
     with :ok <- pointer_exists(lifecycle["desired_version"], versions),
          :ok <- applied_pointer(lifecycle["applied_version"], versions),
-         :ok <- active_desired_previous_pair(lifecycle, versions) do
+         :ok <- current_desired_applied_pair(lifecycle, versions) do
       :ok
     end
   end
@@ -348,25 +348,25 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
-  defp active_desired_previous_pair(%{"desired_version" => nil}, _versions), do: :ok
+  defp current_desired_applied_pair(%{"desired_version" => nil}, _versions), do: :ok
 
-  defp active_desired_previous_pair(lifecycle, versions) do
+  defp current_desired_applied_pair(lifecycle, versions) do
     desired = Map.fetch!(versions, lifecycle["desired_version"])
+    actual_pair = manifest_applied_pair(lifecycle["applied_version"], versions)
+    expected_pair = current_desired_expected_pair(desired)
 
-    if desired.state in [:desired, :delivered, :applying] do
-      expected_pair = applied_previous_pair(lifecycle["applied_version"], versions)
-
-      if {desired.previous_version, desired.previous_revision} == expected_pair,
-        do: :ok,
-        else: invalid()
-    else
-      :ok
-    end
+    if actual_pair == expected_pair, do: :ok, else: invalid()
   end
 
-  defp applied_previous_pair(nil, _versions), do: {nil, nil}
+  defp current_desired_expected_pair(%ConfigVersion{state: :applied} = desired),
+    do: {desired.version, desired.applied_revision}
 
-  defp applied_previous_pair(version, versions) do
+  defp current_desired_expected_pair(desired),
+    do: {desired.previous_version, desired.previous_revision}
+
+  defp manifest_applied_pair(nil, _versions), do: {nil, nil}
+
+  defp manifest_applied_pair(version, versions) do
     applied = Map.fetch!(versions, version)
     {applied.version, applied.applied_revision}
   end

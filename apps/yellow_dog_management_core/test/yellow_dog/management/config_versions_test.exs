@@ -1341,6 +1341,122 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert second.applied_revision == @digest_b
   end
 
+  test "current applied desired must match the manifest applied pointer", %{
+    data_dir: data_dir
+  } do
+    server_id = "srv-terminal-applied-pointer-backward"
+    register_server(server_id)
+    assert {:ok, first} = publish_server(server_id)
+    first = apply_version(first, @digest_a)
+
+    assert {:ok, second} =
+             ManagementCore.publish_server_config(
+               server_id,
+               server_attrs(2, expected_revision: @digest_a)
+             )
+
+    second = apply_version(second, @digest_b)
+    tamper_applied_pointer(server_id, first.version)
+    assert_corrupt_target_rejected(server_id, second, 3, data_dir)
+
+    nil_pointer_id = "srv-terminal-applied-pointer-nil"
+    register_server(nil_pointer_id)
+    assert {:ok, nil_pointer} = publish_server(nil_pointer_id)
+    nil_pointer = apply_version(nil_pointer, @digest_a)
+    tamper_applied_pointer(nil_pointer_id, nil)
+    assert_corrupt_target_rejected(nil_pointer_id, nil_pointer, 2, data_dir)
+
+    valid_id = "srv-terminal-applied-pointer-valid"
+    register_server(valid_id)
+    assert {:ok, valid_first} = publish_server(valid_id)
+    valid_first = apply_version(valid_first, @digest_a)
+
+    assert {:ok, valid_second} =
+             ManagementCore.publish_server_config(
+               valid_id,
+               server_attrs(2, expected_revision: valid_first.applied_revision)
+             )
+
+    valid_second = apply_version(valid_second, @digest_b)
+
+    assert {:ok, %ConfigVersion{version: 3, previous_version: 2, previous_revision: @digest_b}} =
+             ManagementCore.publish_server_config(
+               valid_id,
+               server_attrs(3, expected_revision: valid_second.applied_revision)
+             )
+  end
+
+  test "terminal failures preserve and validate the previous applied pointer", %{
+    data_dir: data_dir
+  } do
+    server_id = "srv-terminal-failure-pointer"
+    register_server(server_id)
+    assert {:ok, first} = publish_server(server_id)
+    first = apply_version(first, @digest_a)
+
+    assert {:ok, second} = publish_with_revision(server_id, 2, first.applied_revision)
+
+    assert {:ok, failed_delivery} =
+             transition(second, :failed, 0,
+               failure_phase: :delivery,
+               reason: "delivery failed"
+             )
+
+    assert_terminal_failure_valid(server_id, failed_delivery)
+
+    assert {:ok, third} = publish_with_revision(server_id, 3, first.applied_revision)
+    assert {:ok, delivered_third} = transition(third, :delivered, 0)
+
+    assert {:ok, failed_validation} =
+             transition(delivered_third, :failed, 1,
+               failure_phase: :validation,
+               reason: "validation failed"
+             )
+
+    assert_terminal_failure_valid(server_id, failed_validation)
+
+    assert {:ok, fourth} = publish_with_revision(server_id, 4, first.applied_revision)
+    assert {:ok, delivered_fourth} = transition(fourth, :delivered, 0)
+    assert {:ok, applying_fourth} = transition(delivered_fourth, :applying, 1)
+
+    assert {:ok, failed_rollback_success} =
+             transition(applying_fourth, :failed, 2,
+               failure_phase: :apply,
+               reason: "apply failed and rollback succeeded",
+               rollback: %{
+                 "succeeded" => true,
+                 "restored_version" => first.version,
+                 "restored_revision" => first.applied_revision,
+                 "reason" => nil
+               }
+             )
+
+    assert_terminal_failure_valid(server_id, failed_rollback_success)
+
+    assert {:ok, fifth} = publish_with_revision(server_id, 5, first.applied_revision)
+    assert {:ok, delivered_fifth} = transition(fifth, :delivered, 0)
+    assert {:ok, applying_fifth} = transition(delivered_fifth, :applying, 1)
+
+    assert {:ok, failed_rollback} =
+             transition(applying_fifth, :failed, 2,
+               failure_phase: :apply,
+               reason: "apply and rollback failed",
+               rollback: %{
+                 "succeeded" => false,
+                 "restored_version" => nil,
+                 "restored_revision" => nil,
+                 "reason" => "rollback failed"
+               }
+             )
+
+    assert_terminal_failure_valid(server_id, failed_rollback)
+    restart_application()
+    assert_terminal_failure_valid(server_id, failed_rollback)
+
+    tamper_applied_pointer(server_id, nil)
+    assert_corrupt_target_rejected(server_id, failed_rollback, 6, data_dir)
+  end
+
   test "orphan version gaps remain valid and reserve monotonic version numbers", %{
     data_dir: data_dir
   } do
@@ -1495,6 +1611,20 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     ManagementCore.publish_server_config(server_id, server_attrs(1))
   end
 
+  defp publish_with_revision(server_id, index, expected_revision) do
+    ManagementCore.publish_server_config(
+      server_id,
+      server_attrs(index, expected_revision: expected_revision)
+    )
+  end
+
+  defp assert_terminal_failure_valid(server_id, version) do
+    assert {:ok, ^version} =
+             ManagementCore.get_server_config_version(server_id, version.version)
+
+    assert_error(ManagementCore.latest_desired_config(:server, server_id), :not_found)
+  end
+
   defp apply_version(version, applied_revision \\ @digest_a) do
     assert {:ok, delivered} = transition(version, :delivered, 0)
     assert {:ok, applying} = transition(delivered, :applying, 1)
@@ -1522,6 +1652,16 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       manifest["config_lifecycle"]
       |> put_in(["versions", version_key, "previous_version"], previous_version)
       |> put_in(["versions", version_key, "previous_revision"], previous_revision)
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(manifest_path, %{manifest | "config_lifecycle" => lifecycle})
+  end
+
+  defp tamper_applied_pointer(server_id, applied_version) do
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+    lifecycle = Map.put(manifest["config_lifecycle"], "applied_version", applied_version)
 
     assert {:ok, ^manifest_path} =
              AtomicJson.replace(manifest_path, %{manifest | "config_lifecycle" => lifecycle})
