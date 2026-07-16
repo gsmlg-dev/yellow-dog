@@ -23,6 +23,11 @@ defmodule YellowDog.Store.Zone do
   @type zone_name :: String.t()
   @type owner :: String.t()
   @type rr_type :: atom()
+  @type record :: %{
+          required(:owner) => owner(),
+          required(:type) => rr_type(),
+          required(:rrset) => [map()]
+        }
   @type soa :: %{
           mname: String.t(),
           rname: String.t(),
@@ -427,6 +432,33 @@ defmodule YellowDog.Store.Zone do
   end
 
   @doc """
+  Replace all RRsets in an existing authoritative zone.
+
+  The complete desired set is validated before any write. Changed replacements
+  increment the SOA serial once and publish RR events only after the records and
+  serial are committed. Partial failures restore the exact prior RRset content.
+  """
+  @spec replace_records(view_name(), zone_name(), [record()]) ::
+          {:ok, %{previous: [map()], changed_count: non_neg_integer()}}
+          | {:error, {:replace_failed, term()}}
+          | {:error, {:rollback_failed, term(), term()}}
+  def replace_records(view_name, zone, records) do
+    with :ok <- validate_replace_scope(view_name, zone),
+         {:ok, desired_records} <- validate_desired_records(records) do
+      lock_id = {{__MODULE__, :replace_records, view_name, zone}, self()}
+
+      case :global.trans(lock_id, fn ->
+             do_replace_records(Backend.active(), view_name, zone, desired_records)
+           end) do
+        {:aborted, reason} -> {:error, {:replace_failed, {:lock_failed, reason}}}
+        result -> result
+      end
+    else
+      {:error, reason} -> {:error, {:replace_failed, reason}}
+    end
+  end
+
+  @doc """
   Lookup a specific RRset. Uses `:eventual` consistency.
   """
   @spec get_rrset(view_name(), zone_name(), owner(), rr_type()) ::
@@ -564,14 +596,14 @@ defmodule YellowDog.Store.Zone do
   """
   @spec increment_serial(view_name(), zone_name()) :: :ok | {:error, term()}
   def increment_serial(view_name, name),
-    do: do_increment_serial(view_name, name, @max_cas_retries)
+    do: do_increment_serial(Backend.active(), view_name, name, @max_cas_retries)
 
-  defp do_increment_serial(_view_name, _name, 0), do: {:error, :max_retries}
+  defp do_increment_serial(_backend, _view_name, _name, 0), do: {:error, :max_retries}
 
-  defp do_increment_serial(view_name, name, retries) do
+  defp do_increment_serial(backend, view_name, name, retries) do
     key = Key.zone(view_name, name)
 
-    case Backend.active().get(key, consistency: :strong) do
+    case backend.get(key, consistency: :strong) do
       {:ok, %{zone_type: :auth} = zone_meta} ->
         old_serial = zone_meta.soa.serial
         strategy = Map.get(zone_meta, :serial_strategy, :date_serial)
@@ -585,7 +617,7 @@ defmodule YellowDog.Store.Zone do
           |> Map.put(:soa, updated_soa)
           |> Map.put(:updated_at, now)
 
-        case Backend.active().put_if(key, updated_meta, condition: fn old -> old == zone_meta end) do
+        case backend.put_if(key, updated_meta, condition: fn old -> old == zone_meta end) do
           :ok ->
             :telemetry.execute(
               [:yellow_dog, :store, :zone, :serial_incremented],
@@ -596,7 +628,7 @@ defmodule YellowDog.Store.Zone do
             :ok
 
           {:error, :condition_failed} ->
-            do_increment_serial(view_name, name, retries - 1)
+            do_increment_serial(backend, view_name, name, retries - 1)
 
           {:error, _} = error ->
             error
@@ -617,6 +649,251 @@ defmodule YellowDog.Store.Zone do
   # -------------------------------------------------------------------
   # Private helpers
   # -------------------------------------------------------------------
+
+  defp validate_replace_scope(view_name, zone)
+       when is_binary(view_name) and view_name != "" and is_binary(zone) and zone != "",
+       do: :ok
+
+  defp validate_replace_scope(_view_name, _zone), do: {:error, :invalid_scope}
+
+  defp validate_desired_records(records) when is_list(records) do
+    records
+    |> Enum.reduce_while({:ok, {[], MapSet.new()}}, fn record, {:ok, {validated, keys}} ->
+      if valid_desired_record?(record) do
+        record_key = {record.owner, record.type}
+
+        if MapSet.member?(keys, record_key) do
+          {:halt, {:error, :duplicate_record}}
+        else
+          {:cont, {:ok, {[record | validated], MapSet.put(keys, record_key)}}}
+        end
+      else
+        {:halt, {:error, :invalid_record}}
+      end
+    end)
+    |> case do
+      {:ok, {validated, _keys}} -> {:ok, Enum.reverse(validated)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp validate_desired_records(_records), do: {:error, :invalid_records}
+
+  defp valid_desired_record?(%{owner: owner, type: type, rrset: rrset})
+       when is_binary(owner) and owner != "" and is_atom(type) and not is_nil(type) and
+              is_list(rrset) and rrset != [] do
+    Enum.all?(rrset, &is_map/1)
+  end
+
+  defp valid_desired_record?(_record), do: false
+
+  defp do_replace_records(backend, view_name, zone, desired_records) do
+    zone_key = Key.zone(view_name, zone)
+
+    case backend.get(zone_key, consistency: :strong) do
+      {:ok, %{zone_type: :auth}} ->
+        replace_from_snapshot(backend, view_name, zone, desired_records)
+
+      {:ok, _zone} ->
+        {:error, {:replace_failed, :not_authoritative}}
+
+      {:error, :not_found} ->
+        {:error, {:replace_failed, :zone_not_found}}
+
+      {:error, reason} ->
+        {:error, {:replace_failed, {:zone_read_failed, reason}}}
+    end
+  end
+
+  defp replace_from_snapshot(backend, view_name, zone, desired_records) do
+    prefix = Key.zone_rr_prefix(view_name, zone)
+
+    case backend.prefix_scan(prefix, consistency: :strong) do
+      {:ok, entries} ->
+        previous_entries = Enum.sort_by(entries, &elem(&1, 0))
+        previous = Enum.map(previous_entries, &elem(&1, 1))
+        plan = replacement_plan(view_name, zone, desired_records, previous_entries)
+
+        if plan.changed_count == 0 do
+          {:ok, %{previous: previous, changed_count: 0}}
+        else
+          apply_replacement(backend, view_name, zone, previous_entries, previous, plan)
+        end
+
+      {:error, reason} ->
+        {:error, {:replace_failed, {:snapshot_failed, reason}}}
+    end
+  end
+
+  defp replacement_plan(view_name, zone, desired_records, previous_entries) do
+    current = Map.new(previous_entries)
+    now = System.system_time(:second)
+
+    desired =
+      Map.new(desired_records, fn record ->
+        key = Key.zone_rr(view_name, zone, record.owner, record.type)
+        {key, record}
+      end)
+
+    puts =
+      desired
+      |> Enum.reject(fn {key, record} ->
+        case Map.fetch(current, key) do
+          {:ok, existing} -> same_rrset?(existing, zone, record)
+          :error -> false
+        end
+      end)
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.map(fn {key, record} -> {key, persisted_record(zone, record, now)} end)
+
+    deletes =
+      current
+      |> Enum.reject(fn {key, _value} -> Map.has_key?(desired, key) end)
+      |> Enum.sort_by(&elem(&1, 0))
+
+    new_keys =
+      desired
+      |> Map.keys()
+      |> Enum.reject(&Map.has_key?(current, &1))
+      |> Enum.sort()
+
+    %{
+      puts: puts,
+      deletes: deletes,
+      new_keys: new_keys,
+      changed_count: length(puts) + length(deletes)
+    }
+  end
+
+  defp same_rrset?(existing, zone, record) do
+    existing[:owner] == record.owner and existing[:type] == record.type and
+      existing[:zone] == zone and existing[:class] == :in and existing[:rrset] == record.rrset
+  end
+
+  defp persisted_record(zone, record, now) do
+    %{
+      rrset: record.rrset,
+      owner: record.owner,
+      type: record.type,
+      zone: zone,
+      class: :in,
+      source: :api,
+      updated_at: now
+    }
+  end
+
+  defp apply_replacement(backend, view_name, zone, previous_entries, previous, plan) do
+    start_time = System.monotonic_time()
+
+    with :ok <- put_replacement_records(backend, plan.puts),
+         :ok <- delete_stale_records(backend, plan.deletes),
+         :ok <- increment_replacement_serial(backend, view_name, zone) do
+      emit_replacement_changes(start_time, zone, plan.puts, plan.deletes)
+      {:ok, %{previous: previous, changed_count: plan.changed_count}}
+    else
+      {:error, apply_reason} ->
+        case compensate_replacement(backend, view_name, zone, previous_entries, plan.new_keys) do
+          :ok -> {:error, {:replace_failed, apply_reason}}
+          {:error, rollback_reason} -> {:error, {:rollback_failed, apply_reason, rollback_reason}}
+        end
+    end
+  end
+
+  defp put_replacement_records(_backend, []), do: :ok
+
+  defp put_replacement_records(backend, operations) do
+    case backend.put_many(operations) do
+      {:ok, results} when is_map(results) ->
+        if Enum.all?(results, fn {_key, result} -> result == :ok end) do
+          :ok
+        else
+          {:error, {:put_many_failed, :incomplete}}
+        end
+
+      {:error, reason} ->
+        {:error, {:put_many_failed, reason}}
+
+      _other ->
+        {:error, {:put_many_failed, :invalid_result}}
+    end
+  end
+
+  defp delete_stale_records(backend, records) do
+    Enum.reduce_while(records, :ok, fn {key, _value}, :ok ->
+      case backend.delete(key) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:delete_failed, key, reason}}}
+        _other -> {:halt, {:error, {:delete_failed, key, :invalid_result}}}
+      end
+    end)
+  end
+
+  defp increment_replacement_serial(backend, view_name, zone) do
+    case do_increment_serial(backend, view_name, zone, @max_cas_retries) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:serial_failed, reason}}
+    end
+  end
+
+  defp compensate_replacement(backend, view_name, zone, previous_entries, new_keys) do
+    restore_error = restore_previous_records(backend, previous_entries)
+    delete_error = remove_new_records(backend, new_keys)
+
+    case backend.prefix_scan(Key.zone_rr_prefix(view_name, zone), consistency: :strong) do
+      {:ok, entries} ->
+        if Enum.sort_by(entries, &elem(&1, 0)) == previous_entries do
+          :ok
+        else
+          {:error, restore_error || delete_error || :content_mismatch}
+        end
+
+      {:error, reason} ->
+        {:error, restore_error || delete_error || {:verification_failed, reason}}
+    end
+  end
+
+  defp restore_previous_records(_backend, []), do: nil
+
+  defp restore_previous_records(backend, previous_entries) do
+    case backend.put_many(previous_entries) do
+      {:ok, results} when is_map(results) ->
+        if Enum.all?(results, fn {_key, result} -> result == :ok end) do
+          nil
+        else
+          {:restore_failed, :incomplete}
+        end
+
+      {:error, reason} ->
+        {:restore_failed, reason}
+
+      _other ->
+        {:restore_failed, :invalid_result}
+    end
+  end
+
+  defp remove_new_records(backend, new_keys) do
+    Enum.reduce_while(new_keys, nil, fn key, nil ->
+      case backend.delete(key) do
+        :ok -> {:cont, nil}
+        {:error, reason} -> {:halt, {:remove_new_failed, reason}}
+        _other -> {:halt, {:remove_new_failed, :invalid_result}}
+      end
+    end)
+  end
+
+  defp emit_replacement_changes(start_time, zone, puts, deletes) do
+    Enum.each(puts, fn {key, value} ->
+      emit_operation_telemetry(start_time, :zone, :put, key, :strong)
+      emit_rr_changed(zone, value.owner, value.type, :put)
+      EventBridge.notify(:put, key, value)
+    end)
+
+    Enum.each(deletes, fn {key, value} ->
+      emit_operation_telemetry(start_time, :zone, :delete, key, :strong)
+      emit_rr_changed(zone, value.owner, value.type, :delete)
+      EventBridge.notify(:delete, key, nil)
+    end)
+  end
 
   defp next_serial(current, :date_serial) do
     {{year, month, day}, _} = :calendar.local_time()

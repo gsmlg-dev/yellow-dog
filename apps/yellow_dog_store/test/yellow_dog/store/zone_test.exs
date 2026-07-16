@@ -1,9 +1,13 @@
+Code.require_file(Path.expand("../../support/failure_backend.ex", __DIR__))
+
 defmodule YellowDog.Store.ZoneTest do
   use ExUnit.Case, async: false
 
   @moduletag :store_integration
 
-  alias YellowDog.Store.Zone
+  alias YellowDog.Store.{Backend, EventBridge, Key, Zone}
+  alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Test.FailureBackend
 
   @view "default"
 
@@ -25,7 +29,36 @@ defmodule YellowDog.Store.ZoneTest do
 
   setup do
     YellowDog.StoreHelper.setup_store()
+
+    on_exit(fn ->
+      Backend.set_active(EtsBackend)
+      FailureBackend.reset()
+    end)
+
     :ok
+  end
+
+  defp desired_record(owner, address) do
+    %{owner: owner, type: :a, rrset: [%{rdata: address, ttl: 300}]}
+  end
+
+  defp strong_record_snapshot(view_name, zone_name) do
+    {:ok, entries} =
+      EtsBackend.prefix_scan(Key.zone_rr_prefix(view_name, zone_name), consistency: :strong)
+
+    Enum.map(entries, fn {_key, value} -> value end)
+  end
+
+  defp use_failure_backend(actions \\ []) do
+    Backend.set_active(FailureBackend)
+    FailureBackend.configure(actions)
+  end
+
+  defp start_event_bridge do
+    case Process.whereis(EventBridge) do
+      nil -> start_supervised!(EventBridge)
+      _pid -> :ok
+    end
   end
 
   # -------------------------------------------------------------------
@@ -297,6 +330,237 @@ defmodule YellowDog.Store.ZoneTest do
   # -------------------------------------------------------------------
   # RRset operations (auth only)
   # -------------------------------------------------------------------
+
+  describe "replace_records/3" do
+    test "empty replacement succeeds unchanged without serial or write churn" do
+      zone_name = "replace-empty.example.com"
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      {:ok, before_zone} = Zone.get_zone(@view, zone_name)
+      use_failure_backend()
+
+      assert {:ok, %{previous: [], changed_count: 0}} =
+               Zone.replace_records(@view, zone_name, [])
+
+      assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
+      assert after_zone.soa.serial == before_zone.soa.serial
+      assert FailureBackend.writes() == []
+
+      assert {:prefix_scan, _, [consistency: :strong]} =
+               Enum.find(FailureBackend.calls(), &match?({:prefix_scan, _, _}, &1))
+    end
+
+    test "unchanged replacement returns the complete prior snapshot without churn" do
+      zone_name = "replace-unchanged.example.com"
+      record = desired_record("www", {192, 0, 2, 1})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, record.owner, record.type, record.rrset)
+      previous = strong_record_snapshot(@view, zone_name)
+      {:ok, before_zone} = Zone.get_zone(@view, zone_name)
+      use_failure_backend()
+
+      assert {:ok, %{previous: ^previous, changed_count: 0}} =
+               Zone.replace_records(@view, zone_name, [record])
+
+      assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
+      assert after_zone.soa.serial == before_zone.soa.serial
+      assert FailureBackend.writes() == []
+    end
+
+    test "counts added RRsets deterministically and increments the serial once" do
+      zone_name = "replace-add.example.com"
+      records = [desired_record("a", {192, 0, 2, 1}), desired_record("b", {192, 0, 2, 2})]
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      {:ok, before_zone} = Zone.get_zone(@view, zone_name)
+      use_failure_backend()
+
+      assert {:ok, %{previous: [], changed_count: 2}} =
+               Zone.replace_records(@view, zone_name, records)
+
+      assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
+      assert after_zone.soa.serial == before_zone.soa.serial + 1
+
+      zone_key = Key.zone(@view, zone_name)
+
+      assert 1 ==
+               Enum.count(FailureBackend.writes(), fn
+                 {:put_if, ^zone_key, _opts} -> true
+                 _ -> false
+               end)
+    end
+
+    test "counts one updated RRset" do
+      zone_name = "replace-update.example.com"
+      old = desired_record("www", {192, 0, 2, 1})
+      updated = desired_record("www", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      previous = strong_record_snapshot(@view, zone_name)
+
+      assert {:ok, %{previous: ^previous, changed_count: 1}} =
+               Zone.replace_records(@view, zone_name, [updated])
+
+      assert {:ok, stored} = Zone.get_rrset(@view, zone_name, updated.owner, updated.type)
+      assert stored.rrset == updated.rrset
+    end
+
+    test "counts one deleted RRset" do
+      zone_name = "replace-delete.example.com"
+      kept = desired_record("keep", {192, 0, 2, 1})
+      removed = desired_record("remove", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, kept.owner, kept.type, kept.rrset)
+      Zone.put_rrset(@view, zone_name, removed.owner, removed.type, removed.rrset)
+
+      assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [kept])
+      assert {:error, :not_found} = Zone.get_rrset(@view, zone_name, removed.owner, removed.type)
+    end
+
+    test "counts mixed add, update, and delete changes" do
+      zone_name = "replace-mixed.example.com"
+      kept = desired_record("keep", {192, 0, 2, 1})
+      old = desired_record("update", {192, 0, 2, 2})
+      removed = desired_record("remove", {192, 0, 2, 3})
+      updated = desired_record("update", {192, 0, 2, 20})
+      added = desired_record("add", {192, 0, 2, 4})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+
+      for record <- [kept, old, removed] do
+        Zone.put_rrset(@view, zone_name, record.owner, record.type, record.rrset)
+      end
+
+      assert {:ok, %{changed_count: 3}} =
+               Zone.replace_records(@view, zone_name, [kept, updated, added])
+
+      assert Enum.map(strong_record_snapshot(@view, zone_name), & &1.owner) ==
+               ["add", "keep", "update"]
+    end
+
+    test "rejects duplicate and invalid records before any write" do
+      zone_name = "replace-invalid.example.com"
+      record = desired_record("www", {192, 0, 2, 1})
+      Zone.create_zone(@view, zone_name, @test_soa)
+      use_failure_backend()
+
+      assert {:error, {:replace_failed, :duplicate_record}} =
+               Zone.replace_records(@view, zone_name, [record, record])
+
+      assert FailureBackend.writes() == []
+      FailureBackend.reset()
+
+      assert {:error, {:replace_failed, :invalid_record}} =
+               Zone.replace_records(@view, zone_name, [%{owner: "www", type: "A", rrset: []}])
+
+      assert FailureBackend.writes() == []
+    end
+
+    test "rejects missing and non-authoritative zones before RR writes" do
+      use_failure_backend()
+
+      assert {:error, {:replace_failed, :zone_not_found}} =
+               Zone.replace_records(@view, "missing.example.com", [])
+
+      assert FailureBackend.writes() == []
+
+      Backend.set_active(EtsBackend)
+      Zone.create_forward_zone(@view, "forward.example.com", [%{ip: "192.0.2.53", port: 53}])
+      use_failure_backend()
+
+      assert {:error, {:replace_failed, :not_authoritative}} =
+               Zone.replace_records(@view, "forward.example.com", [])
+
+      assert FailureBackend.writes() == []
+    end
+
+    test "restores exact content and removes new keys after a partial batch put failure" do
+      zone_name = "replace-put-failure.example.com"
+      old = desired_record("old", {192, 0, 2, 1})
+      updated = desired_record("old", {192, 0, 2, 10})
+      added = desired_record("new", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      previous = strong_record_snapshot(@view, zone_name)
+      use_failure_backend([{:put_many, {:partial, 2}, :batch_failed}])
+
+      assert {:error, {:replace_failed, {:put_many_failed, :batch_failed}}} =
+               Zone.replace_records(@view, zone_name, [updated, added])
+
+      assert strong_record_snapshot(@view, zone_name) == previous
+    end
+
+    test "restores exact content after a stale delete failure" do
+      zone_name = "replace-delete-failure.example.com"
+      kept = desired_record("keep", {192, 0, 2, 1})
+      stale = desired_record("stale", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, kept.owner, kept.type, kept.rrset)
+      Zone.put_rrset(@view, zone_name, stale.owner, stale.type, stale.rrset)
+      previous = strong_record_snapshot(@view, zone_name)
+      stale_key = Key.zone_rr(@view, zone_name, stale.owner, stale.type)
+      use_failure_backend([{:delete, stale_key, :delete_failed}])
+
+      assert {:error, {:replace_failed, {:delete_failed, ^stale_key, :delete_failed}}} =
+               Zone.replace_records(@view, zone_name, [kept])
+
+      assert strong_record_snapshot(@view, zone_name) == previous
+    end
+
+    test "restores exact content, preserves an advanced serial, and emits no premature events" do
+      zone_name = "replace-serial-failure.example.com"
+      old = desired_record("www", {192, 0, 2, 1})
+      updated = desired_record("www", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      previous = strong_record_snapshot(@view, zone_name)
+      {:ok, before_zone} = Zone.get_zone(@view, zone_name)
+      start_event_bridge()
+      {:ok, _ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
+      zone_key = Key.zone(@view, zone_name)
+      use_failure_backend([{:put_if, zone_key, :write_then_fail, :serial_failed}])
+
+      assert {:error, {:replace_failed, {:serial_failed, :serial_failed}}} =
+               Zone.replace_records(@view, zone_name, [updated])
+
+      assert strong_record_snapshot(@view, zone_name) == previous
+      assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
+      assert after_zone.soa.serial == before_zone.soa.serial + 1
+      refute_receive {:store_event, _}, 100
+    end
+
+    test "returns rollback_failed when compensation cannot restore prior content" do
+      zone_name = "replace-rollback-failure.example.com"
+      old = desired_record("www", {192, 0, 2, 1})
+      updated = desired_record("www", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+
+      use_failure_backend([
+        {:put_many, {:partial, 1}, :batch_failed},
+        {:put_many, :fail, :restore_failed}
+      ])
+
+      assert {:error,
+              {:rollback_failed, {:put_many_failed, :batch_failed},
+               {:restore_failed, :restore_failed}}} =
+               Zone.replace_records(@view, zone_name, [updated])
+    end
+
+    test "emits committed put and delete events only after successful replacement" do
+      zone_name = "replace-events.example.com"
+      stale = desired_record("stale", {192, 0, 2, 1})
+      added = desired_record("added", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, stale.owner, stale.type, stale.rrset)
+      start_event_bridge()
+      {:ok, _ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
+
+      assert {:ok, %{changed_count: 2}} = Zone.replace_records(@view, zone_name, [added])
+
+      added_key = Key.zone_rr(@view, zone_name, added.owner, added.type)
+      stale_key = Key.zone_rr(@view, zone_name, stale.owner, stale.type)
+      assert_receive {:store_event, %{type: :put, key: ^added_key}}, 1_000
+      assert_receive {:store_event, %{type: :delete, key: ^stale_key}}, 1_000
+    end
+  end
 
   describe "put_rrset/5 and get_rrset/4" do
     test "creates and retrieves an RRset" do
