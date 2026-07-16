@@ -18,8 +18,25 @@ defmodule YellowDog.Store.Zone.Replacement do
            build_header(operation_id, view_name, zone, base_zone, chunks, plan.changed_count),
          :ok <- create_intent(backend, header),
          :ok <- persist_chunks(backend, header, chunks),
-         :ok <- Recovery.recover(backend, view_name, zone) do
+         :ok <- Recovery.recover(backend, view_name, zone),
+         :ok <- verify_target(backend, header) do
       {:ok, %{previous: previous, changed_count: plan.changed_count}}
+    end
+  end
+
+  defp verify_target(backend, header) do
+    zone_key = Key.zone(header.view_name, header.zone)
+    target_zone = header.target_zone
+
+    case backend.get(zone_key, consistency: :strong) do
+      {:ok, ^target_zone} -> {:ok, target_zone}
+      {:ok, _other} -> {:error, {:target_verification_failed, :mismatch}}
+      {:error, reason} -> {:error, {:target_verification_failed, reason}}
+      _invalid_result -> {:error, {:target_verification_failed, :invalid_result}}
+    end
+    |> case do
+      {:ok, _target_zone} -> :ok
+      {:error, _reason} = error -> error
     end
   end
 

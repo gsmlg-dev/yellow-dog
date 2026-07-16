@@ -13,7 +13,9 @@ defmodule YellowDog.Store.EventBridge do
         key: String.t(),
         value: term() | nil,
         timestamp: integer(),
-        node: atom()
+        node: atom(),
+        operation_id: String.t() | nil,
+        cursor: non_neg_integer() | nil
       }
 
   ## Usage
@@ -130,6 +132,45 @@ defmodule YellowDog.Store.EventBridge do
     :ok
   end
 
+  @doc false
+  @spec notify_durable(
+          module(),
+          String.t(),
+          non_neg_integer(),
+          :put | :delete,
+          String.t(),
+          term()
+        ) :: :ok | {:error, term()}
+  def notify_durable(backend, operation_id, cursor, type, key, value)
+      when is_atom(backend) and is_binary(operation_id) and is_integer(cursor) and cursor >= 0 and
+             type in [:put, :delete] and is_binary(key) do
+    event_key = Key.zone_replacement_event(operation_id, cursor)
+
+    event = %{
+      type: type,
+      key: key,
+      value: value,
+      timestamp: System.system_time(:microsecond),
+      node: node(),
+      operation_id: operation_id,
+      cursor: cursor
+    }
+
+    case backend.put_if(event_key, event,
+           expected: nil,
+           ttl: @event_log_retention_seconds
+         ) do
+      :ok ->
+        dispatch(event)
+
+      {:error, reason} ->
+        resolve_durable_event(backend, event_key, event, reason)
+
+      _invalid_result ->
+        resolve_durable_event(backend, event_key, event, :invalid_result)
+    end
+  end
+
   # ── GenServer Callbacks ─────────────────────────────────────────
 
   @impl true
@@ -242,6 +283,38 @@ defmodule YellowDog.Store.EventBridge do
       [exact] -> key == exact
       _ -> false
     end
+  end
+
+  defp resolve_durable_event(backend, event_key, expected, write_reason) do
+    case backend.get(event_key, consistency: :strong) do
+      {:ok, persisted} ->
+        if same_durable_event?(persisted, expected),
+          do: dispatch(persisted),
+          else: {:error, :event_conflict}
+
+      {:error, :not_found} ->
+        {:error, {:event_persist_failed, write_reason}}
+
+      {:error, reason} ->
+        {:error, {:event_read_failed, reason}}
+
+      _invalid_result ->
+        {:error, {:event_read_failed, :invalid_result}}
+    end
+  end
+
+  defp same_durable_event?(persisted, expected) when is_map(persisted) do
+    fields = [:type, :key, :value, :operation_id, :cursor]
+
+    Map.take(persisted, fields) == Map.take(expected, fields) and
+      is_integer(persisted[:timestamp]) and is_atom(persisted[:node])
+  end
+
+  defp same_durable_event?(_persisted, _expected), do: false
+
+  defp dispatch(event) do
+    GenServer.cast(__MODULE__, {:dispatch, event})
+    :ok
   end
 
   defp persist_event(event) do

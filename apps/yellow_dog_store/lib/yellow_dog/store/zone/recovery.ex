@@ -58,9 +58,10 @@ defmodule YellowDog.Store.Zone.Recovery do
               is_integer(next_chunk) and next_chunk >= 0 and next_chunk <= plan_count and
               is_integer(changed_count) and changed_count > 0 and is_integer(cursor) and
               cursor >= 0 and is_integer(event_count) and event_count == changed_count + 1 do
-    if get_in(target_zone, [:soa, :serial]) == target_serial,
-      do: :ok,
-      else: {:error, :invalid_header}
+    if get_in(target_zone, [:soa, :serial]) == target_serial and
+         valid_progress?(phase, next_chunk, plan_count, cursor, event_count),
+       do: :ok,
+       else: {:error, :invalid_header}
   end
 
   defp validate_header(_header, _view_name, _zone), do: {:error, :invalid_header}
@@ -70,11 +71,20 @@ defmodule YellowDog.Store.Zone.Recovery do
       {:ok, _chunks} ->
         next_header = %{header | phase: :applying}
 
-        with :ok <- transition(backend, header_key, header, next_header),
-             do: recover(backend, header.view_name, header.zone)
+        case transition(backend, header_key, header, next_header) do
+          :ok -> recover(backend, header.view_name, header.zone)
+          {:error, reason} -> {:error, {:recovery_failed, reason}}
+        end
 
-      {:error, _reason} ->
+      {:error, reason} when reason in [:plan_hash_mismatch] ->
         cleanup_preparing(backend, header_key, header)
+
+      {:error, {kind, _index}}
+      when kind in [:missing_plan_chunk, :corrupt_plan_chunk] ->
+        cleanup_preparing(backend, header_key, header)
+
+      {:error, reason} ->
+        {:error, {:recovery_failed, reason}}
     end
   end
 
@@ -129,18 +139,21 @@ defmodule YellowDog.Store.Zone.Recovery do
       cursor = header.event_state.cursor
 
       if cursor < header.event_state.count do
-        :ok = deliver_event(header, operations, cursor)
-        next_cursor = cursor + 1
-        next_phase = if next_cursor == header.event_state.count, do: :cleanup, else: :events
+        with :ok <- deliver_event(backend, header, operations, cursor) do
+          next_cursor = cursor + 1
+          next_phase = if next_cursor == header.event_state.count, do: :cleanup, else: :events
 
-        next_header = %{
-          header
-          | phase: next_phase,
-            event_state: %{header.event_state | cursor: next_cursor}
-        }
+          next_header = %{
+            header
+            | phase: next_phase,
+              event_state: %{header.event_state | cursor: next_cursor}
+          }
 
-        with :ok <- transition(backend, header_key, header, next_header) do
-          recover(backend, header.view_name, header.zone)
+          with :ok <- transition(backend, header_key, header, next_header) do
+            recover(backend, header.view_name, header.zone)
+          end
+        else
+          {:error, reason} -> {:error, {:recovery_failed, reason}}
         end
       else
         {:error, {:recovery_failed, :invalid_event_cursor}}
@@ -244,7 +257,9 @@ defmodule YellowDog.Store.Zone.Recovery do
         {:error, :transaction_unknown}
 
       {:ok, other} ->
-        if same_operation?(header, other), do: :ok, else: {:error, :fenced}
+        if valid_advanced_header?(header, next_header, other),
+          do: :ok,
+          else: {:error, :fenced}
 
       {:error, :not_found} when next_header.phase == :cleanup ->
         :ok
@@ -257,10 +272,55 @@ defmodule YellowDog.Store.Zone.Recovery do
     end
   end
 
-  defp same_operation?(left, right) do
-    is_map(right) and left.operation_id == right[:operation_id] and
-      left.generation == right[:generation]
+  defp valid_advanced_header?(header, next_header, observed) do
+    with :ok <- validate_header(observed, header.view_name, header.zone),
+         true <- immutable_header?(header, observed),
+         expected_progress when is_tuple(expected_progress) <- progress(next_header),
+         observed_progress when is_tuple(observed_progress) <- progress(observed) do
+      observed_progress >= expected_progress
+    else
+      _invalid -> false
+    end
   end
+
+  defp immutable_header?(left, right) do
+    fields = [
+      :version,
+      :operation_id,
+      :generation,
+      :view_name,
+      :zone,
+      :base_zone,
+      :target_zone,
+      :target_serial,
+      :plan_count,
+      :plan_hash,
+      :changed_count
+    ]
+
+    Map.take(left, fields) == Map.take(right, fields) and
+      left.event_state.count == right.event_state.count
+  end
+
+  defp valid_progress?(:preparing, 0, _plan_count, 0, _event_count), do: true
+
+  defp valid_progress?(:applying, next_chunk, plan_count, 0, _event_count),
+    do: next_chunk < plan_count
+
+  defp valid_progress?(:finalizing, plan_count, plan_count, 0, _event_count), do: true
+
+  defp valid_progress?(:events, plan_count, plan_count, cursor, event_count),
+    do: cursor < event_count
+
+  defp valid_progress?(:cleanup, plan_count, plan_count, event_count, event_count), do: true
+  defp valid_progress?(_phase, _next_chunk, _plan_count, _cursor, _event_count), do: false
+
+  defp progress(%{phase: :preparing}), do: {0, 0}
+  defp progress(%{phase: :applying, next_chunk: next_chunk}), do: {1, next_chunk}
+  defp progress(%{phase: :finalizing}), do: {2, 0}
+  defp progress(%{phase: :events, event_state: %{cursor: cursor}}), do: {3, cursor}
+  defp progress(%{phase: :cleanup}), do: {4, 0}
+  defp progress(_header), do: :invalid
 
   defp delete_plan_chunks(backend, header) do
     0..(header.plan_count - 1)
@@ -293,32 +353,69 @@ defmodule YellowDog.Store.Zone.Recovery do
     end
   end
 
-  defp deliver_event(header, _operations, 0) do
-    :telemetry.execute(
-      [:yellow_dog, :store, :zone, :serial_incremented],
-      %{},
-      %{
-        zone: header.zone,
-        old_serial: header.base_zone.soa.serial,
-        new_serial: header.target_serial
-      }
-    )
+  defp deliver_event(backend, header, _operations, 0) do
+    event_key = Key.zone_replacement_header(header.view_name, header.zone)
 
-    :ok
+    with :ok <-
+           EventBridge.notify_durable(
+             backend,
+             header.operation_id,
+             0,
+             :put,
+             event_key,
+             %{
+               view_name: header.view_name,
+               zone: header.zone,
+               target_serial: header.target_serial
+             }
+           ) do
+      :telemetry.execute(
+        [:yellow_dog, :store, :zone, :serial_incremented],
+        %{},
+        %{
+          zone: header.zone,
+          old_serial: header.base_zone.soa.serial,
+          new_serial: header.target_serial
+        }
+      )
+
+      :ok
+    end
   end
 
-  defp deliver_event(header, operations, cursor) do
+  defp deliver_event(backend, header, operations, cursor) do
     case Enum.at(operations, cursor - 1) do
       {:put, key, value} ->
-        emit_operation(header.zone, key, value.owner, value.type, :put)
-        EventBridge.notify(:put, key, value)
+        with :ok <-
+               EventBridge.notify_durable(
+                 backend,
+                 header.operation_id,
+                 cursor,
+                 :put,
+                 key,
+                 value
+               ) do
+          emit_operation(header.zone, key, value.owner, value.type, :put)
+          :ok
+        end
 
       {:delete, key, value} ->
-        emit_operation(header.zone, key, value.owner, value.type, :delete)
-        EventBridge.notify(:delete, key, nil)
-    end
+        with :ok <-
+               EventBridge.notify_durable(
+                 backend,
+                 header.operation_id,
+                 cursor,
+                 :delete,
+                 key,
+                 nil
+               ) do
+          emit_operation(header.zone, key, value.owner, value.type, :delete)
+          :ok
+        end
 
-    :ok
+      _missing_operation ->
+        {:error, :invalid_event_cursor}
+    end
   end
 
   defp emit_operation(zone, key, owner, type, action) do

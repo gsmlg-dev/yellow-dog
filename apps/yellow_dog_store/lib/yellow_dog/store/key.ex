@@ -129,6 +129,11 @@ defmodule YellowDog.Store.Key do
   def zone_replacement_plan(operation_id, chunk_index),
     do: "#{zone_replacement_plan_prefix(operation_id)}#{chunk_index}"
 
+  @doc "Durable replacement event key, unique by operation and event cursor."
+  @spec zone_replacement_event(String.t(), non_neg_integer()) :: String.t()
+  def zone_replacement_event(operation_id, cursor),
+    do: "#{zone_replacement_event_prefix(operation_id)}#{cursor}"
+
   @doc "Task job key."
   @spec task_job(atom() | String.t(), String.t()) :: String.t()
   def task_job(task_key, id), do: "#{task_job_prefix(task_key)}#{id}"
@@ -182,6 +187,12 @@ defmodule YellowDog.Store.Key do
   def config_prefix(service), do: "config:#{service}:"
   def event_log_prefix, do: "event_log:"
   def zone_replacement_header_prefix, do: "store:zone-replacement:header:"
+
+  def zone_replacement_event_prefix,
+    do: "event_log:zone-replacement:"
+
+  def zone_replacement_event_prefix(operation_id),
+    do: "#{zone_replacement_event_prefix()}#{operation_id}:"
 
   def zone_replacement_plan_prefix(operation_id),
     do: "store:zone-replacement:plan:#{operation_id}:"

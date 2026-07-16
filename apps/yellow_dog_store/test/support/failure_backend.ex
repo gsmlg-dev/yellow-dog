@@ -39,7 +39,12 @@ defmodule YellowDog.Store.Test.FailureBackend do
   @impl true
   def get(key, opts \\ []) do
     record_call({:get, key, opts})
-    Ets.get(key, opts)
+
+    case take_action(:get, key) do
+      :pass -> Ets.get(key, opts)
+      {:error, reason} -> {:error, reason}
+      nil -> Ets.get(key, opts)
+    end
   end
 
   @impl true
@@ -64,6 +69,9 @@ defmodule YellowDog.Store.Test.FailureBackend do
     record_call({:put_if, key, opts})
 
     case take_action(:put_if, key) do
+      :pass ->
+        Ets.put_if(key, value, opts)
+
       {:error, reason} ->
         {:error, reason}
 
@@ -88,8 +96,16 @@ defmodule YellowDog.Store.Test.FailureBackend do
     record_call({:prefix_scan, prefix, opts})
 
     case take_action(:prefix_scan, prefix) do
-      {:error, reason} -> {:error, reason}
-      nil -> Ets.prefix_scan(prefix, opts)
+      {:error, reason} ->
+        {:error, reason}
+
+      {:delegate_then_set_active, backend} ->
+        result = Ets.prefix_scan(prefix, opts)
+        YellowDog.Store.Backend.set_active(backend)
+        result
+
+      nil ->
+        Ets.prefix_scan(prefix, opts)
     end
   end
 
@@ -135,6 +151,16 @@ defmodule YellowDog.Store.Test.FailureBackend do
       {:delegate_then, outcome} ->
         {:ok, _result} = Ets.txn(spec, opts)
         resolve_outcome(outcome)
+
+      {:delegate_then_tamper_header, updates, outcome} ->
+        {:ok, _result} = Ets.txn(spec, opts)
+        tamper_header(spec, updates)
+        resolve_outcome(outcome)
+
+      {:delegate_then_tamper_key, key, value} ->
+        {:ok, _result} = result = Ets.txn(spec, opts)
+        :ok = Ets.put(key, value)
+        result
 
       {:exit, reason} ->
         exit(reason)
@@ -214,6 +240,9 @@ defmodule YellowDog.Store.Test.FailureBackend do
   defp matches_action?({:txn, _outcome}, :txn, _key), do: true
   defp matches_action?({:txn, classifier, _outcome}, :txn, classifier), do: true
 
+  defp matches_action?({:get_prefix, prefix, _outcome}, :get, key),
+    do: String.starts_with?(key, prefix)
+
   defp matches_action?({:put_if_prefix, prefix, _outcome}, :put_if, key),
     do: String.starts_with?(key, prefix)
 
@@ -226,6 +255,7 @@ defmodule YellowDog.Store.Test.FailureBackend do
   defp action_outcome({:put_many, outcome}), do: outcome
   defp action_outcome({:txn, outcome}), do: outcome
   defp action_outcome({:txn, _classifier, outcome}), do: outcome
+  defp action_outcome({:get_prefix, _prefix, outcome}), do: outcome
   defp action_outcome({:put_if_prefix, _prefix, outcome}), do: outcome
   defp action_outcome({:delete_prefix, _prefix, outcome}), do: outcome
   defp action_outcome({_operation, _key, outcome}), do: outcome
@@ -277,6 +307,20 @@ defmodule YellowDog.Store.Test.FailureBackend do
 
   defp resolve_txn_outcome(spec, opts, :pass), do: Ets.txn(spec, opts)
   defp resolve_txn_outcome(_spec, _opts, outcome), do: resolve_outcome(outcome)
+
+  defp tamper_header(%{success: operations}, updates) do
+    case Enum.find(operations, fn
+           {:put, key, value, _opts} ->
+             String.starts_with?(key, YellowDog.Store.Key.zone_replacement_header_prefix()) and
+               is_map(value)
+
+           _operation ->
+             false
+         end) do
+      {:put, key, value, _opts} -> Ets.put(key, Map.merge(value, updates))
+      nil -> :ok
+    end
+  end
 
   defp write_partial(_operations, 0), do: :ok
 

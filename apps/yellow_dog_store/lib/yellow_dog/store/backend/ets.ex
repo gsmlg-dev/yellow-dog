@@ -190,19 +190,76 @@ defmodule YellowDog.Store.Backend.Ets do
 
   # --- Private ---
 
-  defp execute_txn(%{compare: compares, success: success} = spec)
-       when is_list(compares) and is_list(success) do
-    branch =
-      if Enum.all?(compares, &compare_matches?/1), do: success, else: Map.get(spec, :failure, [])
-
-    succeeded = branch == success
-
-    with :ok <- execute_operations(branch) do
+  defp execute_txn(spec) do
+    with :ok <- validate_txn(spec) do
+      succeeded = Enum.all?(spec.compare, &compare_matches?/1)
+      branch = if succeeded, do: spec.success, else: Map.get(spec, :failure, [])
+      :ok = execute_operations(branch)
       {:ok, %{succeeded: succeeded, revision: 0, responses: []}}
     end
   end
 
-  defp execute_txn(_spec), do: {:error, {:invalid_txn, :invalid_spec}}
+  defp validate_txn(%{compare: compares, success: success} = spec)
+       when is_list(compares) and is_list(success) do
+    failure = Map.get(spec, :failure, [])
+
+    if is_list(failure) do
+      normalized = Map.put(spec, :failure, failure)
+
+      with :ok <- validate_compares(compares),
+           :ok <- validate_operations(success),
+           :ok <- validate_operations(failure),
+           :ok <- Concord.Validation.validate_txn_spec(normalized) do
+        :ok
+      end
+    else
+      {:error, {:invalid_txn, :invalid_spec}}
+    end
+  end
+
+  defp validate_txn(_spec), do: {:error, {:invalid_txn, :invalid_spec}}
+
+  defp validate_compares(compares) do
+    Enum.reduce_while(compares, :ok, fn compare, :ok ->
+      case validate_compare(compare) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_compare({:exists, key, :==, expected})
+       when is_binary(key) and is_boolean(expected),
+       do: validate_key(key)
+
+  defp validate_compare({:value, key, :==, _expected}) when is_binary(key),
+    do: validate_key(key)
+
+  defp validate_compare(_compare), do: {:error, {:invalid_txn, :unsupported_compare}}
+
+  defp validate_operations(operations) do
+    Enum.reduce_while(operations, :ok, fn operation, :ok ->
+      case validate_operation(operation) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_operation({:put, key, _value, opts}) when is_binary(key) and is_map(opts),
+    do: validate_key(key)
+
+  defp validate_operation({:delete, {:key, key}, opts}) when is_binary(key) and is_map(opts),
+    do: validate_key(key)
+
+  defp validate_operation(_operation), do: {:error, {:invalid_txn, :unsupported_op}}
+
+  defp validate_key(""), do: {:error, {:invalid_txn, :empty_key}}
+
+  defp validate_key(key) when byte_size(key) > 1_024,
+    do: {:error, {:invalid_txn, :key_too_large}}
+
+  defp validate_key(_key), do: :ok
 
   defp compare_matches?({:exists, key, :==, expected}) when is_boolean(expected) do
     present? = match?({:ok, _value}, get(key))
@@ -216,15 +273,9 @@ defmodule YellowDog.Store.Backend.Ets do
     end
   end
 
-  defp compare_matches?(_compare), do: false
-
   defp execute_operations(operations) do
-    Enum.reduce_while(operations, :ok, fn operation, :ok ->
-      case execute_operation(operation) do
-        :ok -> {:cont, :ok}
-        {:error, _reason} = error -> {:halt, error}
-      end
-    end)
+    Enum.each(operations, &execute_operation/1)
+    :ok
   end
 
   defp execute_operation({:put, key, value, opts}) when is_map(opts) do
@@ -232,8 +283,6 @@ defmodule YellowDog.Store.Backend.Ets do
   end
 
   defp execute_operation({:delete, {:key, key}, _opts}), do: delete(key)
-  defp execute_operation(_operation), do: {:error, {:invalid_txn, :unsupported_op}}
-
   # Atomic insert — only succeeds if key doesn't exist (or is expired).
   defp atomic_insert_new(key, value, expires_at) do
     if :ets.insert_new(@table, {key, value, expires_at}) do

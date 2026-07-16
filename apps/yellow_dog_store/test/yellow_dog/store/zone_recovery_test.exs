@@ -16,6 +16,11 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
     defdelegate put_many(operations), to: FailureBackend
   end
 
+  defmodule TrapBackend do
+    def get(_key, _opts), do: {:error, :wrong_backend}
+    def put_if(_key, _value, _opts), do: {:error, :wrong_backend}
+  end
+
   @view "recovery"
   @soa %{
     mname: "ns1.example.com",
@@ -71,6 +76,56 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
     assert {:ok, ^next_header} = Ets.get(header_key)
 
     assert {:ok, %{succeeded: false}} = Ets.txn(spec)
+  end
+
+  test "ETS transaction fully prevalidates compares, both branches, counts, and bytes" do
+    invalid_success = %{
+      compare: [],
+      success: [{:put, "must-not-exist", :written, %{}}, {:unsupported, :operation}],
+      failure: []
+    }
+
+    assert {:error, {:invalid_txn, :unsupported_op}} = Ets.txn(invalid_success)
+    assert {:error, :not_found} = Ets.get("must-not-exist")
+
+    invalid_failure = %{
+      compare: [],
+      success: [{:put, "unselected-invalid-branch", :written, %{}}],
+      failure: [{:unsupported, :operation}]
+    }
+
+    assert {:error, {:invalid_txn, :unsupported_op}} = Ets.txn(invalid_failure)
+    assert {:error, :not_found} = Ets.get("unselected-invalid-branch")
+
+    invalid_compare = %{
+      compare: [
+        {:value, "absent", :==, :present},
+        {:unsupported, "key", :==, true}
+      ],
+      success: [],
+      failure: [{:put, "invalid-compare-branch", :written, %{}}]
+    }
+
+    assert {:error, {:invalid_txn, :unsupported_compare}} = Ets.txn(invalid_compare)
+    assert {:error, :not_found} = Ets.get("invalid-compare-branch")
+
+    too_many = %{
+      compare: [],
+      success: for(index <- 1..129, do: {:put, "count-#{index}", index, %{}}),
+      failure: []
+    }
+
+    assert {:error, {:invalid_txn, :too_many_success_ops}} = Ets.txn(too_many)
+    assert {:error, :not_found} = Ets.get("count-1")
+
+    too_large = %{
+      compare: [],
+      success: [{:put, "large", String.duplicate("x", 1_000_000), %{}}],
+      failure: []
+    }
+
+    assert {:error, {:invalid_txn, :spec_too_large}} = Ets.txn(too_large)
+    assert {:error, :not_found} = Ets.get("large")
   end
 
   test "backends state their exact recovery durability" do
@@ -137,6 +192,47 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
     end)
   end
 
+  test "transient preparing plan reads preserve intent and execute does not report success" do
+    zone = "prepare-timeout.example.com"
+    plan_prefix = "store:zone-replacement:plan:"
+    :ok = Zone.create_zone(@view, zone, @soa, serial_strategy: :increment)
+
+    use_failure_backend([
+      {:get_prefix, plan_prefix, :pass},
+      {:get_prefix, plan_prefix, {:error, :timeout}}
+    ])
+
+    assert {:error, {:replace_failed, {:recovery_failed, {:plan_read_failed, 0, :timeout}}}} =
+             Zone.replace_records(@view, zone, records(1))
+
+    {header_key, %{phase: :preparing} = header} = replacement_header(zone)
+
+    assert {:ok, [_chunk]} =
+             Ets.prefix_scan(Key.zone_replacement_plan_prefix(header.operation_id))
+
+    assert {:ok, ^header} = Ets.get(header_key)
+
+    Backend.set_active(Ets)
+    assert {:ok, [_record]} = Zone.list_records(@view, zone)
+    assert_no_recovery_state()
+  end
+
+  test "execute strongly verifies the exact target metadata after cleanup" do
+    zone = "target-verification.example.com"
+    zone_key = Key.zone(@view, zone)
+    :ok = Zone.create_zone(@view, zone, @soa, serial_strategy: :increment)
+
+    use_failure_backend([
+      {:txn, :header_cleanup, {:delegate_then_tamper_key, zone_key, %{tampered: true}}}
+    ])
+
+    assert {:error, {:replace_failed, {:target_verification_failed, :mismatch}}} =
+             Zone.replace_records(@view, zone, records(1))
+
+    assert {:ok, %{tampered: true}} = Ets.get(zone_key, consistency: :strong)
+    assert_no_recovery_state()
+  end
+
   test "caller exits after every apply chunk recover the immutable plan idempotently" do
     records = records(260)
 
@@ -177,6 +273,66 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
       assert_no_recovery_state()
       Backend.set_active(Ets)
     end)
+  end
+
+  test "replacement events persist synchronously by operation cursor before advancement" do
+    start_event_bridge()
+    zone = "durable-event.example.com"
+    event_prefix = "event_log:zone-replacement:"
+    :ok = Zone.create_zone(@view, zone, @soa, serial_strategy: :increment)
+    {:ok, subscription} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone) <> "*")
+
+    use_failure_backend([
+      {:put_if_prefix, event_prefix, :pass},
+      {:put_if_prefix, event_prefix, {:write_then_exit, :event_persisted}}
+    ])
+
+    {pid, monitor} = spawn_replacement(zone, records(1))
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :event_persisted}, 5_000
+
+    {_header_key, header} = replacement_header(zone)
+    assert header.phase == :events
+    assert header.event_state.cursor == 1
+    assert {:ok, persisted_before_recovery} = Ets.prefix_scan(event_prefix)
+    assert length(persisted_before_recovery) == 2
+
+    assert {:ok, [_record]} = Zone.list_records(@view, zone)
+    assert_receive {:store_event, %{operation_id: operation_id, cursor: 1}}, 5_000
+    assert operation_id == header.operation_id
+    assert_no_recovery_state()
+
+    assert {:ok, persisted_after_cleanup} = Ets.prefix_scan(event_prefix)
+    assert length(persisted_after_cleanup) == 2
+    assert {:ok, [replayed]} = EventBridge.replay(Key.zone_rr_prefix(@view, zone) <> "*", 0)
+    assert replayed.operation_id == header.operation_id
+    assert replayed.cursor == 1
+    EventBridge.unsubscribe(subscription)
+  end
+
+  test "unknown event persistence outcomes resolve by strong durable event reread" do
+    event_prefix = "event_log:zone-replacement:"
+
+    before_zone = "event-timeout-before.example.com"
+    :ok = Zone.create_zone(@view, before_zone, @soa, serial_strategy: :increment)
+    use_failure_backend([{:put_if_prefix, event_prefix, {:error, :timeout}}])
+
+    assert {:error, {:replace_failed, {:recovery_failed, {:event_persist_failed, :timeout}}}} =
+             Zone.replace_records(@view, before_zone, records(1))
+
+    {_key, before_header} = replacement_header(before_zone)
+    assert before_header.phase == :events
+    assert before_header.event_state.cursor == 0
+
+    FailureBackend.reset()
+    assert {:ok, [_record]} = Zone.list_records(@view, before_zone)
+
+    after_zone = "event-timeout-after.example.com"
+    Backend.set_active(Ets)
+    :ok = Zone.create_zone(@view, after_zone, @soa, serial_strategy: :increment)
+    use_failure_backend([{:put_if_prefix, event_prefix, {:write_then_error, :timeout}}])
+
+    assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, after_zone, records(1))
+    assert {:ok, [_record]} = Zone.list_records(@view, after_zone)
   end
 
   test "unknown apply outcomes before and after commit resolve from the strong durable cursor" do
@@ -287,6 +443,62 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
     assert after_zone.soa.serial == before.soa.serial + 1
   end
 
+  test "all public zone reads use strong consistency after recovery" do
+    zone = "strong-reads.example.com"
+    record = desired_record("www", %{address: {192, 0, 2, 10}})
+    :ok = Zone.create_zone(@view, zone, @soa)
+    :ok = Zone.put_rrset(@view, zone, record.owner, record.type, record.rrset)
+    use_failure_backend()
+
+    assert {:ok, _zone} = Zone.get_zone(@view, zone)
+    assert {:ok, _record} = Zone.get_rrset(@view, zone, record.owner, record.type)
+    assert {:ok, [_record]} = Zone.list_records(@view, zone)
+    assert {:ok, [_record]} = Zone.list_records(@view, zone, record.owner)
+    assert {:ok, _zones} = Zone.list_zones()
+    assert {:ok, _zones} = Zone.list_zones_for_view(@view)
+
+    observable_reads =
+      Enum.filter(FailureBackend.calls(), fn
+        {:get, key, _opts} -> String.starts_with?(key, "dns:view:")
+        {:prefix_scan, key, _opts} -> String.starts_with?(key, "dns:view:")
+        _call -> false
+      end)
+
+    assert observable_reads != []
+
+    assert Enum.all?(observable_reads, fn {_operation, _key, opts} ->
+             opts[:consistency] == :strong
+           end)
+  end
+
+  test "lazy zone ID persistence recovers under one captured backend immediately before CAS" do
+    zone = "legacy-id-recovery.example.com"
+    zone_key = Key.zone(@view, zone)
+    header_key = Key.zone_replacement_header(@view, zone)
+    :ok = Zone.create_zone(@view, zone, @soa)
+    {:ok, persisted} = Ets.get(zone_key)
+    :ok = Ets.put(zone_key, Map.delete(persisted, :id))
+
+    use_failure_backend([
+      {:prefix_scan, Key.zone_prefix(@view), {:delegate_then_set_active, TrapBackend}}
+    ])
+
+    assert {:ok, zones} = Zone.list_zones_for_view(@view)
+    assert Enum.any?(zones, &(&1.origin == zone and is_binary(&1.id)))
+    assert {:ok, %{id: id}} = Ets.get(zone_key)
+    assert is_binary(id)
+
+    calls = FailureBackend.calls()
+
+    recovery_index =
+      Enum.find_index(calls, &match?({:get, ^header_key, [consistency: :strong]}, &1))
+
+    cas_index = Enum.find_index(calls, &match?({:put_if, ^zone_key, _opts}, &1))
+    assert is_integer(recovery_index)
+    assert is_integer(cas_index)
+    assert recovery_index < cas_index
+  end
+
   test "no events are published before finalization and recovery publishes committed changes" do
     start_event_bridge()
     zone = "event-order.example.com"
@@ -363,6 +575,41 @@ defmodule YellowDog.Store.ZoneRecoveryTest do
 
     assert {:ok, %{succeeded: false}} = Ets.txn(spec)
     assert {:ok, ^current} = Ets.get(key)
+  end
+
+  test "scanned replacement header keys must match their payload scope" do
+    payload = %{view_name: @view, zone: "payload.example.com"}
+    actual_key = Key.zone_replacement_header(@view, "different.example.com")
+    expected_key = Key.zone_replacement_header(@view, payload.zone)
+    :ok = Ets.put(actual_key, payload)
+
+    assert {:error, {:recovery_failed, {:header_key_mismatch, ^actual_key, ^expected_key}}} =
+             Zone.recover_pending_replacements()
+
+    assert {:ok, ^payload} = Ets.get(actual_key)
+  end
+
+  test "unknown transitions fence immutable changes and non-monotonic progress" do
+    cases = [
+      {"immutable", %{base_zone: %{tampered: true}}},
+      {"regression", %{phase: :preparing, next_chunk: 1}}
+    ]
+
+    Enum.each(cases, fn {name, updates} ->
+      zone = "transition-#{name}.example.com"
+      :ok = Zone.create_zone(@view, zone, @soa, serial_strategy: :increment)
+
+      use_failure_backend([
+        {:txn, :begin_applying, {:delegate_then_tamper_header, updates, {:error, :timeout}}}
+      ])
+
+      assert {:error, {:replace_failed, {:recovery_failed, :fenced}}} =
+               Zone.replace_records(@view, zone, records(1))
+
+      assert {:ok, []} = Ets.prefix_scan(Key.zone_rr_prefix(@view, zone))
+      Backend.set_active(Ets)
+      YellowDog.StoreHelper.clear_store()
+    end)
   end
 
   test "legacy backends retain Phase 3B1 compensation and public errors" do

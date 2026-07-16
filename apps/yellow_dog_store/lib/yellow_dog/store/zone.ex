@@ -26,7 +26,10 @@ defmodule YellowDog.Store.Zone do
   def max_replacement_transaction_bytes, do: Replacement.max_transaction_bytes()
 
   @doc false
-  def recover_pending_replacements, do: recover_all_replacements()
+  def recover_pending_replacements do
+    backend = Backend.active()
+    recover_all_replacements(backend)
+  end
 
   @type zone_id :: String.t()
   @type view_name :: String.t()
@@ -302,7 +305,7 @@ defmodule YellowDog.Store.Zone do
   end
 
   @doc """
-  Get zone metadata. Uses `:eventual` consistency.
+  Get zone metadata. Uses `:strong` consistency after recovery.
   """
   @spec get_zone(view_name(), zone_name()) :: {:ok, map()} | {:error, :not_found | term()}
   def get_zone(view_name, name) do
@@ -311,8 +314,8 @@ defmodule YellowDog.Store.Zone do
         with_recovery(view_name, name, fn backend ->
           key = Key.zone(view_name, name)
           start_time = System.monotonic_time()
-          result = backend.get(key, consistency: :eventual)
-          emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
+          result = backend.get(key, consistency: :strong)
+          emit_operation_telemetry(start_time, :zone, :get, key, :strong)
           result
         end)
       end)
@@ -395,21 +398,15 @@ defmodule YellowDog.Store.Zone do
   def list_zones do
     prefix = Key.all_views_prefix()
     start_time = System.monotonic_time()
+    backend = Backend.active()
 
-    with :ok <- recover_all_replacements() do
-      case Backend.active().prefix_scan(prefix, consistency: :eventual) do
+    with :ok <- recover_all_replacements(backend) do
+      case backend.prefix_scan(prefix, consistency: :strong) do
         {:ok, entries} ->
-          zones =
-            entries
-            |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-            |> Enum.map(fn {key, value} ->
-              # Inject view_name from key: dns:view:{view_name}:zone:{zone_name}
-              view_name = extract_view_name_from_key(key)
-              ensure_zone_id(key, Map.put(value, :view_name, view_name))
-            end)
-
-          emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
-          {:ok, zones}
+          with {:ok, zones} <- ensure_zone_ids(backend, entries, &extract_view_name_from_key/1) do
+            emit_operation_telemetry(start_time, :zone, :list, prefix, :strong)
+            {:ok, zones}
+          end
 
         {:error, _} = error ->
           error
@@ -425,19 +422,15 @@ defmodule YellowDog.Store.Zone do
     with {:ok, view_name} <- canonical_view_name(view_name) do
       prefix = Key.zone_prefix(view_name)
       start_time = System.monotonic_time()
+      backend = Backend.active()
 
-      with :ok <- recover_all_replacements(view_name) do
-        case Backend.active().prefix_scan(prefix, consistency: :eventual) do
+      with :ok <- recover_all_replacements(backend, view_name) do
+        case backend.prefix_scan(prefix, consistency: :strong) do
           {:ok, entries} ->
-            zones =
-              entries
-              |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-              |> Enum.map(fn {key, value} ->
-                ensure_zone_id(key, Map.put(value, :view_name, view_name))
-              end)
-
-            emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
-            {:ok, zones}
+            with {:ok, zones} <- ensure_zone_ids(backend, entries, fn _key -> view_name end) do
+              emit_operation_telemetry(start_time, :zone, :list, prefix, :strong)
+              {:ok, zones}
+            end
 
           {:error, _} = error ->
             error
@@ -545,7 +538,7 @@ defmodule YellowDog.Store.Zone do
   end
 
   @doc """
-  Lookup a specific RRset. Uses `:eventual` consistency.
+  Lookup a specific RRset. Uses `:strong` consistency after recovery.
   """
   @spec get_rrset(view_name(), zone_name(), owner(), rr_type()) ::
           {:ok, map()} | {:error, :not_found | term()}
@@ -557,8 +550,8 @@ defmodule YellowDog.Store.Zone do
         with_recovery(view_name, zone, fn backend ->
           key = Key.zone_rr(view_name, zone, owner, type)
           start_time = System.monotonic_time()
-          result = backend.get(key, consistency: :eventual)
-          emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
+          result = backend.get(key, consistency: :strong)
+          emit_operation_telemetry(start_time, :zone, :get, key, :strong)
           result
         end)
       end)
@@ -609,10 +602,10 @@ defmodule YellowDog.Store.Zone do
           prefix = Key.zone_rr_prefix(view_name, zone)
           start_time = System.monotonic_time()
 
-          case backend.prefix_scan(prefix, consistency: :eventual) do
+          case backend.prefix_scan(prefix, consistency: :strong) do
             {:ok, entries} ->
               records = Enum.map(entries, fn {_key, value} -> value end)
-              emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+              emit_operation_telemetry(start_time, :zone, :list, prefix, :strong)
               {:ok, records}
 
             {:error, _} = error ->
@@ -635,10 +628,10 @@ defmodule YellowDog.Store.Zone do
           prefix = Key.zone_rr_owner_prefix(view_name, zone, owner)
           start_time = System.monotonic_time()
 
-          case backend.prefix_scan(prefix, consistency: :eventual) do
+          case backend.prefix_scan(prefix, consistency: :strong) do
             {:ok, entries} ->
               records = Enum.map(entries, fn {_key, value} -> value end)
-              emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+              emit_operation_telemetry(start_time, :zone, :list, prefix, :strong)
               {:ok, records}
 
             {:error, _} = error ->
@@ -794,23 +787,28 @@ defmodule YellowDog.Store.Zone do
     end
   end
 
-  defp recover_all_replacements(view_name \\ nil) do
-    backend = Backend.active()
-
+  defp recover_all_replacements(backend, view_name \\ nil) do
     case backend.prefix_scan(Key.zone_replacement_header_prefix(), consistency: :strong) do
       {:ok, entries} ->
         Enum.reduce_while(entries, :ok, fn
-          {_key, %{view_name: intent_view, zone: zone}}, :ok
+          {key, %{view_name: intent_view, zone: zone}}, :ok
           when is_binary(intent_view) and is_binary(zone) ->
-            if is_nil(view_name) or view_name == intent_view do
-              case with_zone_lock(intent_view, zone, fn ->
-                     Recovery.recover(backend, intent_view, zone)
-                   end) do
-                :ok -> {:cont, :ok}
-                {:error, _reason} = error -> {:halt, error}
-              end
-            else
-              {:cont, :ok}
+            expected_key = Key.zone_replacement_header(intent_view, zone)
+
+            cond do
+              key != expected_key ->
+                {:halt, {:error, {:recovery_failed, {:header_key_mismatch, key, expected_key}}}}
+
+              is_nil(view_name) or view_name == intent_view ->
+                case with_zone_lock(intent_view, zone, fn ->
+                       Recovery.recover(backend, intent_view, zone)
+                     end) do
+                  :ok -> {:cont, :ok}
+                  {:error, _reason} = error -> {:halt, error}
+                end
+
+              true ->
+                {:cont, :ok}
             end
 
           _entry, :ok ->
@@ -1225,24 +1223,46 @@ defmodule YellowDog.Store.Zone do
     end
   end
 
-  defp ensure_zone_id(_key, %{id: id} = zone) when is_binary(id) and id != "", do: zone
+  defp ensure_zone_ids(backend, entries, view_name_for_key) do
+    entries
+    |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
+    |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, zones} ->
+      zone = Map.put(value, :view_name, view_name_for_key.(key))
 
-  defp ensure_zone_id(key, %{view_name: view_name, origin: origin} = zone) do
-    with {:ok, {view_name, origin}} <- Key.canonical_zone_scope(view_name, origin) do
-      case with_zone_lock(view_name, origin, fn -> ensure_zone_id_locked(key, zone, 3) end) do
-        %{} = zone -> zone
-        _error -> Map.put(zone, :id, generate_uuid())
+      case ensure_zone_id(backend, key, zone) do
+        {:ok, zone} -> {:cont, {:ok, [zone | zones]}}
+        {:error, _reason} = error -> {:halt, error}
       end
-    else
-      _error -> Map.put(zone, :id, generate_uuid())
+    end)
+    |> case do
+      {:ok, zones} -> {:ok, Enum.reverse(zones)}
+      {:error, _reason} = error -> error
     end
   end
 
-  defp ensure_zone_id(_key, zone), do: Map.put(zone, :id, generate_uuid())
+  defp ensure_zone_id(_backend, _key, %{id: id} = zone) when is_binary(id) and id != "",
+    do: {:ok, zone}
 
-  defp ensure_zone_id_locked(_key, zone, 0), do: Map.put(zone, :id, generate_uuid())
+  defp ensure_zone_id(backend, key, %{view_name: view_name, origin: origin} = zone) do
+    with {:ok, {view_name, origin}} <- Key.canonical_zone_scope(view_name, origin) do
+      case with_zone_lock(view_name, origin, fn ->
+             with :ok <- Recovery.recover(backend, view_name, origin) do
+               ensure_zone_id_locked(backend, key, zone, 3)
+             end
+           end) do
+        %{} = zone -> {:ok, zone}
+        {:error, _reason} = error -> error
+      end
+    else
+      _error -> {:ok, Map.put(zone, :id, generate_uuid())}
+    end
+  end
 
-  defp ensure_zone_id_locked(key, zone, retries) do
+  defp ensure_zone_id(_backend, _key, zone), do: {:ok, Map.put(zone, :id, generate_uuid())}
+
+  defp ensure_zone_id_locked(_backend, _key, zone, 0), do: Map.put(zone, :id, generate_uuid())
+
+  defp ensure_zone_id_locked(backend, key, zone, retries) do
     id = generate_uuid()
     now = System.system_time(:second)
     original = Map.delete(zone, :view_name)
@@ -1252,26 +1272,26 @@ defmodule YellowDog.Store.Zone do
       |> Map.put(:id, id)
       |> Map.put(:updated_at, now)
 
-    case Backend.active().put_if(key, persisted, condition: fn old -> old == original end) do
+    case backend.put_if(key, persisted, condition: fn old -> old == original end) do
       :ok ->
         Map.put(zone, :id, id)
 
       {:error, :condition_failed} ->
-        reload_zone_with_view_name_locked(key, zone.view_name, retries - 1)
+        reload_zone_with_view_name_locked(backend, key, zone.view_name, retries - 1)
 
       {:error, _} ->
         Map.put(zone, :id, id)
     end
   end
 
-  defp reload_zone_with_view_name_locked(key, view_name, retries) do
-    case Backend.active().get(key, consistency: :strong) do
+  defp reload_zone_with_view_name_locked(backend, key, view_name, retries) do
+    case backend.get(key, consistency: :strong) do
       {:ok, refreshed} ->
         refreshed = Map.put(refreshed, :view_name, view_name)
 
         case refreshed do
           %{id: id} when is_binary(id) and id != "" -> refreshed
-          _zone -> ensure_zone_id_locked(key, refreshed, retries)
+          _zone -> ensure_zone_id_locked(backend, key, refreshed, retries)
         end
 
       {:error, _} ->
