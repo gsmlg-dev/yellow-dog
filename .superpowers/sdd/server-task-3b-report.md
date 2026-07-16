@@ -1,129 +1,110 @@
-# Server Task 3B1 Interim Report
+# Server Task 3B2 Report
 
 ## Scope
 
-Phase 3B1 hardens the existing compensating `YellowDog.Store.Zone.replace_records/3`
-implementation. It intentionally excludes durable intents, caller/backend exit
-recovery, and restart recovery; those belong to Phase 3B2.
+Phase 3B2 replaces the transaction-capable Zone replacement path with a durable,
+roll-forward intent protocol. It preserves Phase 3B1 validation, exact snapshot
+rules, shared zone locking, unchanged/reorder no-op behavior, public record event
+semantics, and its compensating fallback for legacy backends without `txn/2`.
 
-Changed files are limited to the Zone facade, narrow Key validation helpers,
-focused Zone tests, and the test-only failure backend. Pre-existing changes in
-the protected console files and root `mix.exs` were left untouched and unstaged.
+Changes are limited to Store keys/backends/Zone internals, two new internal Zone
+modules, focused Store tests/support, and the Phase 3B documents. Protected
+console files and root `mix.exs` remain untouched and unstaged.
 
-## Design
+## Durable Protocol
 
-- `Key.canonical_zone_scope/2` and `Key.canonical_owner/1` validate key safety but
-  return every segment verbatim. Case and optional trailing root dots are neither
-  folded nor removed, so historical Store keys remain addressable without a
-  migration. Delimiters, malformed UTF-8, whitespace, and invalid DNS labels are
-  rejected before locking.
-- RR type validation accepts any existing atom whose encoded text is nonempty,
-  bounded, valid UTF-8, and free of `:` and control characters. It does not create
-  atoms and therefore preserves historical types such as `:sshfp` without a
-  partial allowlist.
-- Desired records are fully validated before locking. Duplicate detection uses
-  the final verbatim `Key.zone_rr/4` string, not a normalized tuple.
-- Every legacy Zone mutation uses one exact `{view, zone}` `:global` lock:
-  auth/forward/stub create, update, delete, RR put/delete, import, serial mutation,
-  lazy zone-ID backfill, and replacement. Private locked helpers avoid recursion.
-- Replacement requires `zone_type: :auth` and `authoritative: true`, then takes a
-  complete strong RR-prefix snapshot. Every snapshot entry must have verbatim
-  owner/type/rrset/zone/class metadata and exactly match its expected RR key.
-- RRset member order is normalized only for equality. Changed desired RRsets are
-  persisted exactly as supplied; reorder-only replacements cause no write,
-  serial, telemetry, or EventBridge churn.
-- Apply and restore `put_many/1` calls are split into at most 500 operations.
-  Every returned result map must contain exactly the requested keys with every
-  value equal to `:ok`.
-- Any apply/delete/serial failure restores all prior RR values, attempts removal
-  of every introduced key even after an earlier removal fails, retains the first
-  rollback error, and verifies the exact prior snapshot with a second strong scan.
-  A serial may advance after an ambiguous backend error but is never rolled back.
-- Both `:aborted` and `{:aborted, reason}` lock results return a bounded lock error;
-  replacements wrap that as `{:error, {:replace_failed, ...}}`.
-- RR operation telemetry, RR-change telemetry, and EventBridge notifications are
-  emitted only after all RR mutations and the single serial increment succeed.
+- Replacement headers use `store:zone-replacement:header:*`; immutable chunks
+  use operation-scoped `store:zone-replacement:plan:*` keys. Neither can be
+  mistaken for `dns:view:` metadata or RR changes.
+- Headers fix version, operation ID, generation, exact scope, phase, base/target
+  metadata, target serial, plan count/hash, next chunk, changed count, and event
+  cursor. Active state has no TTL.
+- Intent creation atomically compares the base zone and absent header. Preparing
+  writes each chunk with create-only semantics and strongly verifies it before
+  transitioning to applying. Incomplete preparing state is safely removable.
+- Applying transactions compare the complete fenced header, perform at most 127
+  mixed RR puts/deletes, and advance the cursor in the same transaction. Specs
+  are conservatively capped at 900 KB under Concord's 1 MB limit.
+- Finalization atomically writes the precomputed target metadata/serial once and
+  moves to events. Unknown results, including malformed backend replies, resolve
+  only by a strong header reread; serials are never recomputed.
+- Committed RR telemetry/EventBridge notifications retain per-RR semantics and
+  advance an at-least-once durable event cursor. No precommit RR event is sent.
+  Cleanup replays chunk deletion and fences header deletion by exact generation.
+- Every zone-scoped read/mutation invokes recovery under the same Phase 3B1
+  `:global` lock. Zone lists strongly scan only intent headers and recover each
+  matching scope before returning observable data.
+
+## Backend Guarantees
+
+- `Backend.Cluster.txn/2` delegates to existing `Concord.Txn.commit/2` without an
+  idempotency key. Its intents and chunks are restart durable.
+- `Backend.Ets.txn/2` implements compare/success mixed operations for deterministic
+  recovery after caller exits while the owning ETS table remains alive. It does
+  not claim VM-restart durability.
+- Backends without `txn/2` use the preserved Phase 3B1 batch/compensation path,
+  including `replace_failed` and `rollback_failed` contracts.
 
 ## TDD Evidence
 
-Focused RED after removing Phase 3B2-only crash/intent cases and before production
-repair:
+Initial RED before production recovery APIs:
 
 ```text
-devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/zone_test.exs'
-exit 2: 70 tests, 13 failures
+devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/zone_recovery_test.exs'
+exit 2: 5 tests, 5 failures
 ```
 
-The failures covered canonical scope lookup, invalid delimiter rejection,
-persisted-key duplicates, `authoritative: false`, malformed snapshots, RRset
-reordering, incomplete/extra batch maps, 501-item chunking, later-chunk failure,
-and same-zone put/delete/import/delete-zone races.
+The failures were the missing recovery key, ETS transaction, durability, chunked
+replacement, and oversized-record contracts.
 
-Reviewer-repair RED before the compatibility and exhaustive-cleanup production
-changes:
+Expanded crash/fault RED reached the protocol with three failures in unknown
+outcome/barrier test plumbing, then passed after correction. A final compatibility
+RED proved a backend without `txn/2` had lost Phase 3B1 compensation before the
+narrow fallback was restored.
+
+Focused GREEN:
 
 ```text
-devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/zone_test.exs'
-exit 2: 75 tests, 6 failures
+devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/zone_test.exs test/yellow_dog/store/zone_recovery_test.exs'
+exit 0: 92 tests, 0 failures
 ```
 
-Failures covered verbatim legacy metadata/RR lookup, distinct case-sensitive
-persisted keys, SSHFP put/get/delete/import/replace, and cleanup continuing after
-the first introduced-key deletion failure.
-
-Final focused GREEN:
-
-```text
-devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test test/yellow_dog/store/zone_test.exs'
-exit 0: 75 tests, 0 failures
-```
-
-Coverage also proves empty/unchanged/add/update/delete/mixed counts, one serial
-increment, partial put restoration, stale delete failure after one deletion,
-new-key removal failure, verification-scan failure, compensation failure,
-500/501 boundaries (including a partial write in the failing later chunk),
-replace-versus-replace serialization, different-zone independence, committed
-telemetry/EventBridge ordering, and explicit subscription cleanup.
+Coverage includes exits after intent creation, plan persistence, every apply
+chunk, final serial commit, event delivery, and cleanup; unknown outcomes before
+and after commit; malformed transaction replies; missing/corrupt applying plans;
+501/1001 records; count and byte chunking; old-or-new concurrent visibility;
+legacy put/replace/delete fencing; one serial increment; no precommit events;
+recovery idempotence; cleanup replay; and exact ETS/Cluster durability claims.
 
 ## Verification
 
 ```text
-devenv shell -- bash -lc 'mix format apps/yellow_dog_store/lib/yellow_dog/store/key.ex apps/yellow_dog_store/lib/yellow_dog/store/zone.ex apps/yellow_dog_store/test/support/failure_backend.ex apps/yellow_dog_store/test/yellow_dog/store/zone_test.exs'
-exit 0
-
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix test'
-exit 0: 26 properties, 375 tests, 0 failures, 9 skipped
-note: existing deprecated Key API warnings were emitted by key/property tests
+exit 0: 26 properties, 392 tests, 0 failures, 9 skipped
 
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && MIX_ENV=dev mix compile --force --warnings-as-errors'
-exit 0: compiled 34 files; generated yellow_dog_store
+exit 0: compiled 36 files; generated yellow_dog_store
 
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && MIX_ENV=test mix compile --force --warnings-as-errors'
-exit 0: compiled 34 files; generated yellow_dog_store
+exit 0: compiled 36 files; generated yellow_dog_store
 
 devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix credo --strict'
-exit 0: 59 source files, 624 mods/funs, no issues
-
-devenv shell -- bash -lc 'mix format --check-formatted apps/yellow_dog_store/lib/yellow_dog/store/key.ex apps/yellow_dog_store/lib/yellow_dog/store/zone.ex apps/yellow_dog_store/test/support/failure_backend.ex apps/yellow_dog_store/test/yellow_dog/store/zone_test.exs'
-exit 0
-
-git diff --check -- .superpowers/sdd/server-task-3b-report.md apps/yellow_dog_store/lib/yellow_dog/store/key.ex apps/yellow_dog_store/lib/yellow_dog/store/zone.ex apps/yellow_dog_store/test/support/failure_backend.ex apps/yellow_dog_store/test/yellow_dog/store/zone_test.exs
-exit 0
+exit 0: 62 source files, 716 mods/funs, no issues
 ```
 
-One earlier full-suite run had one lock test time out while waiting only one second
-after the explicit backend barrier was released. The helper's completion window
-was increased to five seconds without changing its blocked-state assertion; the
-focused and full suites then passed as shown above.
+Scoped `mix format --check-formatted` and `git diff --check` also pass. Existing
+deprecated legacy Key API warnings remain in key/property tests and are unrelated.
 
 ## Limitations
 
-- Phase 3B1 is not crash-safe. If the replacing process or backend exits after a
-  partial non-atomic mutation, compensation may not run. Durable intent/cursor
-  recovery is explicitly deferred to Phase 3B2, whose design must use
-  fencing/generation checks so stale workers cannot advance a recovered plan.
-- The shared lock coordinates callers using the Zone facade; direct backend writes
-  to Zone keys remain outside that contract.
-- EventBridge dispatch and event-log persistence remain asynchronous, matching the
-  existing Store API. Phase 3B1 guarantees notification initiation only after the
-  replacement and serial update succeed, not durable exactly-once delivery.
+- The Store Mix application has no application callback or independent ordered
+  supervisor. The only current startup sequence is in out-of-scope
+  `YellowDog.Application`, where recovery must run after `TaskSupervisor` and
+  `EventBridge` but before consumers. This change therefore exposes synchronous
+  `Zone.recover_pending_replacements/0` and recovers on every relevant access,
+  but does not claim an automatic startup hook.
+- Event cursor semantics are at least once. A crash after notification initiation
+  and before cursor advancement may duplicate an already committed RR event.
+- The shared lock coordinates Zone facade callers. Direct backend writes remain
+  outside the contract, but corrupt applying plans are detected and retained for
+  operator repair rather than guessed or deleted.

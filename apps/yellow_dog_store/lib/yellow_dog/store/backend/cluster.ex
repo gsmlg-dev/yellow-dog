@@ -27,5 +27,9 @@ defmodule YellowDog.Store.Backend.Cluster do
   def put_many(operations), do: Concord.put_many(operations)
 
   @doc false
+  @impl true
   def txn(spec, opts \\ []), do: Concord.Txn.commit(spec, opts)
+
+  @impl true
+  def recovery_durability, do: :restart_durable
 end

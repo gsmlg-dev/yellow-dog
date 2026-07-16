@@ -81,6 +81,36 @@ defmodule YellowDog.Store.ProviderTest do
       {:ok, results}
     end
 
+    @impl true
+    def txn(%{compare: compares, success: success} = spec, _opts \\ []) do
+      lock_id = {{__MODULE__, :txn}, self()}
+
+      :global.trans(lock_id, fn ->
+        succeeded = Enum.all?(compares, &compare_matches?/1)
+        operations = if succeeded, do: success, else: Map.get(spec, :failure, [])
+
+        Enum.each(operations, fn
+          {:put, key, value, _opts} -> put(key, value)
+          {:delete, {:key, key}, _opts} -> delete(key)
+        end)
+
+        {:ok, %{succeeded: succeeded, revision: 0, responses: []}}
+      end)
+    end
+
+    @impl true
+    def recovery_durability, do: :caller_process_while_table_survives
+
+    defp compare_matches?({:exists, key, :==, expected}),
+      do: match?({:ok, _value}, get(key)) == expected
+
+    defp compare_matches?({:value, key, :==, expected}) do
+      case get(key) do
+        {:ok, value} -> value == expected
+        {:error, :not_found} -> is_nil(expected)
+      end
+    end
+
     defp create_table do
       case :ets.whereis(@table) do
         :undefined -> :ets.new(@table, [:set, :public, :named_table])

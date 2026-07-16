@@ -37,6 +37,15 @@ defmodule YellowDog.Store.Backend do
   @doc "Write multiple key/value pairs atomically."
   @callback put_many(list()) :: {:ok, map()}
 
+  @doc "Execute a compare/operation transaction."
+  @callback txn(map(), opts()) :: {:ok, map() | struct()} | {:error, term()}
+
+  @doc "Describe the recovery guarantee provided by the backend."
+  @callback recovery_durability() ::
+              :caller_process_while_table_survives | :restart_durable
+
+  @optional_callbacks txn: 2, recovery_durability: 0
+
   @doc "Returns the backend module for the current mode."
   @spec active() :: module()
   def active do

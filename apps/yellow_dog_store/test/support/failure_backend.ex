@@ -25,6 +25,7 @@ defmodule YellowDog.Store.Test.FailureBackend do
       {:put_if, _, _} -> true
       {:put_many, _} -> true
       {:delete, _} -> true
+      {:txn, _} -> true
       _ -> false
     end)
   end
@@ -46,8 +47,15 @@ defmodule YellowDog.Store.Test.FailureBackend do
     record_call({:delete, key})
 
     case take_action(:delete, key) do
-      {:error, reason} -> {:error, reason}
-      nil -> Ets.delete(key)
+      {:error, reason} ->
+        {:error, reason}
+
+      {:delete_then_exit, reason} ->
+        :ok = Ets.delete(key)
+        exit(reason)
+
+      nil ->
+        Ets.delete(key)
     end
   end
 
@@ -62,6 +70,13 @@ defmodule YellowDog.Store.Test.FailureBackend do
       {:write_then_error, reason} ->
         :ok = Ets.put_if(key, value, opts)
         {:error, reason}
+
+      {:exit, reason} ->
+        exit(reason)
+
+      {:write_then_exit, reason} ->
+        :ok = Ets.put_if(key, value, opts)
+        exit(reason)
 
       nil ->
         Ets.put_if(key, value, opts)
@@ -109,6 +124,56 @@ defmodule YellowDog.Store.Test.FailureBackend do
     end
   end
 
+  @impl true
+  def txn(spec, opts \\ []) do
+    record_call({:txn, spec})
+
+    case take_action(:txn, classify_txn(spec)) do
+      :pass ->
+        Ets.txn(spec, opts)
+
+      {:delegate_then, outcome} ->
+        {:ok, _result} = Ets.txn(spec, opts)
+        resolve_outcome(outcome)
+
+      {:exit, reason} ->
+        exit(reason)
+
+      {:delegate_then_exit, reason} ->
+        {:ok, _result} = Ets.txn(spec, opts)
+        exit(reason)
+
+      {:error, reason} ->
+        {:error, reason}
+
+      {:barrier_before, notify, ref, outcome} ->
+        send(notify, {:backend_barrier, ref, self()})
+
+        receive do
+          {:release_backend, ^ref} -> resolve_txn_outcome(spec, opts, outcome)
+        after
+          5_000 -> exit(:barrier_timeout)
+        end
+
+      {:barrier_after, notify, ref, outcome} ->
+        {:ok, _result} = result = Ets.txn(spec, opts)
+        send(notify, {:backend_barrier, ref, self()})
+
+        receive do
+          {:release_backend, ^ref} ->
+            if outcome == :pass, do: result, else: resolve_outcome(outcome)
+        after
+          5_000 -> exit(:barrier_timeout)
+        end
+
+      nil ->
+        Ets.txn(spec, opts)
+    end
+  end
+
+  @impl true
+  def recovery_durability, do: Ets.recovery_durability()
+
   defp ensure_started do
     case Process.whereis(@state) do
       nil ->
@@ -146,11 +211,72 @@ defmodule YellowDog.Store.Test.FailureBackend do
   end
 
   defp matches_action?({:put_many, _outcome}, :put_many, _key), do: true
+  defp matches_action?({:txn, _outcome}, :txn, _key), do: true
+  defp matches_action?({:txn, classifier, _outcome}, :txn, classifier), do: true
+
+  defp matches_action?({:put_if_prefix, prefix, _outcome}, :put_if, key),
+    do: String.starts_with?(key, prefix)
+
+  defp matches_action?({:delete_prefix, prefix, _outcome}, :delete, key),
+    do: String.starts_with?(key, prefix)
+
   defp matches_action?({operation, key, _outcome}, operation, key), do: true
   defp matches_action?(_action, _operation, _key), do: false
 
   defp action_outcome({:put_many, outcome}), do: outcome
+  defp action_outcome({:txn, outcome}), do: outcome
+  defp action_outcome({:txn, _classifier, outcome}), do: outcome
+  defp action_outcome({:put_if_prefix, _prefix, outcome}), do: outcome
+  defp action_outcome({:delete_prefix, _prefix, outcome}), do: outcome
   defp action_outcome({_operation, _key, outcome}), do: outcome
+
+  defp classify_txn(%{success: operations}) do
+    header_values =
+      for {:put, key, value, _opts} <- operations,
+          String.starts_with?(key, YellowDog.Store.Key.zone_replacement_header_prefix()),
+          do: value
+
+    data_count =
+      Enum.count(operations, fn
+        {:put, key, _value, _opts} ->
+          String.starts_with?(key, "dns:view:") and String.contains?(key, ":rr:")
+
+        {:delete, {:key, key}, _opts} ->
+          String.starts_with?(key, "dns:view:") and String.contains?(key, ":rr:")
+
+        _other ->
+          false
+      end)
+
+    case {header_values, data_count, operations} do
+      {[%{phase: :preparing}], 0, _} ->
+        :intent
+
+      {[%{phase: :applying}], 0, _} ->
+        :begin_applying
+
+      {[%{phase: phase, next_chunk: cursor}], count, _} when count > 0 ->
+        {:apply, cursor, phase}
+
+      {[%{phase: :events}], 0, [_zone_put, _header_put]} ->
+        :finalize
+
+      {[%{phase: phase, event_state: %{cursor: cursor}}], 0, _}
+      when phase in [:events, :cleanup] ->
+        {:event, cursor, phase}
+
+      {[], 0, [{:delete, {:key, key}, _opts}]} ->
+        if String.starts_with?(key, YellowDog.Store.Key.zone_replacement_header_prefix()),
+          do: :header_cleanup,
+          else: :other
+
+      _other ->
+        :other
+    end
+  end
+
+  defp resolve_txn_outcome(spec, opts, :pass), do: Ets.txn(spec, opts)
+  defp resolve_txn_outcome(_spec, _opts, outcome), do: resolve_outcome(outcome)
 
   defp write_partial(_operations, 0), do: :ok
 

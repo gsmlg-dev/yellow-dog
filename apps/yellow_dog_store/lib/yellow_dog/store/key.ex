@@ -119,6 +119,16 @@ defmodule YellowDog.Store.Key do
   @spec event_log(integer(), String.t()) :: String.t()
   def event_log(timestamp, key), do: "event_log:#{timestamp}:#{key}"
 
+  @doc "Durable zone replacement header key, outside observable DNS namespaces."
+  @spec zone_replacement_header(String.t(), String.t()) :: String.t()
+  def zone_replacement_header(view_name, zone_name),
+    do: "store:zone-replacement:header:#{view_name}:#{zone_name}"
+
+  @doc "Immutable zone replacement plan chunk key."
+  @spec zone_replacement_plan(String.t(), non_neg_integer()) :: String.t()
+  def zone_replacement_plan(operation_id, chunk_index),
+    do: "#{zone_replacement_plan_prefix(operation_id)}#{chunk_index}"
+
   @doc "Task job key."
   @spec task_job(atom() | String.t(), String.t()) :: String.t()
   def task_job(task_key, id), do: "#{task_job_prefix(task_key)}#{id}"
@@ -171,6 +181,10 @@ defmodule YellowDog.Store.Key do
   def rpz_all_prefix, do: "rpz:"
   def config_prefix(service), do: "config:#{service}:"
   def event_log_prefix, do: "event_log:"
+  def zone_replacement_header_prefix, do: "store:zone-replacement:header:"
+
+  def zone_replacement_plan_prefix(operation_id),
+    do: "store:zone-replacement:plan:#{operation_id}:"
 
   @doc "DNS provider status key."
   @spec provider_status(String.t()) :: String.t()

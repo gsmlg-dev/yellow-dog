@@ -72,11 +72,21 @@ defmodule YellowDog.Store.ZoneTest do
     end
   end
 
-  defp put_many_call_sizes do
+  defp transaction_data_sizes do
     FailureBackend.calls()
     |> Enum.flat_map(fn
-      {:put_many, keys} -> [length(keys)]
-      _call -> []
+      {:txn, %{success: operations}} ->
+        count =
+          Enum.count(operations, fn
+            {:put, key, _value, _opts} -> String.contains?(key, ":rr:")
+            {:delete, {:key, key}, _opts} -> String.contains?(key, ":rr:")
+            _other -> false
+          end)
+
+        if count > 0, do: [count], else: []
+
+      _call ->
+        []
     end)
   end
 
@@ -85,7 +95,7 @@ defmodule YellowDog.Store.ZoneTest do
     ref = make_ref()
 
     use_failure_backend([
-      {:put_many, {:barrier, 1, parent, ref, {:error, :batch_failed}}}
+      {:txn, {:apply, 1, :finalizing}, {:barrier_after, parent, ref, {:error, :timeout}}}
     ])
 
     {_replace_pid, replace_monitor} =
@@ -111,9 +121,7 @@ defmodule YellowDog.Store.ZoneTest do
 
     send(replace_pid, {:release_backend, ref})
 
-    assert_receive {:replace_result, ^ref,
-                    {:error, {:replace_failed, {:put_many_failed, :batch_failed}}}},
-                   5_000
+    assert_receive {:replace_result, ^ref, {:ok, _result}}, 5_000
 
     assert_receive {:DOWN, ^replace_monitor, :process, _pid, :normal}, 5_000
 
@@ -465,12 +473,13 @@ defmodule YellowDog.Store.ZoneTest do
       assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
       assert after_zone.soa.serial == before_zone.soa.serial + 1
 
-      zone_key = Key.zone(@view, zone_name)
-
       assert 1 ==
                Enum.count(FailureBackend.writes(), fn
-                 {:put_if, ^zone_key, _opts} -> true
-                 _ -> false
+                 {:txn, %{success: [{:put, key, _zone, _opts}, {:put, _header, _, _}]}} ->
+                   key == Key.zone(@view, zone_name)
+
+                 _ ->
+                   false
                end)
     end
 
@@ -557,23 +566,25 @@ defmodule YellowDog.Store.ZoneTest do
       assert FailureBackend.writes() == []
     end
 
-    test "restores exact content and removes new keys after a partial batch put failure" do
+    test "retries an unknown apply outcome and commits exact desired content" do
       zone_name = "replace-put-failure.example.com"
       old = desired_record("old", {192, 0, 2, 1})
       updated = desired_record("old", {192, 0, 2, 10})
       added = desired_record("new", {192, 0, 2, 2})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
-      previous = strong_record_snapshot(@view, zone_name)
-      use_failure_backend([{:put_many, {:partial, 1, {:error, :batch_failed}}}])
 
-      assert {:error, {:replace_failed, {:put_many_failed, :batch_failed}}} =
+      use_failure_backend([
+        {:txn, {:apply, 1, :finalizing}, {:error, :timeout}}
+      ])
+
+      assert {:ok, %{changed_count: 2}} =
                Zone.replace_records(@view, zone_name, [updated, added])
 
-      assert strong_record_snapshot(@view, zone_name) == previous
+      assert Enum.map(strong_record_snapshot(@view, zone_name), & &1.owner) == ["new", "old"]
     end
 
-    test "restores exact content after a stale delete failure" do
+    test "retries an unknown mixed delete outcome without exposing partial content" do
       zone_name = "replace-delete-failure.example.com"
       kept = desired_record("keep", {192, 0, 2, 1})
       stale_a = desired_record("stale-a", {192, 0, 2, 2})
@@ -582,44 +593,40 @@ defmodule YellowDog.Store.ZoneTest do
       Zone.put_rrset(@view, zone_name, kept.owner, kept.type, kept.rrset)
       Zone.put_rrset(@view, zone_name, stale_a.owner, stale_a.type, stale_a.rrset)
       Zone.put_rrset(@view, zone_name, stale_b.owner, stale_b.type, stale_b.rrset)
-      previous = strong_record_snapshot(@view, zone_name)
-      stale_a_key = Key.zone_rr(@view, zone_name, stale_a.owner, stale_a.type)
-      stale_b_key = Key.zone_rr(@view, zone_name, stale_b.owner, stale_b.type)
-      use_failure_backend([{:delete, stale_b_key, {:error, :delete_failed}}])
 
-      assert {:error, {:replace_failed, {:delete_failed, ^stale_b_key, :delete_failed}}} =
+      use_failure_backend([
+        {:txn, {:apply, 1, :finalizing}, {:error, :timeout}}
+      ])
+
+      assert {:ok, %{changed_count: 2}} =
                Zone.replace_records(@view, zone_name, [kept])
 
-      assert Enum.find_index(FailureBackend.calls(), &(&1 == {:delete, stale_a_key})) <
-               Enum.find_index(FailureBackend.calls(), &(&1 == {:delete, stale_b_key}))
-
-      assert strong_record_snapshot(@view, zone_name) == previous
+      assert Enum.map(strong_record_snapshot(@view, zone_name), & &1.owner) == ["keep"]
     end
 
-    test "restores exact content, preserves an advanced serial, and emits no premature events" do
+    test "resolves an unknown final outcome and emits events only for committed content" do
       zone_name = "replace-serial-failure.example.com"
       old = desired_record("www", {192, 0, 2, 1})
       updated = desired_record("www", {192, 0, 2, 2})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
-      previous = strong_record_snapshot(@view, zone_name)
       {:ok, before_zone} = Zone.get_zone(@view, zone_name)
       start_event_bridge()
       {:ok, event_ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
       on_exit(fn -> EventBridge.unsubscribe(event_ref) end)
-      zone_key = Key.zone(@view, zone_name)
-      use_failure_backend([{:put_if, zone_key, {:write_then_error, :serial_failed}}])
+      use_failure_backend([{:txn, :finalize, {:delegate_then, {:error, :timeout}}}])
 
-      assert {:error, {:replace_failed, {:serial_failed, :serial_failed}}} =
+      assert {:ok, %{changed_count: 1}} =
                Zone.replace_records(@view, zone_name, [updated])
 
-      assert strong_record_snapshot(@view, zone_name) == previous
+      assert [stored] = strong_record_snapshot(@view, zone_name)
+      assert stored.rrset == updated.rrset
       assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
       assert after_zone.soa.serial == before_zone.soa.serial + 1
-      refute_receive {:store_event, _}, 100
+      assert_receive {:store_event, %{type: :put}}, 5_000
     end
 
-    test "returns rollback_failed when compensation cannot restore prior content" do
+    test "fails closed after repeated unknown outcomes and recovers on the next read" do
       zone_name = "replace-rollback-failure.example.com"
       old = desired_record("www", {192, 0, 2, 1})
       updated = desired_record("www", {192, 0, 2, 2})
@@ -627,14 +634,17 @@ defmodule YellowDog.Store.ZoneTest do
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
 
       use_failure_backend([
-        {:put_many, {:partial, 1, {:error, :batch_failed}}},
-        {:put_many, {:partial, 0, {:error, :restore_failed}}}
+        {:txn, {:apply, 1, :finalizing}, {:error, :timeout}},
+        {:txn, {:apply, 1, :finalizing}, {:error, :timeout}},
+        {:txn, {:apply, 1, :finalizing}, {:error, :timeout}},
+        {:txn, {:apply, 1, :finalizing}, {:error, :timeout}}
       ])
 
-      assert {:error,
-              {:rollback_failed, {:put_many_failed, :batch_failed},
-               {:restore_failed, :restore_failed}}} =
+      assert {:error, {:replace_failed, {:recovery_failed, :transaction_unknown}}} =
                Zone.replace_records(@view, zone_name, [updated])
+
+      assert {:ok, [stored]} = Zone.list_records(@view, zone_name)
+      assert stored.rrset == updated.rrset
     end
 
     test "preserves pre-existing verbatim metadata and RR keys" do
@@ -793,48 +803,43 @@ defmodule YellowDog.Store.ZoneTest do
       assert FailureBackend.writes() == []
     end
 
-    test "rejects incomplete and extra put_many success maps and compensates" do
+    test "resolves malformed transaction responses from the durable cursor" do
       zone_name = "replace-batch-map.example.com"
       old = desired_record("www", {192, 0, 2, 1})
       updated = desired_record("www", {192, 0, 2, 2})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
-      previous = strong_record_snapshot(@view, zone_name)
 
-      for malformed_results <- [
-            %{},
-            %{Key.zone_rr(@view, zone_name, "www", :a) => :ok, "extra" => :ok}
-          ] do
-        use_failure_backend([{:put_many, {:delegate_then, {:ok, malformed_results}}}])
+      use_failure_backend([
+        {:txn, {:apply, 1, :finalizing}, {:delegate_then, {:ok, %{unexpected: true}}}}
+      ])
 
-        assert {:error, {:replace_failed, {:put_many_failed, :invalid_result}}} =
-                 Zone.replace_records(@view, zone_name, [updated])
-
-        assert strong_record_snapshot(@view, zone_name) == previous
-      end
+      assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [updated])
+      assert [stored] = strong_record_snapshot(@view, zone_name)
+      assert stored.rrset == updated.rrset
     end
 
-    test "removal failure for a newly introduced key reports rollback_failed" do
+    test "cleanup failure leaves a committed intent for replay" do
       zone_name = "replace-remove-new-failure.example.com"
       old = desired_record("z-old", {192, 0, 2, 1})
       updated = desired_record("z-old", {192, 0, 2, 2})
       added = desired_record("a-new", {192, 0, 2, 3})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
-      new_key = Key.zone_rr(@view, zone_name, added.owner, added.type)
 
       use_failure_backend([
-        {:put_many, {:partial, 1, {:error, :batch_failed}}},
-        {:delete, new_key, {:error, :remove_failed}}
+        {:delete_prefix, "store:zone-replacement:plan:", {:error, :remove_failed}}
       ])
 
       assert {:error,
-              {:rollback_failed, {:put_many_failed, :batch_failed},
-               {:remove_new_failed, :remove_failed}}} =
+              {:replace_failed, {:recovery_failed, {:plan_cleanup_failed, 0, :remove_failed}}}} =
                Zone.replace_records(@view, zone_name, [added, updated])
+
+      assert {:ok, records} = Zone.list_records(@view, zone_name)
+      assert Enum.map(records, & &1.owner) == ["a-new", "z-old"]
     end
 
-    test "continues removing introduced keys after the first removal fails" do
+    test "replayed cleanup removes every immutable plan chunk" do
       zone_name = "replace-remove-all-new.example.com"
       old = desired_record("z-old", {192, 0, 2, 1})
       updated = desired_record("z-old", {192, 0, 2, 2})
@@ -842,43 +847,39 @@ defmodule YellowDog.Store.ZoneTest do
       added_b = desired_record("b-new", {192, 0, 2, 4})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
-      key_a = Key.zone_rr(@view, zone_name, added_a.owner, added_a.type)
-      key_b = Key.zone_rr(@view, zone_name, added_b.owner, added_b.type)
 
       use_failure_backend([
-        {:put_many, {:partial, 2, {:error, :batch_failed}}},
-        {:delete, key_a, {:error, :remove_failed}}
+        {:delete_prefix, "store:zone-replacement:plan:", {:error, :remove_failed}}
       ])
 
       assert {:error,
-              {:rollback_failed, {:put_many_failed, :batch_failed},
-               {:remove_new_failed, :remove_failed}}} =
+              {:replace_failed, {:recovery_failed, {:plan_cleanup_failed, 0, :remove_failed}}}} =
                Zone.replace_records(@view, zone_name, [added_a, added_b, updated])
 
-      assert {:error, :not_found} = EtsBackend.get(key_b)
-      assert {:delete, key_b} in FailureBackend.calls()
+      assert {:ok, _records} = Zone.list_records(@view, zone_name)
+      assert {:ok, []} = EtsBackend.prefix_scan("store:zone-replacement:plan:")
     end
 
-    test "verification scan failure reports rollback_failed" do
+    test "strong header read failure fails closed until retry" do
       zone_name = "replace-verification-failure.example.com"
       old = desired_record("www", {192, 0, 2, 1})
       updated = desired_record("www", {192, 0, 2, 2})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
-      prefix = Key.zone_rr_prefix(@view, zone_name)
+      header_prefix = Key.zone_replacement_header_prefix()
 
       use_failure_backend([
-        {:put_many, {:partial, 1, {:error, :batch_failed}}},
-        {:prefix_scan, prefix, {:error, :verification_failed}}
+        {:prefix_scan, header_prefix, {:error, :verification_failed}}
       ])
 
-      assert {:error,
-              {:rollback_failed, {:put_many_failed, :batch_failed},
-               {:verification_failed, :verification_failed}}} =
-               Zone.replace_records(@view, zone_name, [updated])
+      assert {:error, {:recovery_failed, {:header_scan_failed, :verification_failed}}} =
+               Zone.list_zones()
+
+      assert {:ok, _zones} = Zone.list_zones()
+      assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [updated])
     end
 
-    test "uses one bounded batch for 500 desired RRsets" do
+    test "uses bounded transactions for 500 desired RRsets" do
       zone_name = "replace-500.example.com"
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       use_failure_backend()
@@ -886,7 +887,7 @@ defmodule YellowDog.Store.ZoneTest do
       assert {:ok, %{changed_count: 500}} =
                Zone.replace_records(@view, zone_name, many_records(500))
 
-      assert put_many_call_sizes() == [500]
+      assert transaction_data_sizes() == [127, 127, 127, 119]
     end
 
     test "splits 501 desired RRsets into bounded batches" do
@@ -897,27 +898,27 @@ defmodule YellowDog.Store.ZoneTest do
       assert {:ok, %{changed_count: 501}} =
                Zone.replace_records(@view, zone_name, many_records(501))
 
-      assert put_many_call_sizes() == [500, 1]
+      assert transaction_data_sizes() == [127, 127, 127, 120]
     end
 
-    test "restores all prior chunks after a later apply chunk fails" do
+    test "retries a later unknown chunk without changing the fixed plan" do
       zone_name = "replace-multi-chunk-failure.example.com"
       previous_records = many_records(501, 1)
       desired_records = many_records(501, 20)
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       seed_records(zone_name, previous_records)
-      previous = strong_record_snapshot(@view, zone_name)
 
       use_failure_backend([
-        {:put_many, :pass},
-        {:put_many, {:partial, 1, {:error, :second_chunk_failed}}}
+        {:txn, {:apply, 2, :applying}, {:error, :timeout}}
       ])
 
-      assert {:error, {:replace_failed, {:put_many_failed, :second_chunk_failed}}} =
+      assert {:ok, %{changed_count: 501}} =
                Zone.replace_records(@view, zone_name, desired_records)
 
-      assert strong_record_snapshot(@view, zone_name) == previous
-      assert put_many_call_sizes() == [500, 1, 500, 1]
+      assert Enum.map(strong_record_snapshot(@view, zone_name), & &1.rrset) ==
+               Enum.map(desired_records, & &1.rrset)
+
+      assert Enum.all?(transaction_data_sizes(), &(&1 <= 127))
     end
 
     test "shared lock serializes concurrent replacements" do
@@ -935,7 +936,7 @@ defmodule YellowDog.Store.ZoneTest do
         end)
 
       refute finished_while_blocked
-      assert {:ok, %{changed_count: 1}} = result
+      assert {:ok, %{changed_count: 2}} = result
       assert {:ok, %{rrset: rrset}} = Zone.get_rrset(@view, zone_name, "target", :a)
       assert rrset == second.rrset
       assert {:error, :not_found} = Zone.get_rrset(@view, zone_name, "added", :a)

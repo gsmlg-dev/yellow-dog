@@ -128,6 +128,21 @@ defmodule YellowDog.Store.Backend.Ets do
     {:ok, results}
   end
 
+  @impl true
+  @spec txn(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def txn(spec, _opts \\ []) do
+    lock_id = {{__MODULE__, :txn}, self()}
+
+    case :global.trans(lock_id, fn -> execute_txn(spec) end) do
+      :aborted -> {:error, :aborted}
+      {:aborted, reason} -> {:error, reason}
+      result -> result
+    end
+  end
+
+  @impl true
+  def recovery_durability, do: :caller_process_while_table_survives
+
   # --- Table Management (called by ModeDetector) ---
 
   @doc "Creates the ETS table. Called once by ModeDetector.init/1."
@@ -174,6 +189,50 @@ defmodule YellowDog.Store.Backend.Ets do
   def table, do: @table
 
   # --- Private ---
+
+  defp execute_txn(%{compare: compares, success: success} = spec)
+       when is_list(compares) and is_list(success) do
+    branch =
+      if Enum.all?(compares, &compare_matches?/1), do: success, else: Map.get(spec, :failure, [])
+
+    succeeded = branch == success
+
+    with :ok <- execute_operations(branch) do
+      {:ok, %{succeeded: succeeded, revision: 0, responses: []}}
+    end
+  end
+
+  defp execute_txn(_spec), do: {:error, {:invalid_txn, :invalid_spec}}
+
+  defp compare_matches?({:exists, key, :==, expected}) when is_boolean(expected) do
+    present? = match?({:ok, _value}, get(key))
+    present? == expected
+  end
+
+  defp compare_matches?({:value, key, :==, expected}) do
+    case get(key) do
+      {:ok, value} -> value == expected
+      {:error, :not_found} -> expected == nil
+    end
+  end
+
+  defp compare_matches?(_compare), do: false
+
+  defp execute_operations(operations) do
+    Enum.reduce_while(operations, :ok, fn operation, :ok ->
+      case execute_operation(operation) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp execute_operation({:put, key, value, opts}) when is_map(opts) do
+    put(key, value, Map.to_list(opts))
+  end
+
+  defp execute_operation({:delete, {:key, key}, _opts}), do: delete(key)
+  defp execute_operation(_operation), do: {:error, {:invalid_txn, :unsupported_op}}
 
   # Atomic insert — only succeeds if key doesn't exist (or is expired).
   defp atomic_insert_new(key, value, expires_at) do

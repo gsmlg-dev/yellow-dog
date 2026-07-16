@@ -17,9 +17,16 @@ defmodule YellowDog.Store.Zone do
   import Bitwise, only: [&&&: 2, |||: 2]
 
   alias YellowDog.Store.{Backend, EventBridge, Key}
+  alias YellowDog.Store.Zone.{Recovery, Replacement}
 
   @max_batch_size 500
   @max_cas_retries 10
+
+  @doc false
+  def max_replacement_transaction_bytes, do: Replacement.max_transaction_bytes()
+
+  @doc false
+  def recover_pending_replacements, do: recover_all_replacements()
 
   @type zone_id :: String.t()
   @type view_name :: String.t()
@@ -69,7 +76,9 @@ defmodule YellowDog.Store.Zone do
   def create_zone(view_name, name, soa, opts \\ []) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
       with_zone_lock(view_name, name, fn ->
-        create_zone_locked(Backend.active(), view_name, name, soa, opts)
+        with_recovery(view_name, name, fn backend ->
+          create_zone_locked(backend, view_name, name, soa, opts)
+        end)
       end)
     end
   end
@@ -126,7 +135,9 @@ defmodule YellowDog.Store.Zone do
   def create_forward_zone(view_name, name, forwarders, opts \\ []) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
       with_zone_lock(view_name, name, fn ->
-        create_forward_zone_locked(Backend.active(), view_name, name, forwarders, opts)
+        with_recovery(view_name, name, fn backend ->
+          create_forward_zone_locked(backend, view_name, name, forwarders, opts)
+        end)
       end)
     end
   end
@@ -187,7 +198,9 @@ defmodule YellowDog.Store.Zone do
   def create_stub_zone(view_name, name, primaries, opts \\ []) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
       with_zone_lock(view_name, name, fn ->
-        create_stub_zone_locked(Backend.active(), view_name, name, primaries, opts)
+        with_recovery(view_name, name, fn backend ->
+          create_stub_zone_locked(backend, view_name, name, primaries, opts)
+        end)
       end)
     end
   end
@@ -242,7 +255,9 @@ defmodule YellowDog.Store.Zone do
   def delete_zone(view_name, name) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
       with_zone_lock(view_name, name, fn ->
-        delete_zone_locked(Backend.active(), view_name, name)
+        with_recovery(view_name, name, fn backend ->
+          delete_zone_locked(backend, view_name, name)
+        end)
       end)
     end
   end
@@ -292,11 +307,15 @@ defmodule YellowDog.Store.Zone do
   @spec get_zone(view_name(), zone_name()) :: {:ok, map()} | {:error, :not_found | term()}
   def get_zone(view_name, name) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
-      key = Key.zone(view_name, name)
-      start_time = System.monotonic_time()
-      result = Backend.active().get(key, consistency: :eventual)
-      emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
-      result
+      with_zone_lock(view_name, name, fn ->
+        with_recovery(view_name, name, fn backend ->
+          key = Key.zone(view_name, name)
+          start_time = System.monotonic_time()
+          result = backend.get(key, consistency: :eventual)
+          emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
+          result
+        end)
+      end)
     end
   end
 
@@ -330,7 +349,9 @@ defmodule YellowDog.Store.Zone do
   def update_zone(view_name, name, attrs) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
       with_zone_lock(view_name, name, fn ->
-        do_update_zone_locked(Backend.active(), view_name, name, attrs, @max_update_retries)
+        with_recovery(view_name, name, fn backend ->
+          do_update_zone_locked(backend, view_name, name, attrs, @max_update_retries)
+        end)
       end)
     end
   end
@@ -375,22 +396,24 @@ defmodule YellowDog.Store.Zone do
     prefix = Key.all_views_prefix()
     start_time = System.monotonic_time()
 
-    case Backend.active().prefix_scan(prefix, consistency: :eventual) do
-      {:ok, entries} ->
-        zones =
-          entries
-          |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-          |> Enum.map(fn {key, value} ->
-            # Inject view_name from key: dns:view:{view_name}:zone:{zone_name}
-            view_name = extract_view_name_from_key(key)
-            ensure_zone_id(key, Map.put(value, :view_name, view_name))
-          end)
+    with :ok <- recover_all_replacements() do
+      case Backend.active().prefix_scan(prefix, consistency: :eventual) do
+        {:ok, entries} ->
+          zones =
+            entries
+            |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
+            |> Enum.map(fn {key, value} ->
+              # Inject view_name from key: dns:view:{view_name}:zone:{zone_name}
+              view_name = extract_view_name_from_key(key)
+              ensure_zone_id(key, Map.put(value, :view_name, view_name))
+            end)
 
-        emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
-        {:ok, zones}
+          emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+          {:ok, zones}
 
-      {:error, _} = error ->
-        error
+        {:error, _} = error ->
+          error
+      end
     end
   end
 
@@ -403,20 +426,22 @@ defmodule YellowDog.Store.Zone do
       prefix = Key.zone_prefix(view_name)
       start_time = System.monotonic_time()
 
-      case Backend.active().prefix_scan(prefix, consistency: :eventual) do
-        {:ok, entries} ->
-          zones =
-            entries
-            |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
-            |> Enum.map(fn {key, value} ->
-              ensure_zone_id(key, Map.put(value, :view_name, view_name))
-            end)
+      with :ok <- recover_all_replacements(view_name) do
+        case Backend.active().prefix_scan(prefix, consistency: :eventual) do
+          {:ok, entries} ->
+            zones =
+              entries
+              |> Enum.filter(fn {key, _value} -> zone_metadata_key?(key) end)
+              |> Enum.map(fn {key, value} ->
+                ensure_zone_id(key, Map.put(value, :view_name, view_name))
+              end)
 
-          emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
-          {:ok, zones}
+            emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+            {:ok, zones}
 
-        {:error, _} = error ->
-          error
+          {:error, _} = error ->
+            error
+        end
       end
     end
   end
@@ -450,7 +475,9 @@ defmodule YellowDog.Store.Zone do
          {:ok, owner} <- Key.canonical_owner(owner),
          :ok <- validate_rr_type(type) do
       with_zone_lock(view_name, zone, fn ->
-        put_rrset_locked(Backend.active(), view_name, zone, owner, type, rrset)
+        with_recovery(view_name, zone, fn backend ->
+          put_rrset_locked(backend, view_name, zone, owner, type, rrset)
+        end)
       end)
     end
   end
@@ -502,7 +529,9 @@ defmodule YellowDog.Store.Zone do
          {:ok, desired_records} <-
            validate_desired_records(view_name, zone, records) do
       case with_zone_lock(view_name, zone, fn ->
-             do_replace_records(Backend.active(), view_name, zone, desired_records)
+             with_recovery(view_name, zone, fn backend ->
+               do_replace_records(backend, view_name, zone, desired_records)
+             end)
            end) do
         {:error, {:lock_failed, reason}} ->
           {:error, {:replace_failed, {:lock_failed, reason}}}
@@ -524,11 +553,15 @@ defmodule YellowDog.Store.Zone do
     with {:ok, {view_name, zone}} <- Key.canonical_zone_scope(view_name, zone),
          {:ok, owner} <- Key.canonical_owner(owner),
          :ok <- validate_rr_type(type) do
-      key = Key.zone_rr(view_name, zone, owner, type)
-      start_time = System.monotonic_time()
-      result = Backend.active().get(key, consistency: :eventual)
-      emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
-      result
+      with_zone_lock(view_name, zone, fn ->
+        with_recovery(view_name, zone, fn backend ->
+          key = Key.zone_rr(view_name, zone, owner, type)
+          start_time = System.monotonic_time()
+          result = backend.get(key, consistency: :eventual)
+          emit_operation_telemetry(start_time, :zone, :get, key, :eventual)
+          result
+        end)
+      end)
     end
   end
 
@@ -541,7 +574,9 @@ defmodule YellowDog.Store.Zone do
          {:ok, owner} <- Key.canonical_owner(owner),
          :ok <- validate_rr_type(type) do
       with_zone_lock(view_name, zone, fn ->
-        delete_rrset_locked(Backend.active(), view_name, zone, owner, type)
+        with_recovery(view_name, zone, fn backend ->
+          delete_rrset_locked(backend, view_name, zone, owner, type)
+        end)
       end)
     end
   end
@@ -569,18 +604,22 @@ defmodule YellowDog.Store.Zone do
   @spec list_records(view_name(), zone_name()) :: {:ok, [map()]} | {:error, term()}
   def list_records(view_name, zone) do
     with {:ok, {view_name, zone}} <- Key.canonical_zone_scope(view_name, zone) do
-      prefix = Key.zone_rr_prefix(view_name, zone)
-      start_time = System.monotonic_time()
+      with_zone_lock(view_name, zone, fn ->
+        with_recovery(view_name, zone, fn backend ->
+          prefix = Key.zone_rr_prefix(view_name, zone)
+          start_time = System.monotonic_time()
 
-      case Backend.active().prefix_scan(prefix, consistency: :eventual) do
-        {:ok, entries} ->
-          records = Enum.map(entries, fn {_key, value} -> value end)
-          emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
-          {:ok, records}
+          case backend.prefix_scan(prefix, consistency: :eventual) do
+            {:ok, entries} ->
+              records = Enum.map(entries, fn {_key, value} -> value end)
+              emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+              {:ok, records}
 
-        {:error, _} = error ->
-          error
-      end
+            {:error, _} = error ->
+              error
+          end
+        end)
+      end)
     end
   end
 
@@ -591,18 +630,22 @@ defmodule YellowDog.Store.Zone do
   def list_records(view_name, zone, owner) do
     with {:ok, {view_name, zone}} <- Key.canonical_zone_scope(view_name, zone),
          {:ok, owner} <- Key.canonical_owner(owner) do
-      prefix = Key.zone_rr_owner_prefix(view_name, zone, owner)
-      start_time = System.monotonic_time()
+      with_zone_lock(view_name, zone, fn ->
+        with_recovery(view_name, zone, fn backend ->
+          prefix = Key.zone_rr_owner_prefix(view_name, zone, owner)
+          start_time = System.monotonic_time()
 
-      case Backend.active().prefix_scan(prefix, consistency: :eventual) do
-        {:ok, entries} ->
-          records = Enum.map(entries, fn {_key, value} -> value end)
-          emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
-          {:ok, records}
+          case backend.prefix_scan(prefix, consistency: :eventual) do
+            {:ok, entries} ->
+              records = Enum.map(entries, fn {_key, value} -> value end)
+              emit_operation_telemetry(start_time, :zone, :list, prefix, :eventual)
+              {:ok, records}
 
-        {:error, _} = error ->
-          error
-      end
+            {:error, _} = error ->
+              error
+          end
+        end)
+      end)
     end
   end
 
@@ -618,7 +661,9 @@ defmodule YellowDog.Store.Zone do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
          {:ok, records} <- canonicalize_import_records(records) do
       with_zone_lock(view_name, name, fn ->
-        import_zone_locked(Backend.active(), view_name, name, records)
+        with_recovery(view_name, name, fn backend ->
+          import_zone_locked(backend, view_name, name, records)
+        end)
       end)
     end
   end
@@ -681,7 +726,9 @@ defmodule YellowDog.Store.Zone do
   def increment_serial(view_name, name) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
       with_zone_lock(view_name, name, fn ->
-        do_increment_serial_locked(Backend.active(), view_name, name, @max_cas_retries)
+        with_recovery(view_name, name, fn backend ->
+          do_increment_serial_locked(backend, view_name, name, @max_cas_retries)
+        end)
       end)
     end
   end
@@ -738,6 +785,42 @@ defmodule YellowDog.Store.Zone do
   # -------------------------------------------------------------------
   # Private helpers
   # -------------------------------------------------------------------
+
+  defp with_recovery(view_name, zone, fun) when is_function(fun, 1) do
+    backend = Backend.active()
+
+    with :ok <- Recovery.recover(backend, view_name, zone) do
+      fun.(backend)
+    end
+  end
+
+  defp recover_all_replacements(view_name \\ nil) do
+    backend = Backend.active()
+
+    case backend.prefix_scan(Key.zone_replacement_header_prefix(), consistency: :strong) do
+      {:ok, entries} ->
+        Enum.reduce_while(entries, :ok, fn
+          {_key, %{view_name: intent_view, zone: zone}}, :ok
+          when is_binary(intent_view) and is_binary(zone) ->
+            if is_nil(view_name) or view_name == intent_view do
+              case with_zone_lock(intent_view, zone, fn ->
+                     Recovery.recover(backend, intent_view, zone)
+                   end) do
+                :ok -> {:cont, :ok}
+                {:error, _reason} = error -> {:halt, error}
+              end
+            else
+              {:cont, :ok}
+            end
+
+          _entry, :ok ->
+            {:halt, {:error, {:recovery_failed, :invalid_header}}}
+        end)
+
+      {:error, reason} ->
+        {:error, {:recovery_failed, {:header_scan_failed, reason}}}
+    end
+  end
 
   defp with_zone_lock(view_name, zone, fun) when is_function(fun, 0) do
     lock_id = {{__MODULE__, :zone, view_name, zone}, self()}
@@ -815,8 +898,8 @@ defmodule YellowDog.Store.Zone do
     zone_key = Key.zone(view_name, zone)
 
     case backend.get(zone_key, consistency: :strong) do
-      {:ok, %{zone_type: :auth, authoritative: true}} ->
-        replace_from_snapshot(backend, view_name, zone, desired_records)
+      {:ok, %{zone_type: :auth, authoritative: true} = base_zone} ->
+        replace_from_snapshot(backend, view_name, zone, base_zone, desired_records)
 
       {:ok, _zone} ->
         {:error, {:replace_failed, :not_authoritative}}
@@ -829,7 +912,7 @@ defmodule YellowDog.Store.Zone do
     end
   end
 
-  defp replace_from_snapshot(backend, view_name, zone, desired_records) do
+  defp replace_from_snapshot(backend, view_name, zone, base_zone, desired_records) do
     prefix = Key.zone_rr_prefix(view_name, zone)
 
     case backend.prefix_scan(prefix, consistency: :strong) do
@@ -842,7 +925,15 @@ defmodule YellowDog.Store.Zone do
             if plan.changed_count == 0 do
               {:ok, %{previous: previous, changed_count: 0}}
             else
-              apply_replacement(backend, view_name, zone, previous_entries, previous, plan)
+              apply_replacement(
+                backend,
+                view_name,
+                zone,
+                base_zone,
+                previous_entries,
+                previous,
+                plan
+              )
             end
 
           {:error, :invalid_snapshot} ->
@@ -949,7 +1040,40 @@ defmodule YellowDog.Store.Zone do
     }
   end
 
-  defp apply_replacement(backend, view_name, zone, previous_entries, previous, plan) do
+  defp apply_replacement(
+         backend,
+         view_name,
+         zone,
+         base_zone,
+         previous_entries,
+         previous,
+         plan
+       ) do
+    if function_exported?(backend, :txn, 2) do
+      case Replacement.execute(backend, view_name, zone, base_zone, previous, plan) do
+        {:ok, _result} = result -> result
+        {:error, reason} -> {:error, {:replace_failed, reason}}
+      end
+    else
+      apply_compensating_replacement(
+        backend,
+        view_name,
+        zone,
+        previous_entries,
+        previous,
+        plan
+      )
+    end
+  end
+
+  defp apply_compensating_replacement(
+         backend,
+         view_name,
+         zone,
+         previous_entries,
+         previous,
+         plan
+       ) do
     start_time = System.monotonic_time()
 
     with :ok <- put_replacement_records(backend, plan.puts),
