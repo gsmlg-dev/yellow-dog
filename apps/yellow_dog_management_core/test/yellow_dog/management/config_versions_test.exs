@@ -29,6 +29,8 @@ defmodule YellowDog.Management.ConfigVersionsTest do
           :config_staging_cleanup_counter,
           :config_staging_cleanup_mode,
           :config_version_file_ops_owner,
+          :exhausted_recovery_owner,
+          :exhausted_manifest_recovery_state,
           :fail_config_manifest_write,
           :manifest_replace_file_ops_owner,
           :block_manifest_read_number,
@@ -797,6 +799,41 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_blocking_filesystem_timeout(:promotion, "srv-block-promotion", true, context.data_dir)
   end
 
+  test "immutable cleanup gets a fresh budget after reconciliation exhausts its budget", %{
+    data_dir: _data_dir
+  } do
+    server_id = "srv-exhausted-immutable-recovery"
+    register_server(server_id)
+    Application.put_env(:yellow_dog_management_core, :exhausted_recovery_owner, self())
+
+    install_event_store_config(
+      file_ops: __MODULE__.ExhaustedImmutableRecoveryFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 100
+    )
+
+    config_versions = Process.whereis(ConfigVersions)
+    publish_task = Task.async(fn -> publish_server(server_id) end)
+
+    assert_receive {:immutable_promotion_blocked, promotion_pid, final_path, staging_path}, 1_000
+    assert_receive {:immutable_reconciliation_blocked, reconciliation_pid, ^final_path}, 1_000
+    assert_receive {:immutable_cleanup_started, cleanup_pid, ^staging_path}, 1_000
+
+    assert_error(Task.await(publish_task, 2_000), :timeout)
+    :sys.get_state(config_versions)
+
+    for worker <- [promotion_pid, reconciliation_pid, cleanup_pid] do
+      refute Process.alive?(worker)
+    end
+
+    assert File.exists?(final_path)
+    refute File.exists?(staging_path)
+    refute filesystem_residue?(Path.dirname(final_path))
+
+    install_event_store_file_ops(AtomicJson.FileOps)
+    assert {:ok, %ConfigVersion{version: 2}} = publish_server(server_id)
+  end
+
   test "immutable staging cleanup retries a transient rm error", context do
     assert_config_staging_cleanup_recovery(:error_once, "srv-cleanup-rm-error", context)
   end
@@ -972,6 +1009,51 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert {:ok, %ConfigVersion{version: 2}} = publish_server("srv-manifest-cleanup")
   end
 
+  test "manifest cleanup gets a fresh budget after reconciliation exhausts its budget", %{
+    data_dir: data_dir
+  } do
+    server_id = "srv-exhausted-manifest-recovery"
+    register_server(server_id)
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, previous_manifest} = AtomicJson.read(manifest_path)
+
+    state = :atomics.new(2, [])
+    Application.put_env(:yellow_dog_management_core, :exhausted_recovery_owner, self())
+    Application.put_env(:yellow_dog_management_core, :exhausted_manifest_recovery_state, state)
+
+    install_event_store_config(
+      file_ops: __MODULE__.ExhaustedManifestRecoveryFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 100
+    )
+
+    publish_task = Task.async(fn -> publish_server(server_id) end)
+
+    assert_receive {:manifest_promotion_blocked, promotion_pid, staging_path, ^manifest_path},
+                   1_000
+
+    assert_receive {:manifest_reconciliation_blocked, reconciliation_pid, ^manifest_path}, 1_000
+    assert_receive {:manifest_cleanup_started, cleanup_pid, ^staging_path}, 1_000
+
+    assert_error(Task.await(publish_task, 2_000), :timeout)
+    :sys.get_state(ManifestStore)
+    :sys.get_state(ConfigVersions)
+
+    for worker <- [promotion_pid, reconciliation_pid, cleanup_pid] do
+      refute Process.alive?(worker)
+    end
+
+    assert {:ok, ^previous_manifest} = AtomicJson.read(manifest_path)
+    refute File.exists?(staging_path)
+    refute filesystem_residue?(Path.dirname(manifest_path))
+
+    versions_dir = Path.join([data_dir, "management", "servers", server_id, "versions"])
+    assert [_orphan] = Path.wildcard(Path.join(versions_dir, "*.json"))
+
+    install_event_store_file_ops(AtomicJson.FileOps)
+    assert {:ok, %ConfigVersion{version: 2}} = publish_server(server_id)
+  end
+
   test "reserves orphan filenames, ignores malformed temporary files, and rejects max overflow",
        %{
          data_dir: data_dir
@@ -1103,6 +1185,160 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       assert snapshot_files(versions_dir) == version_files
       refute filesystem_residue?(Path.dirname(manifest_path))
     end
+  end
+
+  test "concrete target profiles are enforced for new and durable versions", %{
+    data_dir: data_dir
+  } do
+    now = DateTime.utc_now(:second)
+
+    assert_error(
+      ConfigVersion.new(
+        :server,
+        "srv-profile-new",
+        1,
+        "server.settings.update",
+        "vm",
+        server_attrs(1).payload,
+        nil,
+        now,
+        nil
+      ),
+      :invalid
+    )
+
+    assert_error(
+      ConfigVersion.new(
+        :netman,
+        "netman-profile-new",
+        1,
+        "netman.resolved.config.update",
+        "dns_only",
+        netman_attrs().payload,
+        nil,
+        now,
+        nil
+      ),
+      :invalid
+    )
+
+    cases = [
+      {:server, "srv-profile-tampered", "vm", &register_server/1, &publish_server/1,
+       &ManagementCore.get_server_config_version/2, &server_attrs/1},
+      {:netman, "netman-profile-tampered", "dns_only", &register_netman/1,
+       fn id -> ManagementCore.publish_netman_config(id, netman_attrs()) end,
+       &ManagementCore.get_netman_config_version/2, fn _index -> netman_attrs() end}
+    ]
+
+    for {target_type, target_id, invalid_profile, register, publish, get, attrs} <- cases do
+      register.(target_id)
+      assert {:ok, published} = publish.(target_id)
+
+      assert {:ok, immutable_path} =
+               target_version_path(target_type, target_id, published.version, published.digest)
+
+      assert {:ok, immutable} = AtomicJson.read(immutable_path)
+
+      assert {:ok, ^immutable_path} =
+               AtomicJson.replace(immutable_path, %{immutable | "profile" => invalid_profile})
+
+      assert {:ok, manifest_path} = target_manifest_path(target_type, target_id)
+      manifest_bytes = File.read!(manifest_path)
+
+      versions_dir =
+        Path.join([
+          data_dir,
+          "management",
+          target_directory(target_type),
+          target_id,
+          "versions"
+        ])
+
+      version_files = snapshot_files(versions_dir)
+
+      assert_error(get.(target_id, published.version), :invalid)
+      assert_error(ManagementCore.latest_desired_config(target_type, target_id), :invalid)
+      assert_error(transition(published, :delivered, 0), :invalid)
+
+      publish_result =
+        case target_type do
+          :server -> ManagementCore.publish_server_config(target_id, attrs.(2))
+          :netman -> ManagementCore.publish_netman_config(target_id, attrs.(2))
+        end
+
+      assert_error(publish_result, :invalid)
+      assert File.read!(manifest_path) == manifest_bytes
+      assert snapshot_files(versions_dir) == version_files
+      refute filesystem_residue?(Path.dirname(manifest_path))
+    end
+
+    assert {:ok, _server} =
+             ManagementCore.register_server(%{id: "srv-profile-custom", profile: :custom})
+
+    assert {:ok, %ConfigVersion{profile: "custom"}} = publish_server("srv-profile-custom")
+
+    assert {:ok, _netman} =
+             ManagementCore.register_netman(%{id: "netman-profile-custom", profile: :custom})
+
+    assert {:ok, %ConfigVersion{profile: "custom"}} =
+             ManagementCore.publish_netman_config("netman-profile-custom", netman_attrs())
+  end
+
+  test "current active desired previous pair must match the applied pointer", %{
+    data_dir: data_dir
+  } do
+    server_id = "srv-active-desired-applied-mismatch"
+    register_server(server_id)
+    assert {:ok, first} = publish_server(server_id)
+    first = apply_version(first, @digest_a)
+
+    assert {:ok, second} =
+             ManagementCore.publish_server_config(
+               server_id,
+               server_attrs(2, expected_revision: @digest_a)
+             )
+
+    second = apply_version(second, @digest_b)
+
+    assert {:ok, desired} =
+             ManagementCore.publish_server_config(
+               server_id,
+               server_attrs(3, expected_revision: @digest_b)
+             )
+
+    tamper_active_desired_pair(server_id, desired, first.version, @digest_a)
+    assert_corrupt_target_rejected(server_id, desired, 4, data_dir)
+
+    nil_applied_id = "srv-active-desired-nil-applied-mismatch"
+    register_server(nil_applied_id)
+
+    versions_dir =
+      Path.join([data_dir, "management", "servers", nil_applied_id, "versions"])
+
+    File.mkdir_p!(versions_dir)
+    File.write!(Path.join(versions_dir, "1-#{@digest_a}.json"), "reserved orphan")
+    assert {:ok, %ConfigVersion{version: 2} = nil_applied} = publish_server(nil_applied_id)
+
+    tamper_active_desired_pair(nil_applied_id, nil_applied, 1, @digest_a)
+    assert_corrupt_target_rejected(nil_applied_id, nil_applied, 3, data_dir)
+
+    register_server("srv-active-desired-valid-empty")
+    assert {:ok, valid_empty} = publish_server("srv-active-desired-valid-empty")
+
+    assert {:ok, ^valid_empty} =
+             ManagementCore.latest_desired_config(:server, "srv-active-desired-valid-empty")
+
+    register_server("srv-active-desired-valid-applied")
+    assert {:ok, valid_first} = publish_server("srv-active-desired-valid-applied")
+    valid_first = apply_version(valid_first, @digest_a)
+
+    assert {:ok, %ConfigVersion{previous_version: 1, previous_revision: @digest_a}} =
+             ManagementCore.publish_server_config(
+               "srv-active-desired-valid-applied",
+               server_attrs(2, expected_revision: valid_first.applied_revision)
+             )
+
+    assert second.applied_revision == @digest_b
   end
 
   test "orphan version gaps remain valid and reserve monotonic version numbers", %{
@@ -1259,12 +1495,75 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     ManagementCore.publish_server_config(server_id, server_attrs(1))
   end
 
-  defp apply_version(version) do
+  defp apply_version(version, applied_revision \\ @digest_a) do
     assert {:ok, delivered} = transition(version, :delivered, 0)
     assert {:ok, applying} = transition(delivered, :applying, 1)
-    assert {:ok, applied} = transition(applying, :applied, 2, applied_revision: @digest_a)
+    assert {:ok, applied} = transition(applying, :applied, 2, applied_revision: applied_revision)
     applied
   end
+
+  defp tamper_active_desired_pair(server_id, desired, previous_version, previous_revision) do
+    assert {:ok, immutable_path} =
+             StoragePath.server_version(server_id, desired.version, desired.digest)
+
+    assert {:ok, immutable} = AtomicJson.read(immutable_path)
+
+    assert {:ok, ^immutable_path} =
+             AtomicJson.replace(immutable_path, %{
+               immutable
+               | "expected_revision" => previous_revision
+             })
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    version_key = Integer.to_string(desired.version)
+
+    lifecycle =
+      manifest["config_lifecycle"]
+      |> put_in(["versions", version_key, "previous_version"], previous_version)
+      |> put_in(["versions", version_key, "previous_revision"], previous_revision)
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(manifest_path, %{manifest | "config_lifecycle" => lifecycle})
+  end
+
+  defp assert_corrupt_target_rejected(server_id, version, next_index, data_dir) do
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    manifest_bytes = File.read!(manifest_path)
+
+    versions_dir =
+      Path.join([data_dir, "management", "servers", server_id, "versions"])
+
+    version_files = snapshot_files(versions_dir)
+
+    assert_error(
+      ManagementCore.get_server_config_version(server_id, version.version),
+      :invalid
+    )
+
+    assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
+    assert_error(transition(version, :delivered, 0), :invalid)
+
+    assert_error(
+      ManagementCore.publish_server_config(server_id, server_attrs(next_index)),
+      :invalid
+    )
+
+    assert File.read!(manifest_path) == manifest_bytes
+    assert snapshot_files(versions_dir) == version_files
+    refute filesystem_residue?(Path.dirname(manifest_path))
+  end
+
+  defp target_version_path(:server, target_id, version, digest),
+    do: StoragePath.server_version(target_id, version, digest)
+
+  defp target_version_path(:netman, target_id, version, digest),
+    do: StoragePath.netman_version(target_id, version, digest)
+
+  defp target_manifest_path(:server, target_id), do: StoragePath.server_manifest(target_id)
+  defp target_manifest_path(:netman, target_id), do: StoragePath.netman_manifest(target_id)
+  defp target_directory(:server), do: "servers"
+  defp target_directory(:netman), do: "netmans"
 
   defp rollback_phase_failure(server_id) do
     register_server(server_id)
@@ -1913,6 +2212,117 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     defp manifest_staging_path?(path) do
       String.contains?(Path.basename(path), ".manifest.json.") and
         String.ends_with?(path, ".stage")
+    end
+  end
+
+  defmodule ExhaustedImmutableRecoveryFileOps do
+    @moduledoc false
+
+    alias YellowDog.Management.Storage.AtomicJson.FileOps
+
+    def read(path) do
+      if String.contains?(path, "/versions/") do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :exhausted_recovery_owner)
+        send(owner, {:immutable_reconciliation_blocked, self(), path})
+
+        receive do
+          :release_immutable_reconciliation -> :ok
+        end
+      end
+
+      FileOps.read(path)
+    end
+
+    defdelegate ls(path), to: FileOps
+    defdelegate mkdir_p(path), to: FileOps
+    defdelegate open(path), to: FileOps
+    defdelegate write(device, contents), to: FileOps
+    defdelegate sync(device), to: FileOps
+    defdelegate close(device), to: FileOps
+    defdelegate rename(source, target), to: FileOps
+
+    def link(source, target) do
+      with :ok <- FileOps.link(source, target) do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :exhausted_recovery_owner)
+        send(owner, {:immutable_promotion_blocked, self(), target, source})
+
+        receive do
+          :release_immutable_promotion -> :ok
+        end
+      end
+    end
+
+    def rm(path) do
+      if String.ends_with?(path, ".stage") do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :exhausted_recovery_owner)
+        send(owner, {:immutable_cleanup_started, self(), path})
+      end
+
+      FileOps.rm(path)
+    end
+  end
+
+  defmodule ExhaustedManifestRecoveryFileOps do
+    @moduledoc false
+
+    alias YellowDog.Management.Storage.AtomicJson.FileOps
+
+    def read(path) do
+      state = state()
+
+      if Path.basename(path) == "manifest.json" and :atomics.get(state, 1) == 1 and
+           :atomics.compare_exchange(state, 2, 0, 1) == :ok do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :exhausted_recovery_owner)
+        send(owner, {:manifest_reconciliation_blocked, self(), path})
+
+        receive do
+          :release_manifest_reconciliation -> :ok
+        end
+      end
+
+      FileOps.read(path)
+    end
+
+    defdelegate ls(path), to: FileOps
+    defdelegate mkdir_p(path), to: FileOps
+    defdelegate open(path), to: FileOps
+    defdelegate write(device, contents), to: FileOps
+    defdelegate sync(device), to: FileOps
+    defdelegate close(device), to: FileOps
+    defdelegate link(source, target), to: FileOps
+
+    def rename(source, target) do
+      state = state()
+
+      if Path.basename(target) == "manifest.json" and
+           :atomics.compare_exchange(state, 1, 0, 1) == :ok do
+        with :ok <- FileOps.rename(source, target) do
+          owner = Application.fetch_env!(:yellow_dog_management_core, :exhausted_recovery_owner)
+          send(owner, {:manifest_promotion_blocked, self(), source, target})
+
+          receive do
+            :release_manifest_promotion -> :ok
+          end
+        end
+      else
+        FileOps.rename(source, target)
+      end
+    end
+
+    def rm(path) do
+      if String.ends_with?(path, ".stage") and :atomics.get(state(), 1) == 1 do
+        owner = Application.fetch_env!(:yellow_dog_management_core, :exhausted_recovery_owner)
+        send(owner, {:manifest_cleanup_started, self(), path})
+      end
+
+      FileOps.rm(path)
+    end
+
+    defp state do
+      Application.fetch_env!(
+        :yellow_dog_management_core,
+        :exhausted_manifest_recovery_state
+      )
     end
   end
 

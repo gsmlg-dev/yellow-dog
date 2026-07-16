@@ -327,7 +327,8 @@ defmodule YellowDog.Management.ConfigVersions do
 
   defp validate_pointers(lifecycle, versions) do
     with :ok <- pointer_exists(lifecycle["desired_version"], versions),
-         :ok <- applied_pointer(lifecycle["applied_version"], versions) do
+         :ok <- applied_pointer(lifecycle["applied_version"], versions),
+         :ok <- active_desired_previous_pair(lifecycle, versions) do
       :ok
     end
   end
@@ -345,6 +346,29 @@ defmodule YellowDog.Management.ConfigVersions do
       {:ok, %ConfigVersion{state: :applied}} -> :ok
       _invalid -> invalid()
     end
+  end
+
+  defp active_desired_previous_pair(%{"desired_version" => nil}, _versions), do: :ok
+
+  defp active_desired_previous_pair(lifecycle, versions) do
+    desired = Map.fetch!(versions, lifecycle["desired_version"])
+
+    if desired.state in [:desired, :delivered, :applying] do
+      expected_pair = applied_previous_pair(lifecycle["applied_version"], versions)
+
+      if {desired.previous_version, desired.previous_revision} == expected_pair,
+        do: :ok,
+        else: invalid()
+    else
+      :ok
+    end
+  end
+
+  defp applied_previous_pair(nil, _versions), do: {nil, nil}
+
+  defp applied_previous_pair(version, versions) do
+    applied = Map.fetch!(versions, version)
+    {applied.version, applied.applied_revision}
   end
 
   defp next_version(target, deadline, config) do
@@ -804,8 +828,8 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
-  defp reconcile_immutable_promotion(path, document, deadline, config) do
-    recovery_deadline = deadline + config.transport_margin_ms
+  defp reconcile_immutable_promotion(path, document, _deadline, config) do
+    recovery_deadline = reserved_deadline(config)
 
     case owned_file_operation(
            fn -> AtomicJson.read(path, config.file_ops) end,
@@ -813,13 +837,14 @@ defmodule YellowDog.Management.ConfigVersions do
          ) do
       {:ok, ^document} -> timeout()
       {:error, %Error{code: :not_found}} -> timeout()
+      {:error, %Error{code: :timeout}} -> timeout()
       {:ok, _other} -> conflict("immutable config path is occupied")
       {:error, %Error{}} -> internal()
     end
   end
 
-  defp remove_staging(staging_path, deadline, config) do
-    cleanup_deadline = deadline + config.transport_margin_ms
+  defp remove_staging(staging_path, _deadline, config) do
+    cleanup_deadline = reserved_deadline(config)
     first_attempt_deadline = cleanup_attempt_deadline(cleanup_deadline)
 
     case remove_staging_once(staging_path, first_attempt_deadline, config) do
@@ -841,6 +866,10 @@ defmodule YellowDog.Management.ConfigVersions do
   defp cleanup_attempt_deadline(cleanup_deadline) do
     now = System.monotonic_time(:millisecond)
     min(now + max(div(max(cleanup_deadline - now, 0), 2), 1), cleanup_deadline)
+  end
+
+  defp reserved_deadline(config) do
+    System.monotonic_time(:millisecond) + config.transport_margin_ms
   end
 
   defp owned_file_operation(operation, deadline)

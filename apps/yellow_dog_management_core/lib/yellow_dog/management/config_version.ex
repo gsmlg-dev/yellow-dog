@@ -4,6 +4,7 @@ defmodule YellowDog.Management.ConfigVersion do
   """
 
   alias YellowDog.Management.Storage.Path, as: StoragePath
+  alias YellowDog.Management.Profiles
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Error
@@ -131,7 +132,7 @@ defmodule YellowDog.Management.ConfigVersion do
          {:ok, target_id} <- target_id(target_id),
          {:ok, version} <- version(version),
          {:ok, operation} <- config_operation(operation, target_type, payload),
-         {:ok, profile} <- profile(profile),
+         {:ok, profile} <- profile(profile, target_type),
          {:ok, expected_revision} <- optional_digest(expected_revision),
          {:ok, published_at} <- utc_datetime(published_at),
          {:ok, previous_version, previous_revision} <- previous_pair(previous, version),
@@ -235,7 +236,7 @@ defmodule YellowDog.Management.ConfigVersion do
          {:ok, version} <- version(immutable["version"]),
          {:ok, operation} <-
            config_operation(immutable["operation"], target_type, immutable["payload"]),
-         {:ok, profile} <- profile(immutable["profile"]),
+         {:ok, profile} <- profile(immutable["profile"], target_type),
          {:ok, digest} <- Digest.validate(immutable["digest"]),
          :ok <- Digest.verify(immutable["payload"], digest),
          true <- lifecycle["digest"] == digest,
@@ -601,13 +602,22 @@ defmodule YellowDog.Management.ConfigVersion do
     end
   end
 
-  defp profile(value) do
+  defp profile(value, target_type) do
     with {:ok, value} <- Bounds.id(value),
-         true <- value != "" do
+         true <- value != "",
+         true <- profile_allowed?(value, target_type) do
       {:ok, value}
     else
       _invalid -> invalid()
     end
+  end
+
+  defp profile_allowed?(value, :server) do
+    Enum.any?(Profiles.list_server_profiles(), &(Atom.to_string(&1.name) == value))
+  end
+
+  defp profile_allowed?(value, :netman) do
+    Enum.any?(Profiles.list_netman_profiles(), &(Atom.to_string(&1.name) == value))
   end
 
   defp version(value) when is_integer(value) and value >= 1 and value <= @max_version,

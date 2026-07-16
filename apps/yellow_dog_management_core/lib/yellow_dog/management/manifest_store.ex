@@ -929,10 +929,10 @@ defmodule YellowDog.Management.ManifestStore do
          section,
          previous_section,
          updated_section,
-         deadline,
+         _deadline,
          config
        ) do
-    rollback_deadline = recovery_deadline(deadline, config)
+    rollback_deadline = reserved_deadline(config)
 
     with {:ok, manifest, _existed?} <- read_manifest(path, rollback_deadline, config) do
       case Map.fetch(manifest, section) do
@@ -1159,10 +1159,11 @@ defmodule YellowDog.Management.ManifestStore do
     end
   end
 
-  defp reconcile_manifest_write_after_timeout(path, target, config, deadline) do
-    case manifest_target_matches?(path, target, recovery_deadline(deadline, config), config) do
+  defp reconcile_manifest_write_after_timeout(path, target, config, _deadline) do
+    case manifest_target_matches?(path, target, reserved_deadline(config), config) do
       {:ok, true} -> {:deadline, :committed}
       {:ok, false} -> {:deadline, :not_committed}
+      {:error, %Error{code: :timeout}} -> {:deadline, :committed}
       {:error, _reason} = error -> error
     end
   end
@@ -1191,8 +1192,8 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp cleanup_manifest_staging(nil, _deadline, _config), do: :ok
 
-  defp cleanup_manifest_staging(staging_path, deadline, config) do
-    cleanup_deadline = deadline + config.transport_margin_ms
+  defp cleanup_manifest_staging(staging_path, _deadline, config) do
+    cleanup_deadline = reserved_deadline(config)
     first_attempt_deadline = cleanup_attempt_deadline(cleanup_deadline)
 
     case remove_manifest_staging(staging_path, first_attempt_deadline, config) do
@@ -1215,6 +1216,8 @@ defmodule YellowDog.Management.ManifestStore do
     now = monotonic_ms()
     min(now + max(div(max(cleanup_deadline - now, 0), 2), 1), cleanup_deadline)
   end
+
+  defp reserved_deadline(config), do: monotonic_ms() + config.transport_margin_ms
 
   defp manifest_target(manifest) when map_size(manifest) == 0, do: :absent
   defp manifest_target(manifest), do: {:present, manifest}
