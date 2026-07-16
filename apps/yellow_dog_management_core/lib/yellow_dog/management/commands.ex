@@ -49,6 +49,7 @@ defmodule YellowDog.Management.Commands do
     transport_not_connected
     transport_timeout
   )
+  @unknown_metadata_keys ~w(outcome reason request_id)
 
   defmodule Record do
     @moduledoc false
@@ -836,7 +837,7 @@ defmodule YellowDog.Management.Commands do
   end
 
   defp reject_unknown_markers(%Error{details: details}, _request_id) do
-    if Map.has_key?(details, "outcome") do
+    if Enum.any?(@unknown_metadata_keys, &Map.has_key?(details, &1)) do
       invalid("failed command cannot contain unknown outcome markers")
     else
       :ok

@@ -280,6 +280,8 @@ defmodule YellowDog.Management.CommandsTest do
 
     for replacement <- [
           %{"outcome" => "unknown"},
+          %{"reason" => "management_restart"},
+          %{"request_id" => envelope.request_id},
           %{"outcome" => "unknown", "request_id" => envelope.request_id},
           %{"outcome" => "unknown", "reason" => "management_restart"},
           %{
@@ -829,12 +831,16 @@ defmodule YellowDog.Management.CommandsTest do
 
     for details <- [
           %{"outcome" => "unknown"},
-          %{"outcome" => "unknown", "request_id" => envelope.request_id},
-          %{"outcome" => "unknown", "reason" => "management_restart"},
+          %{"reason" => "management_restart"},
+          %{"request_id" => envelope.request_id},
           %{
-            "outcome" => "unknown",
+            "reason" => "other",
+            "request_id" => "ffffffff-ffff-4fff-8fff-ffffffffffff"
+          },
+          %{
+            "outcome" => "completed",
             "request_id" => "ffffffff-ffff-4fff-8fff-ffffffffffff",
-            "reason" => "other"
+            "reason" => "management_restart"
           }
         ] do
       assert_error(
