@@ -572,6 +572,124 @@ defmodule YellowDog.Management.CommandsTest do
              "unknown"
   end
 
+  test "disconnect batch retains a committed unknown when a later write fails", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 5_000)
+    restart_with_controlled_file_ops()
+
+    target_id = "server-disconnect-batch"
+    pair = reserve_pending_pair(target_id)
+    [first, second] = ordered_envelopes(pair)
+    fail_command_replace(data_dir, second.request_id)
+
+    assert_error(ManagementCore.runtime_disconnected(:server, target_id), :internal)
+
+    assert unknown_document(data_dir, first.request_id)["unknown_reason"] ==
+             "runtime_disconnected"
+
+    assert pending_document(data_dir, second.request_id)["state"] == "pending"
+
+    assert {:replay, {:error, %Error{details: %{"request_id" => first_id}}}} =
+             Commands.replay(first)
+
+    assert first_id == first.request_id
+    assert_pending_replay(second)
+
+    assert {:ok, unresolved_ids} = Commands.unresolved_ids(:server, target_id)
+    assert unresolved_ids == Enum.sort([first.request_id, second.request_id])
+
+    Application.delete_env(:yellow_dog_management_core, :management_test_file_ops_hook)
+
+    assert {:ok, %{unresolved_command_ids: ^unresolved_ids}} =
+             ManagementCore.runtime_disconnected(:server, target_id)
+
+    assert unknown_document(data_dir, second.request_id)["unknown_reason"] ==
+             "runtime_disconnected"
+
+    shutdown_pending_pair(pair)
+    restart_child(Commands)
+
+    assert {:replay, {:error, %Error{details: %{"request_id" => ^first_id}}}} =
+             Commands.replay(first)
+
+    assert {:replay, {:error, %Error{details: %{"request_id" => second_id}}}} =
+             Commands.replay(second)
+
+    assert second_id == second.request_id
+  end
+
+  test "disconnect batch failure before the first write preserves the original state", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 5_000)
+    restart_with_controlled_file_ops()
+
+    target_id = "server-disconnect-batch-first-failure"
+    pair = reserve_pending_pair(target_id)
+    [first, second] = ordered_envelopes(pair)
+    fail_command_replace(data_dir, first.request_id)
+
+    assert_error(ManagementCore.runtime_disconnected(:server, target_id), :internal)
+
+    assert pending_document(data_dir, first.request_id)["state"] == "pending"
+    assert pending_document(data_dir, second.request_id)["state"] == "pending"
+    assert_pending_replay(first)
+    assert_pending_replay(second)
+
+    assert {:ok, unresolved_ids} = Commands.unresolved_ids(:server, target_id)
+    assert unresolved_ids == Enum.sort([first.request_id, second.request_id])
+
+    shutdown_pending_pair(pair)
+  end
+
+  test "journal batch retains a committed terminal result when a later write fails", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 5_000)
+    restart_with_controlled_file_ops()
+
+    target_id = "server-journal-batch"
+    pair = reserve_pending_pair(target_id)
+    [first, second] = ordered_envelopes(pair)
+    first_result = command_result(first)
+
+    second_error =
+      Error.new(:internal, "runtime command failed", %{"context" => "runtime_failure"})
+
+    journal =
+      journal(:server, target_id, [
+        journal_completed(first.request_id, first.operation, first_result),
+        journal_failed(second.request_id, second.operation, second_error)
+      ])
+
+    fail_command_replace(data_dir, second.request_id)
+
+    assert_error(ManagementCore.runtime_connected(:server, target_id, journal), :internal)
+
+    assert completed_document(data_dir, first.request_id)["result"] == first_result
+    assert pending_document(data_dir, second.request_id)["state"] == "pending"
+    assert {:replay, {:ok, ^first_result}} = Commands.replay(first)
+    assert_pending_replay(second)
+    assert Commands.unresolved_ids(:server, target_id) == {:ok, [second.request_id]}
+
+    Application.delete_env(:yellow_dog_management_core, :management_test_file_ops_hook)
+
+    assert {:ok, %{unresolved_command_ids: []}} =
+             ManagementCore.runtime_connected(:server, target_id, journal)
+
+    assert %{"error" => %{"details" => %{"context" => "runtime_failure"}}} =
+             document_with_state(data_dir, second.request_id, "failed")
+
+    assert {:replay, {:error, ^second_error}} = Commands.replay(second)
+
+    shutdown_pending_pair(pair)
+    restart_child(Commands)
+
+    assert {:replay, {:ok, ^first_result}} = Commands.replay(first)
+    assert {:replay, {:error, ^second_error}} = Commands.replay(second)
+  end
+
   test "committed command create survives staging cleanup timeout and replays", %{
     data_dir: data_dir
   } do
@@ -1109,6 +1227,87 @@ defmodule YellowDog.Management.CommandsTest do
     }
   end
 
+  defp journal_failed(request_id, operation, error) do
+    %{
+      "request_id" => request_id,
+      "operation" => operation,
+      "status" => "failed",
+      "result" => nil,
+      "error" => error
+    }
+  end
+
+  defp restart_with_controlled_file_ops do
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+    Application.delete_env(:yellow_dog_management_core, :management_test_file_ops_hook)
+    restart_application()
+  end
+
+  defp reserve_pending_pair(target_id) do
+    register_server(target_id)
+    :ok = FakeTransport.connect(:server, target_id)
+    :ok = FakeTransport.script([{:defer, self(), :batch_first}, {:defer, self(), :batch_second}])
+
+    first_task =
+      Task.async(fn ->
+        ManagementCore.command_server(
+          target_id,
+          "server.runtime.services.start",
+          %{"service" => "dns"},
+          nil,
+          @key_a
+        )
+      end)
+
+    assert_receive {:fake_transport_deferred, :batch_first, first}
+
+    second_task =
+      Task.async(fn ->
+        ManagementCore.command_server(
+          target_id,
+          "server.runtime.services.stop",
+          %{"service" => "mdns"},
+          nil,
+          @key_b
+        )
+      end)
+
+    assert_receive {:fake_transport_deferred, :batch_second, second}
+
+    %{first: first, first_task: first_task, second: second, second_task: second_task}
+  end
+
+  defp ordered_envelopes(pair), do: Enum.sort_by([pair.first, pair.second], & &1.request_id)
+
+  defp shutdown_pending_pair(pair) do
+    Task.shutdown(pair.first_task, :brutal_kill)
+    Task.shutdown(pair.second_task, :brutal_kill)
+  end
+
+  defp fail_command_replace(data_dir, request_id) do
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rename, [_source, target] ->
+        if target == command_path(data_dir, request_id),
+          do: {:error, :injected_batch_write_failure},
+          else: :ok
+
+      _operation, _arguments ->
+        :ok
+    end)
+  end
+
+  defp command_result(%{
+         operation: "server.runtime.services.start",
+         payload: %{"service" => service}
+       }),
+       do: service_result(service, "running")
+
+  defp command_result(%{
+         operation: "server.runtime.services.stop",
+         payload: %{"service" => service}
+       }),
+       do: service_result(service, "stopped")
+
   defp not_connected_error do
     Error.new(:not_connected, "runtime disconnected", %{})
   end
@@ -1142,6 +1341,10 @@ defmodule YellowDog.Management.CommandsTest do
 
   defp assert_error(result, code) do
     assert {:error, %Error{code: ^code}} = result
+  end
+
+  defp assert_pending_replay(envelope) do
+    assert {:replay, {:error, %Error{code: :conflict}}} = Commands.replay(envelope)
   end
 
   defp restart_child(child) do

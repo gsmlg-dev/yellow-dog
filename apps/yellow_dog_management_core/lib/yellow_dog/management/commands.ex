@@ -183,9 +183,8 @@ defmodule YellowDog.Management.Commands do
     with :ok <- valid_target(target_type, target_id),
          pending <- pending_records(state.records, target_type, target_id),
          error =
-           Error.new(:not_connected, "runtime disconnected before command acknowledgement", %{}),
-         {:ok, state} <-
-           transition_many(
+           Error.new(:not_connected, "runtime disconnected before command acknowledgement", %{}) do
+      case transition_many(
              pending,
              fn record ->
                {:unknown, unknown_error(error, record.request_id, "runtime_disconnected"),
@@ -194,7 +193,12 @@ defmodule YellowDog.Management.Commands do
              deadline,
              state
            ) do
-      {{:ok, unresolved(state.records, target_type, target_id)}, state}
+        {:ok, committed_state} ->
+          {{:ok, unresolved(committed_state.records, target_type, target_id)}, committed_state}
+
+        {:error, %Error{} = error, committed_state} ->
+          {{:error, error}, committed_state}
+      end
     else
       {:error, %Error{}} = error -> {error, state}
     end
@@ -203,9 +207,14 @@ defmodule YellowDog.Management.Commands do
   defp handle_request({:reconcile, target_type, target_id, entries}, deadline, state) do
     with :ok <- valid_target(target_type, target_id),
          {:ok, entries} <- unique_entries(entries),
-         {:ok, transitions} <- journal_transitions(entries, target_type, target_id, state),
-         {:ok, state} <- apply_transitions(transitions, deadline, state) do
-      {{:ok, unresolved(state.records, target_type, target_id)}, state}
+         {:ok, transitions} <- journal_transitions(entries, target_type, target_id, state) do
+      case apply_transitions(transitions, deadline, state) do
+        {:ok, committed_state} ->
+          {{:ok, unresolved(committed_state.records, target_type, target_id)}, committed_state}
+
+        {:error, %Error{} = error, committed_state} ->
+          {{:error, error}, committed_state}
+      end
     else
       {:error, %Error{}} = error -> {error, state}
     end
@@ -370,14 +379,15 @@ defmodule YellowDog.Management.Commands do
   end
 
   defp transition_many(records, outcome, deadline, state) do
-    Enum.reduce_while(records, {:ok, state}, fn record, {:ok, state} ->
+    Enum.reduce_while(records, {:ok, state}, fn record, {:ok, committed_state} ->
       with {:ok, normalized} <- normalize_outcome(record, outcome.(record)),
            {:ok, transitioned} <- transition(record, normalized, next_updated_at(record)),
-           {:ok, state, _reply} <- persist_transition(transitioned, deadline, state) do
-        {:cont, {:ok, state}}
+           {:ok, updated_state, _reply} <-
+             persist_transition(transitioned, deadline, committed_state) do
+        {:cont, {:ok, updated_state}}
       else
-        {:idempotent, _reply} -> {:cont, {:ok, state}}
-        {:error, %Error{}} = error -> {:halt, error}
+        {:idempotent, _reply} -> {:cont, {:ok, committed_state}}
+        {:error, %Error{} = error} -> {:halt, {:error, error, committed_state}}
       end
     end)
   end
@@ -453,13 +463,13 @@ defmodule YellowDog.Management.Commands do
     transitions
     |> Enum.reverse()
     |> Enum.reduce_while({:ok, state}, fn
-      {_old, nil}, {:ok, state} ->
-        {:cont, {:ok, state}}
+      {_old, nil}, {:ok, committed_state} ->
+        {:cont, {:ok, committed_state}}
 
-      {_old, record}, {:ok, state} ->
-        case persist_transition(record, deadline, state) do
-          {:ok, state, _reply} -> {:cont, {:ok, state}}
-          {:error, %Error{}} = error -> {:halt, error}
+      {_old, record}, {:ok, committed_state} ->
+        case persist_transition(record, deadline, committed_state) do
+          {:ok, updated_state, _reply} -> {:cont, {:ok, updated_state}}
+          {:error, %Error{} = error} -> {:halt, {:error, error, committed_state}}
         end
     end)
   end
