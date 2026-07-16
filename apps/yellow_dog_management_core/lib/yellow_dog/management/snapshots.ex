@@ -74,11 +74,13 @@ defmodule YellowDog.Management.Snapshots do
   @impl true
   def init(:ok) do
     config = EventStore.config()
-    cleanup_staging(config)
 
-    case load_records(config) do
-      {:ok, records} -> {:ok, %{records: records, config: config}}
-      {:error, %Error{} = error} -> {:stop, {:snapshot_recovery_failed, error.code}}
+    with :ok <- cleanup_staging(config),
+         {:ok, records} <- load_records(config) do
+      {:ok, %{records: records, config: config}}
+    else
+      {:error, %Error{} = error} ->
+        {:stop, {:snapshot_recovery_failed, error.code}}
     end
   end
 
@@ -138,7 +140,7 @@ defmodule YellowDog.Management.Snapshots do
          requested_at: envelope.sent_at,
          observed_at: observed_at,
          received_at: received_at,
-         stored_at: DateTime.utc_now(),
+         stored_at: latest_datetime([DateTime.utc_now(), envelope.sent_at, received_at]),
          path: path
        }}
     end
@@ -149,7 +151,9 @@ defmodule YellowDog.Management.Snapshots do
 
     case Map.fetch(state.records, key) do
       :error ->
-        store(record, key, deadline, state)
+        with :ok <- ensure_capacity(state) do
+          store(record, key, deadline, state)
+        end
 
       {:ok, current} ->
         case compare_order(record, current) do
@@ -261,51 +265,54 @@ defmodule YellowDog.Management.Snapshots do
   end
 
   defp load_records(%Config{root: root} = config) when is_binary(root) do
-    deadline = System.monotonic_time(:millisecond) + config.operation_timeout_ms
-
-    Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], {:ok, %{}}, fn
-      {target_type, directory}, {:ok, records} ->
-        case load_target_type(root, target_type, directory, deadline, config, records) do
-          {:ok, records} -> {:cont, {:ok, records}}
-          {:error, %Error{}} = error -> {:halt, error}
-        end
-    end)
+    with :ok <- ensure_recovery_capacity(root, config) do
+      Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], {:ok, %{}}, fn
+        {target_type, directory}, {:ok, records} ->
+          case load_target_type(root, target_type, directory, config, records) do
+            {:ok, records} -> {:cont, {:ok, records}}
+            {:error, %Error{}} = error -> {:halt, error}
+          end
+      end)
+    end
   end
 
   defp load_records(_config), do: {:ok, %{}}
 
-  defp load_target_type(root, target_type, target_directory, deadline, config, records) do
+  defp load_target_type(root, target_type, target_directory, config, records) do
     directory = Path.join([root, "snapshots", target_directory])
 
-    with {:ok, target_ids} <- list_directory(directory, deadline, config) do
+    with {:ok, target_ids} <- list_directory(directory, startup_deadline(config), config) do
       Enum.reduce_while(Enum.sort(target_ids), {:ok, records}, fn target_id, {:ok, records} ->
-        target_path = Path.join(directory, target_id)
+        if safe_snapshot_target?(root, target_type, target_id) do
+          target_path = Path.join(directory, target_id)
 
-        case load_target_snapshots(target_type, target_id, target_path, deadline, config, records) do
-          {:ok, records} -> {:cont, {:ok, records}}
-          {:error, %Error{}} = error -> {:halt, error}
+          case load_target_snapshots(target_type, target_id, target_path, config, records) do
+            {:ok, records} -> {:cont, {:ok, records}}
+            {:error, %Error{}} = error -> {:halt, error}
+          end
+        else
+          {:cont, {:ok, records}}
         end
       end)
     end
   end
 
-  defp load_target_snapshots(target_type, target_id, directory, deadline, config, records) do
-    with {:ok, filenames} <- list_directory(directory, deadline, config) do
+  defp load_target_snapshots(target_type, target_id, directory, config, records) do
+    with {:ok, filenames} <- list_directory(directory, startup_deadline(config), config) do
       Enum.reduce_while(Enum.sort(filenames), {:ok, records}, fn filename, {:ok, records} ->
-        case Regex.run(@snapshot_file, filename) do
-          [_, domain] ->
+        case safe_snapshot_file?(config.root, target_type, target_id, directory, filename) do
+          {:ok, domain} ->
             load_snapshot(
               target_type,
               target_id,
               domain,
               directory,
               filename,
-              deadline,
               config,
               records
             )
 
-          _other ->
+          :error ->
             {:cont, {:ok, records}}
         end
       end)
@@ -318,13 +325,15 @@ defmodule YellowDog.Management.Snapshots do
          domain,
          directory,
          filename,
-         deadline,
          config,
          records
        ) do
     path = Path.join(directory, filename)
 
-    case AtomicJson.owned(fn -> AtomicJson.read(path, config.file_ops) end, deadline) do
+    case AtomicJson.owned(
+           fn -> AtomicJson.read(path, config.file_ops) end,
+           startup_deadline(config)
+         ) do
       {:ok, document} ->
         case decode_record(document, target_type, target_id, domain, path, config.root) do
           {:ok, record} ->
@@ -365,7 +374,9 @@ defmodule YellowDog.Management.Snapshots do
          {:ok, observed_at} <- utc_datetime(document["observed_at"]),
          {:ok, ^observed_at} <- effective_observed_at(value, requested_at),
          {:ok, received_at} <- utc_datetime(document["received_at"]),
-         {:ok, stored_at} <- utc_datetime(document["stored_at"]) do
+         {:ok, stored_at} <- utc_datetime(document["stored_at"]),
+         true <- DateTime.compare(requested_at, received_at) in [:lt, :eq],
+         true <- DateTime.compare(received_at, stored_at) in [:lt, :eq] do
       {:ok,
        %Record{
          target_type: target_type,
@@ -425,49 +436,139 @@ defmodule YellowDog.Management.Snapshots do
     end
   end
 
+  defp ensure_recovery_capacity(root, config) do
+    with {:ok, count} <- count_candidate_snapshots(root, config) do
+      if count <= config.max_snapshot_records do
+        :ok
+      else
+        capacity_conflict("snapshots", config.max_snapshot_records)
+      end
+    end
+  end
+
+  defp count_candidate_snapshots(root, config) do
+    Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], {:ok, 0}, fn
+      {target_type, target_directory}, {:ok, count} ->
+        case count_target_type_snapshots(root, target_type, target_directory, config) do
+          {:ok, target_count} -> {:cont, {:ok, count + target_count}}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+    end)
+  end
+
+  defp count_target_type_snapshots(root, target_type, target_directory, config) do
+    base = Path.join([root, "snapshots", target_directory])
+
+    with {:ok, target_ids} <- list_directory(base, startup_deadline(config), config) do
+      Enum.reduce_while(Enum.sort(target_ids), {:ok, 0}, fn target_id, {:ok, count} ->
+        if safe_snapshot_target?(root, target_type, target_id) do
+          directory = Path.join(base, target_id)
+
+          case list_directory(directory, startup_deadline(config), config) do
+            {:ok, filenames} ->
+              candidate_count =
+                Enum.count(filenames, fn filename ->
+                  match?(
+                    {:ok, _domain},
+                    safe_snapshot_file?(root, target_type, target_id, directory, filename)
+                  )
+                end)
+
+              {:cont, {:ok, count + candidate_count}}
+
+            {:error, %Error{}} = error ->
+              {:halt, error}
+          end
+        else
+          {:cont, {:ok, count}}
+        end
+      end)
+    end
+  end
+
+  defp safe_snapshot_target?(root, :server, target_id) when is_binary(target_id) do
+    Path.basename(target_id) == target_id and
+      match?({:ok, _path}, StoragePath.server_snapshot(root, target_id, "runtime.capabilities"))
+  end
+
+  defp safe_snapshot_target?(root, :netman, target_id) when is_binary(target_id) do
+    Path.basename(target_id) == target_id and
+      match?({:ok, _path}, StoragePath.netman_snapshot(root, target_id, "runtime.capabilities"))
+  end
+
+  defp safe_snapshot_target?(_root, _target_type, _target_id), do: false
+
+  defp safe_snapshot_file?(root, target_type, target_id, directory, filename)
+       when is_binary(filename) do
+    with true <- Path.basename(filename) == filename,
+         [_, domain] <- Regex.run(@snapshot_file, filename),
+         {:ok, path} <- snapshot_path(root, target_type, target_id, domain),
+         true <- path == Path.join(directory, filename) do
+      {:ok, domain}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp safe_snapshot_file?(_root, _target_type, _target_id, _directory, _filename), do: :error
+
+  defp safe_snapshot_stage?(filename) when is_binary(filename),
+    do: Path.basename(filename) == filename and Regex.match?(@snapshot_stage, filename)
+
+  defp safe_snapshot_stage?(_filename), do: false
+
   defp ignore_malformed(path, records) do
     Logger.warning("Ignoring malformed durable snapshot: #{path}")
     {:cont, {:ok, records}}
   end
 
   defp cleanup_staging(%Config{root: root} = config) when is_binary(root) do
-    _ =
-      AtomicJson.owned(
-        fn -> cleanup_snapshot_staging(root, config.file_ops) end,
-        recovery_deadline(config)
-      )
-
-    :ok
+    Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], :ok, fn
+      {target_type, target_directory}, :ok ->
+        case cleanup_target_type_staging(root, target_type, target_directory, config) do
+          :ok -> {:cont, :ok}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+    end)
   end
 
   defp cleanup_staging(_config), do: :ok
 
-  defp cleanup_snapshot_staging(root, file_ops) do
-    Enum.each(["servers", "netmans"], fn target_directory ->
-      base = Path.join([root, "snapshots", target_directory])
+  defp cleanup_target_type_staging(root, target_type, target_directory, config) do
+    base = Path.join([root, "snapshots", target_directory])
 
-      with {:ok, target_ids} <- AtomicJson.ls(base, file_ops) do
-        Enum.each(target_ids, fn target_id ->
+    with {:ok, target_ids} <- list_directory(base, startup_deadline(config), config) do
+      Enum.reduce_while(Enum.sort(target_ids), :ok, fn target_id, :ok ->
+        if safe_snapshot_target?(root, target_type, target_id) do
           directory = Path.join(base, target_id)
 
-          with {:ok, filenames} <- AtomicJson.ls(directory, file_ops) do
-            Enum.each(filenames, fn filename ->
-              if Regex.match?(@snapshot_stage, filename) do
-                best_effort_remove(file_ops, Path.join(directory, filename))
+          case list_directory(directory, startup_deadline(config), config) do
+            {:ok, filenames} ->
+              case cleanup_snapshot_files(directory, filenames, config) do
+                :ok -> {:cont, :ok}
+                {:error, %Error{}} = error -> {:halt, error}
               end
-            end)
+
+            {:error, %Error{}} = error ->
+              {:halt, error}
           end
-        end)
-      end
-    end)
+        else
+          {:cont, :ok}
+        end
+      end)
+    end
   end
 
-  defp best_effort_remove(file_ops, path) do
-    file_ops.rm(path)
-  rescue
-    _exception -> :ok
-  catch
-    _kind, _reason -> :ok
+  defp cleanup_snapshot_files(directory, filenames, config) do
+    filenames
+    |> Enum.filter(&safe_snapshot_stage?/1)
+    |> Enum.sort()
+    |> Enum.reduce_while(:ok, fn filename, :ok ->
+      case cleanup_staging_path(Path.join(directory, filename), config) do
+        :ok -> {:cont, :ok}
+        {:error, %Error{}} = error -> {:halt, error}
+      end
+    end)
   end
 
   defp call(request) do
@@ -485,6 +586,32 @@ defmodule YellowDog.Management.Snapshots do
 
   defp recovery_deadline(config) do
     System.monotonic_time(:millisecond) + config.transport_margin_ms
+  end
+
+  defp startup_deadline(config) do
+    System.monotonic_time(:millisecond) + config.operation_timeout_ms
+  end
+
+  defp latest_datetime([first | rest]) do
+    Enum.reduce(rest, first, fn value, latest ->
+      if DateTime.compare(value, latest) == :gt, do: value, else: latest
+    end)
+  end
+
+  defp ensure_capacity(state) do
+    if map_size(state.records) < state.config.max_snapshot_records do
+      :ok
+    else
+      capacity_conflict("snapshots", state.config.max_snapshot_records)
+    end
+  end
+
+  defp capacity_conflict(resource, limit) do
+    {:error,
+     Error.new(:conflict, "durable #{resource} capacity reached", %{
+       "limit" => limit,
+       "resource" => resource
+     })}
   end
 
   defp not_found, do: {:error, Error.new(:not_found, "snapshot was not found", %{})}

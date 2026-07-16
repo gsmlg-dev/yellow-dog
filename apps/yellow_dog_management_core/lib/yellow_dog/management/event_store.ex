@@ -12,10 +12,14 @@ defmodule YellowDog.Management.EventStore do
   alias YellowDog.Sync.Error
 
   @default_max_events 500
+  @default_max_command_records 1_000
+  @default_max_snapshot_records 1_000
   @default_event_write_timeout_ms 5_000
   @max_event_write_timeout_ms 60_000
   @transport_margin_divisor 5
   @max_events_bound 1_000
+  @max_command_records_bound 10_000
+  @max_snapshot_records_bound 10_000
   @max_sequence 9_223_372_036_854_775_807
   @max_collision_attempts 1_000
   @allocation_batch_size 100
@@ -29,6 +33,8 @@ defmodule YellowDog.Management.EventStore do
       :root,
       :file_ops,
       :max_events,
+      :max_command_records,
+      :max_snapshot_records,
       :operation_timeout_ms,
       :transport_margin_ms,
       :test_hook
@@ -351,6 +357,8 @@ defmodule YellowDog.Management.EventStore do
       root: configured_root(),
       file_ops: configured_file_ops(),
       max_events: configured_max_events(),
+      max_command_records: configured_max_command_records(),
+      max_snapshot_records: configured_max_snapshot_records(),
       operation_timeout_ms: timeout,
       transport_margin_ms: max(div(timeout, @transport_margin_divisor), 1),
       test_hook: configured_test_hook()
@@ -362,6 +370,8 @@ defmodule YellowDog.Management.EventStore do
       root: configured_root(),
       file_ops: AtomicJson.FileOps,
       max_events: @default_max_events,
+      max_command_records: @default_max_command_records,
+      max_snapshot_records: @default_max_snapshot_records,
       operation_timeout_ms: @default_event_write_timeout_ms,
       transport_margin_ms: div(@default_event_write_timeout_ms, @transport_margin_divisor),
       test_hook: nil
@@ -387,6 +397,29 @@ defmodule YellowDog.Management.EventStore do
     case Application.get_env(:yellow_dog_management_core, :max_events, @default_max_events) do
       limit when is_integer(limit) and limit in 1..@max_events_bound -> limit
       _invalid -> @default_max_events
+    end
+  end
+
+  defp configured_max_command_records do
+    configured_record_limit(
+      :max_command_records,
+      @default_max_command_records,
+      @max_command_records_bound
+    )
+  end
+
+  defp configured_max_snapshot_records do
+    configured_record_limit(
+      :max_snapshot_records,
+      @default_max_snapshot_records,
+      @max_snapshot_records_bound
+    )
+  end
+
+  defp configured_record_limit(key, default, bound) do
+    case Application.get_env(:yellow_dog_management_core, key, default) do
+      limit when is_integer(limit) and limit >= 1 and limit <= bound -> limit
+      _invalid -> default
     end
   end
 

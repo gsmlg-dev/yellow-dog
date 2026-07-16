@@ -123,12 +123,11 @@ defmodule YellowDog.Management.Commands do
   @impl true
   def init(:ok) do
     config = EventStore.config()
-    cleanup_staging(config)
 
-    case load_records(config) do
-      {:ok, records, idempotency} ->
-        {:ok, %{records: records, idempotency: idempotency, config: config}}
-
+    with :ok <- cleanup_staging(config),
+         {:ok, records, idempotency} <- load_records(config) do
+      {:ok, %{records: records, idempotency: idempotency, config: config}}
+    else
       {:error, %Error{} = error} ->
         {:stop, {:command_recovery_failed, error.code}}
     end
@@ -152,6 +151,7 @@ defmodule YellowDog.Management.Commands do
     with {:ok, envelope} <- Operation.validate_envelope(envelope, :command),
          :miss <- replay(envelope, state),
          false <- Map.has_key?(state.records, envelope.request_id),
+         :ok <- ensure_capacity(state),
          {:ok, path} <- StoragePath.command(state.config.root, envelope.request_id),
          record = new_record(envelope, path),
          :ok <- persist_create(record, deadline, state.config) do
@@ -245,7 +245,7 @@ defmodule YellowDog.Management.Commands do
 
   defp resolve_record(record, outcome, deadline, state) do
     with {:ok, normalized} <- normalize_outcome(record, outcome),
-         {:ok, transition} <- transition(record, normalized, DateTime.utc_now()),
+         {:ok, transition} <- transition(record, normalized, next_updated_at(record)),
          {:ok, state, reply} <- persist_transition(transition, deadline, state) do
       {reply, state}
     else
@@ -266,13 +266,19 @@ defmodule YellowDog.Management.Commands do
     end
   end
 
-  defp normalize_outcome(_record, {:failed, %Error{} = error}) do
-    with {:ok, error} <- validate_error(error), do: {:ok, {:failed, error}}
+  defp normalize_outcome(record, {:failed, %Error{} = error}) do
+    with {:ok, error} <- validate_error(error),
+         :ok <- reject_unknown_markers(error, record.request_id) do
+      {:ok, {:failed, error}}
+    end
   end
 
-  defp normalize_outcome(_record, {:unknown, %Error{} = error, reason})
+  defp normalize_outcome(record, {:unknown, %Error{} = error, reason})
        when reason in @unknown_reasons do
-    with {:ok, error} <- validate_error(error), do: {:ok, {:unknown, error, reason}}
+    with {:ok, error} <- validate_error(error),
+         :ok <- validate_unknown_markers(error, record.request_id, reason) do
+      {:ok, {:unknown, error, reason}}
+    end
   end
 
   defp normalize_outcome(_record, _outcome), do: invalid("invalid command outcome")
@@ -363,7 +369,7 @@ defmodule YellowDog.Management.Commands do
   defp transition_many(records, outcome, deadline, state) do
     Enum.reduce_while(records, {:ok, state}, fn record, {:ok, state} ->
       with {:ok, normalized} <- normalize_outcome(record, outcome.(record)),
-           {:ok, transitioned} <- transition(record, normalized, DateTime.utc_now()),
+           {:ok, transitioned} <- transition(record, normalized, next_updated_at(record)),
            {:ok, state, _reply} <- persist_transition(transitioned, deadline, state) do
         {:cont, {:ok, state}}
       else
@@ -405,7 +411,7 @@ defmodule YellowDog.Management.Commands do
                true <- record.envelope.target_id == target_id,
                true <- record.envelope.operation == entry["operation"],
                {:ok, outcome} <- journal_outcome(record, entry),
-               transition <- transition(record, outcome, DateTime.utc_now()),
+               transition <- transition(record, outcome, next_updated_at(record)),
                {:ok, transitioned} <- journal_transition(transition) do
             {:cont, {:ok, [{record, transitioned} | transitions]}}
           else
@@ -571,16 +577,15 @@ defmodule YellowDog.Management.Commands do
   end
 
   defp load_records(%Config{root: root} = config) when is_binary(root) do
-    deadline = System.monotonic_time(:millisecond) + config.operation_timeout_ms
     directory = Path.join(root, "commands")
 
-    with {:ok, filenames} <- list_directory(directory, deadline, config) do
-      filenames
-      |> Enum.sort()
-      |> Enum.reduce_while({:ok, %{}, %{}}, fn filename, {:ok, records, idempotency} ->
+    with {:ok, filenames} <- list_directory(directory, startup_deadline(config), config),
+         :ok <- ensure_recovery_capacity(filenames, config) do
+      Enum.reduce_while(Enum.sort(filenames), {:ok, %{}, %{}}, fn filename,
+                                                                  {:ok, records, idempotency} ->
         case Regex.run(@command_file, filename) do
           [_, request_id] ->
-            load_record(directory, filename, request_id, deadline, config, records, idempotency)
+            load_record(directory, filename, request_id, config, records, idempotency)
 
           _other ->
             {:cont, {:ok, records, idempotency}}
@@ -591,13 +596,16 @@ defmodule YellowDog.Management.Commands do
 
   defp load_records(_config), do: {:ok, %{}, %{}}
 
-  defp load_record(directory, filename, request_id, deadline, config, records, idempotency) do
+  defp load_record(directory, filename, request_id, config, records, idempotency) do
     path = Path.join(directory, filename)
 
-    case AtomicJson.owned(fn -> AtomicJson.read(path, config.file_ops) end, deadline) do
+    case AtomicJson.owned(
+           fn -> AtomicJson.read(path, config.file_ops) end,
+           startup_deadline(config)
+         ) do
       {:ok, document} ->
         case decode_record(document, request_id, path) do
-          {:ok, record} -> recover_loaded(record, deadline, config, records, idempotency)
+          {:ok, record} -> recover_loaded(record, config, records, idempotency)
           {:error, %Error{}} -> ignore_malformed(path, records, idempotency)
         end
 
@@ -609,30 +617,31 @@ defmodule YellowDog.Management.Commands do
     end
   end
 
-  defp recover_loaded(record, deadline, config, records, idempotency) do
-    with {:ok, record} <- recover_pending(record, deadline, config) do
-      if Map.has_key?(idempotency, record.idempotency_key) do
-        Logger.warning("Ignoring command with duplicate idempotency key: #{record.path}")
-        {:cont, {:ok, Map.put(records, record.request_id, record), idempotency}}
-      else
+  defp recover_loaded(record, config, records, idempotency) do
+    if Map.has_key?(idempotency, record.idempotency_key) do
+      {:halt, conflict("duplicate durable idempotency key", record.request_id)}
+    else
+      with {:ok, record} <- recover_pending(record, config) do
         {:cont,
          {:ok, Map.put(records, record.request_id, record),
           Map.put(idempotency, record.idempotency_key, record.request_id)}}
+      else
+        {:error, %Error{}} = error -> {:halt, error}
       end
-    else
-      {:error, %Error{}} = error -> {:halt, error}
     end
   end
 
-  defp recover_pending(%Record{state: :pending} = record, deadline, config) do
+  defp recover_pending(%Record{state: :pending} = record, config) do
     error = Error.new(:not_connected, "command outcome is unknown after management restart", %{})
     error = unknown_error(error, record.request_id, "management_restart")
-    recovered = apply_outcome(record, {:unknown, error, "management_restart"}, DateTime.utc_now())
 
-    with :ok <- persist_replace(recovered, deadline, config), do: {:ok, recovered}
+    recovered =
+      apply_outcome(record, {:unknown, error, "management_restart"}, next_updated_at(record))
+
+    with :ok <- persist_replace(recovered, startup_deadline(config), config), do: {:ok, recovered}
   end
 
-  defp recover_pending(record, _deadline, _config), do: {:ok, record}
+  defp recover_pending(record, _config), do: {:ok, record}
 
   defp decode_record(document, expected_request_id, path) when is_map(document) do
     with true <- Enum.sort(Map.keys(document)) == @document_keys,
@@ -705,18 +714,20 @@ defmodule YellowDog.Management.Commands do
     end
   end
 
-  defp decode_outcome(:failed, _envelope, nil, error, nil, resolved_at, updated_at)
+  defp decode_outcome(:failed, envelope, nil, error, nil, resolved_at, updated_at)
        when not is_nil(resolved_at) do
     with true <- resolved_at == updated_at,
-         {:ok, error} <- decode_error(error) do
+         {:ok, error} <- decode_error(error),
+         :ok <- reject_unknown_markers(error, envelope.request_id) do
       {:ok, nil, error, nil}
     end
   end
 
-  defp decode_outcome(:unknown, _envelope, nil, error, reason, resolved_at, updated_at)
+  defp decode_outcome(:unknown, envelope, nil, error, reason, resolved_at, updated_at)
        when reason in @unknown_reasons and not is_nil(resolved_at) do
     with true <- resolved_at == updated_at,
-         {:ok, error} <- decode_error(error) do
+         {:ok, error} <- decode_error(error),
+         :ok <- validate_unknown_markers(error, envelope.request_id, reason) do
       {:ok, nil, error, reason}
     end
   end
@@ -743,7 +754,8 @@ defmodule YellowDog.Management.Commands do
   defp validate_error(%Error{} = error) do
     wire = Error.to_wire(error)
 
-    with true <- exact_keys?(wire, ["code", "details", "message"]),
+    with :ok <- Operation.validate_transport(error.details),
+         true <- exact_keys?(wire, ["code", "details", "message"]),
          {:ok, decoded} <- Error.from_wire(wire),
          true <- decoded == error do
       {:ok, error}
@@ -776,6 +788,24 @@ defmodule YellowDog.Management.Commands do
 
   defp exact_keys?(_value, _keys), do: false
 
+  defp validate_unknown_markers(%Error{details: details}, request_id, reason) do
+    if details["outcome"] == "unknown" and details["reason"] == reason and
+         details["request_id"] == request_id do
+      :ok
+    else
+      invalid("invalid durable unknown command outcome")
+    end
+  end
+
+  defp reject_unknown_markers(%Error{details: details}, request_id) do
+    if details["outcome"] == "unknown" and details["request_id"] == request_id and
+         details["reason"] in @unknown_reasons do
+      invalid("failed command cannot contain unknown outcome markers")
+    else
+      :ok
+    end
+  end
+
   defp list_directory(directory, deadline, config) do
     case AtomicJson.owned(fn -> AtomicJson.ls(directory, config.file_ops) end, deadline) do
       {:ok, filenames} when is_list(filenames) -> {:ok, filenames}
@@ -792,40 +822,27 @@ defmodule YellowDog.Management.Commands do
   end
 
   defp cleanup_staging(%Config{root: root} = config) when is_binary(root) do
-    _ =
-      AtomicJson.owned(
-        fn -> cleanup_command_staging(root, config.file_ops) end,
-        recovery_deadline(config)
-      )
+    directory = Path.join(root, "commands")
 
-    :ok
+    with {:ok, filenames} <- list_directory(directory, startup_deadline(config), config) do
+      filenames
+      |> Enum.filter(&safe_command_stage?/1)
+      |> Enum.sort()
+      |> Enum.reduce_while(:ok, fn filename, :ok ->
+        case cleanup_staging_path(Path.join(directory, filename), config) do
+          :ok -> {:cont, :ok}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+      end)
+    end
   end
 
   defp cleanup_staging(_config), do: :ok
 
-  defp cleanup_command_staging(root, file_ops) do
-    directory = Path.join(root, "commands")
+  defp safe_command_stage?(filename) when is_binary(filename),
+    do: Path.basename(filename) == filename and Regex.match?(@command_stage, filename)
 
-    case AtomicJson.ls(directory, file_ops) do
-      {:ok, filenames} ->
-        Enum.each(filenames, fn filename ->
-          if Regex.match?(@command_stage, filename) do
-            best_effort_remove(file_ops, Path.join(directory, filename))
-          end
-        end)
-
-      _missing ->
-        :ok
-    end
-  end
-
-  defp best_effort_remove(file_ops, path) do
-    file_ops.rm(path)
-  rescue
-    _exception -> :ok
-  catch
-    _kind, _reason -> :ok
-  end
+  defp safe_command_stage?(_filename), do: false
 
   defp valid_target(target_type, target_id) when target_type in [:server, :netman] do
     with {:ok, target_id} <- Bounds.id(target_id),
@@ -855,8 +872,52 @@ defmodule YellowDog.Management.Commands do
     System.monotonic_time(:millisecond) + config.transport_margin_ms
   end
 
+  defp startup_deadline(config) do
+    System.monotonic_time(:millisecond) + config.operation_timeout_ms
+  end
+
+  defp next_updated_at(record) do
+    now = DateTime.utc_now()
+
+    case DateTime.compare(now, record.updated_at || record.inserted_at) do
+      :lt -> record.updated_at || record.inserted_at
+      _other -> now
+    end
+  end
+
+  defp ensure_capacity(state) do
+    if map_size(state.records) < state.config.max_command_records do
+      :ok
+    else
+      capacity_conflict("commands", state.config.max_command_records)
+    end
+  end
+
+  defp ensure_recovery_capacity(filenames, config) do
+    count = Enum.count(filenames, &safe_command_file?/1)
+
+    if count <= config.max_command_records do
+      :ok
+    else
+      capacity_conflict("commands", config.max_command_records)
+    end
+  end
+
+  defp safe_command_file?(filename) when is_binary(filename),
+    do: Path.basename(filename) == filename and Regex.match?(@command_file, filename)
+
+  defp safe_command_file?(_filename), do: false
+
   defp conflict(message, request_id) do
     {:error, Error.new(:conflict, message, %{"request_id" => request_id})}
+  end
+
+  defp capacity_conflict(resource, limit) do
+    {:error,
+     Error.new(:conflict, "durable #{resource} capacity reached", %{
+       "limit" => limit,
+       "resource" => resource
+     })}
   end
 
   defp not_found(message), do: {:error, Error.new(:not_found, message, %{})}

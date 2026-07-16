@@ -2,6 +2,7 @@ defmodule YellowDog.Management.CommandsTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Management.Commands
+  alias YellowDog.Management.ControlledFileOps
   alias YellowDog.Management.FakeTransport
   alias YellowDog.ManagementCore
   alias YellowDog.Sync.Error
@@ -16,9 +17,22 @@ defmodule YellowDog.Management.CommandsTest do
 
   setup do
     previous_env =
-      Map.new([:data_dir, :transport_module, :request_timeout], fn key ->
-        {key, Application.fetch_env(:yellow_dog_management_core, key)}
-      end)
+      Map.new(
+        [
+          :data_dir,
+          :transport_module,
+          :request_timeout,
+          :event_write_timeout_ms,
+          :max_command_records,
+          :max_snapshot_records,
+          :atomic_json_file_ops,
+          :management_test_file_ops_hook,
+          :management_test_file_ops_block
+        ],
+        fn key ->
+          {key, Application.fetch_env(:yellow_dog_management_core, key)}
+        end
+      )
 
     data_dir =
       Path.join(System.tmp_dir!(), "yellow-dog-commands-#{System.unique_integer([:positive])}")
@@ -26,6 +40,17 @@ defmodule YellowDog.Management.CommandsTest do
     Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
     Application.put_env(:yellow_dog_management_core, :transport_module, FakeTransport)
     Application.put_env(:yellow_dog_management_core, :request_timeout, 75)
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :max_command_records, 100)
+    Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 100)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      YellowDog.Management.Storage.AtomicJson.FileOps
+    )
+
+    Application.delete_env(:yellow_dog_management_core, :management_test_file_ops_hook)
     restart_application()
     start_supervised!(FakeTransport)
 
@@ -185,6 +210,335 @@ defmodule YellowDog.Management.CommandsTest do
 
     assert apply(ManagementCore, :command_server, args) == {:ok, result}
     assert length(FakeTransport.recorded()) == 1
+  end
+
+  test "concurrent calls with one idempotency key reserve and deliver once" do
+    register_server("server-concurrent")
+    :ok = FakeTransport.connect(:server, "server-concurrent")
+    :ok = FakeTransport.script([{:defer, self(), :barrier}])
+
+    args = [
+      "server-concurrent",
+      "server.runtime.services.start",
+      %{"service" => "dns"},
+      nil,
+      @key_d
+    ]
+
+    first = Task.async(fn -> apply(ManagementCore, :command_server, args) end)
+    assert_receive {:fake_transport_deferred, :barrier, envelope}
+
+    second = Task.async(fn -> apply(ManagementCore, :command_server, args) end)
+    assert_error(Task.await(second), :conflict)
+    assert length(FakeTransport.recorded()) == 1
+
+    result = service_result("dns", "running")
+    :ok = FakeTransport.reply(:barrier, {:ok, result})
+    assert Task.await(first) == {:ok, result}
+    assert {:replay, {:ok, ^result}} = Commands.replay(envelope)
+    assert length(FakeTransport.recorded()) == 1
+  end
+
+  test "recovery rejects tampered durable errors and never replays them", %{data_dir: data_dir} do
+    register_server("server-tampered-error")
+    :ok = FakeTransport.connect(:server, "server-tampered-error")
+    :ok = FakeTransport.script([{:defer, self(), :tampered}])
+
+    assert_error(
+      ManagementCore.command_server(
+        "server-tampered-error",
+        "server.runtime.services.start",
+        %{"service" => "dns"},
+        nil,
+        @key_d
+      ),
+      :timeout
+    )
+
+    assert_receive {:fake_transport_deferred, :tampered, envelope}
+    document = unknown_document(data_dir, envelope.request_id)
+    details = document["error"]["details"]
+
+    invalid_details = [
+      %{"path" => "/etc/shadow"},
+      Map.put(details, "request_id", "ffffffff-ffff-4fff-8fff-ffffffffffff"),
+      Map.put(details, "reason", "not-a-durable-unknown-reason"),
+      Map.put(details, "outcome", "completed")
+    ]
+
+    for replacement <- invalid_details do
+      document
+      |> put_in(["error", "details"], replacement)
+      |> then(&File.write!(command_path(data_dir, envelope.request_id), Jason.encode!(&1)))
+
+      restart_child(Commands)
+      assert :miss = Commands.replay(envelope)
+    end
+
+    document
+    |> Map.put("state", "failed")
+    |> Map.put("unknown_reason", nil)
+    |> then(&File.write!(command_path(data_dir, envelope.request_id), Jason.encode!(&1)))
+
+    restart_child(Commands)
+    assert :miss = Commands.replay(envelope)
+  end
+
+  test "recovery keeps a future durable timestamp monotonic across restarts", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 5_000)
+    register_server("server-future-clock")
+    :ok = FakeTransport.connect(:server, "server-future-clock")
+    :ok = FakeTransport.script([{:defer, self(), :future_clock}])
+
+    task =
+      Task.async(fn ->
+        ManagementCore.command_server(
+          "server-future-clock",
+          "server.runtime.services.start",
+          %{"service" => "dns"},
+          nil,
+          @key_d
+        )
+      end)
+
+    assert_receive {:fake_transport_deferred, :future_clock, envelope}
+    future = "2036-01-01T00:00:00Z"
+
+    data_dir
+    |> command_path(envelope.request_id)
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.put("inserted_at", future)
+    |> Map.put("updated_at", future)
+    |> then(&File.write!(command_path(data_dir, envelope.request_id), Jason.encode!(&1)))
+
+    restart_child(Commands)
+    assert unknown_document(data_dir, envelope.request_id)["updated_at"] == future
+
+    restart_child(Commands)
+
+    assert {:replay, {:error, %Error{details: %{"request_id" => request_id}}}} =
+             Commands.replay(envelope)
+
+    assert request_id == envelope.request_id
+    assert length(FakeTransport.recorded()) == 1
+    Task.shutdown(task, :brutal_kill)
+  end
+
+  test "command capacity rejects only new idempotency keys and survives restart" do
+    Application.put_env(:yellow_dog_management_core, :max_command_records, 1)
+    restart_application()
+    register_server("server-command-capacity")
+    :ok = FakeTransport.connect(:server, "server-command-capacity")
+    result = service_result("dns", "running")
+    :ok = FakeTransport.script([{:ok, result}])
+
+    args = [
+      "server-command-capacity",
+      "server.runtime.services.start",
+      %{"service" => "dns"},
+      nil,
+      @key_a
+    ]
+
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+
+    assert {:error, %Error{code: :conflict, details: %{"limit" => 1, "resource" => "commands"}}} =
+             ManagementCore.command_server(
+               "server-command-capacity",
+               "server.runtime.services.stop",
+               %{"service" => "dns"},
+               nil,
+               @key_b
+             )
+
+    assert length(FakeTransport.recorded()) == 1
+    restart_child(Commands)
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+    assert length(FakeTransport.recorded()) == 1
+  end
+
+  test "command startup fails deterministically when durable records exceed the limit" do
+    Application.put_env(:yellow_dog_management_core, :max_command_records, 2)
+    restart_application()
+    register_server("server-command-over-capacity")
+    :ok = FakeTransport.connect(:server, "server-command-over-capacity")
+
+    :ok =
+      FakeTransport.script([
+        {:ok, service_result("dns", "running")},
+        {:ok, service_result("mdns", "stopped")}
+      ])
+
+    assert {:ok, _result} =
+             ManagementCore.command_server(
+               "server-command-over-capacity",
+               "server.runtime.services.start",
+               %{"service" => "dns"},
+               nil,
+               @key_a
+             )
+
+    assert {:ok, _result} =
+             ManagementCore.command_server(
+               "server-command-over-capacity",
+               "server.runtime.services.stop",
+               %{"service" => "mdns"},
+               nil,
+               @key_b
+             )
+
+    :ok = Application.stop(:yellow_dog_management_core)
+    Application.put_env(:yellow_dog_management_core, :max_command_records, 1)
+    assert {:error, _reason} = Application.ensure_all_started(:yellow_dog_management_core)
+
+    Application.put_env(:yellow_dog_management_core, :max_command_records, 2)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+  end
+
+  test "duplicate durable idempotency keys fail recovery instead of leaving an unindexed record",
+       %{
+         data_dir: data_dir
+       } do
+    register_server("server-duplicate-durable-key")
+    :ok = FakeTransport.connect(:server, "server-duplicate-durable-key")
+    :ok = FakeTransport.script([{:ok, service_result("dns", "running")}])
+
+    assert {:ok, _result} =
+             ManagementCore.command_server(
+               "server-duplicate-durable-key",
+               "server.runtime.services.start",
+               %{"service" => "dns"},
+               nil,
+               @key_a
+             )
+
+    [path] = command_files(data_dir)
+    duplicate_id = "99999999-9999-4999-8999-999999999999"
+
+    path
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.put("request_id", duplicate_id)
+    |> put_in(["envelope", "request_id"], duplicate_id)
+    |> then(&File.write!(command_path(data_dir, duplicate_id), Jason.encode!(&1)))
+
+    assert :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, Commands)
+
+    assert {:error, {:command_recovery_failed, :conflict}} =
+             Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, Commands)
+
+    assert :ok = File.rm(command_path(data_dir, duplicate_id))
+    assert {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, Commands)
+  end
+
+  test "command persistence timeout drains a blocked create without durable residue", %{
+    data_dir: data_dir
+  } do
+    owner = self()
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 500)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :link, [_source, target] ->
+        if String.contains?(target, "/commands/") do
+          send(owner, {:controlled_file_ops_blocked, :link})
+
+          receive do
+            {:release_controlled_file_ops, :link} -> :ok
+          end
+        else
+          :ok
+        end
+
+      _operation, _arguments ->
+        :ok
+    end)
+
+    restart_application()
+    register_server("server-blocked-create")
+    :ok = FakeTransport.connect(:server, "server-blocked-create")
+    :ok = FakeTransport.script([{:ok, service_result("dns", "running")}])
+
+    task =
+      Task.async(fn ->
+        ManagementCore.command_server(
+          "server-blocked-create",
+          "server.runtime.services.start",
+          %{"service" => "dns"},
+          nil,
+          @key_a
+        )
+      end)
+
+    assert_receive {:controlled_file_ops_blocked, :link}
+    assert_error(Task.await(task, 1_000), :timeout)
+    assert command_files(data_dir) == []
+    assert stage_files(data_dir) == []
+    assert Commands.unresolved_ids(:server, "server-blocked-create") == {:ok, []}
+
+    restart_child(Commands)
+    assert Commands.unresolved_ids(:server, "server-blocked-create") == {:ok, []}
+  end
+
+  test "command resolution timeout keeps a coherent pending record and cleans its stage", %{
+    data_dir: data_dir
+  } do
+    owner = self()
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 500)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, true)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rename, [_source, target] ->
+        if String.contains?(target, "/commands/") and
+             Application.get_env(:yellow_dog_management_core, :management_test_file_ops_block) do
+          send(owner, {:controlled_file_ops_blocked, :rename})
+
+          receive do
+            {:release_controlled_file_ops, :rename} -> :ok
+          end
+        else
+          :ok
+        end
+
+      _operation, _arguments ->
+        :ok
+    end)
+
+    restart_application()
+    register_server("server-blocked-resolution")
+    :ok = FakeTransport.connect(:server, "server-blocked-resolution")
+    :ok = FakeTransport.script([{:ok, service_result("dns", "running")}])
+
+    task =
+      Task.async(fn ->
+        ManagementCore.command_server(
+          "server-blocked-resolution",
+          "server.runtime.services.start",
+          %{"service" => "dns"},
+          nil,
+          @key_b
+        )
+      end)
+
+    assert_receive {:controlled_file_ops_blocked, :rename}
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, false)
+    assert_error(Task.await(task, 1_000), :timeout)
+    assert [path] = command_files(data_dir)
+    assert Jason.decode!(File.read!(path))["state"] == "pending"
+    assert stage_files(data_dir) == []
+    assert {:ok, [_request_id]} = Commands.unresolved_ids(:server, "server-blocked-resolution")
+
+    restart_child(Commands)
+
+    assert unknown_document(data_dir, Path.basename(path) |> String.trim_trailing(".json"))[
+             "state"
+           ] ==
+             "unknown"
   end
 
   test "malformed command successes become durable unknown outcomes without replay", %{
@@ -424,6 +778,10 @@ defmodule YellowDog.Management.CommandsTest do
 
   defp command_files(data_dir) do
     Path.wildcard(Path.join([data_dir, "management", "commands", "*.json"]))
+  end
+
+  defp stage_files(data_dir) do
+    Path.wildcard(Path.join([data_dir, "management", "commands", ".*.stage"]))
   end
 
   defp assert_error(result, code) do

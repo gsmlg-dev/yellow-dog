@@ -1,6 +1,7 @@
 defmodule YellowDog.Management.SnapshotsTest do
   use ExUnit.Case, async: false
 
+  alias YellowDog.Management.ControlledFileOps
   alias YellowDog.Management.FakeTransport
   alias YellowDog.Management.Snapshots
   alias YellowDog.ManagementCore
@@ -16,9 +17,22 @@ defmodule YellowDog.Management.SnapshotsTest do
 
   setup do
     previous_env =
-      Map.new([:data_dir, :transport_module, :request_timeout], fn key ->
-        {key, Application.fetch_env(:yellow_dog_management_core, key)}
-      end)
+      Map.new(
+        [
+          :data_dir,
+          :transport_module,
+          :request_timeout,
+          :event_write_timeout_ms,
+          :max_command_records,
+          :max_snapshot_records,
+          :atomic_json_file_ops,
+          :management_test_file_ops_hook,
+          :management_test_file_ops_block
+        ],
+        fn key ->
+          {key, Application.fetch_env(:yellow_dog_management_core, key)}
+        end
+      )
 
     data_dir =
       Path.join(System.tmp_dir!(), "yellow-dog-snapshots-#{System.unique_integer([:positive])}")
@@ -26,6 +40,17 @@ defmodule YellowDog.Management.SnapshotsTest do
     Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
     Application.put_env(:yellow_dog_management_core, :transport_module, FakeTransport)
     Application.put_env(:yellow_dog_management_core, :request_timeout, 250)
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :max_command_records, 100)
+    Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 100)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      YellowDog.Management.Storage.AtomicJson.FileOps
+    )
+
+    Application.delete_env(:yellow_dog_management_core, :management_test_file_ops_hook)
     restart_application()
     start_supervised!(FakeTransport)
 
@@ -198,6 +223,230 @@ defmodule YellowDog.Management.SnapshotsTest do
              ManagementCore.get_server_snapshot("server-equal", "runtime.services")
   end
 
+  test "snapshot capacity permits replacement but rejects a new durable key" do
+    Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 1)
+    restart_application()
+
+    envelope = query_envelope("server-snapshot-capacity")
+    first = service_list(@revision_a, @observed_at, "dns")
+    replacement = service_list(@revision_b, ~U[2026-07-16 09:31:00Z], "mdns")
+    received_at = ~U[2026-07-16 09:32:00Z]
+
+    assert {:ok, %{revision: @revision_a}} =
+             Snapshots.put(envelope, "runtime.services", first, received_at)
+
+    assert {:ok, %{revision: @revision_b, value: ^replacement}} =
+             Snapshots.put(envelope, "runtime.services", replacement, received_at)
+
+    other = %{
+      envelope
+      | request_id: "77777777-7777-4777-8777-777777777777",
+        target_id: "server-snapshot-capacity-other"
+    }
+
+    assert {:error, %Error{code: :conflict, details: %{"limit" => 1, "resource" => "snapshots"}}} =
+             Snapshots.put(other, "runtime.services", first, received_at)
+
+    restart_child(Snapshots)
+
+    assert {:ok, %{revision: @revision_b, value: ^replacement}} =
+             Snapshots.get(:server, "server-snapshot-capacity", "runtime.services")
+  end
+
+  test "snapshot recovery rejects nonsensical management timestamp ordering", %{
+    data_dir: data_dir
+  } do
+    envelope = query_envelope("server-snapshot-timestamps")
+    result = service_list(@revision_a, @observed_at, "dns")
+    received_at = ~U[2026-07-16 09:32:00Z]
+
+    assert {:ok, _snapshot} = Snapshots.put(envelope, "runtime.services", result, received_at)
+
+    data_dir
+    |> snapshot_path(:server, "server-snapshot-timestamps", "runtime.services")
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.put("received_at", "2036-01-01T00:00:00Z")
+    |> then(
+      &File.write!(
+        snapshot_path(data_dir, :server, "server-snapshot-timestamps", "runtime.services"),
+        Jason.encode!(&1)
+      )
+    )
+
+    restart_child(Snapshots)
+
+    assert_error(
+      Snapshots.get(:server, "server-snapshot-timestamps", "runtime.services"),
+      :not_found
+    )
+  end
+
+  test "snapshot startup fails deterministically when durable records exceed the limit" do
+    Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 2)
+    restart_application()
+
+    first = query_envelope("server-snapshot-over-capacity-a")
+
+    second = %{
+      first
+      | request_id: "88888888-8888-4888-8888-888888888888",
+        target_id: "server-snapshot-over-capacity-b"
+    }
+
+    result = service_list(@revision_a, @observed_at, "dns")
+    received_at = ~U[2026-07-16 09:32:00Z]
+    assert {:ok, _snapshot} = Snapshots.put(first, "runtime.services", result, received_at)
+    assert {:ok, _snapshot} = Snapshots.put(second, "runtime.services", result, received_at)
+
+    :ok = Application.stop(:yellow_dog_management_core)
+    Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 1)
+    assert {:error, _reason} = Application.ensure_all_started(:yellow_dog_management_core)
+
+    Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 2)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+  end
+
+  test "snapshot replacement timeout preserves the last durable snapshot and cleans staging", %{
+    data_dir: data_dir
+  } do
+    owner = self()
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, false)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rename, _arguments ->
+        if Application.get_env(:yellow_dog_management_core, :management_test_file_ops_block) do
+          send(owner, {:controlled_file_ops_blocked, :snapshot_rename})
+
+          receive do
+            {:release_controlled_file_ops, :snapshot_rename} -> :ok
+          end
+        else
+          :ok
+        end
+
+      _operation, _arguments ->
+        :ok
+    end)
+
+    restart_application()
+
+    envelope = query_envelope("server-snapshot-blocked-replace")
+    first = service_list(@revision_a, @observed_at, "dns")
+    replacement = service_list(@revision_b, ~U[2026-07-16 09:31:00Z], "mdns")
+    received_at = ~U[2026-07-16 09:32:00Z]
+
+    assert {:ok, %{revision: @revision_a, value: ^first}} =
+             Snapshots.put(envelope, "runtime.services", first, received_at)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, true)
+
+    task =
+      Task.async(fn -> Snapshots.put(envelope, "runtime.services", replacement, received_at) end)
+
+    assert_receive {:controlled_file_ops_blocked, :snapshot_rename}
+    assert_error(Task.await(task, 1_000), :timeout)
+
+    assert {:ok, %{revision: @revision_a, value: ^first}} =
+             Snapshots.get(:server, "server-snapshot-blocked-replace", "runtime.services")
+
+    assert snapshot_stage_files(data_dir) == []
+    restart_child(Snapshots)
+
+    assert {:ok, %{revision: @revision_a, value: ^first}} =
+             Snapshots.get(:server, "server-snapshot-blocked-replace", "runtime.services")
+  end
+
+  test "blocked snapshot cleanup leaves no in-memory record until startup reconciliation", %{
+    data_dir: data_dir
+  } do
+    owner = self()
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, true)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rm, [path] ->
+        if Application.get_env(:yellow_dog_management_core, :management_test_file_ops_block) and
+             String.contains?(path, "/snapshots/") and String.ends_with?(path, ".stage") do
+          send(owner, {:controlled_file_ops_blocked, :snapshot_cleanup})
+
+          receive do
+            {:release_controlled_file_ops, :snapshot_cleanup} -> :ok
+          end
+        else
+          :ok
+        end
+
+      _operation, _arguments ->
+        :ok
+    end)
+
+    restart_application()
+
+    envelope = query_envelope("server-snapshot-blocked-cleanup")
+    result = service_list(@revision_a, @observed_at, "dns")
+    received_at = ~U[2026-07-16 09:32:00Z]
+    task = Task.async(fn -> Snapshots.put(envelope, "runtime.services", result, received_at) end)
+
+    assert_receive {:controlled_file_ops_blocked, :snapshot_cleanup}
+    assert_error(Task.await(task, 1_000), :timeout)
+
+    assert_error(
+      Snapshots.get(:server, "server-snapshot-blocked-cleanup", "runtime.services"),
+      :not_found
+    )
+
+    assert snapshot_stage_files(data_dir) == []
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, false)
+    restart_child(Snapshots)
+
+    assert {:ok, %{revision: @revision_a, value: ^result}} =
+             Snapshots.get(:server, "server-snapshot-blocked-cleanup", "runtime.services")
+
+    assert snapshot_stage_files(data_dir) == []
+  end
+
+  test "startup surfaces captured snapshot staging cleanup failure", %{data_dir: data_dir} do
+    stage_path =
+      Path.join([
+        data_dir,
+        "management",
+        "snapshots",
+        "servers",
+        "server-staging-cleanup",
+        ".runtime.services.json.stale.stage"
+      ])
+
+    assert :ok = File.mkdir_p(Path.dirname(stage_path))
+    assert :ok = File.write(stage_path, "stale")
+
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rm, _arguments -> {:error, :injected_cleanup_failure}
+      _operation, _arguments -> :ok
+    end)
+
+    :ok = Application.stop(:yellow_dog_management_core)
+    assert {:error, _reason} = Application.ensure_all_started(:yellow_dog_management_core)
+    assert File.exists?(stage_path)
+
+    Application.delete_env(:yellow_dog_management_core, :management_test_file_ops_hook)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      YellowDog.Management.Storage.AtomicJson.FileOps
+    )
+
+    assert :ok = File.rm(stage_path)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+  end
+
   test "snapshot reads survive process restart" do
     register_netman("netman-restart")
     :ok = FakeTransport.connect(:netman, "netman-restart")
@@ -267,6 +516,14 @@ defmodule YellowDog.Management.SnapshotsTest do
       "revision" => revision,
       "observed_at" => DateTime.to_iso8601(observed_at)
     }
+  end
+
+  defp snapshot_path(data_dir, :server, target_id, domain) do
+    Path.join([data_dir, "management", "snapshots", "servers", target_id, "#{domain}.json"])
+  end
+
+  defp snapshot_stage_files(data_dir) do
+    Path.wildcard(Path.join([data_dir, "management", "snapshots", "**", ".*.stage"]))
   end
 
   defp register_server(id) do

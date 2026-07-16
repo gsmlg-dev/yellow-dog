@@ -33,12 +33,11 @@ defmodule YellowDog.Management.Storage.AtomicJson do
   @doc false
   @spec ls(Path.t(), module()) :: {:ok, [String.t()]} | {:error, term()}
   def ls(path, ops) when is_binary(path) and is_atom(ops) do
-    module =
-      if Code.ensure_loaded?(ops) and function_exported?(ops, :ls, 1),
-        do: ops,
-        else: __MODULE__.FileOps
-
-    module.ls(path)
+    if Code.ensure_loaded?(ops) and function_exported?(ops, :ls, 1) do
+      ops.ls(path)
+    else
+      {:error, :unsupported_file_ops}
+    end
   rescue
     _exception -> {:error, :list_exception}
   catch

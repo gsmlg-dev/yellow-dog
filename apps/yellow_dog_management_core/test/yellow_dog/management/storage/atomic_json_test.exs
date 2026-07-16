@@ -262,12 +262,15 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
     assert File.exists?(stale_path)
   end
 
-  test "directory reads fall back for partial file-ops adapters", %{data_dir: data_dir} do
+  test "directory reads reject partial file-ops adapters without host fallback", %{
+    data_dir: data_dir
+  } do
     directory = Path.join(data_dir, "partial-file-ops")
     assert :ok = File.mkdir_p(directory)
     assert :ok = File.write(Path.join(directory, "entry.json"), "{}")
 
-    assert {:ok, ["entry.json"]} = AtomicJson.ls(directory, __MODULE__.PartialFileOps)
+    assert {:error, :unsupported_file_ops} =
+             AtomicJson.ls(directory, __MODULE__.PartialFileOps)
   end
 
   defp restore_data_dir(nil), do: Application.delete_env(:yellow_dog_management_core, :data_dir)

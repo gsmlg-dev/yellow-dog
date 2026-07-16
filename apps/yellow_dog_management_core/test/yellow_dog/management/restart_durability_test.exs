@@ -1479,6 +1479,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
   defmodule BlockingEventFailureFileOps do
     defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate mkdir_p(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
 
     def open(path) do
@@ -1504,6 +1505,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
   defmodule SlowEventFileOps do
     defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate mkdir_p(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
 
     def open(path) do
@@ -1539,6 +1541,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
   defmodule BlockingStagingSyncFileOps do
     defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate mkdir_p(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
 
     def open(path) do
@@ -1572,6 +1575,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
   defmodule PromoteThenFailFileOps do
     defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate mkdir_p(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate open(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate write(device, contents), to: YellowDog.Management.Storage.AtomicJson.FileOps
@@ -1593,6 +1597,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
   defmodule DelayedManifestRenameFileOps do
     defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+    defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate mkdir_p(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate open(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
     defdelegate write(device, contents), to: YellowDog.Management.Storage.AtomicJson.FileOps
