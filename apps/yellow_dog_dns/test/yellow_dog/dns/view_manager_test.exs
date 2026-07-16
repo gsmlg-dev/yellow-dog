@@ -243,6 +243,25 @@ defmodule YellowDog.Dns.ViewManagerTest do
 
       assert {:error, :unsupported_acl} = ViewManager.list_control_views(supervisor)
     end
+
+    @tag :capture_log
+    @tag timeout: 120_000
+    test "rejects too many active views before calling each View", %{supervisor: supervisor} do
+      suffix = :erlang.unique_integer([:positive])
+
+      for index <- 0..1_000 do
+        {:ok, _pid} =
+          ViewManager.start_view(
+            supervisor,
+            name: "control_bound_#{suffix}_#{index}",
+            priority: index,
+            acl: :any
+          )
+      end
+
+      assert {:error, :control_snapshot_too_large} =
+               ViewManager.list_control_views(supervisor)
+    end
   end
 
   describe "stats/1" do

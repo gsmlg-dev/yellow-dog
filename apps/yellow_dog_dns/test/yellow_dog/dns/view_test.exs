@@ -280,8 +280,8 @@ defmodule YellowDog.Dns.ViewTest do
         View.start_link(
           name: view_name,
           acl: [
-            {:allow, "2001:0db8:0000:0000::/32"},
-            {:allow, {10, 0, 0, 0}, 8},
+            {:allow, "2001:0db8:0000:0000:0000:0000:0000:1234/32"},
+            {:allow, {10, 1, 2, 3}, 8},
             {:allow, "10.0.0.0/8"}
           ],
           recursion_enabled: true
@@ -320,6 +320,17 @@ defmodule YellowDog.Dns.ViewTest do
 
         GenServer.stop(pid)
       end
+    end
+
+    @tag :capture_log
+    test "rejects an ACL over the fixed control-work cap without truncating" do
+      view_name = "control_too_large_#{:rand.uniform(1_000_000)}"
+      rules = List.duplicate({:allow, "10.0.0.0/8"}, 101)
+      {:ok, pid} = View.start_link(name: view_name, acl: rules)
+
+      assert {:error, :unsupported_acl} = View.control_snapshot(pid)
+
+      GenServer.stop(pid)
     end
   end
 

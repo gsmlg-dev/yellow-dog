@@ -44,6 +44,7 @@ defmodule YellowDog.Dns.View do
   alias DNS.Message
 
   @default_priority 100
+  @max_control_acl_rules 100
 
   defstruct [
     :name,
@@ -355,8 +356,8 @@ defmodule YellowDog.Dns.View do
         {:ok, match_clients} ->
           {:ok, %{match_clients: match_clients, recursion: state.recursion_enabled}}
 
-        :error ->
-          {:error, :unsupported_acl}
+        {:error, :unsupported_acl} = error ->
+          error
       end
 
     {:reply, reply, state}
@@ -855,39 +856,49 @@ defmodule YellowDog.Dns.View do
   defp control_match_clients({:named, name}) do
     case ACL.get_builtin(name) do
       {:ok, acl} -> control_match_clients(acl)
-      {:error, :not_found} -> :error
+      {:error, :not_found} -> {:error, :unsupported_acl}
     end
   end
 
   defp control_match_clients(%ACL{rules: rules}) when is_list(rules) do
-    Enum.reduce_while(rules, {:ok, []}, fn rule, {:ok, cidrs} ->
-      case control_match_rule(rule) do
-        {:ok, rule_cidrs} -> {:cont, {:ok, rule_cidrs ++ cidrs}}
-        :error -> {:halt, :error}
+    with {:ok, bounded_rules} <- bounded_control_rules(rules) do
+      Enum.reduce_while(bounded_rules, {:ok, []}, fn rule, {:ok, cidrs} ->
+        case control_match_rule(rule) do
+          {:ok, rule_cidrs} -> {:cont, {:ok, rule_cidrs ++ cidrs}}
+          :error -> {:halt, {:error, :unsupported_acl}}
+        end
+      end)
+      |> case do
+        {:ok, cidrs} -> {:ok, cidrs |> Enum.uniq() |> Enum.sort()}
+        {:error, :unsupported_acl} = error -> error
       end
-    end)
-    |> case do
-      {:ok, cidrs} -> {:ok, cidrs |> Enum.uniq() |> Enum.sort()}
-      :error -> :error
     end
   end
 
-  defp control_match_clients(_acl), do: :error
+  defp control_match_clients(_acl), do: {:error, :unsupported_acl}
+
+  defp bounded_control_rules(rules),
+    do: take_control_rules(rules, @max_control_acl_rules, [])
+
+  defp take_control_rules([], _remaining, rules), do: {:ok, Enum.reverse(rules)}
+  defp take_control_rules([_rule | _rest], 0, _rules), do: {:error, :unsupported_acl}
+
+  defp take_control_rules([rule | rest], remaining, rules),
+    do: take_control_rules(rest, remaining - 1, [rule | rules])
 
   defp control_match_rule({:allow, :any}), do: {:ok, ["0.0.0.0/0", "::/0"]}
 
   defp control_match_rule({:allow, ip, prefix}) when is_tuple(ip) and is_integer(prefix) do
-    with {:ok, cidr} <- canonical_cidr(ip, prefix), do: {:ok, [cidr]}
+    with {:ok, cidr} <- ACL.canonical_cidr({ip, prefix}), do: {:ok, [cidr]}
   end
 
   defp control_match_rule({:allow, ip}) when is_tuple(ip) and tuple_size(ip) in [4, 8] do
     prefix = if tuple_size(ip) == 4, do: 32, else: 128
-    with {:ok, cidr} <- canonical_cidr(ip, prefix), do: {:ok, [cidr]}
+    with {:ok, cidr} <- ACL.canonical_cidr({ip, prefix}), do: {:ok, [cidr]}
   end
 
   defp control_match_rule({:allow, cidr}) when is_binary(cidr) do
-    with {:ok, {ip, prefix}} <- ACL.parse_cidr(cidr),
-         {:ok, canonical} <- canonical_cidr(ip, prefix) do
+    with {:ok, canonical} <- ACL.canonical_cidr(cidr) do
       {:ok, [canonical]}
     else
       _invalid -> :error
@@ -895,47 +906,6 @@ defmodule YellowDog.Dns.View do
   end
 
   defp control_match_rule(_rule), do: :error
-
-  defp canonical_cidr(ip, prefix) do
-    with {:ok, binary, bit_size} <- ip_binary(ip),
-         true <- prefix in 0..bit_size,
-         <<network_prefix::bitstring-size(prefix), _host::bitstring>> <- binary,
-         {:ok, network_ip} <- binary_ip(<<network_prefix::bitstring, 0::size(bit_size - prefix)>>) do
-      {:ok, "#{network_ip |> :inet.ntoa() |> to_string()}/#{prefix}"}
-    else
-      _invalid -> :error
-    end
-  end
-
-  defp ip_binary(ip) when is_tuple(ip) and tuple_size(ip) == 4 do
-    octets = Tuple.to_list(ip)
-
-    if Enum.all?(octets, &(is_integer(&1) and &1 in 0..255)) do
-      {:ok, :erlang.list_to_binary(octets), 32}
-    else
-      :error
-    end
-  end
-
-  defp ip_binary(ip) when is_tuple(ip) and tuple_size(ip) == 8 do
-    segments = Tuple.to_list(ip)
-
-    if Enum.all?(segments, &(is_integer(&1) and &1 in 0..65_535)) do
-      binary = Enum.reduce(segments, <<>>, fn segment, acc -> <<acc::binary, segment::16>> end)
-      {:ok, binary, 128}
-    else
-      :error
-    end
-  end
-
-  defp ip_binary(_ip), do: :error
-
-  defp binary_ip(<<a, b, c, d>>), do: {:ok, {a, b, c, d}}
-
-  defp binary_ip(<<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>),
-    do: {:ok, {a, b, c, d, e, f, g, h}}
-
-  defp binary_ip(_binary), do: :error
 
   defp acl_matches?(:any, _client_ip), do: true
 

@@ -214,6 +214,29 @@ defmodule YellowDog.Dns.View.ACL do
     end
   end
 
+  @doc """
+  Returns a CIDR with host bits masked and its address in canonical text form.
+  """
+  @spec canonical_cidr(String.t() | cidr()) ::
+          {:ok, String.t()} | {:error, :invalid_cidr}
+  def canonical_cidr(cidr) when is_binary(cidr) do
+    with {:ok, parsed} <- parse_cidr(cidr), do: canonical_cidr(parsed)
+  end
+
+  def canonical_cidr({ip, prefix}) when is_tuple(ip) and is_integer(prefix) do
+    with {:ok, binary, bit_size} <- safe_ip_binary(ip),
+         true <- prefix in 0..bit_size,
+         <<network_prefix::bitstring-size(prefix), _host::bitstring>> <- binary,
+         {:ok, network_ip} <-
+           binary_ip(<<network_prefix::bitstring, 0::size(bit_size - prefix)>>) do
+      {:ok, "#{network_ip |> :inet.ntoa() |> to_string()}/#{prefix}"}
+    else
+      _invalid -> {:error, :invalid_cidr}
+    end
+  end
+
+  def canonical_cidr(_cidr), do: {:error, :invalid_cidr}
+
   # Private Functions
 
   defp evaluate_rules([], _ip), do: false
@@ -315,6 +338,36 @@ defmodule YellowDog.Dns.View.ACL do
   defp ipv6_to_binary({a, b, c, d, e, f, g, h}) do
     <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
   end
+
+  defp safe_ip_binary(ip) when is_tuple(ip) and tuple_size(ip) == 4 do
+    octets = Tuple.to_list(ip)
+
+    if Enum.all?(octets, &(is_integer(&1) and &1 in 0..255)) do
+      {:ok, :erlang.list_to_binary(octets), 32}
+    else
+      :error
+    end
+  end
+
+  defp safe_ip_binary(ip) when is_tuple(ip) and tuple_size(ip) == 8 do
+    segments = Tuple.to_list(ip)
+
+    if Enum.all?(segments, &(is_integer(&1) and &1 in 0..65_535)) do
+      binary = Enum.reduce(segments, <<>>, fn segment, acc -> <<acc::binary, segment::16>> end)
+      {:ok, binary, 128}
+    else
+      :error
+    end
+  end
+
+  defp safe_ip_binary(_ip), do: :error
+
+  defp binary_ip(<<a, b, c, d>>), do: {:ok, {a, b, c, d}}
+
+  defp binary_ip(<<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>),
+    do: {:ok, {a, b, c, d, e, f, g, h}}
+
+  defp binary_ip(_binary), do: :error
 
   defp valid_prefix_length?(ip, prefix) when tuple_size(ip) == 4 do
     prefix >= 0 and prefix <= 32

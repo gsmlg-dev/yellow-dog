@@ -279,6 +279,21 @@ defmodule YellowDog.Dns.View.ACLTest do
     end
   end
 
+  describe "canonical_cidr/1" do
+    test "masks IPv4 host bits and compresses expanded IPv6" do
+      assert {:ok, "10.0.0.0/8"} = ACL.canonical_cidr("10.1.2.3/8")
+
+      assert {:ok, "2001:db8::/32"} =
+               ACL.canonical_cidr("2001:0db8:0000:0000:0000:0000:0000:1234/32")
+    end
+
+    test "canonicalizes tuple CIDRs and rejects malformed values" do
+      assert {:ok, "192.0.2.0/24"} = ACL.canonical_cidr({{192, 0, 2, 99}, 24})
+      assert {:error, :invalid_cidr} = ACL.canonical_cidr("not-a-cidr")
+      assert {:error, :invalid_cidr} = ACL.canonical_cidr({{999, 0, 0, 1}, 24})
+    end
+  end
+
   describe "edge cases" do
     test "empty rules list returns false for any IP" do
       acl = ACL.new("empty", [])

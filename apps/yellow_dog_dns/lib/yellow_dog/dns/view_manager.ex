@@ -27,6 +27,8 @@ defmodule YellowDog.Dns.ViewManager do
   alias YellowDog.Telemetry
   alias YellowDog.Dns.ConfigPersistence
 
+  @max_control_views 1_000
+
   @doc """
   Starts the ViewManager supervisor.
   """
@@ -278,26 +280,30 @@ defmodule YellowDog.Dns.ViewManager do
   """
   @spec list_control_views() ::
           {:ok, [%{name: String.t(), match_clients: [String.t()], recursion: boolean()}]}
-          | {:error, :unsupported_acl}
+          | {:error, :unsupported_acl | :control_snapshot_too_large}
   def list_control_views do
     list_control_views(__MODULE__)
   end
 
   @spec list_control_views(Supervisor.supervisor()) ::
           {:ok, [%{name: String.t(), match_clients: [String.t()], recursion: boolean()}]}
-          | {:error, :unsupported_acl}
+          | {:error, :unsupported_acl | :control_snapshot_too_large}
   def list_control_views(supervisor) do
-    supervisor
-    |> list_views()
-    |> Enum.reduce_while({:ok, []}, fn {name, pid, _priority}, {:ok, snapshots} ->
-      case View.control_snapshot(pid) do
-        {:ok, snapshot} -> {:cont, {:ok, [Map.put(snapshot, :name, name) | snapshots]}}
-        {:error, :unsupported_acl} = error -> {:halt, error}
+    if DynamicSupervisor.count_children(supervisor).active > @max_control_views do
+      {:error, :control_snapshot_too_large}
+    else
+      supervisor
+      |> list_views()
+      |> Enum.reduce_while({:ok, []}, fn {name, pid, _priority}, {:ok, snapshots} ->
+        case View.control_snapshot(pid) do
+          {:ok, snapshot} -> {:cont, {:ok, [Map.put(snapshot, :name, name) | snapshots]}}
+          {:error, :unsupported_acl} = error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, snapshots} -> {:ok, Enum.reverse(snapshots)}
+        {:error, :unsupported_acl} = error -> error
       end
-    end)
-    |> case do
-      {:ok, snapshots} -> {:ok, Enum.reverse(snapshots)}
-      {:error, :unsupported_acl} = error -> error
     end
   end
 

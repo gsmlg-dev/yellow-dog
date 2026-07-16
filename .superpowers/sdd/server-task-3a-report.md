@@ -106,3 +106,89 @@ entries. View ACLs and registry ACLs that cannot be represented without changing
 semantics return typed `unsupported`; mixed-action and geographic ACLs are not
 partially projected. Provider types outside the approved fixed projection remain
 omitted as required by the Task 3 decisions.
+
+## Second Repair Wave
+
+This repair wave started from
+`46ff3ea245817205012e05d6a7b60544300cbcb2` on
+`codex/service-node-remote-management`. It adds order-independent RRset TTL
+validation, owner-defined CIDR canonicalization, and fixed control-work bounds.
+The DNS read/wire boundary and mutation behavior are otherwise unchanged.
+
+Additional owned scope:
+
+- `apps/yellow_dog_dns/lib/yellow_dog/dns/view/acl.ex`
+- `apps/yellow_dog_dns/test/yellow_dog/dns/view/acl_test.exs`
+
+Second-wave RED was recorded before production changes:
+
+```text
+cd apps/yellow_dog_dns && mix test test/yellow_dog/dns/view/acl_test.exs test/yellow_dog/dns/view_test.exs test/yellow_dog/dns/view_manager_test.exs test/yellow_dog/dns/query_logger_test.exs
+145 tests, 5 failures
+Missing ACL canonicalization and the three fixed control-work bounds were RED.
+
+cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs
+23 tests, 21 failures
+TTL and ACL canonicalization regressions were RED; the new fixed acl_codec test
+dependency key also made the remaining adapter cases fail before production wiring.
+```
+
+Second-wave focused GREEN:
+
+```text
+cd apps/yellow_dog_dns && mix test test/yellow_dog/dns/view/acl_test.exs test/yellow_dog/dns/view_test.exs test/yellow_dog/dns/view_manager_test.exs test/yellow_dog/dns/query_logger_test.exs
+145 tests, 0 failures
+
+cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs
+23 tests, 0 failures
+```
+
+Regression coverage proves equal-TTL RRset reversal produces identical resources
+and revisions; unequal, missing, partially specified, negative, oversized, and
+non-integer TTLs are rejected. Rule and legacy ACL CIDRs mask IPv4 host bits and
+canonicalize expanded IPv6 through the DNS ACL owner API, with stable list and
+`current/2` resources and revisions. Query-log work is bounded to the newest
+1,000 global entries, ACL projection rejects more than 100 rules without
+truncation, and view projection rejects more than 1,000 active children before
+calling individual views.
+
+Second-wave full verification, through `devenv shell`:
+
+```text
+cd apps/yellow_dog_dns && mix test
+1160 tests, 0 failures, 1 skipped
+
+cd apps/yellow_dog && mix test
+278 tests, 0 failures
+
+cd apps/yellow_dog_dns && MIX_ENV=dev mix compile --force --warnings-as-errors
+exit 0
+
+cd apps/yellow_dog_dns && MIX_ENV=test mix compile --force --warnings-as-errors
+exit 0
+
+cd apps/yellow_dog && MIX_ENV=dev mix compile --force --warnings-as-errors
+exit 0
+
+cd apps/yellow_dog && MIX_ENV=test mix compile --force --warnings-as-errors
+exit 0
+
+mix format --check-formatted <eleven second-wave Elixir files>
+exit 0
+
+cd apps/yellow_dog && mix credo --strict <three second-wave Elixir files>
+188 mods/funs, found no issues
+
+cd apps/yellow_dog_dns && mix credo --strict <eight second-wave Elixir files>
+213 mods/funs, found no issues
+
+git diff --check
+exit 0
+```
+
+The fixed bounds are explicit wire limitations: query logs older than the newest
+1,000 global entries are outside the control snapshot, ACL policies over 100
+rules return typed `unsupported`, and more than 1,000 active views return typed
+`unsupported` through the adapter. Canonical policy resources are never silently
+truncated. The four protected console/root files retain their pre-existing dirty
+diffs and remain outside Task 3A staging.

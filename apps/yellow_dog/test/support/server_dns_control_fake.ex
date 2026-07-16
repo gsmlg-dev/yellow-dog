@@ -106,6 +106,27 @@ defmodule YellowDog.ServerDnsControlFake.AclRegistry do
     do: YellowDog.ServerDnsControlFake.fetch(:acls, {:acl_registry, :list_acls, []})
 end
 
+defmodule YellowDog.ServerDnsControlFake.AclCodec do
+  @moduledoc false
+
+  @canonical_cidrs %{
+    "10.0.0.0/8" => "10.0.0.0/8",
+    "10.1.0.0/16" => "10.1.0.0/16",
+    "10.1.2.3/8" => "10.0.0.0/8",
+    "192.0.2.99/24" => "192.0.2.0/24",
+    "203.0.113.0/24" => "203.0.113.0/24",
+    "2001:0db8:0000:0000:0000:0000:0000:0001/48" => "2001:db8::/48",
+    "2001:0db8:0000:0000:0000:0000:0000:1234/32" => "2001:db8::/32"
+  }
+
+  def canonical_cidr(cidr) do
+    case Map.fetch(@canonical_cidrs, cidr) do
+      {:ok, canonical} -> {:ok, canonical}
+      :error -> {:error, :invalid_cidr}
+    end
+  end
+end
+
 defmodule YellowDog.ServerDnsControlFake.ProviderStore do
   @moduledoc false
 

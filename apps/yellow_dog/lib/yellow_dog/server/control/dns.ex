@@ -8,6 +8,8 @@ defmodule YellowDog.Server.Control.Dns do
   alias YellowDog.Sync.ServerOperation
 
   @record_id_pattern ~r/\Arr-[0-9a-f]{64}\z/
+  @max_acl_networks 100
+  @max_rrset_entries 100
   @validation_observed_at "1970-01-01T00:00:00Z"
   @validation_revision String.duplicate("0", 64)
   @mutation_operations [
@@ -40,6 +42,7 @@ defmodule YellowDog.Server.Control.Dns do
     view_manager: Module.concat(["YellowDog", "Dns", "ViewManager"]),
     zone_store: Module.concat(["YellowDog", "Store", "Zone"]),
     acl_registry: Module.concat(["YellowDog", "Dns", "AclRegistry"]),
+    acl_codec: Module.concat(["YellowDog", "Dns", "View", "ACL"]),
     provider_store: Module.concat(["YellowDog", "Store", "Provider"]),
     query_logger: Module.concat(["YellowDog", "Dns", "QueryLogger"]),
     metrics_collector: Module.concat(["YellowDog", "Dns", "MetricsCollector"]),
@@ -224,6 +227,7 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp unwrap_control_views({:ok, views}) when is_list(views), do: {:ok, views}
   defp unwrap_control_views({:error, :unsupported_acl}), do: unsupported_error()
+  defp unwrap_control_views({:error, :control_snapshot_too_large}), do: unsupported_error()
   defp unwrap_control_views(_result), do: apply_failed_error()
 
   defp project_view(%{} = view) do
@@ -294,42 +298,54 @@ defmodule YellowDog.Server.Control.Dns do
     with {:ok, result} <-
            dependency_call(:zone_store, :list_records, [view_name, zone_name]),
          {:ok, records} <- unwrap_store_list(result) do
-      items =
-        records
-        |> Enum.flat_map(&project_record(&1, view_name, canonical_name(zone_name)))
-        |> Enum.sort_by(& &1["record_id"])
-
-      {:ok, items}
+      records
+      |> Enum.reduce_while({:ok, []}, fn record, {:ok, items} ->
+        case project_record(record, view_name, canonical_name(zone_name)) do
+          {:ok, item} -> {:cont, {:ok, [item | items]}}
+          :skip -> {:cont, {:ok, items}}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, items} -> {:ok, Enum.sort_by(items, & &1["record_id"])}
+        {:error, %Error{}} = error -> error
+      end
     end
   end
 
   defp project_record(%{} = record, view_name, zone_name) do
+    case wire_record_type(field(record, :type)) do
+      {:ok, type} -> project_supported_record(record, view_name, zone_name, type)
+      :error -> :skip
+    end
+  end
+
+  defp project_record(_record, _view_name, _zone_name), do: invalid_error()
+
+  defp project_supported_record(record, view_name, zone_name, type) do
     with owner when is_binary(owner) <- field(record, :owner),
-         {:ok, type} <- wire_record_type(field(record, :type)),
-         rrset when is_list(rrset) <- field(record, :rrset, []),
-         {:ok, ttl} <- record_ttl(record, rrset),
+         rrset when is_list(rrset) <- field(record, :rrset),
+         {:ok, rrset} <- bounded_list(rrset, @max_rrset_entries),
+         {:ok, ttl} <- record_ttl(rrset),
          {:ok, values} <- record_values(type, rrset),
          true <- values != [],
          true <- type != "CNAME" or length(values) == 1 do
       owner = canonical_owner(owner)
 
-      [
-        %{
-          "view_name" => view_name,
-          "zone_name" => zone_name,
-          "record_id" => record_id(owner, type),
-          "name" => owner,
-          "type" => type,
-          "ttl" => ttl,
-          "values" => values
-        }
-      ]
+      {:ok,
+       %{
+         "view_name" => view_name,
+         "zone_name" => zone_name,
+         "record_id" => record_id(owner, type),
+         "name" => owner,
+         "type" => type,
+         "ttl" => ttl,
+         "values" => values
+       }}
     else
-      _invalid -> []
+      _invalid -> invalid_error()
     end
   end
-
-  defp project_record(_record, _view_name, _zone_name), do: []
 
   for {store, wire} <- [
         a: "A",
@@ -351,17 +367,21 @@ defmodule YellowDog.Server.Control.Dns do
   defp wire_record_type(_type), do: :error
   defp validate_wire_record_type(_type), do: invalid_error()
 
-  defp record_ttl(record, [first | _rest]) do
-    value = field(first, :ttl, field(record, :ttl, field(record_data(first), :ttl, 0)))
+  defp record_ttl(rrset) do
+    Enum.reduce_while(rrset, {:ok, nil}, fn entry, {:ok, expected_ttl} ->
+      ttl = field(entry, :ttl, field(record_data(entry), :ttl, :missing))
 
-    if is_integer(value) and value in 0..2_147_483_647,
-      do: {:ok, value},
-      else: :error
-  end
-
-  defp record_ttl(record, []) do
-    value = field(record, :ttl, 0)
-    if is_integer(value) and value in 0..2_147_483_647, do: {:ok, value}, else: :error
+      cond do
+        not is_integer(ttl) or ttl not in 0..2_147_483_647 -> {:halt, :error}
+        is_nil(expected_ttl) -> {:cont, {:ok, ttl}}
+        ttl == expected_ttl -> {:cont, {:ok, expected_ttl}}
+        true -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, ttl} when is_integer(ttl) -> {:ok, ttl}
+      _invalid -> :error
+    end
   end
 
   defp record_values(type, rrset) do
@@ -568,38 +588,73 @@ defmodule YellowDog.Server.Control.Dns do
       true ->
         with {:ok, action} <- wire_acl_action(field(acl, :action, :deny)),
              networks when is_list(networks) <- field(acl, :networks, []),
-             true <- Enum.all?(networks, &is_binary/1) do
-          {:ok, action, networks |> Enum.uniq() |> Enum.sort()}
+             {:ok, networks} <- bounded_list(networks, @max_acl_networks),
+             {:ok, networks} <- canonical_acl_networks(networks) do
+          {:ok, action, networks}
         else
+          {:error, %Error{}} = error -> error
+          {:error, :too_large} -> unsupported_error()
           _invalid -> invalid_error()
         end
     end
   end
 
   defp acl_rule_fields(rules) do
-    rules
-    |> Enum.reduce_while({:ok, []}, fn rule, {:ok, entries} ->
-      case acl_rule_field(rule) do
-        {:ok, entry} -> {:cont, {:ok, [entry | entries]}}
-        {:error, %Error{}} = error -> {:halt, error}
+    with {:ok, rules} <- bounded_list(rules, @max_acl_networks) do
+      rules
+      |> Enum.reduce_while({:ok, []}, fn rule, {:ok, entries} ->
+        case acl_rule_field(rule) do
+          {:ok, entry} -> {:cont, {:ok, [entry | entries]}}
+          {:error, %Error{}} = error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, entries} -> homogeneous_acl_fields(entries)
+        {:error, %Error{}} = error -> error
       end
-    end)
-    |> case do
-      {:ok, entries} -> homogeneous_acl_fields(entries)
-      {:error, %Error{}} = error -> error
+    else
+      {:error, :too_large} -> unsupported_error()
     end
   end
 
   defp acl_rule_field(rule) do
     if is_nil(field(rule, :geo_countries)) do
       case {wire_acl_action(field(rule, :action)), field(rule, :network)} do
-        {{:ok, action}, network} when is_binary(network) -> {:ok, {action, network}}
-        _unrepresentable -> unsupported_error()
+        {{:ok, action}, network} when is_binary(network) ->
+          with {:ok, network} <- canonical_acl_network(network), do: {:ok, {action, network}}
+
+        _unrepresentable ->
+          unsupported_error()
       end
     else
       unsupported_error()
     end
   end
+
+  defp canonical_acl_networks(networks) do
+    networks
+    |> Enum.reduce_while({:ok, []}, fn network, {:ok, canonical} ->
+      case canonical_acl_network(network) do
+        {:ok, cidr} -> {:cont, {:ok, [cidr | canonical]}}
+        {:error, %Error{}} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, canonical} -> {:ok, canonical |> Enum.uniq() |> Enum.sort()}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp canonical_acl_network(network) when is_binary(network) do
+    case dependency_call(:acl_codec, :canonical_cidr, [network]) do
+      {:ok, {:ok, canonical}} when is_binary(canonical) -> {:ok, canonical}
+      {:ok, {:error, :invalid_cidr}} -> invalid_error()
+      {:error, %Error{}} = error -> error
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp canonical_acl_network(_network), do: invalid_error()
 
   defp homogeneous_acl_fields(entries) do
     case entries |> Enum.map(&elem(&1, 0)) |> Enum.uniq() do
@@ -840,6 +895,14 @@ defmodule YellowDog.Server.Control.Dns do
     |> Enum.sort_by(id_fun)
     |> Enum.take(Bounds.max_list_entries())
   end
+
+  defp bounded_list(values, maximum), do: take_bounded(values, maximum, [])
+
+  defp take_bounded([], _remaining, values), do: {:ok, Enum.reverse(values)}
+  defp take_bounded([_value | _rest], 0, _values), do: {:error, :too_large}
+
+  defp take_bounded([value | rest], remaining, values),
+    do: take_bounded(rest, remaining - 1, [value | values])
 
   defp unwrap_store_list({:ok, items}) when is_list(items), do: {:ok, items}
   defp unwrap_store_list({:error, :not_found}), do: not_found_error()

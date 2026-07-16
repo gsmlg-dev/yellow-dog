@@ -329,9 +329,8 @@ defmodule YellowDog.Dns.QueryLogger do
   def handle_call({:control_snapshot, view}, _from, state) do
     entries =
       state.buffer
-      |> buffer_newest_first()
+      |> buffer_newest(@max_control_snapshot_entries)
       |> Enum.filter(fn entry -> entry.view == view end)
-      |> Enum.take(@max_control_snapshot_entries)
 
     {:reply, entries, state}
   end
@@ -380,6 +379,17 @@ defmodule YellowDog.Dns.QueryLogger do
 
   defp buffer_newest_first(buffer) do
     buffer |> :queue.to_list() |> Enum.reverse()
+  end
+
+  defp buffer_newest(buffer, limit), do: take_newest(buffer, limit, [])
+
+  defp take_newest(_buffer, 0, entries), do: Enum.reverse(entries)
+
+  defp take_newest(buffer, remaining, entries) do
+    case :queue.out_r(buffer) do
+      {{:value, entry}, rest} -> take_newest(rest, remaining - 1, [entry | entries])
+      {:empty, _buffer} -> Enum.reverse(entries)
+    end
   end
 
   defp build_entry(attrs) do

@@ -258,6 +258,26 @@ defmodule YellowDog.Dns.QueryLoggerTest do
 
       GenServer.stop(pid)
     end
+
+    test "filters only within the newest fixed global control window" do
+      name = :"ql_control_window_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid} = QueryLogger.start_link(name: name, buffer_size: 1_100)
+
+      QueryLogger.log_query(pid, %{view: "older", qname: "outside.example", qtype: :a})
+
+      for index <- 1..1_000 do
+        QueryLogger.log_query(pid, %{
+          view: "recent",
+          qname: "recent#{index}.example",
+          qtype: :a
+        })
+      end
+
+      assert QueryLogger.control_snapshot(pid, "older") == []
+      assert length(QueryLogger.control_snapshot(pid, "recent")) == 1_000
+
+      GenServer.stop(pid)
+    end
   end
 
   describe "get_logs_by_qname/3" do

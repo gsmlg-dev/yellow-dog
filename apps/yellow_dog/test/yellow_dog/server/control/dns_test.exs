@@ -45,6 +45,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       view_manager: ServerDnsControlFake.ViewManager,
       zone_store: ServerDnsControlFake.ZoneStore,
       acl_registry: ServerDnsControlFake.AclRegistry,
+      acl_codec: ServerDnsControlFake.AclCodec,
       provider_store: ServerDnsControlFake.ProviderStore,
       query_logger: ServerDnsControlFake.QueryLogger,
       metrics_collector: ServerDnsControlFake.MetricsCollector,
@@ -341,6 +342,58 @@ defmodule YellowDog.Server.Control.DnsTest do
     end
   end
 
+  test "canonicalizes rule and legacy ACL networks before revision and current snapshots" do
+    rules_acl = %{
+      name: "rules",
+      rules: [
+        %{action: "allow", network: "2001:0db8:0000:0000:0000:0000:0000:1234/32"},
+        %{action: "allow", network: "10.1.2.3/8"},
+        %{action: "allow", network: "10.0.0.0/8"}
+      ]
+    }
+
+    legacy_acl = %{
+      name: "legacy",
+      action: :deny,
+      networks: ["2001:0db8:0000:0000:0000:0000:0000:0001/48", "192.0.2.99/24"]
+    }
+
+    ServerDnsControlFake.configure(%{acls: [rules_acl, legacy_acl]})
+
+    assert {:ok, first} = Dns.dispatch("server.dns.acls.list", %{})
+
+    assert first["items"] == [
+             %{
+               "acl_id" => "legacy",
+               "action" => "deny",
+               "networks" => ["192.0.2.0/24", "2001:db8::/48"]
+             },
+             %{
+               "acl_id" => "rules",
+               "action" => "allow",
+               "networks" => ["10.0.0.0/8", "2001:db8::/32"]
+             }
+           ]
+
+    assert {:ok, Enum.at(first["items"], 0)} ==
+             Dns.current("server.dns.acls.update", %{"acl_id" => "legacy"})
+
+    assert {:ok, Enum.at(first["items"], 1)} ==
+             Dns.current("server.dns.acls.update", %{"acl_id" => "rules"})
+
+    ServerDnsControlFake.configure(%{
+      acls: [
+        %{legacy_acl | networks: Enum.reverse(legacy_acl.networks)},
+        %{rules_acl | rules: Enum.reverse(rules_acl.rules)}
+      ]
+    })
+
+    assert {:ok, reversed} = Dns.dispatch("server.dns.acls.list", %{})
+    assert reversed["items"] == first["items"]
+    assert reversed["revision"] == first["revision"]
+    assert_valid_result("server.dns.acls.list", reversed)
+  end
+
   test "projects query logs and metrics through their read facades" do
     ServerDnsControlFake.configure(%{
       logs: [
@@ -461,7 +514,7 @@ defmodule YellowDog.Server.Control.DnsTest do
 
   test "list results are bounded, cursor-aware, deterministic, and clock-testable" do
     views =
-      for index <- 0..1_004 do
+      for index <- 0..999 do
         {"view-#{index |> Integer.to_string() |> String.pad_leading(4, "0")}", self(), index}
       end
 
@@ -484,7 +537,7 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert later["revision"] == first["revision"]
   end
 
-  test "sorts RRset values before calculating the collection revision" do
+  test "sorts RRset values and derives an order-independent equal TTL" do
     first = %{
       owner: "www",
       type: :a,
@@ -514,7 +567,64 @@ defmodule YellowDog.Server.Control.DnsTest do
              })
 
     assert hd(unsorted["items"])["values"] == ["192.0.2.1", "192.0.2.2"]
+    assert hd(unsorted["items"])["ttl"] == 60
+    assert unsorted["items"] == reversed["items"]
     assert unsorted["revision"] == reversed["revision"]
+  end
+
+  test "rejects unequal RRset TTLs in either entry order" do
+    rrset = [%{rdata: {192, 0, 2, 1}, ttl: 60}, %{rdata: {192, 0, 2, 2}, ttl: 120}]
+
+    for entries <- [rrset, Enum.reverse(rrset)] do
+      ServerDnsControlFake.configure(%{
+        records: %{
+          {"default", "example.test"} => {:ok, [%{owner: "www", type: :a, rrset: entries}]}
+        }
+      })
+
+      assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} =
+               Dns.dispatch("server.dns.records.list", %{
+                 "view_name" => "default",
+                 "zone_name" => "example.test"
+               })
+    end
+  end
+
+  test "rejects missing and partially specified RRset TTLs in either entry order" do
+    partial = [%{rdata: {192, 0, 2, 1}, ttl: 60}, %{rdata: {192, 0, 2, 2}}]
+    missing = [%{rdata: {192, 0, 2, 1}}, %{rdata: {192, 0, 2, 2}}]
+
+    for entries <- [partial, Enum.reverse(partial), missing, Enum.reverse(missing)] do
+      ServerDnsControlFake.configure(%{
+        records: %{
+          {"default", "example.test"} =>
+            {:ok, [%{owner: "www", type: :a, ttl: 60, rrset: entries}]}
+        }
+      })
+
+      assert {:error, %Error{code: :invalid}} =
+               Dns.dispatch("server.dns.records.list", %{
+                 "view_name" => "default",
+                 "zone_name" => "example.test"
+               })
+    end
+  end
+
+  test "rejects invalid RRset TTL values" do
+    for ttl <- [-1, 2_147_483_648, "60", nil] do
+      ServerDnsControlFake.configure(%{
+        records: %{
+          {"default", "example.test"} =>
+            {:ok, [%{owner: "www", type: :a, rrset: [%{rdata: {192, 0, 2, 1}, ttl: ttl}]}]}
+        }
+      })
+
+      assert {:error, %Error{code: :invalid}} =
+               Dns.dispatch("server.dns.records.list", %{
+                 "view_name" => "default",
+                 "zone_name" => "example.test"
+               })
+    end
   end
 
   test "validates projected reads and current snapshots before returning ok" do
@@ -748,6 +858,11 @@ defmodule YellowDog.Server.Control.DnsTest do
 
     assert {:error, %Error{code: :apply_failed, message: "apply failed", details: %{}}} =
              Dns.dispatch("server.dns.zones.list", %{"view_name" => "default"})
+
+    ServerDnsControlFake.configure(%{views: {:error, :control_snapshot_too_large}})
+
+    assert {:error, %Error{code: :unsupported, message: "unsupported operation", details: %{}}} =
+             Dns.dispatch("server.dns.views.list", %{})
   end
 
   test "mutation dispatch and unknown names are unsupported before dependency calls" do
