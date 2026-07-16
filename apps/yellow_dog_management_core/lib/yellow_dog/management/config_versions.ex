@@ -102,7 +102,7 @@ defmodule YellowDog.Management.ConfigVersions do
              DateTime.utc_now(:second),
              previous
            ),
-         {:ok, version_path} <- version_path(version),
+         {:ok, version_path} <- version_path(version, config.root),
          {:ok, ^version_path} <-
            create_immutable(
              version_path,
@@ -204,7 +204,7 @@ defmodule YellowDog.Management.ConfigVersions do
   end
 
   defp load_target(target_type, target_id, config) do
-    with {:ok, manifest_path} <- manifest_path(target_type, target_id),
+    with {:ok, manifest_path} <- manifest_path(config.root, target_type, target_id),
          {:ok, manifest} <- read_manifest(manifest_path, config),
          raw_section = Map.get(manifest, "config_lifecycle"),
          {:ok, lifecycle} <- decode_lifecycle(raw_section),
@@ -214,6 +214,7 @@ defmodule YellowDog.Management.ConfigVersions do
        %{
          target_type: target_type,
          target_id: target_id,
+         root: config.root,
          manifest_path: manifest_path,
          raw_section: raw_section,
          lifecycle: lifecycle,
@@ -272,12 +273,14 @@ defmodule YellowDog.Management.ConfigVersions do
       version = String.to_integer(key)
 
       with {:ok, digest} <- Digest.validate(state["digest"]),
-           {:ok, path} <- storage_version_path(target_type, target_id, version, digest),
+           {:ok, path} <-
+             storage_version_path(config.root, target_type, target_id, version, digest),
            {:ok, immutable} <- AtomicJson.read(path, config.file_ops),
            {:ok, config_version} <-
-             ConfigVersion.decode(immutable, state, target_type, target_id, path) do
+             ConfigVersion.decode(immutable, state, target_type, target_id, path, config.root) do
         {:cont, {:ok, Map.put(versions, version, config_version)}}
       else
+        {:error, %Error{code: :internal}} = error -> {:halt, error}
         _invalid -> {:halt, invalid()}
       end
     end)
@@ -306,7 +309,7 @@ defmodule YellowDog.Management.ConfigVersions do
   end
 
   defp next_version(target) do
-    with {:ok, versions_dir} <- versions_path(target.target_type, target.target_id),
+    with {:ok, versions_dir} <- versions_path(target.root, target.target_type, target.target_id),
          {:ok, filename_max} <- highest_filename_version(versions_dir),
          current <- max(filename_max, target.lifecycle["counter"]),
          true <- current < @max_version do
@@ -690,21 +693,22 @@ defmodule YellowDog.Management.ConfigVersions do
   defp rollback_value(nil, _key), do: nil
   defp rollback_value(rollback, key), do: rollback[key]
 
-  defp manifest_path(:server, target_id), do: StoragePath.server_manifest(target_id)
-  defp manifest_path(:netman, target_id), do: StoragePath.netman_manifest(target_id)
+  defp manifest_path(root, :server, target_id), do: StoragePath.server_manifest(root, target_id)
+  defp manifest_path(root, :netman, target_id), do: StoragePath.netman_manifest(root, target_id)
 
-  defp versions_path(:server, target_id), do: StoragePath.server_versions(target_id)
-  defp versions_path(:netman, target_id), do: StoragePath.netman_versions(target_id)
+  defp versions_path(root, :server, target_id), do: StoragePath.server_versions(root, target_id)
+  defp versions_path(root, :netman, target_id), do: StoragePath.netman_versions(root, target_id)
 
-  defp storage_version_path(:server, target_id, version, digest),
-    do: StoragePath.server_version(target_id, version, digest)
+  defp storage_version_path(root, :server, target_id, version, digest),
+    do: StoragePath.server_version(root, target_id, version, digest)
 
-  defp storage_version_path(:netman, target_id, version, digest),
-    do: StoragePath.netman_version(target_id, version, digest)
+  defp storage_version_path(root, :netman, target_id, version, digest),
+    do: StoragePath.netman_version(root, target_id, version, digest)
 
-  defp version_path(version),
+  defp version_path(version, root),
     do:
       storage_version_path(
+        root,
         version.target_type,
         version.target_id,
         version.version,

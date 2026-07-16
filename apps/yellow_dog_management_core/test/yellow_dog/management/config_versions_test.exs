@@ -23,8 +23,10 @@ defmodule YellowDog.Management.ConfigVersionsTest do
         [
           :data_dir,
           :atomic_json_file_ops,
+          :block_config_manifest_replace,
           :config_version_file_ops_owner,
-          :fail_config_manifest_write
+          :fail_config_manifest_write,
+          :manifest_replace_file_ops_owner
         ],
         fn key ->
           {key, Application.fetch_env(:yellow_dog_management_core, key)}
@@ -39,8 +41,10 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
     Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
+    Application.delete_env(:yellow_dog_management_core, :block_config_manifest_replace)
     Application.delete_env(:yellow_dog_management_core, :config_version_file_ops_owner)
     Application.delete_env(:yellow_dog_management_core, :fail_config_manifest_write)
+    Application.delete_env(:yellow_dog_management_core, :manifest_replace_file_ops_owner)
     restart_application()
 
     on_exit(fn ->
@@ -433,6 +437,58 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_error(ManagementCore.latest_desired_config(:server, "srv-restart"), :not_found)
   end
 
+  test "queued publish keeps its captured storage root for writes and decode identity", %{
+    data_dir: root_a
+  } do
+    assert_error(StoragePath.server_manifest(nil, "srv-root-drift"), :internal)
+    assert_error(StoragePath.server_versions("", "srv-root-drift"), :internal)
+
+    assert {:ok, captured_root} = StoragePath.root()
+    assert_error(StoragePath.server_manifest(captured_root, "../root-drift"), :invalid)
+
+    register_server("srv-root-drift")
+
+    root_b =
+      Path.join(
+        System.tmp_dir!(),
+        "yellow-dog-config-versions-root-b-#{System.unique_integer([:positive])}"
+      )
+
+    on_exit(fn -> File.rm_rf(root_b) end)
+
+    config_versions = Process.whereis(ConfigVersions)
+    :ok = :sys.suspend(config_versions)
+
+    publish_result =
+      try do
+        publish_task = Task.async(fn -> publish_server("srv-root-drift") end)
+        assert_config_version_calls_queued(config_versions, 1)
+        Application.put_env(:yellow_dog_management_core, :data_dir, root_b)
+        :ok = :sys.resume(config_versions)
+        Task.await(publish_task, 1_000)
+      after
+        safe_resume(config_versions)
+      end
+
+    assert {:ok, published} = publish_result
+
+    assert {:ok, decoded} =
+             ManagementCore.get_server_config_version("srv-root-drift", published.version)
+
+    assert decoded == published
+
+    manifest_a =
+      Path.join([root_a, "management", "servers", "srv-root-drift", "manifest.json"])
+
+    versions_a =
+      Path.join([root_a, "management", "servers", "srv-root-drift", "versions"])
+
+    assert {:ok, manifest} = AtomicJson.read(manifest_a)
+    assert manifest["config_lifecycle"]["desired_version"] == published.version
+    assert [_version_path] = Path.wildcard(Path.join(versions_a, "*.json"))
+    refute File.exists?(Path.join(root_b, "management"))
+  end
+
   test "expired queued publications and transitions do not run after ConfigVersions resumes", %{
     data_dir: data_dir
   } do
@@ -516,6 +572,62 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       Path.join([data_dir, "management", "servers", "srv-expired-immutable", "versions"])
 
     assert [^version_path] = Path.wildcard(Path.join(versions_dir, "*.json"))
+  end
+
+  test "deadline after manifest replacement restores the exact previous lifecycle", %{
+    data_dir: data_dir
+  } do
+    register_server("srv-manifest-deadline")
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-manifest-deadline")
+    assert {:ok, previous_manifest} = AtomicJson.read(manifest_path)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :manifest_replace_file_ops_owner,
+      self()
+    )
+
+    Application.put_env(:yellow_dog_management_core, :block_config_manifest_replace, true)
+
+    install_event_store_config(
+      file_ops: __MODULE__.BlockingManifestReplaceFileOps,
+      operation_timeout_ms: 1_000,
+      transport_margin_ms: 250
+    )
+
+    config_versions = Process.whereis(ConfigVersions)
+    :ok = :sys.suspend(config_versions)
+
+    {publish_task, request_deadline} =
+      try do
+        task = Task.async(fn -> publish_server("srv-manifest-deadline") end)
+        deadline = queued_config_version_deadline(config_versions)
+        :ok = :sys.resume(config_versions)
+        {task, deadline}
+      after
+        safe_resume(config_versions)
+      end
+
+    assert_receive {:config_manifest_replaced, writer, ^manifest_path, committed_contents}, 2_000
+    assert {:ok, replaced_manifest} = Jason.decode(committed_contents)
+    assert replaced_manifest["config_lifecycle"]["desired_version"] == 1
+
+    await_deadline(request_deadline)
+    send(writer, :release_config_manifest_replace)
+    assert_error(Task.await(publish_task, 3_000), :timeout)
+    :sys.get_state(ManifestStore)
+    :sys.get_state(config_versions)
+
+    assert {:ok, ^previous_manifest} = AtomicJson.read(manifest_path)
+    refute Map.has_key?(previous_manifest, "config_lifecycle")
+
+    versions_dir =
+      Path.join([data_dir, "management", "servers", "srv-manifest-deadline", "versions"])
+
+    assert [orphan_path] = Path.wildcard(Path.join(versions_dir, "*.json"))
+    assert Path.basename(orphan_path) =~ ~r/^1-/
+
+    assert {:ok, %ConfigVersion{version: 2}} = publish_server("srv-manifest-deadline")
   end
 
   test "reserves orphan filenames, ignores malformed temporary files, and rejects max overflow",
@@ -863,6 +975,53 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     end
   end
 
+  defp queued_config_version_deadline(config_versions) do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+    queued_config_version_deadline(config_versions, deadline)
+  end
+
+  defp queued_config_version_deadline(config_versions, wait_deadline) do
+    {:messages, messages} = Process.info(config_versions, :messages)
+
+    request_deadline =
+      Enum.find_value(messages, fn
+        {:"$gen_call", _from, {{:publish, _target_type, _target_id, _attrs}, deadline, _config}} ->
+          deadline
+
+        _message ->
+          nil
+      end)
+
+    cond do
+      is_integer(request_deadline) ->
+        request_deadline
+
+      System.monotonic_time(:millisecond) < wait_deadline ->
+        receive do
+        after
+          1 -> queued_config_version_deadline(config_versions, wait_deadline)
+        end
+
+      true ->
+        flunk("expected a queued ConfigVersions publish call")
+    end
+  end
+
+  defp await_deadline(deadline) do
+    if System.monotonic_time(:millisecond) < deadline do
+      receive do
+      after
+        1 -> await_deadline(deadline)
+      end
+    end
+  end
+
+  defp safe_resume(process) do
+    :sys.resume(process)
+  catch
+    :exit, _reason -> :ok
+  end
+
   defp install_pending_audit(manifest_path, source_id) do
     {deadline, config} = EventStore.operation()
 
@@ -980,6 +1139,56 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
       receive do
         :release_immutable_write -> :ok
+      end
+    end
+  end
+
+  defmodule BlockingManifestReplaceFileOps do
+    @moduledoc false
+
+    def read(path), do: File.read(path)
+    def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
+    def write(device, contents), do: :file.write(device, contents)
+    def sync(device), do: :file.sync(device)
+    def close(device), do: :file.close(device)
+    def link(source, target), do: :file.make_link(source, target)
+    def rm(path), do: File.rm(path)
+
+    def rename(source, target) do
+      case :file.rename(source, target) do
+        :ok ->
+          maybe_block_manifest_replace(target)
+          :ok
+
+        error ->
+          error
+      end
+    end
+
+    defp maybe_block_manifest_replace(target) do
+      block? =
+        Path.basename(target) == "manifest.json" and
+          Application.get_env(
+            :yellow_dog_management_core,
+            :block_config_manifest_replace,
+            false
+          )
+
+      if block? do
+        Application.put_env(:yellow_dog_management_core, :block_config_manifest_replace, false)
+
+        owner =
+          Application.fetch_env!(
+            :yellow_dog_management_core,
+            :manifest_replace_file_ops_owner
+          )
+
+        {:ok, committed_contents} = File.read(target)
+        send(owner, {:config_manifest_replaced, self(), target, committed_contents})
+
+        receive do
+          :release_config_manifest_replace -> :ok
+        end
       end
     end
   end

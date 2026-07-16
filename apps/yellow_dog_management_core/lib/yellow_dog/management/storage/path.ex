@@ -33,22 +33,48 @@ defmodule YellowDog.Management.Storage.Path do
   @spec server_manifest(term()) :: result()
   def server_manifest(server_id), do: manifest("servers", server_id)
 
+  @doc false
+  @spec server_manifest(term(), term()) :: result()
+  def server_manifest(root, server_id), do: manifest(root, "servers", server_id)
+
   @spec server_version(term(), term(), term()) :: result()
   def server_version(server_id, version, digest),
     do: version("servers", server_id, version, digest)
 
+  @doc false
+  @spec server_version(term(), term(), term(), term()) :: result()
+  def server_version(root, server_id, version, digest),
+    do: version(root, "servers", server_id, version, digest)
+
   @spec server_versions(term()) :: result()
   def server_versions(server_id), do: versions("servers", server_id)
 
+  @doc false
+  @spec server_versions(term(), term()) :: result()
+  def server_versions(root, server_id), do: versions(root, "servers", server_id)
+
   @spec netman_manifest(term()) :: result()
   def netman_manifest(netman_id), do: manifest("netmans", netman_id)
+
+  @doc false
+  @spec netman_manifest(term(), term()) :: result()
+  def netman_manifest(root, netman_id), do: manifest(root, "netmans", netman_id)
 
   @spec netman_version(term(), term(), term()) :: result()
   def netman_version(netman_id, version, digest),
     do: version("netmans", netman_id, version, digest)
 
+  @doc false
+  @spec netman_version(term(), term(), term(), term()) :: result()
+  def netman_version(root, netman_id, version, digest),
+    do: version(root, "netmans", netman_id, version, digest)
+
   @spec netman_versions(term()) :: result()
   def netman_versions(netman_id), do: versions("netmans", netman_id)
+
+  @doc false
+  @spec netman_versions(term(), term()) :: result()
+  def netman_versions(root, netman_id), do: versions(root, "netmans", netman_id)
 
   @spec command(term()) :: result()
   def command(request_id) do
@@ -87,11 +113,34 @@ defmodule YellowDog.Management.Storage.Path do
     end
   end
 
+  defp manifest(root, target_directory, target_id) do
+    with {:ok, target_id} <- identifier(target_id),
+         {:ok, root} <- captured_root(root) do
+      {:ok, Path.join([root, target_directory, target_id, "manifest.json"])}
+    end
+  end
+
   defp version(target_directory, target_id, version, digest) do
     with {:ok, target_id} <- identifier(target_id),
          {:ok, version} <- version_number(version),
          {:ok, digest} <- Digest.validate(digest),
          {:ok, root} <- root() do
+      {:ok,
+       Path.join([
+         root,
+         target_directory,
+         target_id,
+         "versions",
+         "#{version}-#{digest}.json"
+       ])}
+    end
+  end
+
+  defp version(root, target_directory, target_id, version, digest) do
+    with {:ok, target_id} <- identifier(target_id),
+         {:ok, version} <- version_number(version),
+         {:ok, digest} <- Digest.validate(digest),
+         {:ok, root} <- captured_root(root) do
       {:ok,
        Path.join([
          root,
@@ -109,6 +158,16 @@ defmodule YellowDog.Management.Storage.Path do
       {:ok, Path.join([root, target_directory, target_id, "versions"])}
     end
   end
+
+  defp versions(root, target_directory, target_id) do
+    with {:ok, target_id} <- identifier(target_id),
+         {:ok, root} <- captured_root(root) do
+      {:ok, Path.join([root, target_directory, target_id, "versions"])}
+    end
+  end
+
+  defp captured_root(root) when is_binary(root) and root != "", do: {:ok, root}
+  defp captured_root(_root), do: internal()
 
   defp snapshot(target_directory, target_id, domain) do
     with {:ok, target_id} <- identifier(target_id),

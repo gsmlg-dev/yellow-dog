@@ -206,6 +206,25 @@ defmodule YellowDog.Management.ConfigVersion do
           {:ok, t()} | {:error, Error.t()}
   def decode(immutable, lifecycle, expected_type, expected_id, path)
       when is_map(immutable) and is_map(lifecycle) and is_binary(path) do
+    decode_with_path(immutable, lifecycle, expected_type, expected_id, path, &storage_path/4)
+  end
+
+  def decode(_immutable, _lifecycle, _expected_type, _expected_id, _path), do: invalid()
+
+  @doc false
+  @spec decode(map(), map(), target_type(), String.t(), Path.t(), term()) ::
+          {:ok, t()} | {:error, Error.t()}
+  def decode(immutable, lifecycle, expected_type, expected_id, path, root)
+      when is_map(immutable) and is_map(lifecycle) and is_binary(path) do
+    decode_with_path(immutable, lifecycle, expected_type, expected_id, path, fn
+      target_type, target_id, version, digest ->
+        storage_path(root, target_type, target_id, version, digest)
+    end)
+  end
+
+  def decode(_immutable, _lifecycle, _expected_type, _expected_id, _path, _root), do: invalid()
+
+  defp decode_with_path(immutable, lifecycle, expected_type, expected_id, path, path_builder) do
     with true <- Enum.sort(Map.keys(immutable)) == @immutable_keys,
          true <- Enum.sort(Map.keys(lifecycle)) == @lifecycle_keys,
          1 <- immutable["schema_version"],
@@ -222,7 +241,7 @@ defmodule YellowDog.Management.ConfigVersion do
          true <- lifecycle["digest"] == digest,
          {:ok, expected_revision} <- optional_digest(immutable["expected_revision"]),
          {:ok, published_at} <- utc_datetime(immutable["published_at"]),
-         {:ok, expected_path} <- storage_path(target_type, target_id, version, digest),
+         {:ok, expected_path} <- path_builder.(target_type, target_id, version, digest),
          true <- expected_path == path,
          {:ok, decoded_lifecycle} <- decode_lifecycle(lifecycle, version),
          true <- expected_revision == decoded_lifecycle.previous_revision do
@@ -246,8 +265,6 @@ defmodule YellowDog.Management.ConfigVersion do
       _invalid -> invalid()
     end
   end
-
-  def decode(_immutable, _lifecycle, _expected_type, _expected_id, _path), do: invalid()
 
   defp decode_lifecycle(value, version) do
     with {:ok, state} <- enum(value["state"], @states),
@@ -628,6 +645,12 @@ defmodule YellowDog.Management.ConfigVersion do
 
   defp storage_path(:netman, target_id, version, digest),
     do: StoragePath.netman_version(target_id, version, digest)
+
+  defp storage_path(root, :server, target_id, version, digest),
+    do: StoragePath.server_version(root, target_id, version, digest)
+
+  defp storage_path(root, :netman, target_id, version, digest),
+    do: StoragePath.netman_version(root, target_id, version, digest)
 
   defp encode_datetime(nil), do: nil
   defp encode_datetime(%DateTime{} = value), do: DateTime.to_iso8601(value)
