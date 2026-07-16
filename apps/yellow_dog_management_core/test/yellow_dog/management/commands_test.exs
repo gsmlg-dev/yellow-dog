@@ -12,6 +12,7 @@ defmodule YellowDog.Management.CommandsTest do
   @key_b "22222222-2222-4222-8222-222222222222"
   @key_c "33333333-3333-4333-8333-333333333333"
   @key_d "55555555-5555-4555-8555-555555555555"
+  @key_e "66666666-6666-4666-8666-666666666666"
   @revision_a String.duplicate("a", 64)
   @revision_b String.duplicate("b", 64)
 
@@ -806,6 +807,102 @@ defmodule YellowDog.Management.CommandsTest do
     end)
 
     assert length(FakeTransport.recorded()) == 2
+  end
+
+  test "reserved metadata in non-timeout transport errors becomes durable unknown", %{
+    data_dir: data_dir
+  } do
+    target_id = "server-reserved-transport-error"
+    register_server(target_id)
+    :ok = FakeTransport.connect(:server, target_id)
+
+    cases = [
+      {@key_a, %{"outcome" => "failed"}},
+      {@key_b, %{"reason" => "management_restart"}},
+      {@key_c, %{"request_id" => "ffffffff-ffff-4fff-8fff-ffffffffffff"}},
+      {@key_d,
+       %{
+         "outcome" => "completed",
+         "reason" => "other",
+         "request_id" => "ffffffff-ffff-4fff-8fff-ffffffffffff"
+       }}
+    ]
+
+    :ok =
+      FakeTransport.script(
+        Enum.map(cases, fn {_idempotency_key, details} ->
+          {:error, Error.new(:internal, "runtime command failed", details)}
+        end)
+      )
+
+    outcomes =
+      cases
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{idempotency_key, _details}, count} ->
+        args = [
+          target_id,
+          "server.runtime.services.start",
+          %{"service" => "dns"},
+          nil,
+          idempotency_key
+        ]
+
+        assert {:error,
+                %Error{
+                  code: :invalid,
+                  details:
+                    %{
+                      "outcome" => "unknown",
+                      "reason" => "malformed_transport",
+                      "request_id" => request_id
+                    } = details
+                } = error} = apply(ManagementCore, :command_server, args)
+
+        assert %{
+                 "state" => "unknown",
+                 "unknown_reason" => "malformed_transport",
+                 "error" => %{"details" => ^details}
+               } = unknown_document(data_dir, request_id)
+
+        assert {:ok, unresolved_ids} = Commands.unresolved_ids(:server, target_id)
+        assert request_id in unresolved_ids
+        assert length(FakeTransport.recorded()) == count
+        {args, error}
+      end)
+
+    restart_child(Commands)
+
+    Enum.each(outcomes, fn {args, error} ->
+      assert apply(ManagementCore, :command_server, args) == {:error, error}
+    end)
+
+    assert length(FakeTransport.recorded()) == length(cases)
+
+    ordinary_details = %{"context" => "runtime_failure"}
+    ordinary_error = Error.new(:internal, "runtime command failed", ordinary_details)
+    :ok = FakeTransport.script([{:error, ordinary_error}])
+
+    ordinary_args = [
+      target_id,
+      "server.runtime.services.start",
+      %{"service" => "dns"},
+      nil,
+      @key_e
+    ]
+
+    assert apply(ManagementCore, :command_server, ordinary_args) == {:error, ordinary_error}
+    ordinary_request = List.last(FakeTransport.recorded())
+
+    assert %{"error" => %{"details" => ^ordinary_details}} =
+             document_with_state(data_dir, ordinary_request.envelope.request_id, "failed")
+
+    assert {:ok, unresolved_ids} = Commands.unresolved_ids(:server, target_id)
+    refute ordinary_request.envelope.request_id in unresolved_ids
+
+    restart_child(Commands)
+
+    assert apply(ManagementCore, :command_server, ordinary_args) == {:error, ordinary_error}
+    assert length(FakeTransport.recorded()) == length(cases) + 1
   end
 
   test "live failed resolution rejects reserved unknown markers but accepts ordinary details", %{

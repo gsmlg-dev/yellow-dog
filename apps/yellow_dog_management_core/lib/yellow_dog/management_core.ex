@@ -25,6 +25,7 @@ defmodule YellowDog.ManagementCore do
   alias YellowDog.Sync.Operation
 
   @default_request_timeout 5_000
+  @reserved_unknown_metadata_keys ~w(outcome reason request_id)
 
   @doc "Lists registered managed server instances."
   def list_servers, do: Servers.list()
@@ -216,12 +217,12 @@ defmodule YellowDog.ManagementCore do
         resolve_unknown(request_id, error, "transport_not_connected")
 
       {:error, %Error{} = error} ->
-        case validate_transport_error(error) do
+        case validate_failed_transport_error(error) do
           {:ok, error} ->
             Commands.resolve(request_id, {:failed, error})
 
-          {:error, %Error{} = invalid_error} ->
-            resolve_unknown(request_id, invalid_error, "malformed_transport")
+          {:error, %Error{}} ->
+            resolve_unknown(request_id, malformed_transport_error(), "malformed_transport")
         end
 
       {:transport_failure, %Error{} = error} ->
@@ -337,6 +338,15 @@ defmodule YellowDog.ManagementCore do
       {:ok, error}
     else
       _invalid -> invalid("invalid runtime error")
+    end
+  end
+
+  defp validate_failed_transport_error(%Error{} = error) do
+    with {:ok, error} <- validate_transport_error(error),
+         false <- Enum.any?(@reserved_unknown_metadata_keys, &Map.has_key?(error.details, &1)) do
+      {:ok, error}
+    else
+      _invalid -> invalid("invalid runtime command error")
     end
   end
 
