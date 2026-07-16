@@ -14,6 +14,7 @@ defmodule YellowDog.Management.Servers do
   alias YellowDog.Management.Profiles
   alias YellowDog.Management.Server
   alias YellowDog.Management.Storage.Path, as: StoragePath
+  alias YellowDog.Sync.Error
 
   @default_max_records 1_000
   @registration_keys Enum.sort([
@@ -106,6 +107,7 @@ defmodule YellowDog.Management.Servers do
     end
   catch
     :exit, {:timeout, _reason} -> EventStore.timeout_result()
+    :exit, _reason -> internal_error()
   end
 
   @doc "Updates a registered server status."
@@ -143,6 +145,7 @@ defmodule YellowDog.Management.Servers do
     )
   catch
     :exit, {:timeout, _reason} -> EventStore.timeout_result()
+    :exit, _reason -> internal_error()
   end
 
   @doc false
@@ -265,6 +268,9 @@ defmodule YellowDog.Management.Servers do
   end
 
   defp decode_profile(_value), do: :error
+
+  defp internal_error,
+    do: {:error, Error.new(:internal, "server registration persistence failed", %{})}
 
   defp decode_flags(value, known_keys) when is_map(value) do
     known_by_name = Map.new(known_keys, &{Atom.to_string(&1), &1})

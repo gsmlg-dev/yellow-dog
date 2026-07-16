@@ -14,6 +14,7 @@ defmodule YellowDog.Management.Netmans do
   alias YellowDog.Management.Netman
   alias YellowDog.Management.Profiles
   alias YellowDog.Management.Storage.Path, as: StoragePath
+  alias YellowDog.Sync.Error
 
   @default_max_records 1_000
   @registration_keys Enum.sort([
@@ -107,6 +108,7 @@ defmodule YellowDog.Management.Netmans do
     end
   catch
     :exit, {:timeout, _reason} -> EventStore.timeout_result()
+    :exit, _reason -> internal_error()
   end
 
   @doc "Updates a registered Netman status."
@@ -144,6 +146,7 @@ defmodule YellowDog.Management.Netmans do
     )
   catch
     :exit, {:timeout, _reason} -> EventStore.timeout_result()
+    :exit, _reason -> internal_error()
   end
 
   @doc false
@@ -269,6 +272,9 @@ defmodule YellowDog.Management.Netmans do
   end
 
   defp decode_profile(_value), do: :error
+
+  defp internal_error,
+    do: {:error, Error.new(:internal, "Netman registration persistence failed", %{})}
 
   defp encode_apply_mode(nil), do: nil
   defp encode_apply_mode(mode), do: Atom.to_string(mode)

@@ -150,6 +150,7 @@ defmodule YellowDog.Management.ManifestStore do
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   def handle_info({:event_stage_result, _token, _result}, state), do: {:noreply, state}
+  def handle_info({:event_promote_result, _token, _result}, state), do: {:noreply, state}
 
   defp update_section_with(path, section, updater, after_write, deadline, %Config{} = config) do
     bounded_call(
@@ -325,28 +326,105 @@ defmodule YellowDog.Management.ManifestStore do
       cleanup_staging(reservation)
       EventStore.timeout_result()
     else
+      owner = self()
+      token = make_ref()
+
+      {worker_pid, monitor_ref} =
+        :erlang.spawn_opt(
+          fn ->
+            result = run_event_promotion(reservation, deadline)
+            send(owner, {:event_promote_result, token, result})
+          end,
+          [:link, :monitor]
+        )
+
+      await_event_promotion(worker_pid, monitor_ref, token, reservation, deadline)
+    end
+  end
+
+  defp run_event_promotion(reservation, deadline) do
+    with :ok <- ensure_before_deadline(deadline) do
       test_hook(reservation.config, :before_event_promote, %{reservation: reservation})
 
-      if deadline_expired?(deadline) do
-        cleanup_staging(reservation)
-        EventStore.timeout_result()
-      else
-        _promotion_result =
-          AtomicJson.promote(
-            reservation.staging_path,
-            reservation.final_path,
-            reservation.config.file_ops
-          )
-
-        if exact_final?(reservation) do
-          test_hook(reservation.config, :after_event_promote, %{reservation: reservation})
-          {:ok, reservation.event}
-        else
-          conflict_error()
-        end
+      with :ok <- ensure_before_deadline(deadline) do
+        AtomicJson.promote(
+          reservation.staging_path,
+          reservation.final_path,
+          reservation.config.file_ops
+        )
       end
     end
   end
+
+  defp await_event_promotion(worker_pid, monitor_ref, token, reservation, deadline) do
+    receive do
+      {:event_promote_result, ^token, result} ->
+        await_promotion_worker_down(worker_pid, monitor_ref, token)
+        reconcile_event_promotion(reservation, result)
+
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        result = take_promotion_result(token, internal_error())
+        flush_promotion_worker_messages(worker_pid, token)
+        reconcile_event_promotion(reservation, result)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_promotion_worker_down(worker_pid, monitor_ref, token)
+        result = take_promotion_result(token, internal_error())
+        reconcile_event_promotion(reservation, result)
+    after
+      max(deadline - monotonic_ms(), 0) ->
+        Process.exit(worker_pid, :kill)
+        await_promotion_worker_down(worker_pid, monitor_ref, token)
+        reconcile_event_promotion(reservation, EventStore.timeout_result())
+    end
+  end
+
+  defp await_promotion_worker_down(worker_pid, monitor_ref, token) do
+    receive do
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        flush_promotion_worker_messages(worker_pid, token)
+
+      {:event_promote_result, ^token, _result} ->
+        await_promotion_worker_down(worker_pid, monitor_ref, token)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_promotion_worker_down(worker_pid, monitor_ref, token)
+    end
+  end
+
+  defp take_promotion_result(token, fallback) do
+    receive do
+      {:event_promote_result, ^token, result} -> result
+    after
+      0 -> fallback
+    end
+  end
+
+  defp flush_promotion_worker_messages(worker_pid, token) do
+    receive do
+      {:EXIT, ^worker_pid, _reason} ->
+        flush_promotion_worker_messages(worker_pid, token)
+
+      {:event_promote_result, ^token, _result} ->
+        flush_promotion_worker_messages(worker_pid, token)
+    after
+      0 -> :ok
+    end
+  end
+
+  defp reconcile_event_promotion(reservation, result) do
+    cleanup_staging(reservation)
+
+    if exact_final?(reservation) do
+      test_hook(reservation.config, :after_event_promote, %{reservation: reservation})
+      {:ok, reservation.event}
+    else
+      promotion_failure(result)
+    end
+  end
+
+  defp promotion_failure({:error, %Error{}} = error), do: error
+  defp promotion_failure(_result), do: conflict_error()
 
   defp clear_outbox(path, registration, outbox, reservation, deadline) do
     with :ok <- ensure_before_deadline(deadline),

@@ -48,12 +48,15 @@ were made by Task 5.
   replacement. The marker records the exact tokenized event, digest, desired
   registration digest, and previous registration or absence. Registry startup
   reconciles this marker before decoding or exposing registration state.
-- ManifestStore owns event staging and promotion. A linked monitored worker
-  writes, syncs, and closes only the known same-directory `.stage` path.
-  ManifestStore then promotes with Linux same-filesystem `:file.make_link/2`,
-  which is atomic and no-clobber. Every promotion return, error, exit, or
-  exception is followed by a strict token, digest, and complete-content read of
-  the final path. Final paths are never deleted by cancellation or collision.
+- ManifestStore owns event staging and promotion through separate linked,
+  monitored workers. The staging worker writes, syncs, and closes only the
+  known same-directory `.stage` path. The promotion worker rechecks the shared
+  absolute deadline after the pre-link boundary and immediately before Linux
+  same-filesystem `:file.make_link/2`, which is atomic and no-clobber. On the
+  deadline ManifestStore kills the worker, waits for monitor `DOWN`, and then
+  reconciles every promotion return, error, exit, exception, or timeout through
+  a strict token, digest, and complete-content read of the final path. Final
+  paths are never deleted by cancellation or collision.
 - Exact final content commits the operation and permits clearing the outbox;
   absent or foreign content restores only the prior registration and clears
   the marker. Both paths re-read the current manifest so unrelated lifecycle
@@ -63,8 +66,16 @@ were made by Task 5.
 - `ManifestStore` converts operation timeouts into the stable `:timeout`
   persistence error and other exceptions, throws, and process exits into the
   stable `:internal` error. An unavailable or crashing `EventStore` therefore
-  does not terminate the manifest coordinator, concrete registry, or caller,
-  and rollback still runs.
+  does not terminate the manifest coordinator or caller, and rollback still
+  runs; supervised downstream registries are restarted and rebuilt from the
+  reconciled durable state.
+- The management supervisor uses the dependency order `ManifestStore`,
+  `EventStore`, `Servers`, `Netmans` with the default-intensity
+  `:rest_for_one` strategy. A store termination therefore restarts every
+  downstream concrete registry after storage recovery, and registry startup
+  reconciles pending outboxes before rebuilding memory. No custom restart
+  intensity is configured. Registry facade calls translate shutdown exits
+  during this recovery into the established stable internal persistence error.
 - `YellowDog.Management.EventStore` remains the global sequence/list owner,
   advances past occupied immutable filenames, and reconstructs allocation only
   from fully decoded tokenized records whose event identity matches the
@@ -347,14 +358,14 @@ The completed durability suite deterministically covers all ownership points:
 - kill ManifestStore after the registration+outbox atomic replace and before
   staging; restart reconciliation restores the previous registration and
   retains unrelated manifest sections;
-- kill ManifestStore while a fully synced staging worker is blocked; the linked
-  worker dies, the restarted store removes the stale stage, and no final event
-  is exposed;
+- kill a fully synced blocked staging worker; ManifestStore observes `DOWN`,
+  removes the uniquely owned stale stage, rolls back the outbox, and exposes no
+  final event;
 - kill ManifestStore after final promotion but before outbox clear; exact token
   and complete-content reconciliation returns coherent success and startup
   clears the marker while keeping registration;
-- kill ManifestStore after outbox clear but before reply; the enclosing caller
-  reads the exact final and committed registration and returns success;
+- pause after outbox clear before reply and prove the exact final, registration,
+  event list, and eventual facade result are already coherent;
 - write a foreign final with identical public fields and a different valid
   token; it is preserved, never treated as this attempt, and the next sequence
   succeeds;
@@ -378,6 +389,53 @@ regression: a suspended ManifestStore returned `:internal` after an exact-final
 check instead of preserving the transport `:timeout`. The focused regression
 then passed after exact-final reconciliation retained its original fallback
 code.
+
+## Fifth Review: Promotion Deadline and Recovery Ordering
+
+This review fix was developed after Task 5 commit `edff4f61`; no prior commit
+was amended.
+
+### RED 17: delayed promotion remained in ManifestStore
+
+A deterministic pre-link hook delayed promotion for 600 ms under a 100 ms
+operation deadline. The focused test failed because the hook PID was exactly
+the live ManifestStore PID. The facade caller returned its outer timeout while
+ManifestStore was still occupied, so the result was not the definitive outcome
+of worker termination, exact-final reconciliation, and outbox rollback.
+
+### RED 18: store restart did not recycle registries
+
+Two direct durable-commit probes killed ManifestStore after the atomic
+registration+outbox write and after exact final promotion. Both focused tests
+timed out waiting for EventStore replacement under the former `:one_for_one`
+strategy; Servers and Netmans likewise remained live with stale in-memory
+state. The focused RED command completed with exit `2`; `3 tests, 3 failures,
+26 excluded`.
+
+### GREEN: owned promotion and automatic reconciliation
+
+Promotion now runs in its own linked monitored worker under the operation's
+absolute deadline. The delayed pre-link hook runs in that worker; after the
+hook the worker rejects an expired request before calling the hard-link
+primitive. At the deadline ManifestStore kills the worker, waits for `DOWN`,
+checks the exact tokenized final for every outcome, and only then returns the
+timeout result and rolls back the registration outbox. The regression proves
+the worker and staging path are gone, ManifestStore is responsive, and no
+manifest or event appears after waiting longer than the injected delay.
+
+The supervisor now uses `:rest_for_one` with its normal default restart
+intensity. Killing ManifestStore automatically restarts EventStore, Servers,
+and Netmans in dependency order. The after-outbox test proves startup restores
+the previous registration; the after-promotion test proves startup keeps the
+new registration and exact event while clearing the marker. Both use facade
+reads after automatic recovery and perform no manual registry restart. The
+older staging and post-clear probes no longer kill a supervised store, keeping
+the suite to the three meaningful production child crashes covered by the
+default restart budget.
+
+The focused GREEN command completed with exit `0`; `3 tests, 0 failures,
+26 excluded`. The complete durability file then passed with `29 tests,
+0 failures`.
 
 ## Final Verification
 
@@ -406,7 +464,18 @@ devenv shell -- bash -lc \
   'cd apps/yellow_dog_management_core && mix test'
 ```
 
-Result: exit `0`; `53 tests, 0 failures`.
+Result: exit `0`; `54 tests, 0 failures`.
+
+Affected storage tests:
+
+```sh
+devenv shell -- bash -lc \
+  'cd apps/yellow_dog_management_core && \
+   mix test test/yellow_dog/management/storage/atomic_json_test.exs \
+     test/yellow_dog/management/storage/path_test.exs'
+```
+
+Result: exit `0`; `13 tests, 0 failures`.
 
 Owned-file format check:
 

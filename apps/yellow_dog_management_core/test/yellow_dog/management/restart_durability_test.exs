@@ -403,9 +403,10 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
     restart_child(EventStore)
 
-    servers_pid = Process.whereis(Servers)
     manifest_store_pid = Process.whereis(ManifestStore)
     old_event_store_pid = Process.whereis(EventStore)
+    old_servers_pid = Process.whereis(Servers)
+    old_netmans_pid = Process.whereis(Netmans)
 
     registration =
       Task.async(fn ->
@@ -418,17 +419,15 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     send(event_worker_pid, :continue_event_write)
 
     assert {:error, %Error{code: :internal}} = Task.await(registration)
-    assert Process.whereis(Servers) == servers_pid
     assert Process.whereis(ManifestStore) == manifest_store_pid
-    assert Process.alive?(servers_pid)
     assert Process.alive?(manifest_store_pid)
-    assert {:error, :not_found} = ManagementCore.get_server("srv-event-store-crash")
 
     new_event_store_pid = wait_for_replacement(EventStore, old_event_store_pid)
     assert Process.alive?(new_event_store_pid)
+    wait_for_replacement(Servers, old_servers_pid)
+    wait_for_replacement(Netmans, old_netmans_pid)
 
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
-    restart_child(Servers)
 
     assert {:error, :not_found} = ManagementCore.get_server("srv-event-store-crash")
     assert [] = ManagementCore.list_events()
@@ -436,7 +435,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     assert manifest == %{"config_lifecycle" => lifecycle}
   end
 
-  test "killing ManifestStore after staging sync exposes no final event", %{data_dir: data_dir} do
+  test "killing a blocked staging worker exposes no final event", %{data_dir: data_dir} do
     Application.put_env(
       :yellow_dog_management_core,
       :atomic_json_file_ops,
@@ -446,7 +445,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops_owner, self())
     restart_child(EventStore)
 
-    old_manifest_store_pid = Process.whereis(ManifestStore)
+    manifest_store_pid = Process.whereis(ManifestStore)
 
     registration =
       Task.async(fn ->
@@ -458,14 +457,13 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     assert String.ends_with?(staging_path, ".stage")
     refute File.exists?(Path.join(Path.dirname(staging_path), "evt-1.json"))
 
-    Process.exit(old_manifest_store_pid, :kill)
+    Process.exit(worker_pid, :kill)
 
     assert {:error, %Error{code: :internal}} = Task.await(registration)
-    new_manifest_store_pid = wait_for_replacement(ManifestStore, old_manifest_store_pid)
-    assert Process.alive?(new_manifest_store_pid)
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert Process.alive?(manifest_store_pid)
 
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
-    restart_child(Servers)
 
     assert {:error, :not_found} = ManagementCore.get_server("srv-killed-after-stage")
     assert [] = ManagementCore.list_events()
@@ -492,23 +490,46 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     end)
 
     restart_child(EventStore)
-    old_manifest_store_pid = Process.whereis(ManifestStore)
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-killed-after-outbox")
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
 
-    registration =
+    registration = Map.put(manifest["registration"], "name", "After")
+    {deadline, config} = EventStore.operation()
+
+    assert {:ok, reservation} =
+             EventStore.reserve(
+               %{
+                 source: :server,
+                 source_id: "srv-killed-after-outbox",
+                 type: :server_registered,
+                 message: "Server registered"
+               },
+               deadline,
+               config
+             )
+
+    old_manifest_store_pid = Process.whereis(ManifestStore)
+    old_event_store_pid = Process.whereis(EventStore)
+    old_servers_pid = Process.whereis(Servers)
+    old_netmans_pid = Process.whereis(Netmans)
+
+    commit =
       Task.async(fn ->
-        ManagementCore.register_server(%{id: "srv-killed-after-outbox", name: "After"})
+        ManifestStore.commit_registration(manifest_path, registration, reservation, deadline)
       end)
 
-    assert_receive {:outbox_written, ^old_manifest_store_pid, %{path: manifest_path}}
-    assert {:ok, manifest} = AtomicJson.read(manifest_path)
-    assert is_map(manifest["registration"])
-    assert is_map(manifest["registration_audit_outbox"])
+    assert_receive {:outbox_written, ^old_manifest_store_pid, %{path: ^manifest_path}}
+    assert {:ok, pending_manifest} = AtomicJson.read(manifest_path)
+    assert is_map(pending_manifest["registration"])
+    assert is_map(pending_manifest["registration_audit_outbox"])
 
     Process.exit(old_manifest_store_pid, :kill)
 
-    assert {:error, %Error{code: :internal}} = Task.await(registration)
+    assert {:error, %Error{code: :internal}} = Task.await(commit)
     wait_for_replacement(ManifestStore, old_manifest_store_pid)
-    restart_child(Servers)
+    wait_for_replacement(EventStore, old_event_store_pid)
+    wait_for_replacement(Servers, old_servers_pid)
+    wait_for_replacement(Netmans, old_netmans_pid)
 
     assert {:ok, %Server{name: "Before"}} =
              ManagementCore.get_server("srv-killed-after-outbox")
@@ -520,6 +541,12 @@ defmodule YellowDog.Management.RestartDurabilityTest do
   end
 
   test "a promoted event is reconciled when ManifestStore dies before clearing the outbox" do
+    assert {:ok, %Server{name: "Before"}} =
+             ManagementCore.register_server(%{
+               id: "srv-promoted-before-crash",
+               name: "Before"
+             })
+
     owner = self()
 
     Application.put_env(:yellow_dog_management_core, :event_store_test_hook, fn
@@ -536,11 +563,31 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
     restart_child(EventStore)
 
-    old_manifest_store_pid = Process.whereis(ManifestStore)
+    manifest_path = manifest_path_for("srv-promoted-before-crash")
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    registration = Map.put(manifest["registration"], "name", "After")
+    {deadline, config} = EventStore.operation()
 
-    registration =
+    assert {:ok, reservation} =
+             EventStore.reserve(
+               %{
+                 source: :server,
+                 source_id: "srv-promoted-before-crash",
+                 type: :server_registered,
+                 message: "Server registered"
+               },
+               deadline,
+               config
+             )
+
+    old_manifest_store_pid = Process.whereis(ManifestStore)
+    old_event_store_pid = Process.whereis(EventStore)
+    old_servers_pid = Process.whereis(Servers)
+    old_netmans_pid = Process.whereis(Netmans)
+
+    commit =
       Task.async(fn ->
-        ManagementCore.register_server(%{id: "srv-promoted-before-crash"})
+        ManifestStore.commit_registration(manifest_path, registration, reservation, deadline)
       end)
 
     assert_receive {:event_promoted, ^old_manifest_store_pid,
@@ -550,28 +597,24 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
     Process.exit(old_manifest_store_pid, :kill)
 
-    assert {:ok, %Server{id: "srv-promoted-before-crash"}} = Task.await(registration)
+    assert {:ok, ^event} = Task.await(commit)
     wait_for_replacement(ManifestStore, old_manifest_store_pid)
+    wait_for_replacement(EventStore, old_event_store_pid)
+    wait_for_replacement(Servers, old_servers_pid)
+    wait_for_replacement(Netmans, old_netmans_pid)
 
-    assert {:ok, %Server{id: "srv-promoted-before-crash"}} =
+    assert {:ok, %Server{id: "srv-promoted-before-crash", name: "After"}} =
              ManagementCore.get_server("srv-promoted-before-crash")
 
-    assert [^event] = ManagementCore.list_events()
-
-    Application.delete_env(:yellow_dog_management_core, :event_store_test_hook)
-    restart_child(EventStore)
-    restart_child(Servers)
-
-    assert {:ok, %Server{id: "srv-promoted-before-crash"}} =
-             ManagementCore.get_server("srv-promoted-before-crash")
+    assert [%{sequence: 1}, ^event] = ManagementCore.list_events()
 
     assert {:ok, reconciled_manifest} =
-             AtomicJson.read(manifest_path_for("srv-promoted-before-crash"))
+             AtomicJson.read(manifest_path)
 
     refute Map.has_key?(reconciled_manifest, "registration_audit_outbox")
   end
 
-  test "a cleared outbox is reconciled when ManifestStore dies before replying" do
+  test "a cleared outbox remains coherent before the commit reply" do
     owner = self()
 
     Application.put_env(:yellow_dog_management_core, :event_store_test_hook, fn
@@ -587,24 +630,24 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     end)
 
     restart_child(EventStore)
-    old_manifest_store_pid = Process.whereis(ManifestStore)
+    manifest_store_pid = Process.whereis(ManifestStore)
 
     registration =
       Task.async(fn ->
         ManagementCore.register_server(%{id: "srv-killed-after-outbox-clear"})
       end)
 
-    assert_receive {:outbox_cleared, ^old_manifest_store_pid,
+    assert_receive {:outbox_cleared, ^manifest_store_pid,
                     %{path: manifest_path, reservation: reservation}}
 
     assert {:ok, manifest} = AtomicJson.read(manifest_path)
     refute Map.has_key?(manifest, "registration_audit_outbox")
     assert File.exists?(reservation.final_path)
 
-    Process.exit(old_manifest_store_pid, :kill)
+    send(manifest_store_pid, :release_outbox_clear)
 
     assert {:ok, %Server{id: "srv-killed-after-outbox-clear"}} = Task.await(registration)
-    wait_for_replacement(ManifestStore, old_manifest_store_pid)
+    assert Process.whereis(ManifestStore) == manifest_store_pid
 
     assert {:ok, %Server{id: "srv-killed-after-outbox-clear"}} =
              ManagementCore.get_server("srv-killed-after-outbox-clear")
@@ -976,6 +1019,64 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
     assert [%{source_id: "srv-after-event-timeout"}] = ManagementCore.list_events()
     assert length(event_files(data_dir)) == 1
+  end
+
+  test "a delayed promotion is killed and reconciled before the caller returns", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    owner = self()
+
+    Application.put_env(:yellow_dog_management_core, :event_store_test_hook, fn
+      :before_event_promote, %{reservation: reservation} ->
+        send(owner, {:event_promotion_delayed, self(), reservation})
+        Process.sleep(600)
+
+      _point, _context ->
+        :ok
+    end)
+
+    restart_child(EventStore)
+
+    manifest_store_pid = Process.whereis(ManifestStore)
+    started_at = System.monotonic_time(:millisecond)
+    test_pid = self()
+
+    {caller_pid, caller_ref} =
+      spawn_monitor(fn ->
+        result = ManagementCore.register_server(%{id: "srv-delayed-promotion"})
+        elapsed = System.monotonic_time(:millisecond) - started_at
+        send(test_pid, {:delayed_promotion_result, self(), result, elapsed})
+      end)
+
+    assert_receive {:event_promotion_delayed, promotion_worker_pid, %{staging_path: staging_path}}
+
+    assert promotion_worker_pid != manifest_store_pid
+    assert Process.alive?(promotion_worker_pid)
+    assert File.exists?(staging_path)
+
+    assert_receive {:delayed_promotion_result, ^caller_pid, {:error, %Error{code: :timeout}},
+                    elapsed},
+                   500
+
+    assert elapsed < 500
+    assert_receive {:DOWN, ^caller_ref, :process, ^caller_pid, :normal}
+    refute Process.alive?(promotion_worker_pid)
+    assert Process.whereis(ManifestStore) == manifest_store_pid
+    assert is_nil(:sys.get_state(manifest_store_pid, 200))
+
+    assert {:error, :not_found} = ManagementCore.get_server("srv-delayed-promotion")
+    assert [] = ManagementCore.list_servers()
+    assert [] = ManagementCore.list_events()
+    assert event_files(data_dir) == []
+    refute File.exists?(staging_path)
+    refute File.exists?(manifest_path_for("srv-delayed-promotion"))
+
+    Process.sleep(700)
+
+    assert {:error, :not_found} = ManagementCore.get_server("srv-delayed-promotion")
+    assert [] = ManagementCore.list_events()
+    assert event_files(data_dir) == []
   end
 
   test "a configured six-second write does not time out queued reads" do
