@@ -42,6 +42,87 @@ defmodule YellowDog.Store.ZoneTest do
     %{owner: owner, type: :a, rrset: [%{rdata: address, ttl: 300}]}
   end
 
+  defp persisted_record(zone_name, %{owner: owner, type: type, rrset: rrset}) do
+    %{
+      owner: owner,
+      type: type,
+      rrset: rrset,
+      zone: zone_name,
+      class: :in,
+      source: :api,
+      updated_at: 1
+    }
+  end
+
+  defp seed_records(zone_name, records) do
+    Enum.each(records, fn record ->
+      key = Key.zone_rr(@view, zone_name, record.owner, record.type)
+      :ok = EtsBackend.put(key, persisted_record(zone_name, record))
+    end)
+  end
+
+  defp many_records(count, last_octet \\ 1) do
+    for index <- 1..count do
+      desired_record("host-#{String.pad_leading(Integer.to_string(index), 4, "0")}", {
+        192,
+        0,
+        div(index, 256),
+        rem(index + last_octet, 256)
+      })
+    end
+  end
+
+  defp put_many_call_sizes do
+    FailureBackend.calls()
+    |> Enum.flat_map(fn
+      {:put_many, keys} -> [length(keys)]
+      _call -> []
+    end)
+  end
+
+  defp run_blocked_replacement(zone_name, desired, mutation) do
+    parent = self()
+    ref = make_ref()
+
+    use_failure_backend([
+      {:put_many, {:barrier, 1, parent, ref, {:error, :batch_failed}}}
+    ])
+
+    {_replace_pid, replace_monitor} =
+      spawn_monitor(fn ->
+        send(parent, {:replace_result, ref, Zone.replace_records(@view, zone_name, desired)})
+      end)
+
+    assert_receive {:backend_barrier, ^ref, replace_pid}, 5_000
+
+    spawn(fn -> send(parent, {:mutation_result, ref, mutation.()}) end)
+
+    {finished_while_blocked, mutation_result} =
+      receive do
+        {:mutation_result, ^ref, result} -> {true, result}
+      after
+        100 -> {false, nil}
+      end
+
+    send(replace_pid, {:release_backend, ref})
+
+    assert_receive {:replace_result, ^ref,
+                    {:error, {:replace_failed, {:put_many_failed, :batch_failed}}}},
+                   5_000
+
+    assert_receive {:DOWN, ^replace_monitor, :process, _pid, :normal}, 5_000
+
+    mutation_result =
+      if finished_while_blocked do
+        mutation_result
+      else
+        assert_receive {:mutation_result, ^ref, result}, 5_000
+        result
+      end
+
+    {finished_while_blocked, mutation_result}
+  end
+
   defp strong_record_snapshot(view_name, zone_name) do
     {:ok, entries} =
       EtsBackend.prefix_scan(Key.zone_rr_prefix(view_name, zone_name), consistency: :strong)
@@ -479,7 +560,7 @@ defmodule YellowDog.Store.ZoneTest do
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
       previous = strong_record_snapshot(@view, zone_name)
-      use_failure_backend([{:put_many, {:partial, 2}, :batch_failed}])
+      use_failure_backend([{:put_many, {:partial, 1, {:error, :batch_failed}}}])
 
       assert {:error, {:replace_failed, {:put_many_failed, :batch_failed}}} =
                Zone.replace_records(@view, zone_name, [updated, added])
@@ -490,16 +571,22 @@ defmodule YellowDog.Store.ZoneTest do
     test "restores exact content after a stale delete failure" do
       zone_name = "replace-delete-failure.example.com"
       kept = desired_record("keep", {192, 0, 2, 1})
-      stale = desired_record("stale", {192, 0, 2, 2})
+      stale_a = desired_record("stale-a", {192, 0, 2, 2})
+      stale_b = desired_record("stale-b", {192, 0, 2, 3})
       Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
       Zone.put_rrset(@view, zone_name, kept.owner, kept.type, kept.rrset)
-      Zone.put_rrset(@view, zone_name, stale.owner, stale.type, stale.rrset)
+      Zone.put_rrset(@view, zone_name, stale_a.owner, stale_a.type, stale_a.rrset)
+      Zone.put_rrset(@view, zone_name, stale_b.owner, stale_b.type, stale_b.rrset)
       previous = strong_record_snapshot(@view, zone_name)
-      stale_key = Key.zone_rr(@view, zone_name, stale.owner, stale.type)
-      use_failure_backend([{:delete, stale_key, :delete_failed}])
+      stale_a_key = Key.zone_rr(@view, zone_name, stale_a.owner, stale_a.type)
+      stale_b_key = Key.zone_rr(@view, zone_name, stale_b.owner, stale_b.type)
+      use_failure_backend([{:delete, stale_b_key, {:error, :delete_failed}}])
 
-      assert {:error, {:replace_failed, {:delete_failed, ^stale_key, :delete_failed}}} =
+      assert {:error, {:replace_failed, {:delete_failed, ^stale_b_key, :delete_failed}}} =
                Zone.replace_records(@view, zone_name, [kept])
+
+      assert Enum.find_index(FailureBackend.calls(), &(&1 == {:delete, stale_a_key})) <
+               Enum.find_index(FailureBackend.calls(), &(&1 == {:delete, stale_b_key}))
 
       assert strong_record_snapshot(@view, zone_name) == previous
     end
@@ -515,7 +602,7 @@ defmodule YellowDog.Store.ZoneTest do
       start_event_bridge()
       {:ok, _ref} = EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*")
       zone_key = Key.zone(@view, zone_name)
-      use_failure_backend([{:put_if, zone_key, :write_then_fail, :serial_failed}])
+      use_failure_backend([{:put_if, zone_key, {:write_then_error, :serial_failed}}])
 
       assert {:error, {:replace_failed, {:serial_failed, :serial_failed}}} =
                Zone.replace_records(@view, zone_name, [updated])
@@ -534,14 +621,364 @@ defmodule YellowDog.Store.ZoneTest do
       Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
 
       use_failure_backend([
-        {:put_many, {:partial, 1}, :batch_failed},
-        {:put_many, :fail, :restore_failed}
+        {:put_many, {:partial, 1, {:error, :batch_failed}}},
+        {:put_many, {:partial, 0, {:error, :restore_failed}}}
       ])
 
       assert {:error,
               {:rollback_failed, {:put_many_failed, :batch_failed},
                {:restore_failed, :restore_failed}}} =
                Zone.replace_records(@view, zone_name, [updated])
+    end
+
+    test "canonicalizes scope and owner before deriving persisted keys" do
+      assert :ok =
+               Zone.create_zone("DEFAULT", "Canonical.Example.COM.", @test_soa,
+                 serial_strategy: :increment
+               )
+
+      record = desired_record("WWW.", {192, 0, 2, 1})
+
+      assert {:ok, %{changed_count: 1}} =
+               Zone.replace_records("default", "canonical.example.com", [record])
+
+      assert {:ok, stored} =
+               Zone.get_rrset("DEFAULT", "CANONICAL.EXAMPLE.COM.", "www", :a)
+
+      assert stored.owner == "www"
+      assert stored.zone == "canonical.example.com"
+    end
+
+    test "rejects delimiter collisions and invalid DNS scope names before writes" do
+      use_failure_backend()
+
+      for {view_name, zone_name} <- [
+            {"bad:view", "example.com"},
+            {@view, "example.com:rr:injected"},
+            {@view, "bad zone.example.com"},
+            {@view, "-bad.example.com"}
+          ] do
+        assert {:error, {:replace_failed, :invalid_scope}} =
+                 Zone.replace_records(view_name, zone_name, [])
+      end
+
+      assert {:error, {:replace_failed, :invalid_record}} =
+               Zone.replace_records(@view, "example.com", [
+                 desired_record("www:a", {192, 0, 2, 1})
+               ])
+
+      assert FailureBackend.writes() == []
+    end
+
+    test "detects duplicate owner and type by final canonical persisted key" do
+      zone_name = "replace-canonical-duplicate.example.com"
+      Zone.create_zone(@view, zone_name, @test_soa)
+      use_failure_backend()
+
+      assert {:error, {:replace_failed, :duplicate_record}} =
+               Zone.replace_records(@view, zone_name, [
+                 desired_record("WWW.", {192, 0, 2, 1}),
+                 desired_record("www", {192, 0, 2, 2})
+               ])
+
+      assert FailureBackend.writes() == []
+    end
+
+    test "requires an authoritative auth zone" do
+      zone_name = "replace-authoritative-false.example.com"
+
+      Zone.create_zone(@view, zone_name, @test_soa,
+        authoritative: false,
+        serial_strategy: :increment
+      )
+
+      use_failure_backend()
+
+      assert {:error, {:replace_failed, :not_authoritative}} =
+               Zone.replace_records(@view, zone_name, [])
+
+      assert FailureBackend.writes() == []
+    end
+
+    test "rejects malformed snapshot entries before apply or event projection" do
+      zone_name = "replace-invalid-snapshot.example.com"
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      malformed_key = Key.zone_rr_prefix(@view, zone_name) <> "zone-metadata"
+      :ok = EtsBackend.put(malformed_key, %{zone_type: :auth, origin: zone_name})
+      use_failure_backend()
+
+      assert {:error, {:replace_failed, :invalid_snapshot}} =
+               Zone.replace_records(@view, zone_name, [])
+
+      assert FailureBackend.writes() == []
+    end
+
+    test "treats RRset member reordering as unchanged" do
+      zone_name = "replace-reordered.example.com"
+      first = %{rdata: {192, 0, 2, 1}, ttl: 300}
+      second = %{rdata: {192, 0, 2, 2}, ttl: 300}
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, "www", :a, [first, second])
+      {:ok, before_zone} = Zone.get_zone(@view, zone_name)
+      previous = strong_record_snapshot(@view, zone_name)
+      use_failure_backend()
+
+      assert {:ok, %{previous: ^previous, changed_count: 0}} =
+               Zone.replace_records(@view, zone_name, [
+                 %{owner: "www", type: :a, rrset: [second, first]}
+               ])
+
+      assert {:ok, after_zone} = Zone.get_zone(@view, zone_name)
+      assert after_zone.soa.serial == before_zone.soa.serial
+      assert FailureBackend.writes() == []
+    end
+
+    test "rejects incomplete and extra put_many success maps and compensates" do
+      zone_name = "replace-batch-map.example.com"
+      old = desired_record("www", {192, 0, 2, 1})
+      updated = desired_record("www", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      previous = strong_record_snapshot(@view, zone_name)
+
+      for malformed_results <- [
+            %{},
+            %{Key.zone_rr(@view, zone_name, "www", :a) => :ok, "extra" => :ok}
+          ] do
+        use_failure_backend([{:put_many, {:delegate_then, {:ok, malformed_results}}}])
+
+        assert {:error, {:replace_failed, {:put_many_failed, :invalid_result}}} =
+                 Zone.replace_records(@view, zone_name, [updated])
+
+        assert strong_record_snapshot(@view, zone_name) == previous
+      end
+    end
+
+    test "removal failure for a newly introduced key reports rollback_failed" do
+      zone_name = "replace-remove-new-failure.example.com"
+      old = desired_record("z-old", {192, 0, 2, 1})
+      updated = desired_record("z-old", {192, 0, 2, 2})
+      added = desired_record("a-new", {192, 0, 2, 3})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      new_key = Key.zone_rr(@view, zone_name, added.owner, added.type)
+
+      use_failure_backend([
+        {:put_many, {:partial, 1, {:error, :batch_failed}}},
+        {:delete, new_key, {:error, :remove_failed}}
+      ])
+
+      assert {:error,
+              {:rollback_failed, {:put_many_failed, :batch_failed},
+               {:remove_new_failed, :remove_failed}}} =
+               Zone.replace_records(@view, zone_name, [added, updated])
+    end
+
+    test "verification scan failure reports rollback_failed" do
+      zone_name = "replace-verification-failure.example.com"
+      old = desired_record("www", {192, 0, 2, 1})
+      updated = desired_record("www", {192, 0, 2, 2})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+      prefix = Key.zone_rr_prefix(@view, zone_name)
+
+      use_failure_backend([
+        {:put_many, {:partial, 1, {:error, :batch_failed}}},
+        {:prefix_scan, prefix, {:error, :verification_failed}}
+      ])
+
+      assert {:error,
+              {:rollback_failed, {:put_many_failed, :batch_failed},
+               {:verification_failed, :verification_failed}}} =
+               Zone.replace_records(@view, zone_name, [updated])
+    end
+
+    test "uses one bounded batch for 500 desired RRsets" do
+      zone_name = "replace-500.example.com"
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      use_failure_backend()
+
+      assert {:ok, %{changed_count: 500}} =
+               Zone.replace_records(@view, zone_name, many_records(500))
+
+      assert put_many_call_sizes() == [500]
+    end
+
+    test "splits 501 desired RRsets into bounded batches" do
+      zone_name = "replace-501.example.com"
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      use_failure_backend()
+
+      assert {:ok, %{changed_count: 501}} =
+               Zone.replace_records(@view, zone_name, many_records(501))
+
+      assert put_many_call_sizes() == [500, 1]
+    end
+
+    test "restores all prior chunks after a later apply chunk fails" do
+      zone_name = "replace-multi-chunk-failure.example.com"
+      previous_records = many_records(501, 1)
+      desired_records = many_records(501, 20)
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      seed_records(zone_name, previous_records)
+      previous = strong_record_snapshot(@view, zone_name)
+
+      use_failure_backend([
+        {:put_many, :pass},
+        {:put_many, {:partial, 0, {:error, :second_chunk_failed}}}
+      ])
+
+      assert {:error, {:replace_failed, {:put_many_failed, :second_chunk_failed}}} =
+               Zone.replace_records(@view, zone_name, desired_records)
+
+      assert strong_record_snapshot(@view, zone_name) == previous
+      assert put_many_call_sizes() == [500, 1, 500, 1]
+    end
+
+    test "shared lock keeps concurrent put after replacement compensation" do
+      zone_name = "replace-lock-put.example.com"
+      old = desired_record("target", {192, 0, 2, 1})
+      updated = desired_record("target", {192, 0, 2, 2})
+      added = desired_record("added", {192, 0, 2, 3})
+      concurrent = desired_record("target", {192, 0, 2, 99})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+
+      {finished_while_blocked, result} =
+        run_blocked_replacement(zone_name, [added, updated], fn ->
+          Zone.put_rrset(
+            @view,
+            zone_name,
+            concurrent.owner,
+            concurrent.type,
+            concurrent.rrset
+          )
+        end)
+
+      refute finished_while_blocked
+      assert result == :ok
+      assert {:ok, stored} = Zone.get_rrset(@view, zone_name, "target", :a)
+      assert stored.rrset == concurrent.rrset
+    end
+
+    test "shared lock keeps concurrent delete after replacement compensation" do
+      zone_name = "replace-lock-delete.example.com"
+      old = desired_record("target", {192, 0, 2, 1})
+      updated = desired_record("target", {192, 0, 2, 2})
+      added = desired_record("added", {192, 0, 2, 3})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+
+      {finished_while_blocked, result} =
+        run_blocked_replacement(zone_name, [added, updated], fn ->
+          Zone.delete_rrset(@view, zone_name, old.owner, old.type)
+        end)
+
+      refute finished_while_blocked
+      assert result == :ok
+      assert {:error, :not_found} = Zone.get_rrset(@view, zone_name, "target", :a)
+    end
+
+    test "shared lock keeps concurrent import after replacement compensation" do
+      zone_name = "replace-lock-import.example.com"
+      old = desired_record("target", {192, 0, 2, 1})
+      updated = desired_record("target", {192, 0, 2, 2})
+      added = desired_record("added", {192, 0, 2, 3})
+      imported = desired_record("target", {192, 0, 2, 88})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+
+      {finished_while_blocked, result} =
+        run_blocked_replacement(zone_name, [added, updated], fn ->
+          Zone.import_zone(@view, zone_name, [imported])
+        end)
+
+      refute finished_while_blocked
+      assert result == :ok
+      assert {:ok, stored} = Zone.get_rrset(@view, zone_name, "target", :a)
+      assert stored.rrset == imported.rrset
+    end
+
+    test "shared lock prevents delete_zone from leaving compensated orphan records" do
+      zone_name = "replace-lock-delete-zone.example.com"
+      old = desired_record("target", {192, 0, 2, 1})
+      updated = desired_record("target", {192, 0, 2, 2})
+      added = desired_record("added", {192, 0, 2, 3})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      Zone.put_rrset(@view, zone_name, old.owner, old.type, old.rrset)
+
+      {finished_while_blocked, result} =
+        run_blocked_replacement(zone_name, [added, updated], fn ->
+          Zone.delete_zone(@view, zone_name)
+        end)
+
+      refute finished_while_blocked
+      assert result == :ok
+      assert {:error, :not_found} = Zone.get_zone(@view, zone_name)
+      assert {:ok, []} = Zone.list_records(@view, zone_name)
+    end
+
+    test "shared locks for different zones remain independent" do
+      blocked_zone = "replace-lock-zone-a.example.com"
+      other_zone = "replace-lock-zone-b.example.com"
+      old = desired_record("target", {192, 0, 2, 1})
+      updated = desired_record("target", {192, 0, 2, 2})
+      added = desired_record("added", {192, 0, 2, 3})
+
+      for zone_name <- [blocked_zone, other_zone] do
+        Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      end
+
+      Zone.put_rrset(@view, blocked_zone, old.owner, old.type, old.rrset)
+
+      {finished_while_blocked, result} =
+        run_blocked_replacement(blocked_zone, [added, updated], fn ->
+          Zone.put_rrset(@view, other_zone, "www", :a, [%{rdata: {192, 0, 2, 50}}])
+        end)
+
+      assert finished_while_blocked
+      assert result == :ok
+      assert {:ok, _stored} = Zone.get_rrset(@view, other_zone, "www", :a)
+    end
+
+    test "RR telemetry and EventBridge notification observe the committed serial" do
+      zone_name = "replace-event-order.example.com"
+      record = desired_record("www", {192, 0, 2, 1})
+      Zone.create_zone(@view, zone_name, @test_soa, serial_strategy: :increment)
+      {:ok, before_zone} = Zone.get_zone(@view, zone_name)
+      start_event_bridge()
+      parent = self()
+      handler_id = {__MODULE__, make_ref()}
+      zone_key = Key.zone(@view, zone_name)
+
+      {:ok, _ref} =
+        EventBridge.subscribe(Key.zone_rr_prefix(@view, zone_name) <> "*", fn event ->
+          {:ok, zone} = EtsBackend.get(zone_key, consistency: :strong)
+          send(parent, {:event_committed, event, zone.soa.serial})
+        end)
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:yellow_dog, :store, :zone, :rr_changed],
+          fn _event, _measurements, metadata, {pid, metadata_key} ->
+            {:ok, zone} = EtsBackend.get(metadata_key, consistency: :strong)
+            send(pid, {:rr_committed, metadata, zone.soa.serial})
+          end,
+          {parent, zone_key}
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert {:ok, %{changed_count: 1}} = Zone.replace_records(@view, zone_name, [record])
+
+      assert_receive {:rr_committed, %{owner: "www", action: :put}, serial}, 1_000
+
+      assert serial == before_zone.soa.serial + 1
+      rr_key = Key.zone_rr(@view, zone_name, record.owner, record.type)
+
+      assert_receive {:event_committed, %{type: :put, key: ^rr_key}, event_serial}, 1_000
+      assert event_serial == before_zone.soa.serial + 1
     end
 
     test "emits committed put and delete events only after successful replacement" do

@@ -7,6 +7,37 @@ defmodule YellowDog.Store.Key do
   arguments and canonical string keys.
   """
 
+  @known_rr_types ~w(a aaaa cname ns mx txt srv soa ptr caa ds rrsig nsec dnskey nsec3 nsec3param tlsa https svcb spf uri naptr)a
+  @view_pattern ~r/\A[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\z/
+  @dns_label_pattern ~r/\A[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?\z/
+
+  @doc "Canonicalize and validate a view and DNS zone before key construction."
+  @spec canonical_zone_scope(term(), term()) ::
+          {:ok, {String.t(), String.t()}} | {:error, :invalid_scope}
+  def canonical_zone_scope(view_name, zone_name) do
+    with {:ok, view_name} <- canonical_view(view_name),
+         {:ok, zone_name} <- canonical_dns_name(zone_name, false) do
+      {:ok, {view_name, zone_name}}
+    else
+      _error -> {:error, :invalid_scope}
+    end
+  end
+
+  @doc "Canonicalize and validate a DNS owner name before RR key construction."
+  @spec canonical_owner(term()) :: {:ok, String.t()} | {:error, :invalid_owner}
+  def canonical_owner("@"), do: {:ok, "@"}
+
+  def canonical_owner(owner) do
+    case canonical_dns_name(owner, true) do
+      {:ok, owner} -> {:ok, owner}
+      :error -> {:error, :invalid_owner}
+    end
+  end
+
+  @doc "Return whether an atom is a supported persisted DNS RR type."
+  @spec valid_rr_type?(term()) :: boolean()
+  def valid_rr_type?(type), do: type in @known_rr_types
+
   @doc "Build a DHCPv4 lease key from a MAC address."
   @spec lease_v4(String.t()) :: String.t()
   def lease_v4(mac), do: "dhcp:lease:v4:#{normalize_mac(mac)}"
@@ -165,6 +196,64 @@ defmodule YellowDog.Store.Key do
     duid
     |> String.downcase()
     |> String.replace(~r/[-.]/, ":")
+  end
+
+  defp canonical_view(view_name) when is_binary(view_name) do
+    if String.valid?(view_name) do
+      canonical = String.downcase(view_name)
+
+      if String.trim(view_name) == view_name and byte_size(canonical) <= 253 and
+           Regex.match?(@view_pattern, canonical) do
+        {:ok, canonical}
+      else
+        :error
+      end
+    else
+      :error
+    end
+  end
+
+  defp canonical_view(_view_name), do: :error
+
+  defp canonical_dns_name(name, allow_wildcard?) when is_binary(name) do
+    if String.valid?(name) do
+      canonical = canonical_dns_text(name)
+
+      if String.trim(name) == name and not String.ends_with?(name, "..") and
+           valid_dns_name?(canonical, allow_wildcard?) do
+        {:ok, canonical}
+      else
+        :error
+      end
+    else
+      :error
+    end
+  end
+
+  defp canonical_dns_name(_name, _allow_wildcard?), do: :error
+
+  defp canonical_dns_text("."), do: "."
+
+  defp canonical_dns_text(name) do
+    name
+    |> String.downcase()
+    |> String.trim_trailing(".")
+  end
+
+  defp valid_dns_name?(".", _allow_wildcard?), do: true
+
+  defp valid_dns_name?(name, allow_wildcard?) do
+    byte_size(name) in 1..253 and String.trim(name) == name and
+      name
+      |> String.split(".")
+      |> Enum.with_index()
+      |> Enum.all?(fn
+        {"*", 0} when allow_wildcard? ->
+          true
+
+        {label, _index} ->
+          byte_size(label) in 1..63 and Regex.match?(@dns_label_pattern, label)
+      end)
   end
 
   # Re-chunk hex digits into colon-separated pairs: "aabbccddeeff" → "aa:bb:cc:dd:ee:ff"
