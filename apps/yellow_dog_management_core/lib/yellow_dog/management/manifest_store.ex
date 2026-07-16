@@ -54,6 +54,13 @@ defmodule YellowDog.Management.ManifestStore do
              is_function(commit, 1) do
     {deadline, config} = EventStore.operation()
 
+    commit_section(path, section, commit, deadline, config)
+  end
+
+  @doc false
+  def commit_section(path, section, commit, deadline, %Config{} = config)
+      when is_binary(path) and is_binary(section) and section != "" and
+             is_function(commit, 1) and is_integer(deadline) do
     bounded_call(
       {:commit_section, path, section, commit, deadline, config},
       deadline,
@@ -558,7 +565,8 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp commit_section_commit(path, section, commit, deadline, config) do
     with :ok <- ensure_before_deadline(deadline),
-         {:ok, manifest} <- reconcile_manifest(path, deadline, config),
+         {:ok, manifest, _existed?} <- read_manifest(path, config),
+         :ok <- reject_pending_registration_audit(manifest),
          previous_section = Map.fetch(manifest, section),
          {:ok, updated_section, result} <- apply_commit(commit, Map.get(manifest, section)),
          desired_manifest = Map.put(manifest, section, updated_section),
@@ -574,6 +582,12 @@ defmodule YellowDog.Management.ManifestStore do
            ) do
       {:ok, result}
     end
+  end
+
+  defp reject_pending_registration_audit(manifest) do
+    if Map.has_key?(manifest, @outbox_key),
+      do: pending_registration_audit(),
+      else: :ok
   end
 
   defp update_section_with_commit(path, section, updater, after_write, deadline, config) do
@@ -1148,6 +1162,9 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp conflict_error,
     do: {:error, Error.new(:conflict, "management event final path is occupied", %{})}
+
+  defp pending_registration_audit,
+    do: {:error, Error.new(:conflict, "registration audit is pending", %{})}
 
   defp invalid_manifest,
     do: {:error, Error.new(:invalid, "invalid management manifest", %{})}

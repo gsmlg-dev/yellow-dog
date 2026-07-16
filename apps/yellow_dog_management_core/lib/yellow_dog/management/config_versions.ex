@@ -7,6 +7,7 @@ defmodule YellowDog.Management.ConfigVersions do
 
   alias YellowDog.Management.ConfigVersion
   alias YellowDog.Management.EventStore
+  alias YellowDog.Management.EventStore.Config
   alias YellowDog.Management.ManifestStore
   alias YellowDog.Management.Netmans
   alias YellowDog.Management.Servers
@@ -60,31 +61,33 @@ defmodule YellowDog.Management.ConfigVersions do
   def init(:ok), do: {:ok, nil}
 
   @impl true
-  def handle_call({:publish, target_type, target_id, attrs}, _from, state) do
-    {:reply, do_publish(target_type, target_id, attrs), state}
+  def handle_call({{:publish, target_type, target_id, attrs}, deadline, config}, _from, state) do
+    {:reply, do_publish(target_type, target_id, attrs, deadline, config), state}
   end
 
-  def handle_call({:get, target_type, target_id, version}, _from, state) do
-    {:reply, do_get(target_type, target_id, version), state}
+  def handle_call({{:get, target_type, target_id, version}, deadline, config}, _from, state) do
+    {:reply, do_get(target_type, target_id, version, deadline, config), state}
   end
 
   def handle_call(
-        {:transition, target_type, target_id, version, next_state, details},
+        {{:transition, target_type, target_id, version, next_state, details}, deadline, config},
         _from,
         state
       ) do
-    {:reply, do_transition(target_type, target_id, version, next_state, details), state}
+    {:reply,
+     do_transition(target_type, target_id, version, next_state, details, deadline, config), state}
   end
 
-  def handle_call({:latest_desired, target_type, target_id}, _from, state) do
-    {:reply, do_latest_desired(target_type, target_id), state}
+  def handle_call({{:latest_desired, target_type, target_id}, deadline, config}, _from, state) do
+    {:reply, do_latest_desired(target_type, target_id, deadline, config), state}
   end
 
-  defp do_publish(target_type, target_id, attrs) do
-    with {:ok, target_type} <- target_type(target_type),
+  defp do_publish(target_type, target_id, attrs, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, target_type} <- target_type(target_type),
          {:ok, record} <- registered_target(target_type, target_id),
          {:ok, attrs} <- attrs(attrs),
-         {:ok, target} <- load_target(target_type, target_id),
+         {:ok, target} <- load_target(target_type, target_id, config),
          {:ok, next_version} <- next_version(target),
          {:ok, previous} <- applied_pair(target),
          {:ok, version} <-
@@ -101,26 +104,33 @@ defmodule YellowDog.Management.ConfigVersions do
            ),
          {:ok, version_path} <- version_path(version),
          {:ok, ^version_path} <-
-           AtomicJson.create(version_path, ConfigVersion.immutable_document(version)),
-         {:ok, committed} <- commit_publication(target, version) do
+           create_immutable(
+             version_path,
+             ConfigVersion.immutable_document(version),
+             deadline,
+             config
+           ),
+         {:ok, committed} <- commit_publication(target, version, deadline, config) do
       {:ok, committed}
     end
   end
 
-  defp do_get(target_type, target_id, version) do
-    with {:ok, target_type} <- target_type(target_type),
+  defp do_get(target_type, target_id, version, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, target_type} <- target_type(target_type),
          {:ok, _record} <- registered_target(target_type, target_id),
          :ok <- validate_version(version),
-         {:ok, target} <- load_target(target_type, target_id),
+         {:ok, target} <- load_target(target_type, target_id, config),
          {:ok, config_version} <- fetch_version(target, version) do
       {:ok, config_version}
     end
   end
 
-  defp do_latest_desired(target_type, target_id) do
-    with {:ok, target_type} <- target_type(target_type),
+  defp do_latest_desired(target_type, target_id, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, target_type} <- target_type(target_type),
          {:ok, _record} <- registered_target(target_type, target_id),
-         {:ok, target} <- load_target(target_type, target_id),
+         {:ok, target} <- load_target(target_type, target_id, config),
          {:ok, desired_version} <- desired_version(target.lifecycle),
          {:ok, version} <- fetch_version(target, desired_version),
          true <- version.state in [:desired, :delivered, :applying] do
@@ -132,26 +142,28 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
-  defp do_transition(target_type, target_id, version, next_state, details) do
-    with {:ok, target_type} <- target_type(target_type),
+  defp do_transition(target_type, target_id, version, next_state, details, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, target_type} <- target_type(target_type),
          {:ok, _record} <- registered_target(target_type, target_id),
          :ok <- validate_version(version),
          {:ok, next_state} <- transition_state(next_state),
-         {:ok, target} <- load_target(target_type, target_id),
+         {:ok, target} <- load_target(target_type, target_id, config),
          :ok <- current_desired_version(target.lifecycle, version),
          {:ok, current} <- fetch_version(target, version),
+         :ok <- allowed_state_transition(current.state, next_state),
          {:ok, expected_state_revision, acknowledgement} <- details(details),
          :ok <- expected_state_revision(current, expected_state_revision),
          {:ok, acknowledgement} <-
            validate_acknowledgement(current, next_state, acknowledgement),
          :ok <- allowed_transition(current.state, next_state, acknowledgement.failure),
          updated = apply_transition(current, next_state, acknowledgement),
-         {:ok, committed} <- commit_transition(target, updated) do
+         {:ok, committed} <- commit_transition(target, updated, deadline, config) do
       {:ok, committed}
     end
   end
 
-  defp commit_publication(target, version) do
+  defp commit_publication(target, version, deadline, config) do
     updated_lifecycle =
       target.lifecycle
       |> Map.put("counter", version.version)
@@ -159,33 +171,44 @@ defmodule YellowDog.Management.ConfigVersions do
       |> put_version(version)
 
     target.manifest_path
-    |> ManifestStore.commit_section("config_lifecycle", fn current_section ->
-      with :ok <- unchanged_section(current_section, target.raw_section) do
-        {:ok, updated_lifecycle, version}
-      end
-    end)
+    |> ManifestStore.commit_section(
+      "config_lifecycle",
+      fn current_section ->
+        with :ok <- unchanged_section(current_section, target.raw_section) do
+          {:ok, updated_lifecycle, version}
+        end
+      end,
+      deadline,
+      config
+    )
     |> publication_commit_result()
   end
 
-  defp commit_transition(target, version) do
+  defp commit_transition(target, version, deadline, config) do
     updated_lifecycle =
       target.lifecycle
       |> put_version(version)
       |> update_applied_pointer(version)
 
-    ManifestStore.commit_section(target.manifest_path, "config_lifecycle", fn current_section ->
-      with :ok <- unchanged_section(current_section, target.raw_section) do
-        {:ok, updated_lifecycle, version}
-      end
-    end)
+    ManifestStore.commit_section(
+      target.manifest_path,
+      "config_lifecycle",
+      fn current_section ->
+        with :ok <- unchanged_section(current_section, target.raw_section) do
+          {:ok, updated_lifecycle, version}
+        end
+      end,
+      deadline,
+      config
+    )
   end
 
-  defp load_target(target_type, target_id) do
+  defp load_target(target_type, target_id, config) do
     with {:ok, manifest_path} <- manifest_path(target_type, target_id),
-         {:ok, manifest} <- read_manifest(manifest_path),
+         {:ok, manifest} <- read_manifest(manifest_path, config),
          raw_section = Map.get(manifest, "config_lifecycle"),
          {:ok, lifecycle} <- decode_lifecycle(raw_section),
-         {:ok, versions} <- load_versions(target_type, target_id, lifecycle),
+         {:ok, versions} <- load_versions(target_type, target_id, lifecycle, config),
          :ok <- validate_pointers(lifecycle, versions) do
       {:ok,
        %{
@@ -203,8 +226,8 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
-  defp read_manifest(path) do
-    case AtomicJson.read(path) do
+  defp read_manifest(path, config) do
+    case AtomicJson.read(path, config.file_ops) do
       {:ok, manifest} when is_map(manifest) -> {:ok, manifest}
       {:ok, _invalid} -> invalid()
       {:error, %Error{code: :not_found}} -> invalid()
@@ -244,13 +267,13 @@ defmodule YellowDog.Management.ConfigVersions do
     end)
   end
 
-  defp load_versions(target_type, target_id, lifecycle) do
+  defp load_versions(target_type, target_id, lifecycle, config) do
     Enum.reduce_while(lifecycle["versions"], {:ok, %{}}, fn {key, state}, {:ok, versions} ->
       version = String.to_integer(key)
 
       with {:ok, digest} <- Digest.validate(state["digest"]),
            {:ok, path} <- storage_version_path(target_type, target_id, version, digest),
-           {:ok, immutable} <- AtomicJson.read(path),
+           {:ok, immutable} <- AtomicJson.read(path, config.file_ops),
            {:ok, config_version} <-
              ConfigVersion.decode(immutable, state, target_type, target_id, path) do
         {:cont, {:ok, Map.put(versions, version, config_version)}}
@@ -503,6 +526,18 @@ defmodule YellowDog.Management.ConfigVersions do
   defp validate_observed_at(%DateTime{utc_offset: 0, std_offset: 0}), do: :ok
   defp validate_observed_at(_observed_at), do: invalid()
 
+  defp allowed_state_transition(:desired, next_state) when next_state in [:delivered, :failed],
+    do: :ok
+
+  defp allowed_state_transition(:delivered, next_state) when next_state in [:applying, :failed],
+    do: :ok
+
+  defp allowed_state_transition(:applying, next_state) when next_state in [:applied, :failed],
+    do: :ok
+
+  defp allowed_state_transition(_current, _next),
+    do: conflict("invalid config lifecycle transition")
+
   defp allowed_transition(:desired, :delivered, nil), do: :ok
   defp allowed_transition(:delivered, :applying, nil), do: :ok
   defp allowed_transition(:applying, :applied, nil), do: :ok
@@ -632,7 +667,7 @@ defmodule YellowDog.Management.ConfigVersions do
   defp target_type(:netman), do: {:ok, :netman}
   defp target_type(_target_type), do: invalid()
 
-  defp transition_state(state) when state in [:delivered, :applying, :applied, :failed],
+  defp transition_state(state) when state in [:desired, :delivered, :applying, :applied, :failed],
     do: {:ok, state}
 
   defp transition_state(_state), do: invalid()
@@ -676,6 +711,33 @@ defmodule YellowDog.Management.ConfigVersions do
         version.digest
       )
 
+  defp create_immutable(path, document, deadline, %Config{} = config) do
+    staging_path = AtomicJson.staging_path(path)
+
+    result =
+      with :ok <- ensure_before_deadline(deadline),
+           {:ok, ^staging_path} <-
+             AtomicJson.stage(path, document, staging_path, config.file_ops),
+           :ok <- ensure_before_deadline(deadline),
+           {:ok, ^path} <- AtomicJson.promote(staging_path, path, config.file_ops),
+           :ok <- ensure_before_deadline(deadline) do
+        {:ok, path}
+      end
+
+    if match?({:error, _error}, result), do: remove_staging(config.file_ops, staging_path)
+    result
+  end
+
+  defp remove_staging(file_ops, staging_path) do
+    case file_ops.rm(staging_path) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, _reason} -> :ok
+    end
+  rescue
+    _exception -> :ok
+  end
+
   defp counter(value) when is_integer(value) and value >= 0 and value <= @max_version, do: :ok
   defp counter(_value), do: invalid()
 
@@ -710,10 +772,20 @@ defmodule YellowDog.Management.ConfigVersions do
   end
 
   defp call(request) do
-    GenServer.call(__MODULE__, request, EventStore.read_call_timeout())
+    {deadline, config} = EventStore.operation()
+
+    GenServer.call(
+      __MODULE__,
+      {request, deadline, config},
+      EventStore.call_timeout(deadline, 6, config)
+    )
   catch
     :exit, {:timeout, _reason} -> timeout()
     :exit, _reason -> internal()
+  end
+
+  defp ensure_before_deadline(deadline) do
+    if deadline <= System.monotonic_time(:millisecond), do: timeout(), else: :ok
   end
 
   defp invalid, do: {:error, Error.new(:invalid, "invalid config lifecycle", %{})}
