@@ -84,6 +84,15 @@ defmodule YellowDog.Management.Storage.Path do
     end
   end
 
+  @doc false
+  @spec command(term(), term()) :: result()
+  def command(root, request_id) do
+    with {:ok, request_id} <- request_id(request_id),
+         {:ok, root} <- captured_root(root) do
+      {:ok, Path.join([root, "commands", "#{request_id}.json"])}
+    end
+  end
+
   @spec event(term()) :: result()
   def event(event_id) do
     with {:ok, event_id} <- event_id(event_id),
@@ -95,8 +104,16 @@ defmodule YellowDog.Management.Storage.Path do
   @spec server_snapshot(term(), term()) :: result()
   def server_snapshot(server_id, domain), do: snapshot("servers", server_id, domain)
 
+  @doc false
+  @spec server_snapshot(term(), term(), term()) :: result()
+  def server_snapshot(root, server_id, domain), do: snapshot(root, "servers", server_id, domain)
+
   @spec netman_snapshot(term(), term()) :: result()
   def netman_snapshot(netman_id, domain), do: snapshot("netmans", netman_id, domain)
+
+  @doc false
+  @spec netman_snapshot(term(), term(), term()) :: result()
+  def netman_snapshot(root, netman_id, domain), do: snapshot(root, "netmans", netman_id, domain)
 
   @spec blob(term()) :: result()
   def blob(digest) do
@@ -176,6 +193,14 @@ defmodule YellowDog.Management.Storage.Path do
     with {:ok, target_id} <- identifier(target_id),
          {:ok, domain} <- domain(domain),
          {:ok, root} <- root() do
+      {:ok, Path.join([root, "snapshots", target_directory, target_id, "#{domain}.json"])}
+    end
+  end
+
+  defp snapshot(root, target_directory, target_id, domain) do
+    with {:ok, target_id} <- identifier(target_id),
+         {:ok, domain} <- domain(domain),
+         {:ok, root} <- captured_root(root) do
       {:ok, Path.join([root, "snapshots", target_directory, target_id, "#{domain}.json"])}
     end
   end

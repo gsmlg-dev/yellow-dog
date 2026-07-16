@@ -112,12 +112,60 @@ defmodule YellowDog.Management.Storage.PathTest do
       expected_manifest =
         Path.join([expected_root, "servers", "server-relative", "manifest.json"])
 
+      expected_command =
+        Path.join([
+          expected_root,
+          "commands",
+          "d2d2d2d2-1111-4222-8333-444444444444.json"
+        ])
+
+      expected_server_snapshot =
+        Path.join([
+          expected_root,
+          "snapshots",
+          "servers",
+          "server-relative",
+          "runtime.services.json"
+        ])
+
+      expected_netman_snapshot =
+        Path.join([
+          expected_root,
+          "snapshots",
+          "netmans",
+          "netman-relative",
+          "runtime.network.json"
+        ])
+
       assert {:ok, ^expected_manifest} =
                StoragePath.server_manifest(expected_root, "server-relative")
+
+      assert {:ok, ^expected_command} =
+               StoragePath.command(
+                 expected_root,
+                 "d2d2d2d2-1111-4222-8333-444444444444"
+               )
+
+      assert {:ok, ^expected_server_snapshot} =
+               StoragePath.server_snapshot(
+                 expected_root,
+                 "server-relative",
+                 "runtime.services"
+               )
+
+      assert {:ok, ^expected_netman_snapshot} =
+               StoragePath.netman_snapshot(
+                 expected_root,
+                 "netman-relative",
+                 "runtime.network"
+               )
     end)
 
     assert {:error, %{code: :internal}} =
              StoragePath.server_manifest("relative/management", "server-relative")
+
+    assert {:error, %{code: :internal}} =
+             StoragePath.command("relative/management", "d2d2d2d2-1111-4222-8333-444444444444")
   end
 
   defp assert_invalid(result) do

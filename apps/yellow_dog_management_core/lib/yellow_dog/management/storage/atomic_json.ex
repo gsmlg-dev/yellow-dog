@@ -30,6 +30,23 @@ defmodule YellowDog.Management.Storage.AtomicJson do
 
   def read(_path, _ops), do: invalid()
 
+  @doc false
+  @spec ls(Path.t(), module()) :: {:ok, [String.t()]} | {:error, term()}
+  def ls(path, ops) when is_binary(path) and is_atom(ops) do
+    module =
+      if Code.ensure_loaded?(ops) and function_exported?(ops, :ls, 1),
+        do: ops,
+        else: __MODULE__.FileOps
+
+    module.ls(path)
+  rescue
+    _exception -> {:error, :list_exception}
+  catch
+    _kind, _reason -> {:error, :list_exit}
+  end
+
+  def ls(_path, _ops), do: {:error, :invalid_path}
+
   @spec create(Path.t(), term()) :: result(Path.t())
   def create(path, value) when is_binary(path) do
     ops = file_ops()
@@ -98,6 +115,22 @@ defmodule YellowDog.Management.Storage.AtomicJson do
   def staging_path(path) when is_binary(path) do
     Path.join(Path.dirname(path), ".#{Path.basename(path)}.#{random_suffix()}.stage")
   end
+
+  @doc false
+  @spec owned((-> term()), integer()) :: term()
+  def owned(operation, deadline) when is_function(operation, 0) and is_integer(deadline) do
+    owner = self()
+    token = make_ref()
+
+    {worker, monitor} =
+      spawn_monitor(fn ->
+        send(owner, {:atomic_json_owned_result, token, run_owned(operation)})
+      end)
+
+    await_owned(worker, monitor, token, deadline)
+  end
+
+  def owned(_operation, _deadline), do: invalid()
 
   @doc false
   @spec promote(Path.t(), Path.t()) :: result(Path.t())
@@ -174,6 +207,53 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     case Jason.decode(contents) do
       {:ok, value} -> {:ok, value}
       {:error, _reason} -> invalid()
+    end
+  end
+
+  defp run_owned(operation) do
+    operation.()
+  rescue
+    _exception -> file_error(:operation_exception)
+  catch
+    _kind, _reason -> file_error(:operation_exit)
+  end
+
+  defp await_owned(worker, monitor, token, deadline) do
+    receive do
+      {:atomic_json_owned_result, ^token, result} ->
+        await_owned_down(worker, monitor, token)
+        result
+
+      {:DOWN, ^monitor, :process, ^worker, _reason} ->
+        take_owned_result(token)
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
+        Process.exit(worker, :kill)
+        await_owned_down(worker, monitor, token)
+        timeout()
+    end
+  end
+
+  defp await_owned_down(worker, monitor, token) do
+    receive do
+      {:DOWN, ^monitor, :process, ^worker, _reason} -> flush_owned_result(token)
+      {:atomic_json_owned_result, ^token, _result} -> await_owned_down(worker, monitor, token)
+    end
+  end
+
+  defp take_owned_result(token) do
+    receive do
+      {:atomic_json_owned_result, ^token, result} -> result
+    after
+      0 -> file_error(:operation_exit)
+    end
+  end
+
+  defp flush_owned_result(token) do
+    receive do
+      {:atomic_json_owned_result, ^token, _result} -> flush_owned_result(token)
+    after
+      0 -> :ok
     end
   end
 
@@ -325,6 +405,9 @@ defmodule YellowDog.Management.Storage.AtomicJson do
 
   defp conflict,
     do: {:error, Error.new(:conflict, "JSON document already exists", %{})}
+
+  defp timeout,
+    do: {:error, Error.new(:timeout, "JSON storage operation timed out", %{})}
 
   defp invalid,
     do: {:error, Error.new(:invalid, "invalid JSON document", %{})}
