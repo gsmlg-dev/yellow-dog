@@ -377,6 +377,113 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     refute inspect(response) =~ leaked_path
   end
 
+  test "redacts sensitive values in effective managed settings" do
+    secret = "server-control-secret"
+    nested_secret = "token=nested-server-control-secret"
+
+    result = %{
+      "service" => "dns",
+      "entries" => [
+        %{
+          "key" => "password",
+          "value" => %{"type" => "string", "value" => secret}
+        },
+        %{
+          "key" => "database",
+          "value" => %{
+            "type" => "object",
+            "entries" => [
+              %{
+                "key" => "api_key",
+                "value" => %{"type" => "string", "value" => nested_secret}
+              }
+            ]
+          }
+        }
+      ]
+    }
+
+    assert {:ok, operation} = ServerOperation.fetch("server.settings.effective.get")
+    assert {:ok, ^result} = Operation.validate_result(operation, result)
+    YellowDog.ServerControlFake.configure(:settings, response: {:ok, result})
+
+    assert {:ok,
+            %{
+              "service" => "dns",
+              "entries" => [
+                %{
+                  "key" => "password",
+                  "value" => %{"type" => "string", "value" => "[redacted]"}
+                },
+                %{
+                  "key" => "database",
+                  "value" => %{
+                    "type" => "object",
+                    "entries" => [
+                      %{
+                        "key" => "api_key",
+                        "value" => %{"type" => "string", "value" => "[redacted]"}
+                      }
+                    ]
+                  }
+                }
+              ]
+            } = redacted} =
+             Control.dispatch(envelope("server.settings.effective.get", %{"service" => "dns"}))
+
+    assert {:ok, ^redacted} = Operation.validate_result(operation, redacted)
+    refute inspect(redacted) =~ secret
+    refute inspect(redacted) =~ nested_secret
+  end
+
+  test "preserves safe managed setting references containing URL paths" do
+    uri = "https://provider.example.test/api?next=/console"
+
+    result = %{
+      "service" => "dns",
+      "entries" => [
+        %{
+          "key" => "client_secret_key_uri",
+          "value" => %{"type" => "string", "value" => uri}
+        }
+      ]
+    }
+
+    assert {:ok, operation} = ServerOperation.fetch("server.settings.effective.get")
+    assert {:ok, ^result} = Operation.validate_result(operation, result)
+    YellowDog.ServerControlFake.configure(:settings, response: {:ok, result})
+
+    assert {:ok, ^result} =
+             Control.dispatch(envelope("server.settings.effective.get", %{"service" => "dns"}))
+  end
+
+  test "preserves the deliberate one-time Identity token secret" do
+    secret = "server-control-one-time-secret"
+
+    result = %{
+      "token_id" => "token-1",
+      "secret" => secret,
+      "expires_at" => nil
+    }
+
+    assert {:ok, operation} = ServerOperation.fetch("server.identity.tokens.create")
+    assert {:ok, ^result} = Operation.validate_result(operation, result)
+
+    YellowDog.ServerControlFake.configure(:identity,
+      current: {:ok, :missing},
+      response: {:ok, result}
+    )
+
+    assert {:ok, ^result} =
+             Control.dispatch(
+               envelope("server.identity.tokens.create", %{
+                 "token_id" => "token-1",
+                 "label" => "automation",
+                 "expires_at" => nil
+               })
+             )
+  end
+
   test "rebuilds typed adapter errors without leaking message or details" do
     leaked_token = "token=server-control-secret"
     leaked_path = "/var/lib/yellowdog/runtime/state.json"

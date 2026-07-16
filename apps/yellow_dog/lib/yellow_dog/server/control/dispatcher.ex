@@ -243,7 +243,7 @@ defmodule YellowDog.Server.Control.Dispatcher do
   end
 
   defp normalize_adapter_result({:ok, value}, operation) do
-    with {:ok, value} <- Result.normalize(value),
+    with {:ok, value} <- Result.normalize(value, operation),
          {:ok, value} <- Operation.validate_result(operation, value) do
       {:ok, value}
     end

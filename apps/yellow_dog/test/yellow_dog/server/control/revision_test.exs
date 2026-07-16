@@ -35,6 +35,10 @@ defmodule YellowDog.Server.Control.RevisionTest do
   test "rejects sensitive diagnostics before output normalization or revision hashing" do
     for text <- [
           "failed to read /var/lib/yellowdog/runtime/state.json",
+          "failed path:/var/lib/yellowdog/runtime/state.json",
+          "failed path=/var/lib/yellowdog/runtime/state.json",
+          "failed to read file:///var/lib/yellowdog/runtime/state.json",
+          "failed to read C:\\ProgramData\\YellowDog\\state.json",
           "token=server-control-secret",
           "password = server-control-secret",
           "api_key=server-control-secret",
@@ -53,6 +57,7 @@ defmodule YellowDog.Server.Control.RevisionTest do
       ipv6_cidr: "2001:db8::/64",
       resource_id: "images/server-1",
       url: "https://example.test/assets/installer.img",
+      redirect_url: "https://provider.example.test/api?next=/console",
       token: "ydt_once_4f12d18b72a1"
     }
 

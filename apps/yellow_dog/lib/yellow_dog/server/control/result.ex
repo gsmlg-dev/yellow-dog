@@ -4,14 +4,20 @@ defmodule YellowDog.Server.Control.Result do
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Codec
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Operation
 
   @max_depth 8
   @max_integer 9_223_372_036_854_775_807
-  @absolute_unix_path ~r{(?:\A|[\s"'=,(\[])/[A-Za-z0-9._-]+}u
-  @local_file_uri ~r{\bfile:///}iu
-  @secret_assignment ~r{\b(?:token|password|api[_-]?key)\s*[:=]\s*\S+}iu
+  @http_url ~r{\bhttps?://[^\s<>"',()\[\]]+}iu
+  @secret_assignment ~r{\b(?:token|password|passwd|passphrase|secret|api[_-]?key|credential)\s*[:=]\s*\S+}iu
   @authorization_secret ~r{\bauthorization\s*[:=]\s*\S+}iu
   @bearer_secret ~r|\bbearer\s+[A-Za-z0-9._~+/=-]{4,}|iu
+  @safe_setting_reference_suffixes ~w(_ref _id _uri _url _digest _hash)
+  @sensitive_setting_tokens MapSet.new(
+                              ~w(password passwd passphrase token secret authorization credential private signing)
+                            )
+  @tls_material_tokens MapSet.new(~w(key private secret cert certificate pem pkcs12 pfx))
+  @redacted_setting_value %{"type" => "string", "value" => "[redacted]"}
   @fixed_atoms MapSet.new([
                  :A,
                  :AAAA,
@@ -93,7 +99,7 @@ defmodule YellowDog.Server.Control.Result do
 
   @spec normalize(term()) :: {:ok, term()} | {:error, Error.t()}
   def normalize(value) do
-    with {:ok, normalized} <- normalize(value, @max_depth),
+    with {:ok, normalized} <- normalize_value(value, @max_depth),
          {:ok, encoded} <- Codec.encode(normalized),
          {:ok, _encoded} <- Bounds.payload(encoded) do
       {:ok, normalized}
@@ -102,32 +108,43 @@ defmodule YellowDog.Server.Control.Result do
     end
   end
 
-  defp normalize(%DateTime{utc_offset: 0, std_offset: 0} = value, _depth) do
+  @spec normalize(term(), Operation.t()) :: {:ok, term()} | {:error, Error.t()}
+  def normalize(value, %Operation{name: "server.settings.effective.get"}) do
+    with {:ok, redacted} <- redact_settings_document(value, @max_depth),
+         {:ok, normalized} <- normalize(redacted) do
+      {:ok, normalized}
+    end
+  end
+
+  def normalize(value, %Operation{}), do: normalize(value)
+  def normalize(_value, _operation), do: invalid_error()
+
+  defp normalize_value(%DateTime{utc_offset: 0, std_offset: 0} = value, _depth) do
     {:ok, DateTime.to_iso8601(value)}
   end
 
-  defp normalize(value, _depth) when is_struct(value), do: invalid_error()
+  defp normalize_value(value, _depth) when is_struct(value), do: invalid_error()
 
-  defp normalize(value, _depth) when is_binary(value) do
+  defp normalize_value(value, _depth) when is_binary(value) do
     normalize_text(value)
   end
 
-  defp normalize(value, _depth)
+  defp normalize_value(value, _depth)
        when is_nil(value) or is_boolean(value),
        do: {:ok, value}
 
-  defp normalize(value, _depth)
+  defp normalize_value(value, _depth)
        when is_integer(value) and value >= -@max_integer and value <= @max_integer,
        do: {:ok, value}
 
-  defp normalize(value, _depth) when is_float(value) do
+  defp normalize_value(value, _depth) when is_float(value) do
     case Jason.encode(value) do
       {:ok, _encoded} -> {:ok, value}
       _ -> invalid_error()
     end
   end
 
-  defp normalize(value, _depth) when is_atom(value) do
+  defp normalize_value(value, _depth) when is_atom(value) do
     if MapSet.member?(@fixed_atoms, value) do
       {:ok, Atom.to_string(value)}
     else
@@ -135,7 +152,7 @@ defmodule YellowDog.Server.Control.Result do
     end
   end
 
-  defp normalize(value, depth) when is_map(value) and depth > 0 do
+  defp normalize_value(value, depth) when is_map(value) and depth > 0 do
     with {:ok, _value} <- Bounds.map(value),
          {:ok, entries} <- normalize_map(value, depth - 1) do
       {:ok, Map.new(entries)}
@@ -144,7 +161,7 @@ defmodule YellowDog.Server.Control.Result do
     end
   end
 
-  defp normalize(value, depth) when is_list(value) and depth > 0 do
+  defp normalize_value(value, depth) when is_list(value) and depth > 0 do
     with {:ok, values} <- Bounds.list(value) do
       normalize_list(values, depth - 1, [])
     else
@@ -152,13 +169,13 @@ defmodule YellowDog.Server.Control.Result do
     end
   end
 
-  defp normalize(_value, _depth), do: invalid_error()
+  defp normalize_value(_value, _depth), do: invalid_error()
 
   defp normalize_map(value, depth) do
     Enum.reduce_while(value, {:ok, %{}, []}, fn {key, nested}, {:ok, seen, entries} ->
       with {:ok, key} <- normalize_key(key),
            false <- Map.has_key?(seen, key),
-           {:ok, nested} <- normalize(nested, depth) do
+           {:ok, nested} <- normalize_value(nested, depth) do
         {:cont, {:ok, Map.put(seen, key, true), [{key, nested} | entries]}}
       else
         _ -> {:halt, invalid_error()}
@@ -192,22 +209,321 @@ defmodule YellowDog.Server.Control.Result do
   end
 
   defp sensitive_text?(value) do
+    secret_diagnostic?(value) or local_path?(value)
+  end
+
+  defp secret_diagnostic?(value) do
     Enum.any?(
-      [
-        @absolute_unix_path,
-        @local_file_uri,
-        @secret_assignment,
-        @authorization_secret,
-        @bearer_secret
-      ],
+      [@secret_assignment, @authorization_secret, @bearer_secret],
       &Regex.match?(&1, value)
     )
+  end
+
+  defp local_path?(value) do
+    downcased = String.downcase(value)
+
+    if String.contains?(downcased, "file://") do
+      true
+    else
+      without_urls = Regex.replace(@http_url, value, "")
+      windows_absolute_path?(without_urls) or unix_absolute_path?(without_urls)
+    end
+  end
+
+  defp windows_absolute_path?(value) do
+    bytes = :binary.bin_to_list(value)
+    windows_drive_path?(bytes, true) or windows_unc_path?(bytes, true)
+  end
+
+  defp windows_drive_path?([drive, ?:, separator | _rest], boundary?)
+       when (drive in ?a..?z or drive in ?A..?Z) and separator in [?/, ?\\] do
+    boundary?
+  end
+
+  defp windows_drive_path?([byte | rest], _boundary?),
+    do: windows_drive_path?(rest, not ascii_alphanumeric?(byte))
+
+  defp windows_drive_path?([], _boundary?), do: false
+
+  defp windows_unc_path?([?\\, ?\\, next | _rest], true)
+       when next not in [?\\, ?/, ?\s, ?\t, ?\r, ?\n],
+       do: true
+
+  defp windows_unc_path?([byte | rest], _boundary?),
+    do: windows_unc_path?(rest, not ascii_alphanumeric?(byte))
+
+  defp windows_unc_path?([], _boundary?), do: false
+
+  defp unix_absolute_path?(value) do
+    value
+    |> :binary.matches("/")
+    |> Enum.any?(fn {index, 1} -> unix_path_at?(value, index) end)
+  end
+
+  defp unix_path_at?(value, index) do
+    boundary? = index == 0 or not ascii_alphanumeric?(:binary.at(value, index - 1))
+    next_index = index + 1
+
+    boundary? and next_index < byte_size(value) and
+      path_segment_start?(:binary.at(value, next_index)) and not cidr_at?(value, index)
+  end
+
+  defp cidr_at?(value, slash_index) do
+    prefix_start = scan_back(value, slash_index - 1)
+    prefix = binary_part(value, prefix_start, slash_index - prefix_start)
+    prefix_length = scan_digits(value, slash_index + 1)
+
+    with {length, ""} <- Integer.parse(prefix_length),
+         {:ok, address} <- :inet.parse_address(String.to_charlist(prefix)) do
+      valid_prefix_length?(address, length)
+    else
+      _ -> false
+    end
+  end
+
+  defp scan_back(_value, index) when index < 0, do: 0
+
+  defp scan_back(value, index) do
+    if ip_character?(:binary.at(value, index)) do
+      scan_back(value, index - 1)
+    else
+      index + 1
+    end
+  end
+
+  defp scan_digits(value, index), do: scan_digits(value, index, [])
+
+  defp scan_digits(value, index, digits) when index < byte_size(value) do
+    byte = :binary.at(value, index)
+
+    if byte in ?0..?9 do
+      scan_digits(value, index + 1, [byte | digits])
+    else
+      digits |> Enum.reverse() |> List.to_string()
+    end
+  end
+
+  defp scan_digits(_value, _index, digits), do: digits |> Enum.reverse() |> List.to_string()
+
+  defp valid_prefix_length?(address, length) when tuple_size(address) == 4,
+    do: length in 0..32
+
+  defp valid_prefix_length?(address, length) when tuple_size(address) == 8,
+    do: length in 0..128
+
+  defp valid_prefix_length?(_address, _length), do: false
+
+  defp ip_character?(byte),
+    do: byte in ?0..?9 or byte in ?a..?f or byte in ?A..?F or byte in [?:, ?.]
+
+  defp path_segment_start?(byte),
+    do: ascii_alphanumeric?(byte) or byte in [?., ?_, ?-, ?~]
+
+  defp ascii_alphanumeric?(byte),
+    do: byte in ?0..?9 or byte in ?a..?z or byte in ?A..?Z
+
+  defp redact_settings_document(document, depth) when is_map(document) and depth > 0 do
+    with {:ok, _document} <- Bounds.map(document) do
+      case fetch_field(document, "entries", :entries) do
+        {:ok, field, entries} when is_list(entries) ->
+          with {:ok, entries} <- redact_setting_entries(entries, depth - 1) do
+            {:ok, Map.put(document, field, entries)}
+          end
+
+        _other ->
+          {:ok, document}
+      end
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp redact_settings_document(document, _depth), do: {:ok, document}
+
+  defp redact_setting_entries(entries, depth) when depth > 0 do
+    with {:ok, entries} <- Bounds.list(entries) do
+      Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, redacted} ->
+        case redact_setting_entry(entry, depth - 1) do
+          {:ok, entry} -> {:cont, {:ok, [entry | redacted]}}
+          _error -> {:halt, invalid_error()}
+        end
+      end)
+      |> case do
+        {:ok, redacted} -> {:ok, Enum.reverse(redacted)}
+        error -> error
+      end
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp redact_setting_entries(_entries, _depth), do: invalid_error()
+
+  defp redact_setting_entry(entry, depth) when is_map(entry) and depth > 0 do
+    with {:ok, _entry} <- Bounds.map(entry) do
+      redact_setting_entry_fields(
+        entry,
+        fetch_field(entry, "key", :key),
+        fetch_field(entry, "value", :value),
+        depth
+      )
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp redact_setting_entry(entry, _depth), do: {:ok, entry}
+
+  defp redact_setting_entry_fields(
+         entry,
+         {:ok, _key_field, key},
+         {:ok, value_field, value},
+         depth
+       )
+       when is_binary(key) do
+    with {:ok, key} <- Bounds.message(key) do
+      if sensitive_setting_key?(key) do
+        with :ok <- bounded_raw_shape(value, depth - 1) do
+          {:ok, Map.put(entry, value_field, @redacted_setting_value)}
+        end
+      else
+        with {:ok, value} <- redact_setting_value(value, depth - 1) do
+          {:ok, Map.put(entry, value_field, value)}
+        end
+      end
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp redact_setting_entry_fields(entry, _key, _value, _depth), do: {:ok, entry}
+
+  defp redact_setting_value(value, depth) when is_map(value) and depth > 0 do
+    with {:ok, _value} <- Bounds.map(value) do
+      case {fetch_field(value, "type", :type), fetch_field(value, "entries", :entries)} do
+        {{:ok, _type_field, "object"}, {:ok, entries_field, entries}} when is_list(entries) ->
+          with {:ok, entries} <- redact_setting_entries(entries, depth - 1) do
+            {:ok, Map.put(value, entries_field, entries)}
+          end
+
+        _other ->
+          {:ok, value}
+      end
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp redact_setting_value(value, _depth), do: {:ok, value}
+
+  defp fetch_field(map, string_key, atom_key) do
+    case Map.fetch(map, string_key) do
+      {:ok, value} -> {:ok, string_key, value}
+      :error -> fetch_atom_field(map, atom_key)
+    end
+  end
+
+  defp fetch_atom_field(map, atom_key) do
+    case Map.fetch(map, atom_key) do
+      {:ok, value} -> {:ok, atom_key, value}
+      :error -> :error
+    end
+  end
+
+  defp bounded_raw_shape(%DateTime{utc_offset: 0, std_offset: 0}, _depth), do: :ok
+  defp bounded_raw_shape(value, _depth) when is_struct(value), do: invalid_error()
+
+  defp bounded_raw_shape(value, _depth) when is_binary(value) do
+    case Bounds.message(value) do
+      {:ok, _value} -> :ok
+      _ -> invalid_error()
+    end
+  end
+
+  defp bounded_raw_shape(value, _depth) when is_nil(value) or is_boolean(value), do: :ok
+
+  defp bounded_raw_shape(value, _depth)
+       when is_integer(value) and value >= -@max_integer and value <= @max_integer,
+       do: :ok
+
+  defp bounded_raw_shape(value, _depth) when is_float(value) do
+    case Jason.encode(value) do
+      {:ok, _encoded} -> :ok
+      _ -> invalid_error()
+    end
+  end
+
+  defp bounded_raw_shape(value, _depth) when is_atom(value) do
+    if MapSet.member?(@fixed_atoms, value), do: :ok, else: invalid_error()
+  end
+
+  defp bounded_raw_shape(value, depth) when is_map(value) and depth > 0 do
+    with {:ok, _value} <- Bounds.map(value) do
+      Enum.reduce_while(value, :ok, fn {key, nested}, :ok ->
+        with :ok <- bounded_raw_key(key),
+             :ok <- bounded_raw_shape(nested, depth - 1) do
+          {:cont, :ok}
+        else
+          _ -> {:halt, invalid_error()}
+        end
+      end)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp bounded_raw_shape(value, depth) when is_list(value) and depth > 0 do
+    with {:ok, values} <- Bounds.list(value) do
+      Enum.reduce_while(values, :ok, fn nested, :ok ->
+        case bounded_raw_shape(nested, depth - 1) do
+          :ok -> {:cont, :ok}
+          _ -> {:halt, invalid_error()}
+        end
+      end)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp bounded_raw_shape(_value, _depth), do: invalid_error()
+
+  defp bounded_raw_key(key) when is_atom(key), do: key |> Atom.to_string() |> bounded_raw_key()
+
+  defp bounded_raw_key(key) when is_binary(key) do
+    case Bounds.message(key) do
+      {:ok, ""} -> invalid_error()
+      {:ok, _key} -> :ok
+      _ -> invalid_error()
+    end
+  end
+
+  defp bounded_raw_key(_key), do: invalid_error()
+
+  defp sensitive_setting_key?(key) do
+    if Enum.any?(@safe_setting_reference_suffixes, &String.ends_with?(key, &1)) do
+      false
+    else
+      tokens = String.split(String.downcase(key), ~r/[^a-z0-9]+/, trim: true)
+
+      Enum.any?(tokens, &MapSet.member?(@sensitive_setting_tokens, &1)) or
+        token_pair?(tokens, "api", "key") or tls_material?(tokens)
+    end
+  end
+
+  defp token_pair?(tokens, first, second) do
+    tokens
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(&(&1 == [first, second]))
+  end
+
+  defp tls_material?(tokens) do
+    "tls" in tokens and Enum.any?(tokens, &MapSet.member?(@tls_material_tokens, &1))
   end
 
   defp normalize_list([], _depth, values), do: {:ok, Enum.reverse(values)}
 
   defp normalize_list([value | rest], depth, values) do
-    with {:ok, value} <- normalize(value, depth) do
+    with {:ok, value} <- normalize_value(value, depth) do
       normalize_list(rest, depth, [value | values])
     end
   end
