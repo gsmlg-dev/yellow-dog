@@ -8,6 +8,7 @@ defmodule YellowDog.Server.Control.Dns do
   alias YellowDog.Sync.ServerOperation
 
   @record_id_pattern ~r/\Arr-[0-9a-f]{64}\z/
+  @max_control_views 1_000
   @max_acl_networks 100
   @max_rrset_entries 100
   @validation_observed_at "1970-01-01T00:00:00Z"
@@ -225,7 +226,13 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
-  defp unwrap_control_views({:ok, views}) when is_list(views), do: {:ok, views}
+  defp unwrap_control_views({:ok, views}) when is_list(views) do
+    case bounded_list(views, @max_control_views) do
+      {:ok, bounded} -> {:ok, bounded}
+      {:error, :too_large} -> unsupported_error()
+    end
+  end
+
   defp unwrap_control_views({:error, :unsupported_acl}), do: unsupported_error()
   defp unwrap_control_views({:error, :control_snapshot_too_large}), do: unsupported_error()
   defp unwrap_control_views(_result), do: apply_failed_error()
@@ -368,14 +375,11 @@ defmodule YellowDog.Server.Control.Dns do
   defp validate_wire_record_type(_type), do: invalid_error()
 
   defp record_ttl(rrset) do
-    Enum.reduce_while(rrset, {:ok, nil}, fn entry, {:ok, expected_ttl} ->
-      ttl = field(entry, :ttl, field(record_data(entry), :ttl, :missing))
-
-      cond do
-        not is_integer(ttl) or ttl not in 0..2_147_483_647 -> {:halt, :error}
-        is_nil(expected_ttl) -> {:cont, {:ok, ttl}}
-        ttl == expected_ttl -> {:cont, {:ok, expected_ttl}}
-        true -> {:halt, :error}
+    Enum.reduce_while(rrset, {:ok, :unset}, fn entry, {:ok, expected_ttl} ->
+      case entry_ttl(entry) do
+        {:ok, ttl} when expected_ttl == :unset -> {:cont, {:ok, ttl}}
+        {:ok, ttl} when ttl == expected_ttl -> {:cont, {:ok, expected_ttl}}
+        _invalid -> {:halt, :error}
       end
     end)
     |> case do
@@ -383,6 +387,44 @@ defmodule YellowDog.Server.Control.Dns do
       _invalid -> :error
     end
   end
+
+  defp entry_ttl(entry) when is_map(entry) do
+    values = ttl_values(entry) ++ nested_ttl_values(entry)
+
+    case values do
+      [ttl | rest] ->
+        if valid_ttl?(ttl) and Enum.all?(rest, &(valid_ttl?(&1) and &1 === ttl)) do
+          {:ok, ttl}
+        else
+          :error
+        end
+
+      [] ->
+        :error
+    end
+  end
+
+  defp entry_ttl(_entry), do: :error
+
+  defp nested_ttl_values(entry) do
+    Enum.flat_map([:rdata, "rdata"], fn key ->
+      case Map.fetch(entry, key) do
+        {:ok, nested} when is_map(nested) -> ttl_values(nested)
+        _missing_or_invalid -> []
+      end
+    end)
+  end
+
+  defp ttl_values(map) do
+    Enum.flat_map([:ttl, "ttl"], fn key ->
+      case Map.fetch(map, key) do
+        {:ok, value} -> [value]
+        :error -> []
+      end
+    end)
+  end
+
+  defp valid_ttl?(value), do: is_integer(value) and value in 0..2_147_483_647
 
   defp record_values(type, rrset) do
     Enum.reduce_while(rrset, {:ok, []}, fn entry, {:ok, values} ->

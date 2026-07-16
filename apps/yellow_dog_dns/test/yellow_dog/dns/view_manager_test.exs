@@ -1,3 +1,61 @@
+defmodule YellowDog.Dns.ViewManagerTest.ChangingSupervisor do
+  @moduledoc false
+
+  use GenServer
+
+  def start_link(options), do: GenServer.start_link(__MODULE__, options)
+
+  def calls(pid), do: GenServer.call(pid, :calls)
+
+  @impl GenServer
+  def init(options) do
+    {:ok,
+     %{
+       children: Keyword.fetch!(options, :children),
+       reported_active: Keyword.fetch!(options, :reported_active),
+       calls: []
+     }}
+  end
+
+  @impl GenServer
+  def handle_call(:count_children, _from, state) do
+    count = state.reported_active
+    reply = [specs: count, active: count, supervisors: 0, workers: count]
+    {:reply, reply, %{state | calls: [:count_children | state.calls]}}
+  end
+
+  def handle_call(:which_children, _from, state) do
+    {:reply, state.children, %{state | calls: [:which_children | state.calls]}}
+  end
+
+  def handle_call(:calls, _from, state), do: {:reply, Enum.reverse(state.calls), state}
+end
+
+defmodule YellowDog.Dns.ViewManagerTest.ProbeView do
+  @moduledoc false
+
+  use GenServer
+
+  def start_link(options), do: GenServer.start_link(__MODULE__, options)
+
+  @impl GenServer
+  def init(options), do: {:ok, Keyword.fetch!(options, :test_pid)}
+
+  @impl GenServer
+  def handle_call(message, _from, test_pid) do
+    send(test_pid, {:probe_view_call, message})
+
+    reply =
+      case message do
+        :get_name -> "probe"
+        :get_priority -> 0
+        :control_snapshot -> {:ok, %{match_clients: [], recursion: false}}
+      end
+
+    {:reply, reply, test_pid}
+  end
+end
+
 defmodule YellowDog.Dns.ViewManagerTest do
   @moduledoc """
   Unit tests for YellowDog.Dns.ViewManager.
@@ -12,6 +70,8 @@ defmodule YellowDog.Dns.ViewManagerTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Dns.ViewManager
+  alias YellowDog.Dns.ViewManagerTest.ChangingSupervisor
+  alias YellowDog.Dns.ViewManagerTest.ProbeView
 
   # Start required registry before all tests
   setup_all do
@@ -261,6 +321,24 @@ defmodule YellowDog.Dns.ViewManagerTest do
 
       assert {:error, :control_snapshot_too_large} =
                ViewManager.list_control_views(supervisor)
+    end
+
+    @tag :capture_log
+    test "bounds and traverses one exact child snapshot when the child set changes" do
+      probe = start_supervised!({ProbeView, test_pid: self()})
+
+      children =
+        [{:undefined, probe, :worker, [YellowDog.Dns.View]}] ++
+          List.duplicate({:undefined, :restarting, :worker, [YellowDog.Dns.View]}, 1_000)
+
+      supervisor =
+        start_supervised!({ChangingSupervisor, children: children, reported_active: 1_000})
+
+      assert {:error, :control_snapshot_too_large} =
+               ViewManager.list_control_views(supervisor)
+
+      assert ChangingSupervisor.calls(supervisor) == [:which_children]
+      refute_receive {:probe_view_call, _message}
     end
   end
 

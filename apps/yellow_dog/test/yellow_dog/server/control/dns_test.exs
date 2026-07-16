@@ -537,6 +537,25 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert later["revision"] == first["revision"]
   end
 
+  test "rejects oversized view owner results instead of truncating canonical resources" do
+    views =
+      for index <- 0..1_000 do
+        %{
+          name: "view-#{index |> Integer.to_string() |> String.pad_leading(4, "0")}",
+          match_clients: [],
+          recursion: false
+        }
+      end
+
+    ServerDnsControlFake.configure(%{views: views})
+
+    assert {:error, %Error{code: :unsupported, message: "unsupported operation", details: %{}}} =
+             Dns.dispatch("server.dns.views.list", %{})
+
+    assert {:error, %Error{code: :unsupported, message: "unsupported operation", details: %{}}} =
+             Dns.current("server.dns.views.update", %{"view_name" => "view-0000"})
+  end
+
   test "sorts RRset values and derives an order-independent equal TTL" do
     first = %{
       owner: "www",
@@ -625,6 +644,77 @@ defmodule YellowDog.Server.Control.DnsTest do
                  "zone_name" => "example.test"
                })
     end
+  end
+
+  test "rejects conflicting top-level and nested RRset TTLs in either entry order" do
+    rrset = [
+      %{ttl: 60, rdata: %{address: {192, 0, 2, 1}, ttl: 120}},
+      %{ttl: 60, rdata: %{address: {192, 0, 2, 2}, ttl: 60}}
+    ]
+
+    for entries <- [rrset, Enum.reverse(rrset)] do
+      ServerDnsControlFake.configure(%{
+        records: %{
+          {"default", "example.test"} => {:ok, [%{owner: "www", type: :a, rrset: entries}]}
+        }
+      })
+
+      assert {:error, %Error{code: :invalid}} =
+               Dns.dispatch("server.dns.records.list", %{
+                 "view_name" => "default",
+                 "zone_name" => "example.test"
+               })
+    end
+  end
+
+  test "rejects invalid nested RRset TTLs even when top-level TTLs are valid" do
+    rrset = [
+      %{ttl: 60, rdata: %{address: {192, 0, 2, 1}, ttl: "60"}},
+      %{ttl: 60, rdata: %{address: {192, 0, 2, 2}, ttl: 60}}
+    ]
+
+    for entries <- [rrset, Enum.reverse(rrset)] do
+      ServerDnsControlFake.configure(%{
+        records: %{
+          {"default", "example.test"} => {:ok, [%{owner: "www", type: :a, rrset: entries}]}
+        }
+      })
+
+      assert {:error, %Error{code: :invalid}} =
+               Dns.dispatch("server.dns.records.list", %{
+                 "view_name" => "default",
+                 "zone_name" => "example.test"
+               })
+    end
+  end
+
+  test "accepts consistent duplicate TTL locations with stable reversal" do
+    rrset = [
+      %{ttl: 60, rdata: %{address: {192, 0, 2, 2}, ttl: 60}},
+      %{ttl: 60, rdata: %{address: {192, 0, 2, 1}, ttl: 60}}
+    ]
+
+    results =
+      for entries <- [rrset, Enum.reverse(rrset)] do
+        ServerDnsControlFake.configure(%{
+          records: %{
+            {"default", "example.test"} => {:ok, [%{owner: "www", type: :a, rrset: entries}]}
+          }
+        })
+
+        assert {:ok, result} =
+                 Dns.dispatch("server.dns.records.list", %{
+                   "view_name" => "default",
+                   "zone_name" => "example.test"
+                 })
+
+        result
+      end
+
+    assert [first, second] = results
+    assert hd(first["items"])["ttl"] == 60
+    assert first["items"] == second["items"]
+    assert first["revision"] == second["revision"]
   end
 
   test "validates projected reads and current snapshots before returning ok" do

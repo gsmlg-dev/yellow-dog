@@ -2,8 +2,10 @@
 
 ## Status
 
-Repair complete on branch `codex/service-node-remote-management`, based on Task
-3A implementation commit `6afd6397e2689cd76281ae53e9e4a5b66a69217b`.
+Final repair complete on branch `codex/service-node-remote-management`. The
+third repair wave started from
+`98451f1686658d2d3f29d2ec54f8ad2eb3df3988`; earlier implementation and repair
+evidence is preserved below as historical command output.
 
 The implementation remains the DNS read/wire boundary only. DNS mutation
 dispatches return typed `unsupported` without dependency calls or side effects.
@@ -143,14 +145,14 @@ cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs
 23 tests, 0 failures
 ```
 
-Regression coverage proves equal-TTL RRset reversal produces identical resources
-and revisions; unequal, missing, partially specified, negative, oversized, and
-non-integer TTLs are rejected. Rule and legacy ACL CIDRs mask IPv4 host bits and
-canonicalize expanded IPv6 through the DNS ACL owner API, with stable list and
-`current/2` resources and revisions. Query-log work is bounded to the newest
-1,000 global entries, ACL projection rejects more than 100 rules without
-truncation, and view projection rejects more than 1,000 active children before
-calling individual views.
+Second-wave regression coverage proved entry-order independence for the selected
+TTL field and a static over-limit view count. It did not cover simultaneous
+top-level/nested TTL fields or a child set changing between count and fetch; the
+third repair wave below records those gaps and their corrected coverage. Rule and
+legacy ACL CIDRs mask IPv4 host bits and canonicalize expanded IPv6 through the
+DNS ACL owner API, with stable list and `current/2` resources and revisions.
+Query-log work is bounded to the newest 1,000 global entries, and ACL projection
+rejects more than 100 rules without truncation.
 
 Second-wave full verification, through `devenv shell`:
 
@@ -192,3 +194,87 @@ rules return typed `unsupported`, and more than 1,000 active views return typed
 `unsupported` through the adapter. Canonical policy resources are never silently
 truncated. The four protected console/root files retain their pre-existing dirty
 diffs and remain outside Task 3A staging.
+
+## Third Repair Wave
+
+This final narrow repair started from
+`98451f1686658d2d3f29d2ec54f8ad2eb3df3988`. Owned scope was limited to:
+
+- `.superpowers/sdd/server-task-3a-report.md`
+- `apps/yellow_dog/lib/yellow_dog/server/control/dns.ex`
+- `apps/yellow_dog/test/yellow_dog/server/control/dns_test.exs`
+- `apps/yellow_dog_dns/lib/yellow_dog/dns/view_manager.ex`
+- `apps/yellow_dog_dns/test/yellow_dog/dns/view_manager_test.exs`
+
+Third-wave RED, after the regression tests and before production changes:
+
+```text
+cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs
+27 tests, 3 failures
+Top-level TTLs masked conflicting or invalid nested TTLs, and 1,001 owner views
+were silently truncated to the wire bound.
+
+cd apps/yellow_dog_dns && mix test test/yellow_dog/dns/view_manager_test.exs
+31 tests, 1 failure
+A deterministic count/fetch child-set change bypassed the static count guard.
+```
+
+Third-wave focused GREEN:
+
+```text
+cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs
+27 tests, 0 failures
+
+cd apps/yellow_dog_dns && mix test test/yellow_dog/dns/view_manager_test.exs
+31 tests, 0 failures
+```
+
+Every present top-level and nested `rdata` TTL is now validated independently;
+duplicate locations on one entry and all entries in the RRset must agree. Tests
+cover reversed top-level/nested conflicts, reversed invalid nested values, and
+stable reversed resources/revisions for consistent duplicates. ViewManager calls
+`DynamicSupervisor.which_children/1` once, rejects that exact snapshot over
+1,000 before any View call, and traverses only the captured snapshot. The adapter
+also rejects an oversized owner list with typed `unsupported` for both list and
+`current/2`, before `sort_and_bound/2` can truncate canonical view resources.
+
+Third-wave full verification, through `devenv shell`:
+
+```text
+cd apps/yellow_dog && mix test
+282 tests, 0 failures
+
+cd apps/yellow_dog_dns && mix test
+1161 tests, 0 failures, 1 skipped
+
+cd apps/yellow_dog && MIX_ENV=dev mix compile --force --warnings-as-errors
+exit 0
+
+cd apps/yellow_dog && MIX_ENV=test mix compile --force --warnings-as-errors
+exit 0
+
+cd apps/yellow_dog_dns && MIX_ENV=dev mix compile --force --warnings-as-errors
+exit 0
+
+cd apps/yellow_dog_dns && MIX_ENV=test mix compile --force --warnings-as-errors
+exit 0
+
+mix format --check-formatted <four third-wave Elixir files>
+exit 0
+
+cd apps/yellow_dog && mix credo --strict <two third-wave Elixir files>
+162 mods/funs, found no issues
+
+cd apps/yellow_dog_dns && mix credo --strict <two third-wave Elixir files>
+50 mods/funs, found no issues
+
+git diff --check
+exit 0
+```
+
+The remaining explicit bounds are unchanged: query-log control reads inspect the
+newest 1,000 global entries, ACL policies over 100 rules return typed
+`unsupported`, and a captured snapshot over 1,000 view children or an owner list
+over 1,000 views returns typed `unsupported`. No canonical view or policy list is
+silently truncated. Protected console files and root `mix.exs` remain untouched
+and outside staging.
