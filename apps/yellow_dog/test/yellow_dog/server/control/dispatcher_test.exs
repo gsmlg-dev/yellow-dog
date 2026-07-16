@@ -379,6 +379,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
 
   test "classifies Netboot diagnostics without rejecting complete provider URLs" do
     assert {:ok, operation} = ServerOperation.fetch("server.netboot.logs.list")
+    long_prefix = String.duplicate("a", 64)
 
     rejected = [
       "access_token=explicit-secret",
@@ -388,6 +389,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
       "jwtSecret=runtime-secret",
       "oauthCredential=runtime-secret",
       "authBearer=runtime-secret",
+      "#{long_prefix}password=runtime-secret",
       "/+private/token",
       "/私密/token",
       "file:///var/lib/yellowdog/state",
@@ -400,6 +402,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
       "monkey=banana",
       "tokenizer=enabled",
       "secretariat=office",
+      "#{long_prefix}monkey=banana",
       "https://provider.example.test/api?next=/console",
       "https://provider.example.test/api?next=file:///var/lib/yellowdog/state",
       "https://example.test/redirect?next=(/console)",

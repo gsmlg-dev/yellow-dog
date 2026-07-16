@@ -8,7 +8,6 @@ defmodule YellowDog.Server.Control.Result do
 
   @max_depth 8
   @max_integer 9_223_372_036_854_775_807
-  @max_assignment_identifier 64
   @identifier_delimiter ~r/[^a-z0-9]+/u
   @bearer_credential ~r/\A[A-Za-z0-9._~+\/=\-]{4,}\z/u
   @safe_setting_reference_suffixes ~w(_ref _id _uri _url _digest _hash)
@@ -270,13 +269,7 @@ defmodule YellowDog.Server.Control.Result do
     end
   end
 
-  defp append_identifier(:too_long, _byte), do: :too_long
-
-  defp append_identifier(identifier, byte)
-       when byte_size(identifier) < @max_assignment_identifier,
-       do: identifier <> <<byte>>
-
-  defp append_identifier(_identifier, _byte), do: :too_long
+  defp append_identifier(identifier, byte), do: identifier <> <<byte>>
 
   defp bearer_secret?(value) do
     value

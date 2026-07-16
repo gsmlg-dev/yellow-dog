@@ -86,6 +86,18 @@ defmodule YellowDog.Server.Control.RevisionTest do
     end
   end
 
+  test "classifies the complete bounded assignment identifier" do
+    prefix = String.duplicate("a", 64)
+    sensitive = %{"message" => "#{prefix}password=runtime-secret"}
+    ordinary = %{"message" => "#{prefix}monkey=banana"}
+
+    assert_invalid(Result.normalize(sensitive))
+    assert_invalid(Revision.calculate(sensitive))
+    assert {:ok, ^ordinary} = Result.normalize(ordinary)
+    assert {:ok, revision} = Revision.calculate(ordinary)
+    assert String.match?(revision, ~r/\A[0-9a-f]{64}\z/)
+  end
+
   test "rejects sensitive diagnostics before output normalization or revision hashing" do
     for text <- [
           "failed to read /var/lib/yellowdog/runtime/state.json",
