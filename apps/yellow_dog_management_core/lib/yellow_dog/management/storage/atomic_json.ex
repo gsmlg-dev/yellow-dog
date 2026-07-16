@@ -159,6 +159,17 @@ defmodule YellowDog.Management.Storage.AtomicJson do
 
   def replace(_path, _value, _ops), do: invalid()
 
+  @doc false
+  @spec replace(Path.t(), term(), Path.t(), module()) :: result(Path.t())
+  def replace(path, value, staging_path, ops)
+      when is_binary(path) and is_binary(staging_path) and is_atom(ops) do
+    with {:ok, ^staging_path} <- stage(path, value, staging_path, ops) do
+      replace_staged(path, staging_path, ops)
+    end
+  end
+
+  def replace(_path, _value, _staging_path, _ops), do: invalid()
+
   defp decode(contents) do
     case Jason.decode(contents) do
       {:ok, value} -> {:ok, value}
@@ -237,6 +248,26 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     end
   end
 
+  defp replace_staged(path, staging_path, ops) do
+    if valid_staging_path?(path, staging_path) do
+      result =
+        try do
+          case ops.rename(staging_path, path) do
+            :ok -> {:ok, path}
+            {:error, reason} -> cleanup_path(ops, staging_path, reason)
+          end
+        rescue
+          _exception -> cleanup_path(ops, staging_path, :rename_exception)
+        catch
+          _kind, _reason -> cleanup_path(ops, staging_path, :rename_exit)
+        end
+
+      result
+    else
+      invalid()
+    end
+  end
+
   defp cleanup_path(ops, path, reason) do
     best_effort_remove(ops, path)
     file_error(reason)
@@ -308,6 +339,7 @@ defmodule YellowDog.Management.Storage.AtomicJson.FileOps do
   @moduledoc false
 
   def read(path), do: File.read(path)
+  def ls(path), do: File.ls(path)
   def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
   def write(device, contents), do: :file.write(device, contents)
   def sync(device), do: :file.sync(device)

@@ -24,6 +24,8 @@ defmodule YellowDog.Management.ConfigVersionsTest do
           :data_dir,
           :atomic_json_file_ops,
           :block_config_manifest_replace,
+          :config_version_blocking_operation,
+          :config_version_blocking_owner,
           :config_version_file_ops_owner,
           :fail_config_manifest_write,
           :manifest_replace_file_ops_owner
@@ -42,6 +44,8 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
     Application.delete_env(:yellow_dog_management_core, :block_config_manifest_replace)
+    Application.delete_env(:yellow_dog_management_core, :config_version_blocking_operation)
+    Application.delete_env(:yellow_dog_management_core, :config_version_blocking_owner)
     Application.delete_env(:yellow_dog_management_core, :config_version_file_ops_owner)
     Application.delete_env(:yellow_dog_management_core, :fail_config_manifest_write)
     Application.delete_env(:yellow_dog_management_core, :manifest_replace_file_ops_owner)
@@ -437,6 +441,55 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_error(ManagementCore.latest_desired_config(:server, "srv-restart"), :not_found)
   end
 
+  test "rollback-phase durable decode rejects succeeded rollback for only the tampered target" do
+    valid = rollback_phase_failure("srv-rollback-reload-valid")
+    tampered = rollback_phase_failure("srv-rollback-reload-tampered")
+
+    assert {:ok, manifest_path} =
+             StoragePath.server_manifest("srv-rollback-reload-tampered")
+
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    version_key = Integer.to_string(tampered.version)
+
+    tampered_lifecycle =
+      manifest["config_lifecycle"]
+      |> put_in(
+        ["versions", version_key, "rollback"],
+        %{
+          "succeeded" => true,
+          "restored_version" => tampered.previous_version,
+          "restored_revision" => tampered.previous_revision,
+          "reason" => nil
+        }
+      )
+      |> put_in(["versions", version_key, "restored_version"], tampered.previous_version)
+      |> put_in(["versions", version_key, "restored_revision"], tampered.previous_revision)
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(
+               manifest_path,
+               Map.put(manifest, "config_lifecycle", tampered_lifecycle)
+             )
+
+    restart_application()
+
+    assert {:ok, restored_valid} =
+             ManagementCore.get_server_config_version(
+               "srv-rollback-reload-valid",
+               valid.version
+             )
+
+    assert restored_valid == valid
+
+    assert_error(
+      ManagementCore.get_server_config_version(
+        "srv-rollback-reload-tampered",
+        tampered.version
+      ),
+      :invalid
+    )
+  end
+
   test "queued publish keeps its captured storage root for writes and decode identity", %{
     data_dir: root_a
   } do
@@ -559,11 +612,13 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     )
 
     publish_task = Task.async(fn -> publish_server("srv-expired-immutable") end)
-    assert_receive {:immutable_created, config_versions, version_path}, 1_000
-    assert config_versions == Process.whereis(ConfigVersions)
+    assert_receive {:immutable_created, worker_pid, version_path}, 1_000
+    config_versions = Process.whereis(ConfigVersions)
+    refute worker_pid == config_versions
     assert_error(Task.await(publish_task, 1_000), :timeout)
-    send(config_versions, :release_immutable_write)
+    send(worker_pid, :release_immutable_write)
     :sys.get_state(config_versions)
+    refute Process.alive?(worker_pid)
 
     assert {:ok, ^manifest} = AtomicJson.read(manifest_path)
     assert File.exists?(version_path)
@@ -572,6 +627,22 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       Path.join([data_dir, "management", "servers", "srv-expired-immutable", "versions"])
 
     assert [^version_path] = Path.wildcard(Path.join(versions_dir, "*.json"))
+  end
+
+  test "blocking manifest read times out without wedging ConfigVersions", context do
+    assert_blocking_filesystem_timeout(:read, "srv-block-read", false, context.data_dir)
+  end
+
+  test "blocking versions listing times out without wedging ConfigVersions", context do
+    assert_blocking_filesystem_timeout(:list, "srv-block-list", false, context.data_dir)
+  end
+
+  test "blocking immutable stage times out and removes its known staging file", context do
+    assert_blocking_filesystem_timeout(:stage, "srv-block-stage", false, context.data_dir)
+  end
+
+  test "blocking immutable promotion reconciles only its exact orphan", context do
+    assert_blocking_filesystem_timeout(:promotion, "srv-block-promotion", true, context.data_dir)
   end
 
   test "deadline after manifest replacement restores the exact previous lifecycle", %{
@@ -608,7 +679,11 @@ defmodule YellowDog.Management.ConfigVersionsTest do
         safe_resume(config_versions)
       end
 
-    assert_receive {:config_manifest_replaced, writer, ^manifest_path, committed_contents}, 2_000
+    assert_receive {:config_manifest_replaced, writer, staging_path, ^manifest_path,
+                    committed_contents},
+                   2_000
+
+    assert String.ends_with?(staging_path, ".stage")
     assert {:ok, replaced_manifest} = Jason.decode(committed_contents)
     assert replaced_manifest["config_lifecycle"]["desired_version"] == 1
 
@@ -626,6 +701,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
     assert [orphan_path] = Path.wildcard(Path.join(versions_dir, "*.json"))
     assert Path.basename(orphan_path) =~ ~r/^1-/
+    refute filesystem_residue?(Path.dirname(manifest_path))
 
     assert {:ok, %ConfigVersion{version: 2}} = publish_server("srv-manifest-deadline")
   end
@@ -807,6 +883,35 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert {:ok, applying} = transition(delivered, :applying, 1)
     assert {:ok, applied} = transition(applying, :applied, 2, applied_revision: @digest_a)
     applied
+  end
+
+  defp rollback_phase_failure(server_id) do
+    register_server(server_id)
+    assert {:ok, first} = publish_server(server_id)
+    applied = apply_version(first)
+
+    assert {:ok, second} =
+             ManagementCore.publish_server_config(
+               server_id,
+               server_attrs(2, expected_revision: applied.applied_revision)
+             )
+
+    assert {:ok, delivered} = transition(second, :delivered, 0)
+    assert {:ok, applying} = transition(delivered, :applying, 1)
+
+    assert {:ok, failed} =
+             transition(applying, :failed, 2,
+               failure_phase: :rollback,
+               reason: "rollback failed",
+               rollback: %{
+                 "succeeded" => false,
+                 "restored_version" => nil,
+                 "restored_revision" => nil,
+                 "reason" => "runtime rollback failed"
+               }
+             )
+
+    failed
   end
 
   defp assert_terminal_conflicts(version, expected_state_revision) do
@@ -1053,6 +1158,69 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     {:ok, pending_manifest}
   end
 
+  defp assert_blocking_filesystem_timeout(operation, server_id, orphan?, data_dir) do
+    register_server(server_id)
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_owner, self())
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :config_version_blocking_operation,
+      operation
+    )
+
+    install_event_store_config(
+      file_ops: __MODULE__.BlockingConfigFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 50
+    )
+
+    config_versions = Process.whereis(ConfigVersions)
+    publish_task = Task.async(fn -> publish_server(server_id) end)
+
+    assert_receive {:config_filesystem_blocked, ^operation, blocked_pid, blocked_path}, 1_000
+    publish_result = Task.await(publish_task, 1_000)
+    send(blocked_pid, :release_config_filesystem)
+    :sys.get_state(config_versions)
+
+    assert_error(publish_result, :timeout)
+    refute blocked_pid == config_versions
+    refute Process.alive?(blocked_pid)
+
+    target_dir = Path.join([data_dir, "management", "servers", server_id])
+    refute filesystem_residue?(target_dir)
+
+    versions_dir = Path.join(target_dir, "versions")
+    version_paths = Path.wildcard(Path.join(versions_dir, "*.json"))
+
+    if orphan? do
+      assert [orphan_path] = version_paths
+      assert Path.basename(orphan_path) =~ ~r/^1-/
+      assert blocked_path == orphan_path
+    else
+      assert version_paths == []
+    end
+
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_operation, nil)
+    expected_version = if orphan?, do: 2, else: 1
+    assert {:ok, %ConfigVersion{version: ^expected_version}} = publish_server(server_id)
+  end
+
+  defp filesystem_residue?(path) do
+    case File.ls(path) do
+      {:ok, names} ->
+        Enum.any?(names, fn name ->
+          child = Path.join(path, name)
+          String.ends_with?(name, [".stage", ".tmp"]) or filesystem_residue?(child)
+        end)
+
+      {:error, :enotdir} ->
+        false
+
+      {:error, :enoent} ->
+        false
+    end
+  end
+
   defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
 
   defp restore_env(key, {:ok, value}),
@@ -1062,6 +1230,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     @moduledoc false
 
     def read(path), do: File.read(path)
+    def ls(path), do: File.ls(path)
     def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
     def write(device, contents), do: :file.write(device, contents)
     def sync(device), do: :file.sync(device)
@@ -1088,6 +1257,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     @version_filename ~r/^[1-9][0-9]*-[0-9a-f]{64}\.json$/
 
     def read(path), do: File.read(path)
+    def ls(path), do: File.ls(path)
 
     def open(path) do
       case :file.open(path, [:write, :exclusive, :binary, :raw]) do
@@ -1147,6 +1317,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     @moduledoc false
 
     def read(path), do: File.read(path)
+    def ls(path), do: File.ls(path)
     def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
     def write(device, contents), do: :file.write(device, contents)
     def sync(device), do: :file.sync(device)
@@ -1157,7 +1328,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     def rename(source, target) do
       case :file.rename(source, target) do
         :ok ->
-          maybe_block_manifest_replace(target)
+          maybe_block_manifest_replace(source, target)
           :ok
 
         error ->
@@ -1165,7 +1336,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       end
     end
 
-    defp maybe_block_manifest_replace(target) do
+    defp maybe_block_manifest_replace(source, target) do
       block? =
         Path.basename(target) == "manifest.json" and
           Application.get_env(
@@ -1184,10 +1355,81 @@ defmodule YellowDog.Management.ConfigVersionsTest do
           )
 
         {:ok, committed_contents} = File.read(target)
-        send(owner, {:config_manifest_replaced, self(), target, committed_contents})
+
+        send(owner, {
+          :config_manifest_replaced,
+          self(),
+          source,
+          target,
+          committed_contents
+        })
 
         receive do
           :release_config_manifest_replace -> :ok
+        end
+      end
+    end
+  end
+
+  defmodule BlockingConfigFileOps do
+    @moduledoc false
+
+    alias YellowDog.Management.Storage.AtomicJson.FileOps
+
+    def read(path) do
+      maybe_block(:read, path)
+      FileOps.read(path)
+    end
+
+    def ls(path) do
+      maybe_block(:list, path)
+      FileOps.ls(path)
+    end
+
+    def open(path) do
+      case FileOps.open(path) do
+        {:ok, _device} = success ->
+          if String.ends_with?(path, ".stage"), do: maybe_block(:stage, path)
+          success
+
+        error ->
+          error
+      end
+    end
+
+    defdelegate write(device, contents), to: FileOps
+    defdelegate sync(device), to: FileOps
+    defdelegate close(device), to: FileOps
+    defdelegate rename(source, target), to: FileOps
+
+    def link(source, target) do
+      case FileOps.link(source, target) do
+        :ok ->
+          maybe_block(:promotion, target)
+          :ok
+
+        error ->
+          error
+      end
+    end
+
+    defdelegate rm(path), to: FileOps
+
+    defp maybe_block(operation, path) do
+      if Application.get_env(
+           :yellow_dog_management_core,
+           :config_version_blocking_operation
+         ) == operation do
+        owner =
+          Application.fetch_env!(
+            :yellow_dog_management_core,
+            :config_version_blocking_owner
+          )
+
+        send(owner, {:config_filesystem_blocked, operation, self(), path})
+
+        receive do
+          :release_config_filesystem -> :ok
         end
       end
     end

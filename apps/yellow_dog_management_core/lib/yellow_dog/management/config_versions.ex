@@ -58,7 +58,10 @@ defmodule YellowDog.Management.ConfigVersions do
     do: call({:latest_desired, target_type, target_id})
 
   @impl true
-  def init(:ok), do: {:ok, nil}
+  def init(:ok) do
+    Process.flag(:trap_exit, true)
+    {:ok, nil}
+  end
 
   @impl true
   def handle_call({{:publish, target_type, target_id, attrs}, deadline, config}, _from, state) do
@@ -87,8 +90,10 @@ defmodule YellowDog.Management.ConfigVersions do
          {:ok, target_type} <- target_type(target_type),
          {:ok, record} <- registered_target(target_type, target_id),
          {:ok, attrs} <- attrs(attrs),
-         {:ok, target} <- load_target(target_type, target_id, config),
-         {:ok, next_version} <- next_version(target),
+         {:ok, target} <- load_target(target_type, target_id, deadline, config),
+         :ok <- ensure_before_deadline(deadline),
+         {:ok, next_version} <- next_version(target, deadline, config),
+         :ok <- ensure_before_deadline(deadline),
          {:ok, previous} <- applied_pair(target),
          {:ok, version} <-
            ConfigVersion.new(
@@ -120,7 +125,7 @@ defmodule YellowDog.Management.ConfigVersions do
          {:ok, target_type} <- target_type(target_type),
          {:ok, _record} <- registered_target(target_type, target_id),
          :ok <- validate_version(version),
-         {:ok, target} <- load_target(target_type, target_id, config),
+         {:ok, target} <- load_target(target_type, target_id, deadline, config),
          {:ok, config_version} <- fetch_version(target, version) do
       {:ok, config_version}
     end
@@ -130,7 +135,7 @@ defmodule YellowDog.Management.ConfigVersions do
     with :ok <- ensure_before_deadline(deadline),
          {:ok, target_type} <- target_type(target_type),
          {:ok, _record} <- registered_target(target_type, target_id),
-         {:ok, target} <- load_target(target_type, target_id, config),
+         {:ok, target} <- load_target(target_type, target_id, deadline, config),
          {:ok, desired_version} <- desired_version(target.lifecycle),
          {:ok, version} <- fetch_version(target, desired_version),
          true <- version.state in [:desired, :delivered, :applying] do
@@ -148,7 +153,7 @@ defmodule YellowDog.Management.ConfigVersions do
          {:ok, _record} <- registered_target(target_type, target_id),
          :ok <- validate_version(version),
          {:ok, next_state} <- transition_state(next_state),
-         {:ok, target} <- load_target(target_type, target_id, config),
+         {:ok, target} <- load_target(target_type, target_id, deadline, config),
          :ok <- current_desired_version(target.lifecycle, version),
          {:ok, current} <- fetch_version(target, version),
          :ok <- allowed_state_transition(current.state, next_state),
@@ -203,13 +208,19 @@ defmodule YellowDog.Management.ConfigVersions do
     )
   end
 
-  defp load_target(target_type, target_id, config) do
-    with {:ok, manifest_path} <- manifest_path(config.root, target_type, target_id),
-         {:ok, manifest} <- read_manifest(manifest_path, config),
+  defp load_target(target_type, target_id, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, manifest_path} <- manifest_path(config.root, target_type, target_id),
+         :ok <- ensure_before_deadline(deadline),
+         {:ok, manifest} <- read_manifest(manifest_path, deadline, config),
+         :ok <- ensure_before_deadline(deadline),
          raw_section = Map.get(manifest, "config_lifecycle"),
          {:ok, lifecycle} <- decode_lifecycle(raw_section),
-         {:ok, versions} <- load_versions(target_type, target_id, lifecycle, config),
-         :ok <- validate_pointers(lifecycle, versions) do
+         :ok <- ensure_before_deadline(deadline),
+         {:ok, versions} <- load_versions(target_type, target_id, lifecycle, deadline, config),
+         :ok <- ensure_before_deadline(deadline),
+         :ok <- validate_pointers(lifecycle, versions),
+         :ok <- ensure_before_deadline(deadline) do
       {:ok,
        %{
          target_type: target_type,
@@ -221,14 +232,14 @@ defmodule YellowDog.Management.ConfigVersions do
          versions: versions
        }}
     else
-      {:error, %Error{code: :internal}} = error -> error
+      {:error, %Error{code: code}} = error when code in [:internal, :timeout] -> error
       {:error, %Error{}} -> invalid()
       _invalid -> invalid()
     end
   end
 
-  defp read_manifest(path, config) do
-    case AtomicJson.read(path, config.file_ops) do
+  defp read_manifest(path, deadline, config) do
+    case owned_file_operation(fn -> AtomicJson.read(path, config.file_ops) end, deadline) do
       {:ok, manifest} when is_map(manifest) -> {:ok, manifest}
       {:ok, _invalid} -> invalid()
       {:error, %Error{code: :not_found}} -> invalid()
@@ -268,16 +279,21 @@ defmodule YellowDog.Management.ConfigVersions do
     end)
   end
 
-  defp load_versions(target_type, target_id, lifecycle, config) do
+  defp load_versions(target_type, target_id, lifecycle, deadline, config) do
     Enum.reduce_while(lifecycle["versions"], {:ok, %{}}, fn {key, state}, {:ok, versions} ->
       version = String.to_integer(key)
 
-      with {:ok, digest} <- Digest.validate(state["digest"]),
+      with :ok <- ensure_before_deadline(deadline),
+           {:ok, digest} <- Digest.validate(state["digest"]),
            {:ok, path} <-
              storage_version_path(config.root, target_type, target_id, version, digest),
-           {:ok, immutable} <- AtomicJson.read(path, config.file_ops),
+           :ok <- ensure_before_deadline(deadline),
+           {:ok, immutable} <-
+             owned_file_operation(fn -> AtomicJson.read(path, config.file_ops) end, deadline),
+           :ok <- ensure_before_deadline(deadline),
            {:ok, config_version} <-
-             ConfigVersion.decode(immutable, state, target_type, target_id, path, config.root) do
+             ConfigVersion.decode(immutable, state, target_type, target_id, path, config.root),
+           :ok <- ensure_before_deadline(deadline) do
         {:cont, {:ok, Map.put(versions, version, config_version)}}
       else
         {:error, %Error{code: :internal}} = error -> {:halt, error}
@@ -308,9 +324,12 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
-  defp next_version(target) do
-    with {:ok, versions_dir} <- versions_path(target.root, target.target_type, target.target_id),
-         {:ok, filename_max} <- highest_filename_version(versions_dir),
+  defp next_version(target, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, versions_dir} <- versions_path(target.root, target.target_type, target.target_id),
+         :ok <- ensure_before_deadline(deadline),
+         {:ok, filename_max} <- highest_filename_version(versions_dir, deadline, config),
+         :ok <- ensure_before_deadline(deadline),
          current <- max(filename_max, target.lifecycle["counter"]),
          true <- current < @max_version do
       {:ok, current + 1}
@@ -321,13 +340,21 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
-  defp highest_filename_version(directory) do
-    case File.ls(directory) do
+  defp highest_filename_version(directory, deadline, config) do
+    case owned_file_operation(fn -> config.file_ops.ls(directory) end, deadline) do
       {:ok, filenames} ->
-        {:ok, Enum.reduce(filenames, 0, &highest_filename/2)}
+        Enum.reduce_while(filenames, {:ok, 0}, fn filename, {:ok, current} ->
+          case ensure_before_deadline(deadline) do
+            :ok -> {:cont, {:ok, highest_filename(filename, current)}}
+            {:error, %Error{}} = error -> {:halt, error}
+          end
+        end)
 
       {:error, :enoent} ->
         {:ok, 0}
+
+      {:error, %Error{}} = error ->
+        error
 
       {:error, _reason} ->
         internal()
@@ -721,25 +748,136 @@ defmodule YellowDog.Management.ConfigVersions do
     result =
       with :ok <- ensure_before_deadline(deadline),
            {:ok, ^staging_path} <-
-             AtomicJson.stage(path, document, staging_path, config.file_ops),
+             owned_file_operation(
+               fn -> AtomicJson.stage(path, document, staging_path, config.file_ops) end,
+               deadline
+             ),
            :ok <- ensure_before_deadline(deadline),
-           {:ok, ^path} <- AtomicJson.promote(staging_path, path, config.file_ops),
+           {:ok, ^path} <-
+             promote_immutable(staging_path, path, document, deadline, config),
            :ok <- ensure_before_deadline(deadline) do
         {:ok, path}
       end
 
-    if match?({:error, _error}, result), do: remove_staging(config.file_ops, staging_path)
+    remove_staging(staging_path, deadline, config)
     result
   end
 
-  defp remove_staging(file_ops, staging_path) do
-    case file_ops.rm(staging_path) do
-      :ok -> :ok
-      {:error, :enoent} -> :ok
-      {:error, _reason} -> :ok
+  defp promote_immutable(staging_path, path, document, deadline, config) do
+    result =
+      owned_file_operation(
+        fn -> AtomicJson.promote(staging_path, path, config.file_ops) end,
+        deadline
+      )
+
+    case result do
+      {:error, %Error{code: :timeout}} ->
+        reconcile_immutable_promotion(path, document, deadline, config)
+
+      other ->
+        other
     end
+  end
+
+  defp reconcile_immutable_promotion(path, document, deadline, config) do
+    recovery_deadline = deadline + config.transport_margin_ms
+
+    case owned_file_operation(
+           fn -> AtomicJson.read(path, config.file_ops) end,
+           recovery_deadline
+         ) do
+      {:ok, ^document} -> timeout()
+      {:error, %Error{code: :not_found}} -> timeout()
+      {:ok, _other} -> conflict("immutable config path is occupied")
+      {:error, %Error{}} -> internal()
+    end
+  end
+
+  defp remove_staging(staging_path, deadline, config) do
+    cleanup_deadline =
+      max(deadline, System.monotonic_time(:millisecond)) + config.transport_margin_ms
+
+    owned_file_operation(fn -> config.file_ops.rm(staging_path) end, cleanup_deadline)
+    :ok
+  end
+
+  defp owned_file_operation(operation, deadline)
+       when is_function(operation, 0) and is_integer(deadline) do
+    owner = self()
+    token = make_ref()
+
+    {worker_pid, monitor_ref} =
+      :erlang.spawn_opt(
+        fn ->
+          send(owner, {:config_file_operation_result, token, run_file_operation(operation)})
+        end,
+        [:link, :monitor]
+      )
+
+    await_file_operation(worker_pid, monitor_ref, token, deadline)
+  end
+
+  defp run_file_operation(operation) do
+    operation.()
   rescue
-    _exception -> :ok
+    _exception -> internal()
+  catch
+    _kind, _reason -> internal()
+  end
+
+  defp await_file_operation(worker_pid, monitor_ref, token, deadline) do
+    receive do
+      {:config_file_operation_result, ^token, result} ->
+        await_file_worker_down(worker_pid, monitor_ref, token)
+        result
+
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        result = take_file_operation_result(token, internal())
+        flush_file_worker_messages(worker_pid, token)
+        result
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_file_worker_down(worker_pid, monitor_ref, token)
+        take_file_operation_result(token, internal())
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
+        Process.exit(worker_pid, :kill)
+        await_file_worker_down(worker_pid, monitor_ref, token)
+        timeout()
+    end
+  end
+
+  defp await_file_worker_down(worker_pid, monitor_ref, token) do
+    receive do
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        flush_file_worker_messages(worker_pid, token)
+
+      {:config_file_operation_result, ^token, _result} ->
+        await_file_worker_down(worker_pid, monitor_ref, token)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_file_worker_down(worker_pid, monitor_ref, token)
+    end
+  end
+
+  defp take_file_operation_result(token, fallback) do
+    receive do
+      {:config_file_operation_result, ^token, result} -> result
+    after
+      0 -> fallback
+    end
+  end
+
+  defp flush_file_worker_messages(worker_pid, token) do
+    receive do
+      {:EXIT, ^worker_pid, _reason} ->
+        flush_file_worker_messages(worker_pid, token)
+
+      {:config_file_operation_result, ^token, _result} ->
+        flush_file_worker_messages(worker_pid, token)
+    after
+      0 -> :ok
+    end
   end
 
   defp counter(value) when is_integer(value) and value >= 0 and value <= @max_version, do: :ok

@@ -450,15 +450,34 @@ defmodule YellowDog.Management.ConfigVersion do
          3,
          %DateTime{},
          %DateTime{},
-         phase,
+         :apply,
          rollback,
          previous_version,
          previous_revision,
          restored_version,
          restored_revision
-       )
-       when phase in [:apply, :rollback] do
+       ) do
     coherent_apply_rollback(
+      rollback,
+      previous_version,
+      previous_revision,
+      restored_version,
+      restored_revision
+    )
+  end
+
+  defp coherent_failure(
+         3,
+         %DateTime{},
+         %DateTime{},
+         :rollback,
+         rollback,
+         previous_version,
+         previous_revision,
+         restored_version,
+         restored_revision
+       ) do
+    coherent_rollback_failure(
       rollback,
       previous_version,
       previous_revision,
@@ -497,6 +516,14 @@ defmodule YellowDog.Management.ConfigVersion do
        do: :ok
 
   defp coherent_apply_rollback(_rollback, _pv, _pr, _rv, _rr), do: invalid()
+
+  defp coherent_rollback_failure(%{"succeeded" => false}, nil, nil, nil, nil), do: :ok
+
+  defp coherent_rollback_failure(%{"succeeded" => false}, pv, pr, nil, nil)
+       when is_integer(pv) and is_binary(pr),
+       do: :ok
+
+  defp coherent_rollback_failure(_rollback, _pv, _pr, _rv, _rr), do: invalid()
 
   defp rollback(nil, nil, nil), do: {:ok, nil, nil, nil}
 

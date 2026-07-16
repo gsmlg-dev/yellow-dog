@@ -101,6 +101,55 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
     assert {:ok, %{"revision" => 2, "state" => "ready"}} = AtomicJson.read(path)
   end
 
+  test "replaces through a caller-known staging path and validates its identity" do
+    assert {:ok, path} = StoragePath.server_manifest("server-known-stage")
+    assert {:ok, ^path} = AtomicJson.replace(path, %{"revision" => 1})
+    staging_path = AtomicJson.staging_path(path)
+
+    assert {:ok, ^path} =
+             AtomicJson.replace(
+               path,
+               %{"revision" => 2},
+               staging_path,
+               AtomicJson.FileOps
+             )
+
+    refute File.exists?(staging_path)
+    assert {:ok, %{"revision" => 2}} = AtomicJson.read(path)
+
+    invalid_staging = Path.join(Path.dirname(Path.dirname(path)), ".manifest.json.invalid.stage")
+
+    assert {:error, %{code: :invalid}} =
+             AtomicJson.replace(
+               path,
+               %{"revision" => 3},
+               invalid_staging,
+               AtomicJson.FileOps
+             )
+
+    refute File.exists?(invalid_staging)
+    assert {:ok, %{"revision" => 2}} = AtomicJson.read(path)
+  end
+
+  test "caller-known replacement cleans staging after write sync close and rename failures" do
+    assert {:ok, path} = StoragePath.server_manifest("server-known-stage-failure")
+    assert {:ok, ^path} = AtomicJson.replace(path, %{"revision" => 1})
+
+    for failure <- [:write, :sync, :close, :rename] do
+      flush_close_notifications()
+      inject_file_failure(failure)
+      staging_path = AtomicJson.staging_path(path)
+
+      assert {:error, %{code: :internal}} =
+               AtomicJson.replace(path, %{"revision" => 2}, staging_path, __MODULE__.FileOps)
+
+      assert_receive {:atomic_json_file_ops, :close, _device}
+      refute File.exists?(staging_path)
+      assert {:ok, %{"revision" => 1}} = AtomicJson.read(path)
+      clear_file_failure()
+    end
+  end
+
   test "returns stable errors for missing, corrupt, and unencodable JSON" do
     assert {:ok, missing_path} = StoragePath.event("evt-44")
     assert {:error, %{code: :not_found}} = AtomicJson.read(missing_path)
@@ -232,6 +281,7 @@ end
 
 defmodule YellowDog.Management.Storage.AtomicJsonTest.FileOps do
   defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+  defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
   def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
 
   def write(device, contents) do

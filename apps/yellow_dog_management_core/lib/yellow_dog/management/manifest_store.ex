@@ -967,13 +967,14 @@ defmodule YellowDog.Management.ManifestStore do
     owner = self()
     token = make_ref()
     target = manifest_target(manifest)
+    staging_path = manifest_staging_path(path, target)
 
     {worker_pid, monitor_ref} =
       :erlang.spawn_opt(
         fn ->
           result =
             with :ok <- ensure_before_deadline(deadline) do
-              perform_manifest_write(path, target, config)
+              perform_manifest_write(path, target, staging_path, config)
             end
 
           send(owner, {:manifest_write_result, token, result})
@@ -981,7 +982,16 @@ defmodule YellowDog.Management.ManifestStore do
         [:link, :monitor]
       )
 
-    await_manifest_write(worker_pid, monitor_ref, token, path, target, deadline, config)
+    await_manifest_write(
+      worker_pid,
+      monitor_ref,
+      token,
+      path,
+      target,
+      staging_path,
+      deadline,
+      config
+    )
   end
 
   defp await_manifest_write(
@@ -990,27 +1000,32 @@ defmodule YellowDog.Management.ManifestStore do
          token,
          path,
          target,
+         staging_path,
          deadline,
          config
        ) do
     receive do
       {:manifest_write_result, ^token, result} ->
         await_manifest_worker_down(worker_pid, monitor_ref, token)
+        cleanup_manifest_staging(staging_path, deadline, config)
         reconcile_manifest_write(path, target, result, deadline, config)
 
       {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
         result = take_manifest_write_result(token, internal_error())
         flush_manifest_worker_messages(worker_pid, token)
+        cleanup_manifest_staging(staging_path, deadline, config)
         reconcile_manifest_write(path, target, result, deadline, config)
 
       {:EXIT, ^worker_pid, _reason} ->
         await_manifest_worker_down(worker_pid, monitor_ref, token)
         result = take_manifest_write_result(token, internal_error())
+        cleanup_manifest_staging(staging_path, deadline, config)
         reconcile_manifest_write(path, target, result, deadline, config)
     after
       max(deadline - monotonic_ms(), 0) ->
         Process.exit(worker_pid, :kill)
         await_manifest_worker_down(worker_pid, monitor_ref, token)
+        cleanup_manifest_staging(staging_path, deadline, config)
         reconcile_manifest_write(path, target, EventStore.timeout_result(), deadline, config)
     end
   end
@@ -1068,11 +1083,11 @@ defmodule YellowDog.Management.ManifestStore do
   defp manifest_write_failure({:error, %Error{}} = error), do: error
   defp manifest_write_failure(_result), do: internal_error()
 
-  defp perform_manifest_write(path, {:present, manifest}, config) do
-    AtomicJson.replace(path, manifest, config.file_ops)
+  defp perform_manifest_write(path, {:present, manifest}, staging_path, config) do
+    AtomicJson.replace(path, manifest, staging_path, config.file_ops)
   end
 
-  defp perform_manifest_write(path, :absent, config) do
+  defp perform_manifest_write(path, :absent, _staging_path, config) do
     case config.file_ops.rm(path) do
       :ok -> {:ok, path}
       {:error, :enoent} -> {:ok, path}
@@ -1082,6 +1097,98 @@ defmodule YellowDog.Management.ManifestStore do
     _exception -> internal_error()
   catch
     _kind, _reason -> internal_error()
+  end
+
+  defp manifest_staging_path(path, {:present, _manifest}), do: AtomicJson.staging_path(path)
+  defp manifest_staging_path(_path, :absent), do: nil
+
+  defp cleanup_manifest_staging(nil, _deadline, _config), do: :ok
+
+  defp cleanup_manifest_staging(staging_path, deadline, config) do
+    owner = self()
+    token = make_ref()
+    cleanup_deadline = max(deadline, monotonic_ms()) + config.transport_margin_ms
+
+    {worker_pid, monitor_ref} =
+      :erlang.spawn_opt(
+        fn ->
+          result = remove_manifest_staging(staging_path, config)
+          send(owner, {:manifest_staging_cleanup_result, token, result})
+        end,
+        [:link, :monitor]
+      )
+
+    await_manifest_staging_cleanup(
+      worker_pid,
+      monitor_ref,
+      token,
+      cleanup_deadline
+    )
+  end
+
+  defp remove_manifest_staging(staging_path, config) do
+    case config.file_ops.rm(staging_path) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, _reason} -> internal_error()
+    end
+  rescue
+    _exception -> internal_error()
+  catch
+    _kind, _reason -> internal_error()
+  end
+
+  defp await_manifest_staging_cleanup(worker_pid, monitor_ref, token, deadline) do
+    receive do
+      {:manifest_staging_cleanup_result, ^token, result} ->
+        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
+        result
+
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        take_manifest_cleanup_result(token)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
+        take_manifest_cleanup_result(token)
+    after
+      max(deadline - monotonic_ms(), 0) ->
+        Process.exit(worker_pid, :kill)
+        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
+        EventStore.timeout_result()
+    end
+  end
+
+  defp await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token) do
+    receive do
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        flush_manifest_cleanup_messages(worker_pid, token)
+
+      {:manifest_staging_cleanup_result, ^token, _result} ->
+        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
+    end
+  end
+
+  defp take_manifest_cleanup_result(token) do
+    receive do
+      {:manifest_staging_cleanup_result, ^token, result} -> result
+    after
+      0 -> internal_error()
+    end
+  end
+
+  defp flush_manifest_cleanup_messages(worker_pid, token) do
+    receive do
+      {:EXIT, ^worker_pid, _reason} ->
+        flush_manifest_cleanup_messages(worker_pid, token)
+
+      {:manifest_staging_cleanup_result, ^token, _result} ->
+        flush_manifest_cleanup_messages(worker_pid, token)
+    after
+      0 -> :ok
+    end
   end
 
   defp manifest_target(manifest) when map_size(manifest) == 0, do: :absent
