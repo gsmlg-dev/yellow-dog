@@ -93,6 +93,18 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
     assert {:ok, %{"writer" => "owned"}} = AtomicJson.read(path)
   end
 
+  test "stage uses captured mkdir_p and reports its failure without residue" do
+    assert {:ok, path} = StoragePath.event("evt-50")
+    staging_path = AtomicJson.staging_path(path)
+    inject_file_failure(:mkdir_p)
+
+    assert {:error, %{code: :internal}} =
+             AtomicJson.stage(path, %{"writer" => "owned"}, staging_path, __MODULE__.FileOps)
+
+    refute File.exists?(Path.dirname(path))
+    refute File.exists?(staging_path)
+  end
+
   test "replaces a mutable manifest only after complete JSON is synced and closed" do
     assert {:ok, path} = StoragePath.server_manifest("server-01")
 
@@ -282,6 +294,11 @@ end
 defmodule YellowDog.Management.Storage.AtomicJsonTest.FileOps do
   defdelegate read(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
   defdelegate ls(path), to: YellowDog.Management.Storage.AtomicJson.FileOps
+
+  def mkdir_p(path) do
+    if failure?(:mkdir_p), do: {:error, :injected_mkdir_p}, else: File.mkdir_p(path)
+  end
+
   def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
 
   def write(device, contents) do

@@ -759,8 +759,10 @@ defmodule YellowDog.Management.ConfigVersions do
         {:ok, path}
       end
 
-    remove_staging(staging_path, deadline, config)
-    result
+    case remove_staging(staging_path, deadline, config) do
+      :ok -> result
+      {:error, %Error{}} = cleanup_error -> cleanup_error
+    end
   end
 
   defp promote_immutable(staging_path, path, document, deadline, config) do
@@ -794,11 +796,28 @@ defmodule YellowDog.Management.ConfigVersions do
   end
 
   defp remove_staging(staging_path, deadline, config) do
-    cleanup_deadline =
-      max(deadline, System.monotonic_time(:millisecond)) + config.transport_margin_ms
+    cleanup_deadline = deadline + config.transport_margin_ms
+    first_attempt_deadline = cleanup_attempt_deadline(cleanup_deadline)
 
-    owned_file_operation(fn -> config.file_ops.rm(staging_path) end, cleanup_deadline)
-    :ok
+    case remove_staging_once(staging_path, first_attempt_deadline, config) do
+      :ok -> :ok
+      {:error, _reason} -> remove_staging_once(staging_path, cleanup_deadline, config)
+    end
+  end
+
+  defp remove_staging_once(staging_path, deadline, config) do
+    case owned_file_operation(fn -> config.file_ops.rm(staging_path) end, deadline) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, %Error{}} = error -> error
+      {:error, reason} -> staging_cleanup_error(reason)
+      _invalid -> staging_cleanup_error(:invalid_result)
+    end
+  end
+
+  defp cleanup_attempt_deadline(cleanup_deadline) do
+    now = System.monotonic_time(:millisecond)
+    min(now + max(div(max(cleanup_deadline - now, 0), 2), 1), cleanup_deadline)
   end
 
   defp owned_file_operation(operation, deadline)
@@ -934,6 +953,11 @@ defmodule YellowDog.Management.ConfigVersions do
   defp not_found, do: {:error, Error.new(:not_found, "config version not found", %{})}
   defp timeout, do: {:error, Error.new(:timeout, "config lifecycle operation timed out", %{})}
   defp internal, do: {:error, Error.new(:internal, "config lifecycle persistence failed", %{})}
+
+  defp staging_cleanup_error(reason) do
+    {:error,
+     Error.new(:internal, "config staging cleanup failed", %{"reason" => inspect(reason)})}
+  end
 
   defp conflict(message), do: {:error, Error.new(:conflict, message, %{})}
 end

@@ -92,6 +92,34 @@ defmodule YellowDog.Management.Storage.PathTest do
     assert_invalid(StoragePath.blob("not-a-digest"))
   end
 
+  test "normalizes relative data_dir once and rejects relative captured roots" do
+    original_cwd = File.cwd!()
+
+    relative_data_dir =
+      Path.join(".tmp", "management-relative-#{System.unique_integer([:positive])}")
+
+    expected_root = Path.join(Path.expand(relative_data_dir, original_cwd), "management")
+    drift_dir = Path.join(Path.expand(relative_data_dir, original_cwd), "cwd-drift")
+
+    on_exit(fn -> File.rm_rf(Path.expand(relative_data_dir, original_cwd)) end)
+
+    Application.put_env(:yellow_dog_management_core, :data_dir, relative_data_dir)
+    assert {:ok, ^expected_root} = StoragePath.root()
+    assert Path.type(expected_root) == :absolute
+    assert :ok = File.mkdir_p(drift_dir)
+
+    File.cd!(drift_dir, fn ->
+      expected_manifest =
+        Path.join([expected_root, "servers", "server-relative", "manifest.json"])
+
+      assert {:ok, ^expected_manifest} =
+               StoragePath.server_manifest(expected_root, "server-relative")
+    end)
+
+    assert {:error, %{code: :internal}} =
+             StoragePath.server_manifest("relative/management", "server-relative")
+  end
+
   defp assert_invalid(result) do
     assert {:error, %{code: :invalid}} = result
   end

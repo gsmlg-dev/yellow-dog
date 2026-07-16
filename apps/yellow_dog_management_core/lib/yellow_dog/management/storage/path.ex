@@ -22,7 +22,7 @@ defmodule YellowDog.Management.Storage.Path do
         YellowDog.Config.get_data_dir()
 
     if is_binary(data_dir) and data_dir != "" do
-      {:ok, Path.join(data_dir, "management")}
+      {:ok, Path.join(Path.expand(data_dir), "management")}
     else
       invalid()
     end
@@ -166,7 +166,10 @@ defmodule YellowDog.Management.Storage.Path do
     end
   end
 
-  defp captured_root(root) when is_binary(root) and root != "", do: {:ok, root}
+  defp captured_root(root) when is_binary(root) and root != "" do
+    if Path.type(root) == :absolute, do: {:ok, root}, else: internal()
+  end
+
   defp captured_root(_root), do: internal()
 
   defp snapshot(target_directory, target_id, domain) do

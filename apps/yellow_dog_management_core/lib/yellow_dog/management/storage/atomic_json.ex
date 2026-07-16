@@ -35,7 +35,7 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     ops = file_ops()
 
     with {:ok, contents} <- encode(value),
-         :ok <- mkdir_parent(path),
+         :ok <- mkdir_parent(path, ops),
          {:ok, device} <- ops.open(path) do
       case write_sync_close(ops, device, contents) do
         :ok -> {:ok, path}
@@ -75,7 +75,7 @@ defmodule YellowDog.Management.Storage.AtomicJson do
       when is_binary(path) and is_binary(staging_path) and is_atom(ops) do
     with true <- valid_staging_path?(path, staging_path),
          {:ok, contents} <- encode(value),
-         :ok <- mkdir_parent(path),
+         :ok <- mkdir_parent(path, ops),
          {:ok, device} <- ops.open(staging_path) do
       case write_sync_close(ops, device, contents) do
         :ok -> {:ok, staging_path}
@@ -146,7 +146,7 @@ defmodule YellowDog.Management.Storage.AtomicJson do
   @spec replace(Path.t(), term(), module()) :: result(Path.t())
   def replace(path, value, ops) when is_binary(path) and is_atom(ops) do
     with {:ok, contents} <- encode(value),
-         :ok <- mkdir_parent(path),
+         :ok <- mkdir_parent(path, ops),
          {:ok, temporary_path, device} <- open_temporary(path, ops) do
       replace_from_temporary(ops, temporary_path, device, contents, path)
     else
@@ -184,7 +184,7 @@ defmodule YellowDog.Management.Storage.AtomicJson do
     end
   end
 
-  defp mkdir_parent(path), do: File.mkdir_p(Path.dirname(path))
+  defp mkdir_parent(path, ops), do: ops.mkdir_p(Path.dirname(path))
 
   defp write_sync_close(ops, device, contents) do
     write_result =
@@ -340,6 +340,7 @@ defmodule YellowDog.Management.Storage.AtomicJson.FileOps do
 
   def read(path), do: File.read(path)
   def ls(path), do: File.ls(path)
+  def mkdir_p(path), do: File.mkdir_p(path)
   def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
   def write(device, contents), do: :file.write(device, contents)
   def sync(device), do: :file.sync(device)

@@ -182,6 +182,9 @@ defmodule YellowDog.Management.ManifestStore do
   def handle_info({:event_promote_result, _token, _result}, state), do: {:noreply, state}
   def handle_info({:manifest_write_result, _token, _result}, state), do: {:noreply, state}
 
+  def handle_info({:manifest_file_operation_result, _token, _result}, state),
+    do: {:noreply, state}
+
   defp update_section_with(path, section, updater, after_write, deadline, %Config{} = config) do
     bounded_call(
       {:update_section_with, path, section, updater, after_write, deadline, config},
@@ -457,7 +460,7 @@ defmodule YellowDog.Management.ManifestStore do
   defp clear_outbox(path, registration, outbox, reservation, deadline) do
     with :ok <- ensure_before_deadline(deadline),
          true <- exact_final?(reservation),
-         {:ok, manifest, _existed?} <- read_manifest(path, reservation.config),
+         {:ok, manifest, _existed?} <- read_manifest(path, deadline, reservation.config),
          true <- manifest["registration"] == registration,
          true <- manifest[@outbox_key] == outbox,
          result <-
@@ -477,7 +480,7 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp reconcile_manifest(path, deadline, config) do
     with :ok <- ensure_before_deadline(deadline),
-         {:ok, manifest, _existed?} <- read_manifest(path, config) do
+         {:ok, manifest, _existed?} <- read_manifest(path, deadline, config) do
       case Map.fetch(manifest, @outbox_key) do
         :error -> {:ok, manifest}
         {:ok, outbox} -> reconcile_outbox(path, manifest, outbox, deadline, config)
@@ -565,7 +568,7 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp commit_section_commit(path, section, commit, deadline, config) do
     with :ok <- ensure_before_deadline(deadline),
-         {:ok, manifest, _existed?} <- read_manifest(path, config),
+         {:ok, manifest, _existed?} <- read_manifest(path, deadline, config),
          :ok <- reject_pending_registration_audit(manifest),
          previous_section = Map.fetch(manifest, section),
          {:ok, updated_section, result} <- apply_commit(commit, Map.get(manifest, section)),
@@ -666,7 +669,7 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp reconcile_commit_result(path, registration, reservation, fallback) do
     with true <- exact_final?(reservation),
-         {:ok, manifest, _existed?} <- read_manifest(path, reservation.config),
+         {:ok, manifest, _existed?} <- read_manifest_unowned(path, reservation.config),
          true <- manifest["registration"] == registration,
          true <- commit_marker_matches?(manifest, registration, reservation) do
       {:ok, reservation.event}
@@ -739,7 +742,19 @@ defmodule YellowDog.Management.ManifestStore do
     if bounded_registration?(registration), do: :ok, else: invalid_manifest()
   end
 
-  defp read_manifest(path, config) do
+  defp read_manifest(path, deadline, config) do
+    case owned_manifest_file_operation(
+           fn -> AtomicJson.read(path, config.file_ops) end,
+           deadline
+         ) do
+      {:ok, manifest} when is_map(manifest) -> {:ok, manifest, true}
+      {:ok, _invalid} -> invalid_manifest()
+      {:error, %Error{code: :not_found}} -> {:ok, %{}, false}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp read_manifest_unowned(path, config) do
     case AtomicJson.read(path, config.file_ops) do
       {:ok, manifest} when is_map(manifest) -> {:ok, manifest, true}
       {:ok, _invalid} -> invalid_manifest()
@@ -800,6 +815,15 @@ defmodule YellowDog.Management.ManifestStore do
           {:error, _reason} = error -> error
         end
 
+      {:cleanup_failed, :committed, cleanup_error} ->
+        case rollback_outbox(path, outbox, deadline, config) do
+          :ok -> cleanup_error
+          {:error, _reason} = error -> error
+        end
+
+      {:cleanup_failed, :not_committed, cleanup_error} ->
+        cleanup_error
+
       {:error, _reason} = error ->
         error
     end
@@ -831,6 +855,22 @@ defmodule YellowDog.Management.ManifestStore do
           {:error, _reason} = error -> error
         end
 
+      {:cleanup_failed, :committed, cleanup_error} ->
+        case rollback_section(
+               path,
+               section,
+               previous_section,
+               updated_section,
+               deadline,
+               config
+             ) do
+          :ok -> cleanup_error
+          {:error, _reason} = error -> error
+        end
+
+      {:cleanup_failed, :not_committed, cleanup_error} ->
+        cleanup_error
+
       {:error, _reason} = error ->
         error
     end
@@ -844,10 +884,13 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp accept_committed_manifest_write({:error, _reason} = error), do: error
 
+  defp accept_committed_manifest_write({:cleanup_failed, _commit_state, error}), do: error
+
   defp rollback_outbox(path, outbox, deadline, config) do
     with {:ok, previous_registration} <-
            decode_previous_registration(outbox["previous_registration"]),
-         {:ok, manifest, _existed?} <- read_manifest(path, config) do
+         {:ok, manifest, _existed?} <-
+           read_manifest(path, recovery_deadline(deadline, config), config) do
       cond do
         outbox_restored?(manifest, previous_registration) ->
           :ok
@@ -863,7 +906,14 @@ defmodule YellowDog.Management.ManifestStore do
             restored,
             recovery_deadline(deadline, config),
             config,
-            fn -> verify_outbox_restored(path, previous_registration, config) end
+            fn verify_deadline ->
+              verify_outbox_restored(
+                path,
+                previous_registration,
+                verify_deadline,
+                config
+              )
+            end
           )
 
         true ->
@@ -882,7 +932,9 @@ defmodule YellowDog.Management.ManifestStore do
          deadline,
          config
        ) do
-    with {:ok, manifest, _existed?} <- read_manifest(path, config) do
+    rollback_deadline = recovery_deadline(deadline, config)
+
+    with {:ok, manifest, _existed?} <- read_manifest(path, rollback_deadline, config) do
       case Map.fetch(manifest, section) do
         ^previous_section ->
           :ok
@@ -893,9 +945,17 @@ defmodule YellowDog.Management.ManifestStore do
           restore_manifest(
             path,
             restored,
-            recovery_deadline(deadline, config),
+            rollback_deadline,
             config,
-            fn -> verify_section_restored(path, section, previous_section, config) end
+            fn verify_deadline ->
+              verify_section_restored(
+                path,
+                section,
+                previous_section,
+                verify_deadline,
+                config
+              )
+            end
           )
 
         _other ->
@@ -911,7 +971,7 @@ defmodule YellowDog.Management.ManifestStore do
 
     case accept_committed_manifest_write(result) do
       :ok ->
-        case verify.() do
+        case verify.(deadline) do
           :ok -> :ok
           {:error, _reason} = error -> unverified_rollback(path, error)
         end
@@ -926,8 +986,8 @@ defmodule YellowDog.Management.ManifestStore do
     internal_error()
   end
 
-  defp verify_outbox_restored(path, previous_registration, config) do
-    with {:ok, manifest, _existed?} <- read_manifest(path, config),
+  defp verify_outbox_restored(path, previous_registration, deadline, config) do
+    with {:ok, manifest, _existed?} <- read_manifest(path, deadline, config),
          true <- outbox_restored?(manifest, previous_registration) do
       :ok
     else
@@ -936,8 +996,8 @@ defmodule YellowDog.Management.ManifestStore do
     end
   end
 
-  defp verify_section_restored(path, section, previous_section, config) do
-    with {:ok, manifest, _existed?} <- read_manifest(path, config),
+  defp verify_section_restored(path, section, previous_section, deadline, config) do
+    with {:ok, manifest, _existed?} <- read_manifest(path, deadline, config),
          true <- Map.fetch(manifest, section) == previous_section do
       :ok
     else
@@ -1007,26 +1067,42 @@ defmodule YellowDog.Management.ManifestStore do
     receive do
       {:manifest_write_result, ^token, result} ->
         await_manifest_worker_down(worker_pid, monitor_ref, token)
-        cleanup_manifest_staging(staging_path, deadline, config)
-        reconcile_manifest_write(path, target, result, deadline, config)
+        finish_manifest_write(path, target, staging_path, result, deadline, config)
 
       {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
         result = take_manifest_write_result(token, internal_error())
         flush_manifest_worker_messages(worker_pid, token)
-        cleanup_manifest_staging(staging_path, deadline, config)
-        reconcile_manifest_write(path, target, result, deadline, config)
+        finish_manifest_write(path, target, staging_path, result, deadline, config)
 
       {:EXIT, ^worker_pid, _reason} ->
         await_manifest_worker_down(worker_pid, monitor_ref, token)
         result = take_manifest_write_result(token, internal_error())
-        cleanup_manifest_staging(staging_path, deadline, config)
-        reconcile_manifest_write(path, target, result, deadline, config)
+        finish_manifest_write(path, target, staging_path, result, deadline, config)
     after
       max(deadline - monotonic_ms(), 0) ->
         Process.exit(worker_pid, :kill)
         await_manifest_worker_down(worker_pid, monitor_ref, token)
-        cleanup_manifest_staging(staging_path, deadline, config)
-        reconcile_manifest_write(path, target, EventStore.timeout_result(), deadline, config)
+
+        finish_manifest_write(
+          path,
+          target,
+          staging_path,
+          EventStore.timeout_result(),
+          deadline,
+          config
+        )
+    end
+  end
+
+  defp finish_manifest_write(path, target, staging_path, result, deadline, config) do
+    commit_result = reconcile_manifest_write(path, target, result, deadline, config)
+    cleanup_result = cleanup_manifest_staging(staging_path, deadline, config)
+
+    case {cleanup_result, commit_result} do
+      {:ok, result} -> result
+      {{:error, %Error{}} = error, {:ok, _path}} -> {:cleanup_failed, :committed, error}
+      {{:error, %Error{}} = error, {:deadline, state}} -> {:cleanup_failed, state, error}
+      {{:error, %Error{}} = error, {:error, _reason}} -> error
     end
   end
 
@@ -1064,7 +1140,7 @@ defmodule YellowDog.Management.ManifestStore do
   end
 
   defp reconcile_manifest_write(path, target, result, deadline, config) do
-    case manifest_target_matches?(path, target, config) do
+    case manifest_target_matches?(path, target, deadline, config) do
       {:ok, true} ->
         if deadline_expired?(deadline), do: {:deadline, :committed}, else: {:ok, path}
 
@@ -1075,8 +1151,19 @@ defmodule YellowDog.Management.ManifestStore do
           manifest_write_failure(result)
         end
 
+      {:error, %Error{code: :timeout}} ->
+        reconcile_manifest_write_after_timeout(path, target, config, deadline)
+
       {:error, _reason} = error ->
         error
+    end
+  end
+
+  defp reconcile_manifest_write_after_timeout(path, target, config, deadline) do
+    case manifest_target_matches?(path, target, recovery_deadline(deadline, config), config) do
+      {:ok, true} -> {:deadline, :committed}
+      {:ok, false} -> {:deadline, :not_committed}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -1105,109 +1192,132 @@ defmodule YellowDog.Management.ManifestStore do
   defp cleanup_manifest_staging(nil, _deadline, _config), do: :ok
 
   defp cleanup_manifest_staging(staging_path, deadline, config) do
-    owner = self()
-    token = make_ref()
-    cleanup_deadline = max(deadline, monotonic_ms()) + config.transport_margin_ms
+    cleanup_deadline = deadline + config.transport_margin_ms
+    first_attempt_deadline = cleanup_attempt_deadline(cleanup_deadline)
 
-    {worker_pid, monitor_ref} =
-      :erlang.spawn_opt(
-        fn ->
-          result = remove_manifest_staging(staging_path, config)
-          send(owner, {:manifest_staging_cleanup_result, token, result})
-        end,
-        [:link, :monitor]
-      )
-
-    await_manifest_staging_cleanup(
-      worker_pid,
-      monitor_ref,
-      token,
-      cleanup_deadline
-    )
+    case remove_manifest_staging(staging_path, first_attempt_deadline, config) do
+      :ok -> :ok
+      {:error, _reason} -> remove_manifest_staging(staging_path, cleanup_deadline, config)
+    end
   end
 
-  defp remove_manifest_staging(staging_path, config) do
-    case config.file_ops.rm(staging_path) do
+  defp remove_manifest_staging(staging_path, deadline, config) do
+    case owned_manifest_file_operation(fn -> config.file_ops.rm(staging_path) end, deadline) do
       :ok -> :ok
       {:error, :enoent} -> :ok
-      {:error, _reason} -> internal_error()
-    end
-  rescue
-    _exception -> internal_error()
-  catch
-    _kind, _reason -> internal_error()
-  end
-
-  defp await_manifest_staging_cleanup(worker_pid, monitor_ref, token, deadline) do
-    receive do
-      {:manifest_staging_cleanup_result, ^token, result} ->
-        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
-        result
-
-      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
-        take_manifest_cleanup_result(token)
-
-      {:EXIT, ^worker_pid, _reason} ->
-        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
-        take_manifest_cleanup_result(token)
-    after
-      max(deadline - monotonic_ms(), 0) ->
-        Process.exit(worker_pid, :kill)
-        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
-        EventStore.timeout_result()
+      {:error, %Error{}} = error -> error
+      {:error, reason} -> manifest_staging_cleanup_error(reason)
+      _invalid -> manifest_staging_cleanup_error(:invalid_result)
     end
   end
 
-  defp await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token) do
-    receive do
-      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
-        flush_manifest_cleanup_messages(worker_pid, token)
-
-      {:manifest_staging_cleanup_result, ^token, _result} ->
-        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
-
-      {:EXIT, ^worker_pid, _reason} ->
-        await_manifest_cleanup_worker_down(worker_pid, monitor_ref, token)
-    end
-  end
-
-  defp take_manifest_cleanup_result(token) do
-    receive do
-      {:manifest_staging_cleanup_result, ^token, result} -> result
-    after
-      0 -> internal_error()
-    end
-  end
-
-  defp flush_manifest_cleanup_messages(worker_pid, token) do
-    receive do
-      {:EXIT, ^worker_pid, _reason} ->
-        flush_manifest_cleanup_messages(worker_pid, token)
-
-      {:manifest_staging_cleanup_result, ^token, _result} ->
-        flush_manifest_cleanup_messages(worker_pid, token)
-    after
-      0 -> :ok
-    end
+  defp cleanup_attempt_deadline(cleanup_deadline) do
+    now = monotonic_ms()
+    min(now + max(div(max(cleanup_deadline - now, 0), 2), 1), cleanup_deadline)
   end
 
   defp manifest_target(manifest) when map_size(manifest) == 0, do: :absent
   defp manifest_target(manifest), do: {:present, manifest}
 
-  defp manifest_target_matches?(path, target, config) do
-    case read_manifest_state(path, config) do
+  defp manifest_target_matches?(path, target, deadline, config) do
+    case read_manifest_state(path, deadline, config) do
       {:ok, ^target} -> {:ok, true}
       {:ok, _other} -> {:ok, false}
       {:error, _reason} = error -> error
     end
   end
 
-  defp read_manifest_state(path, config) do
-    case AtomicJson.read(path, config.file_ops) do
+  defp read_manifest_state(path, deadline, config) do
+    case owned_manifest_file_operation(
+           fn -> AtomicJson.read(path, config.file_ops) end,
+           deadline
+         ) do
       {:ok, manifest} when is_map(manifest) -> {:ok, {:present, manifest}}
       {:ok, _invalid} -> invalid_manifest()
       {:error, %Error{code: :not_found}} -> {:ok, :absent}
       {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp owned_manifest_file_operation(operation, deadline)
+       when is_function(operation, 0) and is_integer(deadline) do
+    with :ok <- ensure_before_deadline(deadline) do
+      owner = self()
+      token = make_ref()
+
+      {worker_pid, monitor_ref} =
+        :erlang.spawn_opt(
+          fn ->
+            result = run_manifest_file_operation(operation)
+            send(owner, {:manifest_file_operation_result, token, result})
+          end,
+          [:link, :monitor]
+        )
+
+      await_manifest_file_operation(worker_pid, monitor_ref, token, deadline)
+    end
+  end
+
+  defp run_manifest_file_operation(operation) do
+    operation.()
+  rescue
+    _exception -> internal_error()
+  catch
+    _kind, _reason -> internal_error()
+  end
+
+  defp await_manifest_file_operation(worker_pid, monitor_ref, token, deadline) do
+    receive do
+      {:manifest_file_operation_result, ^token, result} ->
+        await_manifest_file_worker_down(worker_pid, monitor_ref, token)
+        result
+
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        result = take_manifest_file_operation_result(token)
+        flush_manifest_file_worker_messages(worker_pid, token)
+        result
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_manifest_file_worker_down(worker_pid, monitor_ref, token)
+        take_manifest_file_operation_result(token)
+    after
+      max(deadline - monotonic_ms(), 0) ->
+        Process.exit(worker_pid, :kill)
+        await_manifest_file_worker_down(worker_pid, monitor_ref, token)
+        EventStore.timeout_result()
+    end
+  end
+
+  defp await_manifest_file_worker_down(worker_pid, monitor_ref, token) do
+    receive do
+      {:DOWN, ^monitor_ref, :process, ^worker_pid, _reason} ->
+        flush_manifest_file_worker_messages(worker_pid, token)
+
+      {:manifest_file_operation_result, ^token, _result} ->
+        await_manifest_file_worker_down(worker_pid, monitor_ref, token)
+
+      {:EXIT, ^worker_pid, _reason} ->
+        await_manifest_file_worker_down(worker_pid, monitor_ref, token)
+    end
+  end
+
+  defp take_manifest_file_operation_result(token) do
+    receive do
+      {:manifest_file_operation_result, ^token, result} -> result
+    after
+      0 -> internal_error()
+    end
+  end
+
+  defp flush_manifest_file_worker_messages(worker_pid, token) do
+    receive do
+      {:EXIT, ^worker_pid, _reason} ->
+        flush_manifest_file_worker_messages(worker_pid, token)
+
+      {:manifest_file_operation_result, ^token, _result} ->
+        flush_manifest_file_worker_messages(worker_pid, token)
+    after
+      0 -> :ok
     end
   end
 
@@ -1278,4 +1388,9 @@ defmodule YellowDog.Management.ManifestStore do
 
   defp internal_error,
     do: {:error, Error.new(:internal, "management manifest commit failed", %{})}
+
+  defp manifest_staging_cleanup_error(reason) do
+    {:error,
+     Error.new(:internal, "manifest staging cleanup failed", %{"reason" => inspect(reason)})}
+  end
 end

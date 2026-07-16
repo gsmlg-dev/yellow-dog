@@ -517,8 +517,6 @@ defmodule YellowDog.Management.ConfigVersion do
 
   defp coherent_apply_rollback(_rollback, _pv, _pr, _rv, _rr), do: invalid()
 
-  defp coherent_rollback_failure(%{"succeeded" => false}, nil, nil, nil, nil), do: :ok
-
   defp coherent_rollback_failure(%{"succeeded" => false}, pv, pr, nil, nil)
        when is_integer(pv) and is_binary(pr),
        do: :ok

@@ -26,9 +26,17 @@ defmodule YellowDog.Management.ConfigVersionsTest do
           :block_config_manifest_replace,
           :config_version_blocking_operation,
           :config_version_blocking_owner,
+          :config_staging_cleanup_counter,
+          :config_staging_cleanup_mode,
           :config_version_file_ops_owner,
           :fail_config_manifest_write,
-          :manifest_replace_file_ops_owner
+          :manifest_replace_file_ops_owner,
+          :block_manifest_read_number,
+          :manifest_read_counter,
+          :manifest_read_file_ops_owner,
+          :manifest_staging_cleanup_counter,
+          :manifest_staging_cleanup_mode,
+          :manifest_staging_cleanup_owner
         ],
         fn key ->
           {key, Application.fetch_env(:yellow_dog_management_core, key)}
@@ -490,6 +498,56 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     )
   end
 
+  test "rollback-phase durable decode requires previous version and revision" do
+    valid = rollback_phase_failure("srv-rollback-previous-valid")
+    tampered = rollback_phase_failure("srv-rollback-previous-missing")
+
+    assert {:ok, manifest_path} =
+             StoragePath.server_manifest("srv-rollback-previous-missing")
+
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    version_key = Integer.to_string(tampered.version)
+
+    assert {:ok, immutable_path} =
+             StoragePath.server_version(
+               "srv-rollback-previous-missing",
+               tampered.version,
+               tampered.digest
+             )
+
+    assert {:ok, immutable} = AtomicJson.read(immutable_path)
+
+    assert {:ok, ^immutable_path} =
+             AtomicJson.replace(immutable_path, %{immutable | "expected_revision" => nil})
+
+    tampered_lifecycle =
+      manifest["config_lifecycle"]
+      |> put_in(["versions", version_key, "previous_version"], nil)
+      |> put_in(["versions", version_key, "previous_revision"], nil)
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(
+               manifest_path,
+               Map.put(manifest, "config_lifecycle", tampered_lifecycle)
+             )
+
+    restart_application()
+
+    assert {:ok, ^valid} =
+             ManagementCore.get_server_config_version(
+               "srv-rollback-previous-valid",
+               valid.version
+             )
+
+    assert_error(
+      ManagementCore.get_server_config_version(
+        "srv-rollback-previous-missing",
+        tampered.version
+      ),
+      :invalid
+    )
+  end
+
   test "queued publish keeps its captured storage root for writes and decode identity", %{
     data_dir: root_a
   } do
@@ -540,6 +598,30 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert manifest["config_lifecycle"]["desired_version"] == published.version
     assert [_version_path] = Path.wildcard(Path.join(versions_a, "*.json"))
     refute File.exists?(Path.join(root_b, "management"))
+  end
+
+  test "application capture normalizes a relative data directory to an absolute root" do
+    relative_data_dir =
+      Path.join(".tmp", "config-root-relative-#{System.unique_integer([:positive])}")
+
+    absolute_data_dir = Path.expand(relative_data_dir)
+    expected_root = Path.join(absolute_data_dir, "management")
+    on_exit(fn -> File.rm_rf(absolute_data_dir) end)
+
+    Application.put_env(:yellow_dog_management_core, :data_dir, relative_data_dir)
+    restart_application()
+
+    assert %EventStore.Config{root: ^expected_root} = EventStore.config()
+    assert Path.type(expected_root) == :absolute
+
+    register_server("srv-relative-root")
+    assert {:ok, published} = publish_server("srv-relative-root")
+
+    expected_manifest =
+      Path.join([expected_root, "servers", "srv-relative-root", "manifest.json"])
+
+    assert {:ok, manifest} = AtomicJson.read(expected_manifest)
+    assert manifest["config_lifecycle"]["desired_version"] == published.version
   end
 
   test "expired queued publications and transitions do not run after ConfigVersions resumes", %{
@@ -637,12 +719,24 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_blocking_filesystem_timeout(:list, "srv-block-list", false, context.data_dir)
   end
 
+  test "blocking captured mkdir times out without wedging ConfigVersions", context do
+    assert_blocking_filesystem_timeout(:mkdir, "srv-block-mkdir", false, context.data_dir)
+  end
+
   test "blocking immutable stage times out and removes its known staging file", context do
     assert_blocking_filesystem_timeout(:stage, "srv-block-stage", false, context.data_dir)
   end
 
   test "blocking immutable promotion reconciles only its exact orphan", context do
     assert_blocking_filesystem_timeout(:promotion, "srv-block-promotion", true, context.data_dir)
+  end
+
+  test "immutable staging cleanup retries a transient rm error", context do
+    assert_config_staging_cleanup_recovery(:error_once, "srv-cleanup-rm-error", context)
+  end
+
+  test "immutable staging cleanup kills a blocked rm worker and retries", context do
+    assert_config_staging_cleanup_recovery(:block_once, "srv-cleanup-rm-block", context)
   end
 
   test "deadline after manifest replacement restores the exact previous lifecycle", %{
@@ -704,6 +798,112 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     refute filesystem_residue?(Path.dirname(manifest_path))
 
     assert {:ok, %ConfigVersion{version: 2}} = publish_server("srv-manifest-deadline")
+  end
+
+  test "blocking ManifestStore reconciliation read is cancelled and rolled back", %{
+    data_dir: data_dir
+  } do
+    register_server("srv-manifest-read-deadline")
+
+    assert {:ok, manifest_path} =
+             StoragePath.server_manifest("srv-manifest-read-deadline")
+
+    assert {:ok, previous_manifest} = AtomicJson.read(manifest_path)
+
+    counter = :atomics.new(1, [])
+    Application.put_env(:yellow_dog_management_core, :manifest_read_counter, counter)
+    Application.put_env(:yellow_dog_management_core, :block_manifest_read_number, 3)
+    Application.put_env(:yellow_dog_management_core, :manifest_read_file_ops_owner, self())
+
+    install_event_store_config(
+      file_ops: __MODULE__.BlockingManifestReadFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 100
+    )
+
+    config_versions = Process.whereis(ConfigVersions)
+    manifest_store = Process.whereis(ManifestStore)
+    :ok = :sys.suspend(config_versions)
+
+    {publish_task, request_deadline} =
+      try do
+        task = Task.async(fn -> publish_server("srv-manifest-read-deadline") end)
+        deadline = queued_config_version_deadline(config_versions)
+        :ok = :sys.resume(config_versions)
+        {task, deadline}
+      after
+        safe_resume(config_versions)
+      end
+
+    assert_receive {:manifest_read_blocked, blocked_pid, ^manifest_path, 3}, 1_000
+    await_deadline(request_deadline)
+    send(blocked_pid, :release_manifest_read)
+
+    assert_error(Task.await(publish_task, 2_000), :timeout)
+    :sys.get_state(manifest_store)
+    :sys.get_state(config_versions)
+
+    refute blocked_pid == manifest_store
+    refute Process.alive?(blocked_pid)
+    assert {:ok, ^previous_manifest} = AtomicJson.read(manifest_path)
+    refute filesystem_residue?(Path.dirname(manifest_path))
+
+    versions_dir =
+      Path.join([
+        data_dir,
+        "management",
+        "servers",
+        "srv-manifest-read-deadline",
+        "versions"
+      ])
+
+    assert [orphan_path] = Path.wildcard(Path.join(versions_dir, "*.json"))
+    assert Path.basename(orphan_path) =~ ~r/^1-/
+    assert {:ok, %ConfigVersion{version: 2}} = publish_server("srv-manifest-read-deadline")
+  end
+
+  test "blocked manifest staging cleanup is killed retried and leaves no residue", %{
+    data_dir: data_dir
+  } do
+    register_server("srv-manifest-cleanup")
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest("srv-manifest-cleanup")
+    assert {:ok, previous_manifest} = AtomicJson.read(manifest_path)
+
+    counter = :atomics.new(1, [])
+    Application.put_env(:yellow_dog_management_core, :manifest_staging_cleanup_counter, counter)
+    Application.put_env(:yellow_dog_management_core, :manifest_staging_cleanup_mode, :block_once)
+    Application.put_env(:yellow_dog_management_core, :manifest_staging_cleanup_owner, self())
+
+    install_event_store_config(
+      file_ops: __MODULE__.BlockingManifestCleanupFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 100
+    )
+
+    publish_task = Task.async(fn -> publish_server("srv-manifest-cleanup") end)
+
+    assert_receive {:manifest_rename_blocked, rename_pid, staging_path, ^manifest_path}, 1_000
+    assert_receive {:manifest_staging_rm_blocked, cleanup_pid, ^staging_path}, 1_000
+    assert_error(Task.await(publish_task, 2_000), :timeout)
+    send(rename_pid, :release_manifest_rename)
+    send(cleanup_pid, :release_manifest_staging_rm)
+
+    :sys.get_state(ManifestStore)
+    :sys.get_state(ConfigVersions)
+    refute Process.alive?(rename_pid)
+    refute Process.alive?(cleanup_pid)
+    assert {:ok, ^previous_manifest} = AtomicJson.read(manifest_path)
+    refute File.exists?(staging_path)
+    refute filesystem_residue?(Path.dirname(manifest_path))
+
+    versions_dir =
+      Path.join([data_dir, "management", "servers", "srv-manifest-cleanup", "versions"])
+
+    assert [orphan_path] = Path.wildcard(Path.join(versions_dir, "*.json"))
+    assert Path.basename(orphan_path) =~ ~r/^1-/
+    Application.put_env(:yellow_dog_management_core, :manifest_staging_cleanup_mode, nil)
+    assert {:ok, %ConfigVersion{version: 2}} = publish_server("srv-manifest-cleanup")
   end
 
   test "reserves orphan filenames, ignores malformed temporary files, and rejects max overflow",
@@ -1205,6 +1405,46 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert {:ok, %ConfigVersion{version: ^expected_version}} = publish_server(server_id)
   end
 
+  defp assert_config_staging_cleanup_recovery(mode, server_id, %{data_dir: data_dir}) do
+    register_server(server_id)
+    counter = :atomics.new(1, [])
+
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_owner, self())
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_operation, :stage)
+    Application.put_env(:yellow_dog_management_core, :config_staging_cleanup_counter, counter)
+    Application.put_env(:yellow_dog_management_core, :config_staging_cleanup_mode, mode)
+
+    install_event_store_config(
+      file_ops: __MODULE__.BlockingConfigFileOps,
+      operation_timeout_ms: 100,
+      transport_margin_ms: 100
+    )
+
+    publish_task = Task.async(fn -> publish_server(server_id) end)
+    assert_receive {:config_filesystem_blocked, :stage, stage_pid, staging_path}, 1_000
+
+    cleanup_pid =
+      if mode == :block_once do
+        assert_receive {:config_staging_rm_blocked, blocked_pid, ^staging_path}, 1_000
+        blocked_pid
+      end
+
+    assert_error(Task.await(publish_task, 2_000), :timeout)
+    send(stage_pid, :release_config_filesystem)
+    if is_pid(cleanup_pid), do: send(cleanup_pid, :release_config_staging_rm)
+
+    :sys.get_state(ConfigVersions)
+    refute Process.alive?(stage_pid)
+    if is_pid(cleanup_pid), do: refute(Process.alive?(cleanup_pid))
+    refute File.exists?(staging_path)
+
+    target_dir = Path.join([data_dir, "management", "servers", server_id])
+    refute filesystem_residue?(target_dir)
+    Application.put_env(:yellow_dog_management_core, :config_version_blocking_operation, nil)
+    Application.put_env(:yellow_dog_management_core, :config_staging_cleanup_mode, nil)
+    assert {:ok, %ConfigVersion{version: 1}} = publish_server(server_id)
+  end
+
   defp filesystem_residue?(path) do
     case File.ls(path) do
       {:ok, names} ->
@@ -1231,6 +1471,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
     def read(path), do: File.read(path)
     def ls(path), do: File.ls(path)
+    def mkdir_p(path), do: File.mkdir_p(path)
     def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
     def write(device, contents), do: :file.write(device, contents)
     def sync(device), do: :file.sync(device)
@@ -1258,6 +1499,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
     def read(path), do: File.read(path)
     def ls(path), do: File.ls(path)
+    def mkdir_p(path), do: File.mkdir_p(path)
 
     def open(path) do
       case :file.open(path, [:write, :exclusive, :binary, :raw]) do
@@ -1318,6 +1560,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
     def read(path), do: File.read(path)
     def ls(path), do: File.ls(path)
+    def mkdir_p(path), do: File.mkdir_p(path)
     def open(path), do: :file.open(path, [:write, :exclusive, :binary, :raw])
     def write(device, contents), do: :file.write(device, contents)
     def sync(device), do: :file.sync(device)
@@ -1371,6 +1614,120 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     end
   end
 
+  defmodule BlockingManifestReadFileOps do
+    @moduledoc false
+
+    alias YellowDog.Management.Storage.AtomicJson.FileOps
+
+    def read(path) do
+      maybe_block_manifest_read(path)
+      FileOps.read(path)
+    end
+
+    defdelegate ls(path), to: FileOps
+    defdelegate mkdir_p(path), to: FileOps
+    defdelegate open(path), to: FileOps
+    defdelegate write(device, contents), to: FileOps
+    defdelegate sync(device), to: FileOps
+    defdelegate close(device), to: FileOps
+    defdelegate rename(source, target), to: FileOps
+    defdelegate link(source, target), to: FileOps
+    defdelegate rm(path), to: FileOps
+
+    defp maybe_block_manifest_read(path) do
+      if Path.basename(path) == "manifest.json" do
+        counter = Application.fetch_env!(:yellow_dog_management_core, :manifest_read_counter)
+        read_number = :atomics.add_get(counter, 1, 1)
+
+        if read_number ==
+             Application.fetch_env!(
+               :yellow_dog_management_core,
+               :block_manifest_read_number
+             ) do
+          owner =
+            Application.fetch_env!(
+              :yellow_dog_management_core,
+              :manifest_read_file_ops_owner
+            )
+
+          send(owner, {:manifest_read_blocked, self(), path, read_number})
+
+          receive do
+            :release_manifest_read -> :ok
+          end
+        end
+      end
+    end
+  end
+
+  defmodule BlockingManifestCleanupFileOps do
+    @moduledoc false
+
+    alias YellowDog.Management.Storage.AtomicJson.FileOps
+
+    defdelegate read(path), to: FileOps
+    defdelegate ls(path), to: FileOps
+    defdelegate mkdir_p(path), to: FileOps
+    defdelegate open(path), to: FileOps
+    defdelegate write(device, contents), to: FileOps
+    defdelegate sync(device), to: FileOps
+    defdelegate close(device), to: FileOps
+
+    def rename(source, target) do
+      if Path.basename(target) == "manifest.json" and cleanup_mode() == :block_once do
+        owner =
+          Application.fetch_env!(
+            :yellow_dog_management_core,
+            :manifest_staging_cleanup_owner
+          )
+
+        send(owner, {:manifest_rename_blocked, self(), source, target})
+
+        receive do
+          :release_manifest_rename -> :ok
+        end
+      end
+
+      FileOps.rename(source, target)
+    end
+
+    defdelegate link(source, target), to: FileOps
+
+    def rm(path) do
+      if manifest_staging_path?(path) and cleanup_mode() == :block_once do
+        counter =
+          Application.fetch_env!(
+            :yellow_dog_management_core,
+            :manifest_staging_cleanup_counter
+          )
+
+        if :atomics.add_get(counter, 1, 1) == 1 do
+          owner =
+            Application.fetch_env!(
+              :yellow_dog_management_core,
+              :manifest_staging_cleanup_owner
+            )
+
+          send(owner, {:manifest_staging_rm_blocked, self(), path})
+
+          receive do
+            :release_manifest_staging_rm -> :ok
+          end
+        end
+      end
+
+      FileOps.rm(path)
+    end
+
+    defp cleanup_mode,
+      do: Application.get_env(:yellow_dog_management_core, :manifest_staging_cleanup_mode)
+
+    defp manifest_staging_path?(path) do
+      String.contains?(Path.basename(path), ".manifest.json.") and
+        String.ends_with?(path, ".stage")
+    end
+  end
+
   defmodule BlockingConfigFileOps do
     @moduledoc false
 
@@ -1384,6 +1741,11 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     def ls(path) do
       maybe_block(:list, path)
       FileOps.ls(path)
+    end
+
+    def mkdir_p(path) do
+      maybe_block(:mkdir, path)
+      FileOps.mkdir_p(path)
     end
 
     def open(path) do
@@ -1413,7 +1775,13 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       end
     end
 
-    defdelegate rm(path), to: FileOps
+    def rm(path) do
+      if String.ends_with?(path, ".stage") do
+        maybe_cleanup_failure(path)
+      else
+        FileOps.rm(path)
+      end
+    end
 
     defp maybe_block(operation, path) do
       if Application.get_env(
@@ -1431,6 +1799,42 @@ defmodule YellowDog.Management.ConfigVersionsTest do
         receive do
           :release_config_filesystem -> :ok
         end
+      end
+    end
+
+    defp maybe_cleanup_failure(path) do
+      case Application.get_env(:yellow_dog_management_core, :config_staging_cleanup_mode) do
+        mode when mode in [:error_once, :block_once] ->
+          counter =
+            Application.fetch_env!(
+              :yellow_dog_management_core,
+              :config_staging_cleanup_counter
+            )
+
+          if :atomics.add_get(counter, 1, 1) == 1 do
+            cleanup_failure(mode, path)
+          else
+            FileOps.rm(path)
+          end
+
+        _other ->
+          FileOps.rm(path)
+      end
+    end
+
+    defp cleanup_failure(:error_once, _path), do: {:error, :injected_rm}
+
+    defp cleanup_failure(:block_once, path) do
+      owner =
+        Application.fetch_env!(
+          :yellow_dog_management_core,
+          :config_version_blocking_owner
+        )
+
+      send(owner, {:config_staging_rm_blocked, self(), path})
+
+      receive do
+        :release_config_staging_rm -> FileOps.rm(path)
       end
     end
   end
