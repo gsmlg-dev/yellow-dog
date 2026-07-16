@@ -27,6 +27,7 @@ defmodule YellowDog.Management.ControlledFileOps do
       hook when is_function(hook, 2) ->
         case hook.(operation, arguments) do
           :ok -> fallback.()
+          {:handled, result} -> result
           {:error, _reason} = error -> error
         end
 

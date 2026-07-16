@@ -282,6 +282,26 @@ defmodule YellowDog.Management.SnapshotsTest do
     )
   end
 
+  test "snapshot normalizes received time against a future requested time across restart" do
+    future = ~U[2036-01-01 00:00:00Z]
+    envelope = %{query_envelope("server-snapshot-future-request") | sent_at: future}
+    result = service_list(@revision_a, @observed_at, "dns")
+
+    assert {:ok, %{requested_at: ^future, received_at: ^future, stored_at: stored_at} = snapshot} =
+             Snapshots.put(
+               envelope,
+               "runtime.services",
+               result,
+               ~U[2026-07-16 09:32:00Z]
+             )
+
+    assert DateTime.compare(stored_at, future) in [:eq, :gt]
+    restart_child(Snapshots)
+
+    assert {:ok, ^snapshot} =
+             Snapshots.get(:server, "server-snapshot-future-request", "runtime.services")
+  end
+
   test "snapshot startup fails deterministically when durable records exceed the limit" do
     Application.put_env(:yellow_dog_management_core, :max_snapshot_records, 2)
     restart_application()
@@ -359,18 +379,32 @@ defmodule YellowDog.Management.SnapshotsTest do
              Snapshots.get(:server, "server-snapshot-blocked-replace", "runtime.services")
   end
 
-  test "blocked snapshot cleanup leaves no in-memory record until startup reconciliation", %{
+  test "reconciled snapshot survives staging cleanup timeout without in-memory divergence", %{
     data_dir: data_dir
   } do
     owner = self()
+    cleanup_attempts = :atomics.new(1, [])
     Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
     Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
-    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, true)
 
     Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rename, [source, target] ->
+        if String.contains?(target, "/snapshots/") do
+          :ok = YellowDog.Management.Storage.AtomicJson.FileOps.rename(source, target)
+          send(owner, {:controlled_file_ops_blocked, :snapshot_rename_after_commit})
+
+          receive do
+            {:release_controlled_file_ops, :snapshot_rename_after_commit} -> :ok
+          end
+
+          {:handled, :ok}
+        else
+          :ok
+        end
+
       :rm, [path] ->
-        if Application.get_env(:yellow_dog_management_core, :management_test_file_ops_block) and
-             String.contains?(path, "/snapshots/") and String.ends_with?(path, ".stage") do
+        if String.contains?(path, "/snapshots/") and String.ends_with?(path, ".stage") and
+             :atomics.add_get(cleanup_attempts, 1, 1) == 1 do
           send(owner, {:controlled_file_ops_blocked, :snapshot_cleanup})
 
           receive do
@@ -391,23 +425,21 @@ defmodule YellowDog.Management.SnapshotsTest do
     received_at = ~U[2026-07-16 09:32:00Z]
     task = Task.async(fn -> Snapshots.put(envelope, "runtime.services", result, received_at) end)
 
-    assert_receive {:controlled_file_ops_blocked, :snapshot_cleanup}
-    assert_error(Task.await(task, 1_000), :timeout)
+    assert_receive {:controlled_file_ops_blocked, :snapshot_rename_after_commit}
+    assert_receive {:controlled_file_ops_blocked, :snapshot_cleanup}, 1_000
+    assert {:ok, %{revision: @revision_a, value: ^result}} = Task.await(task, 1_000)
 
-    assert_error(
-      Snapshots.get(:server, "server-snapshot-blocked-cleanup", "runtime.services"),
-      :not_found
-    )
+    assert {:ok, %{revision: @revision_a, value: ^result}} =
+             Snapshots.get(:server, "server-snapshot-blocked-cleanup", "runtime.services")
 
     assert snapshot_stage_files(data_dir) == []
-
-    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_block, false)
     restart_child(Snapshots)
 
     assert {:ok, %{revision: @revision_a, value: ^result}} =
              Snapshots.get(:server, "server-snapshot-blocked-cleanup", "runtime.services")
 
     assert snapshot_stage_files(data_dir) == []
+    refute_receive {:controlled_file_ops_blocked, :snapshot_cleanup}, 50
   end
 
   test "startup surfaces captured snapshot staging cleanup failure", %{data_dir: data_dir} do

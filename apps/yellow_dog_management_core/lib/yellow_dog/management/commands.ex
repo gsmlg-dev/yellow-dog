@@ -100,6 +100,8 @@ defmodule YellowDog.Management.Commands do
   @doc false
   def unknown_error(%Error{} = error, request_id, reason)
       when is_binary(request_id) and reason in @unknown_reasons do
+    error = safe_unknown_base(error)
+
     details =
       Map.merge(error.details, %{
         "outcome" => "unknown",
@@ -524,12 +526,20 @@ defmodule YellowDog.Management.Commands do
 
     result = AtomicJson.owned(operation, deadline)
     result = reconcile_write(result, path, document, config)
-    cleanup_result = cleanup_staging_path(staging_path, config)
 
-    case {result, cleanup_result} do
-      {{:ok, ^path}, :ok} -> :ok
-      {{:error, %Error{}} = error, :ok} -> error
-      {_result, {:error, %Error{}} = error} -> error
+    case result do
+      {:ok, ^path} ->
+        cleanup_committed_staging_path(staging_path, config)
+        :ok
+
+      {:error, %Error{}} = error ->
+        case cleanup_staging_path(staging_path, config) do
+          :ok -> error
+          {:error, %Error{}} = cleanup_error -> cleanup_error
+        end
+
+      _invalid ->
+        internal("command persistence failed")
     end
   end
 
@@ -552,6 +562,27 @@ defmodule YellowDog.Management.Commands do
       {:error, %Error{}} = error -> error
       {:error, reason} -> internal("command staging cleanup failed: #{inspect(reason)}")
       _invalid -> internal("command staging cleanup failed")
+    end
+  end
+
+  defp cleanup_committed_staging_path(path, config) do
+    case cleanup_staging_path(path, config) do
+      :ok ->
+        :ok
+
+      {:error, %Error{} = first_error} ->
+        case cleanup_staging_path(path, config) do
+          :ok ->
+            :ok
+
+          {:error, %Error{} = second_error} ->
+            Logger.warning(
+              "Durable command staging cleanup failed after commit at #{path}: " <>
+                "#{first_error.code}/#{second_error.code}"
+            )
+
+            :ok
+        end
     end
   end
 
@@ -764,6 +795,13 @@ defmodule YellowDog.Management.Commands do
     end
   end
 
+  defp safe_unknown_base(%Error{} = error) do
+    case validate_error(error) do
+      {:ok, error} -> error
+      {:error, %Error{}} -> Error.new(:invalid, "runtime returned an invalid command error", %{})
+    end
+  end
+
   defp encode_error(nil), do: nil
   defp encode_error(%Error{} = error), do: Error.to_wire(error)
 
@@ -797,9 +835,8 @@ defmodule YellowDog.Management.Commands do
     end
   end
 
-  defp reject_unknown_markers(%Error{details: details}, request_id) do
-    if details["outcome"] == "unknown" and details["request_id"] == request_id and
-         details["reason"] in @unknown_reasons do
+  defp reject_unknown_markers(%Error{details: details}, _request_id) do
+    if Map.has_key?(details, "outcome") do
       invalid("failed command cannot contain unknown outcome markers")
     else
       :ok

@@ -238,9 +238,23 @@ defmodule YellowDog.ManagementCore do
   end
 
   defp resolve_unknown(request_id, error, reason) do
+    {error, reason} = safe_unknown_error(error, reason)
     error = Commands.unknown_error(error, request_id, reason)
     Commands.resolve(request_id, {:unknown, error, reason})
   end
+
+  defp safe_unknown_error(%Error{} = error, reason) do
+    case validate_transport_error(error) do
+      {:ok, error} -> {error, reason}
+      {:error, %Error{}} -> {malformed_transport_error(), "malformed_transport"}
+    end
+  end
+
+  defp safe_unknown_error(_error, _reason),
+    do: {malformed_transport_error(), "malformed_transport"}
+
+  defp malformed_transport_error,
+    do: Error.new(:invalid, "runtime returned an invalid command error", %{})
 
   defp query_request(envelope) do
     case transport_request(envelope) do

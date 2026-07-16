@@ -261,6 +261,9 @@ defmodule YellowDog.Management.CommandsTest do
 
     invalid_details = [
       %{"path" => "/etc/shadow"},
+      %{"outcome" => "unknown"},
+      Map.take(details, ["outcome", "request_id"]),
+      Map.take(details, ["outcome", "reason"]),
       Map.put(details, "request_id", "ffffffff-ffff-4fff-8fff-ffffffffffff"),
       Map.put(details, "reason", "not-a-durable-unknown-reason"),
       Map.put(details, "outcome", "completed")
@@ -275,13 +278,38 @@ defmodule YellowDog.Management.CommandsTest do
       assert :miss = Commands.replay(envelope)
     end
 
+    for replacement <- [
+          %{"outcome" => "unknown"},
+          %{"outcome" => "unknown", "request_id" => envelope.request_id},
+          %{"outcome" => "unknown", "reason" => "management_restart"},
+          %{
+            "outcome" => "unknown",
+            "request_id" => "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            "reason" => "other"
+          },
+          details
+        ] do
+      document
+      |> Map.put("state", "failed")
+      |> Map.put("unknown_reason", nil)
+      |> put_in(["error", "details"], replacement)
+      |> then(&File.write!(command_path(data_dir, envelope.request_id), Jason.encode!(&1)))
+
+      restart_child(Commands)
+      assert :miss = Commands.replay(envelope)
+    end
+
+    ordinary_details = %{"context" => "runtime_failure"}
+
     document
     |> Map.put("state", "failed")
     |> Map.put("unknown_reason", nil)
+    |> put_in(["error", "details"], ordinary_details)
     |> then(&File.write!(command_path(data_dir, envelope.request_id), Jason.encode!(&1)))
 
     restart_child(Commands)
-    assert :miss = Commands.replay(envelope)
+
+    assert {:replay, {:error, %Error{details: ^ordinary_details}}} = Commands.replay(envelope)
   end
 
   test "recovery keeps a future durable timestamp monotonic across restarts", %{
@@ -541,6 +569,122 @@ defmodule YellowDog.Management.CommandsTest do
              "unknown"
   end
 
+  test "committed command create survives staging cleanup timeout and replays", %{
+    data_dir: data_dir
+  } do
+    owner = self()
+    attempts = :atomics.new(1, [])
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rm, [path] ->
+        if String.contains?(path, "/commands/") and String.ends_with?(path, ".stage") and
+             :atomics.add_get(attempts, 1, 1) == 2 do
+          send(owner, {:controlled_file_ops_blocked, :command_create_cleanup})
+
+          receive do
+            {:release_controlled_file_ops, :command_create_cleanup} -> :ok
+          end
+        else
+          :ok
+        end
+
+      _operation, _arguments ->
+        :ok
+    end)
+
+    restart_application()
+    register_server("server-committed-create-cleanup")
+    :ok = FakeTransport.connect(:server, "server-committed-create-cleanup")
+    result = service_result("dns", "running")
+    :ok = FakeTransport.script([{:ok, result}])
+
+    args = [
+      "server-committed-create-cleanup",
+      "server.runtime.services.start",
+      %{"service" => "dns"},
+      nil,
+      @key_c
+    ]
+
+    task = Task.async(fn -> apply(ManagementCore, :command_server, args) end)
+
+    assert_receive {:controlled_file_ops_blocked, :command_create_cleanup}
+    assert Task.await(task, 1_000) == {:ok, result}
+    assert [recorded] = FakeTransport.recorded()
+    assert completed_document(data_dir, recorded.envelope.request_id)["result"] == result
+    assert command_files(data_dir) |> length() == 1
+    assert stage_files(data_dir) == []
+
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+    assert length(FakeTransport.recorded()) == 1
+
+    restart_child(Commands)
+
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+    assert length(FakeTransport.recorded()) == 1
+    refute_receive {:controlled_file_ops_blocked, :command_create_cleanup}, 50
+  end
+
+  test "committed command replacement survives staging cleanup timeout and replays", %{
+    data_dir: data_dir
+  } do
+    owner = self()
+    attempts = :atomics.new(1, [])
+    Application.put_env(:yellow_dog_management_core, :event_write_timeout_ms, 100)
+    Application.put_env(:yellow_dog_management_core, :atomic_json_file_ops, ControlledFileOps)
+
+    Application.put_env(:yellow_dog_management_core, :management_test_file_ops_hook, fn
+      :rm, [path] ->
+        if String.contains?(path, "/commands/") and String.ends_with?(path, ".stage") and
+             :atomics.add_get(attempts, 1, 1) == 3 do
+          send(owner, {:controlled_file_ops_blocked, :command_replace_cleanup})
+
+          receive do
+            {:release_controlled_file_ops, :command_replace_cleanup} -> :ok
+          end
+        else
+          :ok
+        end
+
+      _operation, _arguments ->
+        :ok
+    end)
+
+    restart_application()
+    register_server("server-committed-replace-cleanup")
+    :ok = FakeTransport.connect(:server, "server-committed-replace-cleanup")
+    result = service_result("dns", "running")
+    :ok = FakeTransport.script([{:ok, result}])
+
+    args = [
+      "server-committed-replace-cleanup",
+      "server.runtime.services.start",
+      %{"service" => "dns"},
+      nil,
+      @key_d
+    ]
+
+    task = Task.async(fn -> apply(ManagementCore, :command_server, args) end)
+
+    assert_receive {:controlled_file_ops_blocked, :command_replace_cleanup}
+    assert Task.await(task, 1_000) == {:ok, result}
+    assert [recorded] = FakeTransport.recorded()
+    assert completed_document(data_dir, recorded.envelope.request_id)["result"] == result
+    assert command_files(data_dir) |> length() == 1
+    assert stage_files(data_dir) == []
+
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+    assert length(FakeTransport.recorded()) == 1
+
+    restart_child(Commands)
+
+    assert apply(ManagementCore, :command_server, args) == {:ok, result}
+    assert length(FakeTransport.recorded()) == 1
+    refute_receive {:controlled_file_ops_blocked, :command_replace_cleanup}, 50
+  end
+
   test "malformed command successes become durable unknown outcomes without replay", %{
     data_dir: data_dir
   } do
@@ -607,6 +751,115 @@ defmodule YellowDog.Management.CommandsTest do
              "runtime_disconnected"
 
     assert {:ok, %{status: :offline}} = ManagementCore.get_server("server-unknown")
+  end
+
+  test "unsafe timeout and not-connected errors become safe durable unknown outcomes", %{
+    data_dir: data_dir
+  } do
+    register_server("server-unsafe-transport-error")
+    :ok = FakeTransport.connect(:server, "server-unsafe-transport-error")
+
+    :ok =
+      FakeTransport.script([
+        {:error, Error.new(:timeout, "unsafe timeout", %{"path" => "/etc/shadow"})},
+        {:error, Error.new(:not_connected, "unsafe disconnect", %{"path" => "/etc/shadow"})}
+      ])
+
+    cases = [
+      {@key_a, "server.runtime.services.start", %{"service" => "dns"}},
+      {@key_b, "server.runtime.services.stop", %{"service" => "mdns"}}
+    ]
+
+    outcomes =
+      Enum.map(cases, fn {idempotency_key, operation, payload} ->
+        args = ["server-unsafe-transport-error", operation, payload, nil, idempotency_key]
+
+        assert {:error,
+                %Error{
+                  code: :invalid,
+                  details:
+                    %{
+                      "outcome" => "unknown",
+                      "reason" => "malformed_transport",
+                      "request_id" => request_id
+                    } = details
+                } = error} = apply(ManagementCore, :command_server, args)
+
+        refute Map.has_key?(details, "path")
+
+        assert %{
+                 "state" => "unknown",
+                 "unknown_reason" => "malformed_transport",
+                 "error" => %{"details" => ^details}
+               } = unknown_document(data_dir, request_id)
+
+        {args, error}
+      end)
+
+    assert length(FakeTransport.recorded()) == 2
+    restart_child(Commands)
+
+    Enum.each(outcomes, fn {args, error} ->
+      assert apply(ManagementCore, :command_server, args) == {:error, error}
+    end)
+
+    assert length(FakeTransport.recorded()) == 2
+  end
+
+  test "live failed resolution rejects reserved unknown markers but accepts ordinary details", %{
+    data_dir: data_dir
+  } do
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 5_000)
+    register_server("server-live-failed-markers")
+    :ok = FakeTransport.connect(:server, "server-live-failed-markers")
+    :ok = FakeTransport.script([{:defer, self(), :failed_markers}])
+
+    task =
+      Task.async(fn ->
+        ManagementCore.command_server(
+          "server-live-failed-markers",
+          "server.runtime.services.start",
+          %{"service" => "dns"},
+          nil,
+          @key_c
+        )
+      end)
+
+    assert_receive {:fake_transport_deferred, :failed_markers, envelope}
+
+    for details <- [
+          %{"outcome" => "unknown"},
+          %{"outcome" => "unknown", "request_id" => envelope.request_id},
+          %{"outcome" => "unknown", "reason" => "management_restart"},
+          %{
+            "outcome" => "unknown",
+            "request_id" => "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            "reason" => "other"
+          }
+        ] do
+      assert_error(
+        Commands.resolve(
+          envelope.request_id,
+          {:failed, Error.new(:internal, "runtime command failed", details)}
+        ),
+        :invalid
+      )
+
+      assert pending_document(data_dir, envelope.request_id)["state"] == "pending"
+    end
+
+    ordinary_details = %{"context" => "runtime_failure"}
+
+    assert {:error, %Error{details: ^ordinary_details}} =
+             Commands.resolve(
+               envelope.request_id,
+               {:failed, Error.new(:internal, "runtime command failed", ordinary_details)}
+             )
+
+    assert Jason.decode!(File.read!(command_path(data_dir, envelope.request_id)))["state"] ==
+             "failed"
+
+    Task.shutdown(task, :brutal_kill)
   end
 
   test "restart converts pending to unknown and a matching reconnect journal resolves it", %{

@@ -127,6 +127,8 @@ defmodule YellowDog.Management.Snapshots do
   defp new_record(envelope, domain, result, received_at, path) do
     with {:ok, revision} <- result_revision(result),
          {:ok, observed_at} <- effective_observed_at(result, envelope.sent_at) do
+      received_at = latest_datetime([received_at, envelope.sent_at])
+
       {:ok,
        %Record{
          target_type: envelope.target_type,
@@ -140,7 +142,7 @@ defmodule YellowDog.Management.Snapshots do
          requested_at: envelope.sent_at,
          observed_at: observed_at,
          received_at: received_at,
-         stored_at: latest_datetime([DateTime.utc_now(), envelope.sent_at, received_at]),
+         stored_at: latest_datetime([DateTime.utc_now(), received_at]),
          path: path
        }}
     end
@@ -215,12 +217,20 @@ defmodule YellowDog.Management.Snapshots do
       )
 
     result = reconcile_write(result, record.path, document, config)
-    cleanup_result = cleanup_staging_path(staging_path, config)
 
-    case {result, cleanup_result} do
-      {{:ok, path}, :ok} when path == record.path -> :ok
-      {{:error, %Error{}} = error, :ok} -> error
-      {_result, {:error, %Error{}} = error} -> error
+    case result do
+      {:ok, path} when path == record.path ->
+        cleanup_committed_staging_path(staging_path, config)
+        :ok
+
+      {:error, %Error{}} = error ->
+        case cleanup_staging_path(staging_path, config) do
+          :ok -> error
+          {:error, %Error{}} = cleanup_error -> cleanup_error
+        end
+
+      _invalid ->
+        internal("snapshot persistence failed")
     end
   end
 
@@ -243,6 +253,27 @@ defmodule YellowDog.Management.Snapshots do
       {:error, %Error{}} = error -> error
       {:error, reason} -> internal("snapshot staging cleanup failed: #{inspect(reason)}")
       _invalid -> internal("snapshot staging cleanup failed")
+    end
+  end
+
+  defp cleanup_committed_staging_path(path, config) do
+    case cleanup_staging_path(path, config) do
+      :ok ->
+        :ok
+
+      {:error, %Error{} = first_error} ->
+        case cleanup_staging_path(path, config) do
+          :ok ->
+            :ok
+
+          {:error, %Error{} = second_error} ->
+            Logger.warning(
+              "Durable snapshot staging cleanup failed after commit at #{path}: " <>
+                "#{first_error.code}/#{second_error.code}"
+            )
+
+            :ok
+        end
     end
   end
 
