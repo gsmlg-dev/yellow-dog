@@ -35,7 +35,6 @@ defmodule YellowDog.Server.Control.Dns do
   ]
   @unsupported_snapshot_operations [
     "server.dns.zones.import",
-    "server.dns.zones.sync",
     "server.dns.conflicts.resolve"
   ]
 
@@ -169,7 +168,8 @@ defmodule YellowDog.Server.Control.Dns do
       when operation in [
              "server.dns.zones.create",
              "server.dns.zones.update",
-             "server.dns.zones.delete"
+             "server.dns.zones.delete",
+             "server.dns.zones.sync"
            ] do
     with {:ok, zones} <- read_zones(view_name) do
       current_resource(
@@ -439,16 +439,18 @@ defmodule YellowDog.Server.Control.Dns do
   defp sync_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.sync", payload),
          payload <- canonicalize_zone_payload(payload),
-         {:ok, enqueue_result} <-
-           dependency_call(:tasks, :enqueue_cloud_zone_sync, [
+         {:ok, zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
+         {:ok, result} <- cloud_sync_result(payload, zone) do
+      case dependency_call(:tasks, :enqueue_cloud_zone_sync, [
              payload["view_name"],
              payload["zone_name"],
              payload["provider_id"]
-           ]),
-         :ok <- cloud_sync_enqueue_result(enqueue_result),
-         {:ok, zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
-         {:ok, result} <- cloud_sync_result(payload, zone) do
-      {:ok, result}
+           ]) do
+        {:ok, {:ok, _job}} -> {:ok, result}
+        {:ok, enqueue_result} -> cloud_sync_enqueue_result(enqueue_result)
+        {:error, %Error{}} = error -> error
+        _failure -> apply_failed_error()
+      end
     else
       {:error, %Error{}} = error -> error
       _failure -> apply_failed_error()

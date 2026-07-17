@@ -16,6 +16,8 @@ defmodule YellowDog.ServerDnsControlFake do
     providers: {:ok, []},
     logs: [],
     metrics: %{},
+    enqueued_jobs: [],
+    post_enqueue_zone_response: nil,
     now: ~U[2026-07-16 00:00:00Z]
   }
 
@@ -123,8 +125,14 @@ defmodule YellowDog.ServerDnsControlFake.ZoneStore do
       :get_zone,
       {:zone_store, :get_zone, [view_name, zone_name]},
       fn state ->
-        result = Map.get(state.zone_metadata, {view_name, zone_name}, {:error, :not_found})
-        {{:ok, result} |> unwrap_zone_result(), state}
+        case {state.enqueued_jobs, state.post_enqueue_zone_response} do
+          {[_job | _jobs], response} when not is_nil(response) ->
+            {response, state}
+
+          _no_post_enqueue_failure ->
+            result = Map.get(state.zone_metadata, {view_name, zone_name}, {:error, :not_found})
+            {{:ok, result} |> unwrap_zone_result(), state}
+        end
       end
     )
   end
@@ -459,7 +467,11 @@ defmodule YellowDog.ServerDnsControlFake.Tasks do
     YellowDog.ServerDnsControlFake.operation(
       :enqueue_cloud_zone_sync,
       {:tasks, :enqueue_cloud_zone_sync, [view_name, zone_name, provider_id]},
-      fn state -> {{:ok, %{id: "cloud-sync-job"}}, state} end
+      fn state ->
+        job = %{id: "cloud-sync-job"}
+        accepted = {view_name, zone_name, provider_id, job.id}
+        {{:ok, job}, %{state | enqueued_jobs: [accepted | state.enqueued_jobs]}}
+      end
     )
   end
 end

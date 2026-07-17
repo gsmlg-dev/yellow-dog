@@ -199,15 +199,11 @@ defmodule YellowDog.Server.Control.DnsTest do
   end
 
   test "accepts a cloud-zone sync without reporting completed record changes" do
-    zone =
-      Map.put(authoritative_zone(), :cloud_mirror, %{
-        enabled: true,
-        connector_name: "cf-main",
-        provider: :cloudflare
-      })
+    zone = cloud_authoritative_zone()
 
     ServerDnsControlFake.configure(%{
-      zone_metadata: %{{"default", "example.test"} => zone}
+      zone_metadata: %{{"default", "example.test"} => zone},
+      post_enqueue_zone_response: {:error, :post_enqueue_zone_read_failed}
     })
 
     assert {:ok, result} =
@@ -233,12 +229,41 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert result["revision"] == expected_revision
 
     assert [
-             {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]},
+             {:zone_store, :get_zone, ["default", "example.test"]},
+             {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
+           ] = ServerDnsControlFake.take_calls()
+
+    snapshot = ServerDnsControlFake.snapshot()
+    assert [{"default", "example.test", "cf-main", "cloud-sync-job"}] = snapshot.enqueued_jobs
+    assert snapshot.post_enqueue_zone_response == {:error, :post_enqueue_zone_read_failed}
+  end
+
+  test "does not enqueue when cloud-zone result prevalidation fails" do
+    malformed_zone = %{cloud_authoritative_zone() | origin: nil}
+
+    ServerDnsControlFake.configure(%{
+      zone_metadata: %{{"default", "example.test"} => malformed_zone}
+    })
+
+    assert {:error, %Error{code: :invalid}} =
+             Dns.dispatch("server.dns.zones.sync", %{
+               "view_name" => "default",
+               "zone_name" => "example.test",
+               "provider_id" => "cf-main"
+             })
+
+    assert [
              {:zone_store, :get_zone, ["default", "example.test"]}
            ] = ServerDnsControlFake.take_calls()
+
+    assert [] = ServerDnsControlFake.snapshot().enqueued_jobs
   end
 
   test "maps cloud-zone enqueue failures to stable Sync errors" do
+    ServerDnsControlFake.configure(%{
+      zone_metadata: %{{"default", "example.test"} => cloud_authoritative_zone()}
+    })
+
     for {owner_result, code, message} <- [
           {{:error, :invalid}, :invalid, "invalid value"},
           {{:error, :not_found}, :not_found, "resource not found"},
@@ -259,6 +284,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       refute inspect(error) =~ "credential-token"
 
       assert [
+               {:zone_store, :get_zone, ["default", "example.test"]},
                {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
              ] = ServerDnsControlFake.take_calls()
     end
@@ -266,6 +292,7 @@ defmodule YellowDog.Server.Control.DnsTest do
 
   test "maps cloud-zone job cleanup failure to rollback_failed" do
     ServerDnsControlFake.configure(%{
+      zone_metadata: %{{"default", "example.test"} => cloud_authoritative_zone()},
       responses: %{enqueue_cloud_zone_sync: [{:error, :rollback_failed}]}
     })
 
@@ -277,6 +304,7 @@ defmodule YellowDog.Server.Control.DnsTest do
              })
 
     assert [
+             {:zone_store, :get_zone, ["default", "example.test"]},
              {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
            ] = ServerDnsControlFake.take_calls()
   end
@@ -850,6 +878,78 @@ defmodule YellowDog.Server.Control.DnsTest do
                {:zone_controller, :stop_zone, ["default", :auth, "example.test"]}
              ] = ServerDnsControlFake.take_calls()
 
+      assert_dispatcher_dns_dependencies()
+    end
+
+    test "dispatches zone sync after prevalidating its immutable acceptance result" do
+      zone = cloud_authoritative_zone()
+
+      ServerDnsControlFake.configure(%{
+        zones: %{"default" => {:ok, [zone]}},
+        zone_metadata: %{{"default", "example.test"} => zone},
+        post_enqueue_zone_response: {:error, :post_enqueue_zone_read_failed}
+      })
+
+      payload = %{
+        "view_name" => "default",
+        "zone_name" => "Example.Test.",
+        "provider_id" => "cf-main"
+      }
+
+      assert {:ok, result} =
+               dispatch_with_current_revision("server.dns.zones.sync", payload)
+
+      assert result["view_name"] == "default"
+      assert result["zone_name"] == "example.test"
+      assert result["changed_records"] == 0
+      assert_valid_result("server.dns.zones.sync", result)
+
+      expected_resource = %{
+        "view_name" => "default",
+        "zone_name" => "example.test",
+        "zone_type" => "authoritative",
+        "provider_id" => "cf-main"
+      }
+
+      assert {:ok, expected_revision} = Revision.calculate(expected_resource)
+      assert result["revision"] == expected_revision
+
+      assert [
+               {:zone_store, :list_zones_for_view, ["default"]},
+               {:zone_store, :get_zone, ["default", "example.test"]},
+               {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
+             ] = ServerDnsControlFake.take_calls()
+
+      snapshot = ServerDnsControlFake.snapshot()
+      assert [{"default", "example.test", "cf-main", "cloud-sync-job"}] = snapshot.enqueued_jobs
+      assert snapshot.post_enqueue_zone_response == {:error, :post_enqueue_zone_read_failed}
+      assert_dispatcher_dns_dependencies()
+    end
+
+    test "does not dispatch a zone sync when result prevalidation fails" do
+      current_zone = cloud_authoritative_zone()
+      malformed_zone = %{current_zone | origin: nil}
+
+      ServerDnsControlFake.configure(%{
+        zones: %{"default" => {:ok, [current_zone]}},
+        zone_metadata: %{{"default", "example.test"} => malformed_zone}
+      })
+
+      payload = %{
+        "view_name" => "default",
+        "zone_name" => "example.test",
+        "provider_id" => "cf-main"
+      }
+
+      assert {:error, %Error{code: :invalid}} =
+               dispatch_with_current_revision("server.dns.zones.sync", payload)
+
+      assert [
+               {:zone_store, :list_zones_for_view, ["default"]},
+               {:zone_store, :get_zone, ["default", "example.test"]}
+             ] = ServerDnsControlFake.take_calls()
+
+      assert [] = ServerDnsControlFake.snapshot().enqueued_jobs
       assert_dispatcher_dns_dependencies()
     end
 
@@ -2093,7 +2193,6 @@ defmodule YellowDog.Server.Control.DnsTest do
 
     for operation <- [
           "server.dns.zones.import",
-          "server.dns.zones.sync",
           "server.dns.conflicts.resolve"
         ] do
       assert {:error, %Error{code: :unsupported}} = Dns.current(operation, %{})
@@ -2168,6 +2267,14 @@ defmodule YellowDog.Server.Control.DnsTest do
 
   defp authoritative_zone do
     %{view_name: "default", origin: "example.test", zone_type: :auth, soa: %{serial: 10}}
+  end
+
+  defp cloud_authoritative_zone do
+    Map.put(authoritative_zone(), :cloud_mirror, %{
+      enabled: true,
+      connector_name: "cf-main",
+      provider: :cloudflare
+    })
   end
 
   defp record_payload(type, values) do
