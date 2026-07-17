@@ -49,12 +49,16 @@ The dedicated non-async Settings suite covers:
 
 - every read and mutation mapping to the real Manager call table;
 - malformed fixed inputs before Manager access;
-- real Dispatcher read paths and mutation `current/2` paths, including stale
-  expected revisions returning `unsupported` rather than synthetic conflicts;
+- real Dispatcher read paths and all four well-formed mutation envelopes,
+  including `settings.update` with its required `config_version`, returning
+  `unsupported` through `current/2` without Manager calls;
+- stale expected revisions tested separately for each unsupported mutation,
+  returning `unsupported` rather than synthetic conflicts;
 - bounded Settings entries and bounded validation diagnostics;
 - malformed Manager success values, unknown error reasons, arbitrary return
   terms, errors, exceptions, throws, and exits all falling back to sanitized
-  fixed adapter errors;
+  fixed adapter errors, including malformed read results through the real
+  Dispatcher path;
 - a loaded and exported Manager module whose backing owner process is stopped,
   proving the resulting `:noproc` exit is sanitized to fixed `not_found`, plus
   invalid override sanitization to fixed `internal`;
@@ -67,32 +71,41 @@ The dedicated non-async Settings suite covers:
 
 The test was written before `settings.ex`. The initial red run failed because
 the Settings module was absent. After the minimal adapter implementation and
-the independent-review coverage additions, the focused suite passed with `12
+the independent-review coverage additions, the focused suite passed with `14
 tests, 0 failures`.
 
 ## Verification
 
-Passed:
+The fresh focused test command passed exactly as follows:
+
+```text
+devenv shell -- bash -lc "cd apps/yellow_dog && mix test test/yellow_dog/server/control/settings_control_test.exs --seed 0"
+14 tests, 0 failures
+```
+
+The requested full app suite was rerun but could not reach ExUnit because an
+unrelated concurrent edit in `apps/yellow_dog_server_agent/lib/yellow_dog/server_agent/storage.ex`
+does not compile (`validate_write_opts/1` is undefined at line 74):
+
+```text
+devenv shell -- bash -lc "cd apps/yellow_dog && mix test --seed 0"
+Compilation error in YellowDog.ServerAgent.Storage; no test count produced.
+```
+
+The owned-surface verification passed:
 
 ```text
 devenv shell -- bash -lc "cd apps/yellow_dog && mix compile --warnings-as-errors"
+Generated yellow_dog app
+
 devenv shell -- bash -lc "cd apps/yellow_dog && mix credo --strict lib/yellow_dog/server/control/settings.ex test/yellow_dog/server/control/settings_control_test.exs test/support/settings_control_fake.ex"
-devenv shell -- bash -lc "cd apps/yellow_dog && mix format --check-formatted lib/yellow_dog/server/control/settings.ex test/support/settings_control_fake.ex test/yellow_dog/server/control/settings_control_test.exs"
-devenv shell -- bash -lc "git diff --check"
-```
+63 mods/funs, found no issues.
 
-The final focused test command passed exactly as follows:
+devenv shell -- bash -lc "cd apps/yellow_dog && mix format --check-formatted test/yellow_dog/server/control/settings_control_test.exs test/support/settings_control_fake.ex"
+exit 0
 
-```text
-devenv shell -- bash -lc "cd apps/yellow_dog && mix test test/yellow_dog/server/control/settings_control_test.exs"
-12 tests, 0 failures
-```
-
-The full app suite also passed exactly as follows:
-
-```text
-devenv shell -- bash -lc "cd apps/yellow_dog && mix test"
-404 tests, 0 failures
+git diff --check
+exit 0
 ```
 
 ## Self-Review
@@ -101,3 +114,6 @@ devenv shell -- bash -lc "cd apps/yellow_dog && mix test"
 - No unsafe caller-selected module/function routing was introduced.
 - No Config Agent, Writer, filesystem, TOML, runtime, protocol, UDP, Mnesia,
   Concord, migration, or console access was added.
+- Full `apps/yellow_dog` test verification remains blocked by the unrelated
+  concurrent ServerAgent compile error described above; no workaround or edit
+  was made outside this Task 7D ownership.

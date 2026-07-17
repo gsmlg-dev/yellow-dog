@@ -101,7 +101,22 @@ defmodule YellowDog.Server.Control.SettingsControlTest do
     assert [] = ServerSettingsControlFake.take_calls()
   end
 
-  test "unsupported mutation current snapshots prevent stale revision fabrication" do
+  test "real Dispatcher rejects well-formed Settings mutations without Manager calls" do
+    operations = [
+      {"server.settings.update", update_payload([]), [config_version: 1]},
+      {"server.settings.apply", %{"service" => "dns"}, []},
+      {"server.settings.reload", %{"service" => "dns"}, []},
+      {"server.settings.rollback", rollback_payload(), []}
+    ]
+
+    for {operation, payload, overrides} <- operations do
+      assert_unsupported(Control.dispatch(envelope(operation, payload, overrides)))
+    end
+
+    assert [] = ServerSettingsControlFake.take_calls()
+  end
+
+  test "real Dispatcher stale expected revisions for unsupported mutations remain unsupported" do
     operations = [
       {"server.settings.update", update_payload([]), [config_version: 1]},
       {"server.settings.apply", %{"service" => "dns"}, []},
@@ -177,6 +192,30 @@ defmodule YellowDog.Server.Control.SettingsControlTest do
       refute inspect(error) =~ "settings-secret"
       refute inspect(error) =~ "/tmp/settings"
     end
+  end
+
+  test "real Dispatcher sanitizes malformed Manager results for Settings reads" do
+    raw_material = "token=settings-secret path=/tmp/settings"
+
+    for response <- [
+          {:ok, raw_material},
+          {:error, :unknown_manager_reason},
+          {:unexpected_manager_result, raw_material}
+        ] do
+      ServerSettingsControlFake.configure(:source, response)
+
+      assert {:error, %Error{code: :apply_failed, details: %{}} = error} =
+               Control.dispatch(envelope("server.settings.source.get", %{"service" => "dns"}))
+
+      refute inspect(error) =~ "settings-secret"
+      refute inspect(error) =~ "/tmp/settings"
+    end
+
+    assert [
+             {:source, ["dns"]},
+             {:source, ["dns"]},
+             {:source, ["dns"]}
+           ] = ServerSettingsControlFake.take_calls()
   end
 
   test "returns fixed errors for exported Manager owner absence and invalid overrides" do
