@@ -127,12 +127,16 @@ defmodule YellowDog.Server.Control.DnsTest do
   test "creates authoritative zones by persisting default SOA before starting the runtime" do
     ServerDnsControlFake.configure(%{views: [{"default", self(), 0}]})
 
-    assert {:ok, result} = Dns.dispatch("server.dns.zones.create", zone_payload())
+    payload = %{zone_payload() | "zone_name" => "Example.Test."}
+
+    assert {:ok, result} = Dns.dispatch("server.dns.zones.create", payload)
     assert_valid_result("server.dns.zones.create", result)
+    assert result["resource"] == zone_payload()
 
     assert [
              {:view_manager, :list_control_views, []},
              {:zone_store, :get_zone, ["default", "example.test"]},
+             {:zone_store, :default_soa, ["example.test"]},
              {:zone_store, :create_zone, ["default", "example.test", soa, []]},
              {:zone_controller, :start_zone, [:auth, "example.test", [view_name: "default"]]}
            ] = ServerDnsControlFake.take_calls()
@@ -153,14 +157,25 @@ defmodule YellowDog.Server.Control.DnsTest do
       providers: {:ok, [%{name: "cf-main", type: :cloudflare, enabled: true}]}
     })
 
-    payload = %{zone_payload() | "provider_id" => "cf-main"}
+    payload = %{
+      zone_payload()
+      | "zone_name" => "Example.Test.",
+        "provider_id" => "cf-main"
+    }
+
     assert {:ok, result} = Dns.dispatch("server.dns.zones.create", payload)
     assert_valid_result("server.dns.zones.create", result)
+
+    assert result["resource"] == %{
+             zone_payload()
+             | "provider_id" => "cf-main"
+           }
 
     assert [
              {:view_manager, :list_control_views, []},
              {:zone_store, :get_zone, ["default", "example.test"]},
              {:provider_store, :get_config, ["cf-main"]},
+             {:zone_store, :default_soa, ["example.test"]},
              {:zone_store, :create_zone,
               [
                 "default",
@@ -220,7 +235,10 @@ defmodule YellowDog.Server.Control.DnsTest do
     })
 
     assert {:error, %Error{code: :apply_failed}} =
-             Dns.dispatch("server.dns.records.update", record_payload("A", ["192.0.2.11"]))
+             Dns.dispatch("server.dns.records.update", %{
+               record_payload("A", ["192.0.2.11"])
+               | "zone_name" => "Example.Test."
+             })
 
     assert [
              {:zone_store, :get_zone, ["default", "example.test"]},
@@ -246,11 +264,15 @@ defmodule YellowDog.Server.Control.DnsTest do
     })
 
     assert {:error, %Error{code: :apply_failed}} =
-             Dns.dispatch("server.dns.zones.create", zone_payload())
+             Dns.dispatch("server.dns.zones.create", %{
+               zone_payload()
+               | "zone_name" => "Example.Test."
+             })
 
     assert [
              {:view_manager, :list_control_views, []},
              {:zone_store, :get_zone, ["default", "example.test"]},
+             {:zone_store, :default_soa, ["example.test"]},
              {:zone_store, :create_zone, ["default", "example.test", _soa, []]},
              {:zone_controller, :start_zone, [:auth, "example.test", [view_name: "default"]]},
              {:zone_controller, :stop_zone, ["default", :auth, "example.test"]},
@@ -268,8 +290,46 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert {:error, %Error{code: :rollback_failed}} =
              Dns.dispatch("server.dns.zones.create", %{
                zone_payload()
-               | "zone_name" => "other.test"
+               | "zone_name" => "Other.Test."
              })
+  end
+
+  test "zone create canonicalizes identity before checking for conflicts" do
+    zone = authoritative_zone()
+
+    ServerDnsControlFake.configure(%{
+      views: [{"default", self(), 0}],
+      zone_metadata: %{{"default", "example.test"} => zone}
+    })
+
+    before = mutation_state()
+    payload = %{zone_payload() | "zone_name" => "Example.Test."}
+
+    assert {:error, %Error{code: :conflict}} =
+             Dns.dispatch("server.dns.zones.create", payload)
+
+    assert [
+             {:view_manager, :list_control_views, []},
+             {:zone_store, :get_zone, ["default", "example.test"]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert mutation_state() == before
+
+    assert Map.keys(ServerDnsControlFake.snapshot().zone_metadata) == [
+             {"default", "example.test"}
+           ]
+  end
+
+  test "invalid, empty, and root zone names fail before canonicalization side effects" do
+    for zone_name <- ["", ".", "example..test"] do
+      assert {:error, %Error{code: :invalid}} =
+               Dns.dispatch("server.dns.zones.create", %{
+                 zone_payload()
+                 | "zone_name" => zone_name
+               })
+
+      assert [] = ServerDnsControlFake.take_calls()
+    end
   end
 
   test "rejects immutable zone types and restores zone metadata after reload failure" do
@@ -290,7 +350,10 @@ defmodule YellowDog.Server.Control.DnsTest do
     })
 
     assert {:error, %Error{code: :apply_failed}} =
-             Dns.dispatch("server.dns.zones.update", zone_payload())
+             Dns.dispatch("server.dns.zones.update", %{
+               zone_payload()
+               | "zone_name" => "Example.Test."
+             })
 
     restored = ServerDnsControlFake.snapshot().zone_metadata[{"default", "example.test"}]
     assert Map.take(restored, Map.keys(old)) == old
@@ -323,7 +386,7 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert {:error, %Error{code: :apply_failed}} =
              Dns.dispatch("server.dns.zones.delete", %{
                "view_name" => "default",
-               "zone_name" => "example.test"
+               "zone_name" => "Example.Test."
              })
 
     snapshot = ServerDnsControlFake.snapshot()
@@ -336,10 +399,33 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert snapshot.zone_metadata[{"default", "example.test"}].allow_dynamic_update
     assert snapshot.zone_metadata[{"default", "example.test"}].serial_strategy == :increment
 
-    refute Enum.any?(ServerDnsControlFake.take_calls(), fn
-             {:zone_store, :update_zone, _} -> true
-             _ -> false
-           end)
+    assert [
+             {:zone_store, :get_zone, ["default", "example.test"]},
+             {:zone_store, :list_records, ["default", "example.test"]},
+             {:zone_store, :delete_zone, ["default", "example.test"]},
+             {:zone_controller, :stop_zone, ["default", :auth, "example.test"]},
+             {:zone_store, :create_zone,
+              [
+                "default",
+                "example.test",
+                %{serial: 10},
+                [
+                  default_ttl: 120,
+                  authoritative: true,
+                  allow_dynamic_update: true,
+                  serial_strategy: :increment
+                ]
+              ]},
+             {:zone_store, :put_rrset,
+              [
+                "default",
+                "example.test",
+                "www",
+                :a,
+                [%{rdata: {192, 0, 2, 10}, ttl: 60}]
+              ]},
+             {:zone_controller, :start_zone, [:auth, "example.test", [view_name: "default"]]}
+           ] = ServerDnsControlFake.take_calls()
   end
 
   test "record mutations reject missing and non-authoritative zones, stale IDs, and Store failures" do
@@ -380,7 +466,8 @@ defmodule YellowDog.Server.Control.DnsTest do
 
     payload = %{
       record_payload("A", ["192.0.2.11"])
-      | "name" => "WWW.",
+      | "zone_name" => "Example.Test.",
+        "name" => "WWW.",
         "record_id" => record_id("www", "A")
     }
 
@@ -409,11 +496,15 @@ defmodule YellowDog.Server.Control.DnsTest do
     before = mutation_state()
 
     assert {:error, %Error{code: :apply_failed}} =
-             Dns.dispatch("server.dns.zones.create", zone_payload())
+             Dns.dispatch("server.dns.zones.create", %{
+               zone_payload()
+               | "zone_name" => "Example.Test."
+             })
 
     assert [
              {:view_manager, :list_control_views, []},
              {:zone_store, :get_zone, ["default", "example.test"]},
+             {:zone_store, :default_soa, ["example.test"]},
              {:zone_store, :create_zone, ["default", "example.test", _soa, []]}
            ] = ServerDnsControlFake.take_calls()
 
@@ -430,7 +521,10 @@ defmodule YellowDog.Server.Control.DnsTest do
     before = mutation_state()
 
     assert {:error, %Error{code: :apply_failed}} =
-             Dns.dispatch("server.dns.zones.update", zone_payload())
+             Dns.dispatch("server.dns.zones.update", %{
+               zone_payload()
+               | "zone_name" => "Example.Test."
+             })
 
     assert [
              {:zone_store, :get_zone, ["default", "example.test"]},
@@ -451,7 +545,7 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert {:error, %Error{code: :apply_failed}} =
              Dns.dispatch("server.dns.zones.delete", %{
                "view_name" => "default",
-               "zone_name" => "example.test"
+               "zone_name" => "Example.Test."
              })
 
     assert [
@@ -469,7 +563,7 @@ defmodule YellowDog.Server.Control.DnsTest do
     for {operation, payload, records, response, expected_calls} <- [
           {
             "server.dns.records.create",
-            record_payload("A", ["192.0.2.11"]),
+            %{record_payload("A", ["192.0.2.11"]) | "zone_name" => "Example.Test."},
             [],
             :put_rrset,
             [
@@ -487,7 +581,7 @@ defmodule YellowDog.Server.Control.DnsTest do
           },
           {
             "server.dns.records.update",
-            record_payload("A", ["192.0.2.11"]),
+            %{record_payload("A", ["192.0.2.11"]) | "zone_name" => "Example.Test."},
             [original],
             :put_rrset,
             [
@@ -507,7 +601,7 @@ defmodule YellowDog.Server.Control.DnsTest do
             "server.dns.records.delete",
             %{
               "view_name" => "default",
-              "zone_name" => "example.test",
+              "zone_name" => "Example.Test.",
               "record_id" => record_id("www", "A")
             },
             [original],
@@ -599,16 +693,17 @@ defmodule YellowDog.Server.Control.DnsTest do
         zone_metadata: %{}
       })
 
-      payload = zone_payload()
+      payload = %{zone_payload() | "zone_name" => "Example.Test."}
 
       assert {:ok, result} = dispatch_with_current_revision("server.dns.zones.create", payload)
-      assert result["resource"] == payload
+      assert result["resource"] == zone_payload()
       assert_valid_result("server.dns.zones.create", result)
 
       assert [
                {:zone_store, :list_zones_for_view, ["default"]},
                {:view_manager, :list_control_views, []},
                {:zone_store, :get_zone, ["default", "example.test"]},
+               {:zone_store, :default_soa, ["example.test"]},
                {:zone_store, :create_zone, ["default", "example.test", _soa, []]},
                {:zone_controller, :start_zone, [:auth, "example.test", [view_name: "default"]]}
              ] = ServerDnsControlFake.take_calls()
@@ -624,10 +719,10 @@ defmodule YellowDog.Server.Control.DnsTest do
         zone_metadata: %{{"default", "example.test"} => zone}
       })
 
-      payload = zone_payload()
+      payload = %{zone_payload() | "zone_name" => "Example.Test."}
 
       assert {:ok, result} = dispatch_with_current_revision("server.dns.zones.update", payload)
-      assert result["resource"] == payload
+      assert result["resource"] == zone_payload()
       assert_valid_result("server.dns.zones.update", result)
 
       assert [
@@ -649,7 +744,7 @@ defmodule YellowDog.Server.Control.DnsTest do
         record_state: %{{"default", "example.test"} => []}
       })
 
-      payload = %{"view_name" => "default", "zone_name" => "example.test"}
+      payload = %{"view_name" => "default", "zone_name" => "Example.Test."}
 
       assert {:ok, result} = dispatch_with_current_revision("server.dns.zones.delete", payload)
 
@@ -684,7 +779,8 @@ defmodule YellowDog.Server.Control.DnsTest do
 
       payload = %{
         record_payload("A", ["192.0.2.11"])
-        | "name" => "WWW.",
+        | "zone_name" => "Example.Test.",
+          "name" => "WWW.",
           "record_id" => record_id("www", "A")
       }
 
@@ -714,14 +810,20 @@ defmodule YellowDog.Server.Control.DnsTest do
 
       payload = %{
         record_payload("A", ["192.0.2.11"])
-        | "name" => "WWW.",
+        | "zone_name" => "Example.Test.",
+          "name" => "WWW.",
           "record_id" => record_id("www", "A")
       }
 
       assert {:ok, result} =
                dispatch_with_current_revision("server.dns.records.update", payload)
 
-      assert result["resource"] == %{payload | "name" => "www"}
+      assert result["resource"] == %{
+               payload
+               | "zone_name" => "example.test",
+                 "name" => "www"
+             }
+
       assert_valid_result("server.dns.records.update", result)
 
       assert [
@@ -754,7 +856,7 @@ defmodule YellowDog.Server.Control.DnsTest do
 
       payload = %{
         "view_name" => "default",
-        "zone_name" => "example.test",
+        "zone_name" => "Example.Test.",
         "record_id" => record_id("www", "A")
       }
 
@@ -782,6 +884,36 @@ defmodule YellowDog.Server.Control.DnsTest do
 
       assert mutation_state().record_state[{"default", "example.test"}] == []
       assert mutation_state().serial_advances == 1
+      assert_dispatcher_dns_dependencies()
+    end
+
+    test "matching current revision cannot create a noncanonical alias zone" do
+      zone = authoritative_zone()
+
+      ServerDnsControlFake.configure(%{
+        views: [{"default", self(), 0}],
+        zones: %{"default" => {:ok, [zone]}},
+        zone_metadata: %{{"default", "example.test"} => zone}
+      })
+
+      payload = %{zone_payload() | "zone_name" => "Example.Test."}
+      before = mutation_state()
+
+      assert {:error, %Error{code: :conflict}} =
+               dispatch_with_current_revision("server.dns.zones.create", payload)
+
+      assert [
+               {:zone_store, :list_zones_for_view, ["default"]},
+               {:view_manager, :list_control_views, []},
+               {:zone_store, :get_zone, ["default", "example.test"]}
+             ] = ServerDnsControlFake.take_calls()
+
+      assert mutation_state() == before
+
+      assert Map.keys(ServerDnsControlFake.snapshot().zone_metadata) == [
+               {"default", "example.test"}
+             ]
+
       assert_dispatcher_dns_dependencies()
     end
   end

@@ -188,7 +188,13 @@ defmodule YellowDog.ServerDnsControlFake.ZoneStore do
     )
   end
 
-  def default_soa(zone_name), do: %{mname: "ns1.#{zone_name}", rname: "hostmaster.#{zone_name}"}
+  def default_soa(zone_name) do
+    YellowDog.ServerDnsControlFake.operation(
+      :default_soa,
+      {:zone_store, :default_soa, [zone_name]},
+      fn state -> {%{mname: "ns1.#{zone_name}", rname: "hostmaster.#{zone_name}"}, state} end
+    )
+  end
 
   def get_rrset(view_name, zone_name, owner, type) do
     YellowDog.ServerDnsControlFake.operation(

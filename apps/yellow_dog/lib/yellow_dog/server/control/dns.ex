@@ -285,6 +285,7 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp create_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.create", payload),
+         payload <- canonicalize_zone_payload(payload),
          "authoritative" <- payload["zone_type"] || unsupported_error(),
          :ok <- ensure_view(payload["view_name"]),
          :missing <- fetch_zone(payload["view_name"], payload["zone_name"]),
@@ -303,6 +304,7 @@ defmodule YellowDog.Server.Control.Dns do
       end
     else
       "forward" -> unsupported_error()
+      {:ok, _zone} -> conflict_error()
       {:error, %Error{}} = error -> error
       _invalid -> invalid_error()
     end
@@ -310,6 +312,7 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp update_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.update", payload),
+         payload <- canonicalize_zone_payload(payload),
          {:ok, old_zone} <- fetch_zone(payload["view_name"], payload["zone_name"]),
          {:ok, "authoritative"} <- stored_zone_type(old_zone),
          "authoritative" <- payload["zone_type"] || conflict_error(),
@@ -348,6 +351,7 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp delete_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.delete", payload),
+         payload <- canonicalize_zone_payload(payload),
          {:ok, zone} <- fetch_zone(payload["view_name"], payload["zone_name"]),
          {:ok, "authoritative"} <- stored_zone_type(zone),
          {:ok, records} <- list_store_records(payload["view_name"], payload["zone_name"]) do
@@ -380,6 +384,7 @@ defmodule YellowDog.Server.Control.Dns do
     operation = "server.dns.records.#{action}"
 
     with {:ok, payload} <- validate_operation_payload(operation, payload),
+         payload <- canonicalize_zone_payload(payload),
          :ok <- validate_record_reference(operation, payload),
          {:ok, _zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
          {:ok, mutation} <- record_mutation(action, payload),
@@ -722,6 +727,10 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
+  defp canonicalize_zone_payload(payload) do
+    Map.update!(payload, "zone_name", &canonical_name/1)
+  end
+
   defp revisioned_result(operation_name, resource_type, resource) do
     with {:ok, revision} <- Revision.calculate(resource),
          {:ok, resource_id} <- resource_identifier(resource_type, resource),
@@ -805,7 +814,9 @@ defmodule YellowDog.Server.Control.Dns do
     if is_binary(provider_id), do: provider_id, else: nil
   end
 
-  defp read_records(view_name, zone_name) do
+  defp read_records(view_name, zone_name) when is_binary(zone_name) do
+    zone_name = canonical_name(zone_name)
+
     with {:ok, result} <-
            dependency_call(:zone_store, :list_records, [view_name, zone_name]),
          {:ok, records} <- unwrap_store_list(result) do
@@ -823,6 +834,8 @@ defmodule YellowDog.Server.Control.Dns do
       end
     end
   end
+
+  defp read_records(_view_name, _zone_name), do: invalid_error()
 
   defp project_record(%{} = record, view_name, zone_name) do
     case wire_record_type(field(record, :type)) do
