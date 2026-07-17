@@ -1926,7 +1926,7 @@ defmodule YellowDog.Sync.Operation do
 
     String.normalize(value, :nfc) == value and
       String.printable?(value) and
-      not Regex.match?(~r/\p{C}/u, value) and
+      not Regex.match?(~r/\p{Cc}/u, value) and
       not String.contains?(value, ["\\", <<0>>]) and
       not Regex.match?(~r/\A[A-Za-z]:/, value) and
       Enum.all?(parts, &(&1 not in ["", ".", ".."]))

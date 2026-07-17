@@ -1029,6 +1029,38 @@ defmodule YellowDog.Sync.ServerOperationTest do
              )
   end
 
+  test "Netboot asset schemas match owner Unicode category acceptance" do
+    filenames = [
+      "images/" <> <<0xEE, 0x80, 0x80>> <> ".img",
+      "images/soft" <> <<0xC2, 0xAD>> <> "hyphen.img",
+      "images/zero" <> <<0xE2, 0x80, 0x8D>> <> "joiner.img"
+    ]
+
+    for filename <- filenames do
+      payload = Map.put(Fixtures.valid(:netboot_asset_upload), "filename", filename)
+      asset = Map.put(Fixtures.valid(:netboot_asset), "filename", filename)
+      list_result = %{Fixtures.valid(:netboot_asset_list) | "items" => [asset]}
+
+      assert String.normalize(filename, :nfc) == filename
+
+      assert {:ok, ^payload} =
+               Operation.validate_payload(
+                 "server.netboot.assets.upload",
+                 :server,
+                 :command,
+                 payload
+               )
+
+      assert {:ok, ^list_result} =
+               Operation.validate_result(
+                 "server.netboot.assets.list",
+                 :server,
+                 :query,
+                 list_result
+               )
+    end
+  end
+
   test "Netboot asset schemas reject unsafe or non-normalized relative filenames" do
     payload = Fixtures.valid(:netboot_asset_upload)
     list_result = Fixtures.valid(:netboot_asset_list)
@@ -1040,7 +1072,9 @@ defmodule YellowDog.Sync.ServerOperationTest do
       "\\\\server\\share\\installer.img",
       "images\\installer.img",
       "images/\0installer.img",
+      "images/\ninstaller.img",
       "images/\tinstaller.img",
+      "images/" <> <<0x1B>> <> "installer.img",
       "",
       ".",
       "..",

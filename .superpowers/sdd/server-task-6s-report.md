@@ -36,3 +36,35 @@ Implemented the Netboot-only normalized relative-filename Sync schema type.
 The full umbrella strict Credo run reports 13 existing refactoring findings in
 `apps/yellow_dog_management_core`, outside this task's ownership. No Sync
 finding was reported.
+
+## Review Fix
+
+- Narrowed the dedicated Netboot filename category check from `\p{C}` to
+  `\p{Cc}`, matching `ManagedAsset`.
+- Added payload and list-result parity coverage for NFC nested filenames
+  containing U+E000 private-use, U+00AD soft hyphen, and U+200D format
+  characters.
+- Added explicit rejection coverage for newline, tab, escape, and NUL control
+  characters.
+- Kept generic `:filename` behavior unchanged.
+
+## Review Fix Verification
+
+- TDD red:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_sync && mix test test/yellow_dog/sync/server_operation_test.exs:1032'`
+  failed on the private-use filename under the prior `\p{C}` rule.
+- TDD green: the same focused command passed after changing the rule to
+  `\p{Cc}`.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_sync && mix test test/yellow_dog/sync/server_operation_test.exs'`
+  passed: 41 tests, 0 failures.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_sync && mix test'`
+  passed: 112 tests, 0 failures.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_sync && mix compile --warnings-as-errors'`
+  passed.
+- `devenv shell -- bash -lc 'mix format --check-formatted apps/yellow_dog_sync/lib/yellow_dog/sync/operation.ex apps/yellow_dog_sync/test/yellow_dog/sync/server_operation_test.exs'`
+  passed.
+- `devenv shell -- bash -lc 'mix run --no-start -e
+  '\''Mix.Tasks.Credo.run(["--strict",
+  "apps/yellow_dog_sync/lib/yellow_dog/sync/operation.ex",
+  "apps/yellow_dog_sync/test/yellow_dog/sync/server_operation_test.exs"])'\'''`
+  passed: 2 files checked, no issues.
