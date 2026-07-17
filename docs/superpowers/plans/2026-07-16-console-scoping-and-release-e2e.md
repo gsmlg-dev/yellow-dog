@@ -61,6 +61,9 @@
 ### Task 2: Add authenticated blob transfer for Netboot assets
 
 **Files:**
+- Create: `apps/yellow_dog_management_core/lib/yellow_dog/management/blobs.ex`
+- Modify: `apps/yellow_dog_management_core/lib/yellow_dog/management_core.ex`
+- Create: `apps/yellow_dog_management_core/test/yellow_dog/management/blobs_test.exs`
 - Create: `apps/yellow_dog_console/lib/yellow_dog/console/controllers/management_blob_controller.ex`
 - Modify: `apps/yellow_dog_console/lib/yellow_dog/console/router.ex`
 - Modify: `apps/yellow_dog_console/lib/yellow_dog/console/plugs/management_release_only.ex`

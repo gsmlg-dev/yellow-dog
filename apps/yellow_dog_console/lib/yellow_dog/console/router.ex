@@ -36,6 +36,11 @@ defmodule YellowDog.Console.Router do
     plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
+  pipeline :management_blob_api do
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
+    plug :authenticate_management_token
+  end
+
   pipeline :boot do
     plug :accepts, ["html", "json", "text"]
     plug YellowDog.Console.Plugs.ManagementReleaseOnly
@@ -57,6 +62,12 @@ defmodule YellowDog.Console.Router do
     live "/profiles", ManagementLive.Index, :profiles
     live "/config", ManagementLive.Index, :config
     live "/events", ManagementLive.Index, :events
+  end
+
+  scope "/management", YellowDog.Console do
+    pipe_through :management_blob_api
+
+    get "/blobs/:sha256", ManagementBlobController, :show
   end
 
   # Server section — protocol services, identity, fingerprint
@@ -236,4 +247,27 @@ defmodule YellowDog.Console.Router do
       live_dashboard "/dashboard", metrics: YellowDog.Console.Telemetry
     end
   end
+
+  defp authenticate_management_token(conn, _opts) do
+    with ["Bearer " <> provided] <- get_req_header(conn, "authorization"),
+         expected when is_binary(expected) and byte_size(expected) > 0 <-
+           Application.get_env(:yellow_dog_console, :management_token),
+         true <- constant_time_token_match?(provided, expected) do
+      conn
+    else
+      _invalid ->
+        conn
+        |> put_resp_header("www-authenticate", "Bearer")
+        |> send_resp(401, "Unauthorized")
+        |> halt()
+    end
+  end
+
+  defp constant_time_token_match?(provided, expected) when is_binary(provided) do
+    provided_digest = :crypto.hash(:sha256, provided)
+    expected_digest = :crypto.hash(:sha256, expected)
+    Plug.Crypto.secure_compare(provided_digest, expected_digest)
+  end
+
+  defp constant_time_token_match?(_provided, _expected), do: false
 end

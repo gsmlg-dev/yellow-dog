@@ -8,6 +8,7 @@ defmodule YellowDog.ManagementCore do
 
   import Bitwise
 
+  alias YellowDog.Management.Blobs
   alias YellowDog.Management.Commands
   alias YellowDog.Management.ConfigVersions
   alias YellowDog.Management.DisconnectedTransport
@@ -59,6 +60,14 @@ defmodule YellowDog.ManagementCore do
 
   @doc "Lists management events in deterministic global order."
   def list_events, do: EventStore.list()
+
+  @doc "Reads a validated management-owned blob using the configured size limit."
+  @spec get_blob(term()) :: Blobs.result()
+  def get_blob(digest), do: Blobs.get(digest)
+
+  @doc "Reads a validated management-owned blob using an explicit size limit."
+  @spec get_blob(term(), term()) :: Blobs.result()
+  def get_blob(digest, max_bytes), do: Blobs.get(digest, max_bytes)
 
   @doc "Publishes an immutable desired configuration for a registered server."
   def publish_server_config(server_id, attrs),
