@@ -18,7 +18,8 @@ defmodule YellowDog.Config.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      mod: {YellowDog.Config.Application, []},
+      extra_applications: [:crypto, :logger]
     ]
   end
 
