@@ -266,8 +266,16 @@ defmodule YellowDog.Server.Control.Mdns do
             valid_discovery_item?(item),
             do: item
       end)
+      |> Enum.uniq_by(&{&1["name"], &1["address"]})
 
     {:ok, items}
+  end
+
+  defp canonical_ip(address) when is_binary(address) do
+    case :inet.parse_address(String.to_charlist(address)) do
+      {:ok, parsed} -> canonical_ip(parsed)
+      _ -> :error
+    end
   end
 
   defp canonical_ip(address) when is_tuple(address) and tuple_size(address) in [4, 8] do
@@ -480,11 +488,11 @@ defmodule YellowDog.Server.Control.Mdns do
   defp format_datetime(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do
       {:ok, _datetime, 0} -> {:ok, value}
-      _ -> :error
+      _ -> apply_failed_error()
     end
   end
 
-  defp format_datetime(_value), do: :error
+  defp format_datetime(_value), do: apply_failed_error()
 
   defp validate_payload(operation_name, payload) do
     with {:ok, operation} <- ServerOperation.fetch(operation_name),

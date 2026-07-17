@@ -62,18 +62,26 @@ defmodule YellowDog.Server.Control.MdnsTest do
            ] = ServerMdnsControlFake.take_calls()
   end
 
-  test "projects one sorted discovery item per valid address and omits malformed entries" do
+  test "projects unique sorted discovery items from tuple and string addresses" do
     ServerMdnsControlFake.configure(%{
       discovery_list: [
         %{
           service_id: "beta._http._tcp.local",
           type: "_http._tcp",
-          addresses: [{8193, 3512, 0, 0, 0, 0, 0, 2}]
+          addresses: [
+            "2001:0db8:0:0:0:0:0:2",
+            {8193, 3512, 0, 0, 0, 0, 0, 2}
+          ]
         },
         %{
           service_id: "alpha._http._tcp.local",
           type: "_http._tcp",
-          addresses: [{192, 0, 2, 10}, :invalid]
+          addresses: [{192, 0, 2, 10}, "192.0.2.10", {192, 0, 2, 10}, :invalid]
+        },
+        %{
+          service_id: "gamma._http._tcp.local",
+          type: "_http._tcp",
+          addresses: ["192.0.2.30", "192.0.2.30"]
         },
         %{service_id: "broken", type: "not-a-service", addresses: [{192, 0, 2, 11}]}
       ]
@@ -81,20 +89,47 @@ defmodule YellowDog.Server.Control.MdnsTest do
 
     assert {:ok, result} = Mdns.dispatch("server.mdns.discovery.list", %{})
 
-    assert result["items"] == [
-             %{
-               "name" => "alpha._http._tcp.local",
-               "service_type" => "_http._tcp",
-               "address" => "192.0.2.10"
-             },
-             %{
-               "name" => "beta._http._tcp.local",
-               "service_type" => "_http._tcp",
-               "address" => "2001:db8::2"
-             }
-           ]
+    expected = [
+      %{
+        "name" => "alpha._http._tcp.local",
+        "service_type" => "_http._tcp",
+        "address" => "192.0.2.10"
+      },
+      %{
+        "name" => "beta._http._tcp.local",
+        "service_type" => "_http._tcp",
+        "address" => "2001:db8::2"
+      },
+      %{
+        "name" => "gamma._http._tcp.local",
+        "service_type" => "_http._tcp",
+        "address" => "192.0.2.30"
+      }
+    ]
 
+    assert result["items"] == expected
+    assert {:ok, revision} = Revision.calculate(expected)
+    assert result["revision"] == revision
     assert_valid_result("server.mdns.discovery.list", result)
+  end
+
+  test "maps invalid clock values to typed apply failures for all list reads" do
+    ServerMdnsControlFake.configure(%{
+      registry_snapshot: {:ok, [service("printer")]},
+      discovery_list: [
+        %{
+          service_id: "printer._http._tcp.local",
+          type: "_http._tcp",
+          addresses: [{192, 0, 2, 10}]
+        }
+      ],
+      clock: :invalid_clock
+    })
+
+    for operation <- ["server.mdns.services.list", "server.mdns.discovery.list"] do
+      assert {:error, %Error{code: :apply_failed, message: "apply failed", details: %{}}} =
+               Mdns.dispatch(operation, %{})
+    end
   end
 
   test "validates monitor payload then returns typed unsupported without owner calls" do
@@ -284,6 +319,20 @@ defmodule YellowDog.Server.Control.MdnsTest do
     assert {:error, %Error{code: :unsupported}} =
              Dispatcher.dispatch(envelope("server.mdns.services.list", %{}))
 
+    assert [] = ServerMdnsControlFake.take_calls()
+  end
+
+  test "Dispatcher rejects invalid mDNS payloads before service gates or mutation owners" do
+    ServerMdnsControlFake.configure(%{
+      registry_register: {:raise, "mutation owner must not run"}
+    })
+
+    invalid_payload = %{public_service("printer") | "service_port" => 0}
+
+    assert {:error, %Error{code: :invalid}} =
+             Dispatcher.dispatch(envelope("server.mdns.services.register", invalid_payload))
+
+    assert [] = YellowDog.ServerControlFake.take_dependency_calls()
     assert [] = ServerMdnsControlFake.take_calls()
   end
 
