@@ -17,7 +17,8 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
         configured_profiles: %{},
         managed_profiles: %{},
         managed_storage_opts: [],
-        managed_activation: fn _profiles -> :ok end
+        managed_activation: fn _profiles -> :ok end,
+        managed_visible_replacement: &replace_visible_profiles/2
       })
     end)
 
@@ -52,6 +53,17 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
     load_test_config(test_config)
 
     {:ok, config: test_config}
+  end
+
+  defp replace_visible_profiles(store, profiles) do
+    with {:ok, store} <- YellowDog.Data.Store.clear(store) do
+      Enum.reduce_while(profiles, {:ok, store}, fn {id, profile}, {:ok, store} ->
+        case YellowDog.Data.Store.put(store, id, profile) do
+          {:ok, store} -> {:cont, {:ok, store}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+    end
   end
 
   # Helper to load config using the public API

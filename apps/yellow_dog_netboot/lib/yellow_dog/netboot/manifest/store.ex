@@ -2,9 +2,9 @@ defmodule YellowDog.Netboot.Manifest.Store do
   @moduledoc """
   Boot profile and install manifest configuration store.
 
-  Configured runtime profiles and managed control profiles are held separately.
-  The visible ETS collection gives managed profiles precedence without changing
-  the configured profile representation.
+  Configured runtime profiles remain the only values exposed to boot callers.
+  Managed control profiles are kept separately and take precedence only through
+  the explicit control-facing lookup and list APIs.
   """
 
   use GenServer
@@ -16,7 +16,32 @@ defmodule YellowDog.Netboot.Manifest.Store do
   alias YellowDog.Netboot.Manifest.ManagedProfile
 
   @managed_version 1
+  @default_max_bytes 1_048_576
   @empty_snapshot %{"version" => @managed_version, "profiles" => []}
+
+  @type activation_reason ::
+          :callback_error
+          | :callback_exception
+          | :callback_throw
+          | :callback_exit
+          | :visible_store_error
+          | :visible_store_exception
+          | :visible_store_throw
+          | :visible_store_exit
+
+  @type rollback_reason ::
+          {:sidecar, AtomicJson.error()} | {:state, activation_reason()}
+
+  @type managed_sidecar_reason ::
+          AtomicJson.error()
+          | :duplicate_profile_id
+          | :invalid_profile
+          | :invalid_snapshot
+
+  @type mutation_error ::
+          {:persist_failed, AtomicJson.error()}
+          | {:activation_failed, activation_reason()}
+          | {:rollback_failed, activation_reason(), rollback_reason()}
 
   defcollection(:netboot_profiles,
     key_field: :id,
@@ -27,17 +52,30 @@ defmodule YellowDog.Netboot.Manifest.Store do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @doc "Get a configured or managed boot profile by ID."
-  @spec get_profile(String.t()) :: {:ok, Profile.t() | ManagedProfile.t()} | {:error, :not_found}
+  @doc "Get a configured runtime boot profile by ID."
+  @spec get_profile(String.t()) :: {:ok, Profile.t()} | {:error, :not_found}
   def get_profile(id) do
     Store.get(store_state(), id)
   end
 
-  @doc "List configured and managed profiles, with managed IDs taking precedence."
-  @spec list_profiles() :: [Profile.t() | ManagedProfile.t()]
+  @doc "List configured runtime boot profiles."
+  @spec list_profiles() :: [Profile.t()]
   def list_profiles do
     {:ok, profiles} = Store.list(store_state())
     profiles
+  end
+
+  @doc "Get a managed-first profile for control-plane use."
+  @spec get_control_profile(String.t()) ::
+          {:ok, ManagedProfile.t() | Profile.t()} | {:error, :not_found}
+  def get_control_profile(id) do
+    GenServer.call(__MODULE__, {:get_control_profile, id})
+  end
+
+  @doc "List managed-first profiles for control-plane use."
+  @spec list_control_profiles() :: [ManagedProfile.t() | Profile.t()]
+  def list_control_profiles do
+    GenServer.call(__MODULE__, :list_control_profiles)
   end
 
   @doc "Get install manifest for a configured profile."
@@ -58,19 +96,31 @@ defmodule YellowDog.Netboot.Manifest.Store do
 
   @doc "Hot-reload managed profiles and configured fallbacks."
   @spec reload() ::
-          :ok | {:error, {:managed_sidecar_invalid, term()} | {:activation_failed, term()}}
+          :ok
+          | {:error,
+             {:managed_sidecar_invalid, managed_sidecar_reason()}
+             | {:activation_failed, activation_reason()}
+             | {:rollback_failed, activation_reason(), {:state, activation_reason()}}}
   def reload do
     GenServer.call(__MODULE__, :reload)
   end
 
   @doc "Add or update a legacy configured runtime profile."
-  @spec put_profile(Profile.t()) :: :ok | {:error, {:activation_failed, term()}}
+  @spec put_profile(Profile.t()) ::
+          :ok
+          | {:error,
+             {:activation_failed, activation_reason()}
+             | {:rollback_failed, activation_reason(), {:state, activation_reason()}}}
   def put_profile(%Profile{id: id} = profile) do
     GenServer.call(__MODULE__, {:put_profile, id, profile})
   end
 
   @doc "Delete a legacy configured runtime profile."
-  @spec delete_profile(String.t()) :: :ok | {:error, {:activation_failed, term()}}
+  @spec delete_profile(String.t()) ::
+          :ok
+          | {:error,
+             {:activation_failed, activation_reason()}
+             | {:rollback_failed, activation_reason(), {:state, activation_reason()}}}
   def delete_profile(id) do
     GenServer.call(__MODULE__, {:delete_profile, id})
   end
@@ -83,22 +133,14 @@ defmodule YellowDog.Netboot.Manifest.Store do
 
   @doc "Persist and activate a managed wire-native profile."
   @spec put_managed_profile(ManagedProfile.t()) ::
-          {:ok, %{previous: map(), current: map()}}
-          | {:error,
-             {:persist_failed, AtomicJson.error()}
-             | {:activation_failed, term()}
-             | {:rollback_failed, term(), AtomicJson.error()}}
+          {:ok, %{previous: map(), current: map()}} | {:error, mutation_error()}
   def put_managed_profile(%ManagedProfile{} = profile) do
     GenServer.call(__MODULE__, {:put_managed_profile, profile})
   end
 
-  @doc "Delete a managed profile and reveal its configured fallback, if any."
+  @doc "Delete a managed profile and reveal its configured control fallback."
   @spec delete_managed_profile(String.t()) ::
-          {:ok, %{previous: map(), current: map()}}
-          | {:error,
-             {:persist_failed, AtomicJson.error()}
-             | {:activation_failed, term()}
-             | {:rollback_failed, term(), AtomicJson.error()}}
+          {:ok, %{previous: map(), current: map()}} | {:error, mutation_error()}
   def delete_managed_profile(profile_id) when is_binary(profile_id) do
     GenServer.call(__MODULE__, {:delete_managed_profile, profile_id})
   end
@@ -123,6 +165,7 @@ defmodule YellowDog.Netboot.Manifest.Store do
       managed_profiles_path: managed_profiles_path(opts, config),
       managed_storage_opts: managed_storage_opts(opts, config),
       managed_activation: managed_activation(opts, config),
+      managed_visible_replacement: managed_visible_replacement(opts),
       managed_profiles: %{}
     }
 
@@ -144,12 +187,12 @@ defmodule YellowDog.Netboot.Manifest.Store do
   def handle_call({:put_profile, id, profile}, _from, state) do
     configured_profiles = Map.put(state.configured_profiles, id, profile)
 
-    case activate(state, state.managed_profiles, configured_profiles) do
+    case activate_with_state_rollback(state, state.managed_profiles, configured_profiles) do
       {:ok, store} ->
         {:reply, :ok, %{state | configured_profiles: configured_profiles, store: store}}
 
       {:error, reason} ->
-        {:reply, {:error, {:activation_failed, reason}}, state}
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -157,13 +200,35 @@ defmodule YellowDog.Netboot.Manifest.Store do
   def handle_call({:delete_profile, id}, _from, state) do
     configured_profiles = Map.delete(state.configured_profiles, id)
 
-    case activate(state, state.managed_profiles, configured_profiles) do
+    case activate_with_state_rollback(state, state.managed_profiles, configured_profiles) do
       {:ok, store} ->
         {:reply, :ok, %{state | configured_profiles: configured_profiles, store: store}}
 
       {:error, reason} ->
-        {:reply, {:error, {:activation_failed, reason}}, state}
+        {:reply, {:error, reason}, state}
     end
+  end
+
+  @impl true
+  def handle_call({:get_control_profile, id}, _from, state) do
+    reply =
+      case Map.fetch(control_profiles(state.managed_profiles, state.configured_profiles), id) do
+        {:ok, profile} -> {:ok, profile}
+        :error -> {:error, :not_found}
+      end
+
+    {:reply, reply, state}
+  end
+
+  @impl true
+  def handle_call(:list_control_profiles, _from, state) do
+    profiles =
+      state.managed_profiles
+      |> control_profiles(state.configured_profiles)
+      |> Map.values()
+      |> Enum.sort_by(&control_profile_id/1)
+
+    {:reply, profiles, state}
   end
 
   @impl true
@@ -176,8 +241,8 @@ defmodule YellowDog.Netboot.Manifest.Store do
     managed_profiles = Map.put(state.managed_profiles, profile.profile_id, profile)
 
     case persist_and_activate(state, managed_profiles) do
-      {:ok, snapshot, store} ->
-        {:reply, {:ok, snapshot}, %{state | managed_profiles: managed_profiles, store: store}}
+      {:ok, snapshots, store} ->
+        {:reply, {:ok, snapshots}, %{state | managed_profiles: managed_profiles, store: store}}
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
@@ -189,8 +254,8 @@ defmodule YellowDog.Netboot.Manifest.Store do
     managed_profiles = Map.delete(state.managed_profiles, profile_id)
 
     case persist_and_activate(state, managed_profiles) do
-      {:ok, snapshot, store} ->
-        {:reply, {:ok, snapshot}, %{state | managed_profiles: managed_profiles, store: store}}
+      {:ok, snapshots, store} ->
+        {:reply, {:ok, snapshots}, %{state | managed_profiles: managed_profiles, store: store}}
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
@@ -204,8 +269,11 @@ defmodule YellowDog.Netboot.Manifest.Store do
   end
 
   defp reload_state(state) do
+    configured_profiles = configured_profiles(state.config)
+
     with {:ok, managed_profiles} <- load_managed_profiles(state),
-         {:ok, store} <- activate(state, managed_profiles, configured_profiles(state.config)) do
+         {:ok, store} <-
+           activate_with_state_rollback(state, managed_profiles, configured_profiles) do
       maybe_set_default_profile(state.config)
 
       {:ok,
@@ -213,10 +281,27 @@ defmodule YellowDog.Netboot.Manifest.Store do
          state
          | store: store,
            managed_profiles: managed_profiles,
-           configured_profiles: configured_profiles(state.config)
+           configured_profiles: configured_profiles
        }}
+    end
+  end
+
+  defp activate_with_state_rollback(state, managed_profiles, configured_profiles) do
+    with {:ok, previous_visible} <- visible_profiles(state.store) do
+      case activate(state, managed_profiles, configured_profiles) do
+        {:ok, store} ->
+          {:ok, store}
+
+        {:error, activation_reason} ->
+          case restore_visible(state.store, previous_visible) do
+            {:ok, _store} ->
+              {:error, {:activation_failed, activation_reason}}
+
+            {:error, restore_reason} ->
+              {:error, {:rollback_failed, activation_reason, {:state, restore_reason}}}
+          end
+      end
     else
-      {:error, {:managed_sidecar_invalid, _reason} = reason} -> {:error, reason}
       {:error, reason} -> {:error, {:activation_failed, reason}}
     end
   end
@@ -225,55 +310,133 @@ defmodule YellowDog.Netboot.Manifest.Store do
     previous_snapshot = snapshot(state.managed_profiles)
     current_snapshot = snapshot(managed_profiles)
 
-    case AtomicJson.write(
-           state.managed_profiles_path,
-           current_snapshot,
-           state.managed_storage_opts
-         ) do
-      :ok ->
-        case activate(state, managed_profiles, state.configured_profiles) do
-          {:ok, store} ->
-            {:ok, %{previous: previous_snapshot, current: current_snapshot}, store}
+    with :ok <- validate_candidate(current_snapshot, state.managed_storage_opts),
+         {:ok, previous_visible} <- visible_profiles(state.store),
+         :ok <-
+           AtomicJson.write(
+             state.managed_profiles_path,
+             current_snapshot,
+             state.managed_storage_opts
+           ) do
+      case activate(state, managed_profiles, state.configured_profiles) do
+        {:ok, store} ->
+          {:ok, %{previous: previous_snapshot, current: current_snapshot}, store}
 
-          {:error, activation_reason} ->
-            rollback(state, previous_snapshot, activation_reason)
-        end
+        {:error, activation_reason} ->
+          rollback(state, previous_snapshot, previous_visible, activation_reason)
+      end
+    else
+      {:error, reason}
+      when reason in [
+             :callback_error,
+             :callback_exception,
+             :callback_throw,
+             :callback_exit,
+             :visible_store_error,
+             :visible_store_exception,
+             :visible_store_throw,
+             :visible_store_exit
+           ] ->
+        {:error, {:activation_failed, reason}}
 
       {:error, reason} ->
         {:error, {:persist_failed, reason}}
     end
   end
 
-  defp rollback(state, previous_snapshot, activation_reason) do
+  defp rollback(state, previous_snapshot, previous_visible, activation_reason) do
     case AtomicJson.write(
            state.managed_profiles_path,
            previous_snapshot,
            state.managed_storage_opts
          ) do
       :ok ->
-        case activate(state, state.managed_profiles, state.configured_profiles) do
+        case restore_visible(state.store, previous_visible) do
           {:ok, _store} ->
             {:error, {:activation_failed, activation_reason}}
 
           {:error, restore_reason} ->
-            {:error, {:rollback_failed, activation_reason, restore_reason}}
+            {:error, {:rollback_failed, activation_reason, {:state, restore_reason}}}
         end
 
       {:error, rollback_reason} ->
-        {:error, {:rollback_failed, activation_reason, rollback_reason}}
+        {:error, {:rollback_failed, activation_reason, {:sidecar, rollback_reason}}}
     end
   end
 
   defp activate(state, managed_profiles, configured_profiles) do
-    profiles = Map.merge(configured_profiles, managed_profiles)
-
-    with :ok <- state.managed_activation.(profiles),
-         {:ok, store} <- replace_profiles(state.store, profiles) do
+    with :ok <-
+           safe_activation_callback(
+             state.managed_activation,
+             control_profiles(managed_profiles, configured_profiles)
+           ),
+         {:ok, store} <-
+           safe_visible_replacement(
+             state.managed_visible_replacement,
+             state.store,
+             configured_profiles
+           ) do
       :persistent_term.put({__MODULE__, :store}, store)
       {:ok, store}
-    else
-      {:error, reason} -> {:error, reason}
-      _other -> {:error, :activation_failed}
+    end
+  end
+
+  defp safe_activation_callback(callback, profiles) when is_function(callback, 1) do
+    try do
+      case callback.(profiles) do
+        :ok -> :ok
+        _other -> {:error, :callback_error}
+      end
+    rescue
+      _exception -> {:error, :callback_exception}
+    catch
+      :throw, _reason -> {:error, :callback_throw}
+      :exit, _reason -> {:error, :callback_exit}
+    end
+  end
+
+  defp safe_activation_callback(_callback, _profiles), do: {:error, :callback_error}
+
+  defp safe_visible_replacement(replacement, store, profiles)
+       when is_function(replacement, 2) do
+    try do
+      case replacement.(store, profiles) do
+        {:ok, %{__adapter__: _adapter} = store} -> {:ok, store}
+        _other -> {:error, :visible_store_error}
+      end
+    rescue
+      _exception -> {:error, :visible_store_exception}
+    catch
+      :throw, _reason -> {:error, :visible_store_throw}
+      :exit, _reason -> {:error, :visible_store_exit}
+    end
+  end
+
+  defp safe_visible_replacement(_replacement, _store, _profiles),
+    do: {:error, :visible_store_error}
+
+  defp restore_visible(store, profiles) do
+    safe_visible_replacement(&replace_profiles/2, store, profiles)
+  end
+
+  defp visible_profiles(store) do
+    try do
+      with {:ok, profiles} <- Store.list(store) do
+        Enum.reduce_while(profiles, {:ok, %{}}, fn
+          %Profile{id: id} = profile, {:ok, visible} when is_binary(id) ->
+            {:cont, {:ok, Map.put(visible, id, profile)}}
+
+          _profile, _visible ->
+            {:halt, {:error, :visible_store_error}}
+        end)
+      else
+        _other -> {:error, :visible_store_error}
+      end
+    rescue
+      _exception -> {:error, :visible_store_exception}
+    catch
+      :throw, _reason -> {:error, :visible_store_throw}
+      :exit, _reason -> {:error, :visible_store_exit}
     end
   end
 
@@ -286,6 +449,31 @@ defmodule YellowDog.Netboot.Manifest.Store do
         end
       end)
     end
+  end
+
+  defp validate_candidate(snapshot, opts) do
+    with {:ok, max_bytes} <- max_bytes(opts),
+         {:ok, encoded} <- encode_snapshot(snapshot) do
+      if byte_size(encoded) <= max_bytes, do: :ok, else: {:error, :too_large}
+    end
+  end
+
+  defp max_bytes(opts) when is_list(opts) do
+    case Keyword.get(opts, :max_bytes, @default_max_bytes) do
+      size when is_integer(size) and size > 0 -> {:ok, size}
+      _other -> {:error, :invalid_options}
+    end
+  end
+
+  defp max_bytes(_opts), do: {:error, :invalid_options}
+
+  defp encode_snapshot(snapshot) do
+    case Jason.encode(snapshot) do
+      {:ok, encoded} -> {:ok, encoded}
+      {:error, _reason} -> {:error, :encode_failed}
+    end
+  rescue
+    _exception -> {:error, :encode_failed}
   end
 
   defp load_managed_profiles(state) do
@@ -322,6 +510,13 @@ defmodule YellowDog.Netboot.Manifest.Store do
     }
   end
 
+  defp control_profiles(managed_profiles, configured_profiles) do
+    Map.merge(configured_profiles, managed_profiles)
+  end
+
+  defp control_profile_id(%ManagedProfile{profile_id: id}), do: id
+  defp control_profile_id(%Profile{id: id}), do: id
+
   defp configured_profiles(config) do
     config
     |> get_nested(["profiles"])
@@ -348,6 +543,10 @@ defmodule YellowDog.Netboot.Manifest.Store do
     Keyword.get(opts, :managed_activation) ||
       get_nested(config, ["managed_activation"]) ||
       Map.get(config, :managed_activation) || fn _profiles -> :ok end
+  end
+
+  defp managed_visible_replacement(opts) do
+    Keyword.get(opts, :managed_visible_replacement, &replace_profiles/2)
   end
 
   defp maybe_set_default_profile(config) do
