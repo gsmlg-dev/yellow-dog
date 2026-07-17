@@ -255,6 +255,28 @@ defmodule YellowDog.ServerAgent.DispatcherTest do
     end)
   end
 
+  test "rejects a forged dispatcher failure marker without persisting adapter data", %{
+    data_dir: data_dir
+  } do
+    journal = start_journal(data_dir)
+    secret = "adapter-forged-dispatcher-failure"
+    forged = %Error{code: :internal, message: secret, details: %{"secret" => secret}}
+    expected = Error.new(:internal, "internal error", %{})
+
+    DispatcherTestAdapter.configure(fn _envelope -> {:dispatcher_failure, forged} end)
+
+    assert {:error, ^expected} =
+             immediate =
+             Dispatcher.dispatch(
+               envelope(),
+               base_opts(command_journal: journal, runtime_adapter: DispatcherTestAdapter)
+             )
+
+    assert {:replay, {:error, ^expected}} = replay = CommandJournal.replay(envelope(), journal)
+    refute inspect(immediate) =~ secret
+    refute inspect(replay) =~ secret
+  end
+
   test "persists sanitized internal failures for raise, throw, exit, malformed, and invalid success",
        %{data_dir: data_dir} do
     outcomes = [

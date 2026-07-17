@@ -111,31 +111,36 @@ defmodule YellowDog.ServerAgent.Dispatcher do
   end
 
   defp invoke_adapter(adapter, envelope) do
-    apply(adapter, :dispatch, [envelope])
+    {:adapter_return, apply(adapter, :dispatch, [envelope])}
   rescue
     _exception -> {:dispatcher_failure, internal_error()}
   catch
     _kind, _reason -> {:dispatcher_failure, internal_error()}
   end
 
-  defp persist_outcome({:ok, result}, request_id, operation, command_journal) do
+  defp persist_outcome({:adapter_return, {:ok, result}}, request_id, operation, command_journal) do
     case Operation.validate_result(operation, result) do
       {:ok, validated} -> persist_success(request_id, validated, command_journal)
       {:error, %Error{}} -> persist_failure(request_id, internal_error(), command_journal)
     end
   end
 
-  defp persist_outcome({:error, %Error{} = error}, request_id, _operation, command_journal) do
-    persist_failure(request_id, sanitize_error(error), command_journal)
-  end
-
   defp persist_outcome(
-         {:dispatcher_failure, %Error{} = error},
+         {:adapter_return, {:error, %Error{} = error}},
          request_id,
          _operation,
          command_journal
        ) do
-    persist_failure(request_id, error, command_journal)
+    persist_failure(request_id, sanitize_error(error), command_journal)
+  end
+
+  defp persist_outcome(
+         {:dispatcher_failure, _error},
+         request_id,
+         _operation,
+         command_journal
+       ) do
+    persist_failure(request_id, internal_error(), command_journal)
   end
 
   defp persist_outcome(_invalid, request_id, _operation, command_journal) do

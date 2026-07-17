@@ -86,3 +86,27 @@ Date: 2026-07-17
 - In a standalone Server-agent release without `YellowDog.Server.Control`,
   new commands fail durably as `unsupported`; terminal journal replays remain
   available offline.
+
+## Final Sanitizer Follow-up
+
+- Isolated normal runtime-adapter returns under `{:adapter_return, value}`.
+  The dispatcher's caught `{:dispatcher_failure, ...}` marker is now
+  internal-only and cannot be forged by an adapter return value.
+- Only wrapped `{:ok, result}` and typed `{:error, %Error{}}` adapter values
+  are accepted. All other wrapped values, including a forged
+  `{:dispatcher_failure, %Error{}}`, persist the fixed internal error with
+  empty details.
+- Added a regression test that returns a forged internal marker containing a
+  secret and proves both the immediate dispatch result and durable replay use
+  the fixed error without the secret.
+
+### Follow-up Verification
+
+- Focused forged-marker regression: `1 test, 0 failures`.
+- Full dispatcher test file: `16 tests, 0 failures`.
+- Full `yellow_dog_server_agent` tests: `137 tests, 0 failures`.
+- `mix compile --warnings-as-errors --force`: exit 0, no warnings.
+- Scoped `mix format` and `mix format --check-formatted`: exit 0.
+- `mix credo --strict`: 19 source files, 514 mods/funs, no issues.
+- `mix xref graph --label compile` and dispatcher trace: exit 0; the trace
+  reports only the four runtime `CommandJournal` calls.
