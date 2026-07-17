@@ -13,6 +13,15 @@ defmodule YellowDog.Netboot.Device do
 
   @valid_states ~w(discovered booting installing installed failed reinstall_requested)a
   @valid_arches ~w(x86_64 aarch64 bios_x86)a
+  @hardware_max_depth 8
+  @hardware_max_nodes 256
+  @hardware_max_collection_size 64
+  @hardware_max_key_bytes 128
+  @hardware_max_string_bytes 4_096
+  @hardware_min_integer -9_223_372_036_854_775_808
+  @hardware_max_integer 9_223_372_036_854_775_807
+  @hardware_min_float -1.0e308
+  @hardware_max_float 1.0e308
 
   @transitions %{
     discovered: [:booting],
@@ -44,6 +53,14 @@ defmodule YellowDog.Netboot.Device do
   ]
 
   @type state_entry :: %{state: atom(), at: DateTime.t()}
+  @type hardware_value ::
+          nil
+          | boolean()
+          | integer()
+          | float()
+          | String.t()
+          | [hardware_value()]
+          | %{optional(String.t()) => hardware_value()}
 
   @type t :: %__MODULE__{
           mac: String.t(),
@@ -53,7 +70,7 @@ defmodule YellowDog.Netboot.Device do
           profile_id: String.t() | nil,
           state: atom(),
           ip_address: :inet.ip_address() | nil,
-          hardware_info: map(),
+          hardware_info: %{optional(String.t()) => hardware_value()},
           first_seen: DateTime.t() | nil,
           last_seen: DateTime.t() | nil,
           install_attempts: non_neg_integer(),
@@ -151,8 +168,7 @@ defmodule YellowDog.Netboot.Device do
         optional_nonempty_text?(device.profile_id) and
         device.state in @valid_states and
         valid_ip_address?(device.ip_address) and
-        is_map(device.hardware_info) and
-        valid_term?(device.hardware_info) and
+        valid_hardware_info?(device.hardware_info) and
         optional_datetime?(device.first_seen) and
         optional_datetime?(device.last_seen) and
         is_integer(device.install_attempts) and device.install_attempts >= 0 and
@@ -173,10 +189,7 @@ defmodule YellowDog.Netboot.Device do
   defp validate_arch(arch) when arch in @valid_arches, do: arch
 
   defp validate_arch(arch) when is_binary(arch) do
-    atom = String.to_existing_atom(arch)
-    if atom in @valid_arches, do: atom, else: nil
-  rescue
-    ArgumentError -> nil
+    Enum.find(@valid_arches, &(Atom.to_string(&1) == arch))
   end
 
   defp validate_arch(_), do: nil
@@ -188,7 +201,18 @@ defmodule YellowDog.Netboot.Device do
   defp optional_text?(value), do: is_binary(value)
 
   defp optional_datetime?(nil), do: true
-  defp optional_datetime?(value), do: is_struct(value, DateTime)
+  defp optional_datetime?(value), do: valid_datetime?(value)
+
+  defp valid_datetime?(%DateTime{
+         calendar: Calendar.ISO,
+         time_zone: "Etc/UTC",
+         zone_abbr: "UTC",
+         utc_offset: 0,
+         std_offset: 0
+       }),
+       do: true
+
+  defp valid_datetime?(_value), do: false
 
   defp valid_ip_address?(nil), do: true
 
@@ -208,8 +232,11 @@ defmodule YellowDog.Netboot.Device do
 
   defp valid_state_history?(history) when is_list(history) do
     Enum.all?(history, fn
-      %{state: state, at: %DateTime{}} -> state in @valid_states
-      _entry -> false
+      %{state: state, at: at} = entry ->
+        map_size(entry) == 2 and state in @valid_states and valid_datetime?(at)
+
+      _entry ->
+        false
     end)
   end
 
@@ -221,24 +248,73 @@ defmodule YellowDog.Netboot.Device do
 
   defp valid_slot?(_slot), do: false
 
-  defp valid_term?(value)
-       when is_nil(value) or is_boolean(value) or is_binary(value) or is_number(value) or
-              is_atom(value),
-       do: true
-
-  defp valid_term?(value) when is_list(value), do: Enum.all?(value, &valid_term?/1)
-
-  defp valid_term?(value) when is_tuple(value) do
-    value
-    |> Tuple.to_list()
-    |> Enum.all?(&valid_term?/1)
+  defp valid_hardware_info?(value) when is_map(value) do
+    match?(
+      {:ok, _remaining},
+      validate_hardware_value(value, @hardware_max_depth, @hardware_max_nodes)
+    )
   end
 
-  defp valid_term?(value) when is_map(value) do
-    Enum.all?(value, fn {key, nested} -> valid_term?(key) and valid_term?(nested) end)
+  defp valid_hardware_info?(_value), do: false
+
+  defp validate_hardware_value(_value, _depth, remaining) when remaining <= 0,
+    do: :error
+
+  defp validate_hardware_value(value, _depth, remaining)
+       when is_nil(value) or is_boolean(value),
+       do: {:ok, remaining - 1}
+
+  defp validate_hardware_value(value, _depth, remaining)
+       when is_integer(value) and value >= @hardware_min_integer and
+              value <= @hardware_max_integer,
+       do: {:ok, remaining - 1}
+
+  defp validate_hardware_value(value, _depth, remaining)
+       when is_float(value) and value >= @hardware_min_float and value <= @hardware_max_float,
+       do: {:ok, remaining - 1}
+
+  defp validate_hardware_value(value, _depth, remaining) when is_binary(value) do
+    if byte_size(value) <= @hardware_max_string_bytes and String.valid?(value) do
+      {:ok, remaining - 1}
+    else
+      :error
+    end
   end
 
-  defp valid_term?(_value), do: false
+  defp validate_hardware_value(values, depth, remaining)
+       when is_list(values) and depth > 0 and length(values) <= @hardware_max_collection_size do
+    validate_hardware_values(values, depth - 1, remaining - 1)
+  end
+
+  defp validate_hardware_value(values, depth, remaining)
+       when is_map(values) and depth > 0 and map_size(values) <= @hardware_max_collection_size do
+    Enum.reduce_while(values, {:ok, remaining - 1}, fn
+      {key, value}, {:ok, available}
+      when is_binary(key) and byte_size(key) <= @hardware_max_key_bytes and available > 0 ->
+        if String.valid?(key) do
+          case validate_hardware_value(value, depth - 1, available - 1) do
+            {:ok, remaining} -> {:cont, {:ok, remaining}}
+            :error -> {:halt, :error}
+          end
+        else
+          {:halt, :error}
+        end
+
+      _entry, _available ->
+        {:halt, :error}
+    end)
+  end
+
+  defp validate_hardware_value(_value, _depth, _remaining), do: :error
+
+  defp validate_hardware_values(values, depth, remaining) do
+    Enum.reduce_while(values, {:ok, remaining}, fn value, {:ok, available} ->
+      case validate_hardware_value(value, depth, available) do
+        {:ok, remaining} -> {:cont, {:ok, remaining}}
+        :error -> {:halt, :error}
+      end
+    end)
+  end
 
   defp apply_transition_side_effects(device, :booting, _metadata) do
     %{device | install_attempts: device.install_attempts + 1}

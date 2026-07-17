@@ -6,31 +6,67 @@ defmodule YellowDog.Netboot.Device.Persistence do
   alias YellowDog.Netboot.Device
   alias YellowDog.Netboot.ManagedStorage.AtomicJson
 
-  @version 1
-  @empty_snapshot %{"version" => @version, "devices" => []}
+  @version 2
+  @legacy_version 1
+  @default_max_bytes 1_048_576
+  @empty_snapshot %{"version" => @version, "devices" => [], "tombstones" => []}
+
+  @type tombstone :: %{uuid: String.t() | nil, mac: String.t()}
+  @type state_snapshot :: %{devices: [Device.t()], tombstones: [tombstone()]}
 
   @doc "Atomically save a complete managed device snapshot."
   @spec save(String.t(), [Device.t()], keyword()) :: :ok | {:error, term()}
   def save(path, devices, opts \\ []) do
-    with :ok <- validate_snapshot(devices) do
+    save_state(path, %{devices: devices, tombstones: []}, opts)
+  end
+
+  @doc "Atomically save devices and legacy-suppression tombstones."
+  @spec save_state(String.t(), state_snapshot(), keyword()) :: :ok | {:error, term()}
+  def save_state(path, snapshot, opts \\ []) do
+    with :ok <- validate_state(snapshot) do
+      snapshot = stable_state(snapshot)
+
       envelope = %{
         "version" => @version,
-        "devices" => devices |> stable_snapshot() |> Enum.map(&encode_device/1)
+        "devices" => Enum.map(snapshot.devices, &encode_device/1),
+        "tombstones" => Enum.map(snapshot.tombstones, &encode_tombstone/1)
       }
 
-      AtomicJson.write(path, envelope, opts)
+      with :ok <- validate_envelope_size(envelope, opts) do
+        AtomicJson.write(path, envelope, opts)
+      end
     end
   end
 
   @doc "Load a complete managed device snapshot."
   @spec load(String.t(), keyword()) :: {:ok, [Device.t()]} | {:error, term()}
   def load(path, opts \\ []) do
-    with {:ok, envelope} <- AtomicJson.read(path, @empty_snapshot, opts),
-         {:ok, devices} <- decode_envelope(envelope),
-         :ok <- validate_snapshot(devices) do
-      {:ok, stable_snapshot(devices)}
+    with {:ok, %{devices: devices}} <- load_state(path, opts) do
+      {:ok, devices}
     end
   end
+
+  @doc "Load devices and legacy-suppression tombstones."
+  @spec load_state(String.t(), keyword()) :: {:ok, state_snapshot()} | {:error, term()}
+  def load_state(path, opts \\ []) do
+    with {:ok, envelope} <- AtomicJson.read(path, @empty_snapshot, opts),
+         {:ok, snapshot} <- decode_envelope(envelope),
+         :ok <- validate_state(snapshot) do
+      {:ok, stable_state(snapshot)}
+    end
+  end
+
+  @doc false
+  @spec validate_state(term()) :: :ok | {:error, :invalid_snapshot}
+  def validate_state(%{devices: devices, tombstones: tombstones} = snapshot)
+      when map_size(snapshot) == 2 do
+    with :ok <- validate_snapshot(devices),
+         :ok <- validate_tombstones(tombstones) do
+      :ok
+    end
+  end
+
+  def validate_state(_snapshot), do: {:error, :invalid_snapshot}
 
   @doc "Load devices written by the prior TOML persistence format."
   @spec load_legacy(String.t()) :: {:ok, [Device.t()]} | {:error, term()}
@@ -50,8 +86,21 @@ defmodule YellowDog.Netboot.Device.Persistence do
     end
   end
 
-  defp decode_envelope(%{"version" => @version, "devices" => devices}) when is_list(devices) do
-    decode_devices(devices)
+  defp decode_envelope(
+         %{"version" => @version, "devices" => devices, "tombstones" => tombstones} = envelope
+       )
+       when map_size(envelope) == 3 and is_list(devices) and is_list(tombstones) do
+    with {:ok, devices} <- decode_devices(devices, @version),
+         {:ok, tombstones} <- decode_tombstones(tombstones) do
+      {:ok, %{devices: devices, tombstones: tombstones}}
+    end
+  end
+
+  defp decode_envelope(%{"version" => @legacy_version, "devices" => devices} = envelope)
+       when map_size(envelope) == 2 and is_list(devices) do
+    with {:ok, devices} <- decode_devices(devices, @legacy_version) do
+      {:ok, %{devices: devices, tombstones: []}}
+    end
   end
 
   defp decode_envelope(%{"version" => version}) when version != @version,
@@ -59,9 +108,9 @@ defmodule YellowDog.Netboot.Device.Persistence do
 
   defp decode_envelope(_envelope), do: {:error, :invalid_snapshot}
 
-  defp decode_devices(devices) do
+  defp decode_devices(devices, version) do
     Enum.reduce_while(devices, {:ok, []}, fn encoded, {:ok, decoded} ->
-      case decode_device(encoded) do
+      case decode_device(encoded, version) do
         {:ok, device} -> {:cont, {:ok, [device | decoded]}}
         {:error, :invalid_snapshot} = error -> {:halt, error}
       end
@@ -82,7 +131,7 @@ defmodule YellowDog.Netboot.Device.Persistence do
       "ip_address" => encode_ip_address(device.ip_address),
       "last_error" => device.last_error,
       "state" => Atom.to_string(device.state),
-      "hardware_info" => encode_term(device.hardware_info),
+      "hardware_info" => device.hardware_info,
       "first_seen" => encode_datetime(device.first_seen),
       "last_seen" => encode_datetime(device.last_seen),
       "install_attempts" => device.install_attempts,
@@ -96,28 +145,31 @@ defmodule YellowDog.Netboot.Device.Persistence do
     }
   end
 
-  defp decode_device(%{
-         "mac" => mac,
-         "uuid" => uuid,
-         "hostname" => hostname,
-         "arch" => arch,
-         "profile_id" => profile_id,
-         "ip_address" => ip_address,
-         "last_error" => last_error,
-         "state" => state,
-         "hardware_info" => hardware_info,
-         "first_seen" => first_seen,
-         "last_seen" => last_seen,
-         "install_attempts" => install_attempts,
-         "tags" => tags,
-         "state_history" => state_history,
-         "slot" => slot,
-         "rescue_mode" => rescue_mode
-       }) do
+  defp decode_device(
+         %{
+           "mac" => mac,
+           "uuid" => uuid,
+           "hostname" => hostname,
+           "arch" => arch,
+           "profile_id" => profile_id,
+           "ip_address" => ip_address,
+           "last_error" => last_error,
+           "state" => state,
+           "hardware_info" => hardware_info,
+           "first_seen" => first_seen,
+           "last_seen" => last_seen,
+           "install_attempts" => install_attempts,
+           "tags" => tags,
+           "state_history" => state_history,
+           "slot" => slot,
+           "rescue_mode" => rescue_mode
+         },
+         version
+       ) do
     with {:ok, arch} <- decode_optional_atom(arch, Device.valid_arches()),
          {:ok, state} <- decode_atom(state, Device.valid_states()),
          {:ok, ip_address} <- decode_ip_address(ip_address),
-         {:ok, hardware_info} <- decode_term(hardware_info),
+         {:ok, hardware_info} <- decode_hardware_info(hardware_info, version),
          true <- is_map(hardware_info),
          {:ok, first_seen} <- decode_datetime(first_seen),
          {:ok, last_seen} <- decode_datetime(last_seen),
@@ -151,7 +203,7 @@ defmodule YellowDog.Netboot.Device.Persistence do
     end
   end
 
-  defp decode_device(_encoded), do: {:error, :invalid_snapshot}
+  defp decode_device(_encoded, _version), do: {:error, :invalid_snapshot}
 
   defp encode_history_entry(%{state: state, at: at}) do
     %{"state" => Atom.to_string(state), "at" => DateTime.to_iso8601(at)}
@@ -241,60 +293,29 @@ defmodule YellowDog.Netboot.Device.Persistence do
   defp decode_optional_atom(value, valid), do: decode_atom(value, valid)
 
   defp decode_atom(value, valid) when is_binary(value) do
-    atom = String.to_existing_atom(value)
-    if atom in valid, do: {:ok, atom}, else: {:error, :invalid_snapshot}
-  rescue
-    ArgumentError -> {:error, :invalid_snapshot}
+    case Enum.find(valid, &(Atom.to_string(&1) == value)) do
+      nil -> {:error, :invalid_snapshot}
+      atom -> {:ok, atom}
+    end
   end
 
   defp decode_atom(_value, _valid), do: {:error, :invalid_snapshot}
 
-  defp encode_term(value)
-       when is_nil(value) or is_boolean(value) or is_binary(value) or is_number(value),
-       do: value
+  defp decode_hardware_info(value, @version) when is_map(value), do: {:ok, value}
+  defp decode_hardware_info(value, @legacy_version), do: decode_legacy_term(value)
+  defp decode_hardware_info(_value, _version), do: {:error, :invalid_snapshot}
 
-  defp encode_term(value) when is_atom(value) do
-    %{"$type" => "atom", "value" => Atom.to_string(value)}
-  end
-
-  defp encode_term(value) when is_list(value), do: Enum.map(value, &encode_term/1)
-
-  defp encode_term(value) when is_tuple(value) do
-    %{"$type" => "tuple", "items" => value |> Tuple.to_list() |> Enum.map(&encode_term/1)}
-  end
-
-  defp encode_term(value) when is_map(value) do
-    entries =
-      value
-      |> Enum.sort_by(fn {key, _value} -> :erlang.term_to_binary(key) end)
-      |> Enum.map(fn {key, nested} -> [encode_term(key), encode_term(nested)] end)
-
-    %{"$type" => "map", "entries" => entries}
-  end
-
-  defp decode_term(value)
+  defp decode_legacy_term(value)
        when is_nil(value) or is_boolean(value) or is_binary(value) or is_number(value),
        do: {:ok, value}
 
-  defp decode_term(%{"$type" => "atom", "value" => value}) when is_binary(value) do
-    {:ok, String.to_existing_atom(value)}
-  rescue
-    ArgumentError -> {:error, :invalid_snapshot}
-  end
-
-  defp decode_term(%{"$type" => "tuple", "items" => items}) when is_list(items) do
-    with {:ok, decoded} <- decode_terms(items) do
-      {:ok, List.to_tuple(decoded)}
-    end
-  end
-
-  defp decode_term(%{"$type" => "map", "entries" => entries}) when is_list(entries) do
+  defp decode_legacy_term(%{"$type" => "map", "entries" => entries}) when is_list(entries) do
     Enum.reduce_while(entries, {:ok, %{}}, fn
       [encoded_key, encoded_value], {:ok, map} ->
-        with {:ok, key} <- decode_term(encoded_key),
-             {:ok, value} <- decode_term(encoded_value),
-             false <- Map.has_key?(map, key) do
-          {:cont, {:ok, Map.put(map, key, value)}}
+        with true <- is_binary(encoded_key),
+             {:ok, value} <- decode_legacy_term(encoded_value),
+             false <- Map.has_key?(map, encoded_key) do
+          {:cont, {:ok, Map.put(map, encoded_key, value)}}
         else
           _other -> {:halt, {:error, :invalid_snapshot}}
         end
@@ -304,12 +325,12 @@ defmodule YellowDog.Netboot.Device.Persistence do
     end)
   end
 
-  defp decode_term(values) when is_list(values), do: decode_terms(values)
-  defp decode_term(_value), do: {:error, :invalid_snapshot}
+  defp decode_legacy_term(values) when is_list(values), do: decode_legacy_terms(values)
+  defp decode_legacy_term(_value), do: {:error, :invalid_snapshot}
 
-  defp decode_terms(values) do
+  defp decode_legacy_terms(values) do
     Enum.reduce_while(values, {:ok, []}, fn value, {:ok, decoded} ->
-      case decode_term(value) do
+      case decode_legacy_term(value) do
         {:ok, value} -> {:cont, {:ok, [value | decoded]}}
         {:error, :invalid_snapshot} = error -> {:halt, error}
       end
@@ -319,6 +340,36 @@ defmodule YellowDog.Netboot.Device.Persistence do
       error -> error
     end
   end
+
+  defp encode_tombstone(%{uuid: uuid, mac: mac}) do
+    %{"uuid" => uuid, "mac" => mac}
+  end
+
+  defp decode_tombstones(tombstones) do
+    Enum.reduce_while(tombstones, {:ok, []}, fn encoded, {:ok, decoded} ->
+      case decode_tombstone(encoded) do
+        {:ok, tombstone} -> {:cont, {:ok, [tombstone | decoded]}}
+        {:error, :invalid_snapshot} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, decoded} -> {:ok, Enum.reverse(decoded)}
+      error -> error
+    end
+  end
+
+  defp decode_tombstone(%{"uuid" => uuid, "mac" => mac} = tombstone)
+       when map_size(tombstone) == 2 do
+    decoded = %{uuid: uuid, mac: mac}
+
+    if valid_tombstone?(decoded) do
+      {:ok, decoded}
+    else
+      {:error, :invalid_snapshot}
+    end
+  end
+
+  defp decode_tombstone(_tombstone), do: {:error, :invalid_snapshot}
 
   defp validate_snapshot(devices) when is_list(devices) do
     Enum.reduce_while(devices, {:ok, MapSet.new(), MapSet.new()}, fn device, {:ok, macs, uuids} ->
@@ -342,7 +393,64 @@ defmodule YellowDog.Netboot.Device.Persistence do
   defp duplicate_uuid?(_uuids, nil), do: false
   defp duplicate_uuid?(uuids, uuid), do: MapSet.member?(uuids, uuid)
 
+  defp validate_tombstones(tombstones) when is_list(tombstones) do
+    Enum.reduce_while(tombstones, {:ok, MapSet.new()}, fn tombstone, {:ok, identities} ->
+      identity = tombstone_identity(tombstone)
+
+      if valid_tombstone?(tombstone) and not MapSet.member?(identities, identity) do
+        {:cont, {:ok, MapSet.put(identities, identity)}}
+      else
+        {:halt, {:error, :invalid_snapshot}}
+      end
+    end)
+    |> case do
+      {:ok, _identities} -> :ok
+      error -> error
+    end
+  end
+
+  defp validate_tombstones(_tombstones), do: {:error, :invalid_snapshot}
+
+  defp valid_tombstone?(%{uuid: uuid, mac: mac} = tombstone) when map_size(tombstone) == 2 do
+    (is_nil(uuid) or (is_binary(uuid) and uuid != "" and String.valid?(uuid))) and
+      Device.valid_mac?(mac)
+  end
+
+  defp valid_tombstone?(_tombstone), do: false
+
+  defp tombstone_identity(%{uuid: uuid, mac: mac}), do: {uuid, mac}
+  defp tombstone_identity(_tombstone), do: :invalid
+
   defp stable_snapshot(devices), do: Enum.sort_by(devices, & &1.mac)
+
+  defp stable_state(%{devices: devices, tombstones: tombstones}) do
+    %{
+      devices: stable_snapshot(devices),
+      tombstones: Enum.sort_by(tombstones, &{&1.mac, &1.uuid || ""})
+    }
+  end
+
+  defp validate_envelope_size(envelope, opts) when is_list(opts) do
+    case Keyword.get(opts, :max_bytes, @default_max_bytes) do
+      max_bytes when is_integer(max_bytes) and max_bytes > 0 ->
+        validate_encoded_size(envelope, max_bytes)
+
+      _invalid ->
+        {:error, :invalid_options}
+    end
+  end
+
+  defp validate_envelope_size(_envelope, _opts), do: {:error, :invalid_options}
+
+  defp validate_encoded_size(envelope, max_bytes) do
+    case Jason.encode(envelope) do
+      {:ok, encoded} when byte_size(encoded) <= max_bytes -> :ok
+      {:ok, _encoded} -> {:error, :too_large}
+      {:error, _reason} -> {:error, :invalid_snapshot}
+    end
+  rescue
+    _error -> {:error, :invalid_snapshot}
+  end
 
   defp deserialize_legacy_devices(%{"devices" => devices}) when is_map(devices) do
     Enum.map(devices, fn {_key, attrs} ->
@@ -374,9 +482,6 @@ defmodule YellowDog.Netboot.Device.Persistence do
   defp parse_legacy_atom(nil, _valid), do: nil
 
   defp parse_legacy_atom(value, valid, fallback \\ nil) when is_binary(value) do
-    atom = String.to_existing_atom(value)
-    if atom in valid, do: atom, else: fallback
-  rescue
-    ArgumentError -> fallback
+    Enum.find(valid, fallback, &(Atom.to_string(&1) == value))
   end
 end

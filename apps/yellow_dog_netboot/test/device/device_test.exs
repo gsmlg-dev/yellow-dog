@@ -228,6 +228,74 @@ defmodule YellowDog.Netboot.DeviceTest do
     end
   end
 
+  describe "validate/1 hardware info" do
+    test "accepts bounded JSON-native values" do
+      device =
+        Device.new("AA:BB:CC:DD:EE:FF", %{
+          hardware_info: %{
+            "available" => true,
+            "cores" => 16,
+            "frequency_ghz" => 3.25,
+            "model" => "Neoverse",
+            "nullable" => nil,
+            "storage" => [%{"bytes" => 1_000_000}, "nvme"]
+          }
+        })
+
+      assert :ok = Device.validate(device)
+    end
+
+    test "rejects atoms and non-string map keys" do
+      atom_value =
+        Device.new("AA:BB:CC:DD:EE:FF", %{
+          hardware_info: %{"unsafe" => :cold_vm_only_hardware_atom}
+        })
+
+      atom_key =
+        Device.new("AA:BB:CC:DD:EE:FF", %{
+          hardware_info: %{unsafe: "value"}
+        })
+
+      assert {:error, :invalid_device} = Device.validate(atom_value)
+      assert {:error, :invalid_device} = Device.validate(atom_key)
+    end
+
+    test "rejects oversized and excessively nested values" do
+      oversized =
+        Device.new("AA:BB:CC:DD:EE:FF", %{
+          hardware_info: %{"value" => String.duplicate("x", 4_097)}
+        })
+
+      nested =
+        Enum.reduce(1..9, %{"leaf" => true}, fn level, value ->
+          %{"level-#{level}" => value}
+        end)
+
+      too_deep =
+        Device.new("AA:BB:CC:DD:EE:FF", %{
+          hardware_info: nested
+        })
+
+      assert {:error, :invalid_device} = Device.validate(oversized)
+      assert {:error, :invalid_device} = Device.validate(too_deep)
+    end
+  end
+
+  describe "validate/1 durable timestamps" do
+    test "rejects a DateTime representation that cannot round-trip losslessly" do
+      non_utc =
+        %{DateTime.utc_now() | time_zone: "Custom/Offset", zone_abbr: "+01", utc_offset: 3_600}
+
+      device = %{
+        Device.new("AA:BB:CC:DD:EE:FF")
+        | first_seen: non_utc,
+          state_history: [%{state: :discovered, at: non_utc}]
+      }
+
+      assert {:error, :invalid_device} = Device.validate(device)
+    end
+  end
+
   describe "transition/3 side effects" do
     test "installed clears last_error" do
       device = %{Device.new("AA:BB:CC:DD:EE:FF") | state: :installing, last_error: "previous"}

@@ -12,8 +12,6 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
     legacy_path = Path.join(root, "devices.toml")
     File.mkdir_p!(root)
 
-    :ets.delete_all_objects(:netboot_devices)
-
     :sys.replace_state(Registry, fn state ->
       state
       |> Map.put(:managed_path, managed_path)
@@ -22,6 +20,7 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
       |> Map.put(:persist_hook, nil)
       |> Map.put(:apply_hook, nil)
       |> Map.put(:broadcast_hook, nil)
+      |> put_runtime_snapshot([], [])
     end)
 
     on_exit(fn -> File.rm_rf!(root) end)
@@ -455,6 +454,50 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
 
       assert {:ok, ^device} = Registry.get("AA:BB:CC:DD:EE:01")
     end
+
+    test "delete durably suppresses a legacy fallback across a real restart", %{
+      managed_path: managed_path,
+      legacy_path: legacy_path
+    } do
+      write_legacy_device(legacy_path, nil, "AA:BB:CC:DD:EE:01")
+      restart_registry(managed_path: managed_path, legacy_path: legacy_path)
+
+      assert {:ok, legacy} = Registry.get("AA:BB:CC:DD:EE:01")
+      assert legacy.uuid == nil
+      assert :ok = Registry.delete(legacy.mac)
+
+      assert {:ok,
+              %{
+                devices: [],
+                tombstones: [%{uuid: nil, mac: "AA:BB:CC:DD:EE:01"}]
+              }} = Persistence.load_state(managed_path)
+
+      restart_registry(managed_path: managed_path, legacy_path: legacy_path)
+      assert {:error, :not_found} = Registry.get(legacy.mac)
+      assert Registry.list() == []
+    end
+
+    test "control delete durably suppresses a legacy fallback across a real restart", %{
+      managed_path: managed_path,
+      legacy_path: legacy_path
+    } do
+      write_legacy_device(legacy_path, "legacy-device", "AA:BB:CC:DD:EE:01")
+      restart_registry(managed_path: managed_path, legacy_path: legacy_path)
+
+      assert {:ok, [legacy], []} = Registry.control_delete_device("legacy-device")
+
+      assert {:ok,
+              %{
+                devices: [],
+                tombstones: [
+                  %{uuid: "legacy-device", mac: "AA:BB:CC:DD:EE:01"}
+                ]
+              }} = Persistence.load_state(managed_path)
+
+      restart_registry(managed_path: managed_path, legacy_path: legacy_path)
+      assert {:error, :not_found} = Registry.get(legacy.mac)
+      assert Registry.list() == []
+    end
   end
 
   describe "serialized durable mutations" do
@@ -465,11 +508,11 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
 
       set_hooks(
         apply_hook: fn candidate ->
-          send(parent, {:apply, Persistence.load(managed_path), candidate, Registry.list()})
+          send(parent, {:apply, Persistence.load(managed_path), candidate, runtime_snapshot()})
           :ok
         end,
         broadcast_hook: fn event ->
-          send(parent, {:broadcast, event, Persistence.load(managed_path), Registry.list()})
+          send(parent, {:broadcast, event, Persistence.load(managed_path), runtime_snapshot()})
           :ok
         end
       )
@@ -519,9 +562,81 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
 
       assert_persisted(managed_path)
 
-      assert :ok = Registry.delete("AA:BB:CC:DD:EE:02")
+      assert {:ok, _prior, []} = Registry.control_delete_device("device-1")
       assert {:ok, []} = Persistence.load(managed_path)
       assert Registry.list() == []
+
+      assert {:ok, device} =
+               Registry.register("AA:BB:CC:DD:EE:03", %{uuid: "device-2"})
+
+      assert_persisted(managed_path)
+      assert :ok = Registry.delete(device.mac)
+      assert {:ok, []} = Persistence.load(managed_path)
+      assert Registry.list() == []
+    end
+
+    test "rejects atom hardware before mutating the sidecar or runtime", %{
+      managed_path: managed_path
+    } do
+      assert {:ok, prior} =
+               Registry.register("AA:BB:CC:DD:EE:01", %{
+                 uuid: "device-1",
+                 hardware_info: %{"cpu" => "x86"}
+               })
+
+      prior_bytes = File.read!(managed_path)
+
+      assert {:error, :invalid_snapshot} =
+               Registry.register(prior.mac, %{
+                 hardware_info: %{"unsafe" => :cold_vm_only_hardware_atom}
+               })
+
+      assert File.read!(managed_path) == prior_bytes
+      assert {:ok, ^prior} = Registry.get(prior.mac)
+    end
+
+    test "public readers cross a MAC re-key at one complete publication boundary" do
+      assert {:ok, _prior, [prior]} =
+               Registry.control_put_device("device-1", "prior", "AA:BB:CC:DD:EE:01")
+
+      parent = self()
+
+      set_hooks(
+        apply_hook: fn candidate ->
+          send(parent, {:publication_boundary, self(), candidate, runtime_snapshot()})
+
+          receive do
+            :continue_publication -> :ok
+          after
+            5_000 -> :error
+          end
+        end
+      )
+
+      mutation =
+        Task.async(fn ->
+          Registry.control_put_device("device-1", "candidate", "AA:BB:CC:DD:EE:02")
+        end)
+
+      assert_receive {:publication_boundary, registry, [candidate], [runtime_candidate]}, 1_000
+      assert runtime_candidate == candidate
+      assert candidate.mac == "AA:BB:CC:DD:EE:02"
+
+      reader =
+        Task.async(fn ->
+          {Registry.get(prior.mac), Registry.get(candidate.mac), Registry.list()}
+        end)
+
+      try do
+        refute Task.yield(reader, 100)
+      after
+        send(registry, :continue_publication)
+      end
+
+      assert {:ok, [^prior], [^candidate]} = Task.await(mutation)
+
+      assert {{:error, :not_found}, {:ok, ^candidate}, [^candidate]} =
+               Task.await(reader)
     end
 
     for phase <- [:write, :sync, :close, :rename] do
@@ -574,7 +689,8 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
 
           send(
             parent,
-            {:apply_attempt, result, candidate, Persistence.load(managed_path), Registry.list()}
+            {:apply_attempt, result, candidate, Persistence.load(managed_path),
+             runtime_snapshot()}
           )
 
           result
@@ -610,9 +726,9 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
 
       set_hooks(
         apply_hook: fn _candidate -> :error end,
-        persist_hook: fn path, devices, opts ->
+        persist_hook: fn path, snapshot, opts ->
           case Agent.get_and_update(saves, fn [result | rest] -> {result, rest} end) do
-            :ok -> Persistence.save(path, devices, opts)
+            :ok -> Persistence.save_state(path, snapshot, opts)
             :error -> {:error, :injected}
           end
         end
@@ -645,6 +761,74 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
       assert {:ok, ^prior} = Registry.get(prior.mac)
       assert {:ok, [^prior]} = Persistence.load(managed_path)
     end
+
+    test "control delete persistence failure leaves disk/runtime unchanged and does not broadcast",
+         %{managed_path: managed_path} do
+      assert {:ok, [], [prior]} =
+               Registry.control_put_device("device-1", "prior", "AA:BB:CC:DD:EE:01")
+
+      prior_bytes = File.read!(managed_path)
+      parent = self()
+
+      set_hooks(
+        persist_hook: fn _path, _snapshot, _opts -> {:error, :injected} end,
+        broadcast_hook: fn event ->
+          send(parent, {:unexpected_broadcast, event})
+          :ok
+        end
+      )
+
+      assert {:error, :persistence_failed} = Registry.control_delete_device("device-1")
+      assert File.read!(managed_path) == prior_bytes
+      assert {:ok, ^prior} = Registry.get(prior.mac)
+      refute_receive {:unexpected_broadcast, _event}
+    end
+
+    test "control delete apply failure restores sidecar before prior complete runtime", %{
+      managed_path: managed_path
+    } do
+      assert {:ok, [], [prior]} =
+               Registry.control_put_device("device-1", "prior", "AA:BB:CC:DD:EE:01")
+
+      parent = self()
+      {:ok, apply_results} = Agent.start_link(fn -> [:error, :ok] end)
+
+      set_hooks(
+        apply_hook: fn candidate ->
+          result = Agent.get_and_update(apply_results, fn [result | rest] -> {result, rest} end)
+
+          send(
+            parent,
+            {:control_delete_apply, result, candidate, Persistence.load_state(managed_path),
+             runtime_snapshot()}
+          )
+
+          result
+        end,
+        broadcast_hook: fn event ->
+          send(parent, {:unexpected_broadcast, event})
+          :ok
+        end
+      )
+
+      assert {:error, :apply_failed} = Registry.control_delete_device("device-1")
+
+      assert_receive {:control_delete_apply, :error, [],
+                      {:ok,
+                       %{
+                         devices: [],
+                         tombstones: [
+                           %{uuid: "device-1", mac: "AA:BB:CC:DD:EE:01"}
+                         ]
+                       }}, []}
+
+      assert_receive {:control_delete_apply, :ok, [^prior],
+                      {:ok, %{devices: [^prior], tombstones: []}}, [^prior]}
+
+      assert {:ok, ^prior} = Registry.get(prior.mac)
+      assert {:ok, [^prior]} = Persistence.load(managed_path)
+      refute_receive {:unexpected_broadcast, _event}
+    end
   end
 
   test "catch-all handle_info ignores unknown messages" do
@@ -661,8 +845,7 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
   end
 
   defp replace_snapshot(devices) do
-    :ets.delete_all_objects(:netboot_devices)
-    true = :ets.insert(:netboot_devices, Enum.map(devices, &{&1.mac, &1}))
+    :sys.replace_state(Registry, &put_runtime_snapshot(&1, devices, &1.tombstones))
   end
 
   defp assert_persisted(managed_path) do
@@ -676,5 +859,38 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
     assert :ok = Supervisor.terminate_child(supervisor, Registry)
     assert :ok = Supervisor.delete_child(supervisor, Registry)
     assert {:ok, _pid} = Supervisor.start_child(supervisor, {Registry, opts})
+  end
+
+  defp put_runtime_snapshot(state, devices, tombstones) do
+    :ets.delete_all_objects(state.store.table)
+    true = :ets.insert(state.store.table, Enum.map(devices, &{&1.mac, &1}))
+
+    state
+    |> Map.put(:devices, Enum.sort_by(devices, & &1.mac))
+    |> Map.put(:devices_by_mac, Map.new(devices, &{&1.mac, &1}))
+    |> Map.put(:tombstones, tombstones)
+  end
+
+  defp runtime_snapshot do
+    :netboot_devices
+    |> :ets.tab2list()
+    |> Enum.map(fn {_mac, device} -> device end)
+    |> Enum.sort_by(& &1.mac)
+  end
+
+  defp write_legacy_device(path, uuid, mac) do
+    uuid_line = if uuid, do: ~s(uuid = "#{uuid}"\n), else: ""
+
+    File.write!(
+      path,
+      """
+      [devices.legacy]
+      mac = "#{mac}"
+      #{uuid_line}hostname = "legacy-host"
+      state = "discovered"
+      install_attempts = 0
+      tags = []
+      """
+    )
   end
 end

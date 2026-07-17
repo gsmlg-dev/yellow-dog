@@ -35,8 +35,11 @@ defmodule YellowDog.Netboot.Device.PersistenceTest do
         state: :failed,
         hardware_info: %{
           "cpu" => "Neoverse",
-          :memory => %{bytes: 68_719_476_736},
-          "disk_layout" => {:gpt, 2}
+          "memory" => %{"bytes" => 68_719_476_736},
+          "disk_layout" => ["gpt", 2],
+          "virtualized" => false,
+          "temperature" => 42.5,
+          "nullable" => nil
         },
         first_seen: first_seen,
         last_seen: last_seen,
@@ -54,7 +57,7 @@ defmodule YellowDog.Netboot.Device.PersistenceTest do
       assert :ok = Persistence.save(managed_path, [device])
       assert {:ok, [^device]} = Persistence.load(managed_path)
 
-      assert %{"version" => 1, "devices" => [stored]} =
+      assert %{"version" => 2, "devices" => [stored], "tombstones" => []} =
                managed_path |> File.read!() |> Jason.decode!()
 
       assert stored["uuid"] == "device-1"
@@ -67,7 +70,30 @@ defmodule YellowDog.Netboot.Device.PersistenceTest do
     test "stores an empty managed snapshot", %{managed_path: managed_path} do
       assert :ok = Persistence.save(managed_path, [])
       assert {:ok, []} = Persistence.load(managed_path)
-      assert %{"version" => 1, "devices" => []} = Jason.decode!(File.read!(managed_path))
+
+      assert %{"version" => 2, "devices" => [], "tombstones" => []} =
+               Jason.decode!(File.read!(managed_path))
+    end
+
+    test "round-trips validated tombstone identities", %{managed_path: managed_path} do
+      snapshot = %{
+        devices: [Device.new("AA:BB:CC:DD:EE:01", %{uuid: "device-1"})],
+        tombstones: [
+          %{uuid: nil, mac: "AA:BB:CC:DD:EE:02"},
+          %{uuid: "legacy-3", mac: "AA:BB:CC:DD:EE:03"}
+        ]
+      }
+
+      assert :ok = Persistence.save_state(managed_path, snapshot)
+      assert {:ok, ^snapshot} = Persistence.load_state(managed_path)
+
+      assert %{
+               "version" => 2,
+               "tombstones" => [
+                 %{"mac" => "AA:BB:CC:DD:EE:02", "uuid" => nil},
+                 %{"mac" => "AA:BB:CC:DD:EE:03", "uuid" => "legacy-3"}
+               ]
+             } = Jason.decode!(File.read!(managed_path))
     end
   end
 
@@ -82,14 +108,18 @@ defmodule YellowDog.Netboot.Device.PersistenceTest do
     end
 
     test "rejects unsupported versions", %{managed_path: managed_path} do
-      File.write!(managed_path, Jason.encode!(%{"version" => 2, "devices" => []}))
+      File.write!(managed_path, Jason.encode!(%{"version" => 99, "devices" => []}))
       assert {:error, :unsupported_version} = Persistence.load(managed_path)
     end
 
     test "rejects incomplete devices", %{managed_path: managed_path} do
       File.write!(
         managed_path,
-        Jason.encode!(%{"version" => 1, "devices" => [%{"mac" => "AA:BB:CC:DD:EE:FF"}]})
+        Jason.encode!(%{
+          "version" => 2,
+          "devices" => [%{"mac" => "AA:BB:CC:DD:EE:FF"}],
+          "tombstones" => []
+        })
       )
 
       assert {:error, :invalid_snapshot} = Persistence.load(managed_path)
@@ -105,17 +135,87 @@ defmodule YellowDog.Netboot.Device.PersistenceTest do
 
       File.write!(
         managed_path,
-        Jason.encode!(%{"version" => 1, "devices" => [encoded, encode_device(duplicate_uuid)]})
+        Jason.encode!(%{
+          "version" => 2,
+          "devices" => [encoded, encode_device(duplicate_uuid)],
+          "tombstones" => []
+        })
       )
 
       assert {:error, :invalid_snapshot} = Persistence.load(managed_path)
 
       File.write!(
         managed_path,
-        Jason.encode!(%{"version" => 1, "devices" => [encoded, encode_device(duplicate_mac)]})
+        Jason.encode!(%{
+          "version" => 2,
+          "devices" => [encoded, encode_device(duplicate_mac)],
+          "tombstones" => []
+        })
       )
 
       assert {:error, :invalid_snapshot} = Persistence.load(managed_path)
+    end
+
+    test "loads accepted version 1 hardware without creating atoms", %{
+      managed_path: managed_path
+    } do
+      device =
+        Device.new("AA:BB:CC:DD:EE:01", %{
+          uuid: "device-1",
+          hardware_info: %{"cpu" => "x86", "disks" => [%{"size" => 1_024}]}
+        })
+
+      encoded = encode_device(device)
+
+      encoded =
+        Map.put(encoded, "hardware_info", %{
+          "$type" => "map",
+          "entries" => [
+            ["cpu", "x86"],
+            [
+              "disks",
+              [
+                %{
+                  "$type" => "map",
+                  "entries" => [["size", 1_024]]
+                }
+              ]
+            ]
+          ]
+        })
+
+      File.write!(
+        managed_path,
+        Jason.encode!(%{"version" => 1, "devices" => [encoded]})
+      )
+
+      assert {:ok, [^device]} = Persistence.load(managed_path)
+
+      assert {:ok, %{devices: [^device], tombstones: []}} =
+               Persistence.load_state(managed_path)
+    end
+
+    test "rejects malformed and duplicate tombstones", %{managed_path: managed_path} do
+      invalid = %{
+        "version" => 2,
+        "devices" => [],
+        "tombstones" => [%{"uuid" => "device-1", "mac" => "aa-bb-cc-dd-ee-ff"}]
+      }
+
+      File.write!(managed_path, Jason.encode!(invalid))
+      assert {:error, :invalid_snapshot} = Persistence.load_state(managed_path)
+
+      duplicate = %{
+        "version" => 2,
+        "devices" => [],
+        "tombstones" => [
+          %{"uuid" => "device-1", "mac" => "AA:BB:CC:DD:EE:FF"},
+          %{"uuid" => "device-1", "mac" => "AA:BB:CC:DD:EE:FF"}
+        ]
+      }
+
+      File.write!(managed_path, Jason.encode!(duplicate))
+      assert {:error, :invalid_snapshot} = Persistence.load_state(managed_path)
     end
   end
 
@@ -155,6 +255,26 @@ defmodule YellowDog.Netboot.Device.PersistenceTest do
   end
 
   describe "atomic replacement" do
+    test "rejects an envelope over the read limit before replacing the sidecar", %{
+      managed_path: managed_path
+    } do
+      prior = Device.new("AA:BB:CC:DD:EE:01", %{uuid: "device-1"})
+
+      candidate =
+        Device.new("AA:BB:CC:DD:EE:02", %{
+          uuid: "device-2",
+          hardware_info: %{"serial" => String.duplicate("x", 128)}
+        })
+
+      assert :ok = Persistence.save(managed_path, [prior])
+      prior_bytes = File.read!(managed_path)
+
+      assert {:error, :too_large} =
+               Persistence.save(managed_path, [candidate], max_bytes: 64)
+
+      assert File.read!(managed_path) == prior_bytes
+    end
+
     for phase <- [:write, :sync, :close, :rename] do
       test "#{phase} failure preserves the prior sidecar and removes the temporary file", %{
         root: root,

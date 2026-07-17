@@ -34,8 +34,7 @@ defmodule YellowDog.Netboot.Device.Registry do
   @doc "Get a device by MAC address."
   @spec get(String.t()) :: {:ok, Device.t()} | {:error, :not_found}
   def get(mac) do
-    normalized = Device.normalize_mac(mac)
-    Store.get(store_state(), normalized)
+    GenServer.call(__MODULE__, {:get, Device.normalize_mac(mac)})
   end
 
   @doc "Update a device's state with optional metadata."
@@ -77,11 +76,7 @@ defmodule YellowDog.Netboot.Device.Registry do
   @doc "List all devices, optionally filtered."
   @spec list(keyword()) :: [Device.t()]
   def list(filters \\ []) do
-    {:ok, devices} = Store.list(store_state())
-
-    devices
-    |> stable_snapshot()
-    |> apply_filters(filters)
+    GenServer.call(__MODULE__, {:list, filters})
   end
 
   @doc "Count devices by state."
@@ -128,14 +123,28 @@ defmodule YellowDog.Netboot.Device.Registry do
     }
 
     with {:ok, store} <- Store.init(collection(), []),
-         {:ok, devices} <-
+         {:ok, snapshot} <-
            load_startup_snapshot(managed_path, legacy_path, state.persistence_opts),
-         :ok <- replace_snapshot(store, devices) do
-      :persistent_term.put({__MODULE__, :store}, store)
-      {:ok, Map.put(state, :store, store)}
+         :ok <- replace_snapshot(store, snapshot.devices) do
+      state =
+        state
+        |> Map.put(:store, store)
+        |> put_runtime_snapshot(snapshot)
+
+      {:ok, state}
     else
       {:error, reason} -> {:stop, {:device_registry_init_failed, reason}}
     end
+  end
+
+  @impl true
+  def handle_call({:get, mac}, _from, state) do
+    {:reply, get_from_state(state, mac), state}
+  end
+
+  @impl true
+  def handle_call({:list, filters}, _from, state) do
+    {:reply, apply_filters(state.devices, filters), state}
   end
 
   @impl true
@@ -146,15 +155,25 @@ defmodule YellowDog.Netboot.Device.Registry do
   @impl true
   def handle_call({:register, mac, attrs}, _from, state) when is_map(attrs) do
     normalized = Device.normalize_mac(mac)
-    prior = snapshot(state)
+    prior = state_snapshot(state)
 
-    with {:ok, device} <- registered_device(state, normalized, attrs),
-         candidate <- replace_by_mac(prior, device),
-         {:ok, resulting} <-
-           commit(state, prior, candidate, {:device_registered, device}) do
-      {:reply, {:ok, find_by_mac!(resulting, device.mac)}, state}
-    else
-      {:error, reason} -> {:reply, {:error, reason}, state}
+    case registered_device(state, normalized, attrs) do
+      {:ok, device} ->
+        candidate =
+          prior
+          |> Map.put(:devices, replace_by_mac(prior.devices, device))
+          |> clear_tombstones_for_mac(device.mac)
+
+        case commit(state, prior, candidate, {:device_registered, device}) do
+          {:ok, resulting, new_state} ->
+            {:reply, {:ok, find_by_mac!(resulting, device.mac)}, new_state}
+
+          {:error, reason, new_state} ->
+            {:reply, {:error, reason}, new_state}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -214,25 +233,31 @@ defmodule YellowDog.Netboot.Device.Registry do
   @impl true
   def handle_call({:delete, mac}, _from, state) do
     normalized = Device.normalize_mac(mac)
-    prior = snapshot(state)
-    candidate = Enum.reject(prior, &(&1.mac == normalized))
+    prior = state_snapshot(state)
+    candidate = delete_by_mac(prior, normalized)
 
     case commit(state, prior, candidate, {:device_deleted, normalized}) do
-      {:ok, _resulting} -> {:reply, :ok, state}
-      {:error, reason} -> {:reply, {:error, reason}, state}
+      {:ok, _resulting, new_state} -> {:reply, :ok, new_state}
+      {:error, reason, new_state} -> {:reply, {:error, reason}, new_state}
     end
   end
 
   @impl true
   def handle_call({:control_put_device, device_id, profile_id, mac}, _from, state) do
-    prior = snapshot(state)
+    prior = state_snapshot(state)
 
     with :ok <- validate_control_fields(device_id, profile_id, mac),
-         {:ok, device} <- control_device(prior, device_id, profile_id, mac),
-         candidate <- replace_by_uuid(prior, device),
-         {:ok, resulting} <-
-           commit(state, prior, candidate, {:device_registered, device}) do
-      {:reply, {:ok, prior, resulting}, state}
+         {:ok, device} <- control_device(prior.devices, device_id, profile_id, mac) do
+      previous = Enum.find(prior.devices, &(&1.uuid == device_id))
+      candidate = control_put_candidate(prior, previous, device)
+
+      case commit(state, prior, candidate, {:device_registered, device}) do
+        {:ok, resulting, new_state} ->
+          {:reply, {:ok, prior.devices, resulting}, new_state}
+
+        {:error, reason, new_state} ->
+          {:reply, {:error, reason}, new_state}
+      end
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -240,18 +265,21 @@ defmodule YellowDog.Netboot.Device.Registry do
 
   @impl true
   def handle_call({:control_delete_device, device_id}, _from, state) do
-    prior = snapshot(state)
+    prior = state_snapshot(state)
 
-    case Enum.find(prior, &(&1.uuid == device_id)) do
+    case Enum.find(prior.devices, &(&1.uuid == device_id)) do
       nil ->
         {:reply, {:error, :not_found}, state}
 
       device ->
-        candidate = Enum.reject(prior, &(&1.uuid == device_id))
+        candidate = delete_device(prior, device)
 
         case commit(state, prior, candidate, {:device_deleted, device.mac}) do
-          {:ok, resulting} -> {:reply, {:ok, prior, resulting}, state}
-          {:error, reason} -> {:reply, {:error, reason}, state}
+          {:ok, resulting, new_state} ->
+            {:reply, {:ok, prior.devices, resulting}, new_state}
+
+          {:error, reason, new_state} ->
+            {:reply, {:error, reason}, new_state}
         end
     end
   end
@@ -263,13 +291,19 @@ defmodule YellowDog.Netboot.Device.Registry do
 
   defp mutate_by_mac(state, mac, update, event) do
     normalized = Device.normalize_mac(mac)
-    prior = snapshot(state)
+    prior = state_snapshot(state)
 
     with {:ok, device} <- get_from_state(state, normalized),
-         {:ok, updated} <- update.(device),
-         candidate <- replace_by_mac(prior, updated),
-         {:ok, resulting} <- commit(state, prior, candidate, {event, updated}) do
-      {:reply, {:ok, find_by_mac!(resulting, updated.mac)}, state}
+         {:ok, updated} <- update.(device) do
+      candidate = Map.put(prior, :devices, replace_by_mac(prior.devices, updated))
+
+      case commit(state, prior, candidate, {event, updated}) do
+        {:ok, resulting, new_state} ->
+          {:reply, {:ok, find_by_mac!(resulting, updated.mac)}, new_state}
+
+        {:error, reason, new_state} ->
+          {:reply, {:error, reason}, new_state}
+      end
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -339,43 +373,46 @@ defmodule YellowDog.Netboot.Device.Registry do
     do: {:error, :invalid_snapshot}
 
   defp commit(state, prior, candidate, event) do
-    candidate = stable_snapshot(candidate)
+    candidate = stable_state(candidate)
 
-    with :ok <- validate_snapshot(candidate),
+    with :ok <- validate_candidate(candidate),
          :ok <- persist_snapshot(state, candidate),
-         :ok <- apply_snapshot(state, candidate) do
-      broadcast(state, event)
-      {:ok, candidate}
+         :ok <- apply_snapshot(state, candidate.devices) do
+      new_state = put_runtime_snapshot(state, candidate)
+      broadcast(new_state, event)
+      {:ok, candidate.devices, new_state}
     else
-      {:error, :invalid_snapshot} -> {:error, :invalid_snapshot}
-      {:error, :conflict} -> {:error, :conflict}
-      {:error, :persistence_failed} -> {:error, :persistence_failed}
-      {:error, :apply_failed} -> rollback(state, prior)
+      {:error, :invalid_snapshot} -> {:error, :invalid_snapshot, state}
+      {:error, :conflict} -> {:error, :conflict, state}
+      {:error, :persistence_failed} -> {:error, :persistence_failed, state}
+      {:error, :apply_failed} -> rollback(state, prior, candidate)
     end
   end
 
-  defp rollback(state, prior) do
+  defp rollback(state, prior, candidate) do
     case persist_snapshot(state, prior) do
       :ok ->
-        case apply_snapshot(state, prior) do
-          :ok -> {:error, :apply_failed}
-          {:error, :apply_failed} -> {:error, :rollback_failed}
+        restored_state = put_runtime_snapshot(state, prior)
+
+        case apply_snapshot(state, prior.devices) do
+          :ok -> {:error, :apply_failed, restored_state}
+          {:error, :apply_failed} -> {:error, :rollback_failed, restored_state}
         end
 
       {:error, :persistence_failed} ->
-        {:error, :rollback_failed}
+        {:error, :rollback_failed, put_runtime_snapshot(state, candidate)}
     end
   end
 
-  defp persist_snapshot(state, devices) do
+  defp persist_snapshot(state, snapshot) do
     result =
       case state.persist_hook do
         hook when is_function(hook, 3) ->
-          safe_phase(fn -> hook.(state.managed_path, devices, state.persistence_opts) end)
+          safe_phase(fn -> hook.(state.managed_path, snapshot, state.persistence_opts) end)
 
         _other ->
           safe_phase(fn ->
-            Persistence.save(state.managed_path, devices, state.persistence_opts)
+            Persistence.save_state(state.managed_path, snapshot, state.persistence_opts)
           end)
       end
 
@@ -388,7 +425,6 @@ defmodule YellowDog.Netboot.Device.Registry do
   defp apply_snapshot(state, devices) do
     with :ok <- replace_snapshot(state.store, devices),
          :ok <- run_apply_hook(state.apply_hook, devices) do
-      :persistent_term.put({__MODULE__, :store}, state.store)
       :ok
     else
       _other -> {:error, :apply_failed}
@@ -397,8 +433,15 @@ defmodule YellowDog.Netboot.Device.Registry do
 
   defp replace_snapshot(store, devices) do
     safe_phase(fn ->
-      :ets.delete_all_objects(store.table)
+      existing_keys = store.table |> :ets.tab2list() |> Enum.map(&elem(&1, 0))
+      candidate_keys = MapSet.new(devices, & &1.mac)
+
       true = :ets.insert(store.table, Enum.map(devices, &{&1.mac, &1}))
+
+      Enum.each(existing_keys, fn key ->
+        if not MapSet.member?(candidate_keys, key), do: :ets.delete(store.table, key)
+      end)
+
       :ok
     end)
   end
@@ -440,7 +483,7 @@ defmodule YellowDog.Netboot.Device.Registry do
   end
 
   defp load_startup_snapshot(managed_path, legacy_path, persistence_opts) do
-    with {:ok, managed} <- Persistence.load(managed_path, persistence_opts) do
+    with {:ok, managed} <- Persistence.load_state(managed_path, persistence_opts) do
       legacy =
         case Persistence.load_legacy(legacy_path) do
           {:ok, devices} -> devices
@@ -451,22 +494,35 @@ defmodule YellowDog.Netboot.Device.Registry do
     end
   end
 
-  defp merge_legacy_fallback(managed, legacy) do
-    Enum.reduce(legacy, managed, fn device, devices ->
-      if valid_fallback?(device, devices), do: [device | devices], else: devices
-    end)
-    |> stable_snapshot()
+  defp merge_legacy_fallback(%{devices: managed, tombstones: tombstones}, legacy) do
+    devices =
+      Enum.reduce(legacy, managed, fn device, devices ->
+        if valid_fallback?(device, devices, tombstones), do: [device | devices], else: devices
+      end)
+
+    stable_state(%{devices: devices, tombstones: tombstones})
   end
 
-  defp valid_fallback?(device, devices) do
+  defp valid_fallback?(device, devices, tombstones) do
     Device.validate(device) == :ok and
+      not tombstoned?(device, tombstones) and
       not Enum.any?(devices, fn existing ->
         existing.mac == device.mac or
           (not is_nil(existing.uuid) and existing.uuid == device.uuid)
       end)
   end
 
-  defp validate_snapshot(devices) when is_list(devices) do
+  defp validate_candidate(%{devices: devices, tombstones: tombstones} = candidate)
+       when map_size(candidate) == 2 do
+    with :ok <- validate_devices(devices),
+         :ok <- validate_tombstones(tombstones) do
+      :ok
+    end
+  end
+
+  defp validate_candidate(_candidate), do: {:error, :invalid_snapshot}
+
+  defp validate_devices(devices) when is_list(devices) do
     Enum.reduce_while(devices, {:ok, MapSet.new(), MapSet.new()}, fn device, {:ok, macs, uuids} ->
       cond do
         Device.validate(device) != :ok ->
@@ -489,16 +545,90 @@ defmodule YellowDog.Netboot.Device.Registry do
     end
   end
 
-  defp validate_snapshot(_devices), do: {:error, :invalid_snapshot}
+  defp validate_devices(_devices), do: {:error, :invalid_snapshot}
 
-  defp snapshot(state) do
-    {:ok, devices} = Store.list(state.store)
-    stable_snapshot(devices)
+  defp validate_tombstones(tombstones) do
+    case Persistence.validate_state(%{devices: [], tombstones: tombstones}) do
+      :ok -> :ok
+      {:error, :invalid_snapshot} -> {:error, :invalid_snapshot}
+    end
+  end
+
+  defp snapshot(state), do: state.devices
+
+  defp state_snapshot(state) do
+    %{devices: state.devices, tombstones: state.tombstones}
   end
 
   defp stable_snapshot(devices), do: Enum.sort_by(devices, & &1.mac)
 
-  defp get_from_state(state, mac), do: Store.get(state.store, mac)
+  defp stable_state(%{devices: devices, tombstones: tombstones}) do
+    %{
+      devices: stable_snapshot(devices),
+      tombstones: Enum.sort_by(tombstones, &{&1.mac, &1.uuid || ""})
+    }
+  end
+
+  defp put_runtime_snapshot(state, snapshot) do
+    snapshot = stable_state(snapshot)
+
+    state
+    |> Map.put(:devices, snapshot.devices)
+    |> Map.put(:devices_by_mac, Map.new(snapshot.devices, &{&1.mac, &1}))
+    |> Map.put(:tombstones, snapshot.tombstones)
+  end
+
+  defp get_from_state(state, mac) do
+    case Map.fetch(state.devices_by_mac, mac) do
+      {:ok, device} -> {:ok, device}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  defp delete_by_mac(snapshot, mac) do
+    case Enum.find(snapshot.devices, &(&1.mac == mac)) do
+      nil -> snapshot
+      device -> delete_device(snapshot, device)
+    end
+  end
+
+  defp delete_device(snapshot, device) do
+    snapshot
+    |> Map.put(:devices, Enum.reject(snapshot.devices, &(&1.mac == device.mac)))
+    |> add_tombstone(device)
+  end
+
+  defp control_put_candidate(snapshot, previous, device) do
+    snapshot
+    |> Map.put(:devices, replace_by_uuid(snapshot.devices, device))
+    |> maybe_add_rekey_tombstone(previous, device)
+    |> clear_tombstones_for_mac(device.mac)
+  end
+
+  defp maybe_add_rekey_tombstone(snapshot, nil, _device), do: snapshot
+
+  defp maybe_add_rekey_tombstone(snapshot, previous, device) do
+    if previous.mac == device.mac, do: snapshot, else: add_tombstone(snapshot, previous)
+  end
+
+  defp add_tombstone(snapshot, device) do
+    tombstone = %{uuid: device.uuid, mac: device.mac}
+
+    Map.update!(snapshot, :tombstones, fn tombstones ->
+      if tombstone in tombstones, do: tombstones, else: [tombstone | tombstones]
+    end)
+  end
+
+  defp clear_tombstones_for_mac(snapshot, mac) do
+    Map.update!(snapshot, :tombstones, &Enum.reject(&1, fn tombstone -> tombstone.mac == mac end))
+  end
+
+  defp tombstoned?(device, tombstones) do
+    Enum.any?(tombstones, fn tombstone ->
+      tombstone.mac == device.mac or
+        (not is_nil(tombstone.uuid) and tombstone.uuid == device.uuid)
+    end)
+  end
 
   defp replace_by_mac(devices, device) do
     devices
@@ -544,10 +674,6 @@ defmodule YellowDog.Netboot.Device.Registry do
   end
 
   defp apply_filters(devices, [_unknown | rest]), do: apply_filters(devices, rest)
-
-  defp store_state do
-    :persistent_term.get({__MODULE__, :store})
-  end
 
   defp managed_path(opts, config) do
     Keyword.get(opts, :managed_devices_path) ||
