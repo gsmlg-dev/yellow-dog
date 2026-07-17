@@ -864,6 +864,9 @@ defmodule YellowDog.Dns.CloudDnsSync do
             restore_replacement(zone_store, zone_controller, view_name, zone_name, previous)
         end
 
+      {:error, {:rollback_failed, _replace_reason, _rollback_reason}} ->
+        {:error, :rollback_failed}
+
       {:error, _reason} ->
         {:error, :apply_failed}
 

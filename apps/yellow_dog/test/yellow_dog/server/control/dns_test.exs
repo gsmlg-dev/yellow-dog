@@ -239,20 +239,29 @@ defmodule YellowDog.Server.Control.DnsTest do
   end
 
   test "maps cloud-zone enqueue failures to stable Sync errors" do
-    for {owner_result, code} <- [
-          {{:error, :not_found}, :not_found},
-          {{:error, :conflict}, :conflict},
-          {{:error, :unsupported}, :unsupported},
-          {{:error, :apply_failed}, :apply_failed}
+    for {owner_result, code, message} <- [
+          {{:error, :invalid}, :invalid, "invalid value"},
+          {{:error, :not_found}, :not_found, "resource not found"},
+          {{:error, :conflict}, :conflict, "operation conflict"},
+          {{:error, :unsupported}, :unsupported, "unsupported operation"},
+          {{:error, :apply_failed}, :apply_failed, "apply failed"},
+          {{:error, :rollback_failed}, :rollback_failed, "rollback failed"},
+          {{:error, {:owner_failed, "credential-token"}}, :apply_failed, "apply failed"}
         ] do
       ServerDnsControlFake.configure(%{responses: %{enqueue_cloud_zone_sync: [owner_result]}})
 
-      assert {:error, %Error{code: ^code}} =
+      assert {:error, %Error{code: ^code, message: ^message, details: %{}} = error} =
                Dns.dispatch("server.dns.zones.sync", %{
                  "view_name" => "default",
                  "zone_name" => "example.test",
                  "provider_id" => "cf-main"
                })
+
+      refute inspect(error) =~ "credential-token"
+
+      assert [
+               {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
+             ] = ServerDnsControlFake.take_calls()
     end
   end
 

@@ -665,10 +665,12 @@ defmodule YellowDog.Server.Control.Dns do
   defp provider_binding(_provider_id), do: invalid_error()
 
   defp cloud_sync_enqueue_result({:ok, _job}), do: :ok
+  defp cloud_sync_enqueue_result({:error, :invalid}), do: invalid_error()
   defp cloud_sync_enqueue_result({:error, :not_found}), do: not_found_error()
   defp cloud_sync_enqueue_result({:error, :conflict}), do: conflict_error()
   defp cloud_sync_enqueue_result({:error, :unsupported}), do: unsupported_error()
   defp cloud_sync_enqueue_result({:error, :apply_failed}), do: apply_failed_error()
+  defp cloud_sync_enqueue_result({:error, :rollback_failed}), do: rollback_failed_error()
   defp cloud_sync_enqueue_result(_result), do: apply_failed_error()
 
   defp cloud_sync_result(payload, zone) do

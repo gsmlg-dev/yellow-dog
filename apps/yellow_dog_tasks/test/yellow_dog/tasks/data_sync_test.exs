@@ -211,7 +211,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
     assert [] = Tasks.recent_jobs("cloud_zone:default:#{unsupported_zone}")
   end
 
-  test "manually enqueues distinct cloud-zone jobs when its schedule is disabled" do
+  test "concurrent manual cloud-zone commands create distinct durable jobs when disabled" do
     zone_name = "cloud-manual-#{System.unique_integer([:positive])}.example.com"
     create_cloud_zone("default", zone_name, :route53)
     key = "cloud_zone:default:#{zone_name}"
@@ -228,21 +228,38 @@ defmodule YellowDog.Tasks.DataSyncTest do
       "sync" => %{key => %{"enabled" => false, "cron" => "0 * * * *", "max_attempts" => 3}}
     })
 
+    parent = self()
+
     Application.put_env(:yellow_dog_tasks, :task_starter, fn task_key, job_id ->
-      assert {:ok, %{args: %{"force" => true}}} = Store.get_job(task_key, job_id)
+      assert {:ok, %Job{id: ^job_id, args: %{"force" => true}}} =
+               Store.get_job(task_key, job_id)
+
+      send(parent, {:child_started, job_id})
       :ok
     end)
 
-    assert {:ok, first} = Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
-    assert {:ok, second} = Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+    jobs =
+      12
+      |> run_concurrently(fn ->
+        Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+      end)
+      |> Enum.map(fn
+        {:ok, %Job{} = job} -> job
+        other -> flunk("expected accepted cloud sync, got: #{inspect(other)}")
+      end)
 
-    assert first.id != second.id
+    job_ids = Enum.map(jobs, & &1.id)
 
-    assert Enum.map(Tasks.recent_jobs(key), & &1.id) |> Enum.sort() ==
-             Enum.sort([first.id, second.id])
+    assert length(Enum.uniq(job_ids)) == 12
+    assert MapSet.new(Enum.map(Tasks.recent_jobs(key), & &1.id)) == MapSet.new(job_ids)
+
+    Enum.each(job_ids, fn job_id ->
+      assert_receive {:child_started, ^job_id}
+      assert {:ok, %Job{id: ^job_id}} = Store.get_job(key, job_id)
+    end)
   end
 
-  test "deletes a cloud-zone job when child startup fails" do
+  test "child-start cleanup deletes only the new cloud-zone job" do
     zone_name = "cloud-start-failure-#{System.unique_integer([:positive])}.example.com"
     create_cloud_zone("default", zone_name, :cloudflare)
     key = "cloud_zone:default:#{zone_name}"
@@ -255,15 +272,33 @@ defmodule YellowDog.Tasks.DataSyncTest do
         enabled: true
       })
 
+    Application.put_env(:yellow_dog_tasks, :task_starter, fn _task_key, _job_id -> :ok end)
+
+    assert {:ok, existing} =
+             Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+    assert {:ok, unrelated} =
+             Store.create_job(DataSync.get_task!(:ip_city), %{"type" => "city", "force" => true})
+
+    parent = self()
+
     Application.put_env(:yellow_dog_tasks, :task_starter, fn task_key, job_id ->
-      assert {:ok, _job} = Store.get_job(task_key, job_id)
+      assert {:ok, %Job{id: ^job_id}} = Store.get_job(task_key, job_id)
+      send(parent, {:failed_child_start, task_key, job_id})
       {:error, :child_start_failed}
     end)
 
     assert {:error, :apply_failed} =
              Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
 
-    assert [] = Tasks.recent_jobs(key)
+    assert_receive {:failed_child_start, ^key, failed_id}
+    assert {:error, :not_found} = Store.get_job(key, failed_id)
+    assert {:ok, %Job{id: existing_id}} = Store.get_job(key, existing.id)
+    assert {:ok, %Job{id: unrelated_id}} = Store.get_job(:ip_city, unrelated.id)
+    assert existing_id == existing.id
+    assert unrelated_id == unrelated.id
+    assert [%Job{id: only_cloud_job_id}] = Tasks.recent_jobs(key)
+    assert only_cloud_job_id == existing.id
   end
 
   test "updates cloud zone task schedule without creating atoms" do
@@ -561,6 +596,22 @@ defmodule YellowDog.Tasks.DataSyncTest do
   end
 
   defp save_env(keys), do: Map.new(keys, &{&1, Application.get_env(:yellow_dog_tasks, &1)})
+
+  defp run_concurrently(count, fun) do
+    parent = self()
+
+    tasks =
+      for _index <- 1..count do
+        Task.async(fn ->
+          send(parent, {:ready, self()})
+          receive do: (:run -> fun.())
+        end)
+      end
+
+    Enum.each(tasks, fn %{pid: pid} -> assert_receive {:ready, ^pid} end)
+    Enum.each(tasks, fn %{pid: pid} -> send(pid, :run) end)
+    Task.await_many(tasks, 5_000)
+  end
 
   defp await_recent_job(key, state, attempts_left \\ 25)
 

@@ -22,27 +22,35 @@ defmodule YellowDog.Tasks.StoreTest do
       :ok
     end
 
-    def txn(
-          %{compare: [{:field, key, [:minute_id], op, minute_id}], success: success_ops},
-          _opts \\ []
-        ) do
-      actual_minute_id =
-        case :ets.lookup(@table, key) do
-          [{^key, %{minute_id: existing}}] -> existing
-          _other -> nil
-        end
-
-      succeeded? = compare(op, actual_minute_id, minute_id)
-
-      if succeeded? do
-        Enum.each(success_ops, &execute/1)
+    def get(key, _opts \\ []) do
+      case :ets.lookup(@table, key) do
+        [{^key, value}] -> {:ok, value}
+        [] -> {:error, :not_found}
       end
-
-      {:ok, %{succeeded: succeeded?}}
     end
 
-    defp compare(:==, left, right), do: left == right
-    defp compare(:!=, left, right), do: left != right
+    def txn(%{compare: [compare], success: success_ops}, _opts \\ []) do
+      with {:ok, succeeded?} <- compare_matches?(compare) do
+        if succeeded?, do: Enum.each(success_ops, &execute/1)
+        {:ok, %{succeeded: succeeded?}}
+      end
+    end
+
+    defp compare_matches?({:exists, key, :==, expected}) when is_boolean(expected) do
+      {:ok, :ets.member(@table, key) == expected}
+    end
+
+    defp compare_matches?({:value, key, :==, expected}) do
+      actual =
+        case :ets.lookup(@table, key) do
+          [{^key, value}] -> value
+          [] -> nil
+        end
+
+      {:ok, actual == expected}
+    end
+
+    defp compare_matches?(_compare), do: {:error, {:invalid_txn, :unsupported_compare}}
 
     defp execute({:put, key, value, %{}}), do: :ets.insert(@table, {key, value})
     defp execute({:delete, {:key, key}, %{}}), do: :ets.delete(@table, key)
@@ -212,6 +220,27 @@ defmodule YellowDog.Tasks.StoreTest do
     assert :ok = Store.reserve_schedule(:ip_city, "2026-06-29T03:30Z")
     assert {:error, :condition_failed} = Store.reserve_schedule(:ip_city, "2026-06-29T03:30Z")
     assert :ok = Store.reserve_schedule(:ip_city, "2026-06-29T03:31Z")
+  end
+
+  test "concurrent schedule reservations allow one winner per task and minute" do
+    parent = self()
+    minute_id = "2026-06-29T03:30Z"
+
+    contenders =
+      for _index <- 1..24 do
+        Task.async(fn ->
+          send(parent, {:ready, self()})
+          receive do: (:reserve -> Store.reserve_schedule(:ip_city, minute_id))
+        end)
+      end
+
+    Enum.each(contenders, fn %{pid: pid} -> assert_receive {:ready, ^pid} end)
+    Enum.each(contenders, fn %{pid: pid} -> send(pid, :reserve) end)
+
+    results = Task.await_many(contenders, 5_000)
+
+    assert Enum.count(results, &(&1 == :ok)) == 1
+    assert Enum.count(results, &(&1 == {:error, :condition_failed})) == 23
   end
 
   test "reserves and releases schedules through a txn-capable backend" do

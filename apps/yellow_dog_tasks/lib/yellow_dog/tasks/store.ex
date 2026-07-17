@@ -218,8 +218,24 @@ defmodule YellowDog.Tasks.Store do
   end
 
   defp reserve_schedule_txn(backend, key, reservation, minute_id) do
+    case backend.get(key, consistency: :leader) do
+      {:ok, %{minute_id: ^minute_id}} ->
+        {:error, :condition_failed}
+
+      {:ok, current} ->
+        commit_schedule_reservation(backend, key, reservation, {:value, key, :==, current})
+
+      {:error, :not_found} ->
+        commit_schedule_reservation(backend, key, reservation, {:exists, key, :==, false})
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp commit_schedule_reservation(backend, key, reservation, compare) do
     case backend.txn(%{
-           compare: [{:field, key, [:minute_id], :!=, minute_id}],
+           compare: [compare],
            success: [{:put, key, reservation, %{}}],
            failure: []
          }) do
@@ -250,8 +266,24 @@ defmodule YellowDog.Tasks.Store do
   end
 
   defp release_schedule_txn(backend, key, minute_id) do
+    case backend.get(key, consistency: :leader) do
+      {:ok, %{minute_id: ^minute_id} = reservation} ->
+        delete_schedule_reservation(backend, key, reservation)
+
+      {:ok, _other} ->
+        :ok
+
+      {:error, :not_found} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp delete_schedule_reservation(backend, key, reservation) do
     case backend.txn(%{
-           compare: [{:field, key, [:minute_id], :==, minute_id}],
+           compare: [{:value, key, :==, reservation}],
            success: [{:delete, {:key, key}, %{}}],
            failure: []
          }) do
