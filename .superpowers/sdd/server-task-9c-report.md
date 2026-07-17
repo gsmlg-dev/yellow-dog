@@ -76,11 +76,11 @@ details, raw errors, and process internals. Missing or restarting local owners
 produce bounded fallback values rather than leaking exit reasons. The facade
 exposes only status, connected-state, and connection-state inspection.
 
-Supervisor passes `:token` only as required Client startup input. Heartbeat,
-Status, and the public facade do not retain or project it. The merged Client
-at `1b485b43369c79a3ec84c843543c4474a71940a5` transfers the credential behind
-its dedicated opaque sensitive provider before entering Client GenServer
-state.
+Supervisor passes raw credential input only to
+`Client.prepare_credentials/1`, before OTP receives a long-lived supervisor
+argument. Heartbeat, Status, Client state, supervisor restart MFAs, and the
+public facade retain only bounded non-secret state plus the opaque credential
+reference.
 
 ## Tests
 
@@ -206,3 +206,65 @@ cannot contain the hash of the same commit that first contains that report
 without changing that commit's hash.
 
 Concerns: none.
+
+## Integrated Task 9B/9C Final Fix
+
+Date: 2026-07-18
+
+### Scrubbed Supervision Boundaries
+
+- Direct `ServerAgent.Supervisor.start_link/1` preserves raw-option
+  compatibility but validates and prepares credentials before calling OTP
+  `Supervisor.start_link/2,3`. Its callback argument contains no URL, token,
+  socket option, params map, or credential-bearing closure.
+- Direct startup claims the provider from inside the actual
+  `ServerAgent.Supervisor` process before constructing any long-lived Client
+  child spec. The Client restart MFA contains only scrubbed options, the
+  opaque capability, and the non-secret owner PID.
+- `YellowDog.ServerAgent.child_spec/1` prepares credentials before returning
+  the outer child spec. The returned start MFA is
+  `start_prepared_link/1` with scrubbed options only; invalid input returns a
+  controlled `start_invalid/0` spec with no fallback raw arguments.
+- The outer start path claims ownership from the actual outer parent
+  supervisor process. Same-owner claims are idempotent, so restarting the
+  entire YellowDog.ServerAgent child reuses the clean outer spec and the same
+  provider capability.
+- A bounded pre-start name-release wait handles the OTP race after a brutal
+  whole-agent kill, where old named grandchildren can outlive the dead inner
+  supervisor briefly. Child declaration order and `:one_for_one` isolation
+  remain unchanged.
+- Unstarted prepared specs expire after the provider claim timeout. Validation
+  and failed starts explicitly release creator-owned providers; a provider
+  claimed by a failed supervisor exits through its installed owner monitor.
+
+### Safe Facade
+
+- `YellowDog.ServerAgent.connected?/1` returns `true` only for the exact
+  successful term `true`; every other reply is `false`.
+- `YellowDog.ServerAgent.connection_state/1` allows only `:disabled`,
+  `:connecting`, `:handshaking`, `:active`, `:backoff`, and `:unavailable`.
+  Every other successful reply becomes `:unavailable`.
+- Cross-wired fake owners returning arbitrary maps and tuples prove neither
+  facade delegate can pass through an untrusted successful term.
+
+### Final Tests And Verification
+
+- Focused Client/Supervisor/facade suite: `59 tests, 0 failures`.
+- Full Server-agent suite: `248 tests, 0 failures`. Expected fail-stop
+  persistence tests emitted supervised termination logs while passing.
+- Direct and outer restart tests prove Client reconnection, same provider
+  reuse, whole-agent restart, and provider exit when the durable owner dies.
+- Recursive outer and inner supervisor-state scans inspect stored child restart
+  MFAs and reject the URL, token, socket/params keys, and all functions.
+- Exact child order, heartbeat-only default, strict partial/unknown option
+  rejection, distinct names, `:one_for_one` sibling isolation, and no socket
+  start without complete configuration remain covered.
+- `mix compile --warnings-as-errors --force`, scoped
+  `mix format --check-formatted`, `mix credo --strict`, `mix deps`,
+  `mix deps.tree --only prod`, `mix app.tree --format plain`, compile xref and
+  trace commands, forbidden-reference scans, and scoped `git diff --check`
+  passed through `devenv shell`.
+
+The final conventional commit SHA is returned in the task response because a
+tracked report cannot contain the hash of the commit that first contains the
+report without changing that hash.

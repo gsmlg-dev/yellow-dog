@@ -372,3 +372,63 @@ construction.
 - Scoped `git diff --check` and forbidden-reference scans for Client-state URL,
   caller-supplied socket URL, params closures, config environment access,
   ManagementCore, Console, raw UDP, and Concord references passed.
+
+## Integrated Credential-Retention Final Fix
+
+Date: 2026-07-18
+
+This section supersedes the earlier one-Client ownership wording. Credential
+preparation, durable ownership, and active Client use are now separate
+capability-authenticated phases.
+
+### Preparation And Durable Ownership
+
+- `Client.prepare_credentials/1` remains the only boundary that accepts or
+  materializes the raw management URL, token, Server ID, and socket module.
+  It validates the fixed endpoint, creates no socket, and returns only the
+  opaque `{provider_pid, capability_ref}`.
+- Provider bootstrap monitors its creator and starts a bounded five-second
+  claim timer. `Client.claim_credentials/1` installs the claiming owner's
+  monitor before removing the creator monitor and cancelling that timer.
+  A creator death that wins the transfer prevents the claim.
+- A repeated claim from the same owner is idempotent for outer child restart.
+  A claim from any different process is rejected even with the capability.
+- The provider remains sensitive and non-GenServer. It owns the fixed endpoint,
+  token, socket adapter, socket PID, and channel lease until the claimed owner
+  dies or explicitly releases it. Owner death stops the socket, clears
+  transport state, and erases the provider process.
+
+### Renewable Client Lease
+
+- Enabled Client options remain strict and accept only the opaque
+  `:credential_ref` plus its non-secret `:credential_owner`; raw
+  `:management_url`, `:token`, and `:socket` keys are rejected.
+- A provider allows one active Client lease for the prepared Server ID and
+  claimed owner. Concurrent and different-owner binds are rejected.
+- Client normal termination explicitly unbinds after transport cleanup.
+  Monitor-based cleanup handles killed Clients. Both paths stop/demonitor the
+  socket, demonitor and clear the channel, clear the Client lease, and keep the
+  provider alive while its owner remains alive.
+- Same-owner bind retries only the provider's explicit `:busy` result for a
+  bounded interval. This closes the OTP restart race while preserving
+  rejection of a genuinely concurrent Client.
+- A replacement Client binds the same capability, starts a new socket with the
+  provider-owned endpoint and params, and reconnects without exposing raw
+  credentials to Client state or restart options.
+
+### Integrated Verification
+
+- TDD red: the focused Client/Supervisor/facade run reported `56 tests,
+  36 failures` for the missing owner claim, renewable lease, scrubbed outer
+  start path, and facade normalization.
+- Focused final run: `59 tests, 0 failures`.
+- Full Server-agent run: `248 tests, 0 failures`.
+- Recursive Client and supervisor state/MFA tests prove the token, management
+  authority, socket option/params keys, and credential-bearing functions are
+  absent. The sensitive provider still rejects `:sys` inspection.
+- Lifecycle tests prove creator timeout/death cleanup, owner-death cleanup,
+  normal and killed Client lease cleanup, same-reference Client restart, and
+  whole-agent restart under an outer supervisor.
+- Warnings-as-errors compile, scoped format, strict Credo, dependencies,
+  production dependency tree, compile xref/trace, forbidden references, and
+  scoped `git diff --check` passed.

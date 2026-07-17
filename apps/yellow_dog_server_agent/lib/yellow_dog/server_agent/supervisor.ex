@@ -26,23 +26,24 @@ defmodule YellowDog.ServerAgent.Supervisor do
     :reconnect_initial_ms,
     :reconnect_max_ms
   ]
-  @allowed_options @durable_options ++
-                     @outbound_options ++
-                     [
-                       :name,
-                       :agent_id,
-                       :command_journal_name,
-                       :config_store_name,
-                       :config_apply_store_name,
-                       :config_applier_name,
-                       :client_name,
-                       :supervisor_name,
-                       :command_journal_opts,
-                       :config_store_opts,
-                       :config_apply_store_opts,
-                       :config_applier_opts,
-                       :client_opts
-                     ]
+  @scrubbed_outbound_options @outbound_options -- [:management_url, :management_token]
+  @common_options [
+    :name,
+    :agent_id,
+    :command_journal_name,
+    :config_store_name,
+    :config_apply_store_name,
+    :config_applier_name,
+    :client_name,
+    :supervisor_name,
+    :command_journal_opts,
+    :config_store_opts,
+    :config_apply_store_opts,
+    :config_applier_opts,
+    :client_opts
+  ]
+  @public_options @durable_options ++ @outbound_options ++ @common_options
+  @allowed_options @public_options ++ [:credential_ref, :credential_owner]
   @command_journal_options [:max_records, :clock, :directory_scanner, :storage_opts]
   @config_store_options [:max_bytes, :storage_opts]
   @config_apply_store_options [:clock, :max_bytes, :storage_opts]
@@ -64,7 +65,6 @@ defmodule YellowDog.ServerAgent.Supervisor do
   @default_client_options [
     dispatcher: Dispatcher,
     dispatcher_runtime_adapter: :"Elixir.YellowDog.Server.Control",
-    socket: Client.Socket,
     timer: Client.Timer,
     monotonic_clock: Client.MonotonicClock,
     wall_clock: Client.WallClock,
@@ -76,20 +76,124 @@ defmodule YellowDog.ServerAgent.Supervisor do
     status_interval: 30_000
   ]
   @heartbeat_only_options [:name, :agent_id, :supervisor_name]
+  @restart_cleanup_timeout 1_000
 
   def start_link(opts \\ []) do
-    with true <- is_list(opts) and Keyword.keyword?(opts),
-         {:ok, _children} <- children(opts),
+    with {:ok, prepared_opts} <- prepare_options(opts),
          {:ok, supervisor_name} <-
-           supervisor_name(Keyword.get(opts, :supervisor_name, __MODULE__)) do
-      start_supervisor(opts, supervisor_name)
+           supervisor_name(Keyword.get(prepared_opts, :supervisor_name, __MODULE__)) do
+      result =
+        if Keyword.has_key?(prepared_opts, :credential_ref) do
+          start_supervisor({:claim_credentials, prepared_opts}, supervisor_name)
+        else
+          start_supervisor(prepared_opts, supervisor_name)
+        end
+
+      cleanup_failed_start(result, prepared_opts)
     else
       _invalid -> {:error, :invalid_configuration}
     end
   end
 
+  @doc false
+  def prepare_options(opts) do
+    with true <- is_list(opts) and Keyword.keyword?(opts),
+         :ok <- validate_public_top_level(opts),
+         {:ok, _children} <- children(opts) do
+      prepare_outbound_options(opts)
+    else
+      _invalid -> {:error, :invalid_configuration}
+    end
+  end
+
+  @doc false
+  def start_prepared_link(opts, owner) when is_pid(owner) and owner == self() do
+    with true <- is_list(opts) and Keyword.keyword?(opts),
+         false <- raw_credentials?(opts),
+         prepared_opts = put_credential_owner(opts, owner),
+         :ok <- await_child_names(prepared_opts),
+         {:ok, _children} <- children(prepared_opts),
+         {:ok, supervisor_name} <-
+           supervisor_name(Keyword.get(prepared_opts, :supervisor_name, __MODULE__)) do
+      start_supervisor({:owned_credentials, prepared_opts}, supervisor_name)
+    else
+      _invalid -> {:error, :invalid_configuration}
+    end
+  end
+
+  def start_prepared_link(_opts, _owner), do: {:error, :invalid_configuration}
+
+  defp put_credential_owner(opts, owner) do
+    if Keyword.has_key?(opts, :credential_ref),
+      do: Keyword.put(opts, :credential_owner, owner),
+      else: opts
+  end
+
+  defp await_child_names(opts) do
+    deadline = System.monotonic_time(:millisecond) + @restart_cleanup_timeout
+    await_child_names(configured_child_names(opts), deadline)
+  end
+
+  defp await_child_names(names, deadline) do
+    if Enum.all?(names, &(GenServer.whereis(&1) == nil)) do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) < deadline do
+        Process.sleep(10)
+        await_child_names(names, deadline)
+      else
+        {:error, :invalid_configuration}
+      end
+    end
+  end
+
+  defp configured_child_names(opts) do
+    durable_names =
+      if Enum.all?(@durable_options, &Keyword.has_key?(opts, &1)) do
+        [
+          Keyword.get(opts, :name, Heartbeat),
+          Keyword.get(opts, :command_journal_name, CommandJournal),
+          Keyword.get(opts, :config_store_name, ConfigStore),
+          Keyword.get(opts, :config_apply_store_name, ConfigApplyStore),
+          Keyword.get(opts, :config_applier_name, ConfigApplier)
+        ]
+      else
+        [Keyword.get(opts, :name, Heartbeat)]
+      end
+
+    if Keyword.has_key?(opts, :credential_ref),
+      do: durable_names ++ [Keyword.get(opts, :client_name, Client)],
+      else: durable_names
+  end
+
   @impl Supervisor
-  def init(opts) do
+  def init({:claim_credentials, opts}) do
+    with {:ok, credential_ref} <- Keyword.fetch(opts, :credential_ref),
+         :ok <- Client.claim_credentials(credential_ref) do
+      opts
+      |> Keyword.put(:credential_owner, self())
+      |> init_children()
+    else
+      _invalid -> :ignore
+    end
+  end
+
+  def init({:owned_credentials, opts}), do: init_children(opts)
+
+  def init(opts) when is_list(opts) do
+    if Keyword.keyword?(opts) do
+      case outbound_mode(opts) do
+        {:ok, :raw} -> :ignore
+        _other -> init_children(opts)
+      end
+    else
+      :ignore
+    end
+  end
+
+  def init(_opts), do: :ignore
+
+  defp init_children(opts) do
     case children(opts) do
       {:ok, children} -> Supervisor.init(children, strategy: :one_for_one)
       {:error, :invalid_configuration} -> :ignore
@@ -154,13 +258,14 @@ defmodule YellowDog.ServerAgent.Supervisor do
   defp build_children(
          opts,
          true,
-         outbound?,
+         outbound_mode,
          journal_opts,
          store_opts,
          apply_store_opts,
          applier_opts,
          client_opts
        ) do
+    outbound? = outbound_mode != false
     journal_name = Keyword.get(opts, :command_journal_name, CommandJournal)
     store_name = Keyword.get(opts, :config_store_name, ConfigStore)
     apply_store_name = Keyword.get(opts, :config_apply_store_name, ConfigApplyStore)
@@ -182,7 +287,7 @@ defmodule YellowDog.ServerAgent.Supervisor do
          true <- not outbound? or valid_name?(client_name),
          true <- distinct_names?(child_names),
          true <- agent_id == server_id,
-         {:ok, outbound_config} <- outbound_configuration(opts, outbound?) do
+         {:ok, outbound_config} <- outbound_configuration(opts, outbound_mode) do
       shared = Keyword.take(opts, @durable_options)
       data_dir = Keyword.fetch!(shared, :data_dir)
       profile = Keyword.fetch!(shared, :profile)
@@ -272,7 +377,7 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
   defp maybe_add_client(
          children,
-         outbound,
+         %{credential_ref: credential_ref, credential_owner: credential_owner} = outbound,
          client_opts,
          client_name,
          journal_name,
@@ -285,8 +390,8 @@ defmodule YellowDog.ServerAgent.Supervisor do
       |> Keyword.merge(
         enabled: true,
         name: client_name,
-        management_url: outbound.management_url,
-        token: outbound.token,
+        credential_ref: credential_ref,
+        credential_owner: credential_owner,
         identity: outbound.identity,
         command_journal: journal_name,
         config_applier: applier_name,
@@ -298,10 +403,33 @@ defmodule YellowDog.ServerAgent.Supervisor do
     children ++ [child_spec(:client, Client, client_opts)]
   end
 
+  defp maybe_add_client(
+         children,
+         %{mode: :raw},
+         _client_opts,
+         client_name,
+         _journal_name,
+         _apply_store_name,
+         _applier_name
+       ) do
+    children ++ [child_spec(:client, Client, enabled: false, name: client_name)]
+  end
+
   defp validate_top_level(opts) do
     keys = Keyword.keys(opts)
 
     if Enum.all?(keys, &(&1 in @allowed_options)) and
+         length(keys) == length(Enum.uniq(keys)) do
+      :ok
+    else
+      {:error, :invalid_configuration}
+    end
+  end
+
+  defp validate_public_top_level(opts) do
+    keys = Keyword.keys(opts)
+
+    if Enum.all?(keys, &(&1 in @public_options)) and
          length(keys) == length(Enum.uniq(keys)) do
       :ok
     else
@@ -324,30 +452,41 @@ defmodule YellowDog.ServerAgent.Supervisor do
   end
 
   defp outbound_mode(opts) do
-    present = Enum.count(@outbound_options, &Keyword.has_key?(opts, &1))
+    raw_present = Enum.count(@outbound_options, &Keyword.has_key?(opts, &1))
+    scrubbed_present = Enum.count(@scrubbed_outbound_options, &Keyword.has_key?(opts, &1))
+    credential_ref? = Keyword.has_key?(opts, :credential_ref)
+    credential_owner? = Keyword.has_key?(opts, :credential_owner)
     client_opts = Keyword.get(opts, :client_opts, [])
 
     cond do
-      present == 0 and client_opts == [] -> {:ok, false}
-      present == length(@outbound_options) -> {:ok, true}
-      true -> {:error, :invalid_configuration}
+      raw_present == 0 and not credential_ref? and not credential_owner? and client_opts == [] ->
+        {:ok, false}
+
+      raw_present == length(@outbound_options) and not credential_ref? and
+          not credential_owner? ->
+        {:ok, :raw}
+
+      raw_present == scrubbed_present and
+        scrubbed_present == length(@scrubbed_outbound_options) and credential_ref? and
+          credential_owner? ->
+        {:ok, :prepared}
+
+      true ->
+        {:error, :invalid_configuration}
     end
   end
 
   defp outbound_configuration(_opts, false), do: {:ok, nil}
 
-  defp outbound_configuration(opts, true) do
+  defp outbound_configuration(opts, :raw) do
     with {:ok, identity} <- server_identity(opts),
-         {:ok, management_url} <- nonempty_message(Keyword.fetch!(opts, :management_url)),
-         {:ok, token} <- nonempty_message(Keyword.fetch!(opts, :management_token)),
          initial when is_integer(initial) and initial > 0 <-
            Keyword.fetch!(opts, :reconnect_initial_ms),
          maximum when is_integer(maximum) and maximum >= initial <-
            Keyword.fetch!(opts, :reconnect_max_ms) do
       {:ok,
        %{
-         management_url: management_url,
-         token: token,
+         mode: :raw,
          identity: identity,
          initial_backoff: initial,
          max_backoff: maximum
@@ -356,6 +495,98 @@ defmodule YellowDog.ServerAgent.Supervisor do
       _invalid -> {:error, :invalid_configuration}
     end
   end
+
+  defp outbound_configuration(opts, :prepared) do
+    with {:ok, identity} <- server_identity(opts),
+         {:ok, credential_ref} <- credential_ref(Keyword.fetch!(opts, :credential_ref)),
+         credential_owner when is_pid(credential_owner) <-
+           Keyword.fetch!(opts, :credential_owner),
+         {:ok, _client_opts} <-
+           child_options(
+             Keyword.get(opts, :client_opts, []),
+             @client_options -- [:socket]
+           ),
+         initial when is_integer(initial) and initial > 0 <-
+           Keyword.fetch!(opts, :reconnect_initial_ms),
+         maximum when is_integer(maximum) and maximum >= initial <-
+           Keyword.fetch!(opts, :reconnect_max_ms) do
+      {:ok,
+       %{
+         credential_ref: credential_ref,
+         credential_owner: credential_owner,
+         identity: identity,
+         initial_backoff: initial,
+         max_backoff: maximum
+       }}
+    else
+      _invalid -> {:error, :invalid_configuration}
+    end
+  end
+
+  defp prepare_outbound_options(opts) do
+    case outbound_mode(opts) do
+      {:ok, false} ->
+        {:ok, opts}
+
+      {:ok, :raw} ->
+        client_opts = Keyword.get(opts, :client_opts, [])
+        socket = Keyword.get(client_opts, :socket, Client.Socket)
+
+        credential_opts = [
+          management_url: Keyword.fetch!(opts, :management_url),
+          token: Keyword.fetch!(opts, :management_token),
+          server_id: Keyword.fetch!(opts, :server_id),
+          socket: socket
+        ]
+
+        case Client.prepare_credentials(credential_opts) do
+          {:ok, credential_ref} ->
+            prepared_opts =
+              opts
+              |> Keyword.delete(:management_url)
+              |> Keyword.delete(:management_token)
+              |> Keyword.update(:client_opts, [], &Keyword.delete(&1, :socket))
+              |> Keyword.put(:credential_ref, credential_ref)
+
+            {:ok, prepared_opts}
+
+          {:error, :invalid_options} ->
+            {:error, :invalid_configuration}
+        end
+
+      _invalid ->
+        {:error, :invalid_configuration}
+    end
+  end
+
+  defp cleanup_failed_start({:ok, _supervisor} = result, _opts), do: result
+
+  defp cleanup_failed_start(result, opts) do
+    case Keyword.fetch(opts, :credential_ref) do
+      {:ok, credential_ref} -> Client.release_credentials(credential_ref)
+      :error -> :ok
+    end
+
+    case result do
+      :ignore -> {:error, :invalid_configuration}
+      other -> other
+    end
+  end
+
+  defp raw_credentials?(opts) do
+    Keyword.has_key?(opts, :management_url) or
+      Keyword.has_key?(opts, :management_token) or
+      opts
+      |> Keyword.get(:client_opts, [])
+      |> Keyword.has_key?(:socket)
+  end
+
+  defp credential_ref({provider, capability} = credential_ref)
+       when is_pid(provider) and is_reference(capability) do
+    if Process.alive?(provider), do: {:ok, credential_ref}, else: :error
+  end
+
+  defp credential_ref(_value), do: :error
 
   defp server_identity(opts) do
     with {:ok, server_id} <- server_id(Keyword.fetch!(opts, :server_id)),

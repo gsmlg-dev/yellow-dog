@@ -34,6 +34,7 @@ defmodule YellowDog.ServerAgent.Client do
     :enabled,
     :name,
     :credential_ref,
+    :credential_owner,
     :identity,
     :dispatcher,
     :dispatcher_runtime_adapter,
@@ -90,6 +91,14 @@ defmodule YellowDog.ServerAgent.Client do
     end
   end
 
+  @spec claim_credentials(credential_ref()) :: :ok | :error
+  def claim_credentials(credential_ref) do
+    case CredentialProvider.claim(credential_ref) do
+      :ok -> :ok
+      _error -> :error
+    end
+  end
+
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) when is_list(opts) do
     with {:ok, config, name} <- validate_options(opts) do
@@ -140,7 +149,13 @@ defmodule YellowDog.ServerAgent.Client do
   def init(config) do
     Process.flag(:trap_exit, true)
 
-    with :ok <- CredentialProvider.bind(config.credential_ref, self(), config.identity.id) do
+    with :ok <-
+           CredentialProvider.bind(
+             config.credential_ref,
+             self(),
+             config.identity.id,
+             config.credential_owner
+           ) do
       {:ok,
        %{
          enabled: true,
@@ -299,7 +314,13 @@ defmodule YellowDog.ServerAgent.Client do
   @impl true
   def terminate(_reason, %{enabled: true} = state) do
     _state = cleanup_connection(state)
-    CredentialProvider.destroy(state.config.credential_ref)
+
+    CredentialProvider.unbind(
+      state.config.credential_ref,
+      self(),
+      state.config.credential_owner
+    )
+
     :ok
   end
 
@@ -841,6 +862,7 @@ defmodule YellowDog.ServerAgent.Client do
     with true <- Enum.all?(keys, &(&1 in @enabled_options)),
          true <- Enum.all?(@required_enabled_options, &Keyword.has_key?(opts, &1)),
          {:ok, credential_ref} <- credential_ref(Keyword.get(opts, :credential_ref)),
+         {:ok, credential_owner} <- pid(Keyword.get(opts, :credential_owner)),
          {:ok, identity} <- identity(Keyword.get(opts, :identity)),
          {:ok, dispatcher} <-
            callback_module(Keyword.get(opts, :dispatcher), dispatch: 2),
@@ -859,6 +881,7 @@ defmodule YellowDog.ServerAgent.Client do
         Map.merge(timings, %{
           enabled: true,
           credential_ref: credential_ref,
+          credential_owner: credential_owner,
           identity: identity,
           dispatcher: dispatcher,
           dispatcher_runtime_adapter: dispatcher_runtime_adapter,
@@ -979,6 +1002,9 @@ defmodule YellowDog.ServerAgent.Client do
   end
 
   defp credential_ref(_value), do: :error
+
+  defp pid(value) when is_pid(value), do: {:ok, value}
+  defp pid(_value), do: :error
 
   defp identity(%Server{} = identity) do
     message = %Hello{identity: identity}
@@ -1115,18 +1141,31 @@ defmodule YellowDog.ServerAgent.Client do
         creator_ref: creator_ref,
         claim_timer:
           Process.send_after(self(), {:credential_claim_timeout, capability}, @claim_timeout),
+        owner: nil,
+        owner_ref: nil,
         client: nil,
         client_ref: nil,
         socket: nil,
         socket_ref: nil,
-        channel: nil
+        channel: nil,
+        channel_ref: nil
       })
     end
 
-    def bind(credential_ref, client, server_id) when is_pid(client),
-      do: call(credential_ref, {:bind, client, server_id}, @bind_timeout)
+    def claim(credential_ref),
+      do: call(credential_ref, :claim, @bind_timeout)
 
-    def bind(_credential_ref, _client, _server_id), do: :error
+    def bind(credential_ref, client, server_id, owner) when is_pid(client) and is_pid(owner) do
+      deadline = System.monotonic_time(:millisecond) + @bind_timeout
+      bind_until(credential_ref, client, server_id, owner, deadline)
+    end
+
+    def bind(_credential_ref, _client, _server_id, _owner), do: :error
+
+    def unbind(credential_ref, client, owner) when is_pid(client) and is_pid(owner),
+      do: call(credential_ref, {:unbind, client, owner}, @bind_timeout)
+
+    def unbind(_credential_ref, _client, _owner), do: :error
 
     def release(credential_ref),
       do: call(credential_ref, :release, @call_timeout)
@@ -1158,9 +1197,6 @@ defmodule YellowDog.ServerAgent.Client do
     def stop(credential_ref),
       do: call(credential_ref, :stop_socket, @call_timeout)
 
-    def destroy(credential_ref),
-      do: call(credential_ref, :destroy, @call_timeout)
-
     def monitor({owner, capability}) when is_pid(owner) and is_reference(capability),
       do: Process.monitor(owner)
 
@@ -1184,24 +1220,47 @@ defmodule YellowDog.ServerAgent.Client do
 
     defp loop(state) do
       receive do
-        {__MODULE__, caller, capability, ref, {:bind, client, server_id}}
-        when capability == state.capability and caller == client and
-               server_id == state.server_id and state.client_ref == nil ->
-          case bind_client(state, client) do
+        {__MODULE__, caller, capability, ref, :claim}
+        when capability == state.capability ->
+          case claim_owner(state, caller) do
             {:ok, state} ->
               reply(caller, capability, ref, :ok)
               loop(state)
 
             :error ->
               reply(caller, capability, ref, :error)
-              _state = stop_socket(state)
-              :ok
+              loop(state)
           end
 
-        {__MODULE__, caller, capability, ref, {:bind, client, _wrong_server_id}}
-        when capability == state.capability and caller == client and state.client_ref == nil ->
-          reply(caller, capability, ref, :error)
-          loop(state)
+        {__MODULE__, caller, capability, ref, {:bind, client, server_id, owner}}
+        when capability == state.capability and caller == client ->
+          state = clear_dead_client(state)
+
+          case bind_client(state, client, server_id, owner) do
+            {:ok, state} ->
+              reply(caller, capability, ref, :ok)
+              loop(state)
+
+            :busy ->
+              reply(caller, capability, ref, :busy)
+              loop(state)
+
+            :error ->
+              reply(caller, capability, ref, :error)
+              loop(state)
+          end
+
+        {__MODULE__, caller, capability, ref, {:unbind, client, owner}}
+        when capability == state.capability and caller == client ->
+          case unbind_client(state, client, owner) do
+            {:ok, state} ->
+              reply(caller, capability, ref, :ok)
+              loop(state)
+
+            :error ->
+              reply(caller, capability, ref, :error)
+              loop(state)
+          end
 
         {__MODULE__, caller, capability, ref, :start_socket}
         when capability == state.capability and caller == state.client ->
@@ -1237,42 +1296,51 @@ defmodule YellowDog.ServerAgent.Client do
           reply(caller, capability, ref, :ok)
           loop(state)
 
-        {__MODULE__, caller, capability, ref, :destroy}
-        when capability == state.capability and
-               (caller == state.client or (state.client == nil and caller == state.creator)) ->
-          _state = stop_socket(state)
-          reply(caller, capability, ref, :ok)
-          :ok
-
         {__MODULE__, caller, capability, ref, :release}
-        when capability == state.capability and state.client == nil and caller == state.creator ->
+        when capability == state.capability and
+               ((state.owner == nil and caller == state.creator) or caller == state.owner) ->
           _state = stop_socket(state)
           reply(caller, capability, ref, :ok)
           :ok
 
-        {__MODULE__, _caller, _capability, _ref, _unauthorized_request} ->
+        {__MODULE__, caller, capability, ref, _invalid_request}
+        when capability == state.capability ->
+          reply(caller, capability, ref, :error)
+          loop(state)
+
+        {__MODULE__, _caller, _invalid_capability, _ref, _unauthorized_request} ->
           loop(state)
 
         {:credential_claim_timeout, capability}
-        when capability == state.capability and state.client == nil ->
+        when capability == state.capability and state.owner == nil ->
           _state = stop_socket(state)
           :ok
 
         {:DOWN, ref, :process, _pid, _reason}
-        when ref == state.creator_ref and state.client == nil ->
+        when ref == state.creator_ref and state.owner == nil ->
+          _state = stop_socket(state)
+          :ok
+
+        {:DOWN, ref, :process, _pid, _reason} when ref == state.owner_ref ->
           _state = stop_socket(state)
           :ok
 
         {:DOWN, ref, :process, _pid, _reason} when ref == state.client_ref ->
-          _state = stop_socket(state)
-          :ok
+          state
+          |> clear_client()
+          |> loop()
 
         {:DOWN, ref, :process, _pid, _reason} when ref == state.socket_ref ->
           if is_pid(state.client) do
             send(state.client, {:credential_socket_down, credential_ref(state)})
           end
 
-          loop(%{state | socket: nil, socket_ref: nil, channel: nil})
+          state
+          |> clear_transport_state()
+          |> loop()
+
+        {:DOWN, ref, :process, _pid, _reason} when ref == state.channel_ref ->
+          loop(%{state | channel: nil, channel_ref: nil})
 
         {:EXIT, _pid, _reason} ->
           loop(state)
@@ -1286,8 +1354,10 @@ defmodule YellowDog.ServerAgent.Client do
       end
     end
 
-    defp bind_client(%{client_ref: nil} = state, client) do
-      client_ref = Process.monitor(client)
+    defp claim_owner(%{owner: owner} = state, owner), do: {:ok, state}
+
+    defp claim_owner(%{owner: nil} = state, owner) when is_pid(owner) do
+      owner_ref = Process.monitor(owner)
 
       if Process.alive?(state.creator) and
            Process.demonitor(state.creator_ref, [:flush, :info]) do
@@ -1299,20 +1369,74 @@ defmodule YellowDog.ServerAgent.Client do
            | creator: nil,
              creator_ref: nil,
              claim_timer: nil,
-             client: client,
-             client_ref: client_ref
+             owner: owner,
+             owner_ref: owner_ref
          }}
       else
-        Process.demonitor(client_ref, [:flush])
+        Process.demonitor(owner_ref, [:flush])
         :error
       end
     end
 
-    defp cancel_claim_timer(nil), do: :ok
+    defp claim_owner(_state, _owner), do: :error
 
-    defp cancel_claim_timer(timer) do
-      _result = Process.cancel_timer(timer)
-      :ok
+    defp bind_client(
+           %{owner: owner, client: nil} = state,
+           client,
+           server_id,
+           owner
+         )
+         when server_id == state.server_id do
+      if Process.alive?(owner) and Process.alive?(client) do
+        {:ok, %{state | client: client, client_ref: Process.monitor(client)}}
+      else
+        :error
+      end
+    end
+
+    defp bind_client(
+           %{owner: owner, client: client} = state,
+           _new_client,
+           server_id,
+           owner
+         )
+         when is_pid(client) and server_id == state.server_id,
+         do: :busy
+
+    defp bind_client(_state, _client, _server_id, _owner), do: :error
+
+    defp bind_until(credential_ref, client, server_id, owner, deadline) do
+      case call(credential_ref, {:bind, client, server_id, owner}, @bind_timeout) do
+        :busy ->
+          if System.monotonic_time(:millisecond) < deadline do
+            Process.sleep(10)
+            bind_until(credential_ref, client, server_id, owner, deadline)
+          else
+            :error
+          end
+
+        result ->
+          result
+      end
+    end
+
+    defp unbind_client(%{owner: owner, client: client} = state, client, owner),
+      do: {:ok, clear_client(state)}
+
+    defp unbind_client(_state, _client, _owner), do: :error
+
+    defp clear_dead_client(%{client: client} = state) when is_pid(client) do
+      if Process.alive?(client), do: state, else: clear_client(state)
+    end
+
+    defp clear_dead_client(state), do: state
+
+    defp clear_client(state) do
+      demonitor(state.client_ref)
+
+      state
+      |> stop_socket()
+      |> Map.merge(%{client: nil, client_ref: nil})
     end
 
     defp start_socket(state) do
@@ -1350,7 +1474,8 @@ defmodule YellowDog.ServerAgent.Client do
       case invoke(adapter, :join, [socket, topic, params, timeout]) do
         {:ok, _reply, channel} when is_pid(channel) ->
           Process.unlink(channel)
-          {{:ok, %{}, channel}, %{state | channel: channel}}
+          channel_ref = Process.monitor(channel)
+          {{:ok, %{}, channel}, %{state | channel: channel, channel_ref: channel_ref}}
 
         _error ->
           {{:error, :transport}, state}
@@ -1376,12 +1501,35 @@ defmodule YellowDog.ServerAgent.Client do
     defp socket_push(_state, _channel, _event, _payload, _timeout),
       do: {:error, :transport}
 
-    defp stop_socket(%{socket: nil} = state), do: %{state | channel: nil}
+    defp stop_socket(%{socket: nil} = state) do
+      demonitor(state.channel_ref)
+      %{state | channel: nil, channel_ref: nil}
+    end
 
     defp stop_socket(state) do
-      Process.demonitor(state.socket_ref, [:flush])
+      demonitor(state.socket_ref)
+      demonitor(state.channel_ref)
       _result = invoke(state.socket_adapter, :stop, [state.socket])
-      %{state | socket: nil, socket_ref: nil, channel: nil}
+      clear_transport_state(state)
+    end
+
+    defp clear_transport_state(state) do
+      demonitor(state.channel_ref)
+      %{state | socket: nil, socket_ref: nil, channel: nil, channel_ref: nil}
+    end
+
+    defp demonitor(nil), do: :ok
+
+    defp demonitor(ref) do
+      Process.demonitor(ref, [:flush])
+      :ok
+    end
+
+    defp cancel_claim_timer(nil), do: :ok
+
+    defp cancel_claim_timer(timer) do
+      _result = Process.cancel_timer(timer)
+      :ok
     end
 
     defp forward_socket_message(

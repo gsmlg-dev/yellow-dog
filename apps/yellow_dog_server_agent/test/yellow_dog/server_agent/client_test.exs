@@ -35,6 +35,7 @@ defmodule YellowDog.ServerAgent.ClientTest do
   @required_enabled_keys [
     :enabled,
     :credential_ref,
+    :credential_owner,
     :identity,
     :dispatcher,
     :dispatcher_runtime_adapter,
@@ -236,7 +237,7 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
   test "enabled mode rejects legacy raw credential options" do
     {:ok, owner} = Owner.start_link(self())
-    credential_ref = prepare_credentials!()
+    credential_ref = prepare_owned_credentials!()
 
     legacy_options = [
       management_url: "https://management.example.test:4443/base",
@@ -295,7 +296,7 @@ defmodule YellowDog.ServerAgent.ClientTest do
     ]
 
     for {management_url, expected_url} <- cases do
-      credential_ref = prepare_credentials!(management_url: management_url)
+      credential_ref = prepare_owned_credentials!(management_url: management_url)
 
       assert {:ok, client} =
                owner
@@ -343,12 +344,13 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
   test "Client child spec and restart options retain only the opaque credential reference" do
     {:ok, owner} = Owner.start_link(self())
-    credential_ref = prepare_credentials!()
+    credential_ref = prepare_owned_credentials!()
     opts = base_opts(owner, credential_ref)
     child_spec = Client.child_spec(opts)
 
     assert {Client, :start_link, [restart_opts]} = child_spec.start
     assert restart_opts[:credential_ref] == credential_ref
+    assert restart_opts[:credential_owner] == self()
     assert opaque_credential_ref?(restart_opts[:credential_ref])
     refute Keyword.has_key?(restart_opts, :management_url)
     refute Keyword.has_key?(restart_opts, :token)
@@ -360,7 +362,7 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
   test "prepared credentials bind only to the matching Server identity" do
     {:ok, owner} = Owner.start_link(self())
-    credential_ref = prepare_credentials!(server_id: "server-west-1")
+    credential_ref = prepare_owned_credentials!(server_id: "server-west-1")
 
     assert {:error, :invalid_options} =
              owner
@@ -828,6 +830,26 @@ defmodule YellowDog.ServerAgent.ClientTest do
     refute_receive {:socket_start, _opts}
   end
 
+  test "credential provider exits and clears its socket when the claimed owner dies" do
+    parent = self()
+
+    owner =
+      spawn(fn ->
+        credential_ref = prepare_credentials!()
+        :ok = Client.claim_credentials(credential_ref)
+        send(parent, {:claimed_credentials, credential_ref})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:claimed_credentials, credential_ref}
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    Process.exit(owner, :kill)
+
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+    refute_receive {:socket_start, _opts}
+  end
+
   test "credential preparation can be released safely before Client construction" do
     credential_ref = prepare_credentials!()
     provider_monitor = Process.monitor(provider_pid(credential_ref))
@@ -852,7 +874,9 @@ defmodule YellowDog.ServerAgent.ClientTest do
     provider_monitor = Process.monitor(provider_pid(credential_ref))
     invalid_ref = replace_capability(credential_ref)
 
-    assert :error = Client.CredentialProvider.bind(invalid_ref, self(), @server_id)
+    assert :error =
+             Client.CredentialProvider.bind(invalid_ref, self(), @server_id, self())
+
     assert Process.alive?(provider_pid(credential_ref))
 
     Process.exit(creator, :kill)
@@ -860,12 +884,11 @@ defmodule YellowDog.ServerAgent.ClientTest do
     assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
   end
 
-  test "failed socket start is cleaned up when the bound Client dies" do
+  test "failed socket start is cleared while the claimed owner remains alive" do
     ClientFakeSocket.set_starts([{:error, :authentication_failed}])
     {:ok, owner} = Owner.start_link(self())
     {:ok, client} = start_client(owner)
     credential_ref = :sys.get_state(client).config.credential_ref
-    provider_monitor = Process.monitor(provider_pid(credential_ref))
 
     assert_receive {:socket_start,
                     [
@@ -877,40 +900,86 @@ defmodule YellowDog.ServerAgent.ClientTest do
     Process.unlink(client)
     Process.exit(client, :kill)
 
-    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+    assert Process.alive?(provider_pid(credential_ref))
     refute_receive {:socket_stop, _socket}
   end
 
-  test "Client startup failure leaves its unbound credential provider to expire" do
+  test "Client startup failure leaves claimed credentials reusable by the same owner" do
     name = unique_name()
     {:ok, blocker} = Agent.start_link(fn -> :blocked end, name: name)
     {:ok, owner} = Owner.start_link(self())
-    credential_ref = prepare_credentials!()
-    provider_monitor = Process.monitor(provider_pid(credential_ref))
+    credential_ref = prepare_owned_credentials!()
 
     assert {:error, {:already_started, ^blocker}} =
              start_client(owner, name: name, credential_ref: credential_ref)
 
-    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}, 5_500
-    refute_receive {:socket_start, _opts}
+    Agent.stop(blocker)
+
+    assert {:ok, client} =
+             start_client(owner, name: name, credential_ref: credential_ref)
+
+    assert_receive {:socket_start, _opts}
+    assert :sys.get_state(client).config.credential_ref == credential_ref
   end
 
-  test "bound Client death stops its socket and credential provider" do
+  test "bound Client death clears the lease and permits a replacement Client" do
     {:ok, owner} = Owner.start_link(self())
     {:ok, client} = start_client(owner)
     assert_receive {:socket_join, socket, _topic, %{}, 400}
     credential_ref = :sys.get_state(client).config.credential_ref
-    provider_monitor = Process.monitor(provider_pid(credential_ref))
 
     Process.unlink(client)
     Process.exit(client, :kill)
 
     assert_receive {:socket_stop, ^socket}
-    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+    assert Process.alive?(provider_pid(credential_ref))
+
+    assert {:ok, replacement} = start_client(owner, credential_ref: credential_ref)
+    assert_receive {:socket_start, _opts}
+    assert :sys.get_state(replacement).config.credential_ref == credential_ref
+  end
+
+  test "normal Client termination clears the lease without releasing its owner" do
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    assert_receive {:socket_join, socket, _topic, %{}, 400}
+    credential_ref = :sys.get_state(client).config.credential_ref
+
+    GenServer.stop(client, :normal)
+
+    assert_receive {:socket_stop, ^socket}
+    assert Process.alive?(provider_pid(credential_ref))
+
+    assert {:ok, replacement} = start_client(owner, credential_ref: credential_ref)
+    assert_receive {:socket_start, _opts}
+    assert :sys.get_state(replacement).config.credential_ref == credential_ref
+  end
+
+  test "credential provider rejects concurrent and different-owner Client leases" do
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    credential_ref = :sys.get_state(client).config.credential_ref
+    other_owner = spawn(fn -> Process.sleep(:infinity) end)
+
+    assert :error =
+             Client.CredentialProvider.bind(
+               credential_ref,
+               self(),
+               @server_id,
+               other_owner
+             )
+
+    assert {:error, :invalid_options} =
+             owner
+             |> base_opts(credential_ref)
+             |> Client.start_link()
+
+    Process.exit(other_owner, :kill)
   end
 
   defp start_client(owner, overrides \\ []) do
-    credential_ref = Keyword.get_lazy(overrides, :credential_ref, &prepare_credentials!/0)
+    credential_ref =
+      Keyword.get_lazy(overrides, :credential_ref, &prepare_owned_credentials!/0)
 
     owner
     |> base_opts(credential_ref)
@@ -918,11 +987,12 @@ defmodule YellowDog.ServerAgent.ClientTest do
     |> Client.start_link()
   end
 
-  defp base_opts(owner, credential_ref \\ prepare_credentials!()) do
+  defp base_opts(owner, credential_ref \\ prepare_owned_credentials!()) do
     [
       enabled: true,
       name: nil,
       credential_ref: credential_ref,
+      credential_owner: self(),
       identity: identity(),
       dispatcher: Dispatcher,
       dispatcher_runtime_adapter: Dispatcher,
@@ -1140,6 +1210,12 @@ defmodule YellowDog.ServerAgent.ClientTest do
              |> credential_opts()
              |> Client.prepare_credentials()
 
+    credential_ref
+  end
+
+  defp prepare_owned_credentials!(overrides \\ []) do
+    credential_ref = prepare_credentials!(overrides)
+    assert :ok = Client.claim_credentials(credential_ref)
     credential_ref
   end
 

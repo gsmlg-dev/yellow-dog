@@ -19,6 +19,19 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
   alias YellowDog.ServerAgent.Supervisor, as: ServerAgentSupervisor
   alias YellowDog.Sync.Identity.Server
 
+  defmodule OuterSupervisor do
+    @moduledoc false
+
+    use Supervisor
+
+    def start_link(child_spec, name) do
+      Supervisor.start_link(__MODULE__, child_spec, name: name)
+    end
+
+    @impl true
+    def init(child_spec), do: Supervisor.init([child_spec], strategy: :one_for_one)
+  end
+
   @server_id "server-east-1"
   @profile "dns_only"
   @capabilities ["runtime.services"]
@@ -168,6 +181,20 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
              ServerAgentSupervisor.start_link(outbound ++ [management_token: @token])
   end
 
+  test "invalid outer child specs use a credential-free controlled error start" do
+    child_spec =
+      YellowDog.ServerAgent.child_spec(
+        management_url: "https://management.example.test",
+        management_token: @token
+      )
+
+    assert {YellowDog.ServerAgent, :start_invalid, []} = child_spec.start
+    refute contains_secret?(child_spec, @token)
+    refute contains_secret?(child_spec, "management.example.test")
+    refute contains_raw_credential_key?(child_spec)
+    refute contains_function?(child_spec)
+  end
+
   test "complete durable configuration starts exact ordered local children without Client", %{
     data_dir: data_dir
   } do
@@ -214,19 +241,19 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
       |> Keyword.merge(outbound_opts())
 
     supervisor = start_supervisor(opts)
-    assert {:ok, {_flags, child_specs}} = ServerAgentSupervisor.init(opts)
 
-    assert Enum.map(child_specs, & &1.id) == [
-             :heartbeat,
-             :command_journal,
-             :config_store,
-             :config_apply_store,
-             :config_applier,
-             :client
-           ]
+    assert supervisor |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.reverse() ==
+             [
+               :heartbeat,
+               :command_journal,
+               :config_store,
+               :config_apply_store,
+               :config_applier,
+               :client
+             ]
 
-    client_spec = List.last(child_specs)
-    {Client, :start_link, [client_opts]} = client_spec.start
+    supervisor_state = :sys.get_state(supervisor)
+    assert [{Client, :start_link, [client_opts]}] = start_mfas(supervisor_state, Client)
 
     assert %Server{
              id: @server_id,
@@ -244,20 +271,21 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     assert client_opts[:max_backoff] == 1_000
     assert client_opts[:dispatcher] == Dispatcher
     assert client_opts[:dispatcher_runtime_adapter] == :"Elixir.YellowDog.Server.Control"
+    assert client_opts[:credential_owner] == supervisor
+    assert opaque_credential_ref?(client_opts[:credential_ref])
 
     assert Enum.sort(Keyword.keys(client_opts)) ==
              Enum.sort([
                :enabled,
                :name,
-               :management_url,
-               :token,
+               :credential_ref,
+               :credential_owner,
                :identity,
                :dispatcher,
                :dispatcher_runtime_adapter,
                :command_journal,
                :config_applier,
                :config_apply_store,
-               :socket,
                :timer,
                :monotonic_clock,
                :wall_clock,
@@ -271,6 +299,10 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
                :max_backoff
              ])
 
+    refute contains_secret?(supervisor_state, @token)
+    refute contains_secret?(supervisor_state, "management.example.test")
+    refute contains_raw_credential_key?(supervisor_state)
+    refute contains_function?(supervisor_state)
     assert Process.whereis(names.client)
     assert Process.alive?(supervisor)
     assert_receive {:socket_start, _opts}
@@ -459,17 +491,79 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     config_apply_store = Process.whereis(names.config_apply_store)
     config_applier = Process.whereis(names.config_applier)
     client = Process.whereis(names.client)
+    credential_ref = :sys.get_state(client).config.credential_ref
+    provider = provider_pid(credential_ref)
+    assert_receive {:socket_start, _opts}
 
     Process.exit(client, :kill)
     restarted_client = wait_for_restart(names.client, client)
 
+    assert_receive {:socket_stop, _socket}
+    assert_receive {:socket_start, _opts}
     assert Process.alive?(supervisor)
+    assert Process.alive?(provider)
     assert restarted_client != client
+    assert :sys.get_state(restarted_client).config.credential_ref == credential_ref
     assert Process.whereis(names.heartbeat) == heartbeat
     assert Process.whereis(names.command_journal) == journal
     assert Process.whereis(names.config_store) == config_store
     assert Process.whereis(names.config_apply_store) == config_apply_store
     assert Process.whereis(names.config_applier) == config_applier
+  end
+
+  test "outer ServerAgent child spec is scrubbed and survives whole-agent restart", %{
+    data_dir: data_dir
+  } do
+    names = names()
+    outer_name = unique_name(:outer_supervisor)
+
+    raw_opts =
+      data_dir
+      |> complete_opts(names)
+      |> Keyword.merge(outbound_opts())
+
+    child_spec = YellowDog.ServerAgent.child_spec(raw_opts)
+
+    assert {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]} = child_spec.start
+    refute contains_secret?(prepared_opts, @token)
+    refute contains_secret?(prepared_opts, "management.example.test")
+    refute contains_raw_credential_key?(prepared_opts)
+    refute contains_function?(prepared_opts)
+
+    {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
+    Process.unlink(outer)
+
+    on_exit(fn ->
+      if Process.alive?(outer), do: Supervisor.stop(outer)
+    end)
+
+    agent = child_pid(outer, YellowDog.ServerAgent)
+    client = wait_for_pid(names.client)
+    credential_ref = :sys.get_state(client).config.credential_ref
+    provider = provider_pid(credential_ref)
+    outer_state = :sys.get_state(outer)
+    inner_state = :sys.get_state(agent)
+
+    for state <- [outer_state, inner_state] do
+      refute contains_secret?(state, @token)
+      refute contains_secret?(state, "management.example.test")
+      refute contains_raw_credential_key?(state)
+      refute contains_function?(state)
+    end
+
+    Process.exit(agent, :kill)
+    restarted_agent = wait_for_child_restart(outer, YellowDog.ServerAgent, agent)
+    restarted_client = wait_for_restart(names.client, client)
+
+    assert restarted_agent != agent
+    assert restarted_client != client
+    assert Process.alive?(provider)
+    assert :sys.get_state(restarted_client).config.credential_ref == credential_ref
+    assert_receive {:socket_start, _opts}
+
+    provider_monitor = Process.monitor(provider)
+    Supervisor.stop(outer)
+    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
   end
 
   defp start_supervisor(opts) do
@@ -569,4 +663,119 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
         wait_for_restart(name, old_pid, attempts - 1)
     end
   end
+
+  defp wait_for_pid(name, attempts \\ 100)
+
+  defp wait_for_pid(_name, 0), do: flunk("process did not start")
+
+  defp wait_for_pid(name, attempts) do
+    case Process.whereis(name) do
+      pid when is_pid(pid) ->
+        pid
+
+      _other ->
+        Process.sleep(10)
+        wait_for_pid(name, attempts - 1)
+    end
+  end
+
+  defp wait_for_child_restart(supervisor, id, old_pid, attempts \\ 100)
+
+  defp wait_for_child_restart(_supervisor, _id, _old_pid, 0),
+    do: flunk("supervised child did not restart")
+
+  defp wait_for_child_restart(supervisor, id, old_pid, attempts) do
+    case child_pid(supervisor, id) do
+      pid when is_pid(pid) and pid != old_pid ->
+        pid
+
+      _other ->
+        Process.sleep(10)
+        wait_for_child_restart(supervisor, id, old_pid, attempts - 1)
+    end
+  end
+
+  defp child_pid(supervisor, id) do
+    case List.keyfind(Supervisor.which_children(supervisor), id, 0) do
+      {^id, pid, _type, _modules} -> pid
+      nil -> nil
+    end
+  end
+
+  defp start_mfas(value, module) when is_map(value) do
+    value
+    |> Map.to_list()
+    |> Enum.flat_map(&start_mfas(&1, module))
+  end
+
+  defp start_mfas({module, :start_link, [_opts]} = mfa, module), do: [mfa]
+
+  defp start_mfas(value, module) when is_tuple(value) do
+    value
+    |> Tuple.to_list()
+    |> Enum.flat_map(&start_mfas(&1, module))
+  end
+
+  defp start_mfas(value, module) when is_list(value),
+    do: Enum.flat_map(value, &start_mfas(&1, module))
+
+  defp start_mfas(_value, _module), do: []
+
+  defp opaque_credential_ref?({provider, capability}),
+    do: is_pid(provider) and is_reference(capability)
+
+  defp provider_pid({provider, capability})
+       when is_pid(provider) and is_reference(capability),
+       do: provider
+
+  defp contains_secret?(value, secret) when is_binary(value),
+    do: String.contains?(value, secret)
+
+  defp contains_secret?(value, secret) when is_map(value),
+    do:
+      Enum.any?(Map.to_list(value), fn {key, item} ->
+        contains_secret?(key, secret) or contains_secret?(item, secret)
+      end)
+
+  defp contains_secret?(value, secret) when is_tuple(value),
+    do: value |> Tuple.to_list() |> contains_secret?(secret)
+
+  defp contains_secret?(value, secret) when is_list(value),
+    do: Enum.any?(value, &contains_secret?(&1, secret))
+
+  defp contains_secret?(_value, _secret), do: false
+
+  defp contains_raw_credential_key?(value) when is_map(value),
+    do:
+      Enum.any?(Map.to_list(value), fn {key, item} ->
+        key in [:management_url, :management_token, :token, :socket, :params] or
+          contains_raw_credential_key?(item)
+      end)
+
+  defp contains_raw_credential_key?(value) when is_tuple(value),
+    do: value |> Tuple.to_list() |> contains_raw_credential_key?()
+
+  defp contains_raw_credential_key?(value) when is_list(value) do
+    Enum.any?(value, fn
+      {key, item} ->
+        key in [:management_url, :management_token, :token, :socket, :params] or
+          contains_raw_credential_key?(item)
+
+      item ->
+        contains_raw_credential_key?(item)
+    end)
+  end
+
+  defp contains_raw_credential_key?(_value), do: false
+
+  defp contains_function?(value) when is_function(value), do: true
+
+  defp contains_function?(value) when is_map(value),
+    do: value |> Map.to_list() |> contains_function?()
+
+  defp contains_function?(value) when is_tuple(value),
+    do: value |> Tuple.to_list() |> contains_function?()
+
+  defp contains_function?(value) when is_list(value), do: Enum.any?(value, &contains_function?/1)
+  defp contains_function?(_value), do: false
 end
