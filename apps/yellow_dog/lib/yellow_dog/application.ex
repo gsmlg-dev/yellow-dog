@@ -21,6 +21,7 @@ defmodule YellowDog.Application do
   @default_reconnect_max_ms 30_000
   @max_reconnect_ms 86_400_000
   @server_agent_reconcile_attempts 3
+  @server_agent_terminal_reconcile_attempts 3
 
   @impl true
   def start(_type, _args) do
@@ -94,9 +95,11 @@ defmodule YellowDog.Application do
 
   ## Returns
   - `{:ok, pid}` if started successfully
+  - `{:ok, :restarting}` if the supervisor already owns a pending restart
   - `{:error, reason}` if start failed
   """
-  @spec start_service_supervisor(atom(), module()) :: {:ok, pid()} | {:error, term()}
+  @spec start_service_supervisor(atom(), module()) ::
+          {:ok, pid() | :restarting} | {:error, term()}
   def start_service_supervisor(:server_agent, _supervisor_module) do
     case ProfileResolver.resolve(current_config()) do
       %{source: :yellow_dog_server} ->
@@ -158,6 +161,10 @@ defmodule YellowDog.Application do
       end
 
     case result do
+      {:ok, :restarting} when service == :server_agent ->
+        emit_server_agent_reconcile_pending()
+        {:ok, :restarting}
+
       {:ok, pid} ->
         :telemetry.execute(
           [:yellow_dog, :service, :started],
@@ -290,6 +297,9 @@ defmodule YellowDog.Application do
       :ignore ->
         :ok
 
+      {:ok, :restarting} ->
+        emit_server_agent_reconcile_pending()
+
       {:ok, pid} ->
         emit_async_service_started(:server_agent, pid, false)
 
@@ -328,6 +338,19 @@ defmodule YellowDog.Application do
         service: service,
         reason: service_start_error(service, reason),
         severity: :error
+      }
+    )
+  end
+
+  defp emit_server_agent_reconcile_pending do
+    :telemetry.execute(
+      [:yellow_dog, :service, :start_pending],
+      %{count: 0},
+      %{
+        source: __MODULE__,
+        service: :server_agent,
+        reason: :restarting,
+        severity: :info
       }
     )
   end
@@ -622,7 +645,7 @@ defmodule YellowDog.Application do
         restart_server_agent_child_spec(child_spec, attempts)
 
       {:error, :already_present} ->
-        {:error, :server_agent_reconcile_failed}
+        terminal_server_agent_reconcile_result()
 
       result ->
         result
@@ -647,16 +670,16 @@ defmodule YellowDog.Application do
         start_or_recover_server_agent_child(child_spec, attempts - 1)
 
       {:error, :not_found} ->
-        {:error, :server_agent_reconcile_failed}
+        terminal_server_agent_reconcile_result()
 
       {:error, reason} when reason in [:restarting, :already_present] and attempts > 0 ->
         running_server_agent_child_result(child_spec, attempts - 1)
 
       {:error, reason} when reason in [:restarting, :already_present] ->
-        {:error, :server_agent_reconcile_failed}
+        terminal_server_agent_reconcile_result()
 
       {:error, _reason} ->
-        {:error, :server_agent_reconcile_failed}
+        terminal_server_agent_reconcile_result()
     end
   end
 
@@ -680,7 +703,7 @@ defmodule YellowDog.Application do
         running_server_agent_child_result(child_spec, attempts)
 
       {:error, _reason} ->
-        {:error, :server_agent_reconcile_failed}
+        terminal_server_agent_reconcile_result()
     end
   end
 
@@ -692,7 +715,7 @@ defmodule YellowDog.Application do
         start_or_recover_server_agent_child(child_spec, attempts - 1)
 
       enabled? ->
-        {:error, :server_agent_reconcile_failed}
+        terminal_server_agent_reconcile_result()
 
       true ->
         :ignore
@@ -715,7 +738,83 @@ defmodule YellowDog.Application do
         start_or_recover_server_agent_child(child_spec, attempts - 1)
 
       _unresolved ->
+        terminal_server_agent_reconcile_result()
+    end
+  end
+
+  defp terminal_server_agent_reconcile_result do
+    terminal_server_agent_reconcile_result(@server_agent_terminal_reconcile_attempts)
+  end
+
+  defp terminal_server_agent_reconcile_result(attempts) do
+    reconcile_terminal_server_agent_child(
+      attempts,
+      &server_agent_child_entry/0,
+      fn -> Supervisor.delete_child(YellowDog.Supervisor, @default_server_agent_module) end
+    )
+  end
+
+  defp reconcile_terminal_server_agent_child(attempts, observe_child, delete_child) do
+    case observe_child.() do
+      {_id, pid, _type, _modules} when is_pid(pid) ->
+        {:error, {:already_started, pid}}
+
+      {_id, :undefined, _type, _modules} ->
+        delete_terminal_server_agent_child(attempts, observe_child, delete_child)
+
+      {_id, :restarting, _type, _modules} when attempts > 0 ->
+        reconcile_terminal_server_agent_child(attempts - 1, observe_child, delete_child)
+
+      {_id, :restarting, _type, _modules} ->
+        {:ok, :restarting}
+
+      nil ->
         {:error, :server_agent_reconcile_failed}
+    end
+  end
+
+  defp delete_terminal_server_agent_child(attempts, observe_child, delete_child) do
+    case delete_child.() do
+      :ok ->
+        {:error, :server_agent_reconcile_failed}
+
+      {:error, :not_found} ->
+        {:error, :server_agent_reconcile_failed}
+
+      {:error, :running} when attempts > 0 ->
+        reconcile_terminal_server_agent_child(attempts - 1, observe_child, delete_child)
+
+      {:error, :running} ->
+        {:ok, :restarting}
+
+      {:error, :restarting} when attempts > 0 ->
+        reconcile_terminal_server_agent_child(attempts - 1, observe_child, delete_child)
+
+      {:error, :restarting} ->
+        {:ok, :restarting}
+
+      {:error, _reason} ->
+        {:error, :server_agent_reconcile_failed}
+    end
+  end
+
+  defp server_agent_child_entry do
+    Enum.find(
+      Supervisor.which_children(YellowDog.Supervisor),
+      &(elem(&1, 0) == @default_server_agent_module)
+    )
+  end
+
+  if @compile_env == :test do
+    @doc false
+    def reconcile_terminal_server_agent_child_for_test(
+          attempts,
+          observe_child,
+          delete_child
+        )
+        when is_integer(attempts) and attempts >= 0 and is_function(observe_child, 0) and
+               is_function(delete_child, 0) do
+      reconcile_terminal_server_agent_child(attempts, observe_child, delete_child)
     end
   end
 

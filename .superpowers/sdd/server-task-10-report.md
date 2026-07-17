@@ -54,9 +54,11 @@ deletes the ignored child spec or restarts it when a concurrent enable won the
 race. Public agent start recovers an already-present ignored or stopped spec
 with `Supervisor.restart_child/2`; bounded retries reconcile `:running`,
 `:not_found`, and concurrent start/delete races without exposing raw reasons.
-An unresolved race returns only the fixed
-`:server_agent_reconcile_failed` reason so ServiceManager can restore its
-attempted flag.
+An unresolved race deletes only an observed `:undefined` child entry. A
+`:restarting` entry is boundedly re-observed until it becomes deletable or a
+live PID wins the race. If it remains in progress, the runtime returns a fixed
+pending success so ServiceManager preserves the enabled flag; a later start can
+retry reconciliation and an explicit stop remains responsible for removal.
 
 ### Capability contract
 

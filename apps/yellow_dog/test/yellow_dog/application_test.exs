@@ -193,6 +193,87 @@ defmodule YellowDog.ApplicationTest do
     end
   end
 
+  test "failed ignored child recovery restores the flag and removes the child entry", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir, server_agent: false)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+
+    Application.put_env(:yellow_dog_server_agent, :runtime,
+      management_url: "wss://management.example.test",
+      management_token: @secret,
+      server_id: "failed-recovery-agent"
+    )
+
+    barrier_ref = install_startup_barrier()
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    startup_task = await_startup_barrier(barrier_ref)
+    release_startup_barrier(startup_task, barrier_ref)
+
+    child_spec = YellowDog.Application.server_agent_child_spec(@agent_module)
+    assert {:ok, :undefined} = Supervisor.start_child(YellowDog.Supervisor, child_spec)
+
+    Application.put_env(
+      :yellow_dog,
+      :application_test_agent_result,
+      {:error, {:secret, @secret}}
+    )
+
+    handler_id = "failed-recovery-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :application, :error],
+        fn _event, _measurements, metadata, owner ->
+          if metadata.service == :server_agent do
+            send(owner, {:failed_recovery_error, metadata})
+          end
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:error, :server_agent_reconcile_failed} =
+             YellowDog.ServiceManager.start_service(:server_agent)
+
+    assert_receive {:server_agent_failed, failed_opts, supervisor}, 2_000
+    assert supervisor == Process.whereis(YellowDog.Supervisor)
+    assert failed_opts[:management_token] == @secret
+
+    assert_receive {:failed_recovery_error, metadata}, 2_000
+    assert metadata.reason == :start_failed
+    refute inspect(metadata) =~ @secret
+    refute inspect(metadata) =~ "management.example.test"
+
+    assert service_flag(:server_agent) == false
+    refute child_entry(YellowDog.ServerAgent)
+  end
+
+  test "terminal reconciliation bounds repeated undefined to running delete races" do
+    {:ok, calls} = Agent.start_link(fn -> %{observations: 0, deletes: 0} end)
+
+    observe_child = fn ->
+      Agent.update(calls, &Map.update!(&1, :observations, fn count -> count + 1 end))
+      {YellowDog.ServerAgent, :undefined, :supervisor, [@agent_module]}
+    end
+
+    delete_child = fn ->
+      Agent.update(calls, &Map.update!(&1, :deletes, fn count -> count + 1 end))
+      {:error, :running}
+    end
+
+    assert {:ok, :restarting} =
+             YellowDog.Application.reconcile_terminal_server_agent_child_for_test(
+               2,
+               observe_child,
+               delete_child
+             )
+
+    assert Agent.get(calls, & &1) == %{observations: 3, deletes: 3}
+  end
+
   test "public ServerAgent start rejects legacy profiles and restores the attempted flag", %{
     tmp_dir: tmp_dir
   } do

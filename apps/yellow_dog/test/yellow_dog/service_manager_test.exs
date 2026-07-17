@@ -474,6 +474,21 @@ defmodule YellowDog.ServiceManagerTest do
       assert [start: :dns, stop: :dns] = YellowDog.ServerRuntimeControlFake.take_calls()
     end
 
+    test "keeps an in-progress server agent enabled" do
+      setup_fake_application(%{
+        "yellow_dog_server" => %{
+          "profile" => "custom",
+          "services" => %{"server_agent" => false}
+        }
+      })
+
+      YellowDog.ServerRuntimeControlFake.configure(%{start_result: {:ok, :restarting}})
+
+      assert :ok = ServiceManager.start_service(:server_agent)
+      assert YellowDog.Server.ProfileResolver.resolve().services.server_agent == true
+      assert [start: :server_agent] = YellowDog.ServerRuntimeControlFake.take_calls()
+    end
+
     test "restores the prior server service flag when start activation fails" do
       original = YellowDog.Config.get_all()
       previous_dependencies = Application.get_env(:yellow_dog, ServiceManager)
