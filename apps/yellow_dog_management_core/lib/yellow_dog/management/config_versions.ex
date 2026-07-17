@@ -395,8 +395,9 @@ defmodule YellowDog.Management.ConfigVersions do
     with true <- Enum.sort(Map.keys(value)) == @lifecycle_v2_keys,
          2 <- value["schema_version"],
          :ok <- validate_lifecycle(value),
-         :ok <- counter(value["publication_high_water"]),
-         true <- is_map(value["publication_receipts"]) do
+         :ok <- validate_version(value["publication_high_water"]),
+         receipts when is_map(receipts) and map_size(receipts) > 0 <-
+           value["publication_receipts"] do
       {:ok, value}
     else
       _invalid -> invalid()
@@ -498,25 +499,12 @@ defmodule YellowDog.Management.ConfigVersions do
            "publication_receipts" => receipts
          },
          versions,
-         target_type,
+         :server,
          target_id
        ) do
     with true <- map_size(receipts) == high_water,
-         {:ok, _subjects} <-
-           Enum.reduce_while(receipts, {:ok, MapSet.new()}, fn {key, receipt}, {:ok, subjects} ->
-             case validate_publication_receipt(
-                    key,
-                    receipt,
-                    high_water,
-                    versions,
-                    target_type,
-                    target_id,
-                    subjects
-                  ) do
-               {:ok, subjects} -> {:cont, {:ok, subjects}}
-               {:error, %Error{}} = error -> {:halt, error}
-             end
-           end) do
+         {:ok, _ledger} <-
+           validate_ordered_publication_receipts(receipts, high_water, versions, target_id) do
       :ok
     else
       _invalid -> invalid()
@@ -531,6 +519,30 @@ defmodule YellowDog.Management.ConfigVersions do
        ),
        do: invalid()
 
+  defp validate_ordered_publication_receipts(receipts, high_water, versions, target_id) do
+    initial = %{subjects: MapSet.new(), position: nil}
+
+    Enum.reduce_while(1..high_water, {:ok, initial}, fn sequence, {:ok, ledger} ->
+      key = Integer.to_string(sequence)
+
+      with {:ok, receipt} <- Map.fetch(receipts, key),
+           {:ok, ledger} <-
+             validate_publication_receipt(
+               key,
+               receipt,
+               high_water,
+               versions,
+               :server,
+               target_id,
+               ledger
+             ) do
+        {:cont, {:ok, ledger}}
+      else
+        _invalid -> {:halt, invalid()}
+      end
+    end)
+  end
+
   defp validate_publication_receipt(
          key,
          receipt,
@@ -538,9 +550,9 @@ defmodule YellowDog.Management.ConfigVersions do
          versions,
          target_type,
          target_id,
-         subjects
+         ledger
        )
-       when is_binary(key) and is_map(receipt) do
+       when is_binary(key) and is_map(receipt) and is_map(ledger) do
     with true <- Enum.sort(Map.keys(receipt)) == @publication_receipt_keys,
          {:ok, sequence} <- canonical_sequence(key),
          true <- sequence <= high_water,
@@ -564,8 +576,15 @@ defmodule YellowDog.Management.ConfigVersions do
              receipt["resulting_state_revision"]
            ),
          subject = {message.version, message.state},
-         false <- MapSet.member?(subjects, subject) do
-      {:ok, MapSet.put(subjects, subject)}
+         false <- MapSet.member?(ledger.subjects, subject),
+         position = {message.version, receipt["resulting_state_revision"]},
+         :ok <- ordered_receipt_position(ledger.position, position) do
+      {:ok,
+       %{
+         ledger
+         | subjects: MapSet.put(ledger.subjects, subject),
+           position: position
+       }}
     else
       _invalid -> invalid()
     end
@@ -578,9 +597,21 @@ defmodule YellowDog.Management.ConfigVersions do
          _versions,
          _target_type,
          _target_id,
-         _subjects
+         _ledger
        ),
        do: invalid()
+
+  defp ordered_receipt_position(nil, _position), do: :ok
+
+  defp ordered_receipt_position({prior_version, _prior_revision}, {version, _revision})
+       when version > prior_version,
+       do: :ok
+
+  defp ordered_receipt_position({version, prior_revision}, {version, revision})
+       when revision > prior_revision,
+       do: :ok
+
+  defp ordered_receipt_position(_prior, _current), do: invalid()
 
   defp validate_receipt_transition(version, message, resulting_revision) do
     with {:ok, prior_state, expected_revision} <- receipt_transition_origin(message),

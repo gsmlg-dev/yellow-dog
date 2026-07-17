@@ -594,6 +594,183 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     end
   end
 
+  test "v2 requires a committed first receipt and rejects sequence one from empty progress" do
+    server_id = "srv-publication-empty-v2"
+    register_server(server_id)
+    assert {:ok, desired} = publish_server(server_id)
+    assert {:ok, delivered} = transition(desired, :delivered, 0)
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+    lifecycle =
+      manifest["config_lifecycle"]
+      |> Map.put("schema_version", 2)
+      |> Map.put("publication_high_water", 0)
+      |> Map.put("publication_receipts", %{})
+
+    corrupted = %{manifest | "config_lifecycle" => lifecycle}
+    assert {:ok, ^manifest_path} = AtomicJson.replace(manifest_path, corrupted)
+    manifest_bytes = File.read!(manifest_path)
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(
+        :server,
+        server_id,
+        1,
+        encoded_acknowledgement(delivered, :applying)
+      ),
+      :invalid
+    )
+
+    assert_error(
+      ManagementCore.get_server_config_version(server_id, desired.version),
+      :invalid
+    )
+
+    assert File.read!(manifest_path) == manifest_bytes
+  end
+
+  test "v2 validates same-version receipts in numeric lifecycle order" do
+    server_id = "srv-publication-same-version-order"
+    register_server(server_id)
+    assert {:ok, desired} = publish_server(server_id)
+    assert {:ok, _receipt} = accept_publication(desired, 1, :delivered)
+    assert {:ok, delivered} = ManagementCore.get_server_config_version(server_id, 1)
+    assert {:ok, _receipt} = accept_publication(delivered, 2, :applying)
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+    lifecycle = manifest["config_lifecycle"]
+    delivered_receipt = lifecycle["publication_receipts"]["1"]
+    applying_receipt = lifecycle["publication_receipts"]["2"]
+
+    reordered =
+      lifecycle
+      |> put_in(
+        ["publication_receipts", "1"],
+        %{applying_receipt | "sequence" => 1}
+      )
+      |> put_in(
+        ["publication_receipts", "2"],
+        %{delivered_receipt | "sequence" => 2}
+      )
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(manifest_path, %{manifest | "config_lifecycle" => reordered})
+
+    assert_error(ManagementCore.get_server_config_version(server_id, 1), :invalid)
+    assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
+  end
+
+  test "v2 rejects an earlier version after a newer version in the receipt ledger" do
+    server_id = "srv-publication-cross-version-order"
+    register_server(server_id)
+    assert {:ok, first} = publish_server(server_id)
+    assert {:ok, _receipt} = accept_publication(first, 1, :delivered)
+    assert {:ok, delivered} = ManagementCore.get_server_config_version(server_id, 1)
+    assert {:ok, _receipt} = accept_publication(delivered, 2, :applying)
+    assert {:ok, applying} = ManagementCore.get_server_config_version(server_id, 1)
+
+    assert {:ok, _receipt} =
+             accept_publication(applying, 3, :applied, applied_revision: @digest_a)
+
+    assert {:ok, second} =
+             ManagementCore.publish_server_config(
+               server_id,
+               server_attrs(2, expected_revision: @digest_a)
+             )
+
+    assert {:ok, _receipt} = accept_publication(second, 4, :delivered)
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+    lifecycle = manifest["config_lifecycle"]
+    first_applied_receipt = lifecycle["publication_receipts"]["3"]
+    second_delivered_receipt = lifecycle["publication_receipts"]["4"]
+
+    reordered =
+      lifecycle
+      |> put_in(
+        ["publication_receipts", "3"],
+        %{second_delivered_receipt | "sequence" => 3}
+      )
+      |> put_in(
+        ["publication_receipts", "4"],
+        %{first_applied_receipt | "sequence" => 4}
+      )
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(manifest_path, %{manifest | "config_lifecycle" => reordered})
+
+    assert_error(
+      ManagementCore.get_server_config_version(server_id, second.version),
+      :invalid
+    )
+
+    assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
+  end
+
+  test "v2 publication state is server-only while legacy Netman lifecycle remains compatible" do
+    legacy_id = "netman-publication-v1"
+    register_netman(legacy_id)
+
+    assert {:ok, first} = ManagementCore.publish_netman_config(legacy_id, netman_attrs())
+    assert {:ok, ^first} = ManagementCore.get_netman_config_version(legacy_id, first.version)
+    assert {:ok, second} = ManagementCore.publish_netman_config(legacy_id, netman_attrs())
+    assert {:ok, ^second} = ManagementCore.get_netman_config_version(legacy_id, second.version)
+    assert {:ok, legacy_manifest_path} = StoragePath.netman_manifest(legacy_id)
+    assert {:ok, legacy_manifest} = AtomicJson.read(legacy_manifest_path)
+    assert legacy_manifest["config_lifecycle"]["schema_version"] == 1
+
+    forged_id = "netman-publication-v2"
+    register_netman(forged_id)
+    assert {:ok, desired} = ManagementCore.publish_netman_config(forged_id, netman_attrs())
+    acknowledgement = acknowledgement(desired, :delivered, [])
+    encoded_message = encoded_message(acknowledgement)
+
+    assert {:ok, delivered} =
+             ManagementCore.transition_config(
+               :netman,
+               forged_id,
+               desired.version,
+               :delivered,
+               %{expected_state_revision: 0, acknowledgement: acknowledgement}
+             )
+
+    assert {:ok, manifest_path} = StoragePath.netman_manifest(forged_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+    receipt = %{
+      "sequence" => 1,
+      "encoded_message" => encoded_message,
+      "version" => delivered.version,
+      "state" => "delivered",
+      "operation" => delivered.operation,
+      "digest" => delivered.digest,
+      "resulting_state_revision" => delivered.state_revision
+    }
+
+    forged_lifecycle =
+      manifest["config_lifecycle"]
+      |> Map.put("schema_version", 2)
+      |> Map.put("publication_high_water", 1)
+      |> Map.put("publication_receipts", %{"1" => receipt})
+
+    assert {:ok, ^manifest_path} =
+             AtomicJson.replace(manifest_path, %{
+               manifest
+               | "config_lifecycle" => forged_lifecycle
+             })
+
+    assert_error(
+      ManagementCore.get_netman_config_version(forged_id, delivered.version),
+      :invalid
+    )
+
+    assert_error(ManagementCore.latest_desired_config(:netman, forged_id), :invalid)
+    assert_error(ManagementCore.publish_netman_config(forged_id, netman_attrs()), :invalid)
+  end
+
   test "clean v1 lifecycle upgrades on first accepted publication and preserves desired history" do
     server_id = "srv-publication-v1-upgrade"
     register_server(server_id)

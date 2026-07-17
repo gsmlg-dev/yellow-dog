@@ -45,17 +45,34 @@ Console, or Server-agent changes are part of this work.
   fails closed for all lifecycle APIs.
 - Existing direct transition APIs preserve v2 receipt state without creating
   receipts or advancing the publication high-water.
+- Persisted v2 lifecycle documents require a positive publication high-water
+  and a nonempty contiguous receipt ledger. The temporary zero/empty upgrade
+  shape exists only in memory inside the atomic first-receipt commit.
+- Receipt validation walks canonical numeric sequences and threads the prior
+  `{version, resulting_state_revision}` position. Versions cannot move
+  backward, and receipts for the same version require strictly increasing
+  lifecycle revisions while still permitting a later version to begin at
+  revision one.
+- Persisted v2 publication state is accepted only for Server targets. Netman
+  lifecycle schema v1 remains publishable and readable without receipt state.
 
 ## Verification
 
+- TDD review red:
+  - Focused ConfigVersions suite: `52 tests, 4 failures`.
+  - The failures reproduced v2/zero/empty acceptance, same-version receipt
+    swapping, cross-version receipt reordering, and coherent forged Netman v2
+    acceptance.
 - Focused receipt and existing lifecycle tests:
-  `48 tests, 0 failures`.
+  `52 tests, 0 failures`.
 - Full `yellow_dog_management_core` tests:
-  `153 tests, 0 failures`.
-- `mix compile --warnings-as-errors --force`: passed.
+  `157 tests, 0 failures`.
+- `mix compile --warnings-as-errors --force`: passed after compiling 21 files.
 - Scoped `mix format --check-formatted`: passed.
-- `mix credo --strict`: 13 existing findings outside the changed receipt
-  implementation; no finding targets either changed production module.
+- Changed-file `mix credo diff --strict --from-git-ref HEAD`: one production
+  file analyzed, no added issues.
+- Full strict Credo scan: 13 existing findings in `commands.ex` and
+  `config_version.ex`; none targets the changed receipt implementation.
 - Scoped `git diff --check`: passed.
 
 ## Scope
@@ -69,4 +86,6 @@ Changed tests:
 
 - `apps/yellow_dog_management_core/test/yellow_dog/management/config_versions_test.exs`
 
-No `ConfigVersion` change was required.
+The review fixes changed only `ConfigVersions`, its existing focused test file,
+and this report. No facade, `ConfigVersion`, Server-agent, Console, Sync, mix,
+or protected dirty file change was required.
