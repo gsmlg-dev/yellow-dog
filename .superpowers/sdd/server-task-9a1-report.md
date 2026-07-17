@@ -33,9 +33,10 @@ DONE
 - Supports ordered head-only acknowledgement, idempotent old acknowledgements,
   future/non-head conflicts, and publication replay without changing runtime
   evidence.
-- On startup, strictly validates the document and active ConfigStore staging,
-  preserves `staged` and `before_validate`, preserves terminal evidence, and
-  atomically converts all four side-effect checkpoints to `unknown` without
+- On startup, strictly validates the document and active ConfigStore staging
+  for pure resumable, side-effect, and unknown attempts. Completed terminal
+  evidence is independent of the current ConfigStore pointer. Valid source
+  side-effect checkpoints are atomically converted to `unknown` without
   publishing a fabricated terminal state.
 - Reconciles every typed `Storage.replace/3` error with one strict
   identity-checked read:
@@ -50,6 +51,19 @@ DONE
 - Returns only stable bounded Sync errors with empty details; storage paths,
   payloads, tokens, and raw reasons are not exposed.
 
+## Independent Review Fixes
+
+- Completed terminal attempts no longer require `ConfigStore.current/1` to
+  still select their candidate during startup. A drained terminal candidate 1
+  survives a crash after ConfigStore stages candidate 2, allowing candidate 2
+  to be admitted, idempotently restaged, and delivered after restart.
+- Delivered `staged`/`before_validate` documents now require runtime status to
+  match the known-good state before startup can preserve them, and
+  same-candidate preflight defensively enforces the same gate.
+- `before_install` and `before_activate` source documents now require both
+  exact previous/known-good evidence and matching known/unconfigured runtime
+  status before startup recovery can normalize the checkpoint to `unknown`.
+
 ## Consolidation Review
 
 The production module remains intentionally large because Task 9A1 combines a
@@ -59,7 +73,7 @@ one exclusively owned file. The critical review consolidated mechanical
 duplication in timestamped publish commits, fixed event-attribute validation,
 and enum decoding. The transition and durable-coherence pattern clauses remain
 explicit because they directly mirror the normative contract and are the
-primary fail-closed audit surface. Strict Credo reports no complexity issues.
+primary fail-closed audit surface.
 
 ## Tests
 
@@ -75,6 +89,9 @@ Focused coverage includes:
   side-effect blocking;
 - delivered and startup staging mismatch/missing/corrupt handling;
 - every checkpoint restart and all terminal restart behavior;
+- terminal restart after ConfigStore advances to an undelivered next candidate;
+- corrupt unknown runtime status at pure and pre-side-effect checkpoints;
+- defensive same-candidate pure preflight runtime gating;
 - outbox ordering, sequence continuity, capacity, acknowledgement idempotency,
   and conflicts;
 - exact duplicate and conflicting transitions;
@@ -86,32 +103,22 @@ Focused coverage includes:
 
 ## Verification
 
+- Test-first red run:
+  - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/config_apply_store_test.exs'`
+  - Result: `25 tests, 3 failures`, covering the three missing review
+    behaviors.
 - Focused ConfigApplyStore tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/config_apply_store_test.exs'`
-  - Result: `22 tests, 0 failures`.
+  - Result: `25 tests, 0 failures`.
 - Full Server-agent tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test'`
-  - Result: `159 tests, 0 failures`.
+  - Result: `162 tests, 0 failures`.
 - Warnings-as-errors compile:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors --force'`
   - Result: exit 0, 10 files compiled, no warnings.
 - Scoped format check:
-  - `devenv shell -- mix format --check-formatted <owned Elixir files>`
+  - `devenv shell -- mix format --check-formatted apps/yellow_dog_server_agent/lib/yellow_dog/server_agent/config_apply_store.ex apps/yellow_dog_server_agent/test/yellow_dog/server_agent/config_apply_store_test.exs apps/yellow_dog_server_agent/test/support/config_apply_store_support.ex`
   - Result: exit 0.
-- Scoped strict Credo:
-  - Result: 3 source files, 308 mods/funs, no issues.
-- Full Server-agent strict Credo:
-  - Result: 22 source files, 822 mods/funs, no issues.
-- Dependency guard:
-  - `mix deps.tree` reports no `yellow_dog` dependency; the only in-umbrella
-    dependency is `yellow_dog_sync`.
-- Xref guards:
-  - `mix xref graph --label compile` exits 0 with no compile edges.
-  - ConfigApplyStore trace contains only runtime calls to
-    `Storage.replace/3`, `Storage.read/2`, and `ConfigStore.current/1`.
-- Forbidden-surface grep:
-  - No runtime Server, Store, Management, Concord, UDP, environment, socket,
-    ConfigApplier, or RuntimeAdapter references in owned files.
 
 ## Scope
 

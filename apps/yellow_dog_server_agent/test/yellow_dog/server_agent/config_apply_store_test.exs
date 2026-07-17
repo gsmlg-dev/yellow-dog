@@ -579,6 +579,30 @@ defmodule YellowDog.ServerAgent.ConfigApplyStoreTest do
     end
   end
 
+  test "startup rejects unknown runtime status before pure resume or side-effect recovery", %{
+    data_dir: data_dir
+  } do
+    for checkpoint <- [:staged, :before_validate, :before_install, :before_activate] do
+      test_dir = Path.join(data_dir, Atom.to_string(checkpoint))
+      {store, config_store, _delivery} = store_at_checkpoint(test_dir, checkpoint)
+      stop(store)
+      rewrite(apply_state_path(test_dir), &Map.put(&1, "runtime_status", "unknown"))
+
+      assert {:error, {:config_apply_recovery_failed, :corrupt}} =
+               ConfigApplyStore.start_link(base_apply_opts(test_dir, config_store, name: nil))
+    end
+  end
+
+  test "same-candidate pure preflight rejects unknown runtime evidence", %{data_dir: data_dir} do
+    {store, _config_store, delivery} = delivered_store(data_dir)
+
+    :sys.replace_state(store, fn state ->
+      put_in(state, [:snapshot, :runtime_status], :unknown)
+    end)
+
+    assert_conflict(ConfigApplyStore.preflight(delivery, store))
+  end
+
   test "startup rejects current staging mismatch, missing, and corrupt content", %{
     data_dir: data_dir
   } do
@@ -602,6 +626,26 @@ defmodule YellowDog.ServerAgent.ConfigApplyStoreTest do
       assert {:error, {:config_apply_recovery_failed, :staging}} =
                ConfigApplyStore.start_link(base_apply_opts(test_dir, config_store, name: nil))
     end
+  end
+
+  test "terminal restart ignores a newer staged candidate and preserves admission", %{
+    data_dir: data_dir
+  } do
+    {store, config_store, _first} = applied_store(data_dir)
+    drain(store)
+    assert {:ok, terminal} = ConfigApplyStore.snapshot(store)
+
+    second = envelope(2, expected_revision: @revision_a)
+    candidate = stage(second, config_store)
+    stop(store)
+
+    restarted = start_apply_store(data_dir, config_store)
+    assert {:ok, ^terminal} = ConfigApplyStore.snapshot(restarted)
+    assert {:admit, :new} = ConfigApplyStore.preflight(second, restarted)
+    assert {:ok, ^candidate} = ConfigStore.stage(second, config_store)
+
+    assert {:ok, %{attempt: %{version: 2, status: :delivered, checkpoint: :staged}}} =
+             ConfigApplyStore.transition(:delivered, %{candidate: candidate}, restarted)
   end
 
   test "startup preserves every terminal state and preflight replays it without mutation", %{

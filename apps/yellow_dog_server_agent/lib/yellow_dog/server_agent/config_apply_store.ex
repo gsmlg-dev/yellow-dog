@@ -638,9 +638,15 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
     end
   end
 
-  defp same_candidate_preflight(%{attempt: %{status: :delivered, checkpoint: checkpoint}})
-       when checkpoint in [:staged, :before_validate],
-       do: {:resume, checkpoint}
+  defp same_candidate_preflight(
+         %{attempt: %{status: :delivered, checkpoint: checkpoint}} = snapshot
+       )
+       when checkpoint in [:staged, :before_validate] do
+    case runtime_matches_known_good(snapshot) do
+      :ok -> {:resume, checkpoint}
+      {:error, :corrupt} -> conflict()
+    end
+  end
 
   defp same_candidate_preflight(%{attempt: %{checkpoint: :unknown}} = snapshot),
     do: {:replay, snapshot}
@@ -787,6 +793,13 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
   end
 
   defp cross_check_staging(%{attempt: nil}, _config), do: :ok
+
+  defp cross_check_staging(
+         %{attempt: %{status: status, checkpoint: :complete}},
+         _config
+       )
+       when status in [:applied, :failed],
+       do: :ok
 
   defp cross_check_staging(%{attempt: attempt}, config) do
     case config_store_current(config) do
@@ -1199,10 +1212,10 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
            failure: nil,
            rollback: nil
          },
-         _snapshot
+         snapshot
        )
        when checkpoint in [:staged, :before_validate],
-       do: :ok
+       do: runtime_matches_known_good(snapshot)
 
   defp coherent_attempt_state(
          %{
@@ -1214,7 +1227,7 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
          },
          snapshot
        ),
-       do: previous_matches_known_good(snapshot)
+       do: pre_side_effect_matches_known_good(snapshot)
 
   defp coherent_attempt_state(
          %{
@@ -1227,7 +1240,7 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
          snapshot
        )
        when is_binary(revision),
-       do: previous_matches_known_good(snapshot)
+       do: pre_side_effect_matches_known_good(snapshot)
 
   defp coherent_attempt_state(
          %{
@@ -1364,6 +1377,13 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
 
   defp previous_matches_known_good(%{attempt: %{previous: previous}, known_good: known_good}) do
     if previous == known_good, do: :ok, else: {:error, :corrupt}
+  end
+
+  defp pre_side_effect_matches_known_good(snapshot) do
+    with :ok <- previous_matches_known_good(snapshot),
+         :ok <- runtime_matches_known_good(snapshot) do
+      :ok
+    end
   end
 
   defp previous_matches_expected(%{previous: nil, expected_revision: nil}), do: :ok
