@@ -2,6 +2,8 @@ defmodule YellowDogIdentity.ControlFacadeTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Server.Control.Revision
+  alias YellowDog.Server.Control.Identity, as: IdentityControl
+  alias YellowDog.Sync.Error
   alias YellowDogIdentity.{Host, Registry, Token}
 
   defmodule FileOps do
@@ -151,6 +153,48 @@ defmodule YellowDogIdentity.ControlFacadeTest do
                Enum.sort([valid_host.id, corrupt_host.id])
     end
 
+    test "a host document renamed away from its canonical filename remains legacy-visible but blocks control",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("renamed-restart-host")
+      canonical_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      renamed_path = Path.join([tmp_dir, "hosts", "renamed-#{host.id}.toml"])
+      persisted = File.read!(canonical_path)
+
+      stop_registry()
+      File.rename!(canonical_path, renamed_path)
+      start_registry!(tmp_dir, file_ops)
+
+      assert [%Host{id: host_id}] = Registry.list_hosts()
+      assert host_id == host.id
+      assert {:ok, %Host{id: ^host_id, status: :pending}} = Registry.get_host(host.id)
+
+      assert_control_host_persistence_failed(host.id)
+
+      assert File.read!(renamed_path) == persisted
+      refute File.exists?(canonical_path)
+    end
+
+    test "duplicate durable host IDs remain legacy-visible but block control without deleting either file",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("duplicate-restart-host")
+      canonical_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      duplicate_path = Path.join([tmp_dir, "hosts", "duplicate-#{host.id}.toml"])
+      persisted = File.read!(canonical_path)
+
+      stop_registry()
+      File.cp!(canonical_path, duplicate_path)
+      start_registry!(tmp_dir, file_ops)
+
+      assert [%Host{id: host_id}] = Registry.list_hosts()
+      assert host_id == host.id
+      assert {:ok, %Host{id: ^host_id, status: :pending}} = Registry.get_host(host.id)
+
+      assert_control_host_persistence_failed(host.id)
+
+      assert File.read!(canonical_path) == persisted
+      assert File.read!(duplicate_path) == persisted
+    end
+
     test "a valid TOML host with an invalid status fails closed and cannot be approved",
          %{tmp_dir: tmp_dir, file_ops: file_ops} do
       host = put_host!("invalid-status-restart-host")
@@ -166,22 +210,12 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       File.write!(host_path, invalid)
       start_registry!(tmp_dir, file_ops)
 
-      assert Registry.list_hosts() == []
-      assert Registry.get_host(host.id) == :not_found
+      assert [%Host{id: host_id, status: :pending}] = Registry.list_hosts()
+      assert host_id == host.id
+      assert {:ok, %Host{id: ^host_id, status: :pending}} = Registry.get_host(host.id)
 
-      assert [
-               {:error, :persistence_failed},
-               {:error, :persistence_failed},
-               {:error, :persistence_failed},
-               {:error, :persistence_failed},
-               {:error, :persistence_failed}
-             ] == [
-               YellowDogIdentity.control_list_hosts(),
-               YellowDogIdentity.control_host(host.id),
-               YellowDogIdentity.control_approve_host(host.id),
-               YellowDogIdentity.control_revoke_host(host.id),
-               YellowDogIdentity.control_delete_host(host.id)
-             ]
+      assert_control_host_persistence_failed(host.id)
+      assert_identity_server_control_apply_failed(host.id)
 
       assert File.read!(host_path) == invalid
       refute invalid =~ "approved_at"
@@ -190,10 +224,10 @@ defmodule YellowDogIdentity.ControlFacadeTest do
 
     test "all host enums that the legacy parser coerces fail strict recovery",
          %{tmp_dir: tmp_dir, file_ops: file_ops} do
-      for {field, valid} <- [
-            {"status", "pending"},
-            {"trust_level", "unverified"},
-            {"trust_provider", "none"}
+      for {field, valid, legacy_field, legacy_value} <- [
+            {"status", "pending", :status, :pending},
+            {"trust_level", "unverified", :trust_level, :cloud_verified},
+            {"trust_provider", "none", :trust_provider, :dhcp}
           ] do
         host = put_host!("invalid-#{field}-restart-host")
         host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
@@ -208,7 +242,8 @@ defmodule YellowDogIdentity.ControlFacadeTest do
         File.write!(host_path, invalid)
         start_registry!(tmp_dir, file_ops)
 
-        assert Registry.get_host(host.id) == :not_found
+        assert {:ok, legacy_host} = Registry.get_host(host.id)
+        assert Map.fetch!(legacy_host, legacy_field) == legacy_value
         assert {:error, :persistence_failed} = YellowDogIdentity.control_list_hosts()
 
         stop_registry()
@@ -217,7 +252,7 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       end
     end
 
-    test "strict recovery rejects missing, unknown, empty, and overlong control fields",
+    test "strict recovery latches missing, unknown, empty, and overlong control fields",
          %{tmp_dir: tmp_dir, file_ops: file_ops} do
       mutations = [
         fn content, host ->
@@ -257,7 +292,8 @@ defmodule YellowDogIdentity.ControlFacadeTest do
         File.write!(host_path, invalid)
         start_registry!(tmp_dir, file_ops)
 
-        assert Registry.get_host(host.id) == :not_found
+        assert [%Host{} = legacy_host] = Registry.list_hosts()
+        assert {:ok, ^legacy_host} = Registry.get_host(legacy_host.id)
         assert {:error, :persistence_failed} = YellowDogIdentity.control_list_hosts()
 
         stop_registry()
@@ -679,4 +715,38 @@ defmodule YellowDogIdentity.ControlFacadeTest do
   defp clear_file_failures(file_ops), do: Agent.update(file_ops, fn _state -> %{} end)
 
   defp flush_registry, do: :sys.get_state(Registry)
+
+  defp assert_control_host_persistence_failed(host_id) do
+    assert List.duplicate({:error, :persistence_failed}, 5) == [
+             YellowDogIdentity.control_list_hosts(),
+             YellowDogIdentity.control_host(host_id),
+             YellowDogIdentity.control_approve_host(host_id),
+             YellowDogIdentity.control_revoke_host(host_id),
+             YellowDogIdentity.control_delete_host(host_id)
+           ]
+  end
+
+  defp assert_identity_server_control_apply_failed(host_id) do
+    previous = Application.get_env(:yellow_dog, IdentityControl)
+    Application.delete_env(:yellow_dog, IdentityControl)
+
+    on_exit(fn ->
+      case previous do
+        nil -> Application.delete_env(:yellow_dog, IdentityControl)
+        config -> Application.put_env(:yellow_dog, IdentityControl, config)
+      end
+    end)
+
+    assert {:error, %Error{code: :apply_failed, details: %{}}} =
+             IdentityControl.current(
+               "server.identity.hosts.approve",
+               %{"host_id" => host_id}
+             )
+
+    assert {:error, %Error{code: :apply_failed, details: %{}}} =
+             IdentityControl.dispatch(
+               "server.identity.hosts.approve",
+               %{"host_id" => host_id}
+             )
+  end
 end

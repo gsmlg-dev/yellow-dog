@@ -491,3 +491,77 @@ MIX_ENV=test mix credo --strict \
   test/yellow_dog_identity/host_test.exs
 # 3 source files, 130 mods/funs, found no issues
 ```
+
+## Split-View Durable Recovery Resolution
+
+The two remaining Identity owner findings are resolved in Registry restart
+loading.
+
+Every host TOML is decoded once and passed through the unchanged historical
+`Host.from_toml_map/1` parser for the legacy Registry view. Strict control
+validation is evaluated independently against the raw document. A document
+accepted by the legacy parser therefore remains available through
+`Registry.list_hosts/0` and `Registry.get_host/1` even when strict validation
+rejects an unknown enum or another control semantic defect.
+
+Before constructing the historical host and fingerprint maps, Registry audits
+the complete parsed host list for duplicate durable IDs. It also compares each
+exact filename basename with the canonical `<parsed-host-id>.toml` filename.
+Any duplicate ID, filename/ID mismatch, strict enum failure, malformed
+document, or other strict semantic failure latches
+`host_load_status: :persistence_failed`. While latched, control host list, get,
+approve, revoke, and delete all fail closed until the files are repaired and
+Registry restarts.
+
+Restart regressions now cover:
+
+- a valid host document renamed away from its canonical filename;
+- two on-disk files containing the same durable host ID;
+- a syntactically valid host with an unknown status that remains
+  legacy-visible as the historical coerced `:pending` host.
+
+The filename and duplicate cases prove all five owner control operations return
+`{:error, :persistence_failed}`, no control mutation occurs, the renamed case
+does not create a new canonical file, and no durable file is falsely deleted.
+The invalid-status case also calls the unchanged Server Identity adapter
+against the real owner and proves both `current/2` and approve dispatch return
+the fixed sanitized `apply_failed` error without approving or rewriting the
+legacy host.
+
+All previous strict audit, complete-set duplicate audit ID, canonical snapshot,
+redaction, unsupported-gap, and separate legacy/control persistence behavior
+remains covered and unchanged.
+
+### TDD And Verification
+
+The initial focused run against the prior Registry behavior failed only the
+three new recovery assertions:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs --seed 0
+# 26 tests, 3 failures
+```
+
+After the split-view recovery change:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs \
+  test/yellow_dog_identity/host_test.exs --seed 0
+# 45 tests, 0 failures
+
+mix test --seed 0
+# 415 tests, 0 failures
+
+MIX_ENV=test mix compile --force --warnings-as-errors
+# Compiling 20 files; exit 0
+
+mix format --check-formatted \
+  apps/yellow_dog_identity/lib/yellow_dog_identity/registry.ex \
+  apps/yellow_dog_identity/test/yellow_dog_identity/control_facade_test.exs
+# exit 0
+
+MIX_ENV=test mix credo --strict \
+  lib/yellow_dog_identity/registry.ex \
+  test/yellow_dog_identity/control_facade_test.exs
+# 2 source files, 135 mods/funs, found no issues
+```

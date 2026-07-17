@@ -235,3 +235,29 @@ mix test test/yellow_dog/server/control/identity_control_test.exs --seed 0
 mix test --seed 0
 # 407 tests, 0 failures
 ```
+
+## Split-View Recovery Reverification
+
+No Server adapter production or test file changed for the final Identity owner
+recovery. The adapter continues to map the owner's latched
+`{:error, :persistence_failed}` result to the fixed sanitized `apply_failed`
+error.
+
+The Identity focused recovery suite now includes a real adapter integration
+assertion for a legacy-visible host whose durable status is strictly invalid.
+Both `YellowDog.Server.Control.Identity.current/2` and approve dispatch fail
+closed and leave the durable document unchanged.
+
+Reverification:
+
+```text
+cd apps/yellow_dog
+mix test test/yellow_dog/server/control/identity_control_test.exs --seed 0
+# 12 tests, 0 failures
+
+mix test --seed 0
+# 407 tests, 0 failures
+
+MIX_ENV=test mix compile --force --warnings-as-errors
+# Compiling 33 files; exit 0
+```

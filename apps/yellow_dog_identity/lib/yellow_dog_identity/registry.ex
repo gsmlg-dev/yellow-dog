@@ -693,19 +693,25 @@ defmodule YellowDogIdentity.Registry do
   defp load_hosts(hosts_dir, file_ops) do
     case list_toml_paths(hosts_dir, file_ops) do
       {:ok, paths} ->
-        Enum.reduce(paths, {%{}, %{}, :ok}, fn path, {hosts, idx, status} ->
-          case load_host_file(path, file_ops) do
-            {:ok, host} ->
-              {
-                Map.put(hosts, host.id, host),
-                Map.put(idx, host.key_fingerprint, host.id),
-                status
-              }
+        load_results = Enum.map(paths, &load_host_file(&1, file_ops))
 
-            {:error, :persistence_failed} ->
-              {hosts, idx, :persistence_failed}
-          end
-        end)
+        legacy_hosts =
+          Enum.flat_map(load_results, fn
+            {:ok, host, _strict_status} -> [host]
+            {:error, :persistence_failed} -> []
+          end)
+
+        host_load_status = host_load_status(load_results, legacy_hosts)
+
+        {hosts, fingerprint_index} =
+          Enum.reduce(legacy_hosts, {%{}, %{}}, fn host, {hosts, index} ->
+            {
+              Map.put(hosts, host.id, host),
+              Map.put(index, host.key_fingerprint, host.id)
+            }
+          end)
+
+        {hosts, fingerprint_index, host_load_status}
 
       {:error, :persistence_failed} ->
         {%{}, %{}, :persistence_failed}
@@ -716,9 +722,8 @@ defmodule YellowDogIdentity.Registry do
     try do
       with {:ok, content} <- file_call(file_ops, :read, [path]),
            {:ok, data} <- Toml.decode(content),
-           :ok <- validate_persisted_host(data),
            {:ok, %Host{} = host} <- Host.from_toml_map(data) do
-        {:ok, host}
+        {:ok, host, strict_host_status(path, data, host)}
       else
         _failure -> {:error, :persistence_failed}
       end
@@ -726,6 +731,35 @@ defmodule YellowDogIdentity.Registry do
       _exception -> {:error, :persistence_failed}
     catch
       _kind, _reason -> {:error, :persistence_failed}
+    end
+  end
+
+  defp host_load_status(load_results, legacy_hosts) do
+    strict_load_ok? =
+      Enum.all?(load_results, fn
+        {:ok, _host, :ok} -> true
+        _failure -> false
+      end)
+
+    unique_host_ids? = unique_host_ids?(legacy_hosts)
+
+    if strict_load_ok? and unique_host_ids?,
+      do: :ok,
+      else: :persistence_failed
+  end
+
+  defp unique_host_ids?(hosts) do
+    hosts
+    |> Enum.map(& &1.id)
+    |> then(&(length(&1) == MapSet.size(MapSet.new(&1))))
+  end
+
+  defp strict_host_status(path, data, host) do
+    with :ok <- validate_persisted_host(data),
+         true <- Path.basename(path) == host_filename(host.id) do
+      :ok
+    else
+      _failure -> :persistence_failed
     end
   end
 
@@ -1009,7 +1043,8 @@ defmodule YellowDogIdentity.Registry do
   defp maybe_filter(stream, _field, nil), do: stream
   defp maybe_filter(stream, field, value), do: Stream.filter(stream, &(&1[field] == value))
 
-  defp host_path(data_dir, id), do: Path.join([data_dir, "hosts", "#{id}.toml"])
+  defp host_path(data_dir, id), do: Path.join([data_dir, "hosts", host_filename(id)])
+  defp host_filename(id), do: "#{id}.toml"
   defp token_path(data_dir, id), do: Path.join([data_dir, "tokens", "#{id}.toml"])
 
   defp default_data_dir do
