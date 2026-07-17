@@ -84,8 +84,8 @@ defmodule YellowDog.Server.Control.NetbootTest do
     ]
 
     assets = [
-      asset("asset-b", "b.img", 20),
-      asset("asset-a", "a.img", 10)
+      asset("asset-b", "images/b.img", 20),
+      asset("asset-a", "boot/a.img", 10)
     ]
 
     ServerNetbootControlFake.configure(%{
@@ -105,9 +105,9 @@ defmodule YellowDog.Server.Control.NetbootTest do
            ]
 
     assert {:ok, asset_result} =
-             Netboot.dispatch("server.netboot.assets.list", %{"cursor" => "asset-a"})
+             Dispatcher.dispatch(envelope("server.netboot.assets.list", %{"cursor" => "asset-a"}))
 
-    assert asset_result["items"] == [asset("asset-b", "b.img", 20)]
+    assert asset_result["items"] == [asset("asset-b", "images/b.img", 20)]
     assert_valid_result("server.netboot.devices.list", device_result)
     assert_valid_result("server.netboot.assets.list", asset_result)
     refute inspect(device_result) =~ "/private"
@@ -244,8 +244,8 @@ defmodule YellowDog.Server.Control.NetbootTest do
 
   test "rescans both scopes after revisioning the safe pre-scan index projection" do
     index = [
-      {"z.img", "/srv/netboot/z.img", 20},
-      {"a.img", "/srv/netboot/a.img", 10}
+      {"images/z.img", "/srv/netboot/images/z.img", 20},
+      {"boot/a.img", "/srv/netboot/boot/a.img", 10}
     ]
 
     ServerNetbootControlFake.configure(%{
@@ -254,14 +254,32 @@ defmodule YellowDog.Server.Control.NetbootTest do
     })
 
     safe_index = [
-      %{"filename" => "a.img", "size" => 10},
-      %{"filename" => "z.img", "size" => 20}
+      %{"filename" => "boot/a.img", "size" => 10},
+      %{"filename" => "images/z.img", "size" => 20}
     ]
 
-    assert {:ok, ^safe_index} =
+    assert {:ok, entries_digest} = Digest.calculate(safe_index)
+
+    current = %{
+      "entry_count" => 2,
+      "entries_digest" => entries_digest
+    }
+
+    assert {:ok, ^current} =
              Netboot.current("server.netboot.assets.rescan", %{"scope" => "all"})
 
-    assert {:ok, revision} = Revision.calculate(safe_index)
+    relocated_index = [
+      {"images/z.img", "/different/root/images/z.img", 20},
+      {"boot/a.img", "/different/root/boot/a.img", 10}
+    ]
+
+    ServerNetbootControlFake.configure(%{file_index_snapshot: relocated_index})
+
+    assert {:ok, ^current} =
+             Netboot.current("server.netboot.assets.rescan", %{"scope" => "all"})
+
+    ServerNetbootControlFake.configure(%{file_index_snapshot: index})
+    assert {:ok, revision} = Revision.calculate(current)
 
     for scope <- ["all", "missing"] do
       assert {:ok, %{"scope" => ^scope, "discovered_assets" => 2} = result} =
@@ -277,10 +295,71 @@ defmodule YellowDog.Server.Control.NetbootTest do
     end
 
     calls = ServerNetbootControlFake.take_calls()
-    assert Enum.count(calls, &match?({:file_index, :snapshot, []}, &1)) == 3
+    assert Enum.count(calls, &match?({:file_index, :snapshot, []}, &1)) == 4
     assert Enum.count(calls, &match?({:asset_store, :control_rescan, [_]}, &1)) == 2
     refute Enum.any?(calls, &match?({:asset_store, :control_snapshot, []}, &1))
-    refute inspect(safe_index) =~ "/srv/netboot"
+    refute inspect(current) =~ "/srv/netboot"
+  end
+
+  test "rescan current and Dispatcher revision include tail entries beyond 1,000" do
+    index =
+      for index <- 1..1_001 do
+        filename = "images/file-#{String.pad_leading(Integer.to_string(index), 4, "0")}.img"
+        {filename, "/srv/netboot/#{filename}", index}
+      end
+
+    ServerNetbootControlFake.configure(%{
+      file_index_snapshot: index,
+      asset_rescan: {:raise, "stale rescan must not run"}
+    })
+
+    assert {:ok, current} =
+             Netboot.current("server.netboot.assets.rescan", %{"scope" => "all"})
+
+    assert is_map(current)
+    assert current["entry_count"] == 1_001
+    assert is_binary(current["entries_digest"])
+    assert map_size(current) == 2
+    refute inspect(current) =~ "/srv/netboot"
+    assert {:ok, stale_revision} = Revision.calculate(current)
+
+    tail_changed =
+      List.replace_at(
+        index,
+        1_000,
+        {"images/file-1001.img", "/different/absolute/path/file-1001.img", 9_999}
+      )
+
+    ServerNetbootControlFake.configure(%{file_index_snapshot: tail_changed})
+
+    assert {:ok, changed_current} =
+             Netboot.current("server.netboot.assets.rescan", %{"scope" => "all"})
+
+    assert changed_current["entry_count"] == 1_001
+    refute changed_current["entries_digest"] == current["entries_digest"]
+    assert {:ok, changed_revision} = Revision.calculate(changed_current)
+    refute changed_revision == stale_revision
+
+    assert {:error,
+            %Error{
+              code: :conflict,
+              details: %{
+                "expected_revision" => ^stale_revision,
+                "current_revision" => ^changed_revision
+              }
+            }} =
+             Dispatcher.dispatch(
+               envelope(
+                 "server.netboot.assets.rescan",
+                 %{"scope" => "all"},
+                 expected_revision: stale_revision
+               )
+             )
+
+    refute Enum.any?(
+             ServerNetbootControlFake.take_calls(),
+             &match?({:asset_store, :control_rescan, ["all"]}, &1)
+           )
   end
 
   test "unsupported operations validate first and never read or mutate owners" do
@@ -332,7 +411,42 @@ defmodule YellowDog.Server.Control.NetbootTest do
     end
 
     ServerNetbootControlFake.configure(%{managed_snapshot: {:exit, :noproc}})
-    assert_error(:not_found, Netboot.dispatch("server.netboot.profiles.list", %{}))
+    assert_error(:apply_failed, Netboot.dispatch("server.netboot.profiles.list", %{}))
+  end
+
+  test "maps UndefinedFunctionError raised inside an exported owner call to apply failed" do
+    config =
+      Application.fetch_env!(:yellow_dog, Netboot)
+      |> Keyword.put(
+        :asset_store,
+        YellowDog.ServerNetbootControlFake.InternalUndefinedFunctionAssetStore
+      )
+
+    Application.put_env(:yellow_dog, Netboot, config)
+
+    assert Code.ensure_loaded?(
+             YellowDog.ServerNetbootControlFake.InternalUndefinedFunctionAssetStore
+           )
+
+    assert function_exported?(
+             YellowDog.ServerNetbootControlFake.InternalUndefinedFunctionAssetStore,
+             :control_snapshot,
+             0
+           )
+
+    assert_error(:apply_failed, Netboot.dispatch("server.netboot.assets.list", %{}))
+  end
+
+  test "maps a genuinely missing owner entry point to not found" do
+    config =
+      Application.fetch_env!(:yellow_dog, Netboot)
+      |> Keyword.put(:asset_store, YellowDog.ServerNetbootControlFake.Clock)
+
+    Application.put_env(:yellow_dog, Netboot, config)
+    assert Code.ensure_loaded?(YellowDog.ServerNetbootControlFake.Clock)
+    refute function_exported?(YellowDog.ServerNetbootControlFake.Clock, :control_snapshot, 0)
+
+    assert_error(:not_found, Netboot.dispatch("server.netboot.assets.list", %{}))
   end
 
   test "rejects invalid dependency overrides without invoking caller-selected modules" do

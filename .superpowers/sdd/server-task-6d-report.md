@@ -119,3 +119,94 @@ accepts filename tokens such as `installer.img` but rejects nested relative
 paths such as `images/installer.img`, even though the Netboot owner models
 normalized relative filenames. Task 6D follows the required fixed Sync schema;
 aligning those two contracts is outside this task's ownership.
+
+## Post-Review Important Fixes
+
+The Important findings in `server-task-6d-review.md` were addressed after the
+reviewed Sync prerequisites landed:
+
+- `dcde82aa fix(sync): allow normalized Netboot asset paths`
+- `79ccb21b fix(sync): align Netboot filename control rules`
+
+### Nested Netboot Paths
+
+Managed asset list and FileIndex rescan coverage now use canonical nested paths
+such as `images/installer.img` and `boot/a.img`. The adapter validates these
+through the updated Sync normalized-relative-filename schema and returns the
+owner asset unchanged. Real Dispatcher query and rescan paths are covered.
+
+This resolves the earlier filename concern in this report. No remaining
+adapter concern exists for normalized nested Netboot paths.
+
+### Complete Rescan Revision State
+
+Rescan `current/2` now returns this bounded canonical shape:
+
+```text
+%{
+  "entry_count" => exact_complete_count,
+  "entries_digest" => complete_sorted_entry_digest
+}
+```
+
+The digest is the SHA-256 digest of the canonical JSON list streamed over every
+sorted safe `%{"filename" => filename, "size" => size}` entry. It does not
+truncate at 1,000 entries and never includes FileIndex absolute paths. Tests
+cover 1,001 entries and prove that changing only entry 1,001 changes both the
+current resource and Dispatcher revision, causing a stale expected revision to
+be rejected before `control_rescan/1`.
+
+Tests also prove that relocating the same filename/size entries to different
+absolute paths leaves the current resource unchanged.
+
+### Dependency Invocation Errors
+
+`dependency_call/3` now loads the configured module and verifies the owner
+entry point is exported before invocation. Missing modules or entry points map
+to `not_found`. Once an exported owner call begins, all exceptions, throws, and
+exits map to sanitized `apply_failed`, including an `UndefinedFunctionError`
+raised from inside the exported facade.
+
+### Post-Review TDD Evidence
+
+The new focused regressions were run before the adapter fixes:
+
+```text
+cd apps/yellow_dog &&
+mix test test/yellow_dog/server/control/netboot_test.exs
+13 tests, 4 failures
+```
+
+The failures were the expected truncated list current resource and incorrect
+`not_found` mapping for internal owner failures.
+
+### Post-Review Verification
+
+All commands ran through `devenv`.
+
+```text
+cd apps/yellow_dog &&
+mix test test/yellow_dog/server/control/netboot_test.exs \
+  test/yellow_dog/server/control/dispatcher_test.exs
+39 tests, 0 failures
+```
+
+```text
+cd apps/yellow_dog && mix test
+380 tests, 0 failures
+```
+
+```text
+cd apps/yellow_dog && mix compile --warnings-as-errors
+exit 0
+```
+
+```text
+cd apps/yellow_dog && mix format --check-formatted
+exit 0
+```
+
+```text
+cd apps/yellow_dog && mix credo --strict
+50 source files, found no issues
+```

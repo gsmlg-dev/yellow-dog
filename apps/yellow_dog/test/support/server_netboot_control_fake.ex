@@ -163,3 +163,11 @@ defmodule YellowDog.ServerNetbootControlFake.Clock do
   @moduledoc false
   def utc_now, do: YellowDog.ServerNetbootControlFake.call(:clock, :utc_now, [])
 end
+
+defmodule YellowDog.ServerNetbootControlFake.InternalUndefinedFunctionAssetStore do
+  @moduledoc false
+
+  def control_snapshot do
+    apply(__MODULE__, :missing_internal_function, [])
+  end
+end

@@ -3,6 +3,7 @@ defmodule YellowDog.Server.Control.Netboot do
 
   alias YellowDog.Server.Control.Revision
   alias YellowDog.Sync.Bounds
+  alias YellowDog.Sync.Codec
   alias YellowDog.Sync.Error
   alias YellowDog.Sync.Operation
   alias YellowDog.Sync.ServerOperation
@@ -387,10 +388,9 @@ defmodule YellowDog.Server.Control.Netboot do
       end)
       |> case do
         {:ok, resources} ->
-          {:ok,
-           resources
-           |> Enum.sort_by(& &1["filename"])
-           |> Enum.take(Bounds.max_list_entries())}
+          resources
+          |> Enum.sort_by(& &1["filename"])
+          |> complete_file_index_resource()
 
         {:error, %Error{}} = error ->
           error
@@ -416,6 +416,54 @@ defmodule YellowDog.Server.Control.Netboot do
   end
 
   defp project_file_index_entry(_entry), do: invalid_error()
+
+  defp complete_file_index_resource(resources) do
+    with {:ok, digest} <- complete_entries_digest(resources) do
+      {:ok,
+       %{
+         "entry_count" => length(resources),
+         "entries_digest" => digest
+       }}
+    end
+  end
+
+  defp complete_entries_digest(entries) do
+    context =
+      :sha256
+      |> :crypto.hash_init()
+      |> :crypto.hash_update("[")
+
+    entries
+    |> Enum.reduce_while({:ok, context, true}, fn entry, {:ok, context, first?} ->
+      case Codec.encode(entry) do
+        {:ok, encoded} ->
+          separator = if first?, do: "", else: ","
+
+          context =
+            context
+            |> :crypto.hash_update(separator)
+            |> :crypto.hash_update(encoded)
+
+          {:cont, {:ok, context, false}}
+
+        {:error, %Error{}} = error ->
+          {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, context, _first?} ->
+        digest =
+          context
+          |> :crypto.hash_update("]")
+          |> :crypto.hash_final()
+          |> Base.encode16(case: :lower)
+
+        {:ok, digest}
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
 
   defp rescan_count({:ok, count}) when is_integer(count) and count >= 0, do: {:ok, count}
   defp rescan_count({:ok, _count}), do: invalid_error()
@@ -525,17 +573,30 @@ defmodule YellowDog.Server.Control.Netboot do
   end
 
   defp dependency_call(key, function, arguments) do
-    with {:ok, dependencies} <- dependencies() do
-      {:ok, apply(Map.fetch!(dependencies, key), function, arguments)}
+    with {:ok, dependencies} <- dependencies(),
+         {:ok, module} <- Map.fetch(dependencies, key),
+         {:module, ^module} <- Code.ensure_loaded(module),
+         true <- function_exported?(module, function, length(arguments)) do
+      invoke_dependency(module, function, arguments)
+    else
+      false -> not_found_error()
+      :error -> not_found_error()
+      {:error, :nofile} -> not_found_error()
+      {:error, %Error{}} = error -> error
+      {:error, _reason} -> apply_failed_error()
+      _other -> apply_failed_error()
     end
   rescue
-    UndefinedFunctionError -> not_found_error()
-    ArgumentError -> apply_failed_error()
     _exception -> apply_failed_error()
   catch
-    :exit, :noproc -> not_found_error()
-    :exit, {:noproc, _details} -> not_found_error()
-    :exit, _reason -> apply_failed_error()
+    _kind, _reason -> apply_failed_error()
+  end
+
+  defp invoke_dependency(module, function, arguments) do
+    {:ok, apply(module, function, arguments)}
+  rescue
+    _exception -> apply_failed_error()
+  catch
     _kind, _reason -> apply_failed_error()
   end
 
