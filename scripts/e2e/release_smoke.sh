@@ -81,8 +81,9 @@ build_release() {
   mix release "${args[@]}"
 }
 
-eval_file="$(mktemp)"
-trap 'rm -f "${eval_file}"' EXIT
+smoke_dir="$(mktemp -d)"
+eval_file="${smoke_dir}/release_smoke.exs"
+trap 'rm -rf "${smoke_dir}"' EXIT
 
 cat > "${eval_file}" <<'ELIXIR'
 assert! = fn condition, message ->
@@ -172,10 +173,83 @@ case target do
       assert!.(service in services, "server service #{service} missing")
     end)
 
-    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_server_agent)
-    snapshot = YellowDog.ServerAgent.status_snapshot()
-    assert!.(snapshot.agent == :yellow_dog_server, "server agent snapshot has wrong agent")
-    assert!.(snapshot.running, "server agent did not start")
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+
+    started_apps =
+      Application.started_applications()
+      |> Enum.map(&elem(&1, 0))
+
+    refute.(
+      :yellow_dog_server_agent in started_apps,
+      "server agent OTP application must remain loaded-only"
+    )
+
+    mode = System.fetch_env!("YELLOW_DOG_RELEASE_SMOKE_SERVER_MODE")
+
+    wait_for = fn predicate, message ->
+      deadline = System.monotonic_time(:millisecond) + 5_000
+
+      waiter = fn waiter ->
+        cond do
+          predicate.() ->
+            :ok
+
+          System.monotonic_time(:millisecond) >= deadline ->
+            raise message
+
+          true ->
+            Process.sleep(25)
+            waiter.(waiter)
+        end
+      end
+
+      waiter.(waiter)
+    end
+
+    case mode do
+      "enabled" ->
+        wait_for.(
+          fn -> is_pid(Process.whereis(YellowDog.ServerAgent.Supervisor)) end,
+          "YellowDog-owned server agent did not start"
+        )
+
+        assert!.(
+          Enum.any?(
+            Supervisor.which_children(YellowDog.Supervisor),
+            &(elem(&1, 0) == YellowDog.ServerAgent)
+          ),
+          "server agent is not owned by YellowDog.Supervisor"
+        )
+
+        snapshot = YellowDog.ServerAgent.status_snapshot()
+        assert!.(snapshot.agent == :yellow_dog_server, "server agent snapshot has wrong agent")
+        assert!.(snapshot.running, "server agent did not start")
+        assert!.(snapshot.agent_id == "release-server-enabled", "server agent ID mismatch")
+
+        assert!.(
+          is_nil(Process.whereis(YellowDog.ServerAgent.Client)),
+          "credential-free agent started Client"
+        )
+
+      "disabled" ->
+        Process.sleep(250)
+
+        assert!.(
+          is_nil(Process.whereis(YellowDog.ServerAgent.Supervisor)),
+          "disabled server agent started"
+        )
+
+        refute.(
+          Enum.any?(
+            Supervisor.which_children(YellowDog.Supervisor),
+            &(elem(&1, 0) == YellowDog.ServerAgent)
+          ),
+          "disabled server agent child was installed"
+        )
+
+      other ->
+        raise "unknown Server release smoke mode: #{inspect(other)}"
+    end
 
   "yellow_dog_netman" ->
     ensure_loaded!.(YellowDog.Netman.ProfileResolver)
@@ -225,4 +299,69 @@ if [ ! -x "${release_bin}" ]; then
   exit 1
 fi
 
-"${release_bin}" eval "$(cat "${eval_file}")"
+if [ "${release}" = "yellow_dog_server" ]; then
+  enabled_config="${smoke_dir}/server-enabled.toml"
+  disabled_config="${smoke_dir}/server-disabled.toml"
+
+  cat > "${enabled_config}" <<EOF
+data_dir = "${smoke_dir}/enabled-data"
+
+[yellow_dog_server]
+profile = "custom"
+id = "release-server-enabled"
+name = "Release Server Enabled"
+
+[yellow_dog_server.services]
+dns = false
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+netboot = false
+identity = false
+fingerprint = false
+server_agent = true
+EOF
+
+  cat > "${disabled_config}" <<EOF
+data_dir = "${smoke_dir}/disabled-data"
+
+[yellow_dog_server]
+profile = "custom"
+id = "release-server-disabled"
+name = "Release Server Disabled"
+
+[yellow_dog_server.services]
+dns = false
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+netboot = false
+identity = false
+fingerprint = false
+server_agent = false
+EOF
+
+  env \
+    -u YELLOW_DOG_SERVER_MANAGEMENT_URL \
+    -u YELLOW_DOG_SERVER_MANAGEMENT_TOKEN \
+    -u YELLOW_DOG_SERVER_ID \
+    -u YELLOW_DOG_SERVER_AGENT_DATA_DIR \
+    -u YELLOW_DOG_SERVER_RECONNECT_INITIAL_MS \
+    -u YELLOW_DOG_SERVER_RECONNECT_MAX_MS \
+    YELLOW_DOG_CONFIG="${enabled_config}" \
+    YELLOW_DOG_RELEASE_SMOKE_SERVER_MODE=enabled \
+    "${release_bin}" eval "$(cat "${eval_file}")"
+
+  env \
+    -u YELLOW_DOG_SERVER_MANAGEMENT_URL \
+    -u YELLOW_DOG_SERVER_MANAGEMENT_TOKEN \
+    -u YELLOW_DOG_SERVER_ID \
+    -u YELLOW_DOG_SERVER_AGENT_DATA_DIR \
+    -u YELLOW_DOG_SERVER_RECONNECT_INITIAL_MS \
+    -u YELLOW_DOG_SERVER_RECONNECT_MAX_MS \
+    YELLOW_DOG_CONFIG="${disabled_config}" \
+    YELLOW_DOG_RELEASE_SMOKE_SERVER_MODE=disabled \
+    "${release_bin}" eval "$(cat "${eval_file}")"
+else
+  "${release_bin}" eval "$(cat "${eval_file}")"
+fi

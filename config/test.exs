@@ -49,6 +49,16 @@ config :concord, prometheus_enabled: false
 
 config :yellow_dog_store, provider_persistence_backend: YellowDog.Store.Backend.Ets
 
+config :yellow_dog_server_agent,
+  runtime: [
+    management_url: nil,
+    management_token: nil,
+    server_id: nil,
+    data_dir: nil,
+    reconnect_initial_ms: nil,
+    reconnect_max_ms: nil
+  ]
+
 config :logger, :console, level: :debug
 
 # YellowDog Telemetry Configuration for Testing

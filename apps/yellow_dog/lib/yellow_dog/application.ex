@@ -10,9 +10,16 @@ defmodule YellowDog.Application do
 
   alias YellowDog.Server.ProfileResolver
   alias YellowDog.Server.ServiceRegistry
+  alias YellowDog.Sync.Bounds
+  alias YellowDog.Sync.Digest
+  alias YellowDog.Sync.ServerOperation
 
   # Capture Mix.env() at compile time (Mix is not available in releases)
   @compile_env Mix.env()
+  @default_server_agent_module :"Elixir.YellowDog.ServerAgent"
+  @default_reconnect_initial_ms 1_000
+  @default_reconnect_max_ms 30_000
+  @max_reconnect_ms 86_400_000
 
   @impl true
   def start(_type, _args) do
@@ -217,15 +224,13 @@ defmodule YellowDog.Application do
 
       enabled_services = get_enabled_services(config)
 
-      Enum.each(enabled_services, fn {module, opts} ->
-        child_spec = {module, opts}
-
+      Enum.each(enabled_services, fn {service, child_spec} ->
         case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
           {:ok, pid} ->
             :telemetry.execute(
               [:yellow_dog, :service, :started],
               %{count: 1},
-              %{source: __MODULE__, service: module, pid: inspect(pid), severity: :info}
+              %{source: __MODULE__, service: service, pid: inspect(pid), severity: :info}
             )
 
           {:error, reason} ->
@@ -234,8 +239,8 @@ defmodule YellowDog.Application do
               %{count: 1},
               %{
                 source: __MODULE__,
-                service: module,
-                reason: inspect(reason),
+                service: service,
+                reason: service_start_error(service, reason),
                 severity: :error
               }
             )
@@ -445,12 +450,15 @@ defmodule YellowDog.Application do
 
     # Filter services based on configuration and pass server options
     enabled_services =
-      for %{module: module, name: service_name} <- services,
-          Code.ensure_loaded?(module),
+      for metadata <- services,
+          service_name = metadata.name,
           service_enabled?(service_flags, service_name) do
-        server_options = build_server_options(config, service_name)
-        {module, server_options: server_options}
+        case service_child_spec(config, resolved_profile, metadata) do
+          nil -> nil
+          child_spec -> {service_name, child_spec}
+        end
       end
+      |> Enum.reject(&is_nil/1)
 
     # Log which services are being started
     service_names =
@@ -486,6 +494,238 @@ defmodule YellowDog.Application do
 
     enabled_services
   end
+
+  defp service_child_spec(_config, resolved_profile, %{name: :server_agent}) do
+    module = server_agent_module()
+
+    if resolved_profile.source == :yellow_dog_server and Code.ensure_loaded?(module) and
+         function_exported?(module, :start_link, 1) do
+      server_agent_child_spec(module)
+    end
+  end
+
+  defp service_child_spec(config, _resolved_profile, %{module: module, name: service_name}) do
+    if Code.ensure_loaded?(module) do
+      server_options = build_server_options(config, service_name)
+      {module, server_options: server_options}
+    end
+  end
+
+  @doc false
+  @spec server_agent_child_spec(module()) :: Supervisor.child_spec()
+  def server_agent_child_spec(module) when is_atom(module) do
+    %{
+      id: @default_server_agent_module,
+      start: {__MODULE__, :start_server_agent, [module]},
+      type: :supervisor
+    }
+  end
+
+  @doc false
+  @spec start_server_agent(module()) :: {:ok, pid()} | :ignore | {:error, atom()}
+  def start_server_agent(module) when is_atom(module) do
+    config = current_config()
+    resolved_profile = ProfileResolver.resolve(config)
+
+    if server_agent_enabled?(resolved_profile) and Code.ensure_loaded?(module) and
+         function_exported?(module, :start_link, 1) do
+      module
+      |> apply(:start_link, [server_agent_options(config, resolved_profile)])
+      |> sanitize_server_agent_start()
+    else
+      :ignore
+    end
+  rescue
+    _exception -> {:error, :server_agent_start_failed}
+  catch
+    _kind, _reason -> {:error, :server_agent_start_failed}
+  end
+
+  def start_server_agent(_module), do: :ignore
+
+  defp server_agent_options(config, resolved_profile) do
+    runtime = server_agent_runtime()
+    server_id = runtime_value(runtime, :server_id) || normalize_text(resolved_profile.id)
+
+    if server_id do
+      durable_options(config, resolved_profile, runtime, server_id) ++
+        outbound_options(config, resolved_profile, runtime, server_id)
+    else
+      []
+    end
+  end
+
+  defp durable_options(config, resolved_profile, runtime, server_id) do
+    [
+      data_dir: runtime_value(runtime, :data_dir) || get_data_dir(config),
+      server_id: server_id,
+      profile: resolved_profile.profile,
+      capabilities: server_capabilities(resolved_profile)
+    ]
+  end
+
+  defp outbound_options(config, resolved_profile, runtime, server_id) do
+    management_url =
+      runtime_value(runtime, :management_url) ||
+        resolved_profile.management
+        |> config_value(:url)
+        |> normalize_text()
+
+    token = runtime_value(runtime, :management_token)
+    server_name = normalize_text(resolved_profile.name) || server_id
+    server_version = server_version()
+
+    with management_url when is_binary(management_url) <- management_url,
+         token when is_binary(token) <- token,
+         server_name when is_binary(server_name) <- server_name,
+         server_version when is_binary(server_version) <- server_version,
+         {:ok, config_revision} <- Digest.calculate(config),
+         {:ok, {reconnect_initial_ms, reconnect_max_ms}} <- reconnect_bounds(runtime) do
+      [
+        management_url: management_url,
+        management_token: token,
+        server_name: server_name,
+        server_version: server_version,
+        config_revision: config_revision,
+        reconnect_initial_ms: reconnect_initial_ms,
+        reconnect_max_ms: reconnect_max_ms
+      ]
+    else
+      _incomplete -> []
+    end
+  end
+
+  defp server_capabilities(resolved_profile) do
+    enabled_domains =
+      resolved_profile
+      |> enabled_server_domains()
+      |> MapSet.union(MapSet.new(["runtime", "settings"]))
+
+    ServerOperation.all()
+    |> Map.values()
+    |> Enum.map(& &1.capability)
+    |> Enum.filter(fn capability ->
+      capability_domain(capability) in enabled_domains and
+        match?({:ok, _bounded}, Bounds.message(capability))
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp enabled_server_domains(resolved_profile) do
+    [
+      {:dns, "dns"},
+      {:mdns, "mdns"},
+      {:dhcpv4, "dhcp"},
+      {:dhcpv6, "dhcp"},
+      {:netboot, "netboot"},
+      {:identity, "identity"}
+    ]
+    |> Enum.reduce(MapSet.new(), fn {service, domain}, domains ->
+      if service_enabled?(resolved_profile.services, service) and service_available?(service) do
+        MapSet.put(domains, domain)
+      else
+        domains
+      end
+    end)
+  end
+
+  defp service_available?(service) do
+    case ServiceRegistry.fetch(service) do
+      {:ok, %{available?: available?}} -> available?
+      :error -> false
+    end
+  end
+
+  defp capability_domain(capability) do
+    capability
+    |> String.split(".", parts: 2)
+    |> hd()
+  end
+
+  defp reconnect_bounds(runtime) do
+    initial = Keyword.get(runtime, :reconnect_initial_ms)
+    maximum = Keyword.get(runtime, :reconnect_max_ms)
+
+    case {initial, maximum} do
+      {nil, nil} ->
+        {:ok, {@default_reconnect_initial_ms, @default_reconnect_max_ms}}
+
+      {initial, maximum}
+      when is_integer(initial) and initial > 0 and initial <= @max_reconnect_ms and
+             is_integer(maximum) and maximum >= initial and maximum <= @max_reconnect_ms ->
+        {:ok, {initial, maximum}}
+
+      _invalid ->
+        {:error, :invalid_reconnect_bounds}
+    end
+  end
+
+  defp server_agent_runtime do
+    case Application.get_env(:yellow_dog_server_agent, :runtime, []) do
+      runtime when is_list(runtime) ->
+        if Keyword.keyword?(runtime), do: runtime, else: []
+
+      _invalid ->
+        []
+    end
+  end
+
+  defp runtime_value(runtime, key) do
+    runtime
+    |> Keyword.get(key)
+    |> normalize_text()
+  end
+
+  defp normalize_text(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_text(_value), do: nil
+
+  defp config_value(config, key) when is_map(config) do
+    Map.get(config, key) || Map.get(config, to_string(key))
+  end
+
+  defp config_value(_config, _key), do: nil
+
+  defp server_version do
+    case Application.spec(:yellow_dog, :vsn) do
+      nil -> nil
+      version -> version |> to_string() |> normalize_text()
+    end
+  end
+
+  defp current_config do
+    case YellowDog.Config.get_all() do
+      config when is_map(config) -> config
+      _invalid -> %{}
+    end
+  catch
+    :exit, _reason -> %{}
+  end
+
+  defp server_agent_enabled?(resolved_profile) do
+    resolved_profile.source == :yellow_dog_server and
+      service_enabled?(resolved_profile.services, :server_agent)
+  end
+
+  defp server_agent_module do
+    case Application.get_env(:yellow_dog, :server_agent_module, @default_server_agent_module) do
+      module when is_atom(module) -> module
+      _invalid -> @default_server_agent_module
+    end
+  end
+
+  defp sanitize_server_agent_start({:ok, pid} = started) when is_pid(pid), do: started
+  defp sanitize_server_agent_start(:ignore), do: :ignore
+  defp sanitize_server_agent_start(_error), do: {:error, :server_agent_start_failed}
+
+  defp service_start_error(:server_agent, _reason), do: :start_failed
+  defp service_start_error(_service, reason), do: inspect(reason)
 
   defp startup_services(:legacy_core) do
     legacy_services = MapSet.new([:dns, :mdns, :dhcpv4, :dhcpv6, :netboot, :identity])

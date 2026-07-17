@@ -154,6 +154,42 @@ data_dir =
 # Store data directory in application config (nil means use config file value or default)
 config :yellow_dog, :data_dir, data_dir
 
+trimmed_env = fn name ->
+  case System.get_env(name) do
+    nil ->
+      nil
+
+    value ->
+      case String.trim(value) do
+        "" -> nil
+        trimmed -> trimmed
+      end
+  end
+end
+
+reconnect_env = fn name ->
+  case trimmed_env.(name) do
+    nil ->
+      nil
+
+    value ->
+      case Integer.parse(value) do
+        {parsed, ""} when parsed > 0 -> parsed
+        _invalid -> :invalid
+      end
+  end
+end
+
+config :yellow_dog_server_agent,
+  runtime: [
+    management_url: trimmed_env.("YELLOW_DOG_SERVER_MANAGEMENT_URL"),
+    management_token: trimmed_env.("YELLOW_DOG_SERVER_MANAGEMENT_TOKEN"),
+    server_id: trimmed_env.("YELLOW_DOG_SERVER_ID"),
+    data_dir: trimmed_env.("YELLOW_DOG_SERVER_AGENT_DATA_DIR"),
+    reconnect_initial_ms: reconnect_env.("YELLOW_DOG_SERVER_RECONNECT_INITIAL_MS"),
+    reconnect_max_ms: reconnect_env.("YELLOW_DOG_SERVER_RECONNECT_MAX_MS")
+  ]
+
 normalize_cluster_env = fn
   nil -> nil
   value -> value |> String.trim() |> String.downcase()
