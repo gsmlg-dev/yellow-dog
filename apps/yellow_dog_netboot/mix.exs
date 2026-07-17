@@ -33,6 +33,7 @@ defmodule YellowDog.Netboot.MixProject do
       {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.2"},
       {:toml, "~> 0.7"},
+      {:jason, "~> 1.4"},
       {:phoenix_pubsub, "~> 2.1"},
 
       # Development and test dependencies
