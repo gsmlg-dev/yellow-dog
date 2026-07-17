@@ -690,12 +690,17 @@ defmodule YellowDog.Server.Control.Dns do
   defp provider_owner_result(function, arguments) do
     case dependency_call(:provider_facade, function, arguments) do
       {:ok, :ok} -> :ok
-      {:ok, {:error, :not_found}} -> not_found_error()
-      {:ok, {:error, _reason}} -> apply_failed_error()
+      {:ok, {:error, reason}} -> provider_owner_error(reason)
       {:error, %Error{}} = error -> error
       _invalid -> apply_failed_error()
     end
   end
+
+  defp provider_owner_error(:not_found), do: not_found_error()
+  defp provider_owner_error(:apply_failed), do: apply_failed_error()
+  defp provider_owner_error(:rollback_failed), do: rollback_failed_error()
+  defp provider_owner_error(%Error{code: code}), do: provider_owner_error(code)
+  defp provider_owner_error(_reason), do: apply_failed_error()
 
   defp zone_options(nil), do: []
   defp zone_options(cloud_mirror), do: [cloud_mirror: cloud_mirror]

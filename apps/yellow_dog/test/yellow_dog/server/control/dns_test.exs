@@ -1246,6 +1246,68 @@ defmodule YellowDog.Server.Control.DnsTest do
              Dns.dispatch("server.dns.providers.update", payload)
   end
 
+  test "preserves rollback_failed from provider update as a bounded Sync error" do
+    provider = %{name: "cf-main", type: :cloudflare, credentials: %{api_token: "secret"}}
+    payload = provider_payload("cf-main")
+
+    ServerDnsControlFake.configure(%{
+      providers: {:ok, [provider]},
+      responses: %{update_provider: [{:error, :rollback_failed}]}
+    })
+
+    assert Dns.dispatch("server.dns.providers.update", payload) ==
+             {:error, Error.new(:rollback_failed, "rollback failed", %{})}
+
+    assert [
+             {:provider_facade, :fetch_provider, ["cf-main"]},
+             {:provider_facade, :update_provider, ["cf-main", %{}]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "preserves rollback_failed from provider delete as a bounded Sync error" do
+    ServerDnsControlFake.configure(%{
+      responses: %{remove_provider: [{:error, :rollback_failed}]}
+    })
+
+    assert Dns.dispatch("server.dns.providers.delete", %{"provider_id" => "cf-main"}) ==
+             {:error, Error.new(:rollback_failed, "rollback failed", %{})}
+
+    assert [{:provider_facade, :remove_provider, ["cf-main"]}] =
+             ServerDnsControlFake.take_calls()
+  end
+
+  test "sanitizes structured provider owner errors" do
+    provider = %{name: "cf-main", type: :cloudflare, credentials: %{api_token: "secret"}}
+    payload = provider_payload("cf-main")
+
+    owner_error =
+      Error.new(:rollback_failed, "owner credential materializer failed", %{
+        "credential" => "owner-secret"
+      })
+
+    ServerDnsControlFake.configure(%{
+      providers: {:ok, [provider]},
+      responses: %{update_provider: [{:error, owner_error}]}
+    })
+
+    result = Dns.dispatch("server.dns.providers.update", payload)
+
+    assert result == {:error, Error.new(:rollback_failed, "rollback failed", %{})}
+    refute inspect(result) =~ "materializer"
+    refute inspect(result) =~ "owner-secret"
+
+    ServerDnsControlFake.configure(%{
+      providers: {:ok, [provider]},
+      responses: %{update_provider: [{:error, {:owner_failed, "credential-token"}}]}
+    })
+
+    result = Dns.dispatch("server.dns.providers.update", payload)
+
+    assert result == {:error, Error.new(:apply_failed, "apply failed", %{})}
+    refute inspect(result) =~ "owner_failed"
+    refute inspect(result) =~ "credential-token"
+  end
+
   test "Dispatcher rejects stale provider updates before the provider facade mutates" do
     provider = %{name: "cf-main", type: :cloudflare, credentials: %{api_token: "secret"}}
 
@@ -2052,6 +2114,15 @@ defmodule YellowDog.Server.Control.DnsTest do
   defp credential_ref(provider_id) do
     digest = :crypto.hash(:sha256, provider_id)
     "local-provider-" <> Base.encode16(digest, case: :lower)
+  end
+
+  defp provider_payload(provider_id) do
+    %{
+      "provider_id" => provider_id,
+      "provider_type" => "cloudflare",
+      "endpoint" => nil,
+      "credential_ref" => credential_ref(provider_id)
+    }
   end
 
   defp log_entry(id, qname, timestamp) do

@@ -22,11 +22,15 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
   @doc "Synchronously reconciles a provider engine with its persisted config."
   @spec reconcile(String.t()) :: :ok | {:error, term()}
   def reconcile(name) when is_binary(name) do
-    case YellowDog.Store.Provider.get_config(name) do
-      {:ok, config_map} -> reconcile_config(config_map)
-      {:error, :not_found} -> ensure_stopped(name)
-      {:error, _reason} = error -> error
-      _ -> {:error, :apply_failed}
+    case Process.whereis(__MODULE__) do
+      nil ->
+        {:error, :apply_failed}
+
+      pid when pid == self() ->
+        do_reconcile(name)
+
+      _pid ->
+        GenServer.call(__MODULE__, {:reconcile, name}, :infinity)
     end
   rescue
     _exception -> {:error, :apply_failed}
@@ -40,6 +44,11 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
     state = subscribe_to_bridge(state)
     boot_providers()
     {:ok, state}
+  end
+
+  @impl true
+  def handle_call({:reconcile, name}, _from, state) do
+    {:reply, do_reconcile(name), state}
   end
 
   @impl true
@@ -108,7 +117,10 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
     case YellowDog.Store.Provider.list_configs() do
       {:ok, configs} ->
         Enum.each(configs, fn config ->
-          reconcile(Map.get(config, :name))
+          case Map.get(config, :name) do
+            name when is_binary(name) -> reconcile_and_log(name)
+            _invalid -> :ok
+          end
         end)
 
       _ ->
@@ -128,13 +140,26 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
   end
 
   defp reconcile_and_log(name) do
-    case reconcile(name) do
+    case do_reconcile(name) do
       :ok ->
         :ok
 
       {:error, reason} ->
         Logger.warning("ConfigWatcher: reconcile failed for #{name}: #{inspect(reason)}")
     end
+  end
+
+  defp do_reconcile(name) do
+    case YellowDog.Store.Provider.get_config(name) do
+      {:ok, config_map} -> reconcile_config(config_map)
+      {:error, :not_found} -> ensure_stopped(name)
+      {:error, _reason} = error -> error
+      _ -> {:error, :apply_failed}
+    end
+  rescue
+    _exception -> {:error, :apply_failed}
+  catch
+    :exit, _reason -> {:error, :apply_failed}
   end
 
   defp reconcile_config(config_map) do

@@ -2,6 +2,7 @@ defmodule YellowDog.DnsProvider.LifecycleTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.DnsProvider
+  alias YellowDog.DnsProvider.Config
   alias YellowDog.DnsProvider.ConfigWatcher
   alias YellowDog.DnsProvider.LifecycleFake
   alias YellowDog.DnsProvider.SyncSupervisor
@@ -146,6 +147,120 @@ defmodule YellowDog.DnsProvider.LifecycleTest do
     assert [{^pid, _}] = Registry.lookup(YellowDog.DnsProvider.Registry, config.name)
   end
 
+  test "serializes explicit and event reconciliation through the watcher" do
+    name = unique_provider_name("serialized")
+    watcher = start_real_runtime(name)
+    initial = provider_config(%{name: name})
+    candidate = %{initial | sync_interval: 601}
+
+    assert :ok = StoreProvider.put_config(initial)
+    drain_store_events(watcher)
+    assert :ok = ConfigWatcher.reconcile(name)
+
+    :sys.suspend(watcher)
+
+    task =
+      try do
+        assert :ok = StoreProvider.put_config(candidate)
+        task = Task.async(fn -> ConfigWatcher.reconcile(name) end)
+
+        assert Task.yield(task, 50) == nil
+        task
+      after
+        resume_watcher(watcher)
+      end
+
+    assert :ok = Task.await(task, 5_000)
+
+    send(
+      watcher,
+      {:store_event, %{type: :put, key: "dns:provider:#{name}:config", value: initial}}
+    )
+
+    assert :ok = ConfigWatcher.reconcile(name)
+    assert_store_matches_engine(name)
+  end
+
+  @tag timeout: 120_000
+  test "500 sequential real updates all converge to the latest stored config" do
+    name = unique_provider_name("stress")
+    watcher = start_real_runtime(name)
+    initial = provider_config(%{name: name})
+
+    assert :ok = StoreProvider.put_config(initial)
+    drain_store_events(watcher)
+    assert :ok = ConfigWatcher.reconcile(name)
+
+    results =
+      for sync_interval <- 301..800 do
+        DnsProvider.update_provider(name, %{sync_interval: sync_interval})
+      end
+
+    assert Enum.frequencies(results) == %{ok: 500}
+
+    send(
+      watcher,
+      {:store_event, %{type: :put, key: "dns:provider:#{name}:config", value: initial}}
+    )
+
+    assert :ok = ConfigWatcher.reconcile(name)
+    assert {:ok, %{sync_interval: 800}} = StoreProvider.get_config(name)
+    assert_store_matches_engine(name)
+  end
+
+  test "real apply compensation converges after candidate and rollback events" do
+    name = unique_provider_name("rollback")
+    watcher = start_real_runtime(name)
+    initial = provider_config(%{name: name})
+
+    assert :ok = StoreProvider.put_config(initial)
+    drain_store_events(watcher)
+    assert :ok = ConfigWatcher.reconcile(name)
+    assert {:ok, persisted_initial} = StoreProvider.get_config(name)
+
+    assert {:error, :apply_failed} =
+             DnsProvider.update_provider(name, %{credentials: %{}})
+
+    drain_store_events(watcher)
+
+    assert :ok = ConfigWatcher.reconcile(name)
+    assert {:ok, ^persisted_initial} = StoreProvider.get_config(name)
+    assert_store_matches_engine(name)
+  end
+
+  test "watcher absence is bounded and startup reconciles without self-calling" do
+    name = unique_provider_name("restart")
+    watcher = start_real_runtime(name)
+    initial = provider_config(%{name: name})
+
+    assert :ok = StoreProvider.put_config(initial)
+    drain_store_events(watcher)
+    assert :ok = ConfigWatcher.reconcile(name)
+    assert :ok = SyncSupervisor.stop_engine(name)
+
+    supervisor = Process.whereis(YellowDog.DnsProvider.Supervisor)
+    assert :ok = Supervisor.terminate_child(supervisor, ConfigWatcher)
+
+    restarted =
+      try do
+        assert Process.whereis(ConfigWatcher) == nil
+        assert ConfigWatcher.reconcile(name) == {:error, :apply_failed}
+
+        case Supervisor.restart_child(supervisor, ConfigWatcher) do
+          {:ok, pid} -> pid
+          {:ok, pid, _info} -> pid
+        end
+      after
+        if Process.whereis(ConfigWatcher) == nil do
+          Supervisor.restart_child(supervisor, ConfigWatcher)
+        end
+      end
+
+    assert is_pid(restarted)
+    assert :ok = ConfigWatcher.reconcile(name)
+    assert_store_matches_engine(name)
+  end
+
   defp provider_config(overrides \\ %{}) do
     Map.merge(
       %{
@@ -182,5 +297,54 @@ defmodule YellowDog.DnsProvider.LifecycleTest do
 
   defp ensure_started(module) do
     Process.whereis(module) || start_supervised!(module)
+  end
+
+  defp start_real_runtime(name) do
+    Application.put_env(:yellow_dog_dns_provider, DnsProvider,
+      provider_store: StoreProvider,
+      config_watcher: ConfigWatcher
+    )
+
+    EtsBackend.create_table()
+    Backend.set_active(EtsBackend)
+
+    ensure_started(EventBridge)
+    ensure_started({Registry, keys: :unique, name: YellowDog.DnsProvider.Registry})
+    ensure_started(SyncSupervisor)
+    watcher = ensure_started(ConfigWatcher)
+
+    on_exit(fn ->
+      StoreProvider.delete_config(name)
+
+      if Process.whereis(ConfigWatcher) do
+        ConfigWatcher.reconcile(name)
+      end
+    end)
+
+    watcher
+  end
+
+  defp assert_store_matches_engine(name) do
+    assert {:ok, stored} = StoreProvider.get_config(name)
+    assert {:ok, expected} = Config.from_map(stored)
+    assert {:ok, pid} = await_engine(name)
+    assert %{config: ^expected} = :sys.get_state(pid)
+  end
+
+  defp resume_watcher(watcher) do
+    if Process.alive?(watcher) do
+      :sys.resume(watcher)
+    end
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp drain_store_events(watcher) do
+    :sys.get_state(EventBridge)
+    :sys.get_state(watcher)
+  end
+
+  defp unique_provider_name(prefix) do
+    "#{prefix}-#{System.unique_integer([:positive])}"
   end
 end
