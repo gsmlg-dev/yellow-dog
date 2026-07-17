@@ -11,6 +11,16 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
     :ets.delete_all_objects(@table)
     :persistent_term.put({Store, :default_profile}, nil)
 
+    :sys.replace_state(Store, fn state ->
+      Map.merge(state, %{
+        config: %{},
+        configured_profiles: %{},
+        managed_profiles: %{},
+        managed_storage_opts: [],
+        managed_activation: fn _profiles -> :ok end
+      })
+    end)
+
     # Set up test config
     test_config = %{
       "default_profile" => "nixos-minimal",
