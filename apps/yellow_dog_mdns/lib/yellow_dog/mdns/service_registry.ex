@@ -195,6 +195,60 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     GenServer.call(__MODULE__, :save_to_file)
   end
 
+  @doc false
+  @spec canonical_service_id(String.t(), String.t()) :: service_id()
+  def canonical_service_id(name, type) when is_binary(name) and is_binary(type) do
+    "#{name}.#{normalize_service_type(type)}.local"
+  end
+
+  @doc false
+  @spec control_snapshot() :: {:ok, [service()]} | {:error, :registry_absent}
+  def control_snapshot, do: control_call(:control_snapshot)
+
+  @doc false
+  @spec control_register_service(service_id(), map()) ::
+          {:ok, [service()], [service()]} | {:error, term()}
+  def control_register_service(service_id, service_def)
+      when is_binary(service_id) and is_map(service_def) do
+    control_call({:control_register_service, service_id, service_def})
+  end
+
+  def control_register_service(_service_id, _service_def), do: {:error, :invalid_service}
+
+  @doc false
+  @spec control_update_service(service_id(), map()) ::
+          {:ok, [service()], [service()]} | {:error, term()}
+  def control_update_service(service_id, service_def)
+      when is_binary(service_id) and is_map(service_def) do
+    control_call({:control_update_service, service_id, service_def})
+  end
+
+  def control_update_service(_service_id, _service_def), do: {:error, :invalid_service}
+
+  @doc false
+  @spec control_delete_service(service_id()) :: {:ok, [service()], [service()]} | {:error, term()}
+  def control_delete_service(service_id) when is_binary(service_id),
+    do: control_call({:control_delete_service, service_id})
+
+  def control_delete_service(_service_id), do: {:error, :invalid_service_id}
+
+  @doc false
+  @spec control_toggle_service(service_id()) :: {:ok, [service()], [service()]} | {:error, term()}
+  def control_toggle_service(service_id) when is_binary(service_id),
+    do: control_call({:control_toggle_service, service_id})
+
+  def control_toggle_service(_service_id), do: {:error, :invalid_service_id}
+
+  @doc false
+  @spec control_commit_snapshot([service()], {atom(), service_id()}) ::
+          {:ok, [service()], [service()]} | {:error, term()}
+  def control_commit_snapshot(services, {event, service_id})
+      when is_list(services) and is_atom(event) and is_binary(service_id) do
+    control_call({:control_commit_snapshot, services, {event, service_id}})
+  end
+
+  def control_commit_snapshot(_services, _change), do: {:error, :invalid_snapshot}
+
   @doc """
   Gets registry statistics.
   """
@@ -234,7 +288,9 @@ defmodule YellowDog.Mdns.ServiceRegistry do
       store: store,
       storage_file: storage_file,
       auto_save: auto_save,
-      hostname: get_hostname()
+      hostname: get_hostname(),
+      control_apply_hook: Keyword.get(opts, :control_apply_hook),
+      control_save_hook: Keyword.get(opts, :control_save_hook)
     }
 
     # Load services from file if configured
@@ -375,6 +431,76 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   end
 
   @impl true
+  def handle_call(:control_snapshot, _from, state) do
+    {:reply, {:ok, snapshot_services(state)}, state}
+  end
+
+  @impl true
+  def handle_call({:control_register_service, service_id, service_def}, _from, state) do
+    prior = snapshot_services(state)
+
+    with {:ok, fixed_def} <- control_service_def(service_id, service_def),
+         service <- build_service(fixed_def, state, :api),
+         candidate <- replace_service(prior, service) do
+      reply_control_commit(state, prior, candidate, {:registered, service_id})
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:control_update_service, service_id, service_def}, _from, state) do
+    prior = snapshot_services(state)
+
+    case Enum.find(prior, &(&1.id == service_id)) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      service ->
+        updated_def = control_update_def(service, service_def)
+
+        with {:ok, fixed_def} <- control_service_def(service_id, updated_def),
+             updated_service <- update_control_service(service, fixed_def),
+             candidate <- replace_service(prior, updated_service) do
+          reply_control_commit(state, prior, candidate, {:updated, service_id})
+        else
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
+    end
+  end
+
+  @impl true
+  def handle_call({:control_delete_service, service_id}, _from, state) do
+    prior = snapshot_services(state)
+
+    if Enum.any?(prior, &(&1.id == service_id)) do
+      candidate = Enum.reject(prior, &(&1.id == service_id))
+      reply_control_commit(state, prior, candidate, {:unregistered, service_id})
+    else
+      {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:control_toggle_service, service_id}, _from, state) do
+    prior = snapshot_services(state)
+
+    case Enum.find(prior, &(&1.id == service_id)) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      service ->
+        candidate = replace_service(prior, %{service | enabled: not service.enabled})
+        reply_control_commit(state, prior, candidate, {:toggled, service_id})
+    end
+  end
+
+  @impl true
+  def handle_call({:control_commit_snapshot, candidate, change}, _from, state) do
+    reply_control_commit(state, snapshot_services(state), candidate, change)
+  end
+
+  @impl true
   def handle_cast({:reload_from_file, services}, state) do
     # Clear old file-based services and register new ones
     clear_file_services()
@@ -393,6 +519,227 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   end
 
   # Private functions
+
+  defp reply_control_commit(state, prior, candidate, {event, service_id} = change) do
+    case control_commit(state, prior, candidate, change) do
+      {:ok, resulting} ->
+        notify_service_change(event, service_id)
+        {:reply, {:ok, prior, resulting}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp control_commit(state, prior, candidate, change) do
+    with :ok <- validate_control_change(change),
+         :ok <- validate_control_snapshot(candidate),
+         :ok <- persist_control_snapshot(state, candidate),
+         :ok <- apply_control_snapshot(state, candidate) do
+      {:ok, stable_snapshot(candidate)}
+    else
+      {:error, :invalid_change} ->
+        {:error, :invalid_snapshot}
+
+      {:error, :invalid_snapshot} ->
+        {:error, :invalid_snapshot}
+
+      {:error, :persistence_failed} ->
+        {:error, :persistence_failed}
+
+      {:error, :apply_failed} ->
+        case rollback_control_snapshot(state, prior) do
+          :ok -> {:error, :apply_failed}
+          {:error, :rollback_failed} -> {:error, :rollback_failed}
+        end
+    end
+  end
+
+  defp rollback_control_snapshot(state, prior) do
+    file_result = persist_control_snapshot(state, prior)
+    registry_result = apply_control_snapshot(state, prior)
+
+    if file_result == :ok and registry_result == :ok do
+      :ok
+    else
+      {:error, :rollback_failed}
+    end
+  end
+
+  defp validate_control_change({event, service_id})
+       when event in [:registered, :updated, :unregistered, :toggled] and is_binary(service_id),
+       do: :ok
+
+  defp validate_control_change(_change), do: {:error, :invalid_change}
+
+  defp control_service_def(service_id, service_def) do
+    fixed_def = %{
+      name: Map.get(service_def, :name),
+      type: Map.get(service_def, :type),
+      port: Map.get(service_def, :port),
+      txt: Map.get(service_def, :txt, %{})
+    }
+
+    with :ok <- ServiceStore.validate_service(fixed_def),
+         true <- service_id == canonical_service_id(fixed_def.name, fixed_def.type) do
+      {:ok, fixed_def}
+    else
+      false -> {:error, :invalid_service_id}
+      {:error, _reason} -> {:error, :invalid_service}
+    end
+  end
+
+  defp control_update_def(service, updates) do
+    %{
+      name: Map.get(updates, :name, service.name),
+      type: Map.get(updates, :type, service.type),
+      port: Map.get(updates, :port, service.port),
+      txt: Map.get(updates, :txt, service.txt_records)
+    }
+  end
+
+  defp update_control_service(service, fixed_def) do
+    %{
+      service
+      | name: fixed_def.name,
+        type: normalize_service_type(fixed_def.type),
+        fqdn: canonical_service_id(fixed_def.name, fixed_def.type),
+        port: fixed_def.port,
+        txt_records: fixed_def.txt
+    }
+  end
+
+  defp replace_service(services, service) do
+    services
+    |> Enum.reject(&(&1.id == service.id))
+    |> List.insert_at(-1, service)
+    |> stable_snapshot()
+  end
+
+  defp validate_control_snapshot(services) when is_list(services) do
+    case Enum.reduce_while(services, MapSet.new(), fn service, ids ->
+           with :ok <- validate_control_service(service),
+                false <- MapSet.member?(ids, service.id) do
+             {:cont, MapSet.put(ids, service.id)}
+           else
+             _ -> {:halt, :invalid_snapshot}
+           end
+         end) do
+      :invalid_snapshot -> {:error, :invalid_snapshot}
+      _ids -> :ok
+    end
+  end
+
+  defp validate_control_snapshot(_services), do: {:error, :invalid_snapshot}
+
+  defp validate_control_service(service) when is_map(service) do
+    required_fields = [
+      :id,
+      :name,
+      :type,
+      :domain,
+      :fqdn,
+      :host,
+      :port,
+      :txt_records,
+      :addresses,
+      :priority,
+      :weight,
+      :ttl,
+      :state,
+      :source,
+      :enabled,
+      :registered_at,
+      :last_announced
+    ]
+
+    service_def = %{
+      name: Map.get(service, :name),
+      type: Map.get(service, :type),
+      port: Map.get(service, :port),
+      txt: Map.get(service, :txt_records)
+    }
+
+    with true <- Enum.all?(required_fields, &Map.has_key?(service, &1)),
+         :ok <- ServiceStore.validate_service(service_def),
+         true <- service.id == canonical_service_id(service.name, service.type),
+         true <- service.fqdn == service.id,
+         true <- is_binary(service.host),
+         true <- is_list(service.addresses),
+         true <- is_boolean(service.enabled) do
+      :ok
+    else
+      _ -> {:error, :invalid_snapshot}
+    end
+  end
+
+  defp validate_control_service(_service), do: {:error, :invalid_snapshot}
+
+  defp persist_control_snapshot(state, services) do
+    service_defs = Enum.map(services, &service_to_def/1)
+
+    result =
+      case state.control_save_hook do
+        hook when is_function(hook, 2) ->
+          safe_control_phase(fn -> hook.(state.storage_file, service_defs) end)
+
+        _ ->
+          safe_control_phase(fn ->
+            ServiceStore.save_services(state.storage_file, service_defs)
+          end)
+      end
+
+    case result do
+      :ok -> :ok
+      :error -> {:error, :persistence_failed}
+    end
+  end
+
+  defp apply_control_snapshot(state, services) do
+    with :ok <- run_control_apply_hook(state.control_apply_hook, services),
+         :ok <- replace_snapshot(state.store, services) do
+      :ok
+    else
+      _ -> {:error, :apply_failed}
+    end
+  end
+
+  defp run_control_apply_hook(hook, services) when is_function(hook, 1),
+    do: safe_control_phase(fn -> hook.(stable_snapshot(services)) end)
+
+  defp run_control_apply_hook(_hook, _services), do: :ok
+
+  defp replace_snapshot(store, services) do
+    safe_control_phase(fn ->
+      :ets.delete_all_objects(store.table)
+      true = :ets.insert(store.table, Enum.map(services, &{&1.id, &1}))
+      :ok
+    end)
+  end
+
+  defp safe_control_phase(fun) do
+    case fun.() do
+      :ok -> :ok
+      _ -> :error
+    end
+  rescue
+    _error -> :error
+  catch
+    _kind, _reason -> :error
+  end
+
+  defp snapshot_services(state) do
+    {:ok, services} = Store.list(state.store)
+    stable_snapshot(services)
+  end
+
+  defp stable_snapshot(services), do: Enum.sort_by(services, & &1.id)
+
+  defp control_call(message) do
+    GenServer.call(__MODULE__, message)
+  catch
+    :exit, _reason -> {:error, :registry_absent}
+  end
 
   defp send_goodbye_records(service) do
     goodbye_records = RecordBuilder.build_goodbye_records(service)
@@ -481,7 +828,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     }
   end
 
-  defp normalize_service_type(type) do
+  defp normalize_service_type(type) when is_binary(type) do
     # Ensure service type has proper format: _service._proto
     cond do
       String.contains?(type, "._") -> type

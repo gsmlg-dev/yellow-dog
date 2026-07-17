@@ -1,7 +1,7 @@
 defmodule YellowDog.Mdns.ServiceRegistryTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Mdns.ServiceRegistry
+  alias YellowDog.Mdns.{ServiceRegistry, ServiceStore}
   alias DNS.Message.Question
 
   setup do
@@ -383,5 +383,233 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
       {:ok, services} = YellowDog.Mdns.ServiceStore.load_services(storage_file)
       assert length(services) >= 1
     end
+  end
+
+  describe "control service mutations" do
+    @tag :tmp_dir
+    test "registers a canonical service ID with the normalized service type", %{tmp_dir: tmp_dir} do
+      stop_supervised(ServiceRegistry)
+
+      start_supervised!(
+        {ServiceRegistry,
+         [
+           storage_file: Path.join(tmp_dir, "services.toml"),
+           load_on_start: false,
+           auto_save: false
+         ]}
+      )
+
+      service = %{name: "Office Printer", type: "_ipp", port: 631, txt: %{"note" => "East"}}
+      service_id = "Office Printer._ipp._tcp.local"
+
+      assert {:ok, [], [registered]} =
+               ServiceRegistry.control_register_service(service_id, service)
+
+      assert registered.id == service_id
+      assert registered.type == "_ipp._tcp"
+      assert registered.host =~ ".local"
+      assert registered.addresses == []
+      assert registered.enabled
+      assert registered.state == :registered
+      assert {:ok, [^registered]} = ServiceRegistry.control_snapshot()
+    end
+
+    test "rejects a service ID that does not match the normalized service type" do
+      service = %{name: "Office Printer", type: "_ipp", port: 631}
+
+      assert {:error, :invalid_service_id} =
+               ServiceRegistry.control_register_service("printer._ipp._tcp.local", service)
+    end
+
+    test "updates fixed fields while preserving hidden runtime fields" do
+      original_def = %{
+        name: "Catalog",
+        type: "_http._tcp",
+        port: 8080,
+        host: "catalog-host",
+        addresses: ["192.0.2.20"],
+        enabled: false,
+        txt: %{"version" => "1"}
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(original_def, source: :file)
+      original = ServiceRegistry.get_service(service_id)
+
+      assert {:ok, [^original], [updated]} =
+               ServiceRegistry.control_update_service(service_id, %{
+                 name: "Catalog",
+                 type: "_http._tcp",
+                 port: 9090,
+                 txt: %{"version" => "2"},
+                 host: "ignored-host",
+                 addresses: ["192.0.2.99"],
+                 enabled: true
+               })
+
+      assert updated.port == 9090
+      assert updated.txt_records == %{"version" => "2"}
+
+      assert Map.take(updated, [
+               :host,
+               :addresses,
+               :enabled,
+               :source,
+               :state,
+               :registered_at,
+               :last_announced
+             ]) ==
+               Map.take(original, [
+                 :host,
+                 :addresses,
+                 :enabled,
+                 :source,
+                 :state,
+                 :registered_at,
+                 :last_announced
+               ])
+    end
+
+    test "returns prior and resulting snapshots for toggle and delete" do
+      service = %{name: "Status", type: "_http._tcp", port: 8080}
+      service_id = "Status._http._tcp.local"
+
+      assert {:ok, [], [registered]} =
+               ServiceRegistry.control_register_service(service_id, service)
+
+      assert {:ok, [^registered], [toggled]} = ServiceRegistry.control_toggle_service(service_id)
+      refute toggled.enabled
+      assert registered.enabled
+
+      assert {:ok, [^toggled], []} = ServiceRegistry.control_delete_service(service_id)
+    end
+
+    @tag :tmp_dir
+    test "persists the complete candidate before registry activation", %{tmp_dir: tmp_dir} do
+      storage_file = Path.join(tmp_dir, "services.toml")
+      parent = self()
+
+      restart_control_registry(
+        storage_file,
+        control_apply_hook: fn _candidate ->
+          send(parent, {:apply_after_save, ServiceStore.load_services(storage_file)})
+          :ok
+        end
+      )
+
+      service = %{name: "Durable", type: "_http._tcp", port: 8080}
+      service_id = "Durable._http._tcp.local"
+
+      assert {:ok, [], [_service]} = ServiceRegistry.control_register_service(service_id, service)
+      assert_receive {:apply_after_save, {:ok, [persisted]}}, 1_000
+      assert persisted.name == "Durable"
+      assert persisted.port == 8080
+    end
+
+    @tag :tmp_dir
+    test "leaves the prior registry and file untouched when candidate persistence fails", %{
+      tmp_dir: tmp_dir
+    } do
+      storage_file = Path.join(tmp_dir, "services.toml")
+      File.write!(storage_file, "prior durable file")
+
+      restart_control_registry(storage_file,
+        control_save_hook: fn _path, _services -> {:error, :disk_full} end
+      )
+
+      service = %{name: "Unsaved", type: "_http._tcp", port: 8080}
+
+      assert {:error, :persistence_failed} =
+               ServiceRegistry.control_register_service("Unsaved._http._tcp.local", service)
+
+      assert {:ok, []} = ServiceRegistry.control_snapshot()
+      assert {:ok, "prior durable file"} = File.read(storage_file)
+    end
+
+    @tag :tmp_dir
+    test "restores the durable file before restoring the prior registry snapshot on apply failure",
+         %{
+           tmp_dir: tmp_dir
+         } do
+      storage_file = Path.join(tmp_dir, "services.toml")
+      parent = self()
+      {:ok, sequence} = Agent.start_link(fn -> [:error, :ok] end)
+
+      restart_control_registry(
+        storage_file,
+        control_apply_hook: fn _candidate ->
+          result = Agent.get_and_update(sequence, fn [result | rest] -> {result, rest} end)
+
+          if result == :ok do
+            send(parent, {:rollback_registry_apply, ServiceStore.load_services(storage_file)})
+          end
+
+          result
+        end
+      )
+
+      old_service = %{name: "Old", type: "_http._tcp", port: 8080}
+      assert {:ok, old_id} = ServiceRegistry.register_service(old_service)
+      assert :ok = ServiceRegistry.save_to_file()
+
+      assert {:error, :apply_failed} =
+               ServiceRegistry.control_register_service("New._http._tcp.local", %{
+                 name: "New",
+                 type: "_http._tcp",
+                 port: 8081
+               })
+
+      assert {:ok, [restored]} = ServiceRegistry.control_snapshot()
+      assert restored.id == old_id
+      assert_receive {:rollback_registry_apply, {:ok, [persisted_before_apply]}}, 1_000
+      assert persisted_before_apply.name == "Old"
+      assert {:ok, [persisted]} = ServiceStore.load_services(storage_file)
+      assert persisted.name == "Old"
+    end
+
+    @tag :tmp_dir
+    test "reports rollback failure distinctly when durable restoration fails", %{tmp_dir: tmp_dir} do
+      storage_file = Path.join(tmp_dir, "services.toml")
+      {:ok, saves} = Agent.start_link(fn -> [:ok, {:error, :disk_full}] end)
+
+      restart_control_registry(
+        storage_file,
+        control_apply_hook: fn _candidate -> :error end,
+        control_save_hook: fn path, services ->
+          case Agent.get_and_update(saves, fn [result | rest] -> {result, rest} end) do
+            :ok -> ServiceStore.save_services(path, services)
+            result -> result
+          end
+        end
+      )
+
+      assert {:error, :rollback_failed} =
+               ServiceRegistry.control_register_service("Rollback._http._tcp.local", %{
+                 name: "Rollback",
+                 type: "_http._tcp",
+                 port: 8080
+               })
+    end
+
+    test "returns a typed result when the registry is absent" do
+      stop_supervised(ServiceRegistry)
+      assert {:error, :registry_absent} = ServiceRegistry.control_snapshot()
+    end
+
+    test "rejects malformed complete snapshots without exposing persistence details" do
+      assert {:error, :invalid_snapshot} =
+               ServiceRegistry.control_commit_snapshot(
+                 [%{id: "malformed"}],
+                 {:registered, "malformed"}
+               )
+    end
+  end
+
+  defp restart_control_registry(storage_file, opts) do
+    stop_supervised(ServiceRegistry)
+
+    start_supervised!(
+      {ServiceRegistry,
+       Keyword.merge([storage_file: storage_file, load_on_start: false, auto_save: false], opts)}
+    )
   end
 end

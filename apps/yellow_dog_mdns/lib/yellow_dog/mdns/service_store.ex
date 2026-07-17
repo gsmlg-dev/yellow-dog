@@ -120,7 +120,8 @@ defmodule YellowDog.Mdns.ServiceStore do
     format = determine_format(file_path, opts)
     create_backup? = Keyword.get(opts, :backup, true)
 
-    with {:ok, content} <- format_services(services, format),
+    with :ok <- validate_services(services),
+         {:ok, content} <- format_services(services, format),
          :ok <- ensure_directory(file_path),
          :ok <- maybe_create_backup(file_path, create_backup?),
          :ok <- atomic_write(file_path, content) do
@@ -154,7 +155,7 @@ defmodule YellowDog.Mdns.ServiceStore do
   - `{:error, reason}` if invalid
   """
   @spec validate_service(map()) :: :ok | {:error, String.t()}
-  def validate_service(service) do
+  def validate_service(service) when is_map(service) do
     with :ok <- validate_required_fields(service),
          :ok <- validate_name(service.name),
          :ok <- validate_type(service.type),
@@ -164,6 +165,21 @@ defmodule YellowDog.Mdns.ServiceStore do
       :ok
     end
   end
+
+  def validate_service(_service), do: {:error, "Service must be a map"}
+
+  @doc false
+  @spec validate_services([map()]) :: :ok | {:error, String.t()}
+  def validate_services(services) when is_list(services) do
+    Enum.reduce_while(services, :ok, fn service, :ok ->
+      case validate_service(service) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  def validate_services(_services), do: {:error, "Services must be a list"}
 
   # Private functions
 
@@ -292,7 +308,15 @@ defmodule YellowDog.Mdns.ServiceStore do
   defp validate_addresses(_), do: {:error, "Addresses must be a list"}
 
   defp validate_txt_records(nil), do: :ok
-  defp validate_txt_records(txt) when is_map(txt), do: :ok
+
+  defp validate_txt_records(txt) when is_map(txt) do
+    if Enum.all?(txt, fn {key, value} -> is_binary(key) and is_binary(value) end) do
+      :ok
+    else
+      {:error, "TXT records must contain string keys and values"}
+    end
+  end
+
   defp validate_txt_records(_), do: {:error, "TXT records must be a map"}
 
   defp valid_ipv4?(addr) do
