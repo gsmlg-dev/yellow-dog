@@ -29,18 +29,17 @@ defmodule YellowDog.ServerAgent.Client do
 
   @event "sync"
   @disabled_options [:enabled, :name]
+  @credential_options [:management_url, :token, :server_id, :socket]
   @enabled_options [
     :enabled,
     :name,
-    :management_url,
-    :token,
+    :credential_ref,
     :identity,
     :dispatcher,
     :dispatcher_runtime_adapter,
     :command_journal,
     :config_applier,
     :config_apply_store,
-    :socket,
     :timer,
     :monotonic_clock,
     :wall_clock,
@@ -61,6 +60,35 @@ defmodule YellowDog.ServerAgent.Client do
   @timer_keys [:check, :rejoin, :heartbeat, :status, :config]
 
   @type connection_state :: :disabled | :connecting | :handshaking | :active | :backoff
+  @type credential_ref :: {pid(), reference()}
+
+  @spec prepare_credentials(keyword()) :: {:ok, credential_ref()} | {:error, :invalid_options}
+  def prepare_credentials(opts) when is_list(opts) do
+    with true <- Keyword.keyword?(opts),
+         keys = Keyword.keys(opts),
+         true <- length(keys) == length(Enum.uniq(keys)),
+         true <- Enum.sort(keys) == Enum.sort(@credential_options),
+         {:ok, endpoint} <- management_url(Keyword.get(opts, :management_url)),
+         {:ok, token} <- token(Keyword.get(opts, :token)),
+         {:ok, server_id} <- server_id(Keyword.get(opts, :server_id)),
+         {:ok, socket} <- callback_module(Keyword.get(opts, :socket), @socket_callbacks),
+         {:ok, credential_ref} <-
+           CredentialProvider.start_owner(token, server_id, endpoint, socket) do
+      {:ok, credential_ref}
+    else
+      _invalid -> {:error, :invalid_options}
+    end
+  end
+
+  def prepare_credentials(_opts), do: {:error, :invalid_options}
+
+  @spec release_credentials(credential_ref()) :: :ok | :error
+  def release_credentials(credential_ref) do
+    case CredentialProvider.release(credential_ref) do
+      :ok -> :ok
+      _error -> :error
+    end
+  end
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) when is_list(opts) do
@@ -71,29 +99,10 @@ defmodule YellowDog.ServerAgent.Client do
 
   def start_link(_opts), do: {:error, :invalid_options}
 
-  defp start_validated(%{enabled: false} = config, name),
-    do: start_client(config, name)
-
   defp start_validated(config, name) do
-    %{socket: socket, token: token, identity: identity} = config
-
-    with {:ok, credential_ref} <- CredentialProvider.start_owner(token, identity.id, socket) do
-      client_config =
-        config
-        |> Map.delete(:token)
-        |> Map.put(:credential_ref, credential_ref)
-        |> Map.put(:socket, CredentialProvider)
-
-      case start_client(client_config, name) do
-        {:ok, _client} = started ->
-          started
-
-        error ->
-          CredentialProvider.destroy(credential_ref)
-          error
-      end
-    else
-      _error -> {:error, :invalid_options}
+    case start_client(config, name) do
+      :ignore -> {:error, :invalid_options}
+      result -> result
     end
   end
 
@@ -131,7 +140,7 @@ defmodule YellowDog.ServerAgent.Client do
   def init(config) do
     Process.flag(:trap_exit, true)
 
-    with :ok <- CredentialProvider.bind(config.credential_ref, self()) do
+    with :ok <- CredentialProvider.bind(config.credential_ref, self(), config.identity.id) do
       {:ok,
        %{
          enabled: true,
@@ -148,7 +157,7 @@ defmodule YellowDog.ServerAgent.Client do
          timers: empty_timers()
        }, {:continue, :connect}}
     else
-      _error -> {:stop, :invalid_options}
+      _error -> :ignore
     end
   end
 
@@ -257,8 +266,8 @@ defmodule YellowDog.ServerAgent.Client do
   def handle_info(%Phoenix.SocketClient.Message{}, state), do: {:noreply, state}
 
   def handle_info(
-        {:DOWN, ref, :process, pid, _reason},
-        %{socket_ref: ref, socket: pid} = state
+        {:DOWN, ref, :process, _pid, _reason},
+        %{socket_ref: ref} = state
       ) do
     {:noreply, schedule_rejoin(state)}
   end
@@ -303,17 +312,18 @@ defmodule YellowDog.ServerAgent.Client do
 
   defp start_socket_reply(state) do
     state = cleanup_connection(state)
-    socket_opts = [url: state.config.url, credential_ref: state.config.credential_ref]
+    credential_ref = state.config.credential_ref
+    socket_opts = [credential_ref: credential_ref]
 
     case safe_apply(state.config.socket, :start_link, [socket_opts]) do
-      {:ok, socket} when is_pid(socket) ->
+      {:ok, ^credential_ref} ->
         connection_id = state.connection_id + 1
 
         state = %{
           state
           | status: :connecting,
-            socket: socket,
-            socket_ref: Process.monitor(socket),
+            socket: credential_ref,
+            socket_ref: CredentialProvider.monitor(credential_ref),
             connection_id: connection_id,
             connect_started_at: monotonic_now(state)
         }
@@ -762,7 +772,6 @@ defmodule YellowDog.ServerAgent.Client do
   defp stop_socket(%{socket: nil}), do: :ok
 
   defp stop_socket(state) do
-    Process.unlink(state.socket)
     _result = safe_apply(state.config.socket, :stop, [state.socket])
     :ok
   end
@@ -831,8 +840,7 @@ defmodule YellowDog.ServerAgent.Client do
   defp validate_mode(true, keys, opts, name) do
     with true <- Enum.all?(keys, &(&1 in @enabled_options)),
          true <- Enum.all?(@required_enabled_options, &Keyword.has_key?(opts, &1)),
-         {:ok, url} <- management_url(Keyword.get(opts, :management_url)),
-         {:ok, token} <- token(Keyword.get(opts, :token)),
+         {:ok, credential_ref} <- credential_ref(Keyword.get(opts, :credential_ref)),
          {:ok, identity} <- identity(Keyword.get(opts, :identity)),
          {:ok, dispatcher} <-
            callback_module(Keyword.get(opts, :dispatcher), dispatch: 2),
@@ -841,7 +849,6 @@ defmodule YellowDog.ServerAgent.Client do
          {:ok, command_journal} <- server_ref(Keyword.get(opts, :command_journal)),
          {:ok, config_applier} <- server_ref(Keyword.get(opts, :config_applier)),
          {:ok, config_apply_store} <- server_ref(Keyword.get(opts, :config_apply_store)),
-         {:ok, socket} <- callback_module(Keyword.get(opts, :socket), @socket_callbacks),
          {:ok, timer} <- callback_module(Keyword.get(opts, :timer), @timer_callbacks),
          {:ok, monotonic_clock} <-
            callback_module(Keyword.get(opts, :monotonic_clock), @clock_callbacks),
@@ -851,15 +858,14 @@ defmodule YellowDog.ServerAgent.Client do
       config =
         Map.merge(timings, %{
           enabled: true,
-          url: url,
-          token: token,
+          credential_ref: credential_ref,
           identity: identity,
           dispatcher: dispatcher,
           dispatcher_runtime_adapter: dispatcher_runtime_adapter,
           command_journal: command_journal,
           config_applier: config_applier,
           config_apply_store: config_apply_store,
-          socket: socket,
+          socket: CredentialProvider,
           timer: timer,
           monotonic_clock: monotonic_clock,
           wall_clock: wall_clock
@@ -958,6 +964,22 @@ defmodule YellowDog.ServerAgent.Client do
     end
   end
 
+  defp server_id(value) do
+    with {:ok, value} <- Bounds.id(value),
+         true <- value != "" do
+      {:ok, value}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp credential_ref({provider, capability} = credential_ref)
+       when is_pid(provider) and is_reference(capability) do
+    if Process.alive?(provider), do: {:ok, credential_ref}, else: :error
+  end
+
+  defp credential_ref(_value), do: :error
+
   defp identity(%Server{} = identity) do
     message = %Hello{identity: identity}
 
@@ -1049,68 +1071,107 @@ defmodule YellowDog.ServerAgent.Client do
     @moduledoc false
 
     @call_timeout 5_000
+    @bind_timeout 1_000
+    @claim_timeout 5_000
 
-    def start_owner(token, server_id, socket) do
+    def start_owner(token, server_id, endpoint, socket) do
       creator = self()
+      capability = make_ref()
+      bootstrap_ref = make_ref()
 
       owner =
-        spawn(fn ->
-          Process.flag(:trap_exit, true)
-          Process.flag(:sensitive, true)
+        spawn(__MODULE__, :bootstrap, [
+          creator,
+          bootstrap_ref,
+          capability,
+          token,
+          server_id,
+          endpoint,
+          socket
+        ])
 
-          loop(%{
-            token: token,
-            server_id: server_id,
-            socket_adapter: socket,
-            creator: creator,
-            client: nil,
-            client_ref: nil,
-            socket: nil,
-            socket_ref: nil,
-            channel: nil
-          })
-        end)
-
-      {:ok, owner}
+      receive do
+        {__MODULE__, ^bootstrap_ref, ^owner} -> {:ok, {owner, capability}}
+      after
+        @call_timeout ->
+          Process.exit(owner, :kill)
+          :error
+      end
     end
 
-    def bind(owner, client) when is_pid(owner) and is_pid(client),
-      do: call(owner, {:bind, client}, @call_timeout)
+    def bootstrap(creator, bootstrap_ref, capability, token, server_id, endpoint, socket) do
+      Process.flag(:trap_exit, true)
+      Process.flag(:sensitive, true)
+      creator_ref = Process.monitor(creator)
+      send(creator, {__MODULE__, bootstrap_ref, self()})
 
-    def start_link(opts) do
-      with {:ok, owner} <- Keyword.fetch(opts, :credential_ref),
-           {:ok, url} <- Keyword.fetch(opts, :url),
-           {:ok, ^owner} <- call(owner, {:start_socket, url}, @call_timeout) do
-        {:ok, owner}
+      loop(%{
+        capability: capability,
+        token: token,
+        server_id: server_id,
+        endpoint: endpoint,
+        socket_adapter: socket,
+        creator: creator,
+        creator_ref: creator_ref,
+        claim_timer:
+          Process.send_after(self(), {:credential_claim_timeout, capability}, @claim_timeout),
+        client: nil,
+        client_ref: nil,
+        socket: nil,
+        socket_ref: nil,
+        channel: nil
+      })
+    end
+
+    def bind(credential_ref, client, server_id) when is_pid(client),
+      do: call(credential_ref, {:bind, client, server_id}, @bind_timeout)
+
+    def bind(_credential_ref, _client, _server_id), do: :error
+
+    def release(credential_ref),
+      do: call(credential_ref, :release, @call_timeout)
+
+    def start_link(opts) when is_list(opts) do
+      with true <- Keyword.keyword?(opts),
+           [:credential_ref] <- Keyword.keys(opts),
+           {:ok, credential_ref} <- Keyword.fetch(opts, :credential_ref),
+           {:ok, ^credential_ref} <- call(credential_ref, :start_socket, @call_timeout) do
+        {:ok, credential_ref}
       else
         _error -> :error
       end
     end
 
-    def connected?(owner) when is_pid(owner),
-      do: call(owner, :connected?, @call_timeout) == true
+    def start_link(_opts), do: :error
 
-    def join(owner, topic, params, timeout) when is_pid(owner) do
-      call(owner, {:join, topic, params, timeout}, timeout + 100)
+    def connected?(credential_ref),
+      do: call(credential_ref, :connected?, @call_timeout) == true
+
+    def join(credential_ref, topic, params, timeout) do
+      call(credential_ref, {:join, topic, params, timeout}, timeout + 100)
     end
 
-    def push(owner, channel, event, payload, timeout) when is_pid(owner) do
-      call(owner, {:push, channel, event, payload, timeout}, timeout + 100)
+    def push(credential_ref, channel, event, payload, timeout) do
+      call(credential_ref, {:push, channel, event, payload, timeout}, timeout + 100)
     end
 
-    def stop(owner) when is_pid(owner),
-      do: call(owner, :stop_socket, @call_timeout)
+    def stop(credential_ref),
+      do: call(credential_ref, :stop_socket, @call_timeout)
 
-    def destroy(owner) when is_pid(owner),
-      do: call(owner, :destroy, @call_timeout)
+    def destroy(credential_ref),
+      do: call(credential_ref, :destroy, @call_timeout)
 
-    defp call(owner, request, timeout) do
+    def monitor({owner, capability}) when is_pid(owner) and is_reference(capability),
+      do: Process.monitor(owner)
+
+    defp call({owner, capability}, request, timeout)
+         when is_pid(owner) and is_reference(capability) do
       if Process.alive?(owner) do
         ref = make_ref()
-        send(owner, {__MODULE__, self(), ref, request})
+        send(owner, {__MODULE__, self(), capability, ref, request})
 
         receive do
-          {__MODULE__, ^ref, reply} -> reply
+          {__MODULE__, ^capability, ^ref, reply} -> reply
         after
           timeout -> :error
         end
@@ -1119,48 +1180,88 @@ defmodule YellowDog.ServerAgent.Client do
       end
     end
 
+    defp call(_credential_ref, _request, _timeout), do: :error
+
     defp loop(state) do
       receive do
-        {__MODULE__, caller, ref, {:bind, client}}
-        when caller == client and state.client_ref == nil ->
-          state = bind_client(state, client)
-          reply(caller, ref, :ok)
+        {__MODULE__, caller, capability, ref, {:bind, client, server_id}}
+        when capability == state.capability and caller == client and
+               server_id == state.server_id and state.client_ref == nil ->
+          case bind_client(state, client) do
+            {:ok, state} ->
+              reply(caller, capability, ref, :ok)
+              loop(state)
+
+            :error ->
+              reply(caller, capability, ref, :error)
+              _state = stop_socket(state)
+              :ok
+          end
+
+        {__MODULE__, caller, capability, ref, {:bind, client, _wrong_server_id}}
+        when capability == state.capability and caller == client and state.client_ref == nil ->
+          reply(caller, capability, ref, :error)
           loop(state)
 
-        {__MODULE__, caller, ref, {:start_socket, url}} when caller == state.client ->
-          {reply_value, state} = start_socket(state, url)
-          reply(caller, ref, reply_value)
+        {__MODULE__, caller, capability, ref, :start_socket}
+        when capability == state.capability and caller == state.client ->
+          {reply_value, state} = start_socket(state)
+          reply(caller, capability, ref, reply_value)
           loop(state)
 
-        {__MODULE__, caller, ref, :connected?} when caller == state.client ->
-          reply(caller, ref, socket_connected?(state))
+        {__MODULE__, caller, capability, ref, :connected?}
+        when capability == state.capability and caller == state.client ->
+          reply(caller, capability, ref, socket_connected?(state))
           loop(state)
 
-        {__MODULE__, caller, ref, {:join, topic, params, timeout}}
-        when caller == state.client ->
+        {__MODULE__, caller, capability, ref, {:join, topic, params, timeout}}
+        when capability == state.capability and caller == state.client ->
           {reply_value, state} = socket_join(state, topic, params, timeout)
-          reply(caller, ref, reply_value)
+          reply(caller, capability, ref, reply_value)
           loop(state)
 
-        {__MODULE__, caller, ref, {:push, channel, event, payload, timeout}}
-        when caller == state.client ->
-          reply(caller, ref, socket_push(state, channel, event, payload, timeout))
+        {__MODULE__, caller, capability, ref, {:push, channel, event, payload, timeout}}
+        when capability == state.capability and caller == state.client ->
+          reply(
+            caller,
+            capability,
+            ref,
+            socket_push(state, channel, event, payload, timeout)
+          )
+
           loop(state)
 
-        {__MODULE__, caller, ref, :stop_socket} when caller == state.client ->
+        {__MODULE__, caller, capability, ref, :stop_socket}
+        when capability == state.capability and caller == state.client ->
           state = stop_socket(state)
-          reply(caller, ref, :ok)
+          reply(caller, capability, ref, :ok)
           loop(state)
 
-        {__MODULE__, caller, ref, :destroy}
-        when caller == state.client or (state.client == nil and caller == state.creator) ->
+        {__MODULE__, caller, capability, ref, :destroy}
+        when capability == state.capability and
+               (caller == state.client or (state.client == nil and caller == state.creator)) ->
           _state = stop_socket(state)
-          reply(caller, ref, :ok)
+          reply(caller, capability, ref, :ok)
           :ok
 
-        {__MODULE__, caller, ref, _unauthorized_request} ->
-          reply(caller, ref, :error)
+        {__MODULE__, caller, capability, ref, :release}
+        when capability == state.capability and state.client == nil and caller == state.creator ->
+          _state = stop_socket(state)
+          reply(caller, capability, ref, :ok)
+          :ok
+
+        {__MODULE__, _caller, _capability, _ref, _unauthorized_request} ->
           loop(state)
+
+        {:credential_claim_timeout, capability}
+        when capability == state.capability and state.client == nil ->
+          _state = stop_socket(state)
+          :ok
+
+        {:DOWN, ref, :process, _pid, _reason}
+        when ref == state.creator_ref and state.client == nil ->
+          _state = stop_socket(state)
+          :ok
 
         {:DOWN, ref, :process, _pid, _reason} when ref == state.client_ref ->
           _state = stop_socket(state)
@@ -1168,7 +1269,7 @@ defmodule YellowDog.ServerAgent.Client do
 
         {:DOWN, ref, :process, _pid, _reason} when ref == state.socket_ref ->
           if is_pid(state.client) do
-            send(state.client, {:credential_socket_down, self()})
+            send(state.client, {:credential_socket_down, credential_ref(state)})
           end
 
           loop(%{state | socket: nil, socket_ref: nil, channel: nil})
@@ -1186,16 +1287,39 @@ defmodule YellowDog.ServerAgent.Client do
     end
 
     defp bind_client(%{client_ref: nil} = state, client) do
-      %{state | client: client, client_ref: Process.monitor(client)}
+      client_ref = Process.monitor(client)
+
+      if Process.alive?(state.creator) and
+           Process.demonitor(state.creator_ref, [:flush, :info]) do
+        cancel_claim_timer(state.claim_timer)
+
+        {:ok,
+         %{
+           state
+           | creator: nil,
+             creator_ref: nil,
+             claim_timer: nil,
+             client: client,
+             client_ref: client_ref
+         }}
+      else
+        Process.demonitor(client_ref, [:flush])
+        :error
+      end
     end
 
-    defp bind_client(state, _client), do: state
+    defp cancel_claim_timer(nil), do: :ok
 
-    defp start_socket(state, url) do
+    defp cancel_claim_timer(timer) do
+      _result = Process.cancel_timer(timer)
+      :ok
+    end
+
+    defp start_socket(state) do
       state = stop_socket(state)
 
       opts = [
-        url: url,
+        url: state.endpoint,
         params: %{"token" => state.token, "server_id" => state.server_id}
       ]
 
@@ -1203,7 +1327,7 @@ defmodule YellowDog.ServerAgent.Client do
         {:ok, socket} when is_pid(socket) ->
           Process.unlink(socket)
           socket_ref = Process.monitor(socket)
-          {{:ok, self()}, %{state | socket: socket, socket_ref: socket_ref}}
+          {{:ok, credential_ref(state)}, %{state | socket: socket, socket_ref: socket_ref}}
 
         _error ->
           {:error, state}
@@ -1235,12 +1359,22 @@ defmodule YellowDog.ServerAgent.Client do
 
     defp socket_join(state, _topic, _params, _timeout), do: {{:error, :transport}, state}
 
-    defp socket_push(%{socket_adapter: adapter}, channel, event, payload, timeout) do
+    defp socket_push(
+           %{socket_adapter: adapter, channel: channel},
+           channel,
+           event,
+           payload,
+           timeout
+         )
+         when is_pid(channel) do
       case invoke(adapter, :push, [channel, event, payload, timeout]) do
         {:ok, reply} -> {:ok, reply}
         _error -> {:error, :transport}
       end
     end
+
+    defp socket_push(_state, _channel, _event, _payload, _timeout),
+      do: {:error, :transport}
 
     defp stop_socket(%{socket: nil} = state), do: %{state | channel: nil}
 
@@ -1268,8 +1402,10 @@ defmodule YellowDog.ServerAgent.Client do
       _kind, _reason -> :error
     end
 
-    defp reply(caller, ref, value),
-      do: send(caller, {__MODULE__, ref, value})
+    defp credential_ref(state), do: {self(), state.capability}
+
+    defp reply(caller, capability, ref, value),
+      do: send(caller, {__MODULE__, capability, ref, value})
   end
 
   defmodule Socket do

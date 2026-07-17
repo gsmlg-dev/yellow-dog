@@ -34,15 +34,13 @@ defmodule YellowDog.ServerAgent.ClientTest do
   @later ~U[2026-07-17 10:00:01Z]
   @required_enabled_keys [
     :enabled,
-    :management_url,
-    :token,
+    :credential_ref,
     :identity,
     :dispatcher,
     :dispatcher_runtime_adapter,
     :command_journal,
     :config_applier,
     :config_apply_store,
-    :socket,
     :timer,
     :monotonic_clock,
     :wall_clock,
@@ -182,14 +180,12 @@ defmodule YellowDog.ServerAgent.ClientTest do
     invalid = [
       [],
       [enabled: true],
-      Keyword.put(base_opts(owner), :management_url, "http://management.example.test"),
-      Keyword.put(base_opts(owner), :management_url, "wss://management.example.test"),
-      Keyword.put(base_opts(owner), :token, ""),
+      Keyword.put(base_opts(owner), :credential_ref, make_ref()),
       Keyword.put(base_opts(owner), :identity, %{id: @server_id}),
       Keyword.put(base_opts(owner), :heartbeat_interval, 0),
       Keyword.put(base_opts(owner), :initial_backoff, 2_000),
       Keyword.put(base_opts(owner), :unknown, true),
-      base_opts(owner) ++ [token: "duplicate"]
+      base_opts(owner) ++ [credential_ref: make_ref()]
     ]
 
     for opts <- invalid do
@@ -197,7 +193,30 @@ defmodule YellowDog.ServerAgent.ClientTest do
     end
 
     assert {:error, :invalid_options} = Client.start_link(:invalid)
-    assert {:error, :invalid_options} = Client.start_link(enabled: false, token: @token)
+
+    assert {:error, :invalid_options} =
+             Client.start_link(enabled: false, credential_ref: make_ref())
+  end
+
+  test "prepares credentials with strict validated options" do
+    invalid = [
+      [],
+      [management_url: "https://management.example.test"],
+      credential_opts(management_url: "http://management.example.test"),
+      credential_opts(token: ""),
+      credential_opts(server_id: ""),
+      credential_opts(socket: String),
+      credential_opts(unknown: true),
+      credential_opts() ++ [token: "duplicate"]
+    ]
+
+    for opts <- invalid do
+      assert {:error, :invalid_options} = Client.prepare_credentials(opts)
+    end
+
+    assert {:error, :invalid_options} = Client.prepare_credentials(:invalid)
+    assert {:ok, credential_ref} = Client.prepare_credentials(credential_opts())
+    assert opaque_credential_ref?(credential_ref)
   end
 
   test "enabled mode rejects deletion of every required explicit option" do
@@ -215,9 +234,28 @@ defmodule YellowDog.ServerAgent.ClientTest do
     end
   end
 
-  test "accepts only strict HTTPS management authorities and valid ports" do
+  test "enabled mode rejects legacy raw credential options" do
     {:ok, owner} = Owner.start_link(self())
+    credential_ref = prepare_credentials!()
 
+    legacy_options = [
+      management_url: "https://management.example.test:4443/base",
+      token: @token,
+      socket: ClientFakeSocket
+    ]
+
+    for {key, value} <- legacy_options do
+      assert {:error, :invalid_options} =
+               owner
+               |> base_opts(credential_ref)
+               |> Keyword.put(key, value)
+               |> Client.start_link()
+    end
+
+    assert :ok = Client.release_credentials(credential_ref)
+  end
+
+  test "credential preparation accepts only strict HTTPS authorities and valid ports" do
     invalid_urls = [
       "http://management.example.test",
       "wss://management.example.test",
@@ -238,11 +276,7 @@ defmodule YellowDog.ServerAgent.ClientTest do
     ]
 
     for url <- invalid_urls do
-      result =
-        owner
-        |> base_opts()
-        |> Keyword.put(:management_url, url)
-        |> Client.start_link()
+      result = Client.prepare_credentials(credential_opts(management_url: url))
 
       assert result == {:error, :invalid_options},
              "invalid management URL #{inspect(url)} was accepted"
@@ -261,10 +295,11 @@ defmodule YellowDog.ServerAgent.ClientTest do
     ]
 
     for {management_url, expected_url} <- cases do
+      credential_ref = prepare_credentials!(management_url: management_url)
+
       assert {:ok, client} =
                owner
-               |> base_opts()
-               |> Keyword.put(:management_url, management_url)
+               |> base_opts(credential_ref)
                |> Client.start_link()
 
       assert_receive {:socket_start, socket_opts}
@@ -304,6 +339,36 @@ defmodule YellowDog.ServerAgent.ClientTest do
     assert_receive :journal_projection
     assert_receive {:socket_push, ^channel, "sync", journal_payload, 500}
     assert {:ok, %Journal{entries: []}} = decode_payload(journal_payload)
+  end
+
+  test "Client child spec and restart options retain only the opaque credential reference" do
+    {:ok, owner} = Owner.start_link(self())
+    credential_ref = prepare_credentials!()
+    opts = base_opts(owner, credential_ref)
+    child_spec = Client.child_spec(opts)
+
+    assert {Client, :start_link, [restart_opts]} = child_spec.start
+    assert restart_opts[:credential_ref] == credential_ref
+    assert opaque_credential_ref?(restart_opts[:credential_ref])
+    refute Keyword.has_key?(restart_opts, :management_url)
+    refute Keyword.has_key?(restart_opts, :token)
+    refute Keyword.has_key?(restart_opts, :socket)
+    refute contains_secret?(restart_opts, @token)
+    refute inspect(restart_opts) =~ "management.example.test"
+    refute Enum.any?(restart_opts, fn {_key, value} -> is_function(value) end)
+  end
+
+  test "prepared credentials bind only to the matching Server identity" do
+    {:ok, owner} = Owner.start_link(self())
+    credential_ref = prepare_credentials!(server_id: "server-west-1")
+
+    assert {:error, :invalid_options} =
+             owner
+             |> base_opts(credential_ref)
+             |> Client.start_link()
+
+    assert :ok = Client.release_credentials(credential_ref)
+    refute_receive {:socket_start, _opts}
   end
 
   test "does not activate or reset backoff until both handshake replies are exact" do
@@ -696,9 +761,11 @@ defmodule YellowDog.ServerAgent.ClientTest do
     refute contains_secret?(active_state, @token)
     refute inspect(active_state) =~ @token
     assert active_state.socket == active_state.config.credential_ref
+    refute Map.has_key?(active_state.config, :url)
+    refute Map.has_key?(active_state.config, :token)
 
     assert {:timeout, {:sys, :get_state, _arguments}} =
-             catch_exit(:sys.get_state(active_state.socket, 10))
+             catch_exit(:sys.get_state(provider_pid(active_state.socket), 10))
 
     GenServer.stop(active_client, :normal)
 
@@ -719,16 +786,30 @@ defmodule YellowDog.ServerAgent.ClientTest do
     refute inspect(Client.connection_state(unique_name())) =~ @token
   end
 
-  test "opaque credential reference rejects calls outside its bound Client" do
+  test "credential provider rejects an invalid capability" do
     {:ok, owner} = Owner.start_link(self())
     {:ok, client} = start_client(owner)
     assert_receive {:socket_start, _initial_opts}
     credential_ref = :sys.get_state(client).config.credential_ref
+    invalid_ref = replace_capability(credential_ref)
+
+    assert :error = Client.CredentialProvider.start_link(credential_ref: invalid_ref)
+    assert Process.alive?(provider_pid(credential_ref))
+    assert Client.connected?(client)
+  end
+
+  test "credential provider start cannot accept an endpoint substitution" do
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    assert_receive {:socket_start, initial_opts}
+    credential_ref = :sys.get_state(client).config.credential_ref
+
+    assert initial_opts[:url] == "wss://management.example.test:4443/server/ws/websocket"
 
     assert :error =
              Client.CredentialProvider.start_link(
-               url: "wss://attacker.example.test/server/ws/websocket",
-               credential_ref: credential_ref
+               credential_ref: credential_ref,
+               url: "wss://attacker.example.test/server/ws/websocket"
              )
 
     refute_receive {:socket_start,
@@ -737,23 +818,117 @@ defmodule YellowDog.ServerAgent.ClientTest do
     assert Client.connected?(client)
   end
 
-  defp start_client(owner, overrides \\ []) do
-    Client.start_link(Keyword.merge(base_opts(owner), overrides))
+  test "credential provider exits when its creator dies before bind" do
+    {creator, credential_ref} = start_unbound_provider()
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    Process.exit(creator, :kill)
+
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+    refute_receive {:socket_start, _opts}
   end
 
-  defp base_opts(owner) do
+  test "credential preparation can be released safely before Client construction" do
+    credential_ref = prepare_credentials!()
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    assert :ok = Client.release_credentials(credential_ref)
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+    assert :error = Client.release_credentials(credential_ref)
+    refute_receive {:socket_start, _opts}
+  end
+
+  test "unclaimed credential preparation expires deterministically" do
+    credential_ref = prepare_credentials!()
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}, 5_500
+    assert :error = Client.release_credentials(credential_ref)
+    refute_receive {:socket_start, _opts}
+  end
+
+  test "failed capability bind is cleaned up when the creator exits" do
+    {creator, credential_ref} = start_unbound_provider()
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+    invalid_ref = replace_capability(credential_ref)
+
+    assert :error = Client.CredentialProvider.bind(invalid_ref, self(), @server_id)
+    assert Process.alive?(provider_pid(credential_ref))
+
+    Process.exit(creator, :kill)
+
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+  end
+
+  test "failed socket start is cleaned up when the bound Client dies" do
+    ClientFakeSocket.set_starts([{:error, :authentication_failed}])
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    credential_ref = :sys.get_state(client).config.credential_ref
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    assert_receive {:socket_start,
+                    [
+                      url: "wss://management.example.test:4443/server/ws/websocket",
+                      params: %{"token" => @token, "server_id" => @server_id}
+                    ]}
+
+    assert Client.connection_state(client) == :backoff
+    Process.unlink(client)
+    Process.exit(client, :kill)
+
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+    refute_receive {:socket_stop, _socket}
+  end
+
+  test "Client startup failure leaves its unbound credential provider to expire" do
+    name = unique_name()
+    {:ok, blocker} = Agent.start_link(fn -> :blocked end, name: name)
+    {:ok, owner} = Owner.start_link(self())
+    credential_ref = prepare_credentials!()
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    assert {:error, {:already_started, ^blocker}} =
+             start_client(owner, name: name, credential_ref: credential_ref)
+
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}, 5_500
+    refute_receive {:socket_start, _opts}
+  end
+
+  test "bound Client death stops its socket and credential provider" do
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    assert_receive {:socket_join, socket, _topic, %{}, 400}
+    credential_ref = :sys.get_state(client).config.credential_ref
+    provider_monitor = Process.monitor(provider_pid(credential_ref))
+
+    Process.unlink(client)
+    Process.exit(client, :kill)
+
+    assert_receive {:socket_stop, ^socket}
+    assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
+  end
+
+  defp start_client(owner, overrides \\ []) do
+    credential_ref = Keyword.get_lazy(overrides, :credential_ref, &prepare_credentials!/0)
+
+    owner
+    |> base_opts(credential_ref)
+    |> Keyword.merge(overrides)
+    |> Client.start_link()
+  end
+
+  defp base_opts(owner, credential_ref \\ prepare_credentials!()) do
     [
       enabled: true,
       name: nil,
-      management_url: "https://management.example.test:4443/base",
-      token: @token,
+      credential_ref: credential_ref,
       identity: identity(),
       dispatcher: Dispatcher,
       dispatcher_runtime_adapter: Dispatcher,
       command_journal: owner,
       config_applier: owner,
       config_apply_store: owner,
-      socket: ClientFakeSocket,
       timer: ClientFakeTimer,
       monotonic_clock: ClientFakeMonotonicClock,
       wall_clock: ClientFakeWallClock,
@@ -935,6 +1110,53 @@ defmodule YellowDog.ServerAgent.ClientTest do
   defp unique_name do
     :"client_test_#{System.unique_integer([:positive, :monotonic])}"
   end
+
+  defp start_unbound_provider do
+    parent = self()
+
+    creator =
+      spawn(fn ->
+        result = Client.prepare_credentials(credential_opts())
+
+        send(parent, {:credential_provider_started, self(), result})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:credential_provider_started, ^creator, {:ok, credential_ref}}
+    {creator, credential_ref}
+  end
+
+  defp provider_pid({provider, capability})
+       when is_pid(provider) and is_reference(capability),
+       do: provider
+
+  defp replace_capability({provider, capability})
+       when is_pid(provider) and is_reference(capability),
+       do: {provider, make_ref()}
+
+  defp prepare_credentials!(overrides \\ []) do
+    assert {:ok, credential_ref} =
+             overrides
+             |> credential_opts()
+             |> Client.prepare_credentials()
+
+    credential_ref
+  end
+
+  defp credential_opts(overrides \\ []) do
+    Keyword.merge(
+      [
+        management_url: "https://management.example.test:4443/base",
+        token: @token,
+        server_id: @server_id,
+        socket: ClientFakeSocket
+      ],
+      overrides
+    )
+  end
+
+  defp opaque_credential_ref?({provider, capability}),
+    do: is_pid(provider) and is_reference(capability)
 
   defp digest(value) do
     {:ok, digest} = Digest.calculate(value)

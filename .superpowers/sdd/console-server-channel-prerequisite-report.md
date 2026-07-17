@@ -64,8 +64,11 @@ contract.
   `ManagementCore.runtime_connected(:server, id, journal)` before acceptance.
   ConfigState calls `accept_config_state_publication/4` before returning the
   receipt.
-- Result and Event are currently rejected as unsupported because this narrow
-  prerequisite has no safe request-correlation or event owner.
+- Historical/superseded: the initial narrow prerequisite rejected Result and
+  Event as unsupported because it had no safe request-correlation or event
+  owner. The correlated Management Transport documented in the 2026-07-18
+  review-fix section below now validates and correlates Result messages; Event
+  remains outside that transport's approved operation set.
 - Active disconnect calls `runtime_disconnected/2` and marks the record
   offline. Broadcasts use only `management:server:<id>`.
 

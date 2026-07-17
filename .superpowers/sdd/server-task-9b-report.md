@@ -20,7 +20,11 @@ Changed files:
 The protected pre-existing Console and root Mix changes were not touched or
 staged.
 
-## Strict Boundary
+## Strict Boundary (Historical, Superseded)
+
+Historical/superseded: this section records the original direct
+`Client.start_link/1` option contract. The final prepared-reference contract is
+defined in `Prepared Credential Restart-MFA Contract` below.
 
 `enabled: false` accepts only `:enabled` and optional `:name`, starts an inert
 GenServer, and requires no network or owner configuration.
@@ -76,13 +80,15 @@ bounded rejoin.
   `min(initial_backoff * 2^attempt, max_backoff)`, resetting attempts only
   after the complete Hello/Status handshake.
 
-## Token Handling
+## Token Handling (Historical, Superseded)
 
-The token is not stored in the inspectable GenServer state as a string or
-params map. State retains only an opaque zero-arity params provider closure;
-socket params are materialized inside `start_socket`. Tests inspect
-`:sys.get_state/1` in active and authentication-failure paths and assert the
-token is absent. The Client logs no token, payload, or raw failure reason.
+Historical/superseded: the initial Task 9B implementation did not store the
+token in the inspectable GenServer state as a string or params map, but it did
+retain an opaque zero-arity params provider closure and materialized params
+inside `start_socket`. That closure design was first replaced by a sensitive
+provider process and is now superseded again by the capability-authenticated,
+fixed-endpoint provider described below. The Client still logs no token,
+payload, or raw failure reason.
 
 ## Task 8 Owner Gap
 
@@ -177,13 +183,14 @@ canonicalized to lowercase and the endpoint is derived exactly as
   generation-bound local publication retry.
 - Neither path reruns ConfigApplier or fabricates transport/local success.
 
-### Result Path Dependency
+### Result Path Dependency (Historical, Superseded)
 
-The Client still emits the canonical `Result` wrapper returned by Dispatcher
-through the fixed `sync` event. End-to-end production Result correlation on
-the receiving side remains owned by the separate Console worker and is still
-an external dependency until that worker lands. No Console behavior was edited
-or locally worked around in this fix.
+Historical/superseded: at the time of this review fix, the Client emitted the
+canonical `Result` wrapper while end-to-end production Result correlation
+remained an external Console dependency. The later Console correlated
+management transport recorded in
+`console-server-channel-prerequisite-report.md` has since landed. No Console
+production behavior was edited by Task 9B.
 
 ### Fix Verification
 
@@ -209,3 +216,159 @@ or locally worked around in this fix.
   `{:error, :invalid_configuration}` from the unchanged Supervisor
   implementation. No owned Client test fails, and those protected files were
   not modified by this fix.
+
+## Important Credential-Owner Review Fix
+
+Date: 2026-07-18
+
+### Capability And Endpoint Ownership
+
+- The sensitive provider stores the validated fixed WebSocket endpoint with
+  the token and Server ID at bootstrap. Its socket-start operation accepts no
+  URL or params from the Client; an extra URL option is rejected.
+- Client state contains only an opaque `{provider_pid, capability_ref}`
+  credential reference and non-secret validated configuration. The endpoint,
+  token, and socket module are materialized before Client options are built;
+  recursive state and nested-closure probes remain secret-free.
+- Every provider request carries both the unguessable provider capability and
+  a fresh request reference. The provider additionally verifies the bound
+  caller PID, drops unauthenticated mailbox requests without replying, and
+  forwards socket messages only to the bound Client.
+- Pushes are restricted to the channel returned by the provider-owned join.
+  The underlying adapter still receives the unchanged exact endpoint and
+  params `%{"token" => token, "server_id" => server_id}`.
+
+### Lifecycle Transfer
+
+- Provider bootstrap installs a creator monitor before `start_owner/4`
+  returns.
+- Capability-authenticated bind installs the Client monitor before removing
+  the creator monitor. A dead creator cannot complete transfer.
+- Creator death before bind, failed bind followed by creator death, Client
+  startup failure, failed socket start followed by Client death, and bound
+  Client death all have deterministic provider/socket cleanup tests.
+- Client state monitors the provider process behind the opaque capability
+  reference. Provider or underlying socket death enters the existing bounded
+  reconnect path without exposing credential material.
+
+### Verification (Historical Pre-Prerequisite)
+
+- TDD red:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/client_test.exs'`
+  reported `31 tests, 5 failures` for the old bare-PID provider,
+  caller-supplied URL, missing creator monitor, and missing lifecycle cleanup.
+- Focused and full tests:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/client_test.exs && mix test'`
+  reported `32 tests, 0 failures` and `236 tests, 0 failures`.
+- Compile:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors --force'`
+  passed after compiling 13 files.
+- Format:
+  `devenv shell -- bash -lc 'mix format --check-formatted apps/yellow_dog_server_agent/lib/yellow_dog/server_agent/client.ex apps/yellow_dog_server_agent/test/yellow_dog/server_agent/client_test.exs'`
+  passed.
+- Strict Credo:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix credo --strict'`
+  checked 32 source files and 1,305 modules/functions with no issues.
+- Dependencies:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix deps'`
+  reported all 10 direct/transitive entries available.
+- Compile xref:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix xref graph --label compile'`
+  passed with no compile edges reported.
+- Dependency tree:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix app.tree --format plain'`
+  remains limited to Sync, Jason, `phoenix_socket_client`, and runtime
+  dependencies.
+- Bounded lifecycle/state checks are included in the focused suite for invalid
+  capability, endpoint substitution rejection, creator death before bind,
+  failed bind/start cleanup, bound-Client death, exact socket URL/params,
+  recursive state inspection, and sensitive-provider `:sys` rejection.
+- Scoped `git diff --check` and forbidden-reference scans for caller-supplied
+  socket URLs, params closures, config environment access, ManagementCore,
+  Console, raw UDP, and Concord references passed.
+
+## Prepared Credential Restart-MFA Contract
+
+Date: 2026-07-18
+
+The independent Task 9C review found that creating the provider inside
+`Client.start_link/1` was too late: Supervisor and outer application child
+restart MFAs could already retain the raw management URL and token. The final
+Task 9B contract moves credential materialization ahead of Client child-option
+construction.
+
+### Public Preparation Boundary
+
+- `Client.prepare_credentials/1` accepts exactly `:management_url`, `:token`,
+  `:server_id`, and `:socket`. It strictly validates the fixed HTTPS authority,
+  bounded nonempty token and Server ID, and complete socket callback module.
+- Successful preparation returns only an opaque
+  `{provider_pid, capability_ref}`. It creates the sensitive provider with the
+  validated fixed WebSocket endpoint, token, Server ID, and socket module.
+- `Client.release_credentials/1` capability-authenticates creator-owned
+  cleanup when Supervisor preparation or child construction fails. It returns
+  only `:ok` or `:error`.
+- An unclaimed provider monitors its creator and also expires after the bounded
+  five-second claim interval. Neither release nor timeout starts a socket.
+
+### Client Construction Boundary
+
+- Enabled `Client.start_link/1` accepts `:credential_ref` instead of
+  `:management_url`, `:token`, or `:socket`; all three legacy keys are unknown
+  and rejected.
+- `Client.child_spec/1` therefore retains no URL, token, socket params,
+  credential-bearing function, or socket module. Its restart MFA contains only
+  the opaque credential reference and non-secret explicit Client options.
+- Capability-authenticated bind also checks that the prepared Server ID equals
+  the canonical Client identity ID. A reference can bind to exactly one Client.
+- Bind installs the Client monitor first, then atomically removes the creator
+  monitor using `Process.demonitor/2` with `:info`; a creator death that wins
+  that transfer causes provider cleanup.
+- Socket start remains parameterless from Client and uses only the provider's
+  stored endpoint and exact params.
+
+### Final Verification
+
+- TDD red:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/client_test.exs'`
+  reported `36 tests, 35 failures` because preparation/release were absent and
+  enabled Client options still required raw credential fields.
+- Focused Client suite:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/client_test.exs'`
+  reported `38 tests, 0 failures`.
+- Full Server-agent suite:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test'`
+  reported `242 tests, 2 failures`. Both are concurrent, out-of-scope Task 9C
+  integration failures in `SupervisorTest`: line 206
+  (`complete outbound configuration adds Client last...`) and line 445
+  (`one_for_one restarts Client...`). Both fail to start child `:client` with
+  `:invalid_options` because the current Supervisor still builds the legacy
+  raw `management_url`/`token`/`socket` Client options. No owned Client test
+  failed, and Supervisor/facade files were not modified.
+- Compile:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors --force'`
+  passed after compiling 13 files.
+- Format:
+  `devenv shell -- bash -lc 'mix format --check-formatted apps/yellow_dog_server_agent/lib/yellow_dog/server_agent/client.ex apps/yellow_dog_server_agent/test/yellow_dog/server_agent/client_test.exs'`
+  passed.
+- Strict Credo:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix credo --strict'`
+  checked 32 source files and 1,315 modules/functions with no issues.
+- Dependencies:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix deps'`
+  reported all 10 direct/transitive entries available.
+- Compile xref:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix xref graph --label compile'`
+  passed with no compile edges reported.
+- Dependency tree:
+  `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix app.tree --format plain'`
+  remains limited to Sync, Jason, `phoenix_socket_client`, and runtime
+  dependencies.
+- Bounded state/lifecycle coverage includes child restart-MFA inspection,
+  legacy raw-option rejection, mismatched Server ID, invalid capability,
+  endpoint substitution, explicit release, unclaimed timeout, creator death,
+  failed bind/start cleanup, bound-Client death, exact socket URL/params,
+  recursive state inspection, and sensitive-provider `:sys` rejection.
+- Scoped `git diff --check` and forbidden-reference scans for Client-state URL,
+  caller-supplied socket URL, params closures, config environment access,
+  ManagementCore, Console, raw UDP, and Concord references passed.
