@@ -84,6 +84,21 @@ defmodule YellowDog.ManagementCore do
   def latest_desired_config(target_type, target_id),
     do: ConfigVersions.latest_desired(target_type, target_id)
 
+  @doc "Accepts and durably receipts an exact canonical ConfigState publication."
+  @spec accept_config_state_publication(:server, String.t(), pos_integer(), binary()) ::
+          {:ok, map()} | {:error, Error.t()}
+  def accept_config_state_publication(:server, server_id, publication_sequence, encoded_message),
+    do:
+      ConfigVersions.accept_config_state_publication(
+        :server,
+        server_id,
+        publication_sequence,
+        encoded_message
+      )
+
+  def accept_config_state_publication(_target_type, _target_id, _sequence, _encoded_message),
+    do: invalid("invalid ConfigState publication target")
+
   @doc "Queries a concrete server and durably stores its validated snapshot."
   def query_server(server_id, snapshot_domain, operation, payload),
     do: query(:server, server_id, snapshot_domain, operation, payload)

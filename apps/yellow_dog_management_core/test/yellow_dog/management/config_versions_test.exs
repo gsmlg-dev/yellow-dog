@@ -11,6 +11,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
   alias YellowDog.ManagementCore
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Message
   alias YellowDog.Sync.Message.ConfigState
 
   @digest_a String.duplicate("a", 64)
@@ -170,6 +171,538 @@ defmodule YellowDog.Management.ConfigVersionsTest do
 
     assert_error(transition(applied, :applied, 3, applied_revision: @digest_a), :conflict)
     assert_error(transition(applied, :failed, 3, failure_phase: :apply), :conflict)
+  end
+
+  test "accepts canonical ConfigState publications for success and every legal failure phase" do
+    register_server("srv-publication-success")
+    assert {:ok, desired} = publish_server("srv-publication-success")
+
+    assert {:ok, delivered_receipt} = accept_publication(desired, 1, :delivered)
+
+    assert delivered_receipt == %{
+             "target_type" => "server",
+             "target_id" => "srv-publication-success",
+             "publication_sequence" => 1,
+             "state_revision" => 1
+           }
+
+    assert {:ok, delivered} =
+             ManagementCore.get_server_config_version("srv-publication-success", desired.version)
+
+    assert {:ok, applying_receipt} = accept_publication(delivered, 2, :applying)
+    assert applying_receipt["state_revision"] == 2
+
+    assert {:ok, applying} =
+             ManagementCore.get_server_config_version("srv-publication-success", desired.version)
+
+    assert {:ok, applied_receipt} =
+             accept_publication(applying, 3, :applied, applied_revision: @digest_a)
+
+    assert applied_receipt["state_revision"] == 3
+
+    failure_cases = [
+      {"delivery", :desired, :delivery, 1},
+      {"validation", :delivered, :validation, 2},
+      {"apply", :applying, :apply, 3}
+    ]
+
+    for {suffix, prior_state, phase, terminal_sequence} <- failure_cases do
+      server_id = "srv-publication-failure-#{suffix}"
+      register_server(server_id)
+      assert {:ok, version} = publish_server(server_id)
+
+      version =
+        case prior_state do
+          :desired ->
+            version
+
+          :delivered ->
+            assert {:ok, _receipt} = accept_publication(version, 1, :delivered)
+
+            {:ok, delivered} =
+              ManagementCore.get_server_config_version(server_id, version.version)
+
+            delivered
+
+          :applying ->
+            assert {:ok, _receipt} = accept_publication(version, 1, :delivered)
+
+            {:ok, delivered} =
+              ManagementCore.get_server_config_version(server_id, version.version)
+
+            assert {:ok, _receipt} = accept_publication(delivered, 2, :applying)
+            {:ok, applying} = ManagementCore.get_server_config_version(server_id, version.version)
+            applying
+        end
+
+      assert {:ok, receipt} =
+               accept_publication(version, terminal_sequence, :failed,
+                 failure_phase: phase,
+                 reason: "#{suffix} failed"
+               )
+
+      assert receipt["state_revision"] == terminal_sequence
+      assert {:ok, failed} = ManagementCore.get_server_config_version(server_id, version.version)
+      assert failed.failure_phase == phase
+    end
+
+    assert {:ok, first_applied} =
+             ManagementCore.get_server_config_version("srv-publication-success", desired.version)
+
+    assert {:ok, rollback_candidate} =
+             ManagementCore.publish_server_config(
+               "srv-publication-success",
+               server_attrs(2, expected_revision: first_applied.applied_revision)
+             )
+
+    assert {:ok, _receipt} = accept_publication(rollback_candidate, 4, :delivered)
+
+    assert {:ok, rollback_delivered} =
+             ManagementCore.get_server_config_version(
+               "srv-publication-success",
+               rollback_candidate.version
+             )
+
+    assert {:ok, _receipt} = accept_publication(rollback_delivered, 5, :applying)
+
+    assert {:ok, rollback_applying} =
+             ManagementCore.get_server_config_version(
+               "srv-publication-success",
+               rollback_candidate.version
+             )
+
+    assert {:ok, rollback_receipt} =
+             accept_publication(rollback_applying, 6, :failed,
+               failure_phase: :rollback,
+               reason: "rollback failed",
+               rollback: %{
+                 "succeeded" => false,
+                 "restored_version" => nil,
+                 "restored_revision" => nil,
+                 "reason" => "runtime rollback failed"
+               }
+             )
+
+    assert rollback_receipt["state_revision"] == 3
+  end
+
+  test "exact publication replay survives restart without revision increment or manifest write" do
+    server_id = "srv-publication-replay"
+    register_server(server_id)
+    assert {:ok, desired} = publish_server(server_id)
+    encoded = encoded_acknowledgement(desired, :delivered)
+
+    assert {:ok, receipt} =
+             ManagementCore.accept_config_state_publication(:server, server_id, 1, encoded)
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    manifest_bytes = File.read!(manifest_path)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      __MODULE__.FailingManifestFileOps
+    )
+
+    install_event_store_file_ops(__MODULE__.FailingManifestFileOps)
+    Application.put_env(:yellow_dog_management_core, :fail_config_manifest_write, true)
+
+    assert {:ok, ^receipt} =
+             ManagementCore.accept_config_state_publication(:server, server_id, 1, encoded)
+
+    assert File.read!(manifest_path) == manifest_bytes
+    assert {:ok, delivered} = ManagementCore.get_server_config_version(server_id, desired.version)
+    assert delivered.state_revision == 1
+
+    restart_application()
+
+    assert {:ok, ^receipt} =
+             ManagementCore.accept_config_state_publication(:server, server_id, 1, encoded)
+
+    assert File.read!(manifest_path) == manifest_bytes
+
+    assert {:ok, ^delivered} =
+             ManagementCore.get_server_config_version(server_id, desired.version)
+  end
+
+  test "rejects publication sequence reuse, gaps, duplicate subjects, and invalid sequences" do
+    server_id = "srv-publication-sequence"
+    register_server(server_id)
+    register_server("srv-publication-sequence-other")
+    assert {:ok, desired} = publish_server(server_id)
+    encoded = encoded_acknowledgement(desired, :delivered)
+
+    for sequence <- [0, -1, @max_version + 1, "1"] do
+      assert_error(
+        ManagementCore.accept_config_state_publication(
+          :server,
+          server_id,
+          sequence,
+          encoded
+        ),
+        :invalid
+      )
+    end
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(:server, server_id, 2, encoded),
+      :conflict
+    )
+
+    assert {:ok, _receipt} =
+             ManagementCore.accept_config_state_publication(:server, server_id, 1, encoded)
+
+    different_bytes =
+      desired
+      |> acknowledgement(:delivered, observed_at: DateTime.add(DateTime.utc_now(:second), 1))
+      |> then(fn message ->
+        {:ok, encoded} = Message.encode(message)
+        encoded
+      end)
+
+    assert different_bytes != encoded
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(
+        :server,
+        server_id,
+        1,
+        different_bytes
+      ),
+      :conflict
+    )
+
+    wrong_identity =
+      encoded_acknowledgement(desired, :delivered, target_id: "srv-publication-sequence-other")
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(
+        :server,
+        server_id,
+        1,
+        wrong_identity
+      ),
+      :conflict
+    )
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(:server, server_id, 2, encoded),
+      :conflict
+    )
+
+    assert {:ok, delivered} = ManagementCore.get_server_config_version(server_id, desired.version)
+    applying = encoded_acknowledgement(delivered, :applying)
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(:server, server_id, 3, applying),
+      :conflict
+    )
+
+    assert {:ok, _receipt} =
+             ManagementCore.accept_config_state_publication(:server, server_id, 2, applying)
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(:server, server_id, 2, encoded),
+      :conflict
+    )
+  end
+
+  test "rejects malformed, noncanonical, non-ConfigState, and incoherent publications" do
+    server_id = "srv-publication-validation"
+    register_server(server_id)
+    register_server("srv-publication-other")
+    assert {:ok, desired} = publish_server(server_id)
+
+    invalid_messages = [
+      " " <> encoded_acknowledgement(desired, :delivered),
+      encoded_message(%Message.Heartbeat{
+        target_type: :server,
+        target_id: server_id,
+        observed_at: DateTime.utc_now(:second)
+      }),
+      encoded_acknowledgement(desired, :delivered, target_id: "srv-publication-other"),
+      encoded_acknowledgement(desired, :delivered, version: desired.version + 1),
+      encoded_acknowledgement(desired, :delivered, digest: @digest_b),
+      encoded_acknowledgement(desired, :delivered, operation: "server.settings.apply")
+    ]
+
+    for encoded <- invalid_messages do
+      assert {:error, %Error{code: code}} =
+               ManagementCore.accept_config_state_publication(
+                 :server,
+                 server_id,
+                 1,
+                 encoded
+               )
+
+      assert code in [:invalid, :conflict]
+    end
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(
+        :netman,
+        server_id,
+        1,
+        encoded_acknowledgement(desired, :delivered)
+      ),
+      :invalid
+    )
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(
+        :server,
+        "missing",
+        1,
+        encoded_acknowledgement(desired, :delivered)
+      ),
+      :not_found
+    )
+
+    assert {:ok, unchanged} = ManagementCore.get_server_config_version(server_id, desired.version)
+    assert unchanged.state == :desired
+    assert unchanged.state_revision == 0
+  end
+
+  test "publication persistence failure creates no transition receipt or sequence high-water" do
+    server_id = "srv-publication-persistence"
+    register_server(server_id)
+    assert {:ok, desired} = publish_server(server_id)
+    encoded = encoded_acknowledgement(desired, :delivered)
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    manifest_before = File.read!(manifest_path)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :atomic_json_file_ops,
+      __MODULE__.FailingManifestFileOps
+    )
+
+    install_event_store_file_ops(__MODULE__.FailingManifestFileOps)
+    Application.put_env(:yellow_dog_management_core, :fail_config_manifest_write, true)
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(:server, server_id, 1, encoded),
+      :internal
+    )
+
+    assert File.read!(manifest_path) == manifest_before
+    assert {:ok, unchanged} = ManagementCore.get_server_config_version(server_id, desired.version)
+    assert unchanged.state == :desired
+    assert unchanged.state_revision == 0
+
+    Application.put_env(:yellow_dog_management_core, :fail_config_manifest_write, false)
+
+    assert {:ok, receipt} =
+             ManagementCore.accept_config_state_publication(:server, server_id, 1, encoded)
+
+    assert receipt["publication_sequence"] == 1
+    assert receipt["state_revision"] == 1
+  end
+
+  test "corrupt v2 publication receipts fail closed for every lifecycle API", %{
+    data_dir: data_dir
+  } do
+    corruptions = [
+      {"high-water",
+       fn lifecycle ->
+         Map.put(lifecycle, "publication_high_water", 2)
+       end},
+      {"lifecycle-keys",
+       fn lifecycle ->
+         Map.put(lifecycle, "unexpected", true)
+       end},
+      {"receipt-keys",
+       fn lifecycle ->
+         put_in(lifecycle, ["publication_receipts", "1", "unexpected"], true)
+       end},
+      {"message",
+       fn lifecycle ->
+         put_in(lifecycle, ["publication_receipts", "1", "encoded_message"], "{")
+       end},
+      {"message-coherence",
+       fn lifecycle ->
+         receipt = lifecycle["publication_receipts"]["1"]
+         {:ok, message} = Message.decode(receipt["encoded_message"])
+         changed = %{message | observed_at: DateTime.add(message.observed_at, 1)}
+         {:ok, encoded} = Message.encode(changed)
+
+         put_in(lifecycle, ["publication_receipts", "1", "encoded_message"], encoded)
+       end},
+      {"canonical-sequence",
+       fn lifecycle ->
+         receipt = lifecycle["publication_receipts"]["1"]
+
+         lifecycle
+         |> put_in(["publication_receipts"], %{"01" => receipt})
+       end},
+      {"subject",
+       fn lifecycle ->
+         first = lifecycle["publication_receipts"]["1"]
+
+         lifecycle
+         |> Map.put("publication_high_water", 2)
+         |> put_in(
+           ["publication_receipts", "2"],
+           %{first | "sequence" => 2}
+         )
+       end},
+      {"revision",
+       fn lifecycle ->
+         put_in(lifecycle, ["publication_receipts", "1", "resulting_state_revision"], 2)
+       end}
+    ]
+
+    for {suffix, corrupt} <- corruptions do
+      server_id = "srv-publication-corrupt-#{suffix}"
+      register_server(server_id)
+      assert {:ok, desired} = publish_server(server_id)
+      assert {:ok, _receipt} = accept_publication(desired, 1, :delivered)
+      assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+      assert {:ok, manifest} = AtomicJson.read(manifest_path)
+
+      corrupted =
+        Map.update!(manifest, "config_lifecycle", corrupt)
+
+      assert {:ok, ^manifest_path} = AtomicJson.replace(manifest_path, corrupted)
+      manifest_bytes = File.read!(manifest_path)
+
+      assert_error(
+        ManagementCore.get_server_config_version(server_id, desired.version),
+        :invalid
+      )
+
+      assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
+
+      assert_error(
+        ManagementCore.accept_config_state_publication(
+          :server,
+          server_id,
+          1,
+          encoded_acknowledgement(desired, :delivered)
+        ),
+        :invalid
+      )
+
+      assert_error(
+        ManagementCore.publish_server_config(server_id, server_attrs(2)),
+        :invalid
+      )
+
+      versions_dir = Path.join([data_dir, "management", "servers", server_id, "versions"])
+      assert File.read!(manifest_path) == manifest_bytes
+      assert map_size(snapshot_files(versions_dir)) == 1
+    end
+  end
+
+  test "clean v1 lifecycle upgrades on first accepted publication and preserves desired history" do
+    server_id = "srv-publication-v1-upgrade"
+    register_server(server_id)
+    assert {:ok, first} = publish_server(server_id)
+    assert {:ok, second} = ManagementCore.publish_server_config(server_id, server_attrs(2))
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest_v1} = AtomicJson.read(manifest_path)
+    assert manifest_v1["config_lifecycle"]["schema_version"] == 1
+
+    assert {:ok, receipt} = accept_publication(second, 1, :delivered)
+    assert receipt["state_revision"] == 1
+
+    assert {:ok, manifest_v2} = AtomicJson.read(manifest_path)
+    lifecycle = manifest_v2["config_lifecycle"]
+
+    assert Enum.sort(Map.keys(lifecycle)) ==
+             Enum.sort([
+               "schema_version",
+               "counter",
+               "desired_version",
+               "applied_version",
+               "versions",
+               "publication_high_water",
+               "publication_receipts"
+             ])
+
+    assert lifecycle["schema_version"] == 2
+    assert lifecycle["publication_high_water"] == 1
+    assert Map.keys(lifecycle["publication_receipts"]) == ["1"]
+    expected_operation = second.operation
+    expected_digest = second.digest
+
+    assert %{
+             "sequence" => 1,
+             "encoded_message" => encoded_message,
+             "version" => 2,
+             "state" => "delivered",
+             "operation" => ^expected_operation,
+             "digest" => ^expected_digest,
+             "resulting_state_revision" => 1
+           } = lifecycle["publication_receipts"]["1"]
+
+    assert Enum.sort(Map.keys(lifecycle["publication_receipts"]["1"])) ==
+             Enum.sort([
+               "sequence",
+               "encoded_message",
+               "version",
+               "state",
+               "operation",
+               "digest",
+               "resulting_state_revision"
+             ])
+
+    assert {:ok, %ConfigState{target_id: ^server_id, state: :delivered}} =
+             Message.decode(encoded_message)
+
+    assert {:ok, %ConfigVersion{state: :desired, state_revision: 0}} =
+             ManagementCore.get_server_config_version(server_id, first.version)
+  end
+
+  test "v1 with prior lifecycle progress rejects publication acceptance but remains readable" do
+    server_id = "srv-publication-v1-progress"
+    register_server(server_id)
+    assert {:ok, desired} = publish_server(server_id)
+    assert {:ok, delivered} = transition(desired, :delivered, 0)
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    assert manifest["config_lifecycle"]["schema_version"] == 1
+    manifest_bytes = File.read!(manifest_path)
+
+    assert_error(
+      ManagementCore.accept_config_state_publication(
+        :server,
+        server_id,
+        1,
+        encoded_acknowledgement(delivered, :applying)
+      ),
+      :conflict
+    )
+
+    assert File.read!(manifest_path) == manifest_bytes
+
+    assert {:ok, ^delivered} =
+             ManagementCore.get_server_config_version(server_id, desired.version)
+
+    assert {:ok, ^delivered} = ManagementCore.latest_desired_config(:server, server_id)
+  end
+
+  test "direct transition on v2 does not fabricate publication receipts or high-water" do
+    server_id = "srv-publication-direct-transition"
+    register_server(server_id)
+    assert {:ok, desired} = publish_server(server_id)
+    assert {:ok, _receipt} = accept_publication(desired, 1, :delivered)
+    assert {:ok, delivered} = ManagementCore.get_server_config_version(server_id, desired.version)
+    assert {:ok, applying} = transition(delivered, :applying, 1)
+    assert applying.state_revision == 2
+
+    assert {:ok, manifest_path} = StoragePath.server_manifest(server_id)
+    assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    lifecycle = manifest["config_lifecycle"]
+
+    assert lifecycle["schema_version"] == 2
+    assert lifecycle["publication_high_water"] == 1
+    assert Map.keys(lifecycle["publication_receipts"]) == ["1"]
+
+    assert {:ok, receipt} =
+             accept_publication(applying, 2, :applied, applied_revision: @digest_a)
+
+    assert receipt["state_revision"] == 3
   end
 
   test "rejects skipped, repeated, backward, stale, and cross-target transitions" do
@@ -1758,6 +2291,26 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       state,
       %{expected_state_revision: expected_state_revision, acknowledgement: ack}
     )
+  end
+
+  defp accept_publication(version, sequence, state, opts \\ []) do
+    ManagementCore.accept_config_state_publication(
+      version.target_type,
+      version.target_id,
+      sequence,
+      encoded_acknowledgement(version, state, opts)
+    )
+  end
+
+  defp encoded_acknowledgement(version, state, opts \\ []) do
+    version
+    |> acknowledgement(state, opts)
+    |> encoded_message()
+  end
+
+  defp encoded_message(message) do
+    assert {:ok, encoded} = Message.encode(message)
+    encoded
   end
 
   defp acknowledgement(version, state, opts) do

@@ -16,17 +16,19 @@ defmodule YellowDog.Management.ConfigVersions do
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Message
   alias YellowDog.Sync.Message.ConfigState
   alias YellowDog.Sync.Operation
 
   @max_version 9_223_372_036_854_775_807
-  @lifecycle_keys Enum.sort([
-                    "applied_version",
-                    "counter",
-                    "desired_version",
-                    "schema_version",
-                    "versions"
-                  ])
+  @lifecycle_v1_keys ~w(applied_version counter desired_version schema_version versions)
+  @lifecycle_v2_keys ~w(
+    applied_version counter desired_version publication_high_water
+    publication_receipts schema_version versions
+  )
+  @publication_receipt_keys ~w(
+    digest encoded_message operation resulting_state_revision sequence state version
+  )
   @version_filename ~r/\A([1-9][0-9]*)-([0-9a-f]{64})\.json\z/
 
   def start_link(opts \\ []) do
@@ -57,6 +59,11 @@ defmodule YellowDog.Management.ConfigVersions do
   def latest_desired(target_type, target_id),
     do: call({:latest_desired, target_type, target_id})
 
+  @doc false
+  def accept_config_state_publication(target_type, target_id, sequence, encoded_message),
+    do:
+      call({:accept_config_state_publication, target_type, target_id, sequence, encoded_message})
+
   @impl true
   def init(:ok) do
     Process.flag(:trap_exit, true)
@@ -83,6 +90,23 @@ defmodule YellowDog.Management.ConfigVersions do
 
   def handle_call({{:latest_desired, target_type, target_id}, deadline, config}, _from, state) do
     {:reply, do_latest_desired(target_type, target_id, deadline, config), state}
+  end
+
+  def handle_call(
+        {{:accept_config_state_publication, target_type, target_id, sequence, encoded_message},
+         deadline, config},
+        _from,
+        state
+      ) do
+    {:reply,
+     do_accept_config_state_publication(
+       target_type,
+       target_id,
+       sequence,
+       encoded_message,
+       deadline,
+       config
+     ), state}
   end
 
   defp do_publish(target_type, target_id, attrs, deadline, config) do
@@ -168,6 +192,56 @@ defmodule YellowDog.Management.ConfigVersions do
     end
   end
 
+  defp do_accept_config_state_publication(
+         target_type,
+         target_id,
+         sequence,
+         encoded_message,
+         deadline,
+         config
+       ) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, :server} <- publication_target_type(target_type),
+         {:ok, _record} <- registered_target(:server, target_id),
+         :ok <- validate_version(sequence),
+         true <- is_binary(encoded_message),
+         {:ok, %ConfigState{} = message} <- Message.decode(encoded_message),
+         {:ok, ^encoded_message} <- Message.encode(message),
+         :ok <- publication_identity(message, target_id),
+         {:ok, target} <- load_target(:server, target_id, deadline, config),
+         {:new, lifecycle} <-
+           publication_disposition(target, sequence, encoded_message, message),
+         :ok <- current_desired_version(lifecycle, message.version),
+         {:ok, current} <- fetch_version(target, message.version),
+         :ok <- allowed_state_transition(current.state, message.state),
+         {:ok, acknowledgement} <-
+           validate_acknowledgement(current, message.state, message),
+         :ok <- allowed_transition(current.state, message.state, acknowledgement.failure),
+         updated = apply_transition(current, message.state, acknowledgement),
+         receipt = publication_receipt(target, sequence, updated.state_revision),
+         publication = %{
+           sequence: sequence,
+           encoded_message: encoded_message,
+           message: message,
+           receipt: receipt
+         },
+         {:ok, ^receipt} <-
+           commit_config_state_publication(
+             target,
+             lifecycle,
+             updated,
+             publication,
+             deadline,
+             config
+           ) do
+      {:ok, receipt}
+    else
+      {:replay, receipt} -> {:ok, receipt}
+      {:error, %Error{}} = error -> error
+      _invalid -> invalid()
+    end
+  end
+
   defp commit_publication(target, version, deadline, config) do
     updated_lifecycle =
       target.lifecycle
@@ -208,6 +282,47 @@ defmodule YellowDog.Management.ConfigVersions do
     )
   end
 
+  defp commit_config_state_publication(
+         target,
+         lifecycle,
+         version,
+         publication,
+         deadline,
+         config
+       ) do
+    stored_receipt = %{
+      "sequence" => publication.sequence,
+      "encoded_message" => publication.encoded_message,
+      "version" => publication.message.version,
+      "state" => Atom.to_string(publication.message.state),
+      "operation" => publication.message.operation,
+      "digest" => publication.message.digest,
+      "resulting_state_revision" => version.state_revision
+    }
+
+    updated_lifecycle =
+      lifecycle
+      |> put_version(version)
+      |> update_applied_pointer(version)
+      |> Map.put("publication_high_water", publication.sequence)
+      |> put_in(
+        ["publication_receipts", Integer.to_string(publication.sequence)],
+        stored_receipt
+      )
+
+    ManifestStore.commit_section(
+      target.manifest_path,
+      "config_lifecycle",
+      fn current_section ->
+        with :ok <- unchanged_section(current_section, target.raw_section) do
+          {:ok, updated_lifecycle, publication.receipt}
+        end
+      end,
+      deadline,
+      config
+    )
+  end
+
   defp load_target(target_type, target_id, deadline, config) do
     with :ok <- ensure_before_deadline(deadline),
          {:ok, manifest_path} <- manifest_path(config.root, target_type, target_id),
@@ -220,6 +335,13 @@ defmodule YellowDog.Management.ConfigVersions do
          {:ok, versions} <- load_versions(target_type, target_id, lifecycle, deadline, config),
          :ok <- ensure_before_deadline(deadline),
          :ok <- validate_pointers(lifecycle, versions),
+         :ok <-
+           validate_publication_receipts(
+             lifecycle,
+             versions,
+             target_type,
+             target_id
+           ),
          :ok <- ensure_before_deadline(deadline) do
       {:ok,
        %{
@@ -250,9 +372,39 @@ defmodule YellowDog.Management.ConfigVersions do
   defp decode_lifecycle(nil), do: {:ok, empty_lifecycle()}
 
   defp decode_lifecycle(value) when is_map(value) do
-    with true <- Enum.sort(Map.keys(value)) == @lifecycle_keys,
+    case value["schema_version"] do
+      1 -> decode_lifecycle_v1(value)
+      2 -> decode_lifecycle_v2(value)
+      _invalid -> invalid()
+    end
+  end
+
+  defp decode_lifecycle(_value), do: invalid()
+
+  defp decode_lifecycle_v1(value) do
+    with true <- Enum.sort(Map.keys(value)) == @lifecycle_v1_keys,
          1 <- value["schema_version"],
-         :ok <- counter(value["counter"]),
+         :ok <- validate_lifecycle(value) do
+      {:ok, value}
+    else
+      _invalid -> invalid()
+    end
+  end
+
+  defp decode_lifecycle_v2(value) do
+    with true <- Enum.sort(Map.keys(value)) == @lifecycle_v2_keys,
+         2 <- value["schema_version"],
+         :ok <- validate_lifecycle(value),
+         :ok <- counter(value["publication_high_water"]),
+         true <- is_map(value["publication_receipts"]) do
+      {:ok, value}
+    else
+      _invalid -> invalid()
+    end
+  end
+
+  defp validate_lifecycle(value) do
+    with :ok <- counter(value["counter"]),
          :ok <- optional_version(value["desired_version"]),
          :ok <- optional_version(value["applied_version"]),
          versions when is_map(versions) <- value["versions"],
@@ -263,13 +415,11 @@ defmodule YellowDog.Management.ConfigVersions do
              value["counter"],
              value["desired_version"]
            ) do
-      {:ok, value}
+      :ok
     else
       _invalid -> invalid()
     end
   end
-
-  defp decode_lifecycle(_value), do: invalid()
 
   defp validate_lifecycle_entries(versions, counter) do
     Enum.reduce_while(versions, :ok, fn {key, lifecycle}, :ok ->
@@ -332,6 +482,204 @@ defmodule YellowDog.Management.ConfigVersions do
       :ok
     end
   end
+
+  defp validate_publication_receipts(
+         %{"schema_version" => 1},
+         _versions,
+         _target_type,
+         _target_id
+       ),
+       do: :ok
+
+  defp validate_publication_receipts(
+         %{
+           "schema_version" => 2,
+           "publication_high_water" => high_water,
+           "publication_receipts" => receipts
+         },
+         versions,
+         target_type,
+         target_id
+       ) do
+    with true <- map_size(receipts) == high_water,
+         {:ok, _subjects} <-
+           Enum.reduce_while(receipts, {:ok, MapSet.new()}, fn {key, receipt}, {:ok, subjects} ->
+             case validate_publication_receipt(
+                    key,
+                    receipt,
+                    high_water,
+                    versions,
+                    target_type,
+                    target_id,
+                    subjects
+                  ) do
+               {:ok, subjects} -> {:cont, {:ok, subjects}}
+               {:error, %Error{}} = error -> {:halt, error}
+             end
+           end) do
+      :ok
+    else
+      _invalid -> invalid()
+    end
+  end
+
+  defp validate_publication_receipts(
+         _lifecycle,
+         _versions,
+         _target_type,
+         _target_id
+       ),
+       do: invalid()
+
+  defp validate_publication_receipt(
+         key,
+         receipt,
+         high_water,
+         versions,
+         target_type,
+         target_id,
+         subjects
+       )
+       when is_binary(key) and is_map(receipt) do
+    with true <- Enum.sort(Map.keys(receipt)) == @publication_receipt_keys,
+         {:ok, sequence} <- canonical_sequence(key),
+         true <- sequence <= high_water,
+         true <- receipt["sequence"] == sequence,
+         encoded_message when is_binary(encoded_message) <- receipt["encoded_message"],
+         {:ok, %ConfigState{} = message} <- Message.decode(encoded_message),
+         {:ok, ^encoded_message} <- Message.encode(message),
+         true <- message.target_type == target_type,
+         true <- message.target_id == target_id,
+         true <- receipt["version"] == message.version,
+         true <- receipt["state"] == Atom.to_string(message.state),
+         true <- receipt["operation"] == message.operation,
+         true <- receipt["digest"] == message.digest,
+         {:ok, version} <- Map.fetch(versions, message.version),
+         true <- version.operation == message.operation,
+         true <- version.digest == message.digest,
+         :ok <-
+           validate_receipt_transition(
+             version,
+             message,
+             receipt["resulting_state_revision"]
+           ),
+         subject = {message.version, message.state},
+         false <- MapSet.member?(subjects, subject) do
+      {:ok, MapSet.put(subjects, subject)}
+    else
+      _invalid -> invalid()
+    end
+  end
+
+  defp validate_publication_receipt(
+         _key,
+         _receipt,
+         _high_water,
+         _versions,
+         _target_type,
+         _target_id,
+         _subjects
+       ),
+       do: invalid()
+
+  defp validate_receipt_transition(version, message, resulting_revision) do
+    with {:ok, prior_state, expected_revision} <- receipt_transition_origin(message),
+         true <- resulting_revision == expected_revision,
+         current = %{version | state: prior_state, state_revision: expected_revision - 1},
+         {:ok, acknowledgement} <-
+           validate_acknowledgement(current, message.state, message),
+         :ok <- allowed_transition(prior_state, message.state, acknowledgement.failure),
+         true <- version.state_revision >= resulting_revision,
+         :ok <- receipt_lifecycle_coherence(version, message) do
+      :ok
+    else
+      _invalid -> invalid()
+    end
+  end
+
+  defp receipt_transition_origin(%ConfigState{state: :delivered}),
+    do: {:ok, :desired, 1}
+
+  defp receipt_transition_origin(%ConfigState{state: :applying}),
+    do: {:ok, :delivered, 2}
+
+  defp receipt_transition_origin(%ConfigState{state: :applied}),
+    do: {:ok, :applying, 3}
+
+  defp receipt_transition_origin(%ConfigState{
+         state: :failed,
+         failure: %{"phase" => "delivery"}
+       }),
+       do: {:ok, :desired, 1}
+
+  defp receipt_transition_origin(%ConfigState{
+         state: :failed,
+         failure: %{"phase" => "validation"}
+       }),
+       do: {:ok, :delivered, 2}
+
+  defp receipt_transition_origin(%ConfigState{
+         state: :failed,
+         failure: %{"phase" => phase}
+       })
+       when phase in ["apply", "rollback"],
+       do: {:ok, :applying, 3}
+
+  defp receipt_transition_origin(_message), do: invalid()
+
+  defp receipt_lifecycle_coherence(
+         %ConfigVersion{delivered_at: observed_at},
+         %ConfigState{state: :delivered, observed_at: observed_at}
+       )
+       when not is_nil(observed_at),
+       do: :ok
+
+  defp receipt_lifecycle_coherence(
+         %ConfigVersion{applying_at: observed_at},
+         %ConfigState{state: :applying, observed_at: observed_at}
+       )
+       when not is_nil(observed_at),
+       do: :ok
+
+  defp receipt_lifecycle_coherence(
+         %ConfigVersion{
+           state: :applied,
+           applied_at: observed_at,
+           applied_revision: applied_revision
+         },
+         %ConfigState{
+           state: :applied,
+           observed_at: observed_at,
+           applied_revision: applied_revision
+         }
+       ),
+       do: :ok
+
+  defp receipt_lifecycle_coherence(
+         %ConfigVersion{
+           state: :failed,
+           failed_at: observed_at,
+           failure_phase: persisted_phase,
+           failure_reason: failure_reason,
+           rollback: rollback,
+           restored_version: restored_version,
+           restored_revision: restored_revision
+         },
+         %ConfigState{
+           state: :failed,
+           observed_at: observed_at,
+           failure: %{"phase" => phase, "reason" => failure_reason},
+           rollback: rollback
+         }
+       ) do
+    if persisted_phase == failure_phase(%{"phase" => phase}) and
+         restored_version == rollback_value(rollback, "restored_version") and
+         restored_revision == rollback_value(rollback, "restored_revision"),
+       do: :ok,
+       else: invalid()
+  end
+
+  defp receipt_lifecycle_coherence(_version, _message), do: invalid()
 
   defp pointer_exists(nil, _versions), do: :ok
 
@@ -711,6 +1059,89 @@ defmodule YellowDog.Management.ConfigVersions do
   defp current_desired_version(_lifecycle, _version),
     do: conflict("config version is no longer desired")
 
+  defp publication_disposition(target, sequence, encoded_message, message) do
+    case target.lifecycle["schema_version"] do
+      1 ->
+        with :ok <- clean_v1_publication_upgrade(target),
+             :ok <- next_publication_sequence(sequence, 0) do
+          {:new, upgrade_lifecycle(target.lifecycle)}
+        end
+
+      2 ->
+        publication_disposition_v2(target, sequence, encoded_message, message)
+    end
+  end
+
+  defp publication_disposition_v2(target, sequence, encoded_message, message) do
+    high_water = target.lifecycle["publication_high_water"]
+
+    if sequence <= high_water do
+      stored = target.lifecycle["publication_receipts"][Integer.to_string(sequence)]
+
+      if stored["encoded_message"] == encoded_message,
+        do: {:replay, publication_receipt(target, sequence, stored["resulting_state_revision"])},
+        else: conflict("config publication sequence already used")
+    else
+      with :ok <- unique_publication_subject(target.lifecycle, message),
+           :ok <- next_publication_sequence(sequence, high_water) do
+        {:new, target.lifecycle}
+      end
+    end
+  end
+
+  defp clean_v1_publication_upgrade(target) do
+    if Enum.all?(target.versions, fn {_version, config_version} ->
+         config_version.state == :desired and config_version.state_revision == 0
+       end) do
+      :ok
+    else
+      conflict("legacy config lifecycle cannot bind publication sequences")
+    end
+  end
+
+  defp upgrade_lifecycle(lifecycle) do
+    lifecycle
+    |> Map.put("schema_version", 2)
+    |> Map.put("publication_high_water", 0)
+    |> Map.put("publication_receipts", %{})
+  end
+
+  defp unique_publication_subject(lifecycle, message) do
+    duplicate? =
+      Enum.any?(lifecycle["publication_receipts"], fn {_sequence, receipt} ->
+        receipt["version"] == message.version and
+          receipt["state"] == Atom.to_string(message.state)
+      end)
+
+    if duplicate?,
+      do: conflict("config publication transition already receipted"),
+      else: :ok
+  end
+
+  defp next_publication_sequence(sequence, high_water) do
+    if sequence == high_water + 1,
+      do: :ok,
+      else: conflict("config publication sequence is not contiguous")
+  end
+
+  defp publication_receipt(target, sequence, state_revision) do
+    %{
+      "target_type" => Atom.to_string(target.target_type),
+      "target_id" => target.target_id,
+      "publication_sequence" => sequence,
+      "state_revision" => state_revision
+    }
+  end
+
+  defp publication_identity(%ConfigState{target_type: :server, target_id: target_id}, target_id),
+    do: :ok
+
+  defp publication_identity(_message, _target_id),
+    do: conflict("config publication identity mismatch")
+
+  defp publication_target_type(:server), do: {:ok, :server}
+  defp publication_target_type(_target_type), do: invalid()
+
   defp expected_state_revision(version, expected) do
     if version.state_revision == expected,
       do: :ok,
@@ -962,6 +1393,23 @@ defmodule YellowDog.Management.ConfigVersions do
        do: :ok
 
   defp validate_version(_value), do: invalid()
+
+  defp canonical_sequence(key) do
+    case Integer.parse(key) do
+      {sequence, ""} ->
+        if Integer.to_string(sequence) == key do
+          case validate_version(sequence) do
+            :ok -> {:ok, sequence}
+            {:error, %Error{}} = error -> error
+          end
+        else
+          invalid()
+        end
+
+      _invalid ->
+        invalid()
+    end
+  end
 
   defp empty_lifecycle do
     %{
