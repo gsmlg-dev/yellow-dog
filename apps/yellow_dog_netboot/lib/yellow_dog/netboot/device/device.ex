@@ -77,6 +77,7 @@ defmodule YellowDog.Netboot.Device do
       profile_id: Map.get(attrs, :profile_id),
       ip_address: Map.get(attrs, :ip_address),
       state: :discovered,
+      hardware_info: Map.get(attrs, :hardware_info, %{}),
       first_seen: now,
       last_seen: now,
       tags: Map.get(attrs, :tags, []),
@@ -130,6 +131,42 @@ defmodule YellowDog.Netboot.Device do
     |> Enum.map_join(":", &Enum.join/1)
   end
 
+  @doc "Return whether a MAC is a complete normalized hardware address."
+  @spec valid_mac?(term()) :: boolean()
+  def valid_mac?(mac) when is_binary(mac) do
+    normalized = normalize_mac(mac)
+    normalized == mac and Regex.match?(~r/^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/, normalized)
+  end
+
+  def valid_mac?(_mac), do: false
+
+  @doc false
+  @spec validate(t()) :: :ok | {:error, :invalid_device}
+  def validate(%__MODULE__{} = device) do
+    valid =
+      valid_mac?(device.mac) and
+        optional_nonempty_text?(device.uuid) and
+        optional_text?(device.hostname) and
+        (is_nil(device.arch) or device.arch in @valid_arches) and
+        optional_nonempty_text?(device.profile_id) and
+        device.state in @valid_states and
+        valid_ip_address?(device.ip_address) and
+        is_map(device.hardware_info) and
+        valid_term?(device.hardware_info) and
+        optional_datetime?(device.first_seen) and
+        optional_datetime?(device.last_seen) and
+        is_integer(device.install_attempts) and device.install_attempts >= 0 and
+        optional_text?(device.last_error) and
+        is_list(device.tags) and Enum.all?(device.tags, &is_binary/1) and
+        valid_state_history?(device.state_history) and
+        valid_slot?(device.slot) and
+        is_boolean(device.rescue_mode)
+
+    if valid, do: :ok, else: {:error, :invalid_device}
+  end
+
+  def validate(_device), do: {:error, :invalid_device}
+
   # --- Private ---
 
   defp validate_arch(nil), do: nil
@@ -143,6 +180,65 @@ defmodule YellowDog.Netboot.Device do
   end
 
   defp validate_arch(_), do: nil
+
+  defp optional_nonempty_text?(nil), do: true
+  defp optional_nonempty_text?(value), do: is_binary(value) and value != ""
+
+  defp optional_text?(nil), do: true
+  defp optional_text?(value), do: is_binary(value)
+
+  defp optional_datetime?(nil), do: true
+  defp optional_datetime?(value), do: is_struct(value, DateTime)
+
+  defp valid_ip_address?(nil), do: true
+
+  defp valid_ip_address?(address) when is_tuple(address) and tuple_size(address) == 4 do
+    address
+    |> Tuple.to_list()
+    |> Enum.all?(&(is_integer(&1) and &1 in 0..255))
+  end
+
+  defp valid_ip_address?(address) when is_tuple(address) and tuple_size(address) == 8 do
+    address
+    |> Tuple.to_list()
+    |> Enum.all?(&(is_integer(&1) and &1 in 0..65_535))
+  end
+
+  defp valid_ip_address?(_address), do: false
+
+  defp valid_state_history?(history) when is_list(history) do
+    Enum.all?(history, fn
+      %{state: state, at: %DateTime{}} -> state in @valid_states
+      _entry -> false
+    end)
+  end
+
+  defp valid_state_history?(_history), do: false
+
+  defp valid_slot?(%{active: active, pending: pending} = slot) do
+    map_size(slot) == 2 and active in [:a, :b] and pending in [nil, :a, :b]
+  end
+
+  defp valid_slot?(_slot), do: false
+
+  defp valid_term?(value)
+       when is_nil(value) or is_boolean(value) or is_binary(value) or is_number(value) or
+              is_atom(value),
+       do: true
+
+  defp valid_term?(value) when is_list(value), do: Enum.all?(value, &valid_term?/1)
+
+  defp valid_term?(value) when is_tuple(value) do
+    value
+    |> Tuple.to_list()
+    |> Enum.all?(&valid_term?/1)
+  end
+
+  defp valid_term?(value) when is_map(value) do
+    Enum.all?(value, fn {key, nested} -> valid_term?(key) and valid_term?(nested) end)
+  end
+
+  defp valid_term?(_value), do: false
 
   defp apply_transition_side_effects(device, :booting, _metadata) do
     %{device | install_attempts: device.install_attempts + 1}
