@@ -201,3 +201,87 @@ mix credo --strict
 - The adapter remains responsible for result-envelope validation, observed
   timestamps, list revisions, pagination, expected-revision handling, and its
   own fixed transport error mapping.
+
+## Remaining Important Finding Resolution
+
+This section appends the final durable-read review resolution and supersedes
+the earlier verification counts for the completed Task 7A state.
+
+Registry now routes restart enumeration and snapshot reads through the
+injectable, sanitized file boundary. It records `host_load_status` when any host
+directory listing, file read, TOML decode, or host reconstruction fails.
+Legacy `list_hosts/0` and `get_host/1` retain their historical best-effort
+partial/absent behavior, but the following control operations fail closed with
+`{:error, :persistence_failed}` while that status is latched:
+
+- host list
+- host get
+- host approve
+- host revoke
+- host delete
+
+A successful restart after the durable file is repaired clears the latched
+failure. Token restart loading also uses the injectable boundary but preserves
+its legacy best-effort behavior; all token control surfaces remain
+`{:error, :unsupported}`.
+
+Audit now has a separate strict Registry control read. A missing `audit.log`
+still returns `{:ok, []}`. Other read errors, raise/throw/exit conditions,
+invalid UTF-8 content, and parsing exceptions return the sanitized
+`{:error, :persistence_failed}` result. The legacy `read_audit_log/1` and
+`YellowDogIdentity.audit_log/1` APIs continue returning `[]` for those failures.
+No raw filesystem path or reason is returned.
+
+### Added TDD Evidence
+
+The expanded focused suite was first run against the prior implementation:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 15 tests, 4 failures
+```
+
+The failures proved that restart read/list failures were ignored, corrupt host
+files produced successful partial control views, injected audit read failures
+returned successful data, and corrupt audit content returned `{:ok, []}`.
+
+After the durable-read implementation:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 15 tests, 0 failures
+```
+
+The added regressions perform actual Registry stop/start cycles with an
+injected directory-list error and host-read error/raise/throw/exit outcomes,
+restart with one valid and one corrupt host file, verify state/disk
+preservation, and prove recovery after repair. Audit coverage includes
+missing-file success, read error/raise/throw/exit sanitation, invalid-content
+sanitation, owner liveness, and legacy best-effort compatibility.
+
+### Final Verification
+
+All commands ran through the repository devenv:
+
+```text
+cd apps/yellow_dog_identity
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 15 tests, 0 failures
+
+mix test
+# 403 tests, 0 failures
+
+mix compile --warnings-as-errors
+# exit 0
+
+cd ../..
+mix format --check-formatted \
+  apps/yellow_dog_identity/lib/yellow_dog_identity.ex \
+  apps/yellow_dog_identity/lib/yellow_dog_identity/registry.ex \
+  apps/yellow_dog_identity/test/yellow_dog_identity/control_facade_test.exs
+# exit 0
+
+cd apps/yellow_dog_identity
+mix credo --strict
+# 468 mods/funs, found no issues
+```

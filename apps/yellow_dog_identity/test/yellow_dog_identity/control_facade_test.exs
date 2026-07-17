@@ -7,6 +7,7 @@ defmodule YellowDogIdentity.ControlFacadeTest do
   defmodule FileOps do
     @moduledoc false
 
+    def ls(context, path), do: invoke(context, :ls, [path])
     def mkdir_p(context, path), do: invoke(context, :mkdir_p, [path])
     def write(context, path, contents), do: invoke(context, :write, [path, contents])
     def read(context, path), do: invoke(context, :read, [path])
@@ -81,6 +82,75 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       assert {:ok, ^snapshot} = YellowDogIdentity.control_host(host.id)
     end
 
+    test "restart load failures are tracked and control host reads fail closed",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("restart-read-failure-host")
+      host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      persisted = File.read!(host_path)
+
+      failures = [
+        {:ls, {:error, {:raw_path, Path.dirname(host_path)}}},
+        {:read, {:error, {:raw_path, host_path}}},
+        {:read, {:raise, "raw path #{host_path}"}},
+        {:read, {:throw, {:raw_path, host_path}}},
+        {:read, {:exit, {:raw_path, host_path}}}
+      ]
+
+      for {operation, failure} <- failures do
+        set_file_failure(file_ops, operation, failure)
+        restart_registry!(tmp_dir, file_ops)
+        clear_file_failures(file_ops)
+
+        results = [
+          YellowDogIdentity.control_list_hosts(),
+          YellowDogIdentity.control_host(host.id),
+          YellowDogIdentity.control_approve_host(host.id),
+          YellowDogIdentity.control_revoke_host(host.id),
+          YellowDogIdentity.control_delete_host(host.id)
+        ]
+
+        assert results == List.duplicate({:error, :persistence_failed}, 5)
+        refute inspect(results) =~ tmp_dir
+        assert Registry.list_hosts() == []
+        assert Registry.get_host(host.id) == :not_found
+        assert File.read!(host_path) == persisted
+        assert Process.alive?(Process.whereis(Registry))
+      end
+
+      restart_registry!(tmp_dir, file_ops)
+      assert {:ok, %{"host_id" => host_id}} = YellowDogIdentity.control_host(host.id)
+      assert host_id == host.id
+    end
+
+    test "a corrupt snapshot does not become a successful partial control view",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      valid_host = put_host!("valid-restart-host")
+      corrupt_host = put_host!("corrupt-restart-host")
+      corrupt_path = Path.join([tmp_dir, "hosts", "#{corrupt_host.id}.toml"])
+      persisted = File.read!(corrupt_path)
+
+      stop_registry()
+      File.write!(corrupt_path, "invalid = [")
+      start_registry!(tmp_dir, file_ops)
+
+      assert [%Host{id: valid_id}] = Registry.list_hosts()
+      assert valid_id == valid_host.id
+      assert Registry.get_host(corrupt_host.id) == :not_found
+
+      assert {:error, :persistence_failed} = YellowDogIdentity.control_list_hosts()
+      assert {:error, :persistence_failed} = YellowDogIdentity.control_host(valid_host.id)
+      assert {:error, :persistence_failed} = YellowDogIdentity.control_host(corrupt_host.id)
+
+      stop_registry()
+      File.write!(corrupt_path, persisted)
+      start_registry!(tmp_dir, file_ops)
+
+      assert {:ok, hosts} = YellowDogIdentity.control_list_hosts()
+
+      assert Enum.map(hosts, & &1["host_id"]) |> Enum.sort() ==
+               Enum.sort([valid_host.id, corrupt_host.id])
+    end
+
     test "approval and token owner surfaces are typed unsupported without an owner" do
       stop_registry()
 
@@ -116,6 +186,50 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       refute encoded =~ "raw-detail"
       refute encoded =~ "ignored-host"
       refute encoded =~ "details"
+    end
+
+    test "audit read failures are typed while legacy reads remain best effort",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      assert {:ok, []} = YellowDogIdentity.control_list_audit()
+
+      Registry.append_audit("host.registered", "audit-read-host", %{secret: "hidden"})
+      flush_registry()
+
+      audit_path = Path.join(tmp_dir, "audit.log")
+
+      failures = [
+        {:error, {:raw_path, audit_path}},
+        {:raise, "raw path #{audit_path}"},
+        {:throw, {:raw_path, audit_path}},
+        {:exit, {:raw_path, audit_path}}
+      ]
+
+      for failure <- failures do
+        set_file_failure(file_ops, :read, failure)
+
+        result = YellowDogIdentity.control_list_audit()
+        assert result == {:error, :persistence_failed}
+        refute inspect(result) =~ audit_path
+        assert Registry.read_audit_log() == []
+        assert YellowDogIdentity.audit_log() == []
+        assert Process.alive?(Process.whereis(Registry))
+
+        clear_file_failures(file_ops)
+      end
+
+      assert {:ok, [%{"subject_id" => "audit-read-host"}]} =
+               YellowDogIdentity.control_list_audit()
+    end
+
+    test "audit parse exceptions return a typed control error",
+         %{tmp_dir: tmp_dir} do
+      audit_path = Path.join(tmp_dir, "audit.log")
+      File.write!(audit_path, <<255>>)
+
+      assert {:error, :persistence_failed} = YellowDogIdentity.control_list_audit()
+      assert Registry.read_audit_log() == []
+      assert YellowDogIdentity.audit_log() == []
+      assert Process.alive?(Process.whereis(Registry))
     end
   end
 

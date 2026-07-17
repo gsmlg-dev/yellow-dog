@@ -29,6 +29,7 @@ defmodule YellowDogIdentity.Registry do
           hosts: %{String.t() => Host.t()},
           tokens: %{String.t() => Token.t()},
           fingerprint_index: %{String.t() => String.t()},
+          host_load_status: :ok | :persistence_failed,
           file_ops: module() | {module(), term()}
         }
 
@@ -61,6 +62,15 @@ defmodule YellowDogIdentity.Registry do
   @doc "Lists all host records."
   @spec list_hosts() :: [Host.t()]
   def list_hosts, do: GenServer.call(__MODULE__, :list_hosts)
+
+  @doc false
+  @spec control_list_hosts() :: {:ok, [Host.t()]} | {:error, :persistence_failed}
+  def control_list_hosts, do: GenServer.call(__MODULE__, :control_list_hosts)
+
+  @doc false
+  @spec control_get_host(String.t()) ::
+          {:ok, Host.t()} | {:error, :not_found | :persistence_failed}
+  def control_get_host(id), do: GenServer.call(__MODULE__, {:control_get_host, id})
 
   @doc "Lists hosts filtered by status."
   @spec list_hosts_by_status(Host.status()) :: [Host.t()]
@@ -125,6 +135,13 @@ defmodule YellowDogIdentity.Registry do
     GenServer.call(__MODULE__, {:read_audit_log, opts})
   end
 
+  @doc false
+  @spec control_read_audit_log(keyword()) ::
+          {:ok, [map()]} | {:error, :persistence_failed}
+  def control_read_audit_log(opts \\ []) do
+    GenServer.call(__MODULE__, {:control_read_audit_log, opts})
+  end
+
   # Server callbacks
 
   @impl true
@@ -137,14 +154,15 @@ defmodule YellowDogIdentity.Registry do
     with :ok <- file_call(file_ops, :mkdir_p, [hosts_dir]),
          :ok <- file_call(file_ops, :mkdir_p, [tokens_dir]) do
       # Load existing data from disk
-      {hosts, fingerprint_index} = load_hosts(hosts_dir)
-      tokens = load_tokens(tokens_dir)
+      {hosts, fingerprint_index, host_load_status} = load_hosts(hosts_dir, file_ops)
+      tokens = load_tokens(tokens_dir, file_ops)
 
       state = %{
         data_dir: data_dir,
         hosts: hosts,
         tokens: tokens,
         fingerprint_index: fingerprint_index,
+        host_load_status: host_load_status,
         file_ops: file_ops
       }
 
@@ -174,6 +192,21 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  def handle_call(
+        {:control_get_host, _id},
+        _from,
+        %{host_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call({:control_get_host, id}, _from, state) do
+    case Map.get(state.hosts, id) do
+      nil -> {:reply, {:error, :not_found}, state}
+      host -> {:reply, {:ok, host}, state}
+    end
+  end
+
   def handle_call({:get_host_by_fingerprint, fingerprint}, _from, state) do
     case Map.get(state.fingerprint_index, fingerprint) do
       nil -> {:reply, :not_found, state}
@@ -192,6 +225,18 @@ defmodule YellowDogIdentity.Registry do
     {:reply, Map.values(state.hosts), state}
   end
 
+  def handle_call(
+        :control_list_hosts,
+        _from,
+        %{host_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call(:control_list_hosts, _from, state) do
+    {:reply, {:ok, Map.values(state.hosts)}, state}
+  end
+
   def handle_call({:list_hosts_by_status, status}, _from, state) do
     filtered = state.hosts |> Map.values() |> Enum.filter(&(&1.status == status))
     {:reply, filtered, state}
@@ -202,6 +247,14 @@ defmodule YellowDogIdentity.Registry do
       {:ok, _host, state} -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
+  end
+
+  def handle_call(
+        {:control_approve_host, _id, _approved_by},
+        _from,
+        %{host_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
   end
 
   def handle_call({:control_approve_host, id, approved_by}, _from, state) do
@@ -224,6 +277,14 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  def handle_call(
+        {:control_revoke_host, _id, _revoked_by, _reason},
+        _from,
+        %{host_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
   def handle_call({:control_revoke_host, id, revoked_by, reason}, _from, state) do
     case Map.get(state.hosts, id) do
       %Host{status: status} = host when status in [:approved, :pending] ->
@@ -243,6 +304,14 @@ defmodule YellowDogIdentity.Registry do
       nil ->
         {:reply, {:error, :not_found}, state}
     end
+  end
+
+  def handle_call(
+        {:control_delete_host, _id},
+        _from,
+        %{host_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
   end
 
   def handle_call({:control_delete_host, id}, _from, state) do
@@ -295,8 +364,17 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:read_audit_log, opts}, _from, state) do
-    entries = read_audit_entries(state.data_dir, opts)
+    entries =
+      case read_audit_entries(state.data_dir, opts, state.file_ops) do
+        {:ok, entries} -> entries
+        {:error, :persistence_failed} -> []
+      end
+
     {:reply, entries, state}
+  end
+
+  def handle_call({:control_read_audit_log, opts}, _from, state) do
+    {:reply, read_audit_entries(state.data_dir, opts, state.file_ops), state}
   end
 
   @impl true
@@ -509,46 +587,98 @@ defmodule YellowDogIdentity.Registry do
 
   # Loading helpers
 
-  defp load_hosts(hosts_dir) do
-    hosts_dir
-    |> Path.join("*.toml")
-    |> Path.wildcard()
-    |> Enum.reduce({%{}, %{}}, fn path, {hosts, idx} ->
-      case load_host_file(path) do
-        {:ok, host} ->
-          {Map.put(hosts, host.id, host), Map.put(idx, host.key_fingerprint, host.id)}
+  defp load_hosts(hosts_dir, file_ops) do
+    case list_toml_paths(hosts_dir, file_ops) do
+      {:ok, paths} ->
+        Enum.reduce(paths, {%{}, %{}, :ok}, fn path, {hosts, idx, status} ->
+          case load_host_file(path, file_ops) do
+            {:ok, host} ->
+              {
+                Map.put(hosts, host.id, host),
+                Map.put(idx, host.key_fingerprint, host.id),
+                status
+              }
 
-        {:error, _reason} ->
-          {hosts, idx}
-      end
-    end)
-  end
+            {:error, :persistence_failed} ->
+              {hosts, idx, :persistence_failed}
+          end
+        end)
 
-  defp load_host_file(path) do
-    with {:ok, content} <- File.read(path),
-         {:ok, data} <- Toml.decode(content),
-         {:ok, host} <- Host.from_toml_map(data) do
-      {:ok, host}
+      {:error, :persistence_failed} ->
+        {%{}, %{}, :persistence_failed}
     end
   end
 
-  defp load_tokens(tokens_dir) do
-    tokens_dir
-    |> Path.join("*.toml")
-    |> Path.wildcard()
-    |> Enum.reduce(%{}, fn path, acc ->
-      case load_token_file(path) do
-        {:ok, token} -> Map.put(acc, token.id, token)
-        {:error, _} -> acc
+  defp load_host_file(path, file_ops) do
+    try do
+      with {:ok, content} <- file_call(file_ops, :read, [path]),
+           {:ok, data} <- Toml.decode(content),
+           {:ok, %Host{} = host} <- Host.from_toml_map(data) do
+        {:ok, host}
+      else
+        _failure -> {:error, :persistence_failed}
       end
-    end)
+    rescue
+      _exception -> {:error, :persistence_failed}
+    catch
+      _kind, _reason -> {:error, :persistence_failed}
+    end
   end
 
-  defp load_token_file(path) do
-    with {:ok, content} <- File.read(path),
-         {:ok, data} <- Toml.decode(content),
-         {:ok, token} <- Token.from_toml_map(data) do
-      {:ok, token}
+  defp load_tokens(tokens_dir, file_ops) do
+    case list_toml_paths(tokens_dir, file_ops) do
+      {:ok, paths} ->
+        Enum.reduce(paths, %{}, fn path, tokens ->
+          case load_token_file(path, file_ops) do
+            {:ok, token} -> Map.put(tokens, token.id, token)
+            {:error, :persistence_failed} -> tokens
+          end
+        end)
+
+      {:error, :persistence_failed} ->
+        %{}
+    end
+  end
+
+  defp load_token_file(path, file_ops) do
+    try do
+      with {:ok, content} <- file_call(file_ops, :read, [path]),
+           {:ok, data} <- Toml.decode(content),
+           {:ok, %Token{} = token} <- Token.from_toml_map(data) do
+        {:ok, token}
+      else
+        _failure -> {:error, :persistence_failed}
+      end
+    rescue
+      _exception -> {:error, :persistence_failed}
+    catch
+      _kind, _reason -> {:error, :persistence_failed}
+    end
+  end
+
+  defp list_toml_paths(directory, file_ops) do
+    try do
+      case file_call(file_ops, :ls, [directory]) do
+        {:ok, entries} when is_list(entries) ->
+          if Enum.all?(entries, &is_binary/1) do
+            paths =
+              entries
+              |> Enum.filter(&String.ends_with?(&1, ".toml"))
+              |> Enum.sort()
+              |> Enum.map(&Path.join(directory, &1))
+
+            {:ok, paths}
+          else
+            {:error, :persistence_failed}
+          end
+
+        _failure ->
+          {:error, :persistence_failed}
+      end
+    rescue
+      _exception -> {:error, :persistence_failed}
+    catch
+      _kind, _reason -> {:error, :persistence_failed}
     end
   end
 
@@ -567,28 +697,47 @@ defmodule YellowDogIdentity.Registry do
     e -> Logger.warning("Unexpected error writing audit log: #{Exception.message(e)}")
   end
 
-  defp read_audit_entries(data_dir, opts) do
+  defp read_audit_entries(data_dir, opts, file_ops) do
     audit_path = Path.join(data_dir, "audit.log")
-    limit = Keyword.get(opts, :limit, 100)
-    host_filter = Keyword.get(opts, :host_id)
-    event_filter = Keyword.get(opts, :event)
 
-    case File.read(audit_path) do
+    case file_call(file_ops, :read, [audit_path]) do
       {:ok, content} ->
-        content
-        |> String.split("\n", trim: true)
-        |> Enum.reverse()
-        |> Stream.map(&parse_audit_line/1)
-        |> Stream.reject(&is_nil/1)
-        |> maybe_filter(:host_id, host_filter)
-        |> maybe_filter(:event, event_filter)
-        |> Enum.take(limit)
+        parse_audit_entries(content, opts)
 
-      {:error, _} ->
-        []
+      {:error, :enoent} ->
+        {:ok, []}
+
+      {:error, :persistence_failed} = error ->
+        error
     end
-  rescue
-    _ -> []
+  end
+
+  defp parse_audit_entries(content, opts) do
+    try do
+      if is_binary(content) and String.valid?(content) do
+        limit = Keyword.get(opts, :limit, 100)
+        host_filter = Keyword.get(opts, :host_id)
+        event_filter = Keyword.get(opts, :event)
+
+        entries =
+          content
+          |> String.split("\n", trim: true)
+          |> Enum.reverse()
+          |> Stream.map(&parse_audit_line/1)
+          |> Stream.reject(&is_nil/1)
+          |> maybe_filter(:host_id, host_filter)
+          |> maybe_filter(:event, event_filter)
+          |> Enum.take(limit)
+
+        {:ok, entries}
+      else
+        {:error, :persistence_failed}
+      end
+    rescue
+      _exception -> {:error, :persistence_failed}
+    catch
+      _kind, _reason -> {:error, :persistence_failed}
+    end
   end
 
   defp parse_audit_line(line) do

@@ -244,14 +244,18 @@ defmodule YellowDogIdentity do
   @doc """
   Lists canonical public host snapshots for the Server control boundary.
   """
-  @spec control_list_hosts() :: {:ok, [map()]} | {:error, :apply_failed}
+  @spec control_list_hosts() ::
+          {:ok, [map()]} | {:error, :persistence_failed | :apply_failed}
   def control_list_hosts do
     control_boundary(fn ->
-      case Registry.list_hosts() do
-        hosts when is_list(hosts) ->
+      case Registry.control_list_hosts() do
+        {:ok, hosts} when is_list(hosts) ->
           with {:ok, snapshots} <- project_hosts(hosts) do
             {:ok, sort_and_bound(snapshots, "host_id")}
           end
+
+        {:error, reason} ->
+          control_owner_error(reason)
 
         _unexpected ->
           {:error, :apply_failed}
@@ -274,12 +278,13 @@ defmodule YellowDogIdentity do
   @doc """
   Returns one canonical public host snapshot.
   """
-  @spec control_host(String.t()) :: {:ok, map()} | {:error, :not_found | :apply_failed}
+  @spec control_host(String.t()) ::
+          {:ok, map()} | {:error, :not_found | :persistence_failed | :apply_failed}
   def control_host(id) do
     control_boundary(fn ->
-      case Registry.get_host(id) do
+      case Registry.control_get_host(id) do
         {:ok, %Host{} = host} -> public_host(host)
-        :not_found -> {:error, :not_found}
+        {:error, reason} -> control_owner_error(reason)
         _unexpected -> {:error, :apply_failed}
       end
     end)
@@ -427,11 +432,12 @@ defmodule YellowDogIdentity do
   @doc """
   Reads deterministic, bounded audit snapshots without raw details.
   """
-  @spec control_list_audit() :: {:ok, [map()]} | {:error, :apply_failed}
+  @spec control_list_audit() ::
+          {:ok, [map()]} | {:error, :persistence_failed | :apply_failed}
   def control_list_audit do
     control_boundary(fn ->
-      case Registry.read_audit_log(limit: 1_000) do
-        entries when is_list(entries) ->
+      case Registry.control_read_audit_log(limit: 1_000) do
+        {:ok, entries} when is_list(entries) ->
           snapshots =
             entries
             |> Enum.flat_map(fn entry ->
@@ -443,6 +449,9 @@ defmodule YellowDogIdentity do
             |> Enum.take(@max_control_items)
 
           {:ok, snapshots}
+
+        {:error, reason} ->
+          control_owner_error(reason)
 
         _unexpected ->
           {:error, :apply_failed}
