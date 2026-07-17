@@ -15,6 +15,7 @@ defmodule YellowDog.ServerAgent.CommandJournal do
 
   @schema_version 1
   @default_max_records 1_000
+  @inconsistent_persistence :command_journal_inconsistent_persistence
   @request_id ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
   @journal_file ~r/\A([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json\z/
   @document_keys ~w(
@@ -95,7 +96,8 @@ defmodule YellowDog.ServerAgent.CommandJournal do
 
   @impl true
   def init(config) do
-    with {:ok, entries} <- scan(config),
+    with :ok <- ensure_owned_path(config),
+         {:ok, entries} <- scan(config),
          :ok <- validate_entries(entries, config.max_records),
          {:ok, records, idempotency} <- load_records(entries, config),
          {:ok, records} <- recover_pending(records, config) do
@@ -128,8 +130,14 @@ defmodule YellowDog.ServerAgent.CommandJournal do
          {:ok, state} <- persist_transition(transitioned, state) do
       {:reply, :ok, state}
     else
-      {:idempotent, :ok} -> {:reply, :ok, state}
-      {:error, %Error{} = error} -> {:reply, {:error, error}, state}
+      {:idempotent, :ok} ->
+        {:reply, :ok, state}
+
+      {:error, %Error{} = error} ->
+        {:reply, {:error, error}, state}
+
+      {:stop, %Error{} = error} ->
+        {:stop, @inconsistent_persistence, {:error, error}, state}
     end
   end
 
@@ -141,8 +149,14 @@ defmodule YellowDog.ServerAgent.CommandJournal do
          {:ok, state} <- persist_transition(transitioned, state) do
       {:reply, {:ok, result}, state}
     else
-      {:idempotent, {:ok, result}} -> {:reply, {:ok, result}, state}
-      {:error, %Error{} = error} -> {:reply, {:error, error}, state}
+      {:idempotent, {:ok, result}} ->
+        {:reply, {:ok, result}, state}
+
+      {:error, %Error{} = error} ->
+        {:reply, {:error, error}, state}
+
+      {:stop, %Error{} = error} ->
+        {:stop, @inconsistent_persistence, {:error, error}, state}
     end
   end
 
@@ -153,8 +167,14 @@ defmodule YellowDog.ServerAgent.CommandJournal do
          {:ok, state} <- persist_transition(transitioned, state) do
       {:reply, {:error, error}, state}
     else
-      {:idempotent, {:error, error}} -> {:reply, {:error, error}, state}
-      {:error, %Error{} = error} -> {:reply, {:error, error}, state}
+      {:idempotent, {:error, error}} ->
+        {:reply, {:error, error}, state}
+
+      {:error, %Error{} = error} ->
+        {:reply, {:error, error}, state}
+
+      {:stop, %Error{} = error} ->
+        {:stop, @inconsistent_persistence, {:error, error}, state}
     end
   end
 
@@ -184,7 +204,8 @@ defmodule YellowDog.ServerAgent.CommandJournal do
   end
 
   defp reserve_new(envelope, state) do
-    with :ok <- ensure_capacity(state),
+    with :ok <- ensure_owned_path(state.config),
+         :ok <- ensure_capacity(state),
          {:ok, now} <- now(state.config),
          path = journal_path(state.config.directory, envelope.request_id),
          record = %Record{
@@ -205,7 +226,11 @@ defmodule YellowDog.ServerAgent.CommandJournal do
 
       {:reply, {:reserved, envelope.request_id}, updated}
     else
-      {:error, %Error{} = error} -> {:reply, {:error, error}, state}
+      {:error, %Error{} = error} ->
+        {:reply, {:error, error}, state}
+
+      {:error, :corrupt} ->
+        {:reply, internal("command journal path is unsafe"), state}
     end
   end
 
@@ -286,15 +311,18 @@ defmodule YellowDog.ServerAgent.CommandJournal do
     do: conflict("command error conflicts with durable state")
 
   defp persist_transition(record, state) do
-    case Storage.replace(record.path, document(record), state.config.storage_opts) do
-      {:ok, path} when path == record.path ->
+    prior = Map.fetch!(state.records, record.request_id)
+
+    case replace_record(prior, record, state.config) do
+      {:ok, ^record} ->
         {:ok, %{state | records: Map.put(state.records, record.request_id, record)}}
 
       {:error, %Error{} = error} ->
         {:error, error}
 
-      _invalid ->
-        internal("command journal persistence failed")
+      {:error, :inconsistent} ->
+        {:error, error} = internal("command journal persistence is inconsistent")
+        {:stop, error}
     end
   end
 
@@ -403,7 +431,10 @@ defmodule YellowDog.ServerAgent.CommandJournal do
     match?({:ok, capability} when capability != "", Bounds.message(value))
   end
 
-  defp max_records(value) when is_integer(value) and value > 0, do: {:ok, value}
+  defp max_records(value) when is_integer(value) and value > 0 do
+    if value <= Bounds.max_list_entries(), do: {:ok, value}, else: :error
+  end
+
   defp max_records(_value), do: :error
 
   defp clock(value) when is_function(value, 0), do: {:ok, value}
@@ -486,17 +517,97 @@ defmodule YellowDog.ServerAgent.CommandJournal do
                  updated_at: now,
                  resolved_at: now
              },
-             {:ok, path} <-
-               Storage.replace(recovered.path, document(recovered), config.storage_opts),
-             true <- path == recovered.path do
+             {:ok, ^recovered} <- replace_record(record, recovered, config) do
           {:cont, {:ok, Map.put(recovered_records, recovered.request_id, recovered)}}
         else
+          {:error, :inconsistent} -> {:halt, {:error, :inconsistent_persistence}}
           _error -> {:halt, {:error, :persistence}}
         end
 
       _terminal, {:ok, recovered_records} ->
         {:cont, {:ok, recovered_records}}
     end)
+  end
+
+  defp replace_record(prior, intended, config) do
+    with :ok <- ensure_owned_path(config) do
+      case Storage.replace(intended.path, document(intended), config.storage_opts) do
+        {:ok, path} when path == intended.path ->
+          {:ok, intended}
+
+        {:error, %Error{} = storage_error} ->
+          reconcile_replace_error(prior, intended, storage_error, config)
+
+        _invalid ->
+          {:error, :inconsistent}
+      end
+    else
+      {:error, :corrupt} -> {:error, :inconsistent}
+    end
+  end
+
+  defp reconcile_replace_error(prior, intended, storage_error, config) do
+    with {:ok, durable_document} <- Storage.read(intended.path, config.storage_opts),
+         {:ok, _durable_record} <-
+           decode_record(
+             durable_document,
+             intended.request_id,
+             intended.path,
+             config.server_id
+           ) do
+      cond do
+        durable_document == document(intended) -> {:ok, intended}
+        durable_document == document(prior) -> {:error, storage_error}
+        true -> {:error, :inconsistent}
+      end
+    else
+      _error -> {:error, :inconsistent}
+    end
+  end
+
+  defp ensure_owned_path(config) do
+    [config.data_dir, Path.join(config.data_dir, "server"), config.directory]
+    |> Enum.reduce_while(:ok, fn path, :ok ->
+      case ensure_owned_directory(path) do
+        :ok -> {:cont, :ok}
+        {:error, :corrupt} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp ensure_owned_directory(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :directory}} ->
+        :ok
+
+      {:ok, _other} ->
+        {:error, :corrupt}
+
+      {:error, :enoent} ->
+        create_owned_directory(path)
+
+      {:error, _reason} ->
+        {:error, :corrupt}
+    end
+  rescue
+    _exception -> {:error, :corrupt}
+  catch
+    _kind, _reason -> {:error, :corrupt}
+  end
+
+  defp create_owned_directory(path) do
+    case File.mkdir(path) do
+      :ok -> validate_created_directory(path)
+      {:error, :eexist} -> validate_created_directory(path)
+      {:error, _reason} -> {:error, :corrupt}
+    end
+  end
+
+  defp validate_created_directory(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :directory}} -> :ok
+      _other -> {:error, :corrupt}
+    end
   end
 
   defp decode_record(document, expected_request_id, path, server_id) when is_map(document) do

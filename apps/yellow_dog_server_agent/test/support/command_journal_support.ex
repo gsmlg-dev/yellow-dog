@@ -14,7 +14,16 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
 
   @failure_key {__MODULE__, :failure}
 
-  def fail_next(phase), do: :persistent_term.put(@failure_key, phase)
+  def fail_next(phase, reason \\ :eio),
+    do: :persistent_term.put(@failure_key, [{:before, phase, reason}])
+
+  def fail_times(phase, reason, count) when is_integer(count) and count > 0 do
+    :persistent_term.put(@failure_key, List.duplicate({:before, phase, reason}, count))
+  end
+
+  def fail_after(phase, callback, reason \\ :eio) when is_function(callback, 0),
+    do: :persistent_term.put(@failure_key, [{:after, phase, reason, callback}])
+
   def clear, do: :persistent_term.erase(@failure_key)
 
   def read(path, max_bytes), do: invoke(:read, fn -> FileOps.read(path, max_bytes) end)
@@ -34,14 +43,44 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
   def sync_dir(path), do: invoke(:sync_dir, fn -> FileOps.sync_dir(path) end)
 
   defp invoke(phase, operation) do
-    case :persistent_term.get(@failure_key, nil) do
-      ^phase ->
-        clear()
-        {:error, :eio}
+    case take_failure(phase) do
+      {:before, reason} ->
+        {:error, reason}
 
-      _other ->
+      {:after, reason, callback} ->
+        case operation.() do
+          :ok ->
+            callback.()
+            {:error, reason}
+
+          error ->
+            error
+        end
+
+      :none ->
         operation.()
     end
+  end
+
+  defp take_failure(phase) do
+    case :persistent_term.get(@failure_key, []) do
+      [{:before, ^phase, reason} | rest] ->
+        store_failures(rest)
+        {:before, reason}
+
+      [{:after, ^phase, reason, callback} | rest] ->
+        store_failures(rest)
+        {:after, reason, callback}
+
+      _other ->
+        :none
+    end
+  end
+
+  defp store_failures([]), do: clear()
+
+  defp store_failures(failures) do
+    :persistent_term.put(@failure_key, failures)
   end
 end
 

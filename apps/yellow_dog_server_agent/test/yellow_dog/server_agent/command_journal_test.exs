@@ -63,6 +63,12 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
       [data_dir: data_dir, server_id: @server_id, capabilities: [@capability, @capability]],
       [data_dir: data_dir, server_id: @server_id, capabilities: [:runtime_services]],
       [data_dir: data_dir, server_id: @server_id, capabilities: [@capability], max_records: 0],
+      [
+        data_dir: data_dir,
+        server_id: @server_id,
+        capabilities: [@capability],
+        max_records: 1_001
+      ],
       [data_dir: data_dir, server_id: @server_id, capabilities: [@capability], clock: :bad]
     ]
 
@@ -332,6 +338,58 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
              CommandJournal.start_link(base_opts(data_dir, max_records: 1, name: nil))
   end
 
+  test "the fixed 1000-record maximum remains wire-projectable", %{data_dir: data_dir} do
+    {:ok, journal} = start_journal(data_dir, max_records: 1_000)
+
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+
+    assert {:ok, _result} =
+             CommandJournal.complete_success(@request_id, success_result(), journal)
+
+    GenServer.stop(journal)
+    original = read_document(data_dir, @request_id)
+
+    for index <- 1..999 do
+      request_id = generated_request_id(index)
+      idempotency_key = generated_idempotency_key(index)
+
+      original
+      |> Map.put("request_id", request_id)
+      |> put_in(["envelope", "request_id"], request_id)
+      |> put_in(["envelope", "idempotency_key"], idempotency_key)
+      |> put_in(["idempotency_fingerprint", "idempotency_key"], idempotency_key)
+      |> then(&File.write!(journal_path(data_dir, request_id), Jason.encode!(&1)))
+    end
+
+    {:ok, restarted} = start_journal(data_dir, max_records: 1_000)
+    assert {:ok, %Journal{entries: entries}} = CommandJournal.wire_projection(restarted)
+    assert length(entries) == 1_000
+  end
+
+  test "terminal replay and idempotency conflict precede full-capacity rejection", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} = start_journal(data_dir, max_records: 1)
+    result = success_result()
+
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+    assert {:ok, ^result} = CommandJournal.complete_success(@request_id, result, journal)
+    assert {:replay, {:ok, ^result}} = CommandJournal.reserve(envelope(), journal)
+
+    assert {:error,
+            %Error{
+              code: :conflict,
+              message: "command idempotency key conflicts",
+              details: %{}
+            }} =
+             CommandJournal.reserve(
+               envelope(request_id: @other_request_id, idempotency_key: @idempotency_key),
+               journal
+             )
+  end
+
   test "startup rejects corrupt JSON, exact-key changes, identity swaps, and fingerprints", %{
     data_dir: data_dir
   } do
@@ -449,6 +507,60 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
              CommandJournal.start_link(base_opts(data_dir, name: nil))
   end
 
+  test "startup rejects symlinked data_dir without writing outside", %{data_dir: data_dir} do
+    outside = "#{data_dir}-outside"
+    File.mkdir_p!(outside)
+    File.rm_rf!(data_dir)
+    File.ln_s!(outside, data_dir)
+
+    on_exit(fn -> File.rm_rf(outside) end)
+
+    assert {:error, {:journal_recovery_failed, :corrupt}} =
+             CommandJournal.start_link(base_opts(data_dir, name: nil))
+
+    refute File.exists?(Path.join(outside, "server"))
+  end
+
+  test "startup rejects a symlinked server ancestor without writing outside", %{
+    data_dir: data_dir
+  } do
+    outside = "#{data_dir}-outside"
+    File.mkdir_p!(outside)
+    File.ln_s!(outside, Path.join(data_dir, "server"))
+
+    on_exit(fn -> File.rm_rf(outside) end)
+
+    assert {:error, {:journal_recovery_failed, :corrupt}} =
+             CommandJournal.start_link(base_opts(data_dir, name: nil))
+
+    refute File.exists?(Path.join(outside, "journals"))
+  end
+
+  test "startup validates every record before recovering earlier pending evidence", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} = start_journal(data_dir, max_records: 2)
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+
+    assert {:reserved, @other_request_id} =
+             CommandJournal.reserve(
+               envelope(
+                 request_id: @other_request_id,
+                 idempotency_key: @other_idempotency_key
+               ),
+               journal
+             )
+
+    pending = read_document(data_dir, @request_id)
+    GenServer.stop(journal)
+    File.write!(journal_path(data_dir, @other_request_id), "{")
+
+    assert {:error, {:journal_recovery_failed, :corrupt}} =
+             CommandJournal.start_link(base_opts(data_dir, max_records: 2, name: nil))
+
+    assert pending == read_document(data_dir, @request_id)
+  end
+
   test "persistence failures never advance in-memory journal state", %{data_dir: data_dir} do
     {:ok, journal} =
       start_journal(data_dir,
@@ -469,6 +581,110 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
     CommandJournalTestFileOps.fail_next(:rename)
     assert_internal(CommandJournal.complete_success(@request_id, success_result(), journal))
     assert_conflict(CommandJournal.replay(envelope(), journal))
+  end
+
+  test "a post-rename error reconciles committed success and prevents later failure", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} =
+      start_journal(data_dir, storage_opts: [file_ops: CommandJournalTestFileOps])
+
+    result = success_result()
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+
+    CommandJournalTestFileOps.fail_after(:rename, fn -> :ok end)
+    assert {:ok, ^result} = CommandJournal.complete_success(@request_id, result, journal)
+    assert %{"state" => "succeeded"} = read_document(data_dir, @request_id)
+
+    assert_conflict(
+      CommandJournal.complete_failure(
+        @request_id,
+        Error.new(:apply_failed, "late failure", %{}),
+        journal
+      )
+    )
+
+    assert %{"state" => "succeeded"} = read_document(data_dir, @request_id)
+  end
+
+  test "a directory-sync error reconciles committed success and prevents later failure", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} =
+      start_journal(data_dir, storage_opts: [file_ops: CommandJournalTestFileOps])
+
+    result = success_result()
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+
+    CommandJournalTestFileOps.fail_next(:sync_dir)
+    assert {:ok, ^result} = CommandJournal.complete_success(@request_id, result, journal)
+    assert %{"state" => "succeeded"} = read_document(data_dir, @request_id)
+
+    assert_conflict(
+      CommandJournal.complete_failure(
+        @request_id,
+        Error.new(:apply_failed, "late failure", %{}),
+        journal
+      )
+    )
+  end
+
+  test "a repeated directory-sync timeout reconciles committed success", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} =
+      start_journal(data_dir, storage_opts: [file_ops: CommandJournalTestFileOps])
+
+    result = success_result()
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+
+    CommandJournalTestFileOps.fail_times(:sync_dir, :timeout, 2)
+    assert {:ok, ^result} = CommandJournal.complete_success(@request_id, result, journal)
+    assert {:replay, {:ok, ^result}} = CommandJournal.replay(envelope(), journal)
+  end
+
+  test "inconsistent durable evidence after replace fail-stops the journal", %{
+    data_dir: data_dir
+  } do
+    for mutation <- [:other_terminal, :malformed, :missing] do
+      File.rm_rf!(journal_directory(data_dir))
+
+      {:ok, journal} =
+        start_journal(data_dir, storage_opts: [file_ops: CommandJournalTestFileOps])
+
+      assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+      assert :ok = CommandJournal.mark_running(@request_id, journal)
+      path = journal_path(data_dir, @request_id)
+
+      CommandJournalTestFileOps.fail_after(:rename, fn ->
+        case mutation do
+          :other_terminal ->
+            rewrite(path, fn document ->
+              document
+              |> Map.put("state", "failed")
+              |> Map.put("result", nil)
+              |> Map.put("error", %{
+                "code" => "apply_failed",
+                "message" => "conflicting durable outcome",
+                "details" => %{}
+              })
+            end)
+
+          :malformed ->
+            File.write!(path, "{")
+
+          :missing ->
+            File.rm!(path)
+        end
+      end)
+
+      assert_internal(CommandJournal.complete_success(@request_id, success_result(), journal))
+      assert_receive {:EXIT, ^journal, :command_journal_inconsistent_persistence}
+      refute Process.alive?(journal)
+    end
   end
 
   test "wire projection is validated, terminal-only, and sorted by request ID", %{
@@ -594,6 +810,16 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
   end
 
   defp success_result, do: %{"service" => "dns", "state" => "running"}
+
+  defp generated_request_id(index) do
+    leading = index |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(8, "0")
+    "#{leading}-1111-4111-8111-111111111111"
+  end
+
+  defp generated_idempotency_key(index) do
+    leading = index |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(8, "0")
+    "#{leading}-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+  end
 
   defp journal_directory(data_dir), do: Path.join([data_dir, "server", "journals"])
 
