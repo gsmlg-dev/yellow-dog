@@ -20,6 +20,7 @@ defmodule YellowDog.Application do
   @default_reconnect_initial_ms 1_000
   @default_reconnect_max_ms 30_000
   @max_reconnect_ms 86_400_000
+  @server_agent_reconcile_attempts 3
 
   @impl true
   def start(_type, _args) do
@@ -144,8 +145,19 @@ defmodule YellowDog.Application do
   end
 
   defp start_service_child(service, child_spec) do
-    # Start the child under the main supervisor
-    case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
+    result =
+      case service do
+        :server_agent ->
+          case start_or_recover_server_agent_child(child_spec) do
+            :ignore -> {:error, :service_disabled}
+            result -> result
+          end
+
+        _other ->
+          Supervisor.start_child(YellowDog.Supervisor, child_spec)
+      end
+
+    case result do
       {:ok, pid} ->
         :telemetry.execute(
           [:yellow_dog, :service, :started],
@@ -252,37 +264,72 @@ defmodule YellowDog.Application do
 
   # Starts enabled services asynchronously after the supervisor is running.
   # Each service is started independently so one failure doesn't block others.
-  defp start_services_async(config) do
+  defp start_services_async(_boot_config) do
     Task.start(fn ->
       # Start DNS Provider subsystem unconditionally (ConfigWatcher handles empty state)
       # Must start after Store children (ModeDetector, EventBridge) are ready
       maybe_start_dns_provider()
 
-      enabled_services = get_enabled_services(config)
+      startup_barrier = await_startup_selection()
 
-      Enum.each(enabled_services, fn {service, child_spec} ->
-        case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
-          {:ok, pid} ->
-            :telemetry.execute(
-              [:yellow_dog, :service, :started],
-              %{count: 1},
-              %{source: __MODULE__, service: service, pid: inspect(pid), severity: :info}
-            )
+      try do
+        config = current_config()
+        enabled_services = get_enabled_services(config)
 
-          {:error, reason} ->
-            :telemetry.execute(
-              [:yellow_dog, :application, :error],
-              %{count: 1},
-              %{
-                source: __MODULE__,
-                service: service,
-                reason: service_start_error(service, reason),
-                severity: :error
-              }
-            )
-        end
-      end)
+        Enum.each(enabled_services, fn {service, child_spec} ->
+          start_async_service_child(service, child_spec)
+        end)
+      after
+        notify_startup_selection_complete(startup_barrier)
+      end
     end)
+  end
+
+  defp start_async_service_child(:server_agent, child_spec) do
+    case start_or_recover_server_agent_child(child_spec) do
+      :ignore ->
+        :ok
+
+      {:ok, pid} ->
+        emit_async_service_started(:server_agent, pid, false)
+
+      {:error, {:already_started, pid}} ->
+        emit_async_service_started(:server_agent, pid, true)
+
+      {:error, reason} ->
+        emit_async_service_error(:server_agent, reason)
+    end
+  end
+
+  defp start_async_service_child(service, child_spec) do
+    case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
+      {:ok, pid} -> emit_async_service_started(service, pid, false)
+      {:error, reason} -> emit_async_service_error(service, reason)
+    end
+  end
+
+  defp emit_async_service_started(service, pid, already_started?) do
+    metadata = %{source: __MODULE__, service: service, pid: inspect(pid), severity: :info}
+    metadata = if already_started?, do: Map.put(metadata, :already_started, true), else: metadata
+
+    :telemetry.execute(
+      [:yellow_dog, :service, :started],
+      %{count: 1},
+      metadata
+    )
+  end
+
+  defp emit_async_service_error(service, reason) do
+    :telemetry.execute(
+      [:yellow_dog, :application, :error],
+      %{count: 1},
+      %{
+        source: __MODULE__,
+        service: service,
+        reason: service_start_error(service, reason),
+        severity: :error
+      }
+    )
   end
 
   # Starts the DNS Provider supervisor if the module is available.
@@ -559,6 +606,125 @@ defmodule YellowDog.Application do
     }
   end
 
+  defp start_or_recover_server_agent_child(child_spec) do
+    start_or_recover_server_agent_child(child_spec, @server_agent_reconcile_attempts)
+  end
+
+  defp start_or_recover_server_agent_child(child_spec, attempts) do
+    case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
+      {:ok, :undefined} ->
+        reconcile_ignored_server_agent_child(child_spec, attempts)
+
+      {:ok, pid, _info} ->
+        {:ok, pid}
+
+      {:error, :already_present} when attempts > 0 ->
+        restart_server_agent_child_spec(child_spec, attempts)
+
+      {:error, :already_present} ->
+        {:error, :server_agent_reconcile_failed}
+
+      result ->
+        result
+    end
+  end
+
+  defp restart_server_agent_child_spec(child_spec, attempts) do
+    case Supervisor.restart_child(YellowDog.Supervisor, @default_server_agent_module) do
+      {:ok, :undefined} ->
+        reconcile_ignored_server_agent_child(child_spec, attempts)
+
+      {:ok, pid, _info} ->
+        {:ok, pid}
+
+      {:ok, pid} ->
+        {:ok, pid}
+
+      {:error, :running} ->
+        running_server_agent_child_result(child_spec, attempts)
+
+      {:error, :not_found} when attempts > 0 ->
+        start_or_recover_server_agent_child(child_spec, attempts - 1)
+
+      {:error, :not_found} ->
+        {:error, :server_agent_reconcile_failed}
+
+      {:error, reason} when reason in [:restarting, :already_present] and attempts > 0 ->
+        running_server_agent_child_result(child_spec, attempts - 1)
+
+      {:error, reason} when reason in [:restarting, :already_present] ->
+        {:error, :server_agent_reconcile_failed}
+
+      {:error, _reason} ->
+        {:error, :server_agent_reconcile_failed}
+    end
+  end
+
+  defp reconcile_ignored_server_agent_child(child_spec, attempts) do
+    if current_server_agent_enabled?() and attempts > 0 do
+      restart_server_agent_child_spec(child_spec, attempts - 1)
+    else
+      delete_ignored_server_agent_child(child_spec, attempts)
+    end
+  end
+
+  defp delete_ignored_server_agent_child(child_spec, attempts) do
+    case Supervisor.delete_child(YellowDog.Supervisor, @default_server_agent_module) do
+      :ok ->
+        continue_after_ignored_delete(child_spec, attempts)
+
+      {:error, :not_found} ->
+        continue_after_ignored_delete(child_spec, attempts)
+
+      {:error, :running} ->
+        running_server_agent_child_result(child_spec, attempts)
+
+      {:error, _reason} ->
+        {:error, :server_agent_reconcile_failed}
+    end
+  end
+
+  defp continue_after_ignored_delete(child_spec, attempts) do
+    enabled? = current_server_agent_enabled?()
+
+    cond do
+      enabled? and attempts > 0 ->
+        start_or_recover_server_agent_child(child_spec, attempts - 1)
+
+      enabled? ->
+        {:error, :server_agent_reconcile_failed}
+
+      true ->
+        :ignore
+    end
+  end
+
+  defp running_server_agent_child_result(child_spec, attempts) do
+    case Enum.find(
+           Supervisor.which_children(YellowDog.Supervisor),
+           &(elem(&1, 0) == @default_server_agent_module)
+         ) do
+      {_id, pid, _type, _modules} when is_pid(pid) ->
+        {:error, {:already_started, pid}}
+
+      {_id, child_state, _type, _modules}
+      when child_state in [:undefined, :restarting] and attempts > 0 ->
+        restart_server_agent_child_spec(child_spec, attempts - 1)
+
+      nil when attempts > 0 ->
+        start_or_recover_server_agent_child(child_spec, attempts - 1)
+
+      _unresolved ->
+        {:error, :server_agent_reconcile_failed}
+    end
+  end
+
+  defp current_server_agent_enabled? do
+    current_config()
+    |> ProfileResolver.resolve()
+    |> server_agent_enabled?()
+  end
+
   @doc false
   @spec start_server_agent(module()) :: {:ok, pid()} | :ignore | {:error, atom()}
   def start_server_agent(module) when is_atom(module) do
@@ -759,6 +925,28 @@ defmodule YellowDog.Application do
   end
 
   if @compile_env == :test do
+    defp await_startup_selection do
+      case Application.get_env(:yellow_dog, :application_test_startup_barrier) do
+        {owner, ref} when is_pid(owner) and is_reference(ref) ->
+          send(owner, {:application_startup_selection_waiting, self(), ref})
+
+          receive do
+            {:application_startup_selection_continue, ^ref} -> {owner, ref}
+          after
+            5_000 -> nil
+          end
+
+        _disabled ->
+          nil
+      end
+    end
+
+    defp notify_startup_selection_complete({owner, ref}) do
+      send(owner, {:application_startup_selection_complete, ref})
+    end
+
+    defp notify_startup_selection_complete(_disabled), do: :ok
+
     defp service_module(service, default_module) do
       case Application.get_env(:yellow_dog, :service_module_overrides, %{}) do
         overrides when is_map(overrides) ->
@@ -772,6 +960,8 @@ defmodule YellowDog.Application do
       end
     end
   else
+    defp await_startup_selection, do: nil
+    defp notify_startup_selection_complete(_disabled), do: :ok
     defp service_module(_service, default_module), do: default_module
   end
 

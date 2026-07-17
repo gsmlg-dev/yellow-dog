@@ -22,6 +22,7 @@ defmodule YellowDog.ApplicationTest do
       owner: Application.fetch_env(:yellow_dog, :application_test_owner),
       result: Application.fetch_env(:yellow_dog, :application_test_agent_result),
       service_overrides: Application.fetch_env(:yellow_dog, :service_module_overrides),
+      startup_barrier: Application.fetch_env(:yellow_dog, :application_test_startup_barrier),
       runtime: Application.fetch_env(:yellow_dog_server_agent, :runtime)
     }
 
@@ -29,6 +30,7 @@ defmodule YellowDog.ApplicationTest do
     Application.put_env(:yellow_dog, :application_test_owner, self())
     Application.put_env(:yellow_dog, :application_test_agent_result, :ok)
     Application.put_env(:yellow_dog, :service_module_overrides, %{})
+    Application.delete_env(:yellow_dog, :application_test_startup_barrier)
     Application.put_env(:yellow_dog_server_agent, :runtime, @runtime_defaults)
 
     tmp_dir =
@@ -48,6 +50,7 @@ defmodule YellowDog.ApplicationTest do
       restore_env(:yellow_dog, :application_test_owner, saved_env.owner)
       restore_env(:yellow_dog, :application_test_agent_result, saved_env.result)
       restore_env(:yellow_dog, :service_module_overrides, saved_env.service_overrides)
+      restore_env(:yellow_dog, :application_test_startup_barrier, saved_env.startup_barrier)
       restore_env(:yellow_dog_server_agent, :runtime, saved_env.runtime)
       File.rm_rf!(tmp_dir)
     end)
@@ -117,6 +120,77 @@ defmodule YellowDog.ApplicationTest do
     assert second_opts[:server_id] == "public-agent"
     assert child_pid(YellowDog.ServerAgent) == second_pid
     assert service_flag(:server_agent) == true
+  end
+
+  test "stop before async startup selection leaves no ignored child and permits public start", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+    Application.put_env(:yellow_dog_server_agent, :runtime, server_id: "async-race-agent")
+    barrier_ref = install_startup_barrier()
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    startup_task = await_startup_barrier(barrier_ref)
+
+    assert :ok = YellowDog.ServiceManager.stop_service(:server_agent)
+    assert service_flag(:server_agent) == false
+
+    release_startup_barrier(startup_task, barrier_ref)
+
+    refute child_entry(YellowDog.ServerAgent)
+    assert :ok = YellowDog.ServiceManager.start_service(:server_agent)
+    assert_receive {:server_agent_started, pid, opts, supervisor}, 2_000
+    assert supervisor == Process.whereis(YellowDog.Supervisor)
+    assert opts[:server_id] == "async-race-agent"
+    assert child_pid(YellowDog.ServerAgent) == pid
+    assert service_flag(:server_agent) == true
+  end
+
+  test "public start repeatedly recovers an already-present ignored agent child", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir, server_agent: false)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+    Application.put_env(:yellow_dog_server_agent, :runtime, server_id: "ignored-agent")
+    barrier_ref = install_startup_barrier()
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    startup_task = await_startup_barrier(barrier_ref)
+    release_startup_barrier(startup_task, barrier_ref)
+
+    child_spec = YellowDog.Application.server_agent_child_spec(@agent_module)
+    assert {:ok, :undefined} = Supervisor.start_child(YellowDog.Supervisor, child_spec)
+
+    assert {:error, :service_disabled} =
+             YellowDog.Application.start_service_supervisor(:server_agent, :ignored)
+
+    refute child_entry(YellowDog.ServerAgent)
+    assert service_flag(:server_agent) == false
+
+    for iteration <- 1..10 do
+      child_spec = YellowDog.Application.server_agent_child_spec(@agent_module)
+
+      assert {:ok, :undefined} =
+               Supervisor.start_child(YellowDog.Supervisor, child_spec),
+             "iteration #{iteration}"
+
+      assert {YellowDog.ServerAgent, :undefined, :supervisor, _modules} =
+               child_entry(YellowDog.ServerAgent)
+
+      assert :ok = YellowDog.ServiceManager.start_service(:server_agent),
+             "iteration #{iteration}"
+
+      assert_receive {:server_agent_started, pid, opts, supervisor}, 2_000
+      assert supervisor == Process.whereis(YellowDog.Supervisor)
+      assert opts[:server_id] == "ignored-agent"
+      assert child_pid(YellowDog.ServerAgent) == pid
+      assert service_flag(:server_agent) == true
+
+      assert :ok = YellowDog.ServiceManager.stop_service(:server_agent)
+      refute child_entry(YellowDog.ServerAgent)
+      assert service_flag(:server_agent) == false
+    end
   end
 
   test "public ServerAgent start rejects legacy profiles and restores the attempted flag", %{
@@ -686,10 +760,30 @@ defmodule YellowDog.ApplicationTest do
   end
 
   defp child_pid(child_id) do
-    case Enum.find(Supervisor.which_children(YellowDog.Supervisor), &(elem(&1, 0) == child_id)) do
+    case child_entry(child_id) do
       {_id, pid, _type, _modules} when is_pid(pid) -> pid
       _missing -> nil
     end
+  end
+
+  defp child_entry(child_id) do
+    Enum.find(Supervisor.which_children(YellowDog.Supervisor), &(elem(&1, 0) == child_id))
+  end
+
+  defp install_startup_barrier do
+    ref = make_ref()
+    Application.put_env(:yellow_dog, :application_test_startup_barrier, {self(), ref})
+    ref
+  end
+
+  defp await_startup_barrier(ref) do
+    assert_receive {:application_startup_selection_waiting, startup_task, ^ref}, 2_000
+    startup_task
+  end
+
+  defp release_startup_barrier(startup_task, ref) do
+    send(startup_task, {:application_startup_selection_continue, ref})
+    assert_receive {:application_startup_selection_complete, ^ref}, 2_000
   end
 
   defp service_flag(service) do

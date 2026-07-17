@@ -1,7 +1,8 @@
 # Server Task 10 Report
 
 Date: 2026-07-18
-Base commit: `39a29cd7`
+Task 10 base commit: `39a29cd7`
+Async lifecycle follow-up base: `dab3b47a`
 
 ## Result
 
@@ -39,6 +40,23 @@ missing modules return `{:error, :module_not_available}`, allowing
 Public start, stop, and start-after-stop preserve child ID
 `YellowDog.ServerAgent`. The old permissive ServiceManager tests were replaced
 with strict lifecycle assertions while the real `YellowDog.Supervisor` runs.
+
+### Async lifecycle reconciliation
+
+Async startup resolves current `YellowDog.Config` after the supervisor is
+running and immediately before service selection. A stop completed before
+selection therefore prevents the stale boot configuration from selecting the
+agent.
+
+The shared agent child installer treats `{:ok, :undefined}` as an intermediate
+state, not a successful start. It rechecks the current profile flag and either
+deletes the ignored child spec or restarts it when a concurrent enable won the
+race. Public agent start recovers an already-present ignored or stopped spec
+with `Supervisor.restart_child/2`; bounded retries reconcile `:running`,
+`:not_found`, and concurrent start/delete races without exposing raw reasons.
+An unresolved race returns only the fixed
+`:server_agent_reconcile_failed` reason so ServiceManager can restore its
+attempted flag.
 
 ### Capability contract
 
@@ -102,6 +120,11 @@ Focused application coverage proves:
 - modern enabled startup occurs once after `YellowDog.Supervisor` exists;
 - disabled custom, legacy, and missing-module selections do not start;
 - public start/stop/start uses the late-bound child and stable module ID;
+- async selection uses current configuration rather than captured boot state;
+- stop before async selection leaves no ignored child and a later public start
+  succeeds;
+- public start repeatedly recovers an already-present `:undefined` child spec
+  without sleeps;
 - legacy and missing-module public starts restore the attempted service flag;
 - option derivation, runtime overrides, data directory, revision, and
   capabilities;
@@ -149,19 +172,31 @@ failure: `invalid_configuration` containing the
 installed. The remaining failures covered settings over-advertisement and the
 missing identity refresh.
 
+The lifecycle follow-up added the deterministic startup-selection barrier
+before production reconciliation:
+
+```text
+devenv shell -- mix cmd --app yellow_dog mix test test/yellow_dog/application_test.exs
+17 tests, 2 failures
+```
+
+One regression observed the stale ignored child exactly as
+`{YellowDog.ServerAgent, :undefined, :supervisor, [YellowDog.Application]}`.
+The other reproduced public start returning `{:error, :already_present}`.
+
 Green tests:
 
 ```text
 devenv shell -- mix cmd --app yellow_dog mix test test/yellow_dog/application_test.exs
-15 tests, 0 failures
+17 tests, 0 failures
 
 devenv shell -- mix cmd --app yellow_dog mix test test/yellow_dog/application_test.exs test/yellow_dog/service_manager_test.exs
-71 tests, 0 failures
+73 tests, 0 failures
 
 devenv shell -- mix cmd --app yellow_dog mix test
-420 tests, 0 failures
+422 tests, 0 failures
 
-devenv shell -- mix cmd --app yellow_dog_server_agent mix test
+devenv shell -- bash -lc 'mix cmd --app yellow_dog_server_agent mix compile --warnings-as-errors && mix cmd --app yellow_dog_server_agent mix test'
 253 tests, 0 failures
 ```
 
