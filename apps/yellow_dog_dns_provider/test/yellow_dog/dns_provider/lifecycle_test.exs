@@ -39,6 +39,47 @@ defmodule YellowDog.DnsProvider.LifecycleTest do
     assert [{:get_config, ["cf-main"]}] = LifecycleFake.take_calls()
   end
 
+  test "fetch_conflict finds a persisted conflict by global ID" do
+    conflict = conflict("conflict-global")
+
+    LifecycleFake.configure(%{
+      configs: %{
+        "cf-main" => provider_config(),
+        "route53-main" => provider_config(%{name: "route53-main", type: :route53})
+      },
+      conflicts: %{"cf-main" => [conflict], "route53-main" => []}
+    })
+
+    assert {:ok, ^conflict} = apply(DnsProvider, :fetch_conflict, ["conflict-global"])
+
+    assert [
+             {:list_configs, []},
+             {:list_conflicts, ["cf-main"]},
+             {:list_conflicts, ["route53-main"]}
+           ] = LifecycleFake.take_calls()
+  end
+
+  test "fetch_conflict rejects duplicate global IDs" do
+    duplicate = conflict("conflict-duplicate")
+
+    LifecycleFake.configure(%{
+      configs: %{
+        "cf-main" => provider_config(),
+        "route53-main" => provider_config(%{name: "route53-main", type: :route53})
+      },
+      conflicts: %{"cf-main" => [duplicate], "route53-main" => [duplicate]}
+    })
+
+    assert {:error, :conflict} = apply(DnsProvider, :fetch_conflict, ["conflict-duplicate"])
+  end
+
+  test "fetch_conflict preserves Store owner failures" do
+    LifecycleFake.configure(%{responses: %{list_configs: [{:error, :owner_unavailable}]}})
+
+    assert {:error, :owner_unavailable} = DnsProvider.fetch_conflict("conflict-unavailable")
+    assert [{:list_configs, []}] = LifecycleFake.take_calls()
+  end
+
   test "update restores exact old credentials after apply failure" do
     old = provider_config(%{credentials: %{api_token: "keep-this-secret"}})
     provider_name = old.name
@@ -274,6 +315,18 @@ defmodule YellowDog.DnsProvider.LifecycleTest do
       },
       overrides
     )
+  end
+
+  defp conflict(id) do
+    %{
+      id: id,
+      provider_name: "cf-main",
+      zone: "example.test",
+      owner: "www",
+      type: "A",
+      local_records: [%{owner: "www", type: "A", ttl: 60, rdata: "192.0.2.1"}],
+      remote_records: [%{owner: "www", type: "A", ttl: 60, rdata: "192.0.2.2"}]
+    }
   end
 
   defp await_engine(name, attempts \\ 20)

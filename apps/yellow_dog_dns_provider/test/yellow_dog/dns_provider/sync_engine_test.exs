@@ -141,6 +141,51 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
     end
   end
 
+  describe "resolve_conflict/3" do
+    test "synchronously applies the local RRset against the stored remote RRset" do
+      config = build_config()
+
+      remote = %{owner: "www.example.com", type: "A", ttl: 60, rdata: "192.0.2.2"}
+      local = %{owner: "www.example.com", type: "A", ttl: 60, rdata: "192.0.2.1"}
+
+      pid = start_engine(config, %{records: %{"example.com" => [remote]}})
+
+      conflict = %{
+        zone: "example.com",
+        local_records: [local],
+        remote_records: [remote]
+      }
+
+      assert :ok = apply(SyncEngine, :resolve_conflict, [pid, conflict, 5_000])
+
+      assert %{provider_state: %{records: %{"example.com" => [^local]}, apply_count: 1}} =
+               :sys.get_state(pid)
+    end
+
+    test "returns a provider rejection without accepting the remote changeset" do
+      config = build_config()
+      local = %{owner: "www.example.com", type: "A", ttl: 60, rdata: "192.0.2.1"}
+      remote = %{owner: "www.example.com", type: "A", ttl: 60, rdata: "192.0.2.2"}
+
+      pid =
+        start_engine(config, %{records: %{"example.com" => [remote]}, apply_error: :remote_failed})
+
+      assert {:error, :remote_failed} =
+               SyncEngine.resolve_conflict(
+                 pid,
+                 %{
+                   zone: "example.com",
+                   local_records: [local],
+                   remote_records: [remote]
+                 },
+                 5_000
+               )
+
+      assert %{provider_state: %{records: %{"example.com" => [^remote]}, apply_count: 0}} =
+               :sys.get_state(pid)
+    end
+  end
+
   describe "read-only provider" do
     test "skips push to remote" do
       config = build_config()

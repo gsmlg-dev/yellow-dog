@@ -1460,6 +1460,99 @@ defmodule YellowDog.Server.Control.DnsTest do
              ServerDnsControlFake.take_calls()
   end
 
+  test "resolves a conflict synchronously with the post-application DNS zone revision" do
+    conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "Example.Test."}
+    zone = cloud_authoritative_zone()
+
+    ServerDnsControlFake.configure(%{
+      conflicts: %{"conflict-1" => conflict},
+      zone_metadata: %{{"default", "example.test"} => zone}
+    })
+
+    payload = %{"conflict_id" => "conflict-1", "resolution" => "use_cloud"}
+
+    assert {:ok, result} = Dns.dispatch("server.dns.conflicts.resolve", payload)
+    assert_valid_result("server.dns.conflicts.resolve", result)
+    assert result["resource_type"] == "dns_zone"
+    assert result["resource_id"] == "example.test"
+
+    expected_resource = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "zone_type" => "authoritative",
+      "provider_id" => "cf-main"
+    }
+
+    assert result["resource"] == expected_resource
+    assert {:ok, expected_revision} = Revision.calculate(expected_resource)
+    assert result["revision"] == expected_revision
+
+    assert [
+             {:provider_facade, :fetch_conflict, ["conflict-1"]},
+             {:provider_facade, :resolve_conflict, ["conflict-1", :use_cloud]},
+             {:zone_store, :get_zone, ["default", "example.test"]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "maps conflict resolution owner errors without leaking owner terms" do
+    conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "example.test"}
+
+    ServerDnsControlFake.configure(%{
+      conflicts: %{"conflict-1" => conflict},
+      responses: %{resolve_conflict: [{:error, {:owner_failed, "credential-token"}}]}
+    })
+
+    result =
+      Dns.dispatch("server.dns.conflicts.resolve", %{
+        "conflict_id" => "conflict-1",
+        "resolution" => "use_local"
+      })
+
+    assert result == {:error, Error.new(:apply_failed, "apply failed", %{})}
+    refute inspect(result) =~ "owner_failed"
+    refute inspect(result) =~ "credential-token"
+  end
+
+  test "Dispatcher rejects a stale conflict resolution before calling the resolver" do
+    conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "example.test"}
+    zone = cloud_authoritative_zone()
+    payload = %{"conflict_id" => "conflict-1", "resolution" => "use_local"}
+
+    ServerDnsControlFake.configure(%{
+      conflicts: %{"conflict-1" => conflict},
+      zone_metadata: %{{"default", "example.test"} => zone}
+    })
+
+    assert {:ok, current} = Dns.current("server.dns.conflicts.resolve", payload)
+    assert {:ok, current_revision} = Revision.calculate(current)
+    ServerDnsControlFake.take_calls()
+    {:ok, payload_digest} = Digest.calculate(payload)
+
+    assert {:error, %Error{code: :conflict, message: "stale revision"}} =
+             Dispatcher.dispatch(%Envelope{
+               protocol_version: 1,
+               request_id: @request_id,
+               target_type: :server,
+               target_id: "server-task-3f",
+               operation: "server.dns.conflicts.resolve",
+               idempotency_key: @idempotency_key,
+               payload: payload,
+               payload_digest: payload_digest,
+               expected_revision: String.duplicate("0", 64),
+               config_version: nil,
+               sent_at: @sent_at
+             })
+
+    refute current_revision == String.duplicate("0", 64)
+
+    assert [
+             {:provider_facade, :fetch_conflict, ["conflict-1"]},
+             {:zone_store, :get_zone, ["default", "example.test"]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert_dispatcher_dns_dependencies()
+  end
+
   test "sanitizes structured provider owner errors" do
     provider = %{name: "cf-main", type: :cloudflare, credentials: %{api_token: "secret"}}
     payload = provider_payload("cf-main")
@@ -2174,7 +2267,8 @@ defmodule YellowDog.Server.Control.DnsTest do
       "server.dns.zones.sync",
       "server.dns.records.create",
       "server.dns.records.update",
-      "server.dns.records.delete"
+      "server.dns.records.delete",
+      "server.dns.conflicts.resolve"
     ]
 
     for operation <-
@@ -2191,10 +2285,7 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert {:error, %Error{code: :unsupported}} =
              Dns.current("server.dns.unknown", %{})
 
-    for operation <- [
-          "server.dns.zones.import",
-          "server.dns.conflicts.resolve"
-        ] do
+    for operation <- ["server.dns.zones.import"] do
       assert {:error, %Error{code: :unsupported}} = Dns.current(operation, %{})
     end
 

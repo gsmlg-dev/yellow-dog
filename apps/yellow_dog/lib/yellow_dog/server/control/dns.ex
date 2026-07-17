@@ -34,8 +34,7 @@ defmodule YellowDog.Server.Control.Dns do
     "server.dns.conflicts.resolve"
   ]
   @unsupported_snapshot_operations [
-    "server.dns.zones.import",
-    "server.dns.conflicts.resolve"
+    "server.dns.zones.import"
   ]
 
   @production_dependencies %{
@@ -139,6 +138,9 @@ defmodule YellowDog.Server.Control.Dns do
   def dispatch("server.dns.providers.delete", %{"provider_id" => _} = payload),
     do: delete_provider(payload)
 
+  def dispatch("server.dns.conflicts.resolve", payload) when is_map(payload),
+    do: resolve_provider_conflict(payload)
+
   def dispatch(operation, _payload) when operation in @mutation_operations,
     do: unsupported_error()
 
@@ -177,6 +179,14 @@ defmodule YellowDog.Server.Control.Dns do
         Enum.find(zones, &(&1["zone_name"] == canonical_name(zone_name))),
         "server.dns.zones.list"
       )
+    end
+  end
+
+  def current("server.dns.conflicts.resolve", payload) when is_map(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.conflicts.resolve", payload),
+         {:ok, conflict} <- fetch_provider_conflict(payload["conflict_id"]),
+         {:ok, resource} <- conflict_zone_resource(conflict) do
+      current_resource("server.dns.conflicts.resolve", resource, "server.dns.zones.list")
     end
   end
 
@@ -360,6 +370,19 @@ defmodule YellowDog.Server.Control.Dns do
     with {:ok, payload} <- validate_operation_payload("server.dns.providers.delete", payload),
          :ok <- provider_owner_result(:remove_provider, [payload["provider_id"]]) do
       deleted_result("server.dns.providers.delete", "dns_provider", payload)
+    else
+      {:error, %Error{}} = error -> error
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp resolve_provider_conflict(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.conflicts.resolve", payload),
+         {:ok, resolution} <- conflict_resolution(payload["resolution"]),
+         {:ok, conflict} <- fetch_provider_conflict(payload["conflict_id"]),
+         :ok <- provider_owner_result(:resolve_conflict, [payload["conflict_id"], resolution]),
+         {:ok, resource} <- conflict_zone_resource(conflict) do
+      revisioned_result("server.dns.conflicts.resolve", "dns_zone", resource)
     else
       {:error, %Error{}} = error -> error
       _failure -> apply_failed_error()
@@ -720,6 +743,37 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
+  defp fetch_provider_conflict(conflict_id) do
+    with {:ok, result} <- dependency_call(:provider_facade, :fetch_conflict, [conflict_id]) do
+      case result do
+        {:ok, conflict} when is_map(conflict) -> {:ok, conflict}
+        {:error, :not_found} -> not_found_error()
+        {:error, :conflict} -> conflict_error()
+        {:error, :invalid} -> invalid_error()
+        {:error, :unsupported} -> unsupported_error()
+        _failure -> apply_failed_error()
+      end
+    end
+  end
+
+  defp conflict_zone_resource(conflict) do
+    with zone_name when is_binary(zone_name) <- field(conflict, :zone),
+         zone_name <- canonical_name(zone_name),
+         true <- zone_name != "",
+         {:ok, zone} <- fetch_zone("default", zone_name),
+         [resource] <- project_zone(zone, "default") do
+      {:ok, resource}
+    else
+      :missing -> not_found_error()
+      {:error, %Error{}} = error -> error
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp conflict_resolution("use_local"), do: {:ok, :use_local}
+  defp conflict_resolution("use_cloud"), do: {:ok, :use_cloud}
+  defp conflict_resolution(_resolution), do: invalid_error()
+
   defp fetch_provider_resource(provider_id) do
     with {:ok, provider} <- fetch_provider(provider_id),
          [resource] <- project_provider(provider) do
@@ -747,6 +801,9 @@ defmodule YellowDog.Server.Control.Dns do
   end
 
   defp provider_owner_error(:not_found), do: not_found_error()
+  defp provider_owner_error(:invalid), do: invalid_error()
+  defp provider_owner_error(:conflict), do: conflict_error()
+  defp provider_owner_error(:unsupported), do: unsupported_error()
   defp provider_owner_error(:apply_failed), do: apply_failed_error()
   defp provider_owner_error(:rollback_failed), do: rollback_failed_error()
   defp provider_owner_error(%Error{code: code}), do: provider_owner_error(code)

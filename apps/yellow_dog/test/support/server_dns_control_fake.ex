@@ -14,6 +14,7 @@ defmodule YellowDog.ServerDnsControlFake do
     responses: %{},
     acls: [],
     providers: {:ok, []},
+    conflicts: %{},
     logs: [],
     metrics: %{},
     enqueued_jobs: [],
@@ -412,6 +413,25 @@ defmodule YellowDog.ServerDnsControlFake.ProviderFacade do
     )
   end
 
+  def fetch_conflict(conflict_id) do
+    YellowDog.ServerDnsControlFake.operation(
+      :fetch_conflict,
+      {:provider_facade, :fetch_conflict, [conflict_id]},
+      fn state ->
+        {{:ok, Map.get(state.conflicts, conflict_id, {:error, :not_found})} |> unwrap_conflict(),
+         state}
+      end
+    )
+  end
+
+  def resolve_conflict(conflict_id, resolution) do
+    YellowDog.ServerDnsControlFake.operation(
+      :resolve_conflict,
+      {:provider_facade, :resolve_conflict, [conflict_id, resolution]},
+      fn state -> {:ok, state} end
+    )
+  end
+
   def update_provider(provider_id, changes) do
     YellowDog.ServerDnsControlFake.operation(
       :update_provider,
@@ -458,6 +478,9 @@ defmodule YellowDog.ServerDnsControlFake.ProviderFacade do
       end
     )
   end
+
+  defp unwrap_conflict({:ok, {:error, :not_found}}), do: {:error, :not_found}
+  defp unwrap_conflict({:ok, conflict}), do: {:ok, conflict}
 end
 
 defmodule YellowDog.ServerDnsControlFake.Tasks do

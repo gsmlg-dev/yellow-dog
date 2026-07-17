@@ -62,6 +62,19 @@ defmodule YellowDog.DnsProvider.SyncEngine do
     GenServer.call(server, :status)
   end
 
+  @doc "Synchronously apply the local side of one stored conflict to the provider."
+  @spec resolve_conflict(GenServer.server() | String.t(), map(), timeout()) ::
+          :ok | {:error, term()}
+  def resolve_conflict(provider_name, conflict, timeout) when is_binary(provider_name) do
+    resolve_conflict({:via, Registry, {@registry, provider_name}}, conflict, timeout)
+  end
+
+  def resolve_conflict(server, conflict, timeout) when is_map(conflict) and is_integer(timeout) do
+    GenServer.call(server, {:resolve_conflict, conflict}, timeout)
+  catch
+    :exit, _reason -> {:error, :apply_failed}
+  end
+
   # -------------------------------------------------------------------
   # Server callbacks
   # -------------------------------------------------------------------
@@ -116,6 +129,20 @@ defmodule YellowDog.DnsProvider.SyncEngine do
     }
 
     {:reply, status, state}
+  end
+
+  def handle_call({:resolve_conflict, conflict}, _from, state) do
+    with {:ok, zone_ref, changeset} <- conflict_changeset(conflict) do
+      case state.provider_module.apply_changeset(zone_ref, changeset, state.provider_state) do
+        {:ok, provider_state} ->
+          {:reply, :ok, %{state | provider_state: provider_state}}
+
+        {:error, reason, provider_state} ->
+          {:reply, {:error, reason}, %{state | provider_state: provider_state}}
+      end
+    else
+      :error -> {:reply, {:error, :invalid}, state}
+    end
   end
 
   @impl true
@@ -270,6 +297,20 @@ defmodule YellowDog.DnsProvider.SyncEngine do
     }
 
     safe_call(YellowDog.Store.Provider, :put_status, [provider_name, status])
+  end
+
+  defp conflict_changeset(conflict) do
+    with zone when is_binary(zone) <- conflict_field(conflict, :zone),
+         local_records when is_list(local_records) <- conflict_field(conflict, :local_records),
+         remote_records when is_list(remote_records) <- conflict_field(conflict, :remote_records) do
+      {:ok, %{name: zone, id: nil}, %{additions: local_records, deletions: remote_records}}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp conflict_field(conflict, key) do
+    Map.get(conflict, key, Map.get(conflict, Atom.to_string(key)))
   end
 
   # -------------------------------------------------------------------
