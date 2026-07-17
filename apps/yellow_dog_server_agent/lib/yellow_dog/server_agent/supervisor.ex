@@ -97,9 +97,10 @@ defmodule YellowDog.ServerAgent.Supervisor do
   end
 
   def start_link(opts \\ []) do
-    with {:ok, prepared_opts} <- prepare_options(opts),
+    with true <- is_list(opts) and Keyword.keyword?(opts),
          {:ok, supervisor_name} <-
-           supervisor_name(Keyword.get(prepared_opts, :supervisor_name, __MODULE__)) do
+           supervisor_name(Keyword.get(opts, :supervisor_name, __MODULE__)),
+         {:ok, prepared_opts} <- prepare_options(opts) do
       result =
         if Keyword.has_key?(prepared_opts, :credential_ref) do
           start_supervisor({:claim_credentials, prepared_opts}, supervisor_name)

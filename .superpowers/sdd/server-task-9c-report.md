@@ -236,8 +236,9 @@ Date: 2026-07-18
   remain unchanged.
 - Ordinary unclaimed direct preparations expire after the provider claim
   timeout or creator death. The detached retained-provider state is removed.
-  Validation and failed direct starts explicitly release providers; a provider
-  claimed by a failed supervisor exits through its installed owner monitor.
+  Supervisor names are validated before preparation; failed direct starts
+  after preparation explicitly release providers. A provider claimed by a
+  failed supervisor exits through its installed owner monitor.
 
 ### Safe Facade
 
@@ -297,8 +298,9 @@ preceding review iteration.
 ### Direct And Explicit Lifecycle Starts
 
 - Raw compatibility remains at both public direct `start_link/1` boundaries.
-  Startup prepares credentials and claims them before OTP retains any outbound
-  child MFA or state; failed validation/start releases the provider.
+  Supervisor-name validation runs before credential preparation. Startup then
+  prepares and claims before OTP retains any outbound child MFA or state;
+  failures after preparation release the provider.
 - The test-only lifecycle store/start helper demonstrates the required Task 10
   boundary without adding a production resolver. Its start MFA contains only a
   store PID, resolves raw options in the actual outer parent, replaces them
@@ -331,3 +333,16 @@ preceding review iteration.
   `mix deps.tree --only prod`, `mix app.tree`, compile xref,
   Client/Supervisor/facade traces, forbidden-reference scans, scoped format,
   and `git diff --check` passed through `devenv shell`.
+
+### Invalid Supervisor-Name Cleanup Polish
+
+- Direct `ServerAgent.Supervisor.start_link/1` now validates its OTP supervisor
+  name before calling `prepare_options/1`. An invalid name therefore returns
+  the controlled error without spawning a credential provider; post-preparation
+  start failures continue to release their provider immediately.
+- The focused regression first reported `18 tests, 1 failure, 17 excluded` at
+  the sanitized `refute spawned?` assertion. After the reorder, the same run
+  reported `18 tests, 0 failures, 17 excluded`.
+- The final Client/Supervisor/facade run reported `64 tests, 0 failures`.
+  Scoped format passed, and warnings-as-errors compiled all 13 Server-agent
+  files.

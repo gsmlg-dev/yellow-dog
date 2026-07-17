@@ -191,6 +191,27 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     end
   end
 
+  test "invalid outbound supervisor name creates no provider or credential-bearing result", %{
+    data_dir: data_dir
+  } do
+    opts =
+      data_dir
+      |> complete_opts(names())
+      |> Keyword.merge(outbound_opts())
+      |> Keyword.put(:supervisor_name, {:via, nil, :supervisor})
+
+    result =
+      assert_no_process_spawn(fn ->
+        ServerAgentSupervisor.start_link(opts)
+      end)
+
+    assert {:error, :invalid_configuration} = result
+    refute contains_secret?(result, @token)
+    refute contains_secret?(result, "management.example.test")
+    refute contains_raw_credential_key?(result)
+    refute contains_function?(result)
+  end
+
   test "partial durable and outbound configuration fails fast", %{data_dir: data_dir} do
     durable = [
       data_dir: data_dir,
