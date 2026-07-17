@@ -2,6 +2,7 @@ defmodule YellowDog.ServerAgent.StorageTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.ServerAgent.Storage
+  alias YellowDog.ServerAgent.Storage.FileOps
   alias YellowDog.ServerAgent.TestStorageFileOps
   alias YellowDog.Sync.Error
 
@@ -14,7 +15,12 @@ defmodule YellowDog.ServerAgent.StorageTest do
 
     File.mkdir_p!(directory)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn ->
+      TestStorageFileOps.clear_failure()
+      TestStorageFileOps.clear_capture()
+      TestStorageFileOps.clear_returns()
+      File.rm_rf(directory)
+    end)
 
     %{directory: directory}
   end
@@ -25,6 +31,14 @@ defmodule YellowDog.ServerAgent.StorageTest do
 
     assert {:ok, ^path} = Storage.create(path, document)
     assert {:ok, ^document} = Storage.read(path)
+  end
+
+  test "enforces max_bytes after an injected successful read" do
+    assert {:error, %Error{code: :invalid, details: %{}}} =
+             Storage.read("ignored.json",
+               max_bytes: 8,
+               file_ops: YellowDog.ServerAgent.OversizedSuccessFileOps
+             )
   end
 
   test "returns sanitized missing, corrupt, scalar, and oversized read errors", %{
@@ -75,6 +89,20 @@ defmodule YellowDog.ServerAgent.StorageTest do
     assert String.ends_with?(staging_path, ".stage")
   end
 
+  test "retries an exclusive-open race without deleting the foreign stage", %{
+    directory: directory
+  } do
+    path = Path.join(directory, "manifest.json")
+    ops = YellowDog.ServerAgent.ForeignStageRaceFileOps
+    ops.arm(self())
+    on_exit(&ops.clear/0)
+
+    assert {:ok, ^path} = Storage.replace(path, %{"revision" => 1}, file_ops: ops)
+    assert_receive {:foreign_stage, foreign_path}
+    assert File.read!(foreign_path) == "foreign-stage"
+    assert {:ok, %{"revision" => 1}} = Storage.read(path)
+  end
+
   test "treats an exact immutable document as idempotent and changed content as a conflict", %{
     directory: directory
   } do
@@ -89,6 +117,24 @@ defmodule YellowDog.ServerAgent.StorageTest do
 
     assert {:ok, ^document} = Storage.read(path)
     assert_staging_clean(directory)
+  end
+
+  test "normalizes atom-keyed JSON objects for immutable idempotency", %{directory: directory} do
+    path = Path.join(directory, "version.json")
+    document = %{digest: "abc", metadata: %{version: 1}}
+
+    assert {:ok, ^path} = Storage.create(path, document)
+    assert {:ok, ^path} = Storage.create(path, document)
+    assert {:ok, %{"digest" => "abc", "metadata" => %{"version" => 1}}} = Storage.read(path)
+    assert_staging_clean(directory)
+  end
+
+  test "rejects structs from the JSON-native document contract", %{directory: directory} do
+    path = Path.join(directory, "version.json")
+    document = %YellowDog.ServerAgent.JsonEncodableStruct{value: "encoded"}
+
+    assert {:error, %Error{code: :invalid}} = Storage.create(path, document)
+    refute File.exists?(path)
   end
 
   for phase <- [:mkdir_p, :open, :write, :sync, :close, :rename] do
@@ -161,7 +207,25 @@ defmodule YellowDog.ServerAgent.StorageTest do
     assert_staging_clean(directory)
   end
 
-  test "reconciles a timeout after rename by reading the exact final once", %{
+  test "does not report success when owned-stage cleanup fails after immutable promotion", %{
+    directory: directory
+  } do
+    path = Path.join(directory, "version.json")
+    document = %{"version" => 1}
+    TestStorageFileOps.return_at(:rm, :malformed)
+
+    assert {:error, %Error{code: :internal}} =
+             Storage.create(path, document, file_ops: TestStorageFileOps)
+
+    assert {:ok, ^document} = Storage.read(path)
+
+    assert [_stage] =
+             directory
+             |> File.ls!()
+             |> Enum.filter(&String.ends_with?(&1, ".stage"))
+  end
+
+  test "a synchronous rename timeout cannot mutate the final after returning", %{
     directory: directory
   } do
     path = Path.join(directory, "manifest.json")
@@ -169,16 +233,134 @@ defmodule YellowDog.ServerAgent.StorageTest do
 
     Process.register(self(), :yellow_dog_server_agent_storage_timeout_test)
 
+    assert {:error, %Error{code: :timeout}} =
+             Storage.replace(path, replacement,
+               file_ops: YellowDog.ServerAgent.TimeoutBeforeRenameFileOps
+             )
+
+    assert_receive :rename_started
+    Process.sleep(50)
+    refute File.exists?(path)
+    assert_staging_clean(directory)
+  end
+
+  test "returns timeout when directory sync is not confirmed after promotion", %{
+    directory: directory
+  } do
+    path = Path.join(directory, "manifest.json")
+    replacement = %{"revision" => 2}
+
+    Process.register(self(), :yellow_dog_server_agent_storage_timeout_test)
+
+    assert {:error, %Error{code: :timeout}} =
+             Storage.replace(path, replacement,
+               file_ops: YellowDog.ServerAgent.TimeoutDuringSyncDirFileOps
+             )
+
+    assert_receive :sync_dir_started
+    assert_receive :reconcile_read
+    assert {:ok, ^replacement} = Storage.read(path)
+    assert_staging_clean(directory)
+  end
+
+  test "reconciles an ambiguous rename only after exact normalized read and directory sync", %{
+    directory: directory
+  } do
+    path = Path.join(directory, "manifest.json")
+    replacement = %{revision: 2}
+
+    Process.register(self(), :yellow_dog_server_agent_storage_timeout_test)
+
     assert {:ok, ^path} =
              Storage.replace(path, replacement,
-               file_ops: YellowDog.ServerAgent.TimeoutAfterRenameFileOps,
+               file_ops: YellowDog.ServerAgent.AmbiguousRenameFileOps
+             )
+
+    assert_receive :reconcile_read
+    assert {:ok, %{"revision" => 2}} = Storage.read(path)
+    assert_staging_clean(directory)
+  end
+
+  test "sanitizes malformed read callbacks" do
+    TestStorageFileOps.return_at(:read, :malformed)
+
+    assert {:error, %Error{code: :internal}} =
+             Storage.read("ignored.json", file_ops: TestStorageFileOps)
+  end
+
+  test "returns a typed timeout from a synchronous read callback" do
+    TestStorageFileOps.return_at(:read, {:error, :timeout})
+
+    assert {:error, %Error{code: :timeout}} =
+             Storage.read("ignored.json", file_ops: TestStorageFileOps)
+  end
+
+  for phase <- [:mkdir_p, :exists?, :open] do
+    test "returns timeout without cleanup after an unowned #{phase} timeout", %{
+      directory: directory
+    } do
+      path = Path.join(directory, "manifest.json")
+      TestStorageFileOps.return_at(unquote(phase), {:error, :timeout})
+
+      assert {:error, %Error{code: :timeout}} =
+               Storage.replace(path, %{"revision" => 2}, file_ops: TestStorageFileOps)
+
+      refute File.exists?(path)
+      assert_staging_clean(directory)
+    end
+  end
+
+  for phase <- [:mkdir_p, :exists?, :open, :write, :sync, :close, :rename, :sync_dir] do
+    test "sanitizes a malformed #{phase} callback during mutable replacement", %{
+      directory: directory
+    } do
+      path = Path.join(directory, "manifest.json")
+      File.write!(path, Jason.encode!(%{"revision" => 1}))
+      TestStorageFileOps.return_at(unquote(phase), :malformed)
+
+      assert {:error, %Error{code: :internal}} =
+               Storage.replace(path, %{"revision" => 2}, file_ops: TestStorageFileOps)
+    end
+  end
+
+  test "sanitizes malformed link and rm callbacks", %{directory: directory} do
+    path = Path.join(directory, "version.json")
+    TestStorageFileOps.return_at(:link, :malformed)
+
+    assert {:error, %Error{code: :internal}} =
+             Storage.create(path, %{"version" => 1}, file_ops: TestStorageFileOps)
+
+    TestStorageFileOps.return_at(:rm, :malformed)
+    TestStorageFileOps.fail_at(:write)
+
+    assert {:error, %Error{code: :internal}} =
+             Storage.create(path, %{"version" => 1}, file_ops: TestStorageFileOps)
+  end
+
+  test "rejects the unsupported process-timer option before opening a stage", %{
+    directory: directory
+  } do
+    path = Path.join(directory, "manifest.json")
+    TestStorageFileOps.capture_open_to(self())
+
+    assert {:error, %Error{code: :invalid}} =
+             Storage.replace(path, %{"revision" => 1},
+               file_ops: TestStorageFileOps,
                timeout: 5
              )
 
-    assert_receive :rename_called
-    refute_receive :rename_called, 100
-    assert {:ok, ^replacement} = Storage.read(path)
-    assert_staging_clean(directory)
+    refute_receive {:storage_opened, _path}
+  end
+
+  test "default FileOps preserves close failures" do
+    assert {:error, {:close, :eio}} =
+             FileOps.finalize_close({:ok, "contents"}, {:error, :eio})
+
+    assert {:error, {:close, :eio}} =
+             FileOps.finalize_close(:ok, {:error, :eio})
+
+    assert {:error, {:operation_and_close, :enospc, :eio}} =
+             FileOps.finalize_close({:error, :enospc}, {:error, :eio})
   end
 
   defp assert_staging_clean(directory) do
