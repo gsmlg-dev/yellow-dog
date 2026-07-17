@@ -28,7 +28,9 @@ defmodule YellowDogIdentity.HostTest do
     test "rejects unknown key type" do
       # A key whose type token is not in the allowlist must be rejected
       # regardless of whether the base64 is otherwise valid.
-      fake_key = "ssh-unknown AAAAC3NzaC1lZDI1NTE5AAAAIHUzjC6gKCLjRoHMvMXBx3cCe49wjm69r9B7YBcFcAv1"
+      fake_key =
+        "ssh-unknown AAAAC3NzaC1lZDI1NTE5AAAAIHUzjC6gKCLjRoHMvMXBx3cCe49wjm69r9B7YBcFcAv1"
+
       assert {:error, :invalid_pubkey} = Host.validate_pubkey(fake_key)
     end
 
@@ -161,8 +163,36 @@ defmodule YellowDogIdentity.HostTest do
         modified = %{host | trust_provider: provider}
         toml_map = Host.to_toml_map(modified)
         {:ok, restored} = Host.from_toml_map(toml_map)
-        assert restored.trust_provider == provider, "Expected #{provider} but got #{restored.trust_provider}"
+
+        assert restored.trust_provider == provider,
+               "Expected #{provider} but got #{restored.trust_provider}"
       end
+    end
+
+    test "preserves legacy fallback behavior for unknown enum strings" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "legacy-enum-fallback",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map =
+        update_in(Host.to_toml_map(host)["host"], fn data ->
+          %{
+            data
+            | "status" => "unknown",
+              "trust_level" => "unknown",
+              "trust_provider" => "unknown"
+          }
+        end)
+
+      assert {:ok,
+              %Host{
+                status: :pending,
+                trust_level: :cloud_verified,
+                trust_provider: :dhcp
+              }} = Host.from_toml_map(toml_map)
     end
   end
 end

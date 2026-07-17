@@ -414,3 +414,80 @@ mix test --seed 0
 MIX_ENV=test mix compile --warnings-as-errors
 # exit 0
 ```
+
+## Combined Owner And Adapter Review Resolution
+
+The remaining Critical and Important findings from the combined Identity owner
+and Server adapter review are resolved.
+
+Registry restart recovery now validates the raw parsed host document before
+calling the compatibility parser. The strict recovery schema accepts only the
+single `host` section and the known persisted host keys, requires the durable
+identity and enum fields plus `created_at`, bounds the control host ID to 128
+bytes and host name to 1,024 bytes, validates optional timestamps and typed
+collections, and accepts only the exact persisted values for:
+
+- `status`
+- `trust_level`
+- `trust_provider`
+
+`Host.from_toml_map/1` is unchanged. Its historical fallback of unknown enum
+strings remains covered explicitly for legacy callers, but malformed durable
+control state no longer reaches it. A syntactically valid TOML host with an
+invalid status is omitted from Registry state, latches
+`host_load_status: :persistence_failed`, and makes control list, get, approve,
+revoke, and delete all return `{:error, :persistence_failed}`. The invalid file
+is unchanged and cannot be approved as a fabricated pending host.
+
+Legacy and control persistence now use separate paths:
+
+- Legacy host and token deletion logs removal failures, removes in-memory
+  state, and returns the historical `:ok`.
+- Control host deletion still removes the durable file before state, retains
+  the host on failure, and returns sanitized `:persistence_failed`.
+- Legacy host/token writes and token consumption preserve underlying
+  filesystem error terms from the copy-validate-replace sequence.
+- Control approve/revoke writes continue reducing filesystem errors,
+  exceptions, throws, and exits to `:persistence_failed`.
+
+Strict audit parsing, complete-set duplicate audit ID validation, unsupported
+approval/token/policy surfaces, and public error redaction remain unchanged.
+
+### TDD Evidence
+
+The first focused RED run covered invalid enum restart recovery, legacy delete
+failure behavior, and legacy write error compatibility:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs \
+  test/yellow_dog_identity/host_test.exs --seed 0
+# 42 tests, 4 failures
+```
+
+The exact-schema follow-up RED run proved that an empty persisted host ID still
+entered control state:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs:220 --seed 0
+# 24 tests, 1 failure, 23 excluded
+```
+
+After the fixes:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs \
+  test/yellow_dog_identity/host_test.exs --seed 0
+# 43 tests, 0 failures
+
+mix test --seed 0
+# 413 tests, 0 failures
+
+MIX_ENV=test mix compile --force --warnings-as-errors
+# Compiling 20 files; exit 0
+
+MIX_ENV=test mix credo --strict \
+  lib/yellow_dog_identity/registry.ex \
+  test/yellow_dog_identity/control_facade_test.exs \
+  test/yellow_dog_identity/host_test.exs
+# 3 source files, 130 mods/funs, found no issues
+```

@@ -24,6 +24,44 @@ defmodule YellowDogIdentity.Registry do
   alias YellowDogIdentity.Host
   alias YellowDogIdentity.Token
 
+  @required_host_keys ~w(
+    id
+    hostname
+    ssh_pubkey
+    key_fingerprint
+    age_recipient
+    status
+    trust_level
+    trust_provider
+    created_at
+  )
+  @optional_host_keys ~w(
+    machine_id
+    role
+    datacenter
+    approved_at
+    approved_by
+    revoked_at
+    revoked_by
+    revoke_reason
+    trust_evidence
+    metadata
+    previous_keys
+  )
+  @valid_statuses ~w(pending approved revoked)
+  @valid_trust_levels ~w(
+    cloud_verified
+    netboot_verified
+    network_verified
+    network_partial
+    token_verified
+    unverified
+  )
+  @valid_trust_providers ~w(dhcp netboot aws gcp azure token none)
+  @max_control_id_bytes 128
+  @max_control_name_bytes 1_024
+  @max_persisted_collection_size 1_000
+
   @type state :: %{
           data_dir: String.t(),
           hosts: %{String.t() => Host.t()},
@@ -174,7 +212,7 @@ defmodule YellowDogIdentity.Registry do
 
   @impl true
   def handle_call({:put_host, host}, _from, state) do
-    case persist_host(state, host) do
+    case persist_host(state, host, :legacy) do
       :ok ->
         hosts = Map.put(state.hosts, host.id, host)
         fingerprint_index = Map.put(state.fingerprint_index, host.key_fingerprint, host.id)
@@ -243,7 +281,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:delete_host, id}, _from, state) do
-    case delete_host_record(state, id) do
+    case legacy_delete_host_record(state, id) do
       {:ok, _host, state} -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -322,7 +360,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:put_token, token}, _from, state) do
-    case persist_token(state, token) do
+    case persist_token(state, token, :legacy) do
       :ok ->
         tokens = Map.put(state.tokens, token.id, token)
         {:reply, :ok, %{state | tokens: tokens}}
@@ -344,7 +382,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:delete_token, id}, _from, state) do
-    case delete_token_record(state, id) do
+    case legacy_delete_token_record(state, id) do
       {:ok, _token, state} -> {:reply, :ok, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -394,7 +432,7 @@ defmodule YellowDogIdentity.Registry do
         :ok ->
           updated = Token.increment_use(token)
 
-          case persist_token(state, updated) do
+          case persist_token(state, updated, :legacy) do
             :ok -> {:halt, {:ok, updated}}
             {:error, _} = error -> {:halt, error}
           end
@@ -409,7 +447,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   defp reply_host_update(state, prior, updated) do
-    case persist_host(state, updated) do
+    case persist_host(state, updated, :control) do
       :ok ->
         hosts = Map.put(state.hosts, updated.id, updated)
         fingerprint_index = Map.put(state.fingerprint_index, updated.key_fingerprint, updated.id)
@@ -436,16 +474,51 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  defp delete_token_record(state, id) do
+  defp legacy_delete_host_record(state, id) do
+    case Map.get(state.hosts, id) do
+      nil ->
+        {:error, :not_found}
+
+      host ->
+        legacy_delete_file(host_path(state.data_dir, id), :host, state.file_ops)
+        hosts = Map.delete(state.hosts, id)
+        fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
+        {:ok, host, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+    end
+  end
+
+  defp legacy_delete_token_record(state, id) do
     case Map.get(state.tokens, id) do
       nil ->
         {:error, :not_found}
 
       token ->
-        with :ok <- delete_file(token_path(state.data_dir, id), :token, state.file_ops) do
-          {:ok, token, %{state | tokens: Map.delete(state.tokens, id)}}
-        end
+        legacy_delete_file(token_path(state.data_dir, id), :token, state.file_ops)
+        {:ok, token, %{state | tokens: Map.delete(state.tokens, id)}}
     end
+  end
+
+  defp legacy_delete_file(path, kind, file_ops) do
+    case legacy_file_call(file_ops, :rm, [path]) do
+      :ok ->
+        :ok
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Failed to delete #{kind} file #{path}: #{inspect(reason)}")
+    end
+  rescue
+    exception ->
+      Logger.warning(
+        "Unexpected error deleting #{kind} file #{path}: #{Exception.message(exception)}"
+      )
+  catch
+    caught_kind, reason ->
+      Logger.warning(
+        "Unexpected #{caught_kind} deleting #{kind} file #{path}: #{inspect(reason)}"
+      )
   end
 
   defp delete_file(path, kind, file_ops) do
@@ -464,19 +537,36 @@ defmodule YellowDogIdentity.Registry do
 
   # Persistence helpers
 
-  defp persist_host(state, host) do
+  defp persist_host(state, host, mode) do
     path = host_path(state.data_dir, host.id)
     toml_map = Host.to_toml_map(host)
-    atomic_write_toml(path, toml_map, state.file_ops)
+    atomic_write_toml(path, toml_map, state.file_ops, mode)
   end
 
-  defp persist_token(state, token) do
+  defp persist_token(state, token, mode) do
     path = token_path(state.data_dir, token.id)
     toml_map = Token.to_toml_map(token)
-    atomic_write_toml(path, toml_map, state.file_ops)
+    atomic_write_toml(path, toml_map, state.file_ops, mode)
   end
 
-  defp atomic_write_toml(path, map, file_ops) do
+  defp atomic_write_toml(path, map, file_ops, :legacy) do
+    content = encode_toml(map)
+    tmp_path = path <> ".tmp"
+    dir = Path.dirname(path)
+
+    with :ok <- legacy_file_call(file_ops, :mkdir_p, [dir]),
+         :ok <- legacy_file_call(file_ops, :write, [tmp_path, content]),
+         {:ok, _parsed} <- legacy_read_and_parse_toml(tmp_path, file_ops),
+         :ok <- legacy_file_call(file_ops, :rename, [tmp_path, path]) do
+      :ok
+    else
+      {:error, reason} ->
+        _cleanup_result = legacy_file_call(file_ops, :rm, [tmp_path])
+        {:error, reason}
+    end
+  end
+
+  defp atomic_write_toml(path, map, file_ops, :control) do
     tmp_path = path <> ".tmp"
     dir = Path.dirname(path)
 
@@ -505,12 +595,25 @@ defmodule YellowDogIdentity.Registry do
     result
   end
 
+  defp legacy_read_and_parse_toml(path, file_ops) do
+    case legacy_file_call(file_ops, :read, [path]) do
+      {:ok, content} -> Toml.decode(content)
+      error -> error
+    end
+  end
+
   defp read_and_parse_toml(path, file_ops) do
     case file_call(file_ops, :read, [path]) do
       {:ok, content} -> Toml.decode(content)
       _failure -> {:error, :persistence_failed}
     end
   end
+
+  defp legacy_file_call({module, context}, operation, arguments),
+    do: apply(module, operation, [context | arguments])
+
+  defp legacy_file_call(module, operation, arguments),
+    do: apply(module, operation, arguments)
 
   defp file_call({module, context}, operation, arguments) do
     module
@@ -613,6 +716,7 @@ defmodule YellowDogIdentity.Registry do
     try do
       with {:ok, content} <- file_call(file_ops, :read, [path]),
            {:ok, data} <- Toml.decode(content),
+           :ok <- validate_persisted_host(data),
            {:ok, %Host{} = host} <- Host.from_toml_map(data) do
         {:ok, host}
       else
@@ -622,6 +726,117 @@ defmodule YellowDogIdentity.Registry do
       _exception -> {:error, :persistence_failed}
     catch
       _kind, _reason -> {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_persisted_host(%{"host" => data} = document)
+       when map_size(document) == 1 and is_map(data) do
+    with :ok <- validate_host_keys(data),
+         :ok <- validate_nonempty_text(data["id"], @max_control_id_bytes),
+         :ok <- validate_nonempty_text(data["hostname"], @max_control_name_bytes),
+         :ok <- validate_nonempty_binary(data["ssh_pubkey"]),
+         :ok <- validate_nonempty_binary(data["key_fingerprint"]),
+         :ok <- validate_nonempty_binary(data["age_recipient"]),
+         true <- data["status"] in @valid_statuses,
+         true <- data["trust_level"] in @valid_trust_levels,
+         true <- data["trust_provider"] in @valid_trust_providers,
+         :ok <- validate_optional_datetime(data, "created_at"),
+         :ok <- validate_optional_datetime(data, "approved_at"),
+         :ok <- validate_optional_datetime(data, "revoked_at"),
+         :ok <- validate_optional_text_fields(data),
+         :ok <- validate_optional_map(data, "trust_evidence"),
+         :ok <- validate_optional_map(data, "metadata"),
+         :ok <- validate_previous_keys(data) do
+      :ok
+    else
+      _failure -> {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_persisted_host(_data), do: {:error, :persistence_failed}
+
+  defp validate_host_keys(data) do
+    keys = Map.keys(data)
+    allowed_keys = @required_host_keys ++ @optional_host_keys
+
+    if Enum.all?(@required_host_keys, &Map.has_key?(data, &1)) and
+         Enum.all?(keys, &(&1 in allowed_keys)) do
+      :ok
+    else
+      {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_bounded_text(value, maximum)
+       when is_binary(value) and byte_size(value) <= maximum do
+    if String.valid?(value), do: :ok, else: {:error, :persistence_failed}
+  end
+
+  defp validate_bounded_text(_value, _maximum), do: {:error, :persistence_failed}
+
+  defp validate_nonempty_text(value, maximum) do
+    with :ok <- validate_bounded_text(value, maximum),
+         false <- value == "" do
+      :ok
+    else
+      _failure -> {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_nonempty_binary(value) when is_binary(value) and value != "", do: :ok
+  defp validate_nonempty_binary(_value), do: {:error, :persistence_failed}
+
+  defp validate_optional_datetime(data, key) do
+    case Map.fetch(data, key) do
+      :error ->
+        :ok
+
+      {:ok, value} when is_binary(value) ->
+        case DateTime.from_iso8601(value) do
+          {:ok, _datetime, _offset} -> :ok
+          _failure -> {:error, :persistence_failed}
+        end
+
+      {:ok, _value} ->
+        {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_optional_text_fields(data) do
+    fields = ~w(machine_id role datacenter approved_by revoked_by revoke_reason)
+
+    if Enum.all?(fields, fn field ->
+         case Map.fetch(data, field) do
+           :error -> true
+           {:ok, value} -> is_binary(value) and String.valid?(value)
+         end
+       end) do
+      :ok
+    else
+      {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_optional_map(data, key) do
+    case Map.fetch(data, key) do
+      :error -> :ok
+      {:ok, value} when is_map(value) and map_size(value) <= @max_persisted_collection_size -> :ok
+      {:ok, _value} -> {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_previous_keys(data) do
+    case Map.fetch(data, "previous_keys") do
+      :error ->
+        :ok
+
+      {:ok, value} when is_list(value) ->
+        if length(value) <= @max_persisted_collection_size and Enum.all?(value, &is_map/1),
+          do: :ok,
+          else: {:error, :persistence_failed}
+
+      {:ok, _value} ->
+        {:error, :persistence_failed}
     end
   end
 

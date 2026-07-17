@@ -2,7 +2,7 @@ defmodule YellowDogIdentity.ControlFacadeTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Server.Control.Revision
-  alias YellowDogIdentity.{Host, Registry}
+  alias YellowDogIdentity.{Host, Registry, Token}
 
   defmodule FileOps do
     @moduledoc false
@@ -149,6 +149,121 @@ defmodule YellowDogIdentity.ControlFacadeTest do
 
       assert Enum.map(hosts, & &1["host_id"]) |> Enum.sort() ==
                Enum.sort([valid_host.id, corrupt_host.id])
+    end
+
+    test "a valid TOML host with an invalid status fails closed and cannot be approved",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("invalid-status-restart-host")
+      host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+
+      stop_registry()
+
+      invalid =
+        host_path
+        |> File.read!()
+        |> String.replace(~s(status = "pending"), ~s(status = "fabricated"))
+
+      File.write!(host_path, invalid)
+      start_registry!(tmp_dir, file_ops)
+
+      assert Registry.list_hosts() == []
+      assert Registry.get_host(host.id) == :not_found
+
+      assert [
+               {:error, :persistence_failed},
+               {:error, :persistence_failed},
+               {:error, :persistence_failed},
+               {:error, :persistence_failed},
+               {:error, :persistence_failed}
+             ] == [
+               YellowDogIdentity.control_list_hosts(),
+               YellowDogIdentity.control_host(host.id),
+               YellowDogIdentity.control_approve_host(host.id),
+               YellowDogIdentity.control_revoke_host(host.id),
+               YellowDogIdentity.control_delete_host(host.id)
+             ]
+
+      assert File.read!(host_path) == invalid
+      refute invalid =~ "approved_at"
+      refute invalid =~ "approved_by"
+    end
+
+    test "all host enums that the legacy parser coerces fail strict recovery",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      for {field, valid} <- [
+            {"status", "pending"},
+            {"trust_level", "unverified"},
+            {"trust_provider", "none"}
+          ] do
+        host = put_host!("invalid-#{field}-restart-host")
+        host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+
+        stop_registry()
+
+        invalid =
+          host_path
+          |> File.read!()
+          |> String.replace(~s(#{field} = "#{valid}"), ~s(#{field} = "unknown"))
+
+        File.write!(host_path, invalid)
+        start_registry!(tmp_dir, file_ops)
+
+        assert Registry.get_host(host.id) == :not_found
+        assert {:error, :persistence_failed} = YellowDogIdentity.control_list_hosts()
+
+        stop_registry()
+        File.rm!(host_path)
+        start_registry!(tmp_dir, file_ops)
+      end
+    end
+
+    test "strict recovery rejects missing, unknown, empty, and overlong control fields",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      mutations = [
+        fn content, host ->
+          String.replace(content, ~s(id = "#{host.id}"), ~s(id = ""))
+        end,
+        fn content, host ->
+          String.replace(
+            content,
+            ~s(id = "#{host.id}"),
+            ~s(id = "#{String.duplicate("x", 129)}")
+          )
+        end,
+        fn content, _host ->
+          String.replace(content, ~s(hostname = "strict-schema-host"), ~s(hostname = ""))
+        end,
+        fn content, _host ->
+          String.replace(
+            content,
+            ~s(hostname = "strict-schema-host"),
+            ~s(hostname = "#{String.duplicate("x", 1_025)}")
+          )
+        end,
+        fn content, _host ->
+          String.replace(content, "[host]\n", "[host]\nunexpected = \"value\"\n")
+        end,
+        fn content, _host ->
+          String.replace(content, ~r/^created_at = .*\n/m, "")
+        end
+      ]
+
+      for mutate <- mutations do
+        host = put_host!("strict-schema-host")
+        host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+
+        stop_registry()
+        invalid = host_path |> File.read!() |> mutate.(host)
+        File.write!(host_path, invalid)
+        start_registry!(tmp_dir, file_ops)
+
+        assert Registry.get_host(host.id) == :not_found
+        assert {:error, :persistence_failed} = YellowDogIdentity.control_list_hosts()
+
+        stop_registry()
+        File.rm!(host_path)
+        start_registry!(tmp_dir, file_ops)
+      end
     end
 
     test "approval and token owner surfaces are typed unsupported without an owner" do
@@ -375,6 +490,41 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       assert {:ok, %{"host_id" => host_id}} = YellowDogIdentity.control_host(host.id)
       assert host_id == host.id
       assert File.read!(host_path) == persisted
+    end
+
+    test "legacy host and token deletes remain best effort when file removal fails",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("legacy-delete-host")
+      {:ok, token, _raw_token} = Token.create(%{})
+      :ok = Registry.put_token(token)
+
+      host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      token_path = Path.join([tmp_dir, "tokens", "#{token.id}.toml"])
+
+      set_file_failure(file_ops, :rm, {:error, :eacces})
+
+      assert :ok = Registry.delete_host(host.id)
+      assert :ok = Registry.delete_token(token.id)
+      assert Registry.get_host(host.id) == :not_found
+      assert Registry.get_token(token.id) == :not_found
+      assert File.exists?(host_path)
+      assert File.exists?(token_path)
+    end
+
+    test "legacy host writes preserve the underlying filesystem error",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "legacy-write-host",
+          ssh_pubkey: @valid_key,
+          age_recipient: @valid_age
+        })
+
+      tmp_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml.tmp"])
+      set_file_failure(file_ops, :write, {:error, {:raw_path, tmp_path}})
+
+      assert {:error, {:raw_path, ^tmp_path}} = Registry.put_host(host)
+      assert Registry.get_host(host.id) == :not_found
     end
 
     test "mkdir and write failures are sanitized without changing state or disk",

@@ -210,3 +210,28 @@ git diff --check
 ## Concerns
 
 None in the owned Task 7C surface.
+
+## Combined Owner And Adapter Review Reverification
+
+The combined review was resolved entirely in the Identity-owned Registry and
+focused Identity tests. No Server adapter source, support fake, Dispatcher, or
+Server test was changed.
+
+The adapter continues to consume only sanitized public owner results. The
+Identity owner's new strict restart failure remains the existing
+`{:error, :persistence_failed}` contract, which the adapter maps to fixed
+`apply_failed` without exposing raw TOML, filesystem paths, or parser reasons.
+The adapter's full-list validation and duplicate-ID-before-bound guard remain
+unchanged, as do validation-first unsupported approval, token, and policy
+operations.
+
+Reverification:
+
+```text
+cd apps/yellow_dog
+mix test test/yellow_dog/server/control/identity_control_test.exs --seed 0
+# 12 tests, 0 failures
+
+mix test --seed 0
+# 407 tests, 0 failures
+```
