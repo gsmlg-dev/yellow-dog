@@ -98,10 +98,10 @@ defmodule YellowDog.ServerAgent.ConfigStore do
          :ok <- validate_staged_versions(manifest, state),
          {:ok, next_manifest, replace_manifest?} <- next_manifest(manifest, config),
          {:ok, _path} <-
-           Storage.create(
+           create_version(
              version_path(state, config.version, config.digest),
              config.document,
-             state.storage_opts
+             state
            ),
          :ok <- replace_manifest_if_needed(replace_manifest?, next_manifest, state) do
       {:ok, config.document}
@@ -157,7 +157,7 @@ defmodule YellowDog.ServerAgent.ConfigStore do
   defp validate_delivery(_envelope, _state), do: invalid()
 
   defp manifest_for_staging(state) do
-    case Storage.read(manifest_path(state), state.storage_opts) do
+    case read_final(manifest_path(state), state) do
       {:ok, manifest} -> decode_manifest(manifest, state)
       {:error, %Error{code: :not_found}} -> {:ok, %{current: nil, previous: nil}}
       {:error, %Error{}} = error -> error
@@ -165,13 +165,13 @@ defmodule YellowDog.ServerAgent.ConfigStore do
   end
 
   defp read_manifest(state) do
-    with {:ok, manifest} <- Storage.read(manifest_path(state), state.storage_opts) do
+    with {:ok, manifest} <- read_final(manifest_path(state), state) do
       decode_manifest(manifest, state)
     end
   end
 
   defp read_version(path, state) do
-    case Storage.read(path, state.storage_opts) do
+    case read_final(path, state) do
       {:error, %Error{code: :not_found}} -> invalid()
       other -> other
     end
@@ -223,11 +223,7 @@ defmodule YellowDog.ServerAgent.ConfigStore do
   defp replace_manifest_if_needed(false, _manifest, _state), do: :ok
 
   defp replace_manifest_if_needed(true, manifest, state) do
-    case Storage.replace(
-           manifest_path(state),
-           manifest_document(manifest, state),
-           state.storage_opts
-         ) do
+    case replace_manifest(manifest_document(manifest, state), state) do
       {:ok, _path} -> :ok
       {:error, %Error{}} = error -> error
       _other -> invalid()
@@ -437,10 +433,92 @@ defmodule YellowDog.ServerAgent.ConfigStore do
   defp encode_pointer(%{version: version, digest: digest}),
     do: %{"version" => version, "digest" => digest}
 
-  defp manifest_path(state), do: Path.join([state.data_dir, "server", "manifest.json"])
+  defp create_version(path, document, state) do
+    with :ok <- checked_final_path(path, state),
+         {:ok, stored_path} <- Storage.create(path, document, state.storage_opts),
+         :ok <- checked_final_path(path, state) do
+      {:ok, stored_path}
+    else
+      {:error, %Error{}} = error -> error
+      _other -> invalid()
+    end
+  end
+
+  defp replace_manifest(document, state) do
+    path = manifest_path(state)
+
+    with :ok <- checked_final_path(path, state),
+         {:ok, stored_path} <- Storage.replace(path, document, state.storage_opts),
+         :ok <- checked_final_path(path, state) do
+      {:ok, stored_path}
+    else
+      {:error, %Error{}} = error -> error
+      _other -> invalid()
+    end
+  end
+
+  defp read_final(path, state) do
+    with :ok <- checked_final_path(path, state) do
+      Storage.read(path, state.storage_opts)
+    else
+      {:error, %Error{}} = error -> error
+      _other -> invalid()
+    end
+  end
+
+  defp checked_final_path(path, state) do
+    with :ok <- ensure_storage_boundary(state),
+         :ok <- regular_file_or_missing(path) do
+      :ok
+    else
+      {:error, %Error{}} = error -> error
+      _other -> invalid()
+    end
+  end
+
+  defp ensure_storage_boundary(state) do
+    with :ok <- ensure_owned_directory(state.data_dir),
+         :ok <- ensure_owned_directory(server_directory(state)),
+         :ok <- ensure_owned_directory(versions_directory(state)) do
+      :ok
+    else
+      {:error, %Error{}} = error -> error
+      _other -> invalid()
+    end
+  end
+
+  defp ensure_owned_directory(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :directory}} -> :ok
+      {:error, :enoent} -> create_owned_directory(path)
+      _other -> invalid()
+    end
+  end
+
+  defp create_owned_directory(path) do
+    case File.mkdir(path) do
+      :ok -> ensure_owned_directory(path)
+      {:error, :eexist} -> ensure_owned_directory(path)
+      _other -> invalid()
+    end
+  end
+
+  defp regular_file_or_missing(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :regular}} -> :ok
+      {:error, :enoent} -> :ok
+      _other -> invalid()
+    end
+  end
+
+  defp server_directory(state), do: Path.join(state.data_dir, "server")
+
+  defp versions_directory(state), do: Path.join(server_directory(state), "versions")
+
+  defp manifest_path(state), do: Path.join(server_directory(state), "manifest.json")
 
   defp version_path(state, version, digest),
-    do: Path.join([state.data_dir, "server", "versions", "#{version}-#{digest}.json"])
+    do: Path.join(versions_directory(state), "#{version}-#{digest}.json")
 
   defp invalid,
     do: {:error, %Error{code: :invalid, message: "invalid config document", details: %{}}}

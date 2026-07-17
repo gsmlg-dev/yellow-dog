@@ -143,6 +143,77 @@ defmodule YellowDog.ServerAgent.ConfigStoreTest do
              )
   end
 
+  test "rejects symlinked owned directories without writing outside the configured root", %{
+    data_dir: data_dir
+  } do
+    delivery = envelope(1)
+
+    for {name, link_path} <- [
+          {"data-dir", & &1},
+          {"server", &Path.join(&1, "server")},
+          {"versions", &Path.join(&1, "server/versions")}
+        ] do
+      test_data_dir = Path.join(data_dir, name)
+      outside_dir = Path.join(data_dir, "#{name}-outside")
+      File.mkdir_p!(test_data_dir)
+      File.mkdir_p!(outside_dir)
+      path = link_path.(test_data_dir)
+
+      if name == "data-dir" do
+        File.rm_rf!(test_data_dir)
+      else
+        File.mkdir_p!(Path.dirname(path))
+      end
+
+      assert :ok = File.ln_s(outside_dir, path)
+
+      store = start_store(test_data_dir)
+      assert {:error, %Error{code: :invalid}} = ConfigStore.stage(delivery, store)
+
+      refute File.exists?(Path.join(outside_dir, "server/manifest.json"))
+
+      refute File.exists?(
+               Path.join(outside_dir, "server/versions/1-#{delivery.payload_digest}.json")
+             )
+    end
+  end
+
+  test "rejects symlinked final documents without following outside files", %{data_dir: data_dir} do
+    delivery = envelope(1)
+
+    for name <- ["manifest", "version"] do
+      test_data_dir = Path.join(data_dir, name)
+      outside_path = Path.join(data_dir, "#{name}-outside.json")
+      File.write!(outside_path, "outside-#{name}")
+      store = start_store(test_data_dir)
+
+      case name do
+        "manifest" ->
+          path = manifest_path(test_data_dir)
+          File.mkdir_p!(Path.dirname(path))
+          assert :ok = File.ln_s(outside_path, path)
+
+          assert {:error, %Error{code: :invalid}} = ConfigStore.stage(delivery, store)
+          assert {:error, %Error{code: :invalid}} = ConfigStore.current(store)
+          assert File.read!(outside_path) == "outside-manifest"
+          refute File.exists?(version_path(test_data_dir, 1, delivery.payload_digest))
+
+        "version" ->
+          assert {:ok, document} = ConfigStore.stage(delivery, store)
+          path = version_path(test_data_dir, 1, delivery.payload_digest)
+          manifest = File.read!(manifest_path(test_data_dir))
+          assert :ok = File.rm(path)
+          assert :ok = File.ln_s(outside_path, path)
+
+          assert {:error, %Error{code: :invalid}} = ConfigStore.current(store)
+          assert {:error, %Error{code: :invalid}} = ConfigStore.stage(delivery, store)
+          assert File.read!(outside_path) == "outside-version"
+          assert File.read!(manifest_path(test_data_dir)) == manifest
+          assert document == immutable_document(delivery)
+      end
+    end
+  end
+
   test "fails closed for tampered manifest pointers and immutable documents", %{
     data_dir: data_dir
   } do
