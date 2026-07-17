@@ -182,11 +182,19 @@ defmodule YellowDog.ServerAgent.Dispatcher do
 
   defp server_id(value) do
     with {:ok, value} <- Bounds.id(value),
-         true <- value != "" do
+         true <- value != "",
+         true <- value not in [".", ".."],
+         false <- String.contains?(value, ["/", "\\"]),
+         false <- Regex.match?(~r/\A[A-Za-z]:/, value),
+         normalized when is_binary(normalized) <- :unicode.characters_to_nfkc_binary(value),
+         true <- normalized == value,
+         false <- Regex.match?(~r/\p{C}/u, value) do
       {:ok, value}
     else
       _invalid -> :error
     end
+  rescue
+    _exception -> :error
   end
 
   defp capabilities(values) do
@@ -207,13 +215,14 @@ defmodule YellowDog.ServerAgent.Dispatcher do
   defp command_journal(value) when is_atom(value) and not is_nil(value), do: {:ok, value}
 
   defp command_journal({name, node} = value)
-       when is_atom(name) and not is_nil(name) and is_atom(node),
+       when is_atom(name) and not is_nil(name) and is_atom(node) and not is_nil(node),
        do: {:ok, value}
 
   defp command_journal({:global, _term} = value), do: {:ok, value}
 
-  defp command_journal({:via, module, _term} = value) when is_atom(module),
-    do: {:ok, value}
+  defp command_journal({:via, module, _term} = value)
+       when is_atom(module) and not is_nil(module),
+       do: {:ok, value}
 
   defp command_journal(_value), do: :error
 

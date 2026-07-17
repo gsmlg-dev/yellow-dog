@@ -23,18 +23,41 @@ Date: 2026-07-17
 - Added distinct durable child names, optional supervisor naming, scoped child
   option seams, and rejection of shared-option overrides.
 
+## Independent Review Fixes
+
+- Removed the `{:validated, children}` `Supervisor.init/1` bypass. `start_link/1`
+  now passes the original keyword configuration, and `init/1` independently
+  rebuilds and validates the child set.
+- Made direct `init/1` total over malformed terms and non-keyword lists,
+  returning `:ignore` without calling `Keyword.keys/1` on unchecked input.
+- Restricted supervisor and child registrations to non-nil local atoms,
+  `{:global, term}`, or `{:via, module, term}` with a non-nil module.
+  `supervisor_name: nil` remains the explicit unnamed-supervisor case.
+- Restricted Dispatcher journal references to the approved `GenServer.server/0`
+  forms, including non-nil atoms for both elements of remote `{name, node}`
+  references.
+- Assigned fixed child-spec role IDs `:heartbeat`, `:command_journal`, and
+  `:config_store`, independent of registered names.
+- Matched Dispatcher Server-ID validation to CommandJournal: bounded and
+  nonempty, not `.`/`..`, no slash/backslash or Windows drive prefix,
+  NFKC-stable, and free of Unicode control characters.
+- Added regression coverage for direct-init bypass attempts, malformed OTP
+  names and journal refs, unsafe Server IDs, the reported registered-name/
+  child-ID collision, Heartbeat restart isolation, malformed typed errors, and
+  omitted default-adapter terminal replay.
+
 ## Verification
 
 - Focused dispatcher/supervisor tests:
-  `16 tests, 0 failures`.
+  `24 tests, 0 failures`.
 - Full `yellow_dog_server_agent` tests:
-  `128 tests, 0 failures`.
+  `136 tests, 0 failures`.
 - `mix compile --warnings-as-errors --force`:
   exit 0, no warnings.
 - Scoped `mix format --check-formatted`:
   exit 0.
 - `mix credo --strict`:
-  19 source files, 513 mods/funs, no issues.
+  19 source files, 514 mods/funs, no issues.
 - `mix deps.tree`:
   no `yellow_dog` dependency; the only in-umbrella dependency is
   `yellow_dog_sync`.

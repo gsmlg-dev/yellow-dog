@@ -48,6 +48,62 @@ defmodule YellowDog.ServerAgent.DispatcherTest do
     end
   end
 
+  test "rejects unsafe Server IDs before journal or runtime work" do
+    {:ok, journal} =
+      DispatcherJournalStub.start_link(self(), %{
+        reserve: {:replay, {:ok, success_result()}}
+      })
+
+    unsafe_ids = [
+      "",
+      ".",
+      "..",
+      "../server",
+      "server/child",
+      "server\\child",
+      "C:server",
+      "server\u0000control",
+      "server\u212A",
+      String.duplicate("s", 129)
+    ]
+
+    for server_id <- unsafe_ids do
+      assert_invalid(
+        Dispatcher.dispatch(
+          envelope(target_id: server_id),
+          base_opts(server_id: server_id, command_journal: journal)
+        )
+      )
+    end
+
+    refute_receive {:journal_call, _message}
+    assert DispatcherTestAdapter.count() == 0
+  end
+
+  test "rejects malformed command journal refs before journal access" do
+    malformed_refs = [
+      nil,
+      {:via, nil, :journal},
+      {:via, "Registry", :journal},
+      {unique_name(), nil},
+      {nil, node()},
+      {:global, :journal, :extra},
+      {:remote, node(), :extra}
+    ]
+
+    for command_journal <- malformed_refs do
+      assert_invalid(
+        Dispatcher.dispatch(
+          envelope(),
+          base_opts(command_journal: command_journal)
+        )
+      )
+    end
+
+    refute_receive {:journal_call, _message}
+    assert DispatcherTestAdapter.count() == 0
+  end
+
   test "rejects envelope, target, operation kind, and capability before journal calls" do
     missing_journal = unique_name()
 
@@ -161,6 +217,44 @@ defmodule YellowDog.ServerAgent.DispatcherTest do
     end)
   end
 
+  test "sanitizes malformed Error fields without leaking adapter data" do
+    cases = [
+      {
+        %Error{code: :apply_failed, message: nil, details: self()},
+        Error.new(:apply_failed, "apply failed", %{})
+      },
+      {
+        %Error{code: :unknown, message: {:secret, self()}, details: nil},
+        Error.new(:internal, "internal error", %{})
+      }
+    ]
+
+    Enum.with_index(cases, 1)
+    |> Enum.each(fn {{unsafe, expected}, index} ->
+      request = envelope(request_id: request_id(index), idempotency_key: idempotency_key(index))
+
+      {:ok, journal} =
+        DispatcherJournalStub.start_link(self(), %{
+          reserve: {:reserved, request.request_id},
+          mark_running: :ok,
+          complete_failure: {:error, expected}
+        })
+
+      DispatcherTestAdapter.configure(fn _envelope -> {:error, unsafe} end)
+
+      assert {:error, ^expected} =
+               Dispatcher.dispatch(
+                 request,
+                 base_opts(command_journal: journal, runtime_adapter: DispatcherTestAdapter)
+               )
+
+      assert_receive {:journal_call, {:reserve, ^request}}
+      assert_receive {:journal_call, {:mark_running, request_id}}
+      assert request_id == request.request_id
+      assert_receive {:journal_call, {:complete_failure, ^request_id, ^expected}}
+    end)
+  end
+
   test "persists sanitized internal failures for raise, throw, exit, malformed, and invalid success",
        %{data_dir: data_dir} do
     outcomes = [
@@ -206,6 +300,27 @@ defmodule YellowDog.ServerAgent.DispatcherTest do
 
     assert {:ok, ^result} = Dispatcher.dispatch(success, offline_opts)
     assert {:error, ^error} = Dispatcher.dispatch(failed, offline_opts)
+  end
+
+  test "omitted runtime adapter returns terminal replay without runtime work" do
+    result = success_result()
+
+    {:ok, journal} =
+      DispatcherJournalStub.start_link(self(), %{
+        reserve: {:replay, {:ok, result}}
+      })
+
+    assert {:ok, ^result} =
+             Dispatcher.dispatch(
+               envelope(),
+               server_id: @server_id,
+               capabilities: [@capability],
+               command_journal: journal
+             )
+
+    assert_receive {:journal_call, {:reserve, %Envelope{request_id: @request_id}}}
+    refute_receive {:journal_call, _message}
+    assert DispatcherTestAdapter.count() == 0
   end
 
   test "returns recovered unknown replay without checking the adapter", %{data_dir: data_dir} do

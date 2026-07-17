@@ -23,18 +23,16 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
   def start_link(opts \\ []) do
     with true <- is_list(opts) and Keyword.keyword?(opts),
-         {:ok, children} <- children(opts),
+         {:ok, _children} <- children(opts),
          {:ok, supervisor_name} <-
            supervisor_name(Keyword.get(opts, :supervisor_name, __MODULE__)) do
-      start_supervisor(children, supervisor_name)
+      start_supervisor(opts, supervisor_name)
     else
       _invalid -> {:error, :invalid_configuration}
     end
   end
 
   @impl Supervisor
-  def init({:validated, children}), do: Supervisor.init(children, strategy: :one_for_one)
-
   def init(opts) do
     case children(opts) do
       {:ok, children} -> Supervisor.init(children, strategy: :one_for_one)
@@ -42,19 +40,31 @@ defmodule YellowDog.ServerAgent.Supervisor do
     end
   end
 
-  defp children(opts) do
-    with :ok <- validate_top_level(opts),
+  defp children(opts) when is_list(opts) do
+    with true <- Keyword.keyword?(opts),
+         :ok <- validate_top_level(opts),
          {:ok, durable?} <- durable_mode(opts),
          {:ok, journal_opts} <-
            child_options(Keyword.get(opts, :command_journal_opts, []), @command_journal_options),
          {:ok, store_opts} <-
            child_options(Keyword.get(opts, :config_store_opts, []), @config_store_options) do
       build_children(opts, durable?, journal_opts, store_opts)
+    else
+      _invalid -> {:error, :invalid_configuration}
     end
   end
 
+  defp children(_opts), do: {:error, :invalid_configuration}
+
   defp build_children(opts, false, _journal_opts, _store_opts) do
-    {:ok, [{Heartbeat, Keyword.take(opts, [:name, :agent_id])}]}
+    heartbeat_opts = Keyword.take(opts, [:name, :agent_id])
+    heartbeat_name = Keyword.get(heartbeat_opts, :name, Heartbeat)
+
+    if valid_name?(heartbeat_name) do
+      {:ok, [child_spec(:heartbeat, Heartbeat, heartbeat_opts)]}
+    else
+      {:error, :invalid_configuration}
+    end
   end
 
   defp build_children(opts, true, journal_opts, store_opts) do
@@ -63,7 +73,8 @@ defmodule YellowDog.ServerAgent.Supervisor do
     store_name = Keyword.get(opts, :config_store_name, ConfigStore)
     heartbeat_name = Keyword.get(heartbeat_opts, :name, Heartbeat)
 
-    with true <- valid_name?(journal_name),
+    with true <- valid_name?(heartbeat_name),
+         true <- valid_name?(journal_name),
          true <- valid_name?(store_name),
          true <- distinct_names?([heartbeat_name, journal_name, store_name]) do
       shared = Keyword.take(opts, @durable_options)
@@ -84,9 +95,9 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
       {:ok,
        [
-         {Heartbeat, heartbeat_opts},
-         {CommandJournal, journal_opts},
-         {ConfigStore, store_opts}
+         child_spec(:heartbeat, Heartbeat, heartbeat_opts),
+         child_spec(:command_journal, CommandJournal, journal_opts),
+         child_spec(:config_store, ConfigStore, store_opts)
        ]}
     else
       _invalid -> {:error, :invalid_configuration}
@@ -127,7 +138,10 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
   defp valid_name?(name) when is_atom(name), do: not is_nil(name)
   defp valid_name?({:global, _term}), do: true
-  defp valid_name?({:via, module, _term}) when is_atom(module), do: true
+
+  defp valid_name?({:via, module, _term}) when is_atom(module) and not is_nil(module),
+    do: true
+
   defp valid_name?(_name), do: false
 
   defp distinct_names?(names), do: length(names) == length(Enum.uniq(names))
@@ -135,9 +149,13 @@ defmodule YellowDog.ServerAgent.Supervisor do
   defp supervisor_name(nil), do: {:ok, nil}
   defp supervisor_name(name), do: if(valid_name?(name), do: {:ok, name}, else: :error)
 
-  defp start_supervisor(children, nil),
-    do: Supervisor.start_link(__MODULE__, {:validated, children})
+  defp child_spec(id, module, opts) do
+    Supervisor.child_spec({module, opts}, id: id)
+  end
 
-  defp start_supervisor(children, name),
-    do: Supervisor.start_link(__MODULE__, {:validated, children}, name: name)
+  defp start_supervisor(opts, nil),
+    do: Supervisor.start_link(__MODULE__, opts)
+
+  defp start_supervisor(opts, name),
+    do: Supervisor.start_link(__MODULE__, opts, name: name)
 end
