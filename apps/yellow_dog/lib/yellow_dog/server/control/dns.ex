@@ -397,30 +397,38 @@ defmodule YellowDog.Server.Control.Dns do
          {:ok, store_type} <- store_record_type(record["type"]),
          {:ok, old} <-
            fetch_rrset(payload["view_name"], payload["zone_name"], record["name"], store_type) do
-      {:ok, %{owner: record["name"], type: store_type, old: old, resource: record}}
+      {:ok,
+       %{
+         owner: canonical_owner(record["name"]),
+         type: store_type,
+         old: old,
+         resource: record
+       }}
     end
   end
 
   defp record_mutation(action, payload) when action in [:create, :update] do
+    owner = canonical_owner(payload["name"])
+
     with {:ok, store_type} <- store_record_type(payload["type"]),
          {:ok, rrset} <- encode_rrset(payload["type"], payload["values"], payload["ttl"]),
          {:ok, old} <-
            fetch_rrset_or_missing(
              payload["view_name"],
              payload["zone_name"],
-             payload["name"],
+             owner,
              store_type
            ),
          :ok <- ensure_record_state(action, old),
          {:ok, resource} <-
            project_record(
-             %{owner: canonical_owner(payload["name"]), type: store_type, rrset: rrset},
+             %{owner: owner, type: store_type, rrset: rrset},
              payload["view_name"],
              canonical_name(payload["zone_name"])
            ) do
       {:ok,
        %{
-         owner: canonical_owner(payload["name"]),
+         owner: owner,
          type: store_type,
          old: old,
          rrset: rrset,
@@ -450,18 +458,29 @@ defmodule YellowDog.Server.Control.Dns do
           ])
       end
 
-    with :ok <- apply_result,
-         :ok <- reload_authoritative_zone(payload["view_name"], payload["zone_name"]) do
-      case action do
-        :delete ->
-          deleted_result("server.dns.records.delete", "dns_record", record_reference(payload))
+    case apply_result do
+      :ok ->
+        case reload_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+          :ok ->
+            case action do
+              :delete ->
+                deleted_result(
+                  "server.dns.records.delete",
+                  "dns_record",
+                  record_reference(payload)
+                )
 
-        _ ->
-          revisioned_result("server.dns.records.#{action}", "dns_record", mutation.resource)
-      end
-    else
-      {:error, %Error{code: :apply_failed}} = error ->
-        rollback_record(payload, mutation, error)
+              _ ->
+                revisioned_result(
+                  "server.dns.records.#{action}",
+                  "dns_record",
+                  mutation.resource
+                )
+            end
+
+          {:error, %Error{}} = error ->
+            rollback_record(payload, mutation, error)
+        end
 
       {:error, %Error{}} = error ->
         error
@@ -633,6 +652,8 @@ defmodule YellowDog.Server.Control.Dns do
   end
 
   defp fetch_rrset(view_name, zone_name, owner, type) do
+    owner = canonical_owner(owner)
+
     case dependency_call(:zone_store, :get_rrset, [view_name, zone_name, owner, type]) do
       {:ok, {:ok, record}} when is_map(record) -> {:ok, record}
       {:ok, {:error, :not_found}} -> not_found_error()

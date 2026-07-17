@@ -10,6 +10,7 @@ defmodule YellowDog.ServerDnsControlFake do
     records: %{},
     zone_metadata: %{},
     record_state: %{},
+    serial_advances: 0,
     responses: %{},
     acls: [],
     providers: {:ok, []},
@@ -215,7 +216,13 @@ defmodule YellowDog.ServerDnsControlFake.ZoneStore do
         records = records_for(state, view_name, zone_name)
         record = %{owner: owner, type: type, rrset: rrset}
         updated = [record | Enum.reject(records, &(&1.owner == owner and &1.type == type))]
-        {:ok, put_in(state, [:record_state, {view_name, zone_name}], updated)}
+
+        next_state =
+          state
+          |> put_in([:record_state, {view_name, zone_name}], updated)
+          |> Map.update!(:serial_advances, &(&1 + 1))
+
+        {:ok, next_state}
       end
     )
   end
@@ -230,7 +237,12 @@ defmodule YellowDog.ServerDnsControlFake.ZoneStore do
           |> records_for(view_name, zone_name)
           |> Enum.reject(&(&1.owner == owner and &1.type == type))
 
-        {:ok, put_in(state, [:record_state, {view_name, zone_name}], updated)}
+        next_state =
+          state
+          |> put_in([:record_state, {view_name, zone_name}], updated)
+          |> Map.update!(:serial_advances, &(&1 + 1))
+
+        {:ok, next_state}
       end
     )
   end
@@ -248,6 +260,31 @@ defmodule YellowDog.ServerDnsControlFake.ZoneStore do
           []
       end
     end)
+  end
+end
+
+defmodule YellowDog.ServerDnsControlFake.RealStoreFailingPut do
+  @moduledoc false
+
+  defdelegate get_zone(view_name, zone_name), to: YellowDog.Store.Zone
+  defdelegate get_rrset(view_name, zone_name, owner, type), to: YellowDog.Store.Zone
+
+  def put_rrset(view_name, zone_name, owner, type, rrset) do
+    YellowDog.ServerDnsControlFake.operation(
+      :real_store_put_rrset,
+      {:zone_store, :put_rrset, [view_name, zone_name, owner, type, rrset]},
+      fn state -> {{:error, :store_failed}, state} end
+    )
+  end
+
+  def delete_rrset(view_name, zone_name, owner, type) do
+    YellowDog.ServerDnsControlFake.operation(
+      :real_store_delete_rrset,
+      {:zone_store, :delete_rrset, [view_name, zone_name, owner, type]},
+      fn state ->
+        {YellowDog.Store.Zone.delete_rrset(view_name, zone_name, owner, type), state}
+      end
+    )
   end
 end
 
