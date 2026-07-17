@@ -4,6 +4,7 @@ defmodule YellowDog.Server.Control.DispatcherTest do
   import ExUnit.CaptureLog
 
   alias YellowDog.Server.Control
+  alias YellowDog.Server.Control.Dhcp
   alias YellowDog.Server.Control.Dispatcher
   alias YellowDog.Server.Control.Revision
   alias YellowDog.Server.ServiceRegistry
@@ -27,9 +28,14 @@ defmodule YellowDog.Server.Control.DispatcherTest do
     identity: YellowDog.ServerControlFake.Adapter.Identity,
     settings: YellowDog.ServerControlFake.Adapter.Settings
   }
+  @dhcp_adapters %{
+    "ipv4" => YellowDog.ServerControlFake.Adapter.Dhcpv4,
+    "ipv6" => YellowDog.ServerControlFake.Adapter.Dhcpv6
+  }
 
   setup do
     previous_dispatcher_config = Application.get_env(:yellow_dog, Dispatcher)
+    previous_dhcp_config = Application.get_env(:yellow_dog, Dhcp)
 
     put_dispatcher_config(adapters: @fake_adapters)
 
@@ -38,6 +44,12 @@ defmodule YellowDog.Server.Control.DispatcherTest do
         Application.delete_env(:yellow_dog, Dispatcher)
       else
         Application.put_env(:yellow_dog, Dispatcher, previous_dispatcher_config)
+      end
+
+      if is_nil(previous_dhcp_config) do
+        Application.delete_env(:yellow_dog, Dhcp)
+      else
+        Application.put_env(:yellow_dog, Dhcp, previous_dhcp_config)
       end
     end)
 
@@ -123,6 +135,73 @@ defmodule YellowDog.Server.Control.DispatcherTest do
 
       assert dependency_calls(service) == YellowDog.ServerControlFake.take_dependency_calls()
     end
+  end
+
+  test "dispatches DHCP queries and revision-checked commands through the fixed family facade" do
+    put_dispatcher_config(adapters: Map.delete(@fake_adapters, :dhcp))
+    put_dhcp_config(adapters: @dhcp_adapters)
+    query_payload = %{"family" => "ipv6"}
+    query_error = Error.new(:not_found, "fake route", %{})
+    public_error = Error.new(:not_found, "resource not found", %{})
+
+    YellowDog.ServerControlFake.configure(:dhcpv6, response: {:error, query_error})
+
+    assert {:error, ^public_error} =
+             Control.dispatch(envelope("server.dhcp.status.get", query_payload))
+
+    assert [{:dhcpv6, :dispatch, "server.dhcp.status.get", ^query_payload}] =
+             YellowDog.ServerControlFake.take_calls()
+
+    command_payload = %{"family" => "ipv4", "pool_id" => "office"}
+    current = %{family: "ipv4", pool_id: "office"}
+    assert {:ok, expected_revision} = Revision.calculate(current)
+
+    YellowDog.ServerControlFake.configure(:dhcpv4,
+      current: {:ok, current},
+      response: {:error, query_error}
+    )
+
+    assert {:error, ^public_error} =
+             Control.dispatch(
+               envelope("server.dhcp.pools.delete", command_payload,
+                 expected_revision: expected_revision
+               )
+             )
+
+    assert [
+             {:dhcpv4, :current, "server.dhcp.pools.delete", ^command_payload},
+             {:dhcpv4, :dispatch, "server.dhcp.pools.delete", ^command_payload}
+           ] = YellowDog.ServerControlFake.take_calls()
+  end
+
+  test "DHCP validation and family availability gates short-circuit before the facade invokes an adapter" do
+    put_dispatcher_config(adapters: Map.delete(@fake_adapters, :dhcp))
+    put_dhcp_config(adapters: @dhcp_adapters)
+
+    YellowDog.ServerControlFake.set_enabled(:dhcpv4, false)
+
+    assert_unsupported(
+      Control.dispatch(envelope("server.dhcp.status.get", %{"family" => "ipv4"}))
+    )
+
+    assert [] = YellowDog.ServerControlFake.take_calls()
+    assert dependency_calls(:dhcpv4) == YellowDog.ServerControlFake.take_dependency_calls()
+
+    YellowDog.ServerControlFake.set_available(:dhcpv6, false)
+
+    assert_unsupported(
+      Control.dispatch(envelope("server.dhcp.status.get", %{"family" => "ipv6"}))
+    )
+
+    assert [] = YellowDog.ServerControlFake.take_calls()
+
+    assert [{:service_registry, :fetch, :dhcpv6}] =
+             YellowDog.ServerControlFake.take_dependency_calls()
+
+    assert_invalid(Control.dispatch(envelope("server.dhcp.status.get", %{"family" => "ipv7"})))
+
+    assert [] = YellowDog.ServerControlFake.take_calls()
+    assert [] = YellowDog.ServerControlFake.take_dependency_calls()
   end
 
   test "enabled and available services dispatch through the injected fixed dependencies" do
@@ -722,6 +801,8 @@ defmodule YellowDog.Server.Control.DispatcherTest do
 
     Application.put_env(:yellow_dog, Dispatcher, Keyword.merge(defaults, overrides))
   end
+
+  defp put_dhcp_config(overrides), do: Application.put_env(:yellow_dog, Dhcp, overrides)
 
   defp dependency_calls(nil), do: []
 
