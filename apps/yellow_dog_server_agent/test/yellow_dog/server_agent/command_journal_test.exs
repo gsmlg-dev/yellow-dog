@@ -536,6 +536,99 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
     refute File.exists?(Path.join(outside, "journals"))
   end
 
+  test "reserve rejects a final symlink to an exact outside document", %{data_dir: data_dir} do
+    outside_data_dir = "#{data_dir}-outside"
+    {:ok, outside_clock} = CommandJournalTestClock.start_link([@inserted_at])
+
+    {:ok, outside_journal} =
+      start_journal(outside_data_dir,
+        clock: fn -> CommandJournalTestClock.now(outside_clock) end
+      )
+
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), outside_journal)
+    GenServer.stop(outside_journal)
+
+    outside_path = journal_path(outside_data_dir, @request_id)
+    outside_document = File.read!(outside_path)
+    on_exit(fn -> File.rm_rf(outside_data_dir) end)
+
+    {:ok, clock} = CommandJournalTestClock.start_link([@inserted_at])
+    {:ok, journal} = start_journal(data_dir, clock: fn -> CommandJournalTestClock.now(clock) end)
+    path = journal_path(data_dir, @request_id)
+    File.ln_s!(outside_path, path)
+
+    assert_conflict(CommandJournal.reserve(envelope(), journal))
+    assert :miss = CommandJournal.replay(envelope(), journal)
+    assert File.read!(outside_path) == outside_document
+    assert {:ok, %File.Stat{type: :symlink}} = File.lstat(path)
+  end
+
+  test "a final symlink swapped before transition fail-stops without modifying outside", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} = start_journal(data_dir)
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+
+    path = journal_path(data_dir, @request_id)
+    outside_path = "#{data_dir}-outside.json"
+    outside_document = File.read!(path)
+    File.write!(outside_path, outside_document)
+    File.rm!(path)
+    File.ln_s!(outside_path, path)
+
+    on_exit(fn -> File.rm(outside_path) end)
+
+    assert_internal(CommandJournal.mark_running(@request_id, journal))
+    assert_receive {:EXIT, ^journal, :command_journal_inconsistent_persistence}
+    refute Process.alive?(journal)
+    assert File.read!(outside_path) == outside_document
+    assert {:ok, %File.Stat{type: :symlink}} = File.lstat(path)
+  end
+
+  test "reserve does not claim a record swapped to a symlink after durable creation", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} =
+      start_journal(data_dir, storage_opts: [file_ops: CommandJournalTestFileOps])
+
+    path = journal_path(data_dir, @request_id)
+    outside_path = "#{data_dir}-outside.json"
+    File.write!(outside_path, "outside")
+
+    CommandJournalTestFileOps.run_after(:sync_dir, fn ->
+      File.rm!(path)
+      File.ln_s!(outside_path, path)
+    end)
+
+    assert_internal(CommandJournal.reserve(envelope(), journal))
+    assert :miss = CommandJournal.replay(envelope(), journal)
+    assert File.read!(outside_path) == "outside"
+    assert {:ok, %File.Stat{type: :symlink}} = File.lstat(path)
+  end
+
+  test "a post-transition symlink swap fail-stops without claiming the transition", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} =
+      start_journal(data_dir, storage_opts: [file_ops: CommandJournalTestFileOps])
+
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    path = journal_path(data_dir, @request_id)
+    outside_path = "#{data_dir}-outside.json"
+    File.write!(outside_path, "outside")
+
+    CommandJournalTestFileOps.run_after(:sync_dir, fn ->
+      File.rm!(path)
+      File.ln_s!(outside_path, path)
+    end)
+
+    assert_internal(CommandJournal.mark_running(@request_id, journal))
+    assert_receive {:EXIT, ^journal, :command_journal_inconsistent_persistence}
+    refute Process.alive?(journal)
+    assert File.read!(outside_path) == "outside"
+    assert {:ok, %File.Stat{type: :symlink}} = File.lstat(path)
+  end
+
   test "startup validates every record before recovering earlier pending evidence", %{
     data_dir: data_dir
   } do

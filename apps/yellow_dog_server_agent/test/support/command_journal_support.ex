@@ -24,6 +24,9 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
   def fail_after(phase, callback, reason \\ :eio) when is_function(callback, 0),
     do: :persistent_term.put(@failure_key, [{:after, phase, reason, callback}])
 
+  def run_after(phase, callback) when is_function(callback, 0),
+    do: :persistent_term.put(@failure_key, [{:after_success, phase, callback}])
+
   def clear, do: :persistent_term.erase(@failure_key)
 
   def read(path, max_bytes), do: invoke(:read, fn -> FileOps.read(path, max_bytes) end)
@@ -57,6 +60,16 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
             error
         end
 
+      {:after_success, callback} ->
+        case operation.() do
+          :ok ->
+            callback.()
+            :ok
+
+          error ->
+            error
+        end
+
       :none ->
         operation.()
     end
@@ -71,6 +84,10 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
       [{:after, ^phase, reason, callback} | rest] ->
         store_failures(rest)
         {:after, reason, callback}
+
+      [{:after_success, ^phase, callback} | rest] ->
+        store_failures(rest)
+        {:after_success, callback}
 
       _other ->
         :none

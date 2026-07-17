@@ -126,6 +126,7 @@ defmodule YellowDog.ServerAgent.CommandJournal do
 
   def handle_call({:mark_running, request_id}, _from, state) do
     with {:ok, record} <- fetch_record(request_id, state),
+         :ok <- ensure_transition_record_path(record, state.config),
          {:ok, transitioned} <- transition_running(record, state.config),
          {:ok, state} <- persist_transition(transitioned, state) do
       {:reply, :ok, state}
@@ -143,6 +144,7 @@ defmodule YellowDog.ServerAgent.CommandJournal do
 
   def handle_call({:complete_success, request_id, result}, _from, state) do
     with {:ok, record} <- fetch_record(request_id, state),
+         :ok <- ensure_transition_record_path(record, state.config),
          {:ok, result} <-
            Operation.validate_result(record.envelope.operation, :server, :command, result),
          {:ok, transitioned} <- transition_success(record, result, state.config),
@@ -162,6 +164,7 @@ defmodule YellowDog.ServerAgent.CommandJournal do
 
   def handle_call({:complete_failure, request_id, error}, _from, state) do
     with {:ok, record} <- fetch_record(request_id, state),
+         :ok <- ensure_transition_record_path(record, state.config),
          {:ok, error} <- validate_error(error),
          {:ok, transitioned} <- transition_failure(record, error, state.config),
          {:ok, state} <- persist_transition(transitioned, state) do
@@ -206,8 +209,9 @@ defmodule YellowDog.ServerAgent.CommandJournal do
   defp reserve_new(envelope, state) do
     with :ok <- ensure_owned_path(state.config),
          :ok <- ensure_capacity(state),
-         {:ok, now} <- now(state.config),
          path = journal_path(state.config.directory, envelope.request_id),
+         :ok <- ensure_new_record_path(path),
+         {:ok, now} <- now(state.config),
          record = %Record{
            request_id: envelope.request_id,
            envelope: envelope,
@@ -217,7 +221,8 @@ defmodule YellowDog.ServerAgent.CommandJournal do
            updated_at: now,
            path: path
          },
-         {:ok, ^path} <- Storage.create(path, document(record), state.config.storage_opts) do
+         {:ok, ^path} <- Storage.create(path, document(record), state.config.storage_opts),
+         :ok <- ensure_record_path(path, state.config) do
       updated = %{
         state
         | records: Map.put(state.records, record.request_id, record),
@@ -530,10 +535,13 @@ defmodule YellowDog.ServerAgent.CommandJournal do
   end
 
   defp replace_record(prior, intended, config) do
-    with :ok <- ensure_owned_path(config) do
+    with :ok <- ensure_record_path(intended.path, config) do
       case Storage.replace(intended.path, document(intended), config.storage_opts) do
         {:ok, path} when path == intended.path ->
-          {:ok, intended}
+          case ensure_record_path(intended.path, config) do
+            :ok -> {:ok, intended}
+            _unsafe -> {:error, :inconsistent}
+          end
 
         {:error, %Error{} = storage_error} ->
           reconcile_replace_error(prior, intended, storage_error, config)
@@ -547,14 +555,16 @@ defmodule YellowDog.ServerAgent.CommandJournal do
   end
 
   defp reconcile_replace_error(prior, intended, storage_error, config) do
-    with {:ok, durable_document} <- Storage.read(intended.path, config.storage_opts),
+    with :ok <- ensure_record_path(intended.path, config),
+         {:ok, durable_document} <- Storage.read(intended.path, config.storage_opts),
          {:ok, _durable_record} <-
            decode_record(
              durable_document,
              intended.request_id,
              intended.path,
              config.server_id
-           ) do
+           ),
+         :ok <- ensure_record_path(intended.path, config) do
       cond do
         durable_document == document(intended) -> {:ok, intended}
         durable_document == document(prior) -> {:error, storage_error}
@@ -563,6 +573,47 @@ defmodule YellowDog.ServerAgent.CommandJournal do
     else
       _error -> {:error, :inconsistent}
     end
+  end
+
+  defp ensure_transition_record_path(record, config) do
+    case ensure_record_path(record.path, config) do
+      :ok ->
+        :ok
+
+      _unsafe ->
+        {:error, error} = internal("command journal persistence is inconsistent")
+        {:stop, error}
+    end
+  end
+
+  defp ensure_new_record_path(path) do
+    case File.lstat(path) do
+      {:error, :enoent} -> :ok
+      {:ok, _existing} -> conflict("command journal file conflicts")
+      {:error, _reason} -> internal("command journal path is unsafe")
+    end
+  rescue
+    _exception -> internal("command journal path is unsafe")
+  catch
+    _kind, _reason -> internal("command journal path is unsafe")
+  end
+
+  defp ensure_record_path(path, config) do
+    with :ok <- ensure_owned_path(config),
+         :ok <- ensure_regular_record_path(path) do
+      :ok
+    end
+  end
+
+  defp ensure_regular_record_path(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :regular}} -> :ok
+      _other -> {:error, :corrupt}
+    end
+  rescue
+    _exception -> {:error, :corrupt}
+  catch
+    _kind, _reason -> {:error, :corrupt}
   end
 
   defp ensure_owned_path(config) do

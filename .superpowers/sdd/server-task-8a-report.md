@@ -35,6 +35,14 @@ DONE
   `<data_dir>/server/journals` path chain before startup scanning and record
   creation. Existing symlinks and non-directories are rejected; missing owned
   directories are created one component at a time and revalidated.
+- Added exact final-path lstat checks around record creation, transition
+  persistence, and reconciliation. New request paths must be absent before
+  creation; durable record paths must remain regular non-symlink files before
+  the journal claims a reservation or transition. Transition path violations
+  fail-stop with `:command_journal_inconsistent_persistence`.
+- Added regression coverage for exact-content symlinks inserted before reserve,
+  symlinks swapped before a transition, and post-persistence symlink swaps.
+  These cases neither modify outside files nor advance in-memory journal state.
 - Capped `max_records` at `YellowDog.Sync.Bounds.max_list_entries/0` so every
   accepted full journal remains wire-projectable.
 - Added exact terminal replay, request/fingerprint conflicts, pending conflicts,
@@ -49,10 +57,10 @@ DONE
 
 - Focused CommandJournal tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/command_journal_test.exs'`
-  - Result: 27 tests, 0 failures.
+  - Result: 31 tests, 0 failures.
 - Full Server-agent tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test'`
-  - Result: 105 tests, 0 failures.
+  - Result: 110 tests, 0 failures.
 - Warnings-as-errors compile:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors'`
   - Result: success.
