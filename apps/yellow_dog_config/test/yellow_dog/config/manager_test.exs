@@ -5,7 +5,7 @@ defmodule YellowDog.Config.ManagerTest do
   alias YellowDog.Config.Manager
 
   @digest String.duplicate("a", 64)
-  @entry %{
+  @opaque_entry %{
     "key" => "enabled",
     "value" => %{"type" => "boolean", "value" => true}
   }
@@ -54,18 +54,18 @@ defmodule YellowDog.Config.ManagerTest do
     %{config: config, directory: directory}
   end
 
-  test "all well-formed Settings owner operations return stable typed unsupported" do
+  test "all well-formed top-level operation shapes return stable typed unsupported" do
     assert Manager.effective("dns") == {:error, :unsupported}
     assert Manager.source("dns") == {:error, :unsupported}
     assert Manager.revision("dns") == {:error, :unsupported}
     assert Manager.validation("dns") == {:error, :unsupported}
-    assert Manager.update("dns", [@entry]) == {:error, :unsupported}
+    assert Manager.update("dns", []) == {:error, :unsupported}
     assert Manager.apply("dns") == {:error, :unsupported}
     assert Manager.reload("dns") == {:error, :unsupported}
     assert Manager.rollback("dns", @digest) == {:error, :unsupported}
   end
 
-  test "every operation rejects malformed or unbounded service identifiers" do
+  test "every operation rejects only malformed or unbounded service identifiers" do
     invalid_services = [
       nil,
       :dns,
@@ -81,7 +81,7 @@ defmodule YellowDog.Config.ManagerTest do
       assert Manager.source(service) == {:error, :invalid}
       assert Manager.revision(service) == {:error, :invalid}
       assert Manager.validation(service) == {:error, :invalid}
-      assert Manager.update(service, [@entry]) == {:error, :invalid}
+      assert Manager.update(service, [@opaque_entry]) == {:error, :invalid}
       assert Manager.apply(service) == {:error, :invalid}
       assert Manager.reload(service) == {:error, :invalid}
       assert Manager.rollback(service, @digest) == {:error, :invalid}
@@ -92,70 +92,66 @@ defmodule YellowDog.Config.ManagerTest do
     service = String.duplicate("a", 128)
 
     assert Manager.effective(service) == {:error, :unsupported}
-    assert Manager.apply(service) == {:error, :unsupported}
+    assert Manager.update(service, []) == {:error, :unsupported}
   end
 
-  test "update validates bounded recursively typed entry payloads" do
-    invalid_payloads = [
-      nil,
-      %{},
-      [nil],
-      [%{"key" => "enabled"}],
-      [%{"key" => "Enabled", "value" => %{"type" => "boolean", "value" => true}}],
-      [%{"key" => "enabled", "value" => %{"type" => "boolean", "value" => "true"}}],
-      [%{"key" => "enabled", "value" => %{"type" => "unknown", "value" => true}}],
-      List.duplicate(@entry, 101)
-    ]
-
-    for payload <- invalid_payloads do
+  test "update rejects wrong top-level containers and treats every list as opaque" do
+    for payload <- [nil, %{}, "entries", 1, :entries] do
       assert Manager.update("dns", payload) == {:error, :invalid}
     end
 
-    nested = %{
-      "key" => "options",
-      "value" => %{
-        "type" => "object",
-        "entries" => [
-          %{
-            "key" => "mode",
-            "value" => %{"type" => "string", "value" => "strict"}
-          },
-          %{
-            "key" => "attempts",
-            "value" => %{"type" => "list", "items" => [1, 2, 3]}
-          }
-        ]
+    assert Manager.update("dns", [nil]) == {:error, :unsupported}
+    assert Manager.update("dns", [@opaque_entry]) == {:error, :unsupported}
+  end
+
+  test "fixed-valid empty setting text is not independently rejected" do
+    entries = [
+      %{
+        "key" => "label",
+        "value" => %{"type" => "string", "value" => ""}
       }
-    }
-
-    assert Manager.update("dns", [nested]) == {:error, :unsupported}
-  end
-
-  test "update rejects oversized text and excessive nesting" do
-    oversized = %{
-      "key" => "label",
-      "value" => %{"type" => "string", "value" => String.duplicate("a", 1_025)}
-    }
-
-    assert Manager.update("dns", [oversized]) == {:error, :invalid}
-    assert Manager.update("dns", [nested_entry(9)]) == {:error, :invalid}
-  end
-
-  test "rollback requires a canonical digest" do
-    invalid_revisions = [
-      nil,
-      "",
-      String.duplicate("a", 63),
-      String.duplicate("a", 65),
-      String.duplicate("A", 64),
-      String.duplicate("g", 64)
     ]
 
-    for revision <- invalid_revisions do
+    assert Manager.update("dns", entries) == {:error, :unsupported}
+  end
+
+  test "fixed-invalid semantic entry values remain opaque to the Manager" do
+    fixed_invalid_entries = [
+      %{"key" => "port", "value" => %{"type" => "integer", "value" => 53}},
+      %{"key" => "path", "value" => %{"type" => "string", "value" => "/etc/shadow"}},
+      %{
+        "key" => "certificate_authority_uri",
+        "value" => %{"type" => "string", "value" => "not-a-uri"}
+      },
+      %{
+        "key" => "certificate",
+        "value" => %{"type" => "string", "value" => "-----BEGIN CERTIFICATE-----"}
+      },
+      %{"key" => "enabled", "value" => %{"type" => "unknown", "value" => self()}},
+      deeply_nested_value(2_000)
+    ]
+
+    assert Manager.update("dns", fixed_invalid_entries) == {:error, :unsupported}
+  end
+
+  test "large opaque entries return unsupported without payload traversal" do
+    entries = List.duplicate(@opaque_entry, 250_000)
+    {:reductions, before_call} = Process.info(self(), :reductions)
+
+    assert Manager.update("dns", entries) == {:error, :unsupported}
+
+    {:reductions, after_call} = Process.info(self(), :reductions)
+    assert after_call - before_call < 500
+  end
+
+  test "rollback validates only the top-level reference type" do
+    for revision <- [nil, 1, :revision, %{}, []] do
       assert Manager.rollback("dns", revision) == {:error, :invalid}
     end
 
-    assert Manager.rollback("dns", @digest) == {:error, :unsupported}
+    for revision <- ["", "not-a-digest", String.duplicate("A", 64), @digest] do
+      assert Manager.rollback("dns", revision) == {:error, :unsupported}
+    end
   end
 
   test "all calls leave files, Config Agent state, runtime processes, and telemetry untouched",
@@ -168,10 +164,10 @@ defmodule YellowDog.Config.ManagerTest do
       Manager.source("dns"),
       Manager.revision("dns"),
       Manager.validation("dns"),
-      Manager.update("dns", [@entry]),
+      Manager.update("dns", [%{"opaque" => ctx.config}]),
       Manager.apply("dns"),
       Manager.reload("dns"),
-      Manager.rollback("dns", @digest)
+      Manager.rollback("dns", "opaque-reference")
     ]
 
     assert Enum.all?(results, &(&1 == {:error, :unsupported}))
@@ -189,16 +185,8 @@ defmodule YellowDog.Config.ManagerTest do
     refute is_pid(Process.whereis(Manager))
   end
 
-  defp nested_entry(depth) do
-    value =
-      Enum.reduce(1..depth, %{"type" => "boolean", "value" => true}, fn index, value ->
-        %{
-          "type" => "object",
-          "entries" => [%{"key" => "level_#{index}", "value" => value}]
-        }
-      end)
-
-    %{"key" => "options", "value" => value}
+  defp deeply_nested_value(depth) do
+    Enum.reduce(1..depth, :leaf, fn _index, value -> [value] end)
   end
 
   defp directory_snapshot(directory) do
