@@ -12,6 +12,11 @@ defmodule YellowDogIdentity do
   alias YellowDogIdentity.Trust.Router, as: TrustRouter
   alias YellowDogIdentity.Approval.Engine, as: ApprovalEngine
 
+  @control_actor "yellow_dog_server_control"
+  @control_revoke_reason "server control revocation"
+  @max_control_items 100
+  @supported_audit_actions ~w(host.registered host.approved host.revoked host.deleted)
+
   # Delegation to Supervisor for child_spec
   defdelegate start_link(opts), to: YellowDogIdentity.Supervisor
   defdelegate child_spec(opts), to: YellowDogIdentity.Supervisor
@@ -236,6 +241,142 @@ defmodule YellowDogIdentity do
   def revoke_token(id), do: Registry.delete_token(id)
 
   @doc """
+  Lists canonical public host snapshots for the Server control boundary.
+  """
+  @spec control_list_hosts() :: {:ok, [map()]}
+  def control_list_hosts do
+    {:ok,
+     Registry.list_hosts()
+     |> Enum.map(&public_host/1)
+     |> sort_and_bound("host_id")}
+  end
+
+  @doc """
+  Lists canonical public approval snapshots for the Server control boundary.
+  """
+  @spec control_list_approvals() :: {:ok, [map()]}
+  def control_list_approvals do
+    {:ok,
+     Registry.list_hosts()
+     |> Enum.map(&public_approval/1)
+     |> sort_and_bound("approval_id")}
+  end
+
+  @doc """
+  Lists canonical public token snapshots without hashes or raw secrets.
+  """
+  @spec control_list_tokens() :: {:ok, [map()]}
+  def control_list_tokens do
+    {:ok,
+     Registry.list_tokens()
+     |> Enum.map(&public_token/1)
+     |> sort_and_bound("token_id")}
+  end
+
+  @doc """
+  Returns one canonical public host snapshot.
+  """
+  @spec control_host(String.t()) :: {:ok, map()} | {:error, :not_found}
+  def control_host(id) do
+    case Registry.get_host(id) do
+      {:ok, host} -> {:ok, public_host(host)}
+      :not_found -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Returns one canonical public token snapshot without hashes or raw secrets.
+  """
+  @spec control_token(String.t()) :: {:ok, map()} | {:error, :not_found}
+  def control_token(id) do
+    case Registry.get_token(id) do
+      {:ok, token} -> {:ok, public_token(token)}
+      :not_found -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Atomically approves a host using the fixed Server control actor.
+  """
+  @spec control_approve_host(String.t()) :: {:ok, map(), map()} | {:error, term()}
+  def control_approve_host(host_id) do
+    case Registry.control_approve_host(host_id, @control_actor) do
+      {:ok, prior, resulting} ->
+        Registry.append_audit("host.approved", host_id, %{approved_by: @control_actor})
+        YellowDogIdentity.Telemetry.host_approved(host_id, @control_actor, prior.trust_level)
+        Webhook.notify("host.approved", resulting)
+        broadcast("identity:hosts", {:host_updated, resulting})
+        {:ok, public_host(prior), public_host(resulting)}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Atomically revokes a host using the fixed Server control actor.
+  """
+  @spec control_revoke_host(String.t()) :: {:ok, map(), map()} | {:error, term()}
+  def control_revoke_host(host_id) do
+    case Registry.control_revoke_host(
+           host_id,
+           @control_actor,
+           @control_revoke_reason
+         ) do
+      {:ok, prior, resulting} ->
+        Registry.append_audit("host.revoked", host_id, %{
+          revoked_by: @control_actor,
+          reason: @control_revoke_reason
+        })
+
+        YellowDogIdentity.Telemetry.host_revoked(
+          host_id,
+          @control_actor,
+          @control_revoke_reason
+        )
+
+        Webhook.notify("host.revoked", resulting)
+        broadcast("identity:hosts", {:host_updated, resulting})
+        {:ok, public_host(prior), public_host(resulting)}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Atomically snapshots and durably deletes a host.
+  """
+  @spec control_delete_host(String.t()) :: {:ok, map()} | {:error, term()}
+  def control_delete_host(host_id) do
+    case Registry.control_delete_host(host_id) do
+      {:ok, prior} ->
+        Registry.append_audit("host.deleted", host_id, %{hostname: prior.hostname})
+        YellowDogIdentity.Telemetry.host_deleted(host_id, prior.hostname)
+        broadcast("identity:hosts", {:host_updated, prior})
+        {:ok, public_host(prior)}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Atomically snapshots and durably revokes a token.
+  """
+  @spec control_revoke_token(String.t()) :: {:ok, map(), map()} | {:error, term()}
+  def control_revoke_token(token_id) do
+    case Registry.control_revoke_token(token_id) do
+      {:ok, token} ->
+        prior = public_token(token)
+        {:ok, prior, %{prior | "state" => "revoked"}}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
   Exports approved recipients in YAML format.
   """
   @spec export_recipients(keyword()) :: String.t()
@@ -256,6 +397,24 @@ defmodule YellowDogIdentity do
     e ->
       Logger.debug("audit_log unavailable: #{Exception.message(e)}")
       []
+  end
+
+  @doc """
+  Reads deterministic, bounded audit snapshots without raw details.
+  """
+  @spec control_list_audit() :: {:ok, [map()]}
+  def control_list_audit do
+    entries =
+      Registry.read_audit_log(limit: 1_000)
+      |> Enum.flat_map(fn entry ->
+        case public_audit(entry) do
+          {:ok, snapshot} -> [snapshot]
+          :error -> []
+        end
+      end)
+      |> Enum.take(@max_control_items)
+
+    {:ok, entries}
   end
 
   @doc """
@@ -309,6 +468,76 @@ defmodule YellowDogIdentity do
         total_tokens: 0
       }
   end
+
+  defp public_host(%Host{} = host) do
+    base = %{
+      "host_id" => host.id,
+      "name" => host.hostname,
+      "state" => Atom.to_string(host.status)
+    }
+
+    Map.put(base, "revision", calculate_revision(base))
+  end
+
+  defp public_approval(%Host{} = host) do
+    %{
+      "approval_id" => host.id,
+      "host_id" => host.id,
+      "state" => Atom.to_string(host.status)
+    }
+  end
+
+  defp public_token(%Token{} = token) do
+    %{
+      "token_id" => token.id,
+      "label" => token.id,
+      "state" => if(token_expired?(token), do: "expired", else: "active")
+    }
+  end
+
+  defp public_audit(%{event: action, host_id: subject_id, timestamp: timestamp})
+       when action in @supported_audit_actions do
+    with true <- valid_control_id?(subject_id),
+         {:ok, datetime, 0} <- DateTime.from_iso8601(timestamp) do
+      occurred_at = DateTime.to_iso8601(datetime)
+      audit_id = "audit-" <> calculate_revision([action, subject_id, occurred_at])
+
+      {:ok,
+       %{
+         "audit_id" => audit_id,
+         "action" => action,
+         "subject_id" => subject_id,
+         "occurred_at" => occurred_at
+       }}
+    else
+      _ -> :error
+    end
+  end
+
+  defp public_audit(_entry), do: :error
+
+  defp token_expired?(%Token{expires_at: expires_at}) do
+    DateTime.compare(DateTime.utc_now(), expires_at) == :gt
+  end
+
+  defp calculate_revision(value) do
+    value
+    |> :erlang.term_to_binary([:deterministic])
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
+
+  defp sort_and_bound(items, key) do
+    items
+    |> Enum.sort_by(&Map.fetch!(&1, key))
+    |> Enum.take(@max_control_items)
+  end
+
+  defp valid_control_id?(value) when is_binary(value) do
+    value != "" and byte_size(value) <= 128 and String.valid?(value)
+  end
+
+  defp valid_control_id?(_value), do: false
 
   # Private implementation
 

@@ -70,6 +70,22 @@ defmodule YellowDogIdentity.Registry do
   @spec delete_host(String.t()) :: :ok | {:error, term()}
   def delete_host(id), do: GenServer.call(__MODULE__, {:delete_host, id})
 
+  @doc false
+  @spec control_approve_host(String.t(), String.t()) ::
+          {:ok, Host.t(), Host.t()} | {:error, term()}
+  def control_approve_host(id, approved_by),
+    do: GenServer.call(__MODULE__, {:control_approve_host, id, approved_by})
+
+  @doc false
+  @spec control_revoke_host(String.t(), String.t(), String.t()) ::
+          {:ok, Host.t(), Host.t()} | {:error, term()}
+  def control_revoke_host(id, revoked_by, reason),
+    do: GenServer.call(__MODULE__, {:control_revoke_host, id, revoked_by, reason})
+
+  @doc false
+  @spec control_delete_host(String.t()) :: {:ok, Host.t()} | {:error, term()}
+  def control_delete_host(id), do: GenServer.call(__MODULE__, {:control_delete_host, id})
+
   @doc "Stores a provisioning token."
   @spec put_token(Token.t()) :: :ok | {:error, term()}
   def put_token(%Token{} = token), do: GenServer.call(__MODULE__, {:put_token, token})
@@ -85,6 +101,10 @@ defmodule YellowDogIdentity.Registry do
   @doc "Deletes a token."
   @spec delete_token(String.t()) :: :ok | {:error, term()}
   def delete_token(id), do: GenServer.call(__MODULE__, {:delete_token, id})
+
+  @doc false
+  @spec control_revoke_token(String.t()) :: {:ok, Token.t()} | {:error, term()}
+  def control_revoke_token(id), do: GenServer.call(__MODULE__, {:control_revoke_token, id})
 
   @doc """
   Atomically verifies a raw token and increments its use count in a single GenServer call.
@@ -177,22 +197,57 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:delete_host, id}, _from, state) do
+    case delete_host_record(state, id) do
+      {:ok, _host, state} -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:control_approve_host, id, approved_by}, _from, state) do
     case Map.get(state.hosts, id) do
+      %Host{status: :pending} = host ->
+        updated = %{
+          host
+          | status: :approved,
+            approved_at: DateTime.utc_now(),
+            approved_by: approved_by
+        }
+
+        reply_host_update(state, host, updated)
+
+      %Host{status: status} ->
+        {:reply, {:error, {:invalid_status, status}}, state}
+
       nil ->
         {:reply, {:error, :not_found}, state}
+    end
+  end
 
-      host ->
-        path = host_path(state.data_dir, id)
+  def handle_call({:control_revoke_host, id, revoked_by, reason}, _from, state) do
+    case Map.get(state.hosts, id) do
+      %Host{status: status} = host when status in [:approved, :pending] ->
+        updated = %{
+          host
+          | status: :revoked,
+            revoked_at: DateTime.utc_now(),
+            revoked_by: revoked_by,
+            revoke_reason: reason
+        }
 
-        case File.rm(path) do
-          :ok -> :ok
-          {:error, :enoent} -> :ok
-          {:error, reason} -> Logger.warning("Failed to delete host file #{path}: #{reason}")
-        end
+        reply_host_update(state, host, updated)
 
-        hosts = Map.delete(state.hosts, id)
-        fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
-        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+      %Host{status: :revoked} ->
+        {:reply, {:error, :already_revoked}, state}
+
+      nil ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  def handle_call({:control_delete_host, id}, _from, state) do
+    case delete_host_record(state, id) do
+      {:ok, host, state} -> {:reply, {:ok, host}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -219,21 +274,16 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:delete_token, id}, _from, state) do
-    case Map.get(state.tokens, id) do
-      nil ->
-        {:reply, {:error, :not_found}, state}
+    case delete_token_record(state, id) do
+      {:ok, _token, state} -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
 
-      _token ->
-        path = token_path(state.data_dir, id)
-
-        case File.rm(path) do
-          :ok -> :ok
-          {:error, :enoent} -> :ok
-          {:error, reason} -> Logger.warning("Failed to delete token file #{path}: #{reason}")
-        end
-
-        tokens = Map.delete(state.tokens, id)
-        {:reply, :ok, %{state | tokens: tokens}}
+  def handle_call({:control_revoke_token, id}, _from, state) do
+    case delete_token_record(state, id) do
+      {:ok, token, state} -> {:reply, {:ok, token}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -284,6 +334,60 @@ defmodule YellowDogIdentity.Registry do
           {:cont, acc}
       end
     end)
+  end
+
+  defp reply_host_update(state, prior, updated) do
+    case persist_host(state.data_dir, updated) do
+      :ok ->
+        hosts = Map.put(state.hosts, updated.id, updated)
+        fingerprint_index = Map.put(state.fingerprint_index, updated.key_fingerprint, updated.id)
+
+        {:reply, {:ok, prior, updated},
+         %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp delete_host_record(state, id) do
+    case Map.get(state.hosts, id) do
+      nil ->
+        {:error, :not_found}
+
+      host ->
+        with :ok <- delete_file(host_path(state.data_dir, id), :host) do
+          hosts = Map.delete(state.hosts, id)
+          fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
+          {:ok, host, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+        end
+    end
+  end
+
+  defp delete_token_record(state, id) do
+    case Map.get(state.tokens, id) do
+      nil ->
+        {:error, :not_found}
+
+      token ->
+        with :ok <- delete_file(token_path(state.data_dir, id), :token) do
+          {:ok, token, %{state | tokens: Map.delete(state.tokens, id)}}
+        end
+    end
+  end
+
+  defp delete_file(path, kind) do
+    case File.rm(path) do
+      :ok ->
+        :ok
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Failed to delete #{kind} file: #{reason}")
+        {:error, {:delete_failed, reason}}
+    end
   end
 
   # Persistence helpers
