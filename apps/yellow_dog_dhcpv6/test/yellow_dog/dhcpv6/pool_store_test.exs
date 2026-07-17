@@ -282,6 +282,41 @@ defmodule YellowDog.Dhcpv6.PoolStoreTest do
     end
   end
 
+  describe "control pool facade" do
+    test "rejects lossless-lifetime gaps and ranges outside the canonical subnet" do
+      pool = %{
+        name: "control",
+        network: "2001:db8::/64",
+        range_start: "2001:db8::100",
+        range_end: "2001:db8::1ff",
+        preferred_lifetime: 3600,
+        valid_lifetime: 7200
+      }
+
+      assert {:error, :unrepresentable_lifetime} = PoolStore.control_validate_pool(pool)
+
+      assert {:error, :invalid_subnet_range} =
+               PoolStore.control_validate_pool(%{
+                 pool
+                 | valid_lifetime: 3600,
+                   range_end: "2001:db9::1"
+               })
+    end
+
+    test "accepts a canonical IPv6 pool with one lossless lifetime" do
+      pool = %{
+        name: "control",
+        network: "2001:db8::/64",
+        range_start: "2001:db8::100",
+        range_end: "2001:db8::1ff",
+        preferred_lifetime: 3600,
+        valid_lifetime: 3600
+      }
+
+      assert :ok = PoolStore.control_validate_pool(pool)
+    end
+  end
+
   describe "pools_directory/0" do
     test "returns a path ending with pools" do
       path = PoolStore.pools_directory()

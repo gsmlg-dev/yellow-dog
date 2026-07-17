@@ -13,6 +13,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
 
   alias YellowDog.Dhcpv6.{AddressPool, Ipv6Util}
+  import Bitwise
   import YellowDog.Config.TomlHelpers
 
   @type pool_config :: %{
@@ -233,7 +234,78 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     end
   end
 
+  @doc false
+  @spec control_snapshot() :: {:ok, [pool_config()]} | {:error, term()}
+  def control_snapshot, do: load_pools()
+
+  @doc false
+  @spec control_validate_pool(pool_config()) :: :ok | {:error, term()}
+  def control_validate_pool(pool) do
+    with :ok <- validate_pool(pool),
+         {:ok, _address_pool} <- AddressPool.new(pool),
+         :ok <- validate_control_lifetimes(pool),
+         :ok <- validate_control_subnet(pool) do
+      :ok
+    end
+  end
+
+  @doc false
+  @spec control_persist_snapshot([pool_config()]) :: :ok | {:error, term()}
+  def control_persist_snapshot(pools) when is_list(pools) do
+    with :ok <- validate_control_snapshot(pools) do
+      save_all_pools(pools)
+    end
+  end
+
+  def control_persist_snapshot(_pools), do: {:error, :invalid_snapshot}
+
   # Private functions
+
+  defp validate_control_snapshot(pools) do
+    Enum.reduce_while(pools, :ok, fn pool, :ok ->
+      case control_validate_pool(pool) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_control_lifetimes(pool) do
+    preferred = pool[:preferred_lifetime] || pool["preferred_lifetime"]
+    valid = pool[:valid_lifetime] || pool["valid_lifetime"]
+
+    if is_integer(preferred) and preferred == valid and preferred in 60..31_536_000,
+      do: :ok,
+      else: {:error, :unrepresentable_lifetime}
+  end
+
+  defp validate_control_subnet(pool) do
+    network = pool[:network] || pool["network"]
+    start_address = pool[:range_start] || pool["range_start"]
+    end_address = pool[:range_end] || pool["range_end"]
+
+    with [network_address, prefix_text] <- String.split(network, "/", parts: 2),
+         {prefix, ""} <- Integer.parse(prefix_text),
+         true <- prefix in 0..128,
+         {:ok, network_ip} <- Ipv6Util.parse(network_address),
+         {:ok, start_ip} <- Ipv6Util.parse(start_address),
+         {:ok, end_ip} <- Ipv6Util.parse(end_address),
+         network_integer <- Ipv6Util.to_integer(network_ip),
+         true <- network_integer == masked(network_integer, prefix),
+         true <- masked(Ipv6Util.to_integer(start_ip), prefix) == network_integer,
+         true <- masked(Ipv6Util.to_integer(end_ip), prefix) == network_integer do
+      :ok
+    else
+      _ -> {:error, :invalid_subnet_range}
+    end
+  end
+
+  defp masked(_value, 0), do: 0
+
+  defp masked(value, prefix) do
+    mask = ((1 <<< 128) - 1) <<< (128 - prefix)
+    value &&& mask
+  end
 
   defp get_data_dir do
     # Get base data directory from application env or use default

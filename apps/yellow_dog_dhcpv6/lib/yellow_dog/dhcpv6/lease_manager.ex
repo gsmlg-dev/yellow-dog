@@ -214,6 +214,39 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     GenServer.call(__MODULE__, :get_pools)
   end
 
+  @doc false
+  @spec control_pool_snapshot() :: {:ok, [map()]} | {:error, :manager_absent | term()}
+  def control_pool_snapshot, do: control_call(:control_pool_snapshot)
+
+  @doc false
+  @spec control_apply_pool_snapshot([map()]) :: :ok | {:error, :manager_absent | term()}
+  def control_apply_pool_snapshot(pools) when is_list(pools),
+    do: control_call({:control_apply_pool_snapshot, pools})
+
+  def control_apply_pool_snapshot(_pools), do: {:error, :invalid_snapshot}
+
+  @doc false
+  @spec control_pool_has_active_leases?(String.t()) :: {:ok, boolean()} | {:error, term()}
+  def control_pool_has_active_leases?(pool_name) when is_binary(pool_name),
+    do: control_call({:control_pool_has_active_leases?, pool_name})
+
+  def control_pool_has_active_leases?(_pool_name), do: {:error, :invalid_pool_name}
+
+  @doc false
+  @spec control_list_leases() :: {:ok, [map()]} | {:error, term()}
+  def control_list_leases, do: control_call(:control_list_leases)
+
+  @doc false
+  @spec control_release_lease(String.t()) :: {:ok, map()} | {:error, term()}
+  def control_release_lease(lease_id) when is_binary(lease_id),
+    do: control_call({:control_release_lease, lease_id})
+
+  def control_release_lease(_lease_id), do: {:error, :invalid_lease_id}
+
+  @doc false
+  @spec control_status() :: {:ok, :running} | {:error, term()}
+  def control_status, do: control_call(:control_status)
+
   @doc """
   Adds a new address pool to the LeaseManager.
 
@@ -475,6 +508,50 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   def handle_call(:get_pools, _from, state) do
     {:reply, state.pools, state}
   end
+
+  @impl true
+  def handle_call(:control_pool_snapshot, _from, state) do
+    {:reply, {:ok, Enum.map(state.pools, &pool_struct_to_config/1)}, state}
+  end
+
+  @impl true
+  def handle_call({:control_apply_pool_snapshot, pool_configs}, _from, state) do
+    case build_control_pools(pool_configs) do
+      {:ok, pools} -> {:reply, :ok, %{state | pools: pools}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:control_pool_has_active_leases?, pool_name}, _from, state) do
+    {:reply, {:ok, count_pool_leases(pool_name) > 0}, state}
+  end
+
+  @impl true
+  def handle_call(:control_list_leases, _from, state) do
+    {:reply, {:ok, Enum.map(list_leases(), &control_lease/1)}, state}
+  end
+
+  @impl true
+  def handle_call({:control_release_lease, lease_id}, _from, state) do
+    case Enum.find(list_leases(), &(control_lease_id(&1) == lease_id)) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      lease ->
+        case LeaseStorage.update_state(lease.duid, lease.iaid, :released) do
+          {:ok, _released} ->
+            :ets.delete(@table_name, make_lease_key(lease.duid, lease.iaid))
+            {:reply, {:ok, control_lease(lease)}, state}
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+        end
+    end
+  end
+
+  @impl true
+  def handle_call(:control_status, _from, state), do: {:reply, {:ok, :running}, state}
 
   @impl true
   def handle_call({:add_pool, pool_config}, _from, state) do
@@ -1129,5 +1206,69 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       max_leases: Map.get(pool, :max_leases, 1000),
       enabled: Map.get(pool, :enabled, true)
     }
+  end
+
+  defp control_call(message) do
+    GenServer.call(__MODULE__, message)
+  catch
+    :exit, :noproc -> {:error, :manager_absent}
+    :exit, {:noproc, _details} -> {:error, :manager_absent}
+    :exit, reason -> {:error, reason}
+  end
+
+  defp build_control_pools(pool_configs) do
+    with {:ok, pools} <-
+           Enum.reduce_while(pool_configs, {:ok, []}, fn pool_config, {:ok, pools} ->
+             case AddressPool.new(pool_config) do
+               {:ok, pool} -> {:cont, {:ok, [pool | pools]}}
+               {:error, reason} -> {:halt, {:error, reason}}
+             end
+           end),
+         pools <- Enum.reverse(pools),
+         :ok <- ensure_control_pool_names(pools),
+         :ok <- ensure_control_pool_ranges(pools) do
+      {:ok, pools}
+    end
+  end
+
+  defp ensure_control_pool_names(pools) do
+    if pools |> Enum.map(& &1.name) |> Enum.uniq() |> length() == length(pools),
+      do: :ok,
+      else: {:error, :pool_already_exists}
+  end
+
+  defp ensure_control_pool_ranges(pools) do
+    pools
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {pool, index}, :ok ->
+      case check_range_overlap(pool, Enum.drop(pools, index + 1)) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp control_lease(lease) do
+    address = lease[:ip] || lease[:ip_address]
+
+    %{
+      lease_id: control_lease_id(lease),
+      address:
+        address
+        |> Ipv6Util.parse()
+        |> then(fn {:ok, address} -> address end)
+        |> canonical_address(),
+      state: lease.state,
+      pool_name: lease.pool_name
+    }
+  end
+
+  defp control_lease_id(lease) do
+    "lease-" <>
+      Base.url_encode64(lease.duid, padding: false) <> "-" <> Integer.to_string(lease.iaid)
+  end
+
+  defp canonical_address(address) do
+    address |> :inet.ntoa() |> List.to_string() |> String.downcase()
   end
 end

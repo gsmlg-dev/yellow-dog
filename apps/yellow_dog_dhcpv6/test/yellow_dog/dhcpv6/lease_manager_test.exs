@@ -582,6 +582,56 @@ defmodule YellowDog.Dhcpv6.LeaseManagerTest do
     end
   end
 
+  describe "control facades" do
+    test "reports an absent manager without starting one" do
+      assert {:error, :manager_absent} = LeaseManager.control_pool_snapshot()
+      assert {:error, :manager_absent} = LeaseManager.control_list_leases()
+    end
+
+    test "keeps active leases when applying a force-safe empty pool snapshot" do
+      control_pool = %{
+        name: "control_pool",
+        network: "2001:db8::/64",
+        range_start: "2001:db8::100",
+        range_end: "2001:db8::1ff",
+        preferred_lifetime: 3600,
+        valid_lifetime: 3600
+      }
+
+      {:ok, pid} = LeaseManager.start_link(pools: [control_pool])
+      on_exit(fn -> stop_manager(pid) end)
+
+      {:ok, _lease} = LeaseManager.allocate_lease(@test_duid, @test_iaid, nil, "control_pool")
+      assert {:ok, true} = LeaseManager.control_pool_has_active_leases?("control_pool")
+      assert :ok = LeaseManager.control_apply_pool_snapshot([])
+      assert {:ok, [lease]} = LeaseManager.control_list_leases()
+      assert String.starts_with?(lease.lease_id, "lease-")
+    end
+
+    test "releases an active lease by opaque identifier after persistence succeeds" do
+      control_pool = %{
+        name: "control_pool",
+        network: "2001:db8::/64",
+        range_start: "2001:db8::100",
+        range_end: "2001:db8::1ff",
+        preferred_lifetime: 3600,
+        valid_lifetime: 3600
+      }
+
+      {:ok, pid} = LeaseManager.start_link(pools: [control_pool])
+      on_exit(fn -> stop_manager(pid) end)
+
+      {:ok, _lease} = LeaseManager.allocate_lease(@test_duid, @test_iaid, nil, "control_pool")
+      {:ok, [lease]} = LeaseManager.control_list_leases()
+
+      assert {:ok, %{lease_id: lease_id, state: :active}} =
+               LeaseManager.control_release_lease(lease.lease_id)
+
+      assert lease_id == lease.lease_id
+      assert {:ok, []} = LeaseManager.control_list_leases()
+    end
+  end
+
   # Helper function to stop manager safely
   defp stop_manager(pid) do
     if Process.alive?(pid) do
