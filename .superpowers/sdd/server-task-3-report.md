@@ -14,17 +14,18 @@ unsupported paths were already safe and correctly classified.
 
 ## Mutation Audit
 
-| Server operation family | Current status | Boundary rationale |
-| --- | --- | --- |
-| Views create/update/delete | Unsupported | `ViewManager` has runtime methods, but no synchronous durable CRUD facade with activation rollback. |
-| Zones create/update/delete | Supported for authoritative zones | Uses `Store.Zone` durability and `ZoneController` lifecycle compensation. Forward create is unsupported before any dependency call because the wire payload has no forwarders. |
-| Zone import | Unsupported for both `current/2` and `dispatch/2` | No authenticated, materialized, verified, parsed source owner exists for provider/snapshot/blob metadata. |
-| Zone sync | Supported for a valid enabled Cloudflare/Route53 mirror | Enqueues the durable cloud-zone task and returns accepted, not completed, semantics. |
-| Records create/update/delete | Supported for fixed A/AAAA/CNAME/MX/NS/PTR/SRV/TXT RRsets | Fixed string-to-existing-atom mapping and Store/runtime rollback preserve exact RRset semantics. |
-| ACL create/update/delete | Unsupported | `AclRegistry` writes are asynchronous; no synchronous durable ACL owner facade can prove persistence and rollback. Read/current projection remains available only when lossless. |
-| Providers create | Unsupported | There is no authenticated credential materializer for the wire `credential_ref`. |
-| Providers update/delete | Supported only for an existing supported provider | Update preserves the computed local credential reference; external references, non-nil endpoints, and RFC 2136 are unsupported before provider facade calls. |
-| Conflict resolve | `use_cloud` and Cloudflare `use_local` supported; Route53 `use_local` unsupported | Route53 lacks complete signed remote application. The owner returns `unsupported` without changing DNS state. |
+| Server operation family      | Current status                                                                    | Boundary rationale                                                                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Views create/update/delete   | Unsupported                                                                       | `ViewManager` has runtime methods, but no synchronous durable CRUD facade with activation rollback.                                                                              |
+| Zones create/update/delete   | Supported for authoritative zones                                                 | Uses `Store.Zone` durability and `ZoneController` lifecycle compensation. Forward create is unsupported before any dependency call because the wire payload has no forwarders.   |
+| Zone import                  | Unsupported for both `current/2` and `dispatch/2`                                 | No authenticated, materialized, verified, parsed source owner exists for provider/snapshot/blob metadata.                                                                        |
+| Zone sync                    | Supported for a valid enabled Cloudflare/Route53 mirror                           | Enqueues the durable cloud-zone task and returns accepted, not completed, semantics.                                                                                             |
+| Records create/update/delete | Supported for fixed A/AAAA/CNAME/MX/NS/PTR/SRV/TXT RRsets                         | Fixed string-to-existing-atom mapping and Store/runtime rollback preserve exact RRset semantics.                                                                                 |
+| ACL create/update/delete     | Unsupported                                                                       | `AclRegistry` writes are asynchronous; no synchronous durable ACL owner facade can prove persistence and rollback. Read/current projection remains available only when lossless. |
+| Providers create             | Unsupported                                                                       | There is no authenticated credential materializer for the wire `credential_ref`.                                                                                                 |
+| Providers update             | Supported only for an existing supported provider                                 | Update preserves the computed local credential reference; external references, non-nil endpoints, and RFC 2136 are unsupported before provider facade calls.                     |
+| Providers delete             | Supported for any existing stored provider ID                                     | Delete has no provider-type guard. It removes the stored config, reconciles the provider to stopped state, and restores the prior config if reconciliation fails.                |
+| Conflict resolve             | `use_cloud` and Cloudflare `use_local` supported; Route53 `use_local` unsupported | Route53 lacks complete signed remote application. The owner returns `unsupported` without changing DNS state.                                                                    |
 
 ## Added Boundary Evidence
 
@@ -43,19 +44,19 @@ unsupported paths were already safe and correctly classified.
 
 All commands ran through `devenv shell`.
 
-| Command | Result |
-| --- | --- |
-| `cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs` | 71 tests, 0 failures |
-| `cd apps/yellow_dog_store && mix test` | 404 tests, 26 properties, 0 failures, 9 skipped |
-| `cd apps/yellow_dog_dns_provider && mix test` | 149 tests, 4 properties, 0 failures |
-| `cd apps/yellow_dog_tasks && mix test` | 58 tests, 0 failures |
-| `cd apps/yellow_dog_dns && mix test` | 1,168 tests, 0 failures |
-| `cd apps/yellow_dog && mix test` | 326 tests, 0 failures |
-| `cd apps/yellow_dog && MIX_ENV=dev mix compile --force --warnings-as-errors` | exit 0 |
-| `cd apps/yellow_dog && MIX_ENV=test mix compile --force --warnings-as-errors` | exit 0 |
-| `cd apps/yellow_dog && mix format --check-formatted test/yellow_dog/server/control/dns_test.exs` | exit 0 |
-| `cd apps/yellow_dog && mix credo --strict test/yellow_dog/server/control/dns_test.exs` | 21 mods/funs, no issues |
-| owned diff check and forbidden-path scan | clean; no packet handlers, raw UDP, direct Concord, new apps, or generic Node code |
+| Command                                                                                          | Result                                                                             |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `cd apps/yellow_dog && mix test test/yellow_dog/server/control/dns_test.exs`                     | 71 tests, 0 failures                                                               |
+| `cd apps/yellow_dog_store && mix test`                                                           | 404 tests, 26 properties, 0 failures, 9 skipped                                    |
+| `cd apps/yellow_dog_dns_provider && mix test`                                                    | 149 tests, 4 properties, 0 failures                                                |
+| `cd apps/yellow_dog_tasks && mix test`                                                           | 58 tests, 0 failures                                                               |
+| `cd apps/yellow_dog_dns && mix test`                                                             | 1,168 tests, 0 failures                                                            |
+| `cd apps/yellow_dog && mix test`                                                                 | 326 tests, 0 failures                                                              |
+| `cd apps/yellow_dog && MIX_ENV=dev mix compile --force --warnings-as-errors`                     | exit 0                                                                             |
+| `cd apps/yellow_dog && MIX_ENV=test mix compile --force --warnings-as-errors`                    | exit 0                                                                             |
+| `cd apps/yellow_dog && mix format --check-formatted test/yellow_dog/server/control/dns_test.exs` | exit 0                                                                             |
+| `cd apps/yellow_dog && mix credo --strict test/yellow_dog/server/control/dns_test.exs`           | 21 mods/funs, no issues                                                            |
+| owned diff check and forbidden-path scan                                                         | clean; no packet handlers, raw UDP, direct Concord, new apps, or generic Node code |
 
 The Store, DNS-provider, and Tasks suites emit expected warning logs from
 failure-path fixtures; none are failures. Remaining limitations are intentional:
