@@ -160,7 +160,7 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       assert {:error, :unsupported} = YellowDogIdentity.control_revoke_token("token-id")
     end
 
-    test "audit snapshots are deterministic, bounded, and omit raw details" do
+    test "unique audit snapshots are deterministic, bounded, and omit raw details" do
       for index <- 1..105 do
         Registry.append_audit("host.registered", "host-#{index}", %{
           secret: "raw-detail-#{index}"
@@ -184,6 +184,28 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       encoded = inspect(entries)
       refute encoded =~ "raw-detail"
       refute encoded =~ "details"
+    end
+
+    test "duplicate canonical audit IDs spanning the public bound fail closed", %{
+      tmp_dir: tmp_dir
+    } do
+      audit_path = Path.join(tmp_dir, "audit.log")
+      duplicate = "2026-07-17T00:00:00Z host.registered host=duplicate-audit-host"
+
+      unique_entries =
+        for index <- 1..99 do
+          "2026-07-17T00:00:00Z host.registered host=unique-audit-host-#{index}"
+        end
+
+      File.write!(
+        audit_path,
+        Enum.join([duplicate | unique_entries] ++ [duplicate], "\n") <> "\n"
+      )
+
+      assert {:ok, strict_entries} = Registry.control_read_audit_log(limit: :all)
+      assert length(strict_entries) == 101
+
+      assert {:error, :persistence_failed} = YellowDogIdentity.control_list_audit()
     end
 
     test "audit read failures are typed while legacy reads remain best effort",

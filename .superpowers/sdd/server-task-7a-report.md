@@ -360,3 +360,57 @@ cd apps/yellow_dog_identity
 mix credo --strict
 # 475 mods/funs, found no issues
 ```
+
+## Production Audit ID Uniqueness Resolution
+
+The control facade now validates canonical `audit_id` uniqueness across the
+complete strict audit projection before applying its existing deterministic
+log-order bound of 100 items. Any duplicate canonical ID returns the same
+sanitized `{:error, :persistence_failed}` result as another invalid strict
+owner record; no public partial list is returned.
+
+The owner-level regression writes 101 grammar-valid strict entries directly to
+`audit.log`, with equal canonical events at returned positions 1 and 101. The
+Registry strict read accepts all 101 records, while `control_list_audit/0`
+fails closed. The existing unique 105-entry regression continues proving that
+valid public audit results retain the 100-item bound and redact details.
+
+This closes the production gap before the Server adapter's separate
+canonical-ID duplicate guard, which remains in place as defense in depth.
+
+### Verification
+
+The new owner-level regression first failed against the prior facade:
+
+```text
+cd apps/yellow_dog_identity
+mix test test/yellow_dog_identity/control_facade_test.exs:189
+# 19 tests, 1 failure, 18 excluded
+```
+
+After validating the complete projection before the bound:
+
+```text
+cd apps/yellow_dog_identity
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 19 tests, 0 failures
+
+mix test
+# 407 tests, 0 failures
+
+MIX_ENV=test mix compile --warnings-as-errors
+# exit 0
+
+mix credo --strict lib/yellow_dog_identity.ex test/yellow_dog_identity/control_facade_test.exs
+# 65 mods/funs, found no issues
+
+cd ../yellow_dog
+mix test test/yellow_dog/server/control/identity_control_test.exs --seed 0
+# 12 tests, 0 failures
+
+mix test --seed 0
+# 407 tests, 0 failures
+
+MIX_ENV=test mix compile --warnings-as-errors
+# exit 0
+```

@@ -540,14 +540,22 @@ defmodule YellowDogIdentity do
   defp public_audit(_entry), do: :error
 
   defp project_audit_entries(entries) do
-    Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, snapshots} ->
+    Enum.reduce_while(entries, {:ok, {MapSet.new(), []}}, fn entry,
+                                                             {:ok, {audit_ids, snapshots}} ->
       case public_audit(entry) do
-        {:ok, snapshot} -> {:cont, {:ok, [snapshot | snapshots]}}
-        :error -> {:halt, {:error, :persistence_failed}}
+        {:ok, %{"audit_id" => audit_id} = snapshot} ->
+          if MapSet.member?(audit_ids, audit_id) do
+            {:halt, {:error, :persistence_failed}}
+          else
+            {:cont, {:ok, {MapSet.put(audit_ids, audit_id), [snapshot | snapshots]}}}
+          end
+
+        :error ->
+          {:halt, {:error, :persistence_failed}}
       end
     end)
     |> case do
-      {:ok, snapshots} ->
+      {:ok, {_audit_ids, snapshots}} ->
         {:ok, snapshots |> Enum.reverse() |> Enum.take(@max_control_items)}
 
       {:error, :persistence_failed} = error ->
