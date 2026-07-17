@@ -1,14 +1,29 @@
 defmodule YellowDog.ServerAgent.SupervisorTest do
   use ExUnit.Case, async: false
 
+  Code.require_file("../../support/client_fake_clock.ex", __DIR__)
+  Code.require_file("../../support/client_fake_socket.ex", __DIR__)
+  Code.require_file("../../support/client_fake_timer.ex", __DIR__)
+
+  alias YellowDog.ServerAgent.Client
+  alias YellowDog.ServerAgent.ClientFakeMonotonicClock
+  alias YellowDog.ServerAgent.ClientFakeSocket
+  alias YellowDog.ServerAgent.ClientFakeTimer
+  alias YellowDog.ServerAgent.ClientFakeWallClock
   alias YellowDog.ServerAgent.CommandJournal
+  alias YellowDog.ServerAgent.ConfigApplier
+  alias YellowDog.ServerAgent.ConfigApplyStore
   alias YellowDog.ServerAgent.ConfigStore
+  alias YellowDog.ServerAgent.Dispatcher
   alias YellowDog.ServerAgent.Heartbeat
   alias YellowDog.ServerAgent.Supervisor, as: ServerAgentSupervisor
+  alias YellowDog.Sync.Identity.Server
 
   @server_id "server-east-1"
   @profile "dns_only"
   @capabilities ["runtime.services"]
+  @config_revision String.duplicate("a", 64)
+  @token "top-secret-token"
 
   setup do
     data_dir =
@@ -19,7 +34,19 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
       |> Path.expand()
 
     File.mkdir_p!(data_dir)
-    on_exit(fn -> File.rm_rf(data_dir) end)
+    ClientFakeSocket.configure(self())
+    ClientFakeTimer.configure(self())
+    ClientFakeMonotonicClock.configure([0])
+    ClientFakeWallClock.configure([~U[2026-07-18 00:00:00Z]])
+
+    on_exit(fn ->
+      ClientFakeSocket.clear()
+      ClientFakeTimer.clear()
+      ClientFakeMonotonicClock.clear()
+      ClientFakeWallClock.clear()
+      File.rm_rf(data_dir)
+    end)
+
     %{data_dir: data_dir}
   end
 
@@ -89,7 +116,7 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     end
   end
 
-  test "partial durable configuration fails fast", %{data_dir: data_dir} do
+  test "partial durable and outbound configuration fails fast", %{data_dir: data_dir} do
     durable = [
       data_dir: data_dir,
       server_id: @server_id,
@@ -105,9 +132,43 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
                  )
       end
     end
+
+    outbound = [
+      management_url: "https://management.example.test:4443",
+      management_token: @token,
+      server_name: "Server East",
+      server_version: "1.2.3",
+      config_revision: @config_revision,
+      reconnect_initial_ms: 100,
+      reconnect_max_ms: 1_000
+    ]
+
+    for count <- 1..6 do
+      for partial <- combinations(outbound, count) do
+        assert {:error, :invalid_configuration} =
+                 ServerAgentSupervisor.start_link(complete_opts(data_dir, names()) ++ partial)
+      end
+    end
   end
 
-  test "complete configuration starts exact ordered children with distinct names", %{
+  test "duplicate and unknown top-level options fail closed", %{data_dir: data_dir} do
+    complete = complete_opts(data_dir, names())
+
+    assert {:error, :invalid_configuration} =
+             ServerAgentSupervisor.start_link(complete ++ [server_id: @server_id])
+
+    assert {:error, :invalid_configuration} =
+             ServerAgentSupervisor.start_link(complete ++ [unknown: true])
+
+    outbound =
+      complete
+      |> Keyword.merge(outbound_opts())
+
+    assert {:error, :invalid_configuration} =
+             ServerAgentSupervisor.start_link(outbound ++ [management_token: @token])
+  end
+
+  test "complete durable configuration starts exact ordered local children without Client", %{
     data_dir: data_dir
   } do
     names = names()
@@ -116,18 +177,115 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
 
     assert {:ok, {_flags, child_specs}} = ServerAgentSupervisor.init(opts)
 
-    assert Enum.map(child_specs, & &1.id) == [:heartbeat, :command_journal, :config_store]
+    assert Enum.map(child_specs, & &1.id) == [
+             :heartbeat,
+             :command_journal,
+             :config_store,
+             :config_apply_store,
+             :config_applier
+           ]
 
     assert Enum.map(child_specs, fn child_spec -> elem(child_spec.start, 0) end) == [
              Heartbeat,
              CommandJournal,
-             ConfigStore
+             ConfigStore,
+             ConfigApplyStore,
+             ConfigApplier
            ]
 
     assert Process.whereis(names.heartbeat)
     assert Process.whereis(names.command_journal)
     assert Process.whereis(names.config_store)
+    assert Process.whereis(names.config_apply_store)
+    assert Process.whereis(names.config_applier)
+    refute Process.whereis(names.client)
     assert Process.whereis(names.supervisor) == supervisor
+    refute_receive {:socket_start, _opts}
+  end
+
+  test "complete outbound configuration adds Client last with one concrete Server identity", %{
+    data_dir: data_dir
+  } do
+    names = names()
+
+    opts =
+      data_dir
+      |> complete_opts(names)
+      |> Keyword.merge(outbound_opts())
+
+    supervisor = start_supervisor(opts)
+    assert {:ok, {_flags, child_specs}} = ServerAgentSupervisor.init(opts)
+
+    assert Enum.map(child_specs, & &1.id) == [
+             :heartbeat,
+             :command_journal,
+             :config_store,
+             :config_apply_store,
+             :config_applier,
+             :client
+           ]
+
+    client_spec = List.last(child_specs)
+    {Client, :start_link, [client_opts]} = client_spec.start
+
+    assert %Server{
+             id: @server_id,
+             name: "Server East",
+             version: "1.2.3",
+             profile: @profile,
+             capabilities: @capabilities,
+             config_revision: @config_revision
+           } = client_opts[:identity]
+
+    assert client_opts[:command_journal] == names.command_journal
+    assert client_opts[:config_applier] == names.config_applier
+    assert client_opts[:config_apply_store] == names.config_apply_store
+    assert client_opts[:initial_backoff] == 100
+    assert client_opts[:max_backoff] == 1_000
+    assert client_opts[:dispatcher] == Dispatcher
+    assert client_opts[:dispatcher_runtime_adapter] == :"Elixir.YellowDog.Server.Control"
+
+    assert Enum.sort(Keyword.keys(client_opts)) ==
+             Enum.sort([
+               :enabled,
+               :name,
+               :management_url,
+               :token,
+               :identity,
+               :dispatcher,
+               :dispatcher_runtime_adapter,
+               :command_journal,
+               :config_applier,
+               :config_apply_store,
+               :socket,
+               :timer,
+               :monotonic_clock,
+               :wall_clock,
+               :connection_poll_interval,
+               :connect_timeout,
+               :join_timeout,
+               :push_timeout,
+               :heartbeat_interval,
+               :status_interval,
+               :initial_backoff,
+               :max_backoff
+             ])
+
+    assert Process.whereis(names.client)
+    assert Process.alive?(supervisor)
+    assert_receive {:socket_start, _opts}
+
+    status =
+      YellowDog.ServerAgent.status_snapshot(
+        heartbeat: names.heartbeat,
+        identity: client_opts[:identity],
+        client: names.client,
+        config_apply_store: names.config_apply_store
+      )
+
+    refute inspect(status) =~ @token
+    refute inspect(status) =~ "management.example.test"
+    refute inspect(status) =~ data_dir
   end
 
   test "fixed role IDs avoid registered-name collisions and preserve restart behavior", %{
@@ -140,6 +298,9 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
         heartbeat: unique_name(:heartbeat),
         command_journal: Heartbeat,
         config_store: unique_name(:config_store),
+        config_apply_store: unique_name(:config_apply_store),
+        config_applier: unique_name(:config_applier),
+        client: unique_name(:client),
         supervisor: unique_name(:supervisor)
       }
 
@@ -149,8 +310,12 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
       heartbeat = Process.whereis(names.heartbeat)
       journal = Process.whereis(names.command_journal)
       config_store = Process.whereis(names.config_store)
+      config_apply_store = Process.whereis(names.config_apply_store)
+      config_applier = Process.whereis(names.config_applier)
 
       assert Enum.map(Supervisor.which_children(supervisor), &elem(&1, 0)) == [
+               :config_applier,
+               :config_apply_store,
                :config_store,
                :command_journal,
                :heartbeat
@@ -161,6 +326,8 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
 
       assert Process.whereis(names.heartbeat) == heartbeat
       assert Process.whereis(names.config_store) == config_store
+      assert Process.whereis(names.config_apply_store) == config_apply_store
+      assert Process.whereis(names.config_applier) == config_applier
       assert restarted_journal != journal
 
       Supervisor.stop(supervisor)
@@ -174,7 +341,13 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
 
     forbidden = [:name, :data_dir, :server_id, :profile, :capabilities]
 
-    for child_opts_key <- [:command_journal_opts, :config_store_opts],
+    for child_opts_key <- [
+          :command_journal_opts,
+          :config_store_opts,
+          :config_apply_store_opts,
+          :config_applier_opts,
+          :client_opts
+        ],
         key <- forbidden do
       opts =
         data_dir
@@ -195,9 +368,28 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
                complete_opts(data_dir, names)
                |> Keyword.put(:config_store_opts, unknown: true)
              )
+
+    assert {:error, :invalid_configuration} =
+             ServerAgentSupervisor.start_link(
+               complete_opts(data_dir, names)
+               |> Keyword.put(:config_apply_store_opts, unknown: true)
+             )
+
+    assert {:error, :invalid_configuration} =
+             ServerAgentSupervisor.start_link(
+               complete_opts(data_dir, names)
+               |> Keyword.put(:config_applier_opts, unknown: true)
+             )
+
+    assert {:error, :invalid_configuration} =
+             ServerAgentSupervisor.start_link(
+               complete_opts(data_dir, names)
+               |> Keyword.merge(outbound_opts())
+               |> Keyword.put(:client_opts, token: "override")
+             )
   end
 
-  test "one_for_one restarts each durable child without restarting heartbeat or sibling", %{
+  test "one_for_one restarts durable apply children without restarting unrelated siblings", %{
     data_dir: data_dir
   } do
     names = names()
@@ -205,21 +397,27 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     heartbeat = Process.whereis(names.heartbeat)
     journal = Process.whereis(names.command_journal)
     config_store = Process.whereis(names.config_store)
+    config_apply_store = Process.whereis(names.config_apply_store)
+    config_applier = Process.whereis(names.config_applier)
 
-    Process.exit(journal, :kill)
-    restarted_journal = wait_for_restart(names.command_journal, journal)
+    Process.exit(config_apply_store, :kill)
+    restarted_apply_store = wait_for_restart(names.config_apply_store, config_apply_store)
 
     assert Process.alive?(supervisor)
     assert Process.whereis(names.heartbeat) == heartbeat
+    assert Process.whereis(names.command_journal) == journal
     assert Process.whereis(names.config_store) == config_store
-    assert restarted_journal != journal
+    assert Process.whereis(names.config_applier) == config_applier
+    assert restarted_apply_store != config_apply_store
 
-    Process.exit(config_store, :kill)
-    restarted_store = wait_for_restart(names.config_store, config_store)
+    Process.exit(config_applier, :kill)
+    restarted_applier = wait_for_restart(names.config_applier, config_applier)
 
     assert Process.whereis(names.heartbeat) == heartbeat
-    assert Process.whereis(names.command_journal) == restarted_journal
-    assert restarted_store != config_store
+    assert Process.whereis(names.command_journal) == journal
+    assert Process.whereis(names.config_store) == config_store
+    assert Process.whereis(names.config_apply_store) == restarted_apply_store
+    assert restarted_applier != config_applier
   end
 
   test "one_for_one restarts Heartbeat without restarting durable siblings", %{
@@ -230,6 +428,8 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     heartbeat = Process.whereis(names.heartbeat)
     journal = Process.whereis(names.command_journal)
     config_store = Process.whereis(names.config_store)
+    config_apply_store = Process.whereis(names.config_apply_store)
+    config_applier = Process.whereis(names.config_applier)
 
     Process.exit(heartbeat, :kill)
     restarted_heartbeat = wait_for_restart(names.heartbeat, heartbeat)
@@ -238,6 +438,38 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     assert restarted_heartbeat != heartbeat
     assert Process.whereis(names.command_journal) == journal
     assert Process.whereis(names.config_store) == config_store
+    assert Process.whereis(names.config_apply_store) == config_apply_store
+    assert Process.whereis(names.config_applier) == config_applier
+  end
+
+  test "one_for_one restarts Client without restarting durable state owners", %{
+    data_dir: data_dir
+  } do
+    names = names()
+
+    supervisor =
+      data_dir
+      |> complete_opts(names)
+      |> Keyword.merge(outbound_opts())
+      |> start_supervisor()
+
+    heartbeat = Process.whereis(names.heartbeat)
+    journal = Process.whereis(names.command_journal)
+    config_store = Process.whereis(names.config_store)
+    config_apply_store = Process.whereis(names.config_apply_store)
+    config_applier = Process.whereis(names.config_applier)
+    client = Process.whereis(names.client)
+
+    Process.exit(client, :kill)
+    restarted_client = wait_for_restart(names.client, client)
+
+    assert Process.alive?(supervisor)
+    assert restarted_client != client
+    assert Process.whereis(names.heartbeat) == heartbeat
+    assert Process.whereis(names.command_journal) == journal
+    assert Process.whereis(names.config_store) == config_store
+    assert Process.whereis(names.config_apply_store) == config_apply_store
+    assert Process.whereis(names.config_applier) == config_applier
   end
 
   defp start_supervisor(opts) do
@@ -266,9 +498,37 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
       name: names.heartbeat,
       command_journal_name: names.command_journal,
       config_store_name: names.config_store,
+      config_apply_store_name: names.config_apply_store,
+      config_applier_name: names.config_applier,
+      client_name: names.client,
       supervisor_name: names.supervisor,
       command_journal_opts: [max_records: 10],
-      config_store_opts: [max_bytes: 1_000_000]
+      config_store_opts: [max_bytes: 1_000_000],
+      config_apply_store_opts: [max_bytes: 1_000_000]
+    ]
+  end
+
+  defp outbound_opts do
+    [
+      management_url: "https://management.example.test:4443",
+      management_token: @token,
+      server_name: "Server East",
+      server_version: "1.2.3",
+      config_revision: @config_revision,
+      reconnect_initial_ms: 100,
+      reconnect_max_ms: 1_000,
+      client_opts: [
+        socket: ClientFakeSocket,
+        timer: ClientFakeTimer,
+        monotonic_clock: ClientFakeMonotonicClock,
+        wall_clock: ClientFakeWallClock,
+        connection_poll_interval: 10,
+        connect_timeout: 300,
+        join_timeout: 400,
+        push_timeout: 500,
+        heartbeat_interval: 1_000,
+        status_interval: 2_000
+      ]
     ]
   end
 
@@ -277,6 +537,9 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
       heartbeat: unique_name(:heartbeat),
       command_journal: unique_name(:journal),
       config_store: unique_name(:config_store),
+      config_apply_store: unique_name(:config_apply_store),
+      config_applier: unique_name(:config_applier),
+      client: unique_name(:client),
       supervisor: unique_name(:supervisor)
     }
   end

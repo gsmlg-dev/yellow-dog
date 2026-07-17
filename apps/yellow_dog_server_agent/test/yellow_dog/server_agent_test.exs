@@ -13,11 +13,26 @@ defmodule YellowDog.ServerAgentTest do
              agent: :yellow_dog_server,
              running: true,
              status: :idle,
-             management_core: :not_configured,
+             connection_state: :disabled,
              capabilities: capabilities
            } = YellowDog.ServerAgent.status_snapshot()
 
     assert :heartbeat in capabilities
     assert :status_snapshot in capabilities
+  end
+
+  test "exposes only safe Client inspection through the facade" do
+    assert YellowDog.ServerAgent.connected?(unique_name()) == false
+    assert YellowDog.ServerAgent.connection_state(unique_name()) == :unavailable
+
+    exported = YellowDog.ServerAgent.__info__(:functions)
+    refute {:connect, 0} in exported
+    refute {:disconnect, 0} in exported
+    refute {:apply_config, 1} in exported
+    refute {:dispatch, 1} in exported
+  end
+
+  defp unique_name do
+    :"missing-client-#{System.unique_integer([:positive])}"
   end
 end

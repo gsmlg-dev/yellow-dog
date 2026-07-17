@@ -3,23 +3,79 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
   use Supervisor
 
+  alias YellowDog.ServerAgent.Client
   alias YellowDog.ServerAgent.CommandJournal
+  alias YellowDog.ServerAgent.ConfigApplier
+  alias YellowDog.ServerAgent.ConfigApplyStore
   alias YellowDog.ServerAgent.ConfigStore
+  alias YellowDog.ServerAgent.Dispatcher
   alias YellowDog.ServerAgent.Heartbeat
+  alias YellowDog.Sync.Bounds
+  alias YellowDog.Sync.Digest
+  alias YellowDog.Sync.Identity.Server
+  alias YellowDog.Sync.Message
+  alias YellowDog.Sync.Message.Hello
 
   @durable_options [:data_dir, :server_id, :profile, :capabilities]
+  @outbound_options [
+    :management_url,
+    :management_token,
+    :server_name,
+    :server_version,
+    :config_revision,
+    :reconnect_initial_ms,
+    :reconnect_max_ms
+  ]
   @allowed_options @durable_options ++
+                     @outbound_options ++
                      [
                        :name,
                        :agent_id,
                        :command_journal_name,
                        :config_store_name,
+                       :config_apply_store_name,
+                       :config_applier_name,
+                       :client_name,
                        :supervisor_name,
                        :command_journal_opts,
-                       :config_store_opts
+                       :config_store_opts,
+                       :config_apply_store_opts,
+                       :config_applier_opts,
+                       :client_opts
                      ]
   @command_journal_options [:max_records, :clock, :directory_scanner, :storage_opts]
   @config_store_options [:max_bytes, :storage_opts]
+  @config_apply_store_options [:clock, :max_bytes, :storage_opts]
+  @config_applier_options [:runtime_adapter]
+  @client_options [
+    :dispatcher,
+    :dispatcher_runtime_adapter,
+    :socket,
+    :timer,
+    :monotonic_clock,
+    :wall_clock,
+    :connection_poll_interval,
+    :connect_timeout,
+    :join_timeout,
+    :push_timeout,
+    :heartbeat_interval,
+    :status_interval
+  ]
+  @default_client_options [
+    dispatcher: Dispatcher,
+    dispatcher_runtime_adapter: :"Elixir.YellowDog.Server.Control",
+    socket: Client.Socket,
+    timer: Client.Timer,
+    monotonic_clock: Client.MonotonicClock,
+    wall_clock: Client.WallClock,
+    connection_poll_interval: 100,
+    connect_timeout: 10_000,
+    join_timeout: 5_000,
+    push_timeout: 5_000,
+    heartbeat_interval: 30_000,
+    status_interval: 30_000
+  ]
+  @heartbeat_only_options [:name, :agent_id, :supervisor_name]
 
   def start_link(opts \\ []) do
     with true <- is_list(opts) and Keyword.keyword?(opts),
@@ -44,11 +100,30 @@ defmodule YellowDog.ServerAgent.Supervisor do
     with true <- Keyword.keyword?(opts),
          :ok <- validate_top_level(opts),
          {:ok, durable?} <- durable_mode(opts),
+         {:ok, outbound?} <- outbound_mode(opts),
          {:ok, journal_opts} <-
            child_options(Keyword.get(opts, :command_journal_opts, []), @command_journal_options),
          {:ok, store_opts} <-
-           child_options(Keyword.get(opts, :config_store_opts, []), @config_store_options) do
-      build_children(opts, durable?, journal_opts, store_opts)
+           child_options(Keyword.get(opts, :config_store_opts, []), @config_store_options),
+         {:ok, apply_store_opts} <-
+           child_options(
+             Keyword.get(opts, :config_apply_store_opts, []),
+             @config_apply_store_options
+           ),
+         {:ok, applier_opts} <-
+           child_options(Keyword.get(opts, :config_applier_opts, []), @config_applier_options),
+         {:ok, client_opts} <-
+           child_options(Keyword.get(opts, :client_opts, []), @client_options) do
+      build_children(
+        opts,
+        durable?,
+        outbound?,
+        journal_opts,
+        store_opts,
+        apply_store_opts,
+        applier_opts,
+        client_opts
+      )
     else
       _invalid -> {:error, :invalid_configuration}
     end
@@ -56,52 +131,171 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
   defp children(_opts), do: {:error, :invalid_configuration}
 
-  defp build_children(opts, false, _journal_opts, _store_opts) do
+  defp build_children(
+         opts,
+         false,
+         false,
+         _journal_opts,
+         _store_opts,
+         _apply_store_opts,
+         _applier_opts,
+         _client_opts
+       ) do
     heartbeat_opts = Keyword.take(opts, [:name, :agent_id])
     heartbeat_name = Keyword.get(heartbeat_opts, :name, Heartbeat)
 
-    if valid_name?(heartbeat_name) do
+    if heartbeat_only_options?(opts) and valid_name?(heartbeat_name) do
       {:ok, [child_spec(:heartbeat, Heartbeat, heartbeat_opts)]}
     else
       {:error, :invalid_configuration}
     end
   end
 
-  defp build_children(opts, true, journal_opts, store_opts) do
-    heartbeat_opts = Keyword.take(opts, [:name, :agent_id])
+  defp build_children(
+         opts,
+         true,
+         outbound?,
+         journal_opts,
+         store_opts,
+         apply_store_opts,
+         applier_opts,
+         client_opts
+       ) do
     journal_name = Keyword.get(opts, :command_journal_name, CommandJournal)
     store_name = Keyword.get(opts, :config_store_name, ConfigStore)
-    heartbeat_name = Keyword.get(heartbeat_opts, :name, Heartbeat)
+    apply_store_name = Keyword.get(opts, :config_apply_store_name, ConfigApplyStore)
+    applier_name = Keyword.get(opts, :config_applier_name, ConfigApplier)
+    client_name = Keyword.get(opts, :client_name, Client)
+    heartbeat_name = Keyword.get(opts, :name, Heartbeat)
+    server_id = Keyword.fetch!(opts, :server_id)
+    agent_id = Keyword.get(opts, :agent_id, server_id)
+
+    child_names =
+      [heartbeat_name, journal_name, store_name, apply_store_name, applier_name] ++
+        if(outbound?, do: [client_name], else: [])
 
     with true <- valid_name?(heartbeat_name),
          true <- valid_name?(journal_name),
          true <- valid_name?(store_name),
-         true <- distinct_names?([heartbeat_name, journal_name, store_name]) do
+         true <- valid_name?(apply_store_name),
+         true <- valid_name?(applier_name),
+         true <- not outbound? or valid_name?(client_name),
+         true <- distinct_names?(child_names),
+         true <- agent_id == server_id,
+         {:ok, outbound_config} <- outbound_configuration(opts, outbound?) do
       shared = Keyword.take(opts, @durable_options)
+      data_dir = Keyword.fetch!(shared, :data_dir)
+      profile = Keyword.fetch!(shared, :profile)
+      capabilities = Keyword.fetch!(shared, :capabilities)
+
+      heartbeat_opts = [
+        name: heartbeat_name,
+        agent_id: server_id,
+        connection_state: if(outbound?, do: :connecting, else: :disabled)
+      ]
 
       journal_opts =
         journal_opts
         |> Keyword.put(:name, journal_name)
-        |> Keyword.put(:data_dir, Keyword.fetch!(shared, :data_dir))
-        |> Keyword.put(:server_id, Keyword.fetch!(shared, :server_id))
-        |> Keyword.put(:capabilities, Keyword.fetch!(shared, :capabilities))
+        |> Keyword.put(:data_dir, data_dir)
+        |> Keyword.put(:server_id, server_id)
+        |> Keyword.put(:capabilities, capabilities)
 
       store_opts =
         store_opts
         |> Keyword.put(:name, store_name)
-        |> Keyword.put(:data_dir, Keyword.fetch!(shared, :data_dir))
-        |> Keyword.put(:server_id, Keyword.fetch!(shared, :server_id))
-        |> Keyword.put(:profile, Keyword.fetch!(shared, :profile))
+        |> Keyword.put(:data_dir, data_dir)
+        |> Keyword.put(:server_id, server_id)
+        |> Keyword.put(:profile, profile)
+
+      apply_store_opts =
+        apply_store_opts
+        |> Keyword.put(:name, apply_store_name)
+        |> Keyword.put(:data_dir, data_dir)
+        |> Keyword.put(:server_id, server_id)
+        |> Keyword.put(:profile, profile)
+        |> Keyword.put(:config_store, store_name)
+
+      applier_opts =
+        applier_opts
+        |> Keyword.put(:name, applier_name)
+        |> Keyword.put(:server_id, server_id)
+        |> Keyword.put(:profile, profile)
+        |> Keyword.put(:config_store, store_name)
+        |> Keyword.put(:config_apply_store, apply_store_name)
+
+      local_children = [
+        child_spec(:heartbeat, Heartbeat, heartbeat_opts),
+        child_spec(:command_journal, CommandJournal, journal_opts),
+        child_spec(:config_store, ConfigStore, store_opts),
+        child_spec(:config_apply_store, ConfigApplyStore, apply_store_opts),
+        child_spec(:config_applier, ConfigApplier, applier_opts)
+      ]
 
       {:ok,
-       [
-         child_spec(:heartbeat, Heartbeat, heartbeat_opts),
-         child_spec(:command_journal, CommandJournal, journal_opts),
-         child_spec(:config_store, ConfigStore, store_opts)
-       ]}
+       maybe_add_client(
+         local_children,
+         outbound_config,
+         client_opts,
+         client_name,
+         journal_name,
+         apply_store_name,
+         applier_name
+       )}
     else
       _invalid -> {:error, :invalid_configuration}
     end
+  end
+
+  defp build_children(
+         _opts,
+         _durable?,
+         _outbound?,
+         _journal_opts,
+         _store_opts,
+         _apply_store_opts,
+         _applier_opts,
+         _client_opts
+       ),
+       do: {:error, :invalid_configuration}
+
+  defp maybe_add_client(
+         children,
+         nil,
+         _client_opts,
+         _client_name,
+         _journal,
+         _apply_store,
+         _applier
+       ),
+       do: children
+
+  defp maybe_add_client(
+         children,
+         outbound,
+         client_opts,
+         client_name,
+         journal_name,
+         apply_store_name,
+         applier_name
+       ) do
+    client_opts =
+      @default_client_options
+      |> Keyword.merge(client_opts)
+      |> Keyword.merge(
+        enabled: true,
+        name: client_name,
+        management_url: outbound.management_url,
+        token: outbound.token,
+        identity: outbound.identity,
+        command_journal: journal_name,
+        config_applier: applier_name,
+        config_apply_store: apply_store_name,
+        initial_backoff: outbound.initial_backoff,
+        max_backoff: outbound.max_backoff
+      )
+
+    children ++ [child_spec(:client, Client, client_opts)]
   end
 
   defp validate_top_level(opts) do
@@ -115,6 +309,10 @@ defmodule YellowDog.ServerAgent.Supervisor do
     end
   end
 
+  defp heartbeat_only_options?(opts) do
+    Enum.all?(Keyword.keys(opts), &(&1 in @heartbeat_only_options))
+  end
+
   defp durable_mode(opts) do
     present = Enum.count(@durable_options, &Keyword.has_key?(opts, &1))
 
@@ -122,6 +320,111 @@ defmodule YellowDog.ServerAgent.Supervisor do
       0 -> {:ok, false}
       4 -> {:ok, true}
       _partial -> {:error, :invalid_configuration}
+    end
+  end
+
+  defp outbound_mode(opts) do
+    present = Enum.count(@outbound_options, &Keyword.has_key?(opts, &1))
+    client_opts = Keyword.get(opts, :client_opts, [])
+
+    cond do
+      present == 0 and client_opts == [] -> {:ok, false}
+      present == length(@outbound_options) -> {:ok, true}
+      true -> {:error, :invalid_configuration}
+    end
+  end
+
+  defp outbound_configuration(_opts, false), do: {:ok, nil}
+
+  defp outbound_configuration(opts, true) do
+    with {:ok, identity} <- server_identity(opts),
+         {:ok, management_url} <- nonempty_message(Keyword.fetch!(opts, :management_url)),
+         {:ok, token} <- nonempty_message(Keyword.fetch!(opts, :management_token)),
+         initial when is_integer(initial) and initial > 0 <-
+           Keyword.fetch!(opts, :reconnect_initial_ms),
+         maximum when is_integer(maximum) and maximum >= initial <-
+           Keyword.fetch!(opts, :reconnect_max_ms) do
+      {:ok,
+       %{
+         management_url: management_url,
+         token: token,
+         identity: identity,
+         initial_backoff: initial,
+         max_backoff: maximum
+       }}
+    else
+      _invalid -> {:error, :invalid_configuration}
+    end
+  end
+
+  defp server_identity(opts) do
+    with {:ok, server_id} <- server_id(Keyword.fetch!(opts, :server_id)),
+         {:ok, name} <- nonempty_message(Keyword.fetch!(opts, :server_name)),
+         {:ok, version} <- nonempty_message(Keyword.fetch!(opts, :server_version)),
+         {:ok, profile} <- profile(Keyword.fetch!(opts, :profile)),
+         {:ok, capabilities} <- capabilities(Keyword.fetch!(opts, :capabilities)),
+         {:ok, revision} <- Digest.validate(Keyword.fetch!(opts, :config_revision)),
+         identity = %Server{
+           id: server_id,
+           name: name,
+           version: version,
+           profile: profile,
+           capabilities: capabilities,
+           config_revision: revision
+         },
+         message = %Hello{identity: identity},
+         {:ok, encoded} <- Message.encode(message),
+         {:ok, ^message} <- Message.decode(encoded) do
+      {:ok, identity}
+    else
+      _invalid -> {:error, :invalid_configuration}
+    end
+  end
+
+  defp server_id(value) do
+    with {:ok, value} <- nonempty_id(value),
+         true <- value not in [".", ".."],
+         false <- String.contains?(value, ["/", "\\"]),
+         false <- Regex.match?(~r/\A[A-Za-z]:/, value),
+         normalized when is_binary(normalized) <- :unicode.characters_to_nfkc_binary(value),
+         true <- normalized == value,
+         false <- Regex.match?(~r/\p{C}/u, value) do
+      {:ok, value}
+    else
+      _invalid -> :error
+    end
+  rescue
+    _exception -> :error
+  end
+
+  defp profile(value) when is_atom(value), do: profile(Atom.to_string(value))
+  defp profile(value), do: nonempty_message(value)
+
+  defp capabilities(values) do
+    with {:ok, values} <- Bounds.list(values),
+         true <- Enum.all?(values, &match?({:ok, _value}, nonempty_message(&1))),
+         true <- length(values) == length(Enum.uniq(values)) do
+      {:ok, values}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp nonempty_id(value) do
+    with {:ok, value} <- Bounds.id(value),
+         true <- value != "" do
+      {:ok, value}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp nonempty_message(value) do
+    with {:ok, value} <- Bounds.message(value),
+         true <- value != "" do
+      {:ok, value}
+    else
+      _invalid -> :error
     end
   end
 

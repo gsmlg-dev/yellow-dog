@@ -3,6 +3,7 @@ defmodule YellowDog.ServerAgent do
   Public facade for the local `yellow_dog_server` management agent skeleton.
   """
 
+  alias YellowDog.ServerAgent.Client
   alias YellowDog.ServerAgent.Status
   alias YellowDog.ServerAgent.Supervisor
 
@@ -17,6 +18,12 @@ defmodule YellowDog.ServerAgent do
     }
   end
 
-  @doc "Returns a local status snapshot without contacting management core."
-  def status_snapshot, do: Status.snapshot()
+  @doc "Returns a safe local status snapshot without contacting management core."
+  def status_snapshot(opts \\ []), do: Status.snapshot(opts)
+
+  @doc "Reports whether the configured outbound Client is active."
+  def connected?(client \\ Client), do: Client.connected?(client)
+
+  @doc "Returns the bounded local outbound connection state."
+  def connection_state(client \\ Client), do: Client.connection_state(client)
 end
