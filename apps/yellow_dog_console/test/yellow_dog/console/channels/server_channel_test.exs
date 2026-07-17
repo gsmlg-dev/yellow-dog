@@ -1,6 +1,7 @@
 defmodule YellowDog.Console.ServerChannelTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Phoenix.ChannelTest
 
   alias YellowDog.Console.ServerChannel
@@ -11,6 +12,7 @@ defmodule YellowDog.Console.ServerChannelTest do
   alias YellowDog.Sync.Message
 
   alias Message.{
+    ConfigDelivery,
     ConfigState,
     Event,
     Heartbeat,
@@ -187,6 +189,90 @@ defmodule YellowDog.Console.ServerChannelTest do
     assert {:ok, %{status: :online}} = ManagementCore.get_server(server_id)
   end
 
+  test "queued Journal from a replaced channel cannot reconcile or deliver pending config" do
+    trap_channel_exits()
+    server_id = unique_id("stale-journal")
+    register_server(server_id)
+    assert {:ok, _first} = publish_config(server_id, "192.0.2.51")
+    assert {:ok, latest} = publish_config(server_id, "192.0.2.52")
+    old = join(server_id)
+    activate(old, server_id)
+    suspend_channel(old)
+
+    old_ref = push(old, "sync", payload(journal(server_id)))
+    replacement = join(server_id)
+    activate(replacement, server_id)
+    :ok = :sys.resume(old.channel_pid)
+
+    assert_reply old_ref, :error, %{"error" => %{"code" => "not_connected"}}
+    assert {:ok, %{status: :registered}} = ManagementCore.get_server(server_id)
+    assert {:ok, unchanged} = ManagementCore.get_server_config_version(server_id, latest.version)
+    assert unchanged.state == :desired
+    refute_push "sync", _, 50
+  end
+
+  test "queued ConfigState from a replaced channel cannot create a durable receipt" do
+    trap_channel_exits()
+    server_id = unique_id("stale-config-state")
+    register_server(server_id)
+    assert {:ok, desired} = publish_config(server_id)
+    old = join(server_id)
+    activate(old, server_id)
+    suspend_channel(old)
+
+    old_ref = push(old, "sync", payload(config_state(desired), 1))
+    replacement = join(server_id)
+    activate(replacement, server_id)
+    :ok = :sys.resume(old.channel_pid)
+
+    assert_reply old_ref, :error, %{"error" => %{"code" => "not_connected"}}
+    assert {:ok, unchanged} = ManagementCore.get_server_config_version(server_id, desired.version)
+    assert unchanged.state == :desired
+  end
+
+  test "Journal reconnect delivers exactly the latest offline config version" do
+    server_id = unique_id("latest-config")
+    register_server(server_id)
+    assert {:ok, first} = publish_config(server_id, "192.0.2.61")
+    assert {:ok, latest} = publish_config(server_id, "192.0.2.62")
+    socket = join(server_id)
+    activate(socket, server_id)
+
+    ref = push(socket, "sync", payload(journal(server_id)))
+    assert_reply ref, :ok, %{"accepted" => true}
+
+    assert_push "sync", %{"message" => encoded, "publication_sequence" => nil}
+    assert {:ok, %ConfigDelivery{envelope: envelope}} = Message.decode(encoded)
+    assert envelope.target_type == :server
+    assert envelope.target_id == server_id
+    assert envelope.operation == latest.operation
+    assert envelope.payload == latest.payload
+    assert envelope.payload_digest == latest.digest
+    assert envelope.expected_revision == latest.expected_revision
+    assert envelope.config_version == latest.version
+    refute envelope.config_version == first.version
+    refute_push "sync", _, 50
+
+    assert {:ok, unchanged} = ManagementCore.get_server_config_version(server_id, latest.version)
+    assert unchanged.state == :desired
+  end
+
+  test "incoming canonical payload content is not logged" do
+    server_id = unique_id("payload-log")
+    marker = "canonical-payload-marker-#{System.unique_integer([:positive])}"
+    socket = join_registered(server_id)
+
+    assert ServerChannel.__socket__(:private).log_handle_in == false
+
+    log =
+      capture_log([level: :debug], fn ->
+        ref = push(socket, "sync", payload(hello(server_id, marker)))
+        assert_reply ref, :ok, %{"accepted" => true}
+      end)
+
+    refute log =~ marker
+  end
+
   test "ConfigState returns the durable direct receipt and exact replay reply" do
     server_id = unique_id("receipt")
     register_server(server_id)
@@ -357,7 +443,7 @@ defmodule YellowDog.Console.ServerChannelTest do
     }
   end
 
-  defp publish_config(server_id) do
+  defp publish_config(server_id, listen_address \\ "192.0.2.53") do
     ManagementCore.publish_server_config(server_id, %{
       operation: "server.settings.update",
       payload: %{
@@ -365,7 +451,7 @@ defmodule YellowDog.Console.ServerChannelTest do
         "entries" => [
           %{
             "key" => "listen",
-            "value" => %{"type" => "string", "value" => "192.0.2.53"}
+            "value" => %{"type" => "string", "value" => listen_address}
           }
         ]
       },
@@ -427,6 +513,16 @@ defmodule YellowDog.Console.ServerChannelTest do
   defp trap_channel_exits do
     previous = Process.flag(:trap_exit, true)
     on_exit(fn -> Process.flag(:trap_exit, previous) end)
+  end
+
+  defp suspend_channel(socket) do
+    :ok = :sys.suspend(socket.channel_pid)
+
+    on_exit(fn ->
+      if Process.alive?(socket.channel_pid) do
+        :sys.resume(socket.channel_pid)
+      end
+    end)
   end
 
   defp eventually(assertion, attempts \\ 20)

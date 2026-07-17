@@ -5,6 +5,7 @@ defmodule YellowDog.Console.ServerConnections do
 
   use GenServer
 
+  alias YellowDog.Console.ServerChannel.SyncCodec
   alias YellowDog.ManagementCore
 
   @pubsub YellowDog.Console.PubSub
@@ -120,6 +121,30 @@ defmodule YellowDog.Console.ServerConnections do
       {:error, :internal}
     )
   end
+
+  @doc false
+  def reconcile_journal(server_id, channel_pid, encoded) when is_binary(encoded) do
+    safe_call(
+      __MODULE__,
+      {:reconcile_journal, server_id, channel_pid, encoded},
+      {:error, :not_connected}
+    )
+  end
+
+  def reconcile_journal(_server_id, _channel_pid, _encoded), do: {:error, :invalid}
+
+  @doc false
+  def accept_config_state(server_id, channel_pid, publication_sequence, encoded)
+      when is_integer(publication_sequence) and publication_sequence > 0 and is_binary(encoded) do
+    safe_call(
+      __MODULE__,
+      {:accept_config_state, server_id, channel_pid, publication_sequence, encoded},
+      {:error, :not_connected}
+    )
+  end
+
+  def accept_config_state(_server_id, _channel_pid, _publication_sequence, _encoded),
+    do: {:error, :invalid}
 
   @doc false
   def reset, do: reset(__MODULE__)
@@ -348,6 +373,47 @@ defmodule YellowDog.Console.ServerConnections do
     end
   end
 
+  def handle_call({:reconcile_journal, server_id, channel_pid, encoded}, _from, state) do
+    with {:ok, connection} <- active_connection(state, server_id, channel_pid),
+         {:ok, result} <- SyncCodec.reconcile_journal(encoded, server_id),
+         :ok <- deliver_pending_config(result, connection),
+         {:ok, updated} <- touch_connection(connection) do
+      state = put_in(state, [:connections, server_id], updated)
+      broadcast(server_id, {:server_connection, :updated, public_connection(updated)})
+      {:reply, :ok, state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call(
+        {:accept_config_state, server_id, channel_pid, publication_sequence, encoded},
+        _from,
+        state
+      ) do
+    with {:ok, _connection} <- active_connection(state, server_id, channel_pid) do
+      reply =
+        case ManagementCore.accept_config_state_publication(
+               :server,
+               server_id,
+               publication_sequence,
+               encoded
+             ) do
+          {:ok, receipt} when is_map(receipt) -> {:ok, receipt}
+          {:error, reason} -> {:error, management_error_code(reason)}
+          _invalid -> {:error, :internal}
+        end
+
+      {:reply, reply, state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  rescue
+    _exception -> {:reply, {:error, :internal}, state}
+  catch
+    :exit, _reason -> {:reply, {:error, :internal}, state}
+  end
+
   def handle_call(:reset, _from, state) do
     Enum.each(state.candidates, fn {_key, candidate} ->
       cancel_timer(candidate.timer_ref)
@@ -552,6 +618,40 @@ defmodule YellowDog.Console.ServerConnections do
     end
   end
 
+  defp active_connection(state, server_id, channel_pid) do
+    case Map.get(state.connections, server_id) do
+      %{connected?: true, channel_pid: ^channel_pid} = connection ->
+        if Process.alive?(channel_pid),
+          do: {:ok, connection},
+          else: {:error, :not_connected}
+
+      _connection ->
+        {:error, :not_connected}
+    end
+  end
+
+  defp deliver_pending_config(%{pending_config: nil}, _connection), do: :ok
+
+  defp deliver_pending_config(%{pending_config: version}, connection) do
+    with {:ok, encoded, summary} <- SyncCodec.encode_config_version_delivery(version),
+         true <- summary.target_type == :server,
+         true <- summary.target_id == connection.server_id,
+         true <- Process.alive?(connection.channel_pid) do
+      send(connection.channel_pid, {:server_management_push, encoded})
+      :ok
+    else
+      false -> {:error, :not_connected}
+      {:error, _reason} -> {:error, :internal}
+      _invalid -> {:error, :internal}
+    end
+  end
+
+  defp deliver_pending_config(_result, _connection), do: {:error, :internal}
+
+  defp touch_connection(%{connected?: true} = connection) do
+    {:ok, %{connection | last_seen_at: DateTime.utc_now(:second)}}
+  end
+
   defp pending_capacity(connection, config) do
     if map_size(connection.pending_requests) < config.max_pending_requests_per_server,
       do: :ok,
@@ -625,6 +725,29 @@ defmodule YellowDog.Console.ServerConnections do
   catch
     :exit, _reason -> :ok
   end
+
+  defp management_error_code(reason) when is_map(reason) do
+    case Map.get(reason, :code) do
+      code
+      when code in [
+             :not_connected,
+             :not_found,
+             :invalid,
+             :conflict,
+             :unsupported,
+             :timeout,
+             :apply_failed,
+             :rollback_failed,
+             :internal
+           ] ->
+        code
+
+      _unknown ->
+        :internal
+    end
+  end
+
+  defp management_error_code(_reason), do: :internal
 
   defp valid_candidate?(server_id, channel_pid) do
     valid_id?(server_id) and is_pid(channel_pid) and Process.alive?(channel_pid)

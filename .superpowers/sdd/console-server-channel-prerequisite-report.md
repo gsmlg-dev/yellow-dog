@@ -156,3 +156,65 @@ protocol source was changed.
 The protected dirty Console files, root `mix.exs`, concurrent ServerAgent work,
 Netman, protocol schemas/parsers, releases, storage, and unrelated UI were not
 modified or staged by this fix.
+
+## 2026-07-18 Independent Transport Review Fix
+
+### Serialized Runtime Publications
+
+- Journal reconciliation and ConfigState receipt acceptance now enter
+  `ServerConnections` as PID-conditional calls. The GenServer verifies the
+  current active channel and performs the ManagementCore mutation in the same
+  serialized operation as activation/replacement.
+- A replaced channel receives the stable `not_connected` response and cannot
+  reconcile Journal state or create a durable ConfigState receipt.
+- Deterministic tests suspend an old channel with its inbound publication
+  queued, activate a replacement, and then resume the old channel. Both Journal
+  and ConfigState tests prove that the old PID cannot mutate durable state.
+
+### Latest Config Handoff And Logging
+
+- The exact `pending_config` returned by
+  `ManagementCore.runtime_connected/3` is converted through the dynamic Sync
+  boundary into a canonical, validated config Envelope and ConfigDelivery.
+- The encoded delivery is sent directly to the same PID validated by the
+  serialized Journal operation. This avoids a re-entrant
+  `ManagementTransport.deliver_config/1` call while preserving the equivalent
+  PID-conditional handoff.
+- Publishing two versions while offline and reconnecting with Journal emits
+  exactly one ConfigDelivery for the second version. Handoff does not advance
+  the durable config lifecycle.
+- `ServerChannel` uses Phoenix's supported `log_handle_in: false` option.
+  Capture-log coverage sends a unique marker inside a canonical Hello payload
+  and proves the marker is absent.
+
+### Verification
+
+- TDD RED: the added stale ConfigState test received a durable receipt, the
+  stale Journal test changed status to online, and the reconnect test received
+  no ConfigDelivery. The effective Phoenix option was independently observed
+  as `log_handle_in: :debug` before the production edit.
+- Focused Server socket/channel/connection/transport suite: 43 tests,
+  0 failures.
+- Deterministic stale Journal race: 21 consecutive runs, 0 failures.
+- Deterministic stale ConfigState race: 21 consecutive runs, 0 failures.
+- ManagementCore commands plus config-version suites: 77 tests, 0 failures.
+- Full Console suite: 7 doctests and 1,736 tests, 2 unrelated failures,
+  4 skipped. `MdnsClientTest` measured 512 ms against a 500 ms bound and passed
+  on rerun. `NetbootServiceManagerTest` observed the forced isolated
+  `YELLOW_DOG_DATA_DIR` instead of its per-test root and passed when rerun
+  without that override. The prior persisted-state `BootControllerTest`
+  failure did not repeat.
+- `mix compile --warnings-as-errors --force`: passed for the umbrella. The
+  existing missing development DHCP NIF shared-object warning was emitted.
+- Scoped `mix format --check-formatted`: passed.
+- Strict Credo: 195 Console source files checked, no issues.
+- Compile xref for `ServerChannel`, `ServerConnections`, and
+  `ManagementTransport`: no Sync compile edge.
+- `MIX_ENV=prod mix release yellow_dog_management_core --overwrite`: passed.
+  A live daemon boot reported `ManagementTransport` configured and both
+  `ServerConnections` and Endpoint running; the release was then stopped.
+
+Only `ServerChannel`, `ServerConnections`, their focused channel test, and this
+report were changed by this review fix. Concurrent edits in protected Console
+files, the ServerAgent, Task 9B report, root release configuration, and the
+earlier historical clarification in this report were preserved.

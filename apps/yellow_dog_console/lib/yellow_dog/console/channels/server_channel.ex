@@ -3,11 +3,10 @@ defmodule YellowDog.Console.ServerChannel do
   Canonical Sync message channel for one authenticated Server connection.
   """
 
-  use YellowDog.Console, :channel
+  use Phoenix.Channel, log_handle_in: false
 
   alias __MODULE__.SyncCodec
   alias YellowDog.Console.ServerConnections
-  alias YellowDog.ManagementCore
 
   @sync_event "sync"
   @payload_keys ["message", "publication_sequence"]
@@ -138,12 +137,13 @@ defmodule YellowDog.Console.ServerChannel do
   end
 
   defp dispatch(:active, %{tag: :journal}, encoded, nil, socket) do
-    case SyncCodec.reconcile_journal(encoded, socket.assigns.server_id) do
+    case ServerConnections.reconcile_journal(
+           socket.assigns.server_id,
+           self(),
+           encoded
+         ) do
       :ok ->
-        case ServerConnections.touch(socket.assigns.server_id, self()) do
-          :ok -> accepted(socket)
-          {:error, _reason} -> error(:not_connected, socket)
-        end
+        accepted(socket)
 
       {:error, code} ->
         error(code, socket)
@@ -157,17 +157,17 @@ defmodule YellowDog.Console.ServerChannel do
          publication_sequence,
          socket
        ) do
-    case ManagementCore.accept_config_state_publication(
-           :server,
+    case ServerConnections.accept_config_state(
            socket.assigns.server_id,
+           self(),
            publication_sequence,
            encoded
          ) do
       {:ok, receipt} when is_map(receipt) ->
         {:reply, {:ok, receipt}, socket}
 
-      {:error, reason} ->
-        error(management_error_code(reason), socket)
+      {:error, code} ->
+        error(code, socket)
 
       _invalid ->
         error(:internal, socket)
@@ -243,29 +243,6 @@ defmodule YellowDog.Console.ServerChannel do
   defp wire_error(_invalid),
     do: %{"code" => "invalid", "message" => "invalid message", "details" => %{}}
 
-  defp management_error_code(reason) when is_map(reason) do
-    case Map.get(reason, :code) do
-      code
-      when code in [
-             :not_connected,
-             :not_found,
-             :invalid,
-             :conflict,
-             :unsupported,
-             :timeout,
-             :apply_failed,
-             :rollback_failed,
-             :internal
-           ] ->
-        code
-
-      _unknown ->
-        :internal
-    end
-  end
-
-  defp management_error_code(_reason), do: :internal
-
   defmodule SyncCodec do
     @moduledoc false
 
@@ -321,16 +298,17 @@ defmodule YellowDog.Console.ServerChannel do
     end
 
     @spec reconcile_journal(binary(), String.t()) ::
-            :ok | {:error, atom()}
+            {:ok, map()} | {:error, atom()}
     def reconcile_journal(encoded, server_id) do
       with true <- Code.ensure_loaded?(@message_module),
            {:ok, decoded} <- canonical_decode(encoded),
            true <- Map.get(decoded, :__struct__) == @journal_module,
            :server <- Map.get(decoded, :target_type),
            ^server_id <- Map.get(decoded, :target_id),
-           {:ok, _result} <-
-             YellowDog.ManagementCore.runtime_connected(:server, server_id, decoded) do
-        :ok
+           {:ok, result} <-
+             YellowDog.ManagementCore.runtime_connected(:server, server_id, decoded),
+           true <- is_map(result) do
+        {:ok, result}
       else
         {:error, reason} -> {:error, management_error_code(reason)}
         _invalid -> {:error, :invalid}
@@ -339,6 +317,24 @@ defmodule YellowDog.Console.ServerChannel do
       _exception -> {:error, :internal}
     catch
       :exit, _reason -> {:error, :internal}
+    end
+
+    @spec encode_config_version_delivery(map()) ::
+            {:ok, binary(), map()} | {:error, :invalid}
+    def encode_config_version_delivery(version) do
+      config_version_module = :"Elixir.YellowDog.Management.ConfigVersion"
+
+      with true <- Code.ensure_loaded?(@envelope_module),
+           true <- Code.ensure_loaded?(config_version_module),
+           true <- is_map(version),
+           ^config_version_module <- Map.get(version, :__struct__),
+           :server <- Map.get(version, :target_type),
+           wire = config_version_envelope_wire(version),
+           {:ok, envelope} <- dynamic_apply(@envelope_module, :from_wire, [wire]) do
+        encode_config_delivery(envelope)
+      else
+        _invalid -> {:error, :invalid}
+      end
     end
 
     defp canonical_decode(encoded) do
@@ -495,6 +491,22 @@ defmodule YellowDog.Console.ServerChannel do
     defp wrapper_module(:config), do: {:ok, @config_delivery_module}
     defp wrapper_module(_kind), do: {:error, :invalid}
 
+    defp config_version_envelope_wire(version) do
+      %{
+        "protocol_version" => 1,
+        "request_id" => uuid(),
+        "target_type" => "server",
+        "target_id" => Map.get(version, :target_id),
+        "operation" => Map.get(version, :operation),
+        "idempotency_key" => uuid(),
+        "payload" => Map.get(version, :payload),
+        "payload_digest" => Map.get(version, :digest),
+        "expected_revision" => Map.get(version, :expected_revision),
+        "config_version" => Map.get(version, :version),
+        "sent_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+    end
+
     defp envelope_correlation(envelope) do
       request_id = Map.get(envelope, :request_id)
       target_type = Map.get(envelope, :target_type)
@@ -525,6 +537,26 @@ defmodule YellowDog.Console.ServerChannel do
     end
 
     defp result_outcome(_value, _error), do: {:error, :invalid}
+
+    defp uuid do
+      <<prefix::binary-size(6), version, middle, variant, suffix::binary-size(7)>> =
+        :crypto.strong_rand_bytes(16)
+
+      bytes =
+        <<prefix::binary, Bitwise.band(version, 0x0F) + 0x40, middle,
+          Bitwise.band(variant, 0x3F) + 0x80, suffix::binary>>
+
+      Base.encode16(bytes, case: :lower)
+      |> then(fn value ->
+        binary_part(value, 0, 8) <>
+          "-" <>
+          binary_part(value, 8, 4) <>
+          "-" <>
+          binary_part(value, 12, 4) <>
+          "-" <>
+          binary_part(value, 16, 4) <> "-" <> binary_part(value, 20, 12)
+      end)
+    end
 
     defp dynamic_apply(module, function, arguments) do
       apply(module, function, arguments)
