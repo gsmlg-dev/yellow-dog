@@ -121,6 +121,31 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
       assert "192.168.1.100" in service.addresses
       assert "fe80::1" in service.addresses
     end
+
+    test "loads legacy TOML with representable non-string TXT values", %{tmp_dir: tmp_dir} do
+      toml_content = """
+      [[service]]
+      name = "Legacy"
+      type = "_legacy._tcp"
+      port = 9090
+
+        [service.txt]
+        attempts = 3
+        advertised = true
+        weights = [1, 2]
+      """
+
+      file_path = Path.join(tmp_dir, "legacy.toml")
+      File.write!(file_path, toml_content)
+
+      assert {:ok, [service]} = ServiceStore.load_services(file_path)
+
+      assert service.txt == %{
+               "advertised" => true,
+               "attempts" => 3,
+               "weights" => [1, 2]
+             }
+    end
   end
 
   describe "save_services/3" do
@@ -196,6 +221,21 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
       # Temp file should be cleaned up
       refute File.exists?(tmp_path)
       assert File.exists?(file_path)
+    end
+
+    test "preserves legacy representable non-string TXT values", %{tmp_dir: tmp_dir} do
+      file_path = Path.join(tmp_dir, "legacy.toml")
+
+      service = %{
+        name: "Legacy",
+        type: "_legacy._tcp",
+        port: 9090,
+        txt: %{"advertised" => true, "attempts" => 3, "weights" => [1, 2]}
+      }
+
+      assert :ok = ServiceStore.save_services(file_path, [service])
+      assert {:ok, [loaded]} = ServiceStore.load_services(file_path)
+      assert loaded.txt == service.txt
     end
   end
 
@@ -288,6 +328,49 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
       }
 
       assert :ok = ServiceStore.validate_service(service)
+    end
+  end
+
+  describe "control persistence" do
+    test "keeps the control TXT contract string-only" do
+      service = %{
+        name: "Control",
+        type: "_control._tcp",
+        port: 8080,
+        txt: %{"key" => "value"}
+      }
+
+      assert :ok = ServiceStore.validate_control_service(service)
+
+      assert {:error, reason} =
+               ServiceStore.validate_control_service(%{service | txt: %{"attempts" => 3}})
+
+      assert reason =~ "string keys and values"
+    end
+
+    test "round-trips exact control TXT keys and values through TOML", %{tmp_dir: tmp_dir} do
+      file_path = Path.join(tmp_dir, "control.toml")
+
+      txt = %{
+        "a.b" => "dotted",
+        "quote\"key" => "quote\"value",
+        "slash\\key" => "slash\\value",
+        "newline\nkey" => "line one\nline two",
+        "tab\tkey" => "left\tright",
+        "return\rkey" => "left\rright"
+      }
+
+      service = %{
+        name: "Control",
+        type: "_control._tcp",
+        port: 8080,
+        txt: txt,
+        enabled: true
+      }
+
+      assert :ok = ServiceStore.save_control_services(file_path, [service])
+      assert {:ok, [loaded]} = ServiceStore.load_services(file_path)
+      assert loaded.txt == txt
     end
   end
 

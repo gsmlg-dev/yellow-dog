@@ -421,7 +421,47 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
                ServiceRegistry.control_register_service("printer._ipp._tcp.local", service)
     end
 
-    test "updates fixed fields while preserving hidden runtime fields" do
+    test "rejects non-string TXT at the control boundary" do
+      service = %{name: "Control", type: "_http._tcp", port: 8080, txt: %{"attempts" => 3}}
+
+      assert {:error, :invalid_service} =
+               ServiceRegistry.control_register_service("Control._http._tcp.local", service)
+
+      assert {:ok, []} = ServiceRegistry.control_snapshot()
+    end
+
+    @tag :tmp_dir
+    test "rejects duplicate canonical registration without replacing registry or file", %{
+      tmp_dir: tmp_dir
+    } do
+      storage_file = Path.join(tmp_dir, "services.toml")
+      restart_control_registry(storage_file, [])
+
+      service_id = "Catalog._http._tcp.local"
+
+      assert {:ok, [], [original]} =
+               ServiceRegistry.control_register_service(service_id, %{
+                 name: "Catalog",
+                 type: "_http._tcp",
+                 port: 8080,
+                 txt: %{"version" => "1"}
+               })
+
+      assert {:error, :already_exists} =
+               ServiceRegistry.control_register_service(service_id, %{
+                 name: "Catalog",
+                 type: "_http._tcp",
+                 port: 9090,
+                 txt: %{"version" => "2"}
+               })
+
+      assert {:ok, [^original]} = ServiceRegistry.control_snapshot()
+      assert {:ok, [persisted]} = ServiceStore.load_services(storage_file)
+      assert persisted.port == 8080
+      assert persisted.txt == %{"version" => "1"}
+    end
+
+    test "updates mutable fields while preserving identity and hidden runtime fields" do
       original_def = %{
         name: "Catalog",
         type: "_http._tcp",
@@ -449,6 +489,9 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
       assert updated.port == 9090
       assert updated.txt_records == %{"version" => "2"}
 
+      assert Map.take(updated, [:id, :name, :type, :domain, :fqdn]) ==
+               Map.take(original, [:id, :name, :type, :domain, :fqdn])
+
       assert Map.take(updated, [
                :host,
                :addresses,
@@ -469,18 +512,63 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
                ])
     end
 
-    test "returns prior and resulting snapshots for toggle and delete" do
+    test "rejects a service name change as immutable identity" do
+      service = %{name: "Catalog", type: "_http._tcp", port: 8080}
+      assert {:ok, service_id} = ServiceRegistry.register_service(service)
+      original = ServiceRegistry.get_service(service_id)
+
+      assert {:error, :immutable_identity} =
+               ServiceRegistry.control_update_service(service_id, %{
+                 name: "Renamed Catalog",
+                 type: "_http._tcp",
+                 port: 9090,
+                 txt: %{}
+               })
+
+      assert ServiceRegistry.get_service(service_id) == original
+    end
+
+    test "rejects a service type change as immutable identity" do
+      service = %{name: "Catalog", type: "_http._tcp", port: 8080}
+      assert {:ok, service_id} = ServiceRegistry.register_service(service)
+      original = ServiceRegistry.get_service(service_id)
+
+      assert {:error, :immutable_identity} =
+               ServiceRegistry.control_update_service(service_id, %{
+                 name: "Catalog",
+                 type: "_https._tcp",
+                 port: 9090,
+                 txt: %{}
+               })
+
+      assert ServiceRegistry.get_service(service_id) == original
+    end
+
+    test "sets requested enabled state idempotently and returns prior and resulting snapshots" do
       service = %{name: "Status", type: "_http._tcp", port: 8080}
       service_id = "Status._http._tcp.local"
 
       assert {:ok, [], [registered]} =
                ServiceRegistry.control_register_service(service_id, service)
 
-      assert {:ok, [^registered], [toggled]} = ServiceRegistry.control_toggle_service(service_id)
-      refute toggled.enabled
+      assert {:ok, [^registered], [disabled]} =
+               ServiceRegistry.control_toggle_service(service_id, false)
+
+      refute disabled.enabled
       assert registered.enabled
 
-      assert {:ok, [^toggled], []} = ServiceRegistry.control_delete_service(service_id)
+      assert {:ok, [^disabled], [still_disabled]} =
+               ServiceRegistry.control_toggle_service(service_id, false)
+
+      refute still_disabled.enabled
+
+      assert {:ok, [^still_disabled], [enabled]} =
+               ServiceRegistry.control_toggle_service(service_id, true)
+
+      assert enabled.enabled
+      refute function_exported?(ServiceRegistry, :control_toggle_service, 1)
+
+      assert {:ok, [^enabled], []} = ServiceRegistry.control_delete_service(service_id)
     end
 
     @tag :tmp_dir
@@ -539,8 +627,16 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
         control_apply_hook: fn _candidate ->
           result = Agent.get_and_update(sequence, fn [result | rest] -> {result, rest} end)
 
-          if result == :ok do
-            send(parent, {:rollback_registry_apply, ServiceStore.load_services(storage_file)})
+          case result do
+            :error ->
+              send(
+                parent,
+                {:candidate_visible_before_failure,
+                 ServiceRegistry.get_service("New._http._tcp.local")}
+              )
+
+            :ok ->
+              send(parent, {:rollback_registry_apply, ServiceStore.load_services(storage_file)})
           end
 
           result
@@ -558,6 +654,7 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
                  port: 8081
                })
 
+      assert_receive {:candidate_visible_before_failure, %{id: "New._http._tcp.local"}}, 1_000
       assert {:ok, [restored]} = ServiceRegistry.control_snapshot()
       assert restored.id == old_id
       assert_receive {:rollback_registry_apply, {:ok, [persisted_before_apply]}}, 1_000
@@ -570,13 +667,16 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
     test "reports rollback failure distinctly when durable restoration fails", %{tmp_dir: tmp_dir} do
       storage_file = Path.join(tmp_dir, "services.toml")
       {:ok, saves} = Agent.start_link(fn -> [:ok, {:error, :disk_full}] end)
+      {:ok, applies} = Agent.start_link(fn -> [:error, :ok] end)
 
       restart_control_registry(
         storage_file,
-        control_apply_hook: fn _candidate -> :error end,
+        control_apply_hook: fn _candidate ->
+          Agent.get_and_update(applies, fn [result | rest] -> {result, rest} end)
+        end,
         control_save_hook: fn path, services ->
           case Agent.get_and_update(saves, fn [result | rest] -> {result, rest} end) do
-            :ok -> ServiceStore.save_services(path, services)
+            :ok -> ServiceStore.save_control_services(path, services)
             result -> result
           end
         end
@@ -588,6 +688,87 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
                  type: "_http._tcp",
                  port: 8080
                })
+
+      assert {:ok, [runtime]} = ServiceRegistry.control_snapshot()
+      assert runtime.id == "Rollback._http._tcp.local"
+      assert {:ok, [durable]} = ServiceStore.load_services(storage_file)
+      assert durable.name == "Rollback"
+    end
+
+    @tag :tmp_dir
+    test "notifies only after successful registry replacement", %{tmp_dir: tmp_dir} do
+      storage_file = Path.join(tmp_dir, "services.toml")
+      parent = self()
+      {:ok, order} = Agent.start_link(fn -> [] end)
+
+      restart_control_registry(
+        storage_file,
+        control_apply_hook: fn _candidate ->
+          Agent.update(order, &(&1 ++ [:applied]))
+          :ok
+        end,
+        control_notify_hook: fn event, service_id ->
+          Agent.update(order, &(&1 ++ [:notified]))
+          send(parent, {:control_notification, event, service_id})
+          :ok
+        end
+      )
+
+      service_id = "Notify._http._tcp.local"
+
+      assert {:ok, [], [_service]} =
+               ServiceRegistry.control_register_service(service_id, %{
+                 name: "Notify",
+                 type: "_http._tcp",
+                 port: 8080
+               })
+
+      assert Agent.get(order, & &1) == [:applied, :notified]
+      assert_receive {:control_notification, :registered, ^service_id}, 1_000
+    end
+
+    @tag :tmp_dir
+    test "does not notify on persistence or activation failure", %{tmp_dir: tmp_dir} do
+      parent = self()
+
+      notify_hook = fn event, service_id ->
+        send(parent, {:unexpected_notification, event, service_id})
+        :ok
+      end
+
+      restart_control_registry(
+        Path.join(tmp_dir, "persistence.toml"),
+        control_save_hook: fn _path, _services -> {:error, :disk_full} end,
+        control_notify_hook: notify_hook
+      )
+
+      assert {:error, :persistence_failed} =
+               ServiceRegistry.control_register_service("PersistFail._http._tcp.local", %{
+                 name: "PersistFail",
+                 type: "_http._tcp",
+                 port: 8080
+               })
+
+      refute_receive {:unexpected_notification, _, _}, 50
+
+      {:ok, applies} = Agent.start_link(fn -> [:error, :ok] end)
+
+      restart_control_registry(
+        Path.join(tmp_dir, "activation.toml"),
+        control_apply_hook: fn _candidate ->
+          Agent.get_and_update(applies, fn [result | rest] -> {result, rest} end)
+        end,
+        control_notify_hook: notify_hook
+      )
+
+      assert {:error, :apply_failed} =
+               ServiceRegistry.control_register_service("ApplyFail._http._tcp.local", %{
+                 name: "ApplyFail",
+                 type: "_http._tcp",
+                 port: 8080
+               })
+
+      refute_receive {:unexpected_notification, _, _}, 50
     end
 
     test "returns a typed result when the registry is absent" do

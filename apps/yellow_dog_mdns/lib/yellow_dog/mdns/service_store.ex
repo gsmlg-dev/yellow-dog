@@ -144,6 +144,15 @@ defmodule YellowDog.Mdns.ServiceStore do
     end
   end
 
+  @doc false
+  @spec save_control_services(String.t(), [service_def()], keyword()) ::
+          :ok | {:error, term()}
+  def save_control_services(file_path, services, opts \\ []) do
+    with :ok <- validate_control_services(services) do
+      save_services(file_path, services, opts)
+    end
+  end
+
   @doc """
   Validates a service definition.
 
@@ -180,6 +189,30 @@ defmodule YellowDog.Mdns.ServiceStore do
   end
 
   def validate_services(_services), do: {:error, "Services must be a list"}
+
+  @doc false
+  @spec validate_control_service(map()) :: :ok | {:error, String.t()}
+  def validate_control_service(service) when is_map(service) do
+    with :ok <- validate_service(service),
+         :ok <- validate_control_txt_records(Map.get(service, :txt)) do
+      :ok
+    end
+  end
+
+  def validate_control_service(_service), do: {:error, "Service must be a map"}
+
+  @doc false
+  @spec validate_control_services([map()]) :: :ok | {:error, String.t()}
+  def validate_control_services(services) when is_list(services) do
+    Enum.reduce_while(services, :ok, fn service, :ok ->
+      case validate_control_service(service) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  def validate_control_services(_services), do: {:error, "Services must be a list"}
 
   # Private functions
 
@@ -308,8 +341,12 @@ defmodule YellowDog.Mdns.ServiceStore do
   defp validate_addresses(_), do: {:error, "Addresses must be a list"}
 
   defp validate_txt_records(nil), do: :ok
+  defp validate_txt_records(txt) when is_map(txt), do: :ok
+  defp validate_txt_records(_), do: {:error, "TXT records must be a map"}
 
-  defp validate_txt_records(txt) when is_map(txt) do
+  defp validate_control_txt_records(nil), do: :ok
+
+  defp validate_control_txt_records(txt) when is_map(txt) do
     if Enum.all?(txt, fn {key, value} -> is_binary(key) and is_binary(value) end) do
       :ok
     else
@@ -317,7 +354,7 @@ defmodule YellowDog.Mdns.ServiceStore do
     end
   end
 
-  defp validate_txt_records(_), do: {:error, "TXT records must be a map"}
+  defp validate_control_txt_records(_), do: {:error, "TXT records must be a map"}
 
   defp valid_ipv4?(addr) do
     case :inet.parse_address(String.to_charlist(addr)) do
@@ -354,11 +391,11 @@ defmodule YellowDog.Mdns.ServiceStore do
     base =
       [
         "[[service]]",
-        "name = #{encode_toml_string(service.name)}",
-        "type = #{encode_toml_string(service.type)}",
+        "name = #{encode_toml_value(service.name)}",
+        "type = #{encode_toml_value(service.type)}",
         "port = #{service.port}",
         "enabled = #{Map.get(service, :enabled, true)}",
-        service[:host] && "host = #{encode_toml_string(service.host)}"
+        service[:host] && "host = #{encode_toml_value(service.host)}"
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -366,7 +403,7 @@ defmodule YellowDog.Mdns.ServiceStore do
       if service[:txt] && map_size(service.txt) > 0 do
         ["", "  [service.txt]"] ++
           Enum.map(service.txt, fn {k, v} ->
-            "  #{k} = #{encode_toml_string(v)}"
+            "  #{encode_toml_key(k)} = #{encode_toml_value(v)}"
           end)
       else
         []
@@ -381,9 +418,9 @@ defmodule YellowDog.Mdns.ServiceStore do
           (ipv4 != [] or ipv6 != []) && "",
           (ipv4 != [] or ipv6 != []) && "  [service.addresses]",
           ipv4 != [] &&
-            "  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_string/1)}]",
+            "  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_value/1)}]",
           ipv6 != [] &&
-            "  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"
+            "  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_value/1)}]"
         ]
         |> Enum.filter(& &1)
       else
@@ -391,5 +428,35 @@ defmodule YellowDog.Mdns.ServiceStore do
       end
 
     Enum.join(base ++ txt_lines ++ addr_lines, "\n")
+  end
+
+  defp encode_toml_key(key) when is_binary(key), do: encode_toml_basic_string(key)
+  defp encode_toml_key(key), do: key |> to_string() |> encode_toml_basic_string()
+
+  defp encode_toml_value(value) when is_binary(value), do: encode_toml_basic_string(value)
+  defp encode_toml_value(value), do: encode_toml_string(value)
+
+  defp encode_toml_basic_string(value) do
+    escaped =
+      for <<codepoint::utf8 <- value>>, into: "" do
+        case codepoint do
+          ?\" -> "\\\""
+          ?\\ -> "\\\\"
+          0x08 -> "\\b"
+          0x09 -> "\\t"
+          0x0A -> "\\n"
+          0x0C -> "\\f"
+          0x0D -> "\\r"
+          control when control < 0x20 or control == 0x7F -> unicode_escape(control)
+          character -> <<character::utf8>>
+        end
+      end
+
+    "\"#{escaped}\""
+  end
+
+  defp unicode_escape(codepoint) do
+    hex = codepoint |> Integer.to_string(16) |> String.upcase() |> String.pad_leading(4, "0")
+    "\\u#{hex}"
   end
 end
