@@ -25,6 +25,9 @@ defmodule YellowDog.ServerAgent.MixProject do
 
   defp deps do
     [
+      {:yellow_dog_sync, in_umbrella: true},
+      {:jason, "~> 1.4"},
+      {:phoenix_socket_client, "~> 0.7.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
