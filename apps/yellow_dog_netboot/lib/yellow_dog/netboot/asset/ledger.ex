@@ -52,30 +52,39 @@ defmodule YellowDog.Netboot.Asset.Ledger do
 
   @spec put(t(), ManagedAsset.t()) :: {:ok, t()} | {:error, atom()}
   def put(%__MODULE__{} = ledger, %ManagedAsset{} = asset) do
-    with {:ok, asset} <- validate_asset(asset),
-         false <- Map.has_key?(ledger.assets, asset.asset_id),
-         false <- filename_taken?(ledger, asset.filename) do
-      {:ok, %{ledger | assets: Map.put(ledger.assets, asset.asset_id, asset)}}
-    else
-      true ->
-        if Map.has_key?(ledger.assets, asset.asset_id),
-          do: {:error, :duplicate_asset_id},
-          else: {:error, :duplicate_filename}
+    with {:ok, asset} <- validate_asset(asset) do
+      cond do
+        Map.has_key?(ledger.assets, asset.asset_id) ->
+          {:error, :duplicate_asset_id}
 
-      {:error, reason} ->
-        {:error, reason}
+        filename_taken?(ledger, asset.filename) ->
+          {:error, :duplicate_filename}
+
+        owned_path_taken?(ledger, asset) ->
+          {:error, :duplicate_asset_path}
+
+        true ->
+          {:ok, %{ledger | assets: Map.put(ledger.assets, asset.asset_id, asset)}}
+      end
     end
   end
 
   @spec replace(t(), ManagedAsset.t()) :: {:ok, t()} | {:error, atom()}
   def replace(%__MODULE__{} = ledger, %ManagedAsset{} = asset) do
     with true <- Map.has_key?(ledger.assets, asset.asset_id),
-         {:ok, asset} <- validate_asset(asset),
-         false <- filename_taken?(ledger, asset.filename, asset.asset_id) do
-      {:ok, %{ledger | assets: Map.put(ledger.assets, asset.asset_id, asset)}}
+         {:ok, asset} <- validate_asset(asset) do
+      cond do
+        filename_taken?(ledger, asset.filename, asset.asset_id) ->
+          {:error, :duplicate_filename}
+
+        owned_path_taken?(ledger, asset, asset.asset_id) ->
+          {:error, :duplicate_asset_path}
+
+        true ->
+          {:ok, %{ledger | assets: Map.put(ledger.assets, asset.asset_id, asset)}}
+      end
     else
       false -> {:error, :not_found}
-      true -> {:error, :duplicate_filename}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -116,6 +125,17 @@ defmodule YellowDog.Netboot.Asset.Ledger do
   defp filename_taken?(ledger, filename, except_asset_id \\ nil) do
     Enum.any?(ledger.assets, fn {asset_id, asset} ->
       asset_id != except_asset_id and asset.filename == filename
+    end)
+  end
+
+  defp owned_path_taken?(ledger, asset, except_asset_id \\ nil) do
+    candidate_paths = MapSet.new(ManagedAsset.owned_filenames(asset))
+
+    Enum.any?(ledger.assets, fn {asset_id, existing} ->
+      existing_paths = MapSet.new(ManagedAsset.owned_filenames(existing))
+
+      asset_id != except_asset_id and
+        not MapSet.disjoint?(candidate_paths, existing_paths)
     end)
   end
 end

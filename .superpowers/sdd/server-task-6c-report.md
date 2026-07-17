@@ -195,3 +195,161 @@ warning.
   `control_delete_asset/1`, and `control_rescan/1`.
 - Existing console upload and path-delete calls now receive
   `{:error, :unsupported}`. Console changes were outside this task's ownership.
+
+## Independent Review Remediation
+
+This section supersedes the original report where behavior changed in response
+to `.superpowers/sdd/server-task-6c-review.md`.
+
+### C1: deterministic, globally exclusive tombstones
+
+- Persisted `tombstone_filename` must now equal
+  `ManagedAsset.tombstone_filename/1` for that exact asset.
+- Every asset reserves two owned paths even while active: its payload and its
+  deterministic same-directory tombstone.
+- `Ledger.put/2`, `Ledger.replace/2`, and ledger loading reject intersections
+  between any payload/tombstone pair as `:duplicate_asset_path`, in addition to
+  the existing duplicate ID and duplicate payload checks.
+- An asset whose own payload equals its derived tombstone is invalid.
+- The exact C1 malicious restart ledger is covered: tombstoned asset `a`
+  persists `b.img` while active asset `b` owns `b.img`, and both entries use
+  identical bytes. Startup rejects the ledger as
+  `:invalid_tombstone_filename` and proves `b.img` remains unchanged.
+
+### C2: verified no-replace transitions
+
+- Added the asset-scoped Linux file boundary
+  `YellowDog.Netboot.Asset.FileOps`.
+- A transition opens and verifies the source as a regular file, binds the open
+  descriptor to the path by Linux device/inode identity, and streams its size
+  and SHA-256 before transition.
+- The same-directory move uses GNU coreutils
+  `mv --update=none-fail --no-copy -T`, which fails when the target exists and
+  cannot fall back to copying.
+- The source descriptor remains open across the transition. Afterward, the
+  target is reopened and revalidated for device/inode identity, size, digest,
+  and stable final path identity.
+- The same primitive is used for payload-to-tombstone moves, rollback restore,
+  active-ledger startup restore, and tombstoned resume. Restore never replaces
+  a concurrently created payload.
+- Tombstone removal also revalidates descriptor identity and content
+  immediately before removal. A replacement detected at that boundary is left
+  untouched.
+- On ambiguous source identity/content, Store removes both owned paths from
+  FileIndex and leaves the filesystem bytes and durable ledger state
+  non-destructively recoverable.
+- Deterministic race coverage creates a target after source verification,
+  swaps the source after verification, mutates the same inode after
+  verification, and replaces a tombstone before removal. Tests assert exact
+  bytes at every surviving path.
+
+### I1: failed restore remains tombstoned and non-serving
+
+- Rollback removes the asset payload/tombstone from FileIndex before attempting
+  restoration.
+- Only a proven payload restore, required ledger compensation, and prior-index
+  replacement restore the active state.
+- If restore fails, Store durably writes or re-writes the tombstoned candidate,
+  rebuilds FileIndex with both the payload and tombstone excluded, retains the
+  tombstoned in-memory state, and returns `:rollback_failed`.
+- Coverage injects an index activation failure and creates an untracked payload
+  at the restore target. The untracked payload is not overwritten, managed
+  bytes remain at the tombstone, both TFTP lookups return `:not_found`, the
+  control snapshot is empty, and restart completes recovery after the
+  conflicting untracked path is removed.
+- A second test combines the initial candidate-ledger write failure with the
+  same restore conflict and proves the retry persists tombstoned state.
+
+### I2: complete FileIndex rebuild on every Store init
+
+- Every `Asset.Store` init initializes and clears FileIndex before ledger
+  recovery, then rebuilds the complete root snapshot after recovery.
+- Startup excludes both paths of every durable tombstoned asset.
+- A Store-only restart regression proves the Store-owned ETS table is
+  destroyed, recreated, and repopulated with both managed and untracked safe
+  files while the rest of the supervision tree remains untouched.
+
+### I3: local compatibility APIs restored
+
+- `upload_file/2` again creates parent directories and copies a local source,
+  including legacy overwrite behavior.
+- `delete_file/1` again removes a local relative path and returns native file
+  errors.
+- Both local APIs retain traversal rejection.
+- Remote/control upload remains unsupported in the unchanged control adapter;
+  control deletion remains asset-ID based and ledger-owned only.
+
+### M1: explicit control-character rejection
+
+- Asset IDs and filenames now reject Unicode control code points (`\p{Cc}`),
+  including newline, tab, carriage return, and escape, rather than relying only
+  on `String.printable?/1`.
+
+## Review TDD Evidence
+
+RED was recorded before production changes. The normal focused command first
+encountered unrelated, concurrently edited `Device.Registry` compile errors
+outside Task 6C ownership. Running the focused files against the existing test
+build without starting the unrelated supervision tree produced:
+
+```text
+68 tests, 16 failures
+```
+
+The failures included control-character acceptance, arbitrary tombstone
+acceptance, missing global path reservation, missing asset file-ops module,
+malicious-ledger startup success, local API regressions, source/target races,
+empty FileIndex after Store-only restart, and stale active state after failed
+restore.
+
+GREEN focused verification:
+
+```text
+cd apps/yellow_dog_netboot &&
+mix test test/asset/managed_asset_test.exs \
+  test/asset/ledger_test.exs \
+  test/asset/file_ops_test.exs \
+  test/asset/store_test.exs \
+  test/tftp/file_index_test.exs
+```
+
+Result: 70 tests, 0 failures.
+
+## Review Verification
+
+All final commands ran through `devenv`.
+
+```text
+cd apps/yellow_dog_netboot && mix test
+```
+
+Final result: 405 tests, 0 failures.
+
+An earlier full run at seed `537193` had two order-dependent failures in
+`Boot.DhcpIntegrationTest` while the unowned `Device.Registry` files were being
+modified concurrently. That test file passed independently (5 tests,
+0 failures), and the complete rerun at seed `568363` passed. No device or boot
+files were changed by Task 6C.
+
+```text
+cd apps/yellow_dog_netboot && mix compile --force --warnings-as-errors
+```
+
+Result: 23 files compiled, exit 0.
+
+```text
+mix compile --warnings-as-errors
+mix format --check-formatted
+```
+
+Result: both exit 0.
+
+```text
+cd apps/yellow_dog_netboot && mix credo --strict
+```
+
+Result: 51 source files, 691 modules/functions, no issues.
+
+The full suite still emits the existing intentional EEx missing-assign warning
+from `ScriptEngine` coverage and expected warnings for unavailable test TFTP
+roots; neither produces a test or compile failure.

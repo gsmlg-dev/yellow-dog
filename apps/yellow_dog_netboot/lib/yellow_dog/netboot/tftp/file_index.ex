@@ -75,6 +75,20 @@ defmodule YellowDog.Netboot.TFTP.FileIndex do
 
   def replace(_snapshot), do: {:error, :invalid_snapshot}
 
+  @doc false
+  @spec remove([String.t()]) :: :ok | {:error, :invalid_paths}
+  def remove(paths) when is_list(paths) do
+    if Enum.all?(paths, &valid_relative_path?/1) do
+      init()
+      Enum.each(paths, &:ets.delete(@table, &1))
+      :ok
+    else
+      {:error, :invalid_paths}
+    end
+  end
+
+  def remove(_paths), do: {:error, :invalid_paths}
+
   @doc """
   Look up a file by its relative path.
 

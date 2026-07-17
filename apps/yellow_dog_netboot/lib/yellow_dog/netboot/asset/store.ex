@@ -5,9 +5,10 @@ defmodule YellowDog.Netboot.Asset.Store do
 
   use GenServer
 
+  alias YellowDog.Netboot.Asset.FileOps, as: AssetFileOps
   alias YellowDog.Netboot.Asset.Ledger
   alias YellowDog.Netboot.Asset.ManagedAsset
-  alias YellowDog.Netboot.ManagedStorage.FileOps
+  alias YellowDog.Netboot.ManagedStorage.FileOps, as: StorageFileOps
   alias YellowDog.Netboot.TFTP.FileIndex
 
   @default_root "/srv/netboot/tftp"
@@ -49,8 +50,8 @@ defmodule YellowDog.Netboot.Asset.Store do
     GenServer.call(server, {:get_file, relative_path})
   end
 
-  @doc "Legacy path deletion is unsupported; use control_delete_asset/1."
-  @spec delete_file(String.t(), GenServer.server()) :: {:error, :unsupported}
+  @doc "Delete a local file from the TFTP root."
+  @spec delete_file(String.t(), GenServer.server()) :: :ok | {:error, term()}
   def delete_file(relative_path, server \\ __MODULE__) do
     GenServer.call(server, {:delete_file, relative_path})
   end
@@ -67,8 +68,8 @@ defmodule YellowDog.Netboot.Asset.Store do
     GenServer.call(server, :managed_assets_path)
   end
 
-  @doc "Upload remains unsupported until an authenticated blob resolver exists."
-  @spec upload_file(String.t(), String.t(), GenServer.server()) :: {:error, :unsupported}
+  @doc "Copy a local file into the TFTP root."
+  @spec upload_file(String.t(), String.t(), GenServer.server()) :: :ok | {:error, term()}
   def upload_file(relative_path, source_path, server \\ __MODULE__) do
     GenServer.call(server, {:upload_file, relative_path, source_path})
   end
@@ -92,22 +93,26 @@ defmodule YellowDog.Netboot.Asset.Store do
       )
       |> Path.expand()
 
-    file_ops = Keyword.get(opts, :file_ops, {FileOps, nil})
+    file_ops = Keyword.get(opts, :file_ops, {StorageFileOps, nil})
+    asset_file_ops = Keyword.get(opts, :asset_file_ops, {AssetFileOps, []})
     index_ops = Keyword.get(opts, :index_ops, FileIndex)
+
+    state = %{
+      root: root,
+      ledger_path: ledger_path,
+      ledger: Ledger.empty(),
+      file_ops: file_ops,
+      asset_file_ops: asset_file_ops,
+      index_ops: index_ops
+    }
 
     with :ok <- validate_storage_paths(root, ledger_path),
          :ok <- index_call(index_ops, :init, []),
+         :ok <- index_call(index_ops, :replace, [[]]),
          {:ok, ledger} <- load_ledger(ledger_path, file_ops),
-         {:ok, ledger} <-
-           recover_interrupted_deletes(ledger, root, ledger_path, file_ops, index_ops) do
-      {:ok,
-       %{
-         root: root,
-         ledger_path: ledger_path,
-         ledger: ledger,
-         file_ops: file_ops,
-         index_ops: index_ops
-       }}
+         {:ok, ledger} <- recover_interrupted_deletes(ledger, %{state | ledger: ledger}),
+         :ok <- rebuild_startup_index(ledger, state) do
+      {:ok, %{state | ledger: ledger}}
     else
       {:error, {:ledger_load_failed, _reason} = reason} -> {:stop, reason}
       {:error, reason} -> {:stop, {:asset_store_start_failed, reason}}
@@ -151,13 +156,30 @@ defmodule YellowDog.Netboot.Asset.Store do
   end
 
   @impl true
-  def handle_call({:delete_file, _path}, _from, state) do
-    {:reply, {:error, :unsupported}, state}
+  def handle_call({:delete_file, path}, _from, state) do
+    result =
+      if FileIndex.path_traversal?(path),
+        do: {:error, :path_traversal},
+        else: File.rm(Path.join(state.root, path))
+
+    {:reply, result, state}
   end
 
   @impl true
-  def handle_call({:upload_file, _path, _source}, _from, state) do
-    {:reply, {:error, :unsupported}, state}
+  def handle_call({:upload_file, path, source}, _from, state) do
+    result =
+      if FileIndex.path_traversal?(path) do
+        {:error, :path_traversal}
+      else
+        destination = Path.join(state.root, path)
+
+        with :ok <- File.mkdir_p(Path.dirname(destination)),
+             {:ok, _bytes} <- File.copy(source, destination) do
+          :ok
+        end
+      end
+
+    {:reply, result, state}
   end
 
   @impl true
@@ -195,10 +217,8 @@ defmodule YellowDog.Netboot.Asset.Store do
     tombstone_filename = ManagedAsset.tombstone_filename(asset)
     tombstone_path = asset_path(state.root, tombstone_filename)
 
-    with :ok <- verify_payload(payload_path, asset),
-         :ok <- ensure_missing(tombstone_path),
-         {:ok, previous_index} <- index_snapshot(state.index_ops),
-         :ok <- rename_file(payload_path, tombstone_path, state.file_ops),
+    with {:ok, previous_index} <- index_snapshot(state.index_ops),
+         :ok <- move_verified(payload_path, tombstone_path, asset, state.asset_file_ops),
          {:ok, tombstoned} <- ManagedAsset.tombstone(asset, tombstone_filename),
          {:ok, candidate_ledger} <- Ledger.replace(state.ledger, tombstoned) do
       commit_tombstoned_candidate(
@@ -210,10 +230,19 @@ defmodule YellowDog.Netboot.Asset.Store do
         state
       )
     else
-      {:error, :enoent} -> {:error, :not_found, state.ledger}
-      {:error, :mismatch} -> {:error, :conflict, state.ledger}
-      {:error, :exists} -> {:error, :conflict, state.ledger}
-      {:error, _reason} -> {:error, :apply_failed, state.ledger}
+      {:error, :source_missing} ->
+        deactivate_asset_paths(asset, state)
+        {:error, :not_found, state.ledger}
+
+      {:error, reason} when reason in [:source_mismatch, :source_changed] ->
+        deactivate_asset_paths(asset, state)
+        {:error, :conflict, state.ledger}
+
+      {:error, :target_exists} ->
+        {:error, :conflict, state.ledger}
+
+      {:error, _reason} ->
+        {:error, :apply_failed, state.ledger}
     end
   end
 
@@ -238,7 +267,9 @@ defmodule YellowDog.Netboot.Asset.Store do
 
       {:error, _reason} ->
         rollback_before_activation(
+          asset,
           state.ledger,
+          candidate_ledger,
           previous_index,
           payload_path,
           tombstone_path,
@@ -262,7 +293,9 @@ defmodule YellowDog.Netboot.Asset.Store do
     else
       {:error, _reason} ->
         rollback_before_activation(
+          asset,
           state.ledger,
+          candidate_ledger,
           previous_index,
           payload_path,
           tombstone_path,
@@ -273,28 +306,31 @@ defmodule YellowDog.Netboot.Asset.Store do
   end
 
   defp rollback_before_activation(
+         asset,
          previous_ledger,
+         candidate_ledger,
          previous_index,
          payload_path,
          tombstone_path,
          state,
          restore_ledger?
        ) do
-    results = [
-      restore_payload(payload_path, tombstone_path, state.file_ops),
-      maybe_restore_ledger(
-        restore_ledger?,
-        state.ledger_path,
-        previous_ledger,
-        state.file_ops
-      ),
-      index_call(state.index_ops, :replace, [previous_index])
-    ]
+    deactivate_asset_paths(asset, state)
 
-    if Enum.all?(results, &(&1 == :ok)) do
+    with :ok <-
+           restore_payload(payload_path, tombstone_path, asset, state.asset_file_ops),
+         :ok <-
+           maybe_restore_ledger(
+             restore_ledger?,
+             state.ledger_path,
+             previous_ledger,
+             state.file_ops
+           ),
+         :ok <- index_call(state.index_ops, :replace, [previous_index]) do
       {:error, :apply_failed, previous_ledger}
     else
-      {:error, :rollback_failed, previous_ledger}
+      {:error, _reason} ->
+        preserve_tombstoned_candidate(asset, candidate_ledger, state)
     end
   end
 
@@ -304,12 +340,10 @@ defmodule YellowDog.Netboot.Asset.Store do
 
     case {path_state(payload_path), path_state(tombstone_path)} do
       {:missing, :regular} ->
-        with :ok <- verify_payload(tombstone_path, asset),
-             {:ok, candidate_index} <- build_index(ledger, state),
+        with {:ok, candidate_index} <- build_index(ledger, state),
              :ok <- index_call(state.index_ops, :replace, [candidate_index]) do
           finish_delete(asset, ledger, tombstone_path, state)
         else
-          {:error, :mismatch} -> {:error, :conflict, ledger}
           {:error, _reason} -> {:error, :apply_failed, ledger}
         end
 
@@ -322,12 +356,17 @@ defmodule YellowDog.Netboot.Asset.Store do
         end
 
       {:regular, :missing} ->
-        with :ok <- verify_payload(payload_path, asset),
-             :ok <- rename_file(payload_path, tombstone_path, state.file_ops) do
+        with :ok <-
+               move_verified(payload_path, tombstone_path, asset, state.asset_file_ops) do
           resume_delete(asset, ledger, state)
         else
-          {:error, :mismatch} -> {:error, :conflict, ledger}
-          {:error, _reason} -> {:error, :apply_failed, ledger}
+          {:error, reason}
+          when reason in [:source_mismatch, :source_changed, :target_exists] ->
+            deactivate_asset_paths(asset, state)
+            {:error, :conflict, ledger}
+
+          {:error, _reason} ->
+            {:error, :apply_failed, ledger}
         end
 
       _other ->
@@ -336,9 +375,16 @@ defmodule YellowDog.Netboot.Asset.Store do
   end
 
   defp finish_delete(asset, ledger, tombstone_path, state) do
-    case remove_file(tombstone_path, state.file_ops) do
-      :ok -> finalize_ledger(asset, ledger, state)
-      {:error, _reason} -> {:error, :apply_failed, ledger}
+    case remove_verified(tombstone_path, asset, state.asset_file_ops) do
+      :ok ->
+        finalize_ledger(asset, ledger, state)
+
+      {:error, reason} when reason in [:source_mismatch, :source_changed] ->
+        deactivate_asset_paths(asset, state)
+        {:error, :conflict, ledger}
+
+      {:error, _reason} ->
+        {:error, :apply_failed, ledger}
     end
   end
 
@@ -351,15 +397,7 @@ defmodule YellowDog.Netboot.Asset.Store do
     end
   end
 
-  defp recover_interrupted_deletes(ledger, root, ledger_path, file_ops, index_ops) do
-    state = %{
-      root: root,
-      ledger_path: ledger_path,
-      ledger: ledger,
-      file_ops: file_ops,
-      index_ops: index_ops
-    }
-
+  defp recover_interrupted_deletes(ledger, state) do
     Enum.reduce_while(Ledger.list(ledger), {:ok, ledger}, fn asset, {:ok, current_ledger} ->
       state = %{state | ledger: current_ledger}
 
@@ -376,8 +414,8 @@ defmodule YellowDog.Netboot.Asset.Store do
 
     case {path_state(payload_path), path_state(tombstone_path)} do
       {:missing, :regular} ->
-        with :ok <- verify_payload(tombstone_path, asset),
-             :ok <- rename_file(tombstone_path, payload_path, state.file_ops) do
+        with :ok <-
+               move_verified(tombstone_path, payload_path, asset, state.asset_file_ops) do
           {:ok, state.ledger}
         else
           {:error, reason} -> {:error, reason}
@@ -423,16 +461,65 @@ defmodule YellowDog.Netboot.Asset.Store do
 
   defp rescan(_scope, _state), do: {:error, :invalid}
 
-  defp build_index(ledger, state) do
+  defp build_index(ledger, state, extra_excluded \\ []) do
     excluded =
       ledger
       |> Ledger.list()
       |> Enum.flat_map(fn
-        %ManagedAsset{lifecycle: :tombstoned, tombstone_filename: filename} -> [filename]
-        _asset -> []
+        %ManagedAsset{
+          lifecycle: :tombstoned,
+          filename: filename,
+          tombstone_filename: tombstone_filename
+        } ->
+          [filename, tombstone_filename]
+
+        _asset ->
+          []
       end)
+      |> Kernel.++(extra_excluded)
+      |> Enum.uniq()
 
     index_call(state.index_ops, :build_snapshot, [state.root, [exclude: excluded]])
+  end
+
+  defp rebuild_startup_index(ledger, state) do
+    snapshot =
+      if File.dir?(state.root),
+        do: build_index(ledger, state),
+        else: {:ok, []}
+
+    with {:ok, candidate_index} <- snapshot do
+      index_call(state.index_ops, :replace, [candidate_index])
+    end
+  end
+
+  defp preserve_tombstoned_candidate(asset, candidate_ledger, state) do
+    _ledger_result = write_ledger(state.ledger_path, candidate_ledger, state.file_ops)
+    _index_result = activate_nonserving_index(asset, candidate_ledger, state)
+    {:error, :rollback_failed, candidate_ledger}
+  end
+
+  defp activate_nonserving_index(asset, ledger, state) do
+    with {:ok, candidate_index} <- build_index(ledger, state),
+         :ok <- index_call(state.index_ops, :replace, [candidate_index]) do
+      :ok
+    else
+      {:error, _reason} -> remove_asset_paths(asset, state)
+    end
+  end
+
+  defp deactivate_asset_paths(asset, state) do
+    _result = remove_asset_paths(asset, state)
+    :ok
+  end
+
+  defp remove_asset_paths(asset, state) do
+    paths = ManagedAsset.owned_filenames(asset)
+
+    case index_call(state.index_ops, :remove, [paths]) do
+      :ok -> :ok
+      {:error, _reason} -> FileIndex.remove(paths)
+    end
   end
 
   defp index_snapshot(index_ops) do
@@ -454,53 +541,8 @@ defmodule YellowDog.Netboot.Asset.Store do
     Ledger.write(path, ledger, file_ops: file_ops)
   end
 
-  defp verify_payload(path, asset) do
-    with {:ok, %{type: :regular, size: size}} <- File.lstat(path),
-         true <- size == asset.size,
-         {:ok, digest} <- file_digest(path),
-         true <- digest == asset.blob_digest do
-      :ok
-    else
-      {:error, :enoent} -> {:error, :enoent}
-      _other -> {:error, :mismatch}
-    end
-  end
-
-  defp file_digest(path) do
-    with {:ok, device} <- File.open(path, [:read, :binary]) do
-      try do
-        digest_device(device, :crypto.hash_init(:sha256))
-      after
-        File.close(device)
-      end
-    end
-  end
-
-  defp digest_device(device, context) do
-    case IO.binread(device, 65_536) do
-      :eof ->
-        {:ok, context |> :crypto.hash_final() |> Base.encode16(case: :lower)}
-
-      data when is_binary(data) ->
-        digest_device(device, :crypto.hash_update(context, data))
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp ensure_missing(path) do
-    case File.lstat(path) do
-      {:error, :enoent} -> :ok
-      {:ok, _stat} -> {:error, :exists}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp restore_payload(payload_path, tombstone_path, file_ops) do
-    with :ok <- ensure_missing(payload_path) do
-      rename_file(tombstone_path, payload_path, file_ops)
-    end
+  defp restore_payload(payload_path, tombstone_path, asset, asset_file_ops) do
+    move_verified(tombstone_path, payload_path, asset, asset_file_ops)
   end
 
   defp maybe_restore_ledger(false, _path, _ledger, _file_ops), do: :ok
@@ -516,20 +558,25 @@ defmodule YellowDog.Netboot.Asset.Store do
     end
   end
 
-  defp rename_file(source, target, file_ops), do: file_call(file_ops, :rename, [source, target])
-  defp remove_file(path, file_ops), do: file_call(file_ops, :rm, [path])
+  defp move_verified(source, target, asset, asset_file_ops) do
+    asset_call(asset_file_ops, :move_verified, [source, target, asset])
+  end
 
-  defp file_call({module, context}, operation, arguments) do
+  defp remove_verified(path, asset, asset_file_ops) do
+    asset_call(asset_file_ops, :remove_verified, [path, asset])
+  end
+
+  defp asset_call({module, context}, operation, arguments) do
     if is_atom(module) and Code.ensure_loaded?(module) and
          function_exported?(module, operation, length(arguments) + 1) do
       apply(module, operation, arguments ++ [context])
     else
-      {:error, :unsupported_file_ops}
+      {:error, :unsupported_asset_file_ops}
     end
   rescue
-    _exception -> {:error, :file_ops_exception}
+    _exception -> {:error, :asset_file_ops_exception}
   catch
-    _kind, _reason -> {:error, :file_ops_exit}
+    _kind, _reason -> {:error, :asset_file_ops_exit}
   end
 
   defp index_call(module, operation, arguments) when is_atom(module) do

@@ -7,8 +7,19 @@ defmodule YellowDog.Netboot.Asset.StoreTestIndexOps do
     Agent.start_link(fn -> %{counts: %{}, failures: failures} end)
   end
 
+  def fail_next(agent, key) do
+    Agent.update(agent, fn state ->
+      next_count = Map.get(state.counts, key, 0) + 1
+
+      update_in(state, [:failures, key], fn failures ->
+        [next_count | failures || []]
+      end)
+    end)
+  end
+
   def init(_agent), do: FileIndex.init()
   def snapshot(_agent), do: FileIndex.snapshot()
+  def remove(paths, _agent), do: FileIndex.remove(paths)
 
   def build_snapshot(root, opts, agent) do
     if fail?(agent, :build_snapshot) do

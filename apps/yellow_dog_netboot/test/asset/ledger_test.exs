@@ -69,6 +69,18 @@ defmodule YellowDog.Netboot.Asset.LedgerTest do
              Ledger.put(ledger, managed_asset("other", "installer.img"))
   end
 
+  test "reserves every payload and deterministic tombstone path globally" do
+    installer = managed_asset("installer", "installer.img")
+    tombstone_filename = ManagedAsset.tombstone_filename(installer)
+    colliding = managed_asset("other", tombstone_filename)
+
+    assert {:ok, ledger} = Ledger.put(Ledger.empty(), installer)
+    assert {:error, :duplicate_asset_path} = Ledger.put(ledger, colliding)
+
+    assert {:ok, reverse_ledger} = Ledger.put(Ledger.empty(), colliding)
+    assert {:error, :duplicate_asset_path} = Ledger.put(reverse_ledger, installer)
+  end
+
   defp managed_asset(asset_id, filename) do
     {:ok, asset} =
       asset_id

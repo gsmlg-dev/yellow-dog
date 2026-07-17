@@ -28,7 +28,19 @@ defmodule YellowDog.Netboot.Asset.ManagedAssetTest do
   end
 
   test "rejects unstable asset IDs" do
-    for asset_id <- ["", ".", "..", "~", "../installer", "installer/path", "bad\\id"] do
+    for asset_id <- [
+          "",
+          ".",
+          "..",
+          "~",
+          "../installer",
+          "installer/path",
+          "bad\\id",
+          "bad\nid",
+          "bad\tid",
+          "bad\rid",
+          "bad\eid"
+        ] do
       assert {:error, :invalid_asset_id} =
                valid_document()
                |> Map.put("asset_id", asset_id)
@@ -53,7 +65,11 @@ defmodule YellowDog.Netboot.Asset.ManagedAssetTest do
       "images/./installer.img",
       "images\\installer.img",
       "images/installer.img/",
-      "images/" <> <<0>> <> "installer.img"
+      "images/" <> <<0>> <> "installer.img",
+      "images/bad\ninstaller.img",
+      "images/bad\tinstaller.img",
+      "images/bad\rinstaller.img",
+      "images/bad\einstaller.img"
     ]
 
     for filename <- invalid do
@@ -97,18 +113,21 @@ defmodule YellowDog.Netboot.Asset.ManagedAssetTest do
              |> ManagedAsset.from_document()
   end
 
-  test "requires a normalized tombstone filename only in tombstoned state" do
+  test "requires the asset's deterministic tombstone filename only in tombstoned state" do
+    assert {:ok, active} = ManagedAsset.from_document(valid_document())
+
     tombstoned =
-      valid_document()
+      active
+      |> ManagedAsset.to_document()
       |> Map.put("lifecycle", "tombstoned")
-      |> Map.put("tombstone_filename", ".installer.img.yellowdog-delete")
+      |> Map.put("tombstone_filename", ManagedAsset.tombstone_filename(active))
 
     assert {:ok, asset} = ManagedAsset.from_document(tombstoned)
     assert asset.lifecycle == :tombstoned
 
     assert {:error, :invalid_tombstone_filename} =
              tombstoned
-             |> Map.put("tombstone_filename", "../installer.img")
+             |> Map.put("tombstone_filename", ".arbitrary-yellowdog-delete")
              |> ManagedAsset.from_document()
 
     assert {:error, :invalid_asset} =
