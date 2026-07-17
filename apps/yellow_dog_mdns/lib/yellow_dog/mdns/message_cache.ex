@@ -25,6 +25,10 @@ defmodule YellowDog.Mdns.MessageCache do
           ttl: integer()
         }
 
+  @type control_entry :: %{
+          required(String.t()) => String.t() | [String.t()]
+        }
+
   # Client API
 
   @doc """
@@ -135,6 +139,14 @@ defmodule YellowDog.Mdns.MessageCache do
     GenServer.call(__MODULE__, :clear)
   end
 
+  @doc false
+  @spec control_snapshot() :: {:ok, [control_entry()]} | {:error, :cache_absent | term()}
+  def control_snapshot, do: control_call(:control_snapshot)
+
+  @doc false
+  @spec control_clear() :: {:ok, non_neg_integer()} | {:error, :cache_absent | term()}
+  def control_clear, do: control_call(:control_clear)
+
   # Server Callbacks
 
   @impl true
@@ -162,15 +174,22 @@ defmodule YellowDog.Mdns.MessageCache do
 
   @impl true
   def handle_call(:clear, _from, state) do
-    :ets.delete_all_objects(@table_name)
-
-    :telemetry.execute(
-      [:yellow_dog, :mdns, :message_cache, :cleared],
-      %{count: 1},
-      %{}
-    )
+    clear_entries()
 
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:control_snapshot, _from, state) do
+    {:reply, {:ok, control_snapshot_entries()}, state}
+  end
+
+  @impl true
+  def handle_call(:control_clear, _from, state) do
+    count = :ets.info(@table_name, :size)
+    clear_entries()
+
+    {:reply, {:ok, count}, state}
   end
 
   @impl true
@@ -191,6 +210,177 @@ defmodule YellowDog.Mdns.MessageCache do
     try do: :ets.delete(@table_name), catch: (_, _ -> :ok)
     :ets.new(@table_name, @ets_options)
     :ok
+  end
+
+  defp control_call(message) do
+    GenServer.call(__MODULE__, message)
+  catch
+    :exit, :noproc -> {:error, :cache_absent}
+    :exit, {:noproc, _details} -> {:error, :cache_absent}
+    :exit, reason -> {:error, reason}
+  end
+
+  defp control_snapshot_entries do
+    now = System.system_time(:second)
+
+    @table_name
+    |> :ets.tab2list()
+    |> Enum.flat_map(fn {_key, entry} -> project_control_entry(entry, now) end)
+    |> Enum.sort_by(fn %{"name" => name, "type" => type, "values" => values} ->
+      {name, type, values}
+    end)
+  end
+
+  defp project_control_entry(
+         %{
+           section: section,
+           record: %DNS.Message.Record{} = record,
+           received_at: received_at,
+           ttl: ttl
+         },
+         now
+       )
+       when section in [:answer, :authority, :additional] and is_integer(received_at) and
+              is_integer(ttl) and received_at + ttl > now do
+    with {:ok, name} <- control_domain(record.name),
+         {:ok, type, values} <- control_record_values(record.type, record.data) do
+      [%{"name" => name, "type" => type, "values" => values}]
+    else
+      :error -> []
+    end
+  end
+
+  defp project_control_entry(_entry, _now), do: []
+
+  defp control_record_values(type, data) do
+    case control_type(type) do
+      {:ok, "A"} -> control_ipv4(data)
+      {:ok, "AAAA"} -> control_ipv6(data)
+      {:ok, "PTR"} -> control_ptr(data)
+      {:ok, "SRV"} -> control_srv(data)
+      {:ok, "TXT"} -> control_txt(data)
+      :error -> :error
+    end
+  end
+
+  defp control_type(:A), do: {:ok, "A"}
+  defp control_type(:AAAA), do: {:ok, "AAAA"}
+  defp control_type(:PTR), do: {:ok, "PTR"}
+  defp control_type(:SRV), do: {:ok, "SRV"}
+  defp control_type(:TXT), do: {:ok, "TXT"}
+  defp control_type(%DNS.ResourceRecordType{value: <<1::16>>}), do: {:ok, "A"}
+  defp control_type(%DNS.ResourceRecordType{value: <<28::16>>}), do: {:ok, "AAAA"}
+  defp control_type(%DNS.ResourceRecordType{value: <<12::16>>}), do: {:ok, "PTR"}
+  defp control_type(%DNS.ResourceRecordType{value: <<33::16>>}), do: {:ok, "SRV"}
+  defp control_type(%DNS.ResourceRecordType{value: <<16::16>>}), do: {:ok, "TXT"}
+  defp control_type(_type), do: :error
+
+  defp control_ipv4(%DNS.Message.Record.Data.A{data: data}), do: control_ipv4(data)
+
+  defp control_ipv4({a, b, c, d} = address)
+       when a in 0..255 and b in 0..255 and c in 0..255 and d in 0..255 do
+    {:ok, "A", [address |> :inet.ntoa() |> List.to_string()]}
+  end
+
+  defp control_ipv4(_data), do: :error
+
+  defp control_ipv6(%DNS.Message.Record.Data.AAAA{data: data}), do: control_ipv6(data)
+
+  defp control_ipv6({a, b, c, d, e, f, g, h} = address)
+       when a in 0..65_535 and b in 0..65_535 and c in 0..65_535 and d in 0..65_535 and
+              e in 0..65_535 and f in 0..65_535 and g in 0..65_535 and h in 0..65_535 do
+    {:ok, "AAAA", [address |> :inet.ntoa() |> List.to_string()]}
+  end
+
+  defp control_ipv6(_data), do: :error
+
+  defp control_ptr(%DNS.Message.Record.Data.PTR{data: %DNS.Message.Domain{value: target}}),
+    do: control_ptr(target)
+
+  defp control_ptr(target) when is_binary(target) do
+    if valid_dns_name?(target), do: {:ok, "PTR", [target]}, else: :error
+  end
+
+  defp control_ptr(_data), do: :error
+
+  defp control_srv(%DNS.Message.Record.Data.SRV{
+         data: {priority, weight, port, %DNS.Message.Domain{value: target}}
+       }) do
+    control_srv_data(priority, weight, port, target)
+  end
+
+  defp control_srv(%{priority: priority, weight: weight, port: port, target: target} = data)
+       when map_size(data) == 4 do
+    control_srv_data(priority, weight, port, target)
+  end
+
+  defp control_srv(_data), do: :error
+
+  defp control_srv_data(priority, weight, port, target)
+       when priority in 0..65_535 and weight in 0..65_535 and port in 0..65_535 and
+              is_binary(target) do
+    if valid_dns_name?(target) do
+      {:ok, "SRV", ["#{priority} #{weight} #{port} #{target}"]}
+    else
+      :error
+    end
+  end
+
+  defp control_srv_data(_priority, _weight, _port, _target), do: :error
+
+  defp control_txt(%DNS.Message.Record.Data.TXT{data: values}), do: control_txt(values)
+
+  defp control_txt([_ | _] = values) do
+    if Enum.all?(values, &valid_text?/1), do: {:ok, "TXT", values}, else: :error
+  end
+
+  defp control_txt(_data), do: :error
+
+  defp control_domain(%DNS.Message.Domain{value: value}), do: control_domain(value)
+
+  defp control_domain(value) when is_binary(value) do
+    if valid_dns_name?(value), do: {:ok, value}, else: :error
+  end
+
+  defp control_domain(_value), do: :error
+
+  defp valid_text?(value) when is_binary(value) and byte_size(value) in 1..1024,
+    do: String.valid?(value)
+
+  defp valid_text?(_value), do: false
+
+  defp valid_dns_name?(value) when is_binary(value) and byte_size(value) in 1..254 do
+    name =
+      if String.ends_with?(value, ".") do
+        binary_part(value, 0, byte_size(value) - 1)
+      else
+        value
+      end
+
+    case name do
+      "" -> false
+      name when byte_size(name) > 253 -> false
+      name -> name |> String.split(".", trim: false) |> Enum.all?(&valid_dns_label?/1)
+    end
+  end
+
+  defp valid_dns_name?(_value), do: false
+
+  defp valid_dns_label?(label) when byte_size(label) in 1..63 do
+    Regex.match?(~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\z/, label) or
+      Regex.match?(~r/\A_[A-Za-z0-9](?:[A-Za-z0-9-]{0,60}[A-Za-z0-9])?\z/, label)
+  end
+
+  defp valid_dns_label?(_label), do: false
+
+  defp clear_entries do
+    :ets.delete_all_objects(@table_name)
+
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :message_cache, :cleared],
+      %{count: 1},
+      %{}
+    )
   end
 
   defp store_message(message, source_ip, source_port) do

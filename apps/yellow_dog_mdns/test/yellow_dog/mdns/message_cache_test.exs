@@ -3,6 +3,8 @@ defmodule YellowDog.Mdns.MessageCacheTest do
 
   alias YellowDog.Mdns.MessageCache
   alias DNS.Message.{Record, Question}
+  alias DNS.Message.Record.Data
+  alias DNS.ResourceRecordType
 
   # Helper to create a mock DNS message with records
   defp create_dns_message(opts) do
@@ -373,6 +375,227 @@ defmodule YellowDog.Mdns.MessageCacheTest do
       # Verify cache is empty
       assert MessageCache.list_all() == []
       assert MessageCache.stats().total_entries == 0
+    end
+  end
+
+  describe "control cache ownership" do
+    test "projects supported ExDns record data into canonical copied entries" do
+      records = [
+        %Record{
+          name: DNS.Message.Domain.new("host.local"),
+          type: ResourceRecordType.new(:a),
+          class: :IN,
+          ttl: 4500,
+          data: Data.A.new({192, 0, 2, 10})
+        },
+        %Record{
+          name: DNS.Message.Domain.new("host.local"),
+          type: ResourceRecordType.new(:aaaa),
+          class: :IN,
+          ttl: 4500,
+          data: Data.AAAA.new({8193, 3512, 0, 0, 0, 0, 0, 1})
+        },
+        %Record{
+          name: DNS.Message.Domain.new("_http._tcp.local"),
+          type: ResourceRecordType.new(:ptr),
+          class: :IN,
+          ttl: 4500,
+          data: Data.PTR.new("instance._http._tcp.local")
+        },
+        %Record{
+          name: DNS.Message.Domain.new("instance._http._tcp.local"),
+          type: ResourceRecordType.new(:srv),
+          class: :IN,
+          ttl: 4500,
+          data: Data.SRV.new({10, 20, 8080, "host.local"})
+        },
+        %Record{
+          name: DNS.Message.Domain.new("instance._http._tcp.local"),
+          type: ResourceRecordType.new(:txt),
+          class: :IN,
+          ttl: 4500,
+          data: Data.TXT.new(["path=/api", "version=1"])
+        }
+      ]
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(answers: records),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      assert {:ok, entries} = MessageCache.control_snapshot()
+
+      assert entries == [
+               %{
+                 "name" => "_http._tcp.local.",
+                 "type" => "PTR",
+                 "values" => ["instance._http._tcp.local."]
+               },
+               %{"name" => "host.local.", "type" => "A", "values" => ["192.0.2.10"]},
+               %{"name" => "host.local.", "type" => "AAAA", "values" => ["2001:db8::1"]},
+               %{
+                 "name" => "instance._http._tcp.local.",
+                 "type" => "SRV",
+                 "values" => ["10 20 8080 host.local."]
+               },
+               %{
+                 "name" => "instance._http._tcp.local.",
+                 "type" => "TXT",
+                 "values" => ["path=/api", "version=1"]
+               }
+             ]
+    end
+
+    test "projects supported legacy cache data shapes" do
+      records = [
+        create_a_record("host.local", {192, 0, 2, 11}),
+        create_aaaa_record("host.local", {8193, 3512, 0, 0, 0, 0, 0, 2}),
+        create_ptr_record("_ssh._tcp.local", "instance._ssh._tcp.local"),
+        create_srv_record("instance._ssh._tcp.local", "host.local", 22),
+        create_txt_record("instance._ssh._tcp.local", ["role=admin", "tls=true"])
+      ]
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(answers: records),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      assert {:ok, entries} = MessageCache.control_snapshot()
+
+      assert Enum.sort(entries) ==
+               Enum.sort([
+                 %{"name" => "host.local", "type" => "A", "values" => ["192.0.2.11"]},
+                 %{"name" => "host.local", "type" => "AAAA", "values" => ["2001:db8::2"]},
+                 %{
+                   "name" => "_ssh._tcp.local",
+                   "type" => "PTR",
+                   "values" => ["instance._ssh._tcp.local"]
+                 },
+                 %{
+                   "name" => "instance._ssh._tcp.local",
+                   "type" => "SRV",
+                   "values" => ["0 0 22 host.local"]
+                 },
+                 %{
+                   "name" => "instance._ssh._tcp.local",
+                   "type" => "TXT",
+                   "values" => ["role=admin", "tls=true"]
+                 }
+               ])
+    end
+
+    test "omits questions, expired records, unsupported records, and malformed records" do
+      now = System.system_time(:second)
+
+      question = create_question("_http._tcp.local", :PTR)
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(questions: [question]),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      entries = [
+        {"expired.local",
+         %{
+           domain: "expired.local",
+           record_type: :A,
+           record: create_a_record("expired.local", {192, 0, 2, 12}),
+           received_at: now - 1,
+           ttl: 0,
+           section: :answer
+         }},
+        {"unsupported.local",
+         %{
+           domain: "unsupported.local",
+           record_type: :CNAME,
+           record: %Record{name: "unsupported.local", type: :CNAME, data: "target.local"},
+           received_at: now,
+           ttl: 120,
+           section: :answer
+         }},
+        {"malformed.local",
+         %{
+           domain: "malformed.local",
+           record_type: :A,
+           record: create_a_record("malformed.local", {300, 0, 2, 13}),
+           received_at: now,
+           ttl: 120,
+           section: :answer
+         }}
+      ]
+
+      assert true = :ets.insert(:mdns_message_cache, entries)
+      assert {:ok, []} = MessageCache.control_snapshot()
+    end
+
+    test "serializes prior casts before the control snapshot" do
+      record = create_a_record("serialized.local", {192, 0, 2, 14})
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(answers: [record]),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      assert {:ok, [%{"name" => "serialized.local", "type" => "A", "values" => ["192.0.2.14"]}]} =
+               MessageCache.control_snapshot()
+    end
+
+    test "counts every physical table object and clears them in one owner call" do
+      now = System.system_time(:second)
+      record = create_a_record("present.local", {192, 0, 2, 15})
+      question = create_question("question.local", :PTR)
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(answers: [record], questions: [question]),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      assert true =
+               :ets.insert(:mdns_message_cache, {
+                 "expired.local",
+                 %{
+                   domain: "expired.local",
+                   record_type: :A,
+                   record: create_a_record("expired.local", {192, 0, 2, 16}),
+                   received_at: now - 1,
+                   ttl: 0,
+                   section: :answer
+                 }
+               })
+
+      assert true =
+               :ets.insert(:mdns_message_cache, {
+                 "unsupported.local",
+                 %{
+                   domain: "unsupported.local",
+                   record_type: :CNAME,
+                   record: %Record{name: "unsupported.local", type: :CNAME, data: "target.local"},
+                   received_at: now,
+                   ttl: 120,
+                   section: :answer
+                 }
+               })
+
+      assert {:ok, 4} = MessageCache.control_clear()
+      assert :ets.info(:mdns_message_cache, :size) == 0
+    end
+
+    test "returns a typed error when the cache owner is absent" do
+      pid = Process.whereis(MessageCache)
+      GenServer.stop(pid)
+
+      assert {:error, :cache_absent} = MessageCache.control_snapshot()
+      assert {:error, :cache_absent} = MessageCache.control_clear()
     end
   end
 
