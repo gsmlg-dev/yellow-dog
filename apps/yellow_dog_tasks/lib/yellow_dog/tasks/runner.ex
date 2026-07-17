@@ -15,7 +15,8 @@ defmodule YellowDog.Tasks.Runner do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @spec enqueue(atom() | String.t(), keyword()) :: {:ok, YellowDog.Tasks.Job.t()} | {:error, term()}
+  @spec enqueue(atom() | String.t(), keyword()) ::
+          {:ok, YellowDog.Tasks.Job.t()} | {:error, term()}
   def enqueue(key, opts \\ []) do
     with {:ok, task} <- DataSync.fetch_task(key) do
       force? = Keyword.get(opts, :force, true)
@@ -26,9 +27,8 @@ defmodule YellowDog.Tasks.Runner do
           :ok ->
             {:ok, job}
 
-          {:error, reason} ->
-            Store.delete_job(job)
-            {:error, reason}
+          _start_failure ->
+            cleanup_failed_start(job)
         end
       end
     end
@@ -49,7 +49,9 @@ defmodule YellowDog.Tasks.Runner do
         case Store.reserve_schedule(task.key, minute_id) do
           :ok ->
             case enqueue(task.key, force: false) do
-              {:ok, job} -> [job]
+              {:ok, job} ->
+                [job]
+
               {:error, reason} ->
                 release_schedule(task.key, minute_id)
                 Logger.warning("Task scheduler failed to enqueue #{task.key}: #{inspect(reason)}")
@@ -139,12 +141,29 @@ defmodule YellowDog.Tasks.Runner do
             run_job(task_key, job_id)
 
           _pid ->
-            case Task.Supervisor.start_child(task_supervisor(), fn -> run_job(task_key, job_id) end) do
+            case Task.Supervisor.start_child(task_supervisor(), fn ->
+                   run_job(task_key, job_id)
+                 end) do
               {:ok, _pid} -> :ok
               {:error, reason} -> {:error, reason}
             end
         end
     end
+  end
+
+  defp cleanup_failed_start(job) do
+    case delete_failed_job(job) do
+      :ok -> {:error, :start_failed}
+      _cleanup_failure -> {:error, {:rollback_failed, :start_failed, :cleanup_failed}}
+    end
+  end
+
+  defp delete_failed_job(job) do
+    Store.delete_job(job)
+  rescue
+    _exception -> {:error, :cleanup_failed}
+  catch
+    _kind, _reason -> {:error, :cleanup_failed}
   end
 
   defp task_supervisor do
@@ -157,10 +176,17 @@ defmodule YellowDog.Tasks.Runner do
 
   defp mark_completed(job) do
     case Store.mark_completed(job) do
-      {:ok, _job} -> :ok
-      {:error, :condition_failed} -> :ok
+      {:ok, _job} ->
+        :ok
+
+      {:error, :condition_failed} ->
+        :ok
+
       {:error, reason} ->
-        Logger.warning("Task #{job.task_key} failed to mark job #{job.id} completed: #{inspect(reason)}")
+        Logger.warning(
+          "Task #{job.task_key} failed to mark job #{job.id} completed: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end
@@ -173,16 +199,24 @@ defmodule YellowDog.Tasks.Runner do
             :retry
 
           {:error, reason} ->
-            Logger.warning("Task #{job.task_key} failed to retry job #{job.id}: #{inspect(reason)}")
+            Logger.warning(
+              "Task #{job.task_key} failed to retry job #{job.id}: #{inspect(reason)}"
+            )
+
             {:error, reason}
         end
 
       {:ok, _job} ->
         :discarded
 
-      {:error, :condition_failed} -> :ok
+      {:error, :condition_failed} ->
+        :ok
+
       {:error, reason} ->
-        Logger.warning("Task #{job.task_key} failed to mark job #{job.id} failed: #{inspect(reason)}")
+        Logger.warning(
+          "Task #{job.task_key} failed to mark job #{job.id} failed: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end
@@ -195,7 +229,8 @@ defmodule YellowDog.Tasks.Runner do
         shifted
 
       {:error, reason} ->
-        raise ArgumentError, "task scheduler timezone #{inspect(timezone)} is invalid: #{inspect(reason)}"
+        raise ArgumentError,
+              "task scheduler timezone #{inspect(timezone)} is invalid: #{inspect(reason)}"
     end
   end
 

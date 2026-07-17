@@ -11,6 +11,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
   alias YellowDog.Tasks.Workers.SyncIpDatabaseWorker
   alias YellowDog.Tasks.Workers.SyncMacDatabaseWorker
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Key
   alias YellowDog.Store.Provider
   alias YellowDog.Store.Zone
 
@@ -80,6 +81,27 @@ defmodule YellowDog.Tasks.DataSyncTest do
     defp parent!, do: Application.fetch_env!(:yellow_dog_tasks, :test_parent)
   end
 
+  defmodule DeleteFailureBackend do
+    @moduledoc false
+
+    alias YellowDog.Store.Backend.Ets
+
+    def put(key, value, opts), do: Ets.put(key, value, opts)
+    def get(key, opts), do: Ets.get(key, opts)
+    def prefix_scan(prefix, opts), do: Ets.prefix_scan(prefix, opts)
+
+    def delete(key) do
+      if key == Application.fetch_env!(:yellow_dog_tasks, :test_delete_failure_key) do
+        send(parent!(), {:job_delete_attempted, key})
+        Application.fetch_env!(:yellow_dog_tasks, :test_delete_failure_result)
+      else
+        Ets.delete(key)
+      end
+    end
+
+    defp parent!, do: Application.fetch_env!(:yellow_dog_tasks, :test_parent)
+  end
+
   setup do
     YellowDog.StoreHelper.setup_store()
 
@@ -94,6 +116,8 @@ defmodule YellowDog.Tasks.DataSyncTest do
         :store_backend,
         :task_supervisor,
         :task_starter,
+        :test_delete_failure_key,
+        :test_delete_failure_result,
         :test_minute_id,
         :test_parent
       ])
@@ -299,6 +323,67 @@ defmodule YellowDog.Tasks.DataSyncTest do
     assert unrelated_id == unrelated.id
     assert [%Job{id: only_cloud_job_id}] = Tasks.recent_jobs(key)
     assert only_cloud_job_id == existing.id
+  end
+
+  test "failed exact new-job cleanup remains durable and reports rollback failure" do
+    zone_name = "cloud-cleanup-failure-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :cloudflare)
+    key = "cloud_zone:default:#{zone_name}"
+
+    :ok =
+      Provider.put_config(%{
+        name: "cloud-main",
+        type: :cloudflare,
+        credentials: %{api_token: "test-token"},
+        enabled: true
+      })
+
+    Application.put_env(:yellow_dog_tasks, :task_starter, fn _task_key, _job_id -> :ok end)
+
+    assert {:ok, existing} =
+             Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+    assert {:ok, unrelated} =
+             Store.create_job(DataSync.get_task!(:ip_city), %{"type" => "city", "force" => true})
+
+    parent = self()
+    Application.put_env(:yellow_dog_tasks, :store_backend, DeleteFailureBackend)
+    Application.put_env(:yellow_dog_tasks, :test_parent, parent)
+
+    Application.put_env(:yellow_dog_tasks, :task_starter, fn task_key, job_id ->
+      assert {:ok, %Job{id: ^job_id}} = Store.get_job(task_key, job_id)
+
+      Application.put_env(
+        :yellow_dog_tasks,
+        :test_delete_failure_key,
+        Key.task_job(task_key, job_id)
+      )
+
+      send(parent, {:failed_child_start, task_key, job_id})
+      {:error, {:child_start_failed, "start-secret"}}
+    end)
+
+    for cleanup_result <- [
+          {:error, {:cleanup_failed, "cleanup-secret"}},
+          {:unexpected_cleanup_result, "cleanup-secret"}
+        ] do
+      Application.put_env(:yellow_dog_tasks, :test_delete_failure_result, cleanup_result)
+
+      result = Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+      assert result == {:error, :rollback_failed}
+      refute inspect(result) =~ "secret"
+
+      assert_receive {:failed_child_start, ^key, failed_id}
+      expected_delete_key = Key.task_job(key, failed_id)
+      assert_receive {:job_delete_attempted, ^expected_delete_key}
+
+      assert {:ok, %Job{id: ^failed_id}} = Store.get_job(key, failed_id)
+      assert {:ok, %Job{id: existing_id}} = Store.get_job(key, existing.id)
+      assert {:ok, %Job{id: unrelated_id}} = Store.get_job(:ip_city, unrelated.id)
+      assert existing_id == existing.id
+      assert unrelated_id == unrelated.id
+    end
   end
 
   test "updates cloud zone task schedule without creating atoms" do

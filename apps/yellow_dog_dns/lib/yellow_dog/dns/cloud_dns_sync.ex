@@ -41,8 +41,14 @@ defmodule YellowDog.Dns.CloudDnsSync do
          :ok <- connector_enabled(connector),
          {:ok, records} <- fetch_records(connector, mirror, zone_name, opts),
          {:ok, changed_count} <-
-           replace_and_activate(zone_store, zone_controller, view_name, zone_name, records),
-         :ok <- invalidate_zone_cache(view_name, zone_name, opts) do
+           replace_and_activate(
+             zone_store,
+             zone_controller,
+             view_name,
+             zone_name,
+             records,
+             opts
+           ) do
       {:ok, %{provider: connector_type(connector), records_synced: changed_count}}
     end
   end
@@ -846,7 +852,14 @@ defmodule YellowDog.Dns.CloudDnsSync do
 
   defp caa_record(_owner, _data, _ttl), do: :skip
 
-  defp replace_and_activate(zone_store, zone_controller, view_name, zone_name, records) do
+  defp replace_and_activate(
+         zone_store,
+         zone_controller,
+         view_name,
+         zone_name,
+         records,
+         opts
+       ) do
     desired_records =
       records
       |> Enum.group_by(fn record -> {record.owner, record.type} end)
@@ -856,13 +869,15 @@ defmodule YellowDog.Dns.CloudDnsSync do
 
     case zone_store.replace_records(view_name, zone_name, desired_records) do
       {:ok, %{previous: previous, changed_count: changed_count}} when is_list(previous) ->
-        case reload_running_zone(zone_controller, view_name, zone_name) do
-          :ok ->
-            {:ok, changed_count}
-
-          {:error, _reason} ->
-            restore_replacement(zone_store, zone_controller, view_name, zone_name, previous)
-        end
+        activate_replacement(
+          zone_store,
+          zone_controller,
+          view_name,
+          zone_name,
+          previous,
+          changed_count,
+          opts
+        )
 
       {:error, {:rollback_failed, _replace_reason, _rollback_reason}} ->
         {:error, :rollback_failed}
@@ -875,9 +890,42 @@ defmodule YellowDog.Dns.CloudDnsSync do
     end
   end
 
-  defp restore_replacement(zone_store, zone_controller, view_name, zone_name, previous) do
+  defp activate_replacement(
+         zone_store,
+         zone_controller,
+         view_name,
+         zone_name,
+         previous,
+         changed_count,
+         opts
+       ) do
+    with :ok <- reload_running_zone(zone_controller, view_name, zone_name),
+         :ok <- invalidate_zone_cache(view_name, zone_name, opts) do
+      {:ok, changed_count}
+    else
+      _activation_failure ->
+        restore_replacement(
+          zone_store,
+          zone_controller,
+          view_name,
+          zone_name,
+          previous,
+          opts
+        )
+    end
+  end
+
+  defp restore_replacement(
+         zone_store,
+         zone_controller,
+         view_name,
+         zone_name,
+         previous,
+         opts
+       ) do
     with {:ok, _restored} <- zone_store.replace_records(view_name, zone_name, previous),
-         :ok <- reload_running_zone(zone_controller, view_name, zone_name) do
+         :ok <- reload_running_zone(zone_controller, view_name, zone_name),
+         :ok <- invalidate_zone_cache(view_name, zone_name, opts) do
       {:error, :apply_failed}
     else
       _failure -> {:error, :rollback_failed}
@@ -900,9 +948,13 @@ defmodule YellowDog.Dns.CloudDnsSync do
     case invalidator.(view_name, zone_name) do
       :ok -> :ok
       {:error, :not_found} -> :ok
-      {:error, _reason} = error -> error
-      _other -> :ok
+      {:error, _reason} -> {:error, :cache_invalidation_failed}
+      _other -> {:error, :cache_invalidation_failed}
     end
+  rescue
+    _exception -> {:error, :cache_invalidation_failed}
+  catch
+    _kind, _reason -> {:error, :cache_invalidation_failed}
   end
 
   defp invalidate_running_view_cache(view_name, zone_name) do
@@ -911,9 +963,11 @@ defmodule YellowDog.Dns.CloudDnsSync do
       :error -> :ok
     end
   rescue
-    _error -> :ok
+    _error -> {:error, :cache_invalidation_failed}
   catch
-    :exit, _reason -> :ok
+    :exit, :noproc -> :ok
+    :exit, {:noproc, _call} -> :ok
+    :exit, _reason -> {:error, :cache_invalidation_failed}
   end
 
   defp value(map, key, default \\ nil)

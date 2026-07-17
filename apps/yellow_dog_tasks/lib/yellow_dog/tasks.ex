@@ -67,7 +67,8 @@ defmodule YellowDog.Tasks do
   """
   @spec enqueue_cloud_zone_sync(String.t(), String.t(), String.t()) ::
           {:ok, YellowDog.Tasks.Job.t()}
-          | {:error, :invalid | :not_found | :conflict | :unsupported | :apply_failed}
+          | {:error,
+             :invalid | :not_found | :conflict | :unsupported | :apply_failed | :rollback_failed}
   def enqueue_cloud_zone_sync(view_name, zone_name, provider_id)
       when is_binary(view_name) and is_binary(zone_name) and is_binary(provider_id) do
     with {:ok, {view_name, zone_name}} <- canonical_zone_scope(view_name, zone_name),
@@ -78,10 +79,10 @@ defmodule YellowDog.Tasks do
          :ok <- matching_provider(mirror, provider_id),
          {:ok, provider} <- fetch_provider(provider_id),
          :ok <- enabled_supported_provider(provider, mirror_type) do
-      case Runner.enqueue(DataSync.cloud_zone_task_key(view_name, zone_name), force: true) do
-        {:ok, job} -> {:ok, job}
-        {:error, _reason} -> {:error, :apply_failed}
-      end
+      view_name
+      |> DataSync.cloud_zone_task_key(zone_name)
+      |> Runner.enqueue(force: true)
+      |> cloud_zone_enqueue_result()
     end
   end
 
@@ -92,6 +93,16 @@ defmodule YellowDog.Tasks do
   """
   @spec recent_jobs(atom() | String.t(), keyword()) :: [YellowDog.Tasks.Job.t()]
   def recent_jobs(key, opts \\ []), do: TaskStatus.recent_jobs(key, opts)
+
+  defp cloud_zone_enqueue_result({:ok, job}), do: {:ok, job}
+  defp cloud_zone_enqueue_result({:error, :rollback_failed}), do: {:error, :rollback_failed}
+
+  defp cloud_zone_enqueue_result({:error, reason})
+       when is_tuple(reason) and tuple_size(reason) > 0 and elem(reason, 0) == :rollback_failed,
+       do: {:error, :rollback_failed}
+
+  defp cloud_zone_enqueue_result({:error, _reason}), do: {:error, :apply_failed}
+  defp cloud_zone_enqueue_result(_result), do: {:error, :apply_failed}
 
   defp canonical_zone_scope(view_name, zone_name) do
     case Key.canonical_zone_scope(view_name, zone_name) do

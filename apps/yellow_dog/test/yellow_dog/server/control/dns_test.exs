@@ -245,7 +245,6 @@ defmodule YellowDog.Server.Control.DnsTest do
           {{:error, :conflict}, :conflict, "operation conflict"},
           {{:error, :unsupported}, :unsupported, "unsupported operation"},
           {{:error, :apply_failed}, :apply_failed, "apply failed"},
-          {{:error, :rollback_failed}, :rollback_failed, "rollback failed"},
           {{:error, {:owner_failed, "credential-token"}}, :apply_failed, "apply failed"}
         ] do
       ServerDnsControlFake.configure(%{responses: %{enqueue_cloud_zone_sync: [owner_result]}})
@@ -263,6 +262,23 @@ defmodule YellowDog.Server.Control.DnsTest do
                {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
              ] = ServerDnsControlFake.take_calls()
     end
+  end
+
+  test "maps cloud-zone job cleanup failure to rollback_failed" do
+    ServerDnsControlFake.configure(%{
+      responses: %{enqueue_cloud_zone_sync: [{:error, :rollback_failed}]}
+    })
+
+    assert {:error, %Error{code: :rollback_failed, message: "rollback failed", details: %{}}} =
+             Dns.dispatch("server.dns.zones.sync", %{
+               "view_name" => "default",
+               "zone_name" => "example.test",
+               "provider_id" => "cf-main"
+             })
+
+    assert [
+             {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]}
+           ] = ServerDnsControlFake.take_calls()
   end
 
   test "creates each fixed RR type with its exact Store encoding" do
