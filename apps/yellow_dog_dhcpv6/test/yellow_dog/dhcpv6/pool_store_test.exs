@@ -1,7 +1,69 @@
+defmodule YellowDog.Dhcpv6.PoolStoreFaultFileOps do
+  @moduledoc false
+
+  alias YellowDog.Config.TomlHelpers
+
+  @count_key {__MODULE__, :write_count}
+  @failure_key {__MODULE__, :failure_write}
+
+  def reset do
+    Process.delete(@count_key)
+    Process.delete(@failure_key)
+  end
+
+  def fail_on_write(write_number) do
+    Process.put(@count_key, 0)
+    Process.put(@failure_key, write_number)
+  end
+
+  def write_count, do: Process.get(@count_key, 0)
+
+  def mkdir_p(path), do: File.mkdir_p(path)
+
+  def atomic_write(path, content) do
+    write_number = Process.get(@count_key, 0) + 1
+    Process.put(@count_key, write_number)
+
+    if write_number == Process.get(@failure_key) do
+      {:error, {:injected_write_failure, write_number}}
+    else
+      TomlHelpers.atomic_write(path, content)
+    end
+  end
+end
+
+defmodule YellowDog.Dhcpv6.PoolStoreFaultLeaseManager do
+  @moduledoc false
+
+  @calls_key {__MODULE__, :calls}
+  @pools_key {__MODULE__, :pools}
+
+  def reset(pools \\ []) do
+    Process.put(@calls_key, [])
+    Process.put(@pools_key, pools)
+  end
+
+  def calls, do: Process.get(@calls_key, []) |> Enum.reverse()
+
+  def control_pool_snapshot do
+    record(:control_pool_snapshot)
+    {:ok, Process.get(@pools_key, [])}
+  end
+
+  def control_apply_pool_snapshot(_pools) do
+    record(:control_apply_pool_snapshot)
+    :ok
+  end
+
+  defp record(call), do: Process.put(@calls_key, [call | Process.get(@calls_key, [])])
+end
+
 defmodule YellowDog.Dhcpv6.PoolStoreTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Dhcpv6.PoolStore
+  alias YellowDog.Dhcpv6.{PoolStore, PoolStoreFaultFileOps, PoolStoreFaultLeaseManager}
+  alias YellowDog.Server.Control.Dhcpv6
+  alias YellowDog.Sync.Error
 
   @moduletag :unit
 
@@ -283,6 +345,79 @@ defmodule YellowDog.Dhcpv6.PoolStoreTest do
   end
 
   describe "control pool facade" do
+    test "partial snapshot write keeps the complete prior generation authoritative", %{
+      tmp_dir: tmp_dir
+    } do
+      previous_data_dir = Application.get_env(:yellow_dog, :data_dir)
+      previous_pool_store = Application.get_env(:yellow_dog_dhcpv6, PoolStore)
+      previous_adapter = Application.get_env(:yellow_dog, Dhcpv6)
+
+      Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+      Application.put_env(:yellow_dog_dhcpv6, PoolStore, snapshot_file_ops: PoolStoreFaultFileOps)
+
+      PoolStoreFaultFileOps.reset()
+      PoolStoreFaultLeaseManager.reset()
+
+      Application.put_env(:yellow_dog, Dhcpv6,
+        pool_store: PoolStore,
+        lease_manager: PoolStoreFaultLeaseManager
+      )
+
+      on_exit(fn ->
+        PoolStoreFaultFileOps.reset()
+        PoolStoreFaultLeaseManager.reset()
+        restore_env(:yellow_dog, :data_dir, previous_data_dir)
+        restore_env(:yellow_dog_dhcpv6, PoolStore, previous_pool_store)
+        restore_env(:yellow_dog, Dhcpv6, previous_adapter)
+      end)
+
+      old_pool = control_pool("office", "2001:db8:1::", 3600)
+      old_guest_pool = control_pool("guest", "2001:db8:2::", 3600)
+      old_snapshot = [old_pool, old_guest_pool]
+      assert :ok = PoolStore.control_persist_snapshot(old_snapshot)
+      PoolStoreFaultLeaseManager.reset(old_snapshot)
+
+      data_dir = Path.join(tmp_dir, "dhcpv6")
+      pointer_path = Path.join(data_dir, "pools.current")
+      snapshot_root = Path.join(data_dir, "pool_snapshots")
+      old_pointer = File.read!(pointer_path)
+      old_generation = String.trim(old_pointer)
+      old_generation_dir = Path.join(snapshot_root, old_generation)
+      old_index_path = Path.join(old_generation_dir, "pools.toml")
+      old_pool_path = Path.join([old_generation_dir, "pools", "office.toml"])
+      old_index = File.read!(old_index_path)
+      old_pool_file = File.read!(old_pool_path)
+
+      PoolStoreFaultFileOps.fail_on_write(2)
+
+      assert {:error, %Error{code: :apply_failed}} =
+               Dhcpv6.dispatch("server.dhcp.pools.update", %{
+                 "family" => "ipv6",
+                 "pool_id" => "office",
+                 "subnet" => "2001:db8:1::/64",
+                 "start_address" => "2001:db8:1::100",
+                 "end_address" => "2001:db8:1::2ff",
+                 "lease_seconds" => 3600
+               })
+
+      assert PoolStoreFaultFileOps.write_count() == 2
+      assert PoolStoreFaultLeaseManager.calls() == [:control_pool_snapshot]
+      assert File.read!(pointer_path) == old_pointer
+      assert File.read!(old_index_path) == old_index
+      assert File.read!(old_pool_path) == old_pool_file
+      assert File.ls!(snapshot_root) == [old_generation]
+
+      assert {:ok, persisted_pools} = PoolStore.control_snapshot()
+      assert length(persisted_pools) == 2
+      persisted_pool = Enum.find(persisted_pools, &(&1.name == "office"))
+      assert persisted_pool.name == "office"
+      assert persisted_pool.range_end == "2001:db8:1::1ff"
+
+      assert {:error, :unrepresentable_lifetime} =
+               PoolStore.control_validate_pool(%{old_pool | valid_lifetime: 7200})
+    end
+
     test "rejects lossless-lifetime gaps and ranges outside the canonical subnet" do
       pool = %{
         name: "control",
@@ -360,4 +495,18 @@ defmodule YellowDog.Dhcpv6.PoolStoreTest do
       assert "beta" in names
     end
   end
+
+  defp control_pool(name, prefix, lifetime) do
+    %{
+      name: name,
+      network: "#{prefix}/64",
+      range_start: "#{prefix}100",
+      range_end: "#{prefix}1ff",
+      preferred_lifetime: lifetime,
+      valid_lifetime: lifetime
+    }
+  end
+
+  defp restore_env(application, key, nil), do: Application.delete_env(application, key)
+  defp restore_env(application, key, value), do: Application.put_env(application, key, value)
 end

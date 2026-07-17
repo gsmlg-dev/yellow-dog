@@ -146,6 +146,7 @@ defmodule YellowDog.Server.Control.Dhcpv6Test do
              Dhcpv6.dispatch("server.dhcp.pools.create", write_payload("new"))
 
     assert calls = Dhcpv6ControlFake.take_calls()
+    assert Enum.count(calls, &match?({:pool_store, :control_persist_snapshot, _}, &1)) == 1
     refute Enum.any?(calls, &match?({:lease_manager, :control_apply_pool_snapshot, _}, &1))
   end
 

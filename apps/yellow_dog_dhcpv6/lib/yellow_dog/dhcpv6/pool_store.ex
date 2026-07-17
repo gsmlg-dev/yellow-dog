@@ -1,3 +1,12 @@
+defmodule YellowDog.Dhcpv6.PoolStore.FileOps do
+  @moduledoc false
+
+  alias YellowDog.Config.TomlHelpers
+
+  def mkdir_p(path), do: File.mkdir_p(path)
+  def atomic_write(path, content), do: TomlHelpers.atomic_write(path, content)
+end
+
 defmodule YellowDog.Dhcpv6.PoolStore do
   @moduledoc """
   Persistence layer for DHCPv6 address pool definitions.
@@ -5,6 +14,9 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   Uses a two-level storage structure:
   - Index file: `data/dhcpv6/pools.toml` - lists all pool names
   - Pool files: `data/dhcpv6/pools/{pool_name}.toml` - individual pool configs
+
+  Control snapshots use immutable generation directories selected by the
+  atomically replaced `data/dhcpv6/pools.current` pointer.
 
   This architecture allows:
   - Quick loading of pool list without reading all configs
@@ -15,6 +27,10 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   alias YellowDog.Dhcpv6.{AddressPool, Ipv6Util}
   import Bitwise
   import YellowDog.Config.TomlHelpers
+
+  @snapshot_directory "pool_snapshots"
+  @snapshot_pointer "pools.current"
+  @snapshot_name_pattern ~r/\Asnapshot-\d+-\d+\z/
 
   @type pool_config :: %{
           name: String.t(),
@@ -43,7 +59,9 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
   @spec load_pools() :: {:ok, [pool_config()]} | {:error, term()}
   def load_pools do
-    load_pools(default_index_path())
+    with {:ok, index_path} <- active_index_path() do
+      load_pools(index_path)
+    end
   end
 
   @spec load_pools(String.t()) :: {:ok, [pool_config()]} | {:error, term()}
@@ -196,7 +214,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
   @spec default_index_path() :: String.t()
   def default_index_path do
-    Path.join(get_data_dir(), "pools.toml")
+    Path.join(active_or_legacy_pool_directory(), "pools.toml")
   end
 
   @doc """
@@ -212,7 +230,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
   @spec pools_directory() :: String.t()
   def pools_directory do
-    Path.join(get_data_dir(), "pools")
+    Path.join(active_or_legacy_pool_directory(), "pools")
   end
 
   @doc """
@@ -253,7 +271,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   @spec control_persist_snapshot([pool_config()]) :: :ok | {:error, term()}
   def control_persist_snapshot(pools) when is_list(pools) do
     with :ok <- validate_control_snapshot(pools) do
-      save_all_pools(pools)
+      persist_control_snapshot(pools)
     end
   end
 
@@ -312,6 +330,99 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     base_dir = Application.get_env(:yellow_dog, :data_dir) || "data"
     Path.join(base_dir, "dhcpv6")
   end
+
+  defp active_index_path do
+    case active_snapshot_directory() do
+      {:ok, directory} -> {:ok, Path.join(directory, "pools.toml")}
+      {:error, :snapshot_pointer_missing} -> {:ok, Path.join(get_data_dir(), "pools.toml")}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp active_or_legacy_pool_directory do
+    case active_snapshot_directory() do
+      {:ok, directory} -> directory
+      {:error, _reason} -> get_data_dir()
+    end
+  end
+
+  defp active_snapshot_directory do
+    case File.read(snapshot_pointer_path()) do
+      {:ok, pointer} ->
+        resolve_snapshot_directory(String.trim(pointer))
+
+      {:error, :enoent} ->
+        {:error, :snapshot_pointer_missing}
+
+      {:error, reason} ->
+        {:error, {:snapshot_pointer_read_failed, reason}}
+    end
+  end
+
+  defp resolve_snapshot_directory(generation) do
+    directory = Path.join(snapshot_root(), generation)
+
+    if Regex.match?(@snapshot_name_pattern, generation) and File.dir?(directory),
+      do: {:ok, directory},
+      else: {:error, :invalid_snapshot_pointer}
+  end
+
+  defp persist_control_snapshot(pools) do
+    generation = snapshot_generation()
+    generation_directory = Path.join(snapshot_root(), generation)
+    pools_directory = Path.join(generation_directory, "pools")
+    file_ops = snapshot_file_ops()
+
+    result =
+      with :ok <- create_snapshot_directory(file_ops, pools_directory),
+           :ok <- write_snapshot_pool_files(file_ops, pools_directory, pools),
+           :ok <-
+             file_ops.atomic_write(
+               Path.join(generation_directory, "pools.toml"),
+               pool_index_toml(Enum.map(pools, &pool_name/1))
+             ),
+           :ok <- file_ops.atomic_write(snapshot_pointer_path(), generation <> "\n") do
+        :ok
+      end
+
+    if result != :ok, do: File.rm_rf(generation_directory)
+    result
+  end
+
+  defp create_snapshot_directory(file_ops, pools_directory) do
+    case file_ops.mkdir_p(pools_directory) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:mkdir_failed, reason}}
+    end
+  end
+
+  defp write_snapshot_pool_files(file_ops, pools_directory, pools) do
+    Enum.reduce_while(pools, :ok, fn pool, :ok ->
+      path = Path.join(pools_directory, "#{pool_name(pool)}.toml")
+
+      case file_ops.atomic_write(path, pool_to_toml(pool)) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp snapshot_generation do
+    timestamp = System.system_time(:microsecond)
+    unique = System.unique_integer([:monotonic, :positive])
+    "snapshot-#{timestamp}-#{unique}"
+  end
+
+  defp snapshot_root, do: Path.join(get_data_dir(), @snapshot_directory)
+  defp snapshot_pointer_path, do: Path.join(get_data_dir(), @snapshot_pointer)
+
+  defp snapshot_file_ops do
+    :yellow_dog_dhcpv6
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:snapshot_file_ops, __MODULE__.FileOps)
+  end
+
+  defp pool_name(pool), do: pool[:name] || pool.name
 
   defp ensure_directories do
     pools_dir = pools_directory()
@@ -401,16 +512,17 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
   defp save_index(pool_names) do
     index_path = default_index_path()
+    atomic_write(index_path, pool_index_toml(pool_names))
+  end
 
-    content = """
+  defp pool_index_toml(pool_names) do
+    """
     # DHCPv6 Pool Index
     # This file lists all configured address pools.
     # Each pool's configuration is stored in pools/{name}.toml
 
     pools = #{inspect(pool_names)}
     """
-
-    atomic_write(index_path, content)
   end
 
   defp add_to_index(pool_name) do
