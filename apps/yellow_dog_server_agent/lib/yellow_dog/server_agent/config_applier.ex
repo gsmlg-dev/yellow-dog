@@ -13,8 +13,12 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Message
+  alias YellowDog.Sync.Message.ConfigState
 
   @default_runtime_adapter :"Elixir.YellowDog.Server.Control"
+  @max_publications 3
+  @max_version 9_223_372_036_854_775_807
   @allowed_options [
     :name,
     :server_id,
@@ -35,6 +39,28 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     :before_restore,
     :before_reactivate
   ]
+  @transition_contracts %{
+    delivered: {:delivered, :staged, :stable},
+    before_validate: {:delivered, :before_validate, :stable},
+    validation_failed: {:failed, :complete, :stable},
+    before_install: {:applying, :before_install, :stable},
+    before_activate: {:applying, :before_activate, :stable},
+    apply_failed: {:failed, :complete, :unknown},
+    before_restore: {:applying, :before_restore, :unknown},
+    before_reactivate: {:applying, :before_reactivate, :unknown},
+    rollback_succeeded: {:failed, :complete, :known},
+    rollback_failed: {:failed, :complete, :unknown},
+    applied: {:applied, :complete, :known},
+    uncertain_after_side_effect: {:applying, :unknown, :unknown}
+  }
+  @init_applying_runtime %{
+    before_install: :stable,
+    before_activate: :stable,
+    before_restore: :unknown,
+    before_reactivate: :unknown,
+    unknown: :unknown
+  }
+  @publication_keys [:encoded_message, :message, :sequence]
   @error_messages %{
     not_connected: "not connected",
     not_found: "resource not found",
@@ -58,6 +84,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
           profile: String.t(),
           config_store: server(),
           config_apply_store: server(),
+          config_apply_store_pid: pid(),
           runtime_adapter: module()
         }
 
@@ -88,10 +115,33 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
 
   @impl true
   def init(config) do
-    case recover_uncertain_side_effect(config) do
-      :ok -> {:ok, config}
-      {:error, phase} -> {:stop, {:config_applier_recovery_failed, phase}}
+    ownership_key = {__MODULE__, :config_apply_store, config.config_apply_store_pid}
+
+    case claim_ownership(ownership_key) do
+      :ok ->
+        config = Map.put(config, :ownership_key, ownership_key)
+
+        case recover_uncertain_side_effect(config) do
+          :ok ->
+            {:ok, config}
+
+          {:error, phase} ->
+            release_ownership(ownership_key)
+            {:stop, {:config_applier_recovery_failed, phase}}
+        end
+
+      {:error, :already_started} ->
+        {:stop, :config_applier_already_started}
+
+      {:error, :registration} ->
+        {:stop, :config_applier_ownership_failed}
     end
+  end
+
+  @impl true
+  def terminate(_reason, %{ownership_key: ownership_key}) do
+    release_ownership(ownership_key)
+    :ok
   end
 
   @impl true
@@ -340,7 +390,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
          end) do
       {:admit, :new} = admitted -> admitted
       {:resume, checkpoint} = resume when checkpoint in [:staged, :before_validate] -> resume
-      {:replay, snapshot} when is_map(snapshot) -> {:replay, snapshot}
+      {:replay, snapshot} -> validate_replay_snapshot(snapshot, envelope, config)
       {:error, %Error{}} = error -> error
       _malformed -> internal()
     end
@@ -350,7 +400,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     case local_call(fn ->
            ConfigApplyStore.transition(event, attrs, config.config_apply_store)
          end) do
-      {:ok, snapshot} when is_map(snapshot) -> {:ok, snapshot}
+      {:ok, snapshot} -> validate_transition_snapshot(snapshot, event, attrs, config)
       {:error, %Error{}} = error -> error
       _malformed -> internal()
     end
@@ -360,8 +410,14 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     case local_call(fn ->
            ConfigApplyStore.pending_publications(config.config_apply_store)
          end) do
-      {:ok, publications} when is_list(publications) ->
-        {:ok, %{status: status, publications: publications}}
+      {:ok, publications} ->
+        case validate_publications(publications, config.server_id) do
+          {:ok, publications} ->
+            {:ok, %{status: status, publications: publications}}
+
+          {:error, %Error{}} = error ->
+            error
+        end
 
       {:error, %Error{}} = error ->
         error
@@ -375,23 +431,18 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     case local_call(fn ->
            ConfigApplyStore.snapshot(config.config_apply_store)
          end) do
-      {:ok, %{attempt: %{status: :applying, checkpoint: checkpoint, version: version}}}
-      when checkpoint in @side_effect_checkpoints ->
-        recover_uncertain_transition(version, config)
+      {:ok, snapshot} ->
+        case validate_init_snapshot(snapshot, config) do
+          {:ok, %{attempt: %{status: :applying, checkpoint: checkpoint, version: version}}}
+          when checkpoint in @side_effect_checkpoints ->
+            recover_uncertain_transition(version, config)
 
-      {:ok, %{attempt: nil}} ->
-        :ok
+          {:ok, _snapshot} ->
+            :ok
 
-      {:ok, %{attempt: %{status: :delivered, checkpoint: checkpoint}}}
-      when checkpoint in [:staged, :before_validate] ->
-        :ok
-
-      {:ok, %{attempt: %{status: :applying, checkpoint: :unknown}}} ->
-        :ok
-
-      {:ok, %{attempt: %{status: status, checkpoint: :complete}}}
-      when status in [:applied, :failed] ->
-        :ok
+          {:error, %Error{}} ->
+            {:error, :state}
+        end
 
       _invalid_or_unavailable ->
         {:error, :state}
@@ -404,6 +455,243 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
       _not_durable -> {:error, :persistence}
     end
   end
+
+  defp validate_init_snapshot(snapshot, config) do
+    validate_snapshot(snapshot, config, fn
+      %{attempt: nil, runtime_status: :unconfigured, known_good: nil} ->
+        true
+
+      %{attempt: %{version: version, status: :delivered, checkpoint: checkpoint}} = snapshot ->
+        version?(version) and checkpoint in [:staged, :before_validate] and
+          runtime?(snapshot, :stable)
+
+      %{attempt: %{version: version, status: :applying, checkpoint: checkpoint}} = snapshot ->
+        version?(version) and init_applying_state?(checkpoint, snapshot)
+
+      %{attempt: %{version: version, status: :applied, checkpoint: :complete}} = snapshot ->
+        version?(version) and runtime?(snapshot, :known)
+
+      %{attempt: %{version: version, status: :failed, checkpoint: :complete}} = snapshot ->
+        version?(version) and runtime?(snapshot, :terminal)
+
+      _invalid ->
+        false
+    end)
+  end
+
+  defp init_applying_state?(checkpoint, snapshot) do
+    case @init_applying_runtime[checkpoint] do
+      nil -> false
+      runtime -> runtime?(snapshot, runtime)
+    end
+  end
+
+  defp validate_replay_snapshot(snapshot, envelope, config) do
+    case validate_snapshot(snapshot, config, fn snapshot ->
+           replay_snapshot?(snapshot, envelope, config)
+         end) do
+      {:ok, snapshot} -> {:replay, snapshot}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp replay_snapshot?(
+         %{attempt: attempt} = snapshot,
+         %Envelope{} = envelope,
+         config
+       )
+       when is_map(attempt) do
+    same_candidate =
+      attempt.version == envelope.config_version and
+        attempt.digest == envelope.payload_digest and
+        attempt.operation == envelope.operation and
+        attempt.profile == config.profile and
+        attempt.expected_revision == envelope.expected_revision
+
+    replayable =
+      case {attempt.status, attempt.checkpoint} do
+        {:applying, :unknown} -> runtime?(snapshot, :unknown)
+        {:applied, :complete} -> runtime?(snapshot, :known)
+        {:failed, :complete} -> runtime?(snapshot, :terminal)
+        _other -> false
+      end
+
+    same_candidate and replayable
+  end
+
+  defp replay_snapshot?(_snapshot, _envelope, _config), do: false
+
+  defp validate_transition_snapshot(snapshot, event, attrs, config) do
+    validate_snapshot(snapshot, config, fn snapshot ->
+      with {:ok, {version, status, checkpoint, runtime}} <- transition_state(event, attrs),
+           true <- attempt_at?(snapshot, version, status, checkpoint),
+           true <- runtime?(snapshot, runtime) do
+        transition_fields?(event, attrs, snapshot)
+      else
+        _invalid -> false
+      end
+    end)
+  end
+
+  defp transition_state(event, attrs) do
+    with {status, checkpoint, runtime} <- @transition_contracts[event],
+         {:ok, version} <- transition_version(event, attrs) do
+      {:ok, {version, status, checkpoint, runtime}}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp transition_version(:delivered, %{candidate: %{"version" => version}}),
+    do: {:ok, version}
+
+  defp transition_version(:delivered, _attrs), do: :error
+  defp transition_version(_event, %{version: version}), do: {:ok, version}
+  defp transition_version(_event, _attrs), do: :error
+
+  defp transition_fields?(
+         :before_install,
+         _attrs,
+         %{known_good: known_good, attempt: %{previous: previous}}
+       ),
+       do: previous == known_good and known_good_or_nil?(previous)
+
+  defp transition_fields?(
+         :before_activate,
+         %{installed_revision: revision},
+         %{attempt: %{installed_revision: revision}}
+       ),
+       do: true
+
+  defp transition_fields?(
+         :applied,
+         %{version: version},
+         %{
+           runtime_status: :known,
+           known_good: known_good,
+           attempt: %{digest: digest, installed_revision: revision}
+         }
+       ),
+       do:
+         known_good?(known_good) and
+           known_good == %{version: version, digest: digest, revision: revision}
+
+  defp transition_fields?(event, _attrs, _snapshot)
+       when event in [:before_install, :before_activate, :applied],
+       do: false
+
+  defp transition_fields?(event, _attrs, _snapshot),
+    do: Map.has_key?(@transition_contracts, event)
+
+  defp attempt_at?(
+         %{attempt: %{version: version, status: status, checkpoint: checkpoint}},
+         version,
+         status,
+         checkpoint
+       ),
+       do: true
+
+  defp attempt_at?(_snapshot, _version, _status, _checkpoint), do: false
+
+  defp validate_snapshot(snapshot, config, predicate) do
+    if target_snapshot?(snapshot, config.server_id) and predicate.(snapshot),
+      do: {:ok, snapshot},
+      else: internal()
+  rescue
+    _exception -> internal()
+  catch
+    _kind, _reason -> internal()
+  end
+
+  defp target_snapshot?(
+         %{target_type: :server, target_id: server_id, attempt: _attempt},
+         server_id
+       ),
+       do: true
+
+  defp target_snapshot?(_snapshot, _server_id), do: false
+
+  defp runtime?(%{runtime_status: :unconfigured, known_good: nil}, runtime)
+       when runtime in [:stable, :terminal],
+       do: true
+
+  defp runtime?(%{runtime_status: :known, known_good: known_good}, runtime)
+       when runtime in [:stable, :known, :terminal],
+       do: known_good?(known_good)
+
+  defp runtime?(%{runtime_status: :unknown, known_good: known_good}, runtime)
+       when runtime in [:unknown, :terminal],
+       do: known_good_or_nil?(known_good)
+
+  defp runtime?(_snapshot, _expected), do: false
+
+  defp known_good_or_nil?(nil), do: true
+  defp known_good_or_nil?(known_good), do: known_good?(known_good)
+
+  defp known_good?(%{version: version, digest: digest, revision: revision}),
+    do: version?(version) and valid_digest?(digest) and valid_digest?(revision)
+
+  defp known_good?(_known_good), do: false
+
+  defp validate_publications(publications, server_id) do
+    if valid_publication_list?(publications, server_id),
+      do: {:ok, publications},
+      else: internal()
+  rescue
+    _exception -> internal()
+  catch
+    _kind, _reason -> internal()
+  end
+
+  defp valid_publication_list?(publications, server_id)
+       when is_list(publications) and length(publications) <= @max_publications do
+    Enum.all?(publications, &valid_publication?(&1, server_id)) and
+      contiguous_sequences?(Enum.map(publications, & &1.sequence))
+  end
+
+  defp valid_publication_list?(_publications, _server_id), do: false
+
+  defp valid_publication?(publication, server_id) when is_map(publication) do
+    with true <- exact_keys?(publication, @publication_keys),
+         true <- positive_integer?(publication.sequence),
+         encoded when is_binary(encoded) <- publication.encoded_message,
+         %ConfigState{target_type: :server, target_id: ^server_id} = message <-
+           publication.message,
+         {:ok, ^message} <- Message.decode(encoded),
+         {:ok, ^encoded} <- Message.encode(message) do
+      true
+    else
+      _invalid -> false
+    end
+  end
+
+  defp valid_publication?(_publication, _server_id), do: false
+
+  defp contiguous_sequences?([]), do: true
+
+  defp contiguous_sequences?([first | rest]) when is_integer(first) and first > 0,
+    do: contiguous_sequences?(rest, first)
+
+  defp contiguous_sequences?(_sequences), do: false
+  defp contiguous_sequences?([], _previous), do: true
+
+  defp contiguous_sequences?([sequence | rest], previous)
+       when is_integer(sequence) and sequence == previous + 1,
+       do: contiguous_sequences?(rest, sequence)
+
+  defp contiguous_sequences?(_sequences, _previous), do: false
+
+  defp exact_keys?(value, keys) when is_map(value),
+    do: Enum.sort(Map.keys(value)) == Enum.sort(keys)
+
+  defp exact_keys?(_value, _keys), do: false
+
+  defp version?(value),
+    do: is_integer(value) and value > 0 and value <= @max_version
+
+  defp positive_integer?(value), do: is_integer(value) and value > 0
+
+  defp valid_digest?(value), do: match?({:ok, ^value}, Digest.validate(value))
 
   defp adapter_available?(adapter) do
     Code.ensure_loaded?(adapter) and
@@ -444,7 +732,8 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
          {:ok, server_id} <- server_id(Keyword.get(opts, :server_id)),
          {:ok, profile} <- profile(Keyword.get(opts, :profile)),
          {:ok, config_store} <- server_ref(Keyword.get(opts, :config_store)),
-         {:ok, config_apply_store} <- server_ref(Keyword.get(opts, :config_apply_store)),
+         {:ok, config_apply_store, config_apply_store_pid} <-
+           server_ref_with_pid(Keyword.get(opts, :config_apply_store)),
          {:ok, runtime_adapter} <-
            runtime_adapter(Keyword.get(opts, :runtime_adapter, @default_runtime_adapter)) do
       {:ok,
@@ -453,6 +742,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
          profile: profile,
          config_store: config_store,
          config_apply_store: config_apply_store,
+         config_apply_store_pid: config_apply_store_pid,
          runtime_adapter: runtime_adapter
        }, name}
     else
@@ -473,6 +763,17 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
   defp server_ref(value) do
     case GenServer.whereis(value) do
       pid when is_pid(pid) -> {:ok, value}
+      _missing -> :error
+    end
+  rescue
+    _exception -> :error
+  catch
+    _kind, _reason -> :error
+  end
+
+  defp server_ref_with_pid(value) do
+    case GenServer.whereis(value) do
+      pid when is_pid(pid) -> {:ok, value, pid}
       _missing -> :error
     end
   rescue
@@ -511,6 +812,26 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
 
   defp runtime_adapter(value) when is_atom(value) and not is_nil(value), do: {:ok, value}
   defp runtime_adapter(_value), do: :error
+
+  defp claim_ownership(key) do
+    case :global.register_name(key, self()) do
+      :yes -> :ok
+      :no -> {:error, :already_started}
+    end
+  rescue
+    _exception -> {:error, :registration}
+  catch
+    _kind, _reason -> {:error, :registration}
+  end
+
+  defp release_ownership(key) do
+    if :global.whereis_name(key) == self(), do: :global.unregister_name(key)
+    :ok
+  rescue
+    _exception -> :ok
+  catch
+    _kind, _reason -> :ok
+  end
 
   defp sanitize_error(%Error{code: code}) do
     case Map.fetch(@error_messages, code) do

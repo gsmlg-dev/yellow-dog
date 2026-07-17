@@ -43,6 +43,26 @@ DONE
   outbox. Publication acknowledgement/failure never invokes runtime work.
 - ConfigApplier retains no apply evidence itself; GenServer ownership supplies
   serial exclusion for concurrent deliveries.
+- A secondary atomic registration keyed by the resolved ConfigApplyStore PID
+  now enforces one ConfigApplier owner independently of nil or differing public
+  process names. Contending starts fail before serving, and termination releases
+  the registration. The configured ConfigApplyStore name/reference remains
+  unchanged for calls so a store restarted under the same name remains
+  reachable; the resolved PID is retained separately only for ownership.
+- Every ConfigApplyStore success is validated before snapshot dereference or
+  public return. Compact validators prove target identity plus only the
+  init/replay fields ConfigApplier consumes and the event-specific
+  status/checkpoint/runtime contract. Three transition-specific checks cover
+  only previous known-good, installed revision, and applied known-good
+  coherence; the ConfigApplyStore persistence codec is not duplicated.
+- Pending publications are accepted only as at most three exact-shape entries
+  with contiguous positive sequences, canonical encoded `ConfigState`
+  round-trips, and matching Server target identity. A malformed entry rejects
+  the entire result without exposing encoded bytes.
+- Validation is exception-safe inside the ConfigApplier process. A malformed
+  post-callback transition follows the existing durable-unknown path, and a
+  malformed unknown-transition success preserves the existing fail-stop
+  behavior.
 
 ## Tests
 
@@ -59,6 +79,14 @@ Focused coverage includes:
 - known-good rollback success, restore failure, and reactivation failure;
 - exact terminal replay, conflict-before-stage, and safe pure resume;
 - stage/current equality enforcement and concurrent call serialization;
+- ConfigApplyStore PID ownership races across distinct public names, nil-name
+  contention, and registration release on termination;
+- named ConfigApplyStore restart through the retained configured reference;
+- valid failed/unconfigured init and replay snapshots;
+- malformed init, preflight replay, pre-side-effect, post-side-effect, and
+  unknown-transition success shapes;
+- publication capacity, sequence, exact-key, message-type, canonical-byte, and
+  target-coherence rejection without partial disclosure;
 - persistence failure before install;
 - persistence failure after install, activation, restore, and reactivation;
 - fail-stop when durable unknown cannot be established;
@@ -70,26 +98,32 @@ Focused coverage includes:
 
 - TDD red:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/config_applier_test.exs'`
-  - Result: `22 tests, 22 failures` because RuntimeAdapter and ConfigApplier
-    were absent.
+  - Initial implementation result: `22 tests, 22 failures` because
+    RuntimeAdapter and ConfigApplier were absent.
+  - Independent-review regression result: `28 tests, 5 failures`, reproducing
+    both-owner startup, malformed replay/publication exposure, the
+    before-install dereference crash, and malformed post-activation acceptance.
+  - Named-store restart regression result: `30 tests, 1 failure`, reproducing
+    the stale resolved-PID call reference after a same-name store restart.
 - Focused tests:
   - Same focused command after implementation and expanded coverage.
-  - Result: `23 tests, 0 failures`.
+  - Result: `31 tests, 0 failures`.
 - Full Server-agent tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test'`
-  - Result: `185 tests, 0 failures`.
+  - Result: `193 tests, 0 failures`.
 - Warnings-as-errors compile:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors --force'`
   - Result: exit 0, 12 files compiled, no warnings.
 - Scoped format:
-  - `devenv shell -- mix format --check-formatted <four owned Elixir files>`
+  - `devenv shell -- mix format --check-formatted <three modified owned Elixir files>`
   - Result: exit 0.
 - Strict Credo:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix credo --strict'`
-  - Result: 26 source files, 935 mods/funs, no issues.
+  - Result: 26 source files, 994 mods/funs, no issues.
 - Dependency guard:
   - `mix deps.tree --only prod` reports only `yellow_dog_sync` as an umbrella
-    dependency; there is no `yellow_dog` dependency.
+    dependency plus the existing Hex packages; there is no `yellow_dog`
+    dependency.
 - Xref guards:
   - ConfigApplier has no compile dependency edges.
   - Its full sibling-inclusive trace contains only Sync, ConfigStore, and

@@ -15,6 +15,9 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Message
+  alias YellowDog.Sync.Message.ConfigState
+  alias YellowDog.Sync.Message.Heartbeat
 
   @server_id "server-east-1"
   @profile "dns_only"
@@ -107,6 +110,87 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
     ]
 
     assert {:error, :invalid_options} = ConfigApplier.start_link(duplicate_opts)
+  end
+
+  test "one applier owns each resolved apply store across public-name races", %{
+    data_dir: data_dir
+  } do
+    {config_store, apply_store} = start_stores(data_dir)
+    names = [unique_name(:applier_a), unique_name(:applier_b)]
+    gate = make_ref()
+
+    starters =
+      for name <- names do
+        Task.async(fn ->
+          Process.flag(:trap_exit, true)
+
+          receive do
+            {:start, ^gate} ->
+              ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: name))
+          end
+        end)
+      end
+
+    Enum.each(starters, &send(&1.pid, {:start, gate}))
+    results = Enum.map(starters, &Task.await/1)
+    appliers = for {:ok, pid} <- results, do: pid
+    on_exit(fn -> Enum.each(appliers, &stop/1) end)
+
+    assert [winner] = appliers
+    assert Enum.count(results, &(&1 == {:error, :config_applier_already_started})) == 1
+
+    assert {:error, :config_applier_already_started} =
+             ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: nil))
+
+    assert {:ok, %{status: :applied}} = ConfigApplier.apply(envelope(1), winner)
+    assert_receive {:adapter_call, :validate_config, [_]}
+    assert_receive {:adapter_call, :install_config, [_, _]}
+    assert_receive {:adapter_call, :activate_config, [_]}
+    refute_receive {:adapter_call, _, _}
+
+    stop(winner)
+
+    assert {:ok, replacement} =
+             ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: nil))
+
+    stop(replacement)
+  end
+
+  test "a named apply-store restart remains reachable through the configured reference", %{
+    data_dir: data_dir
+  } do
+    config_store_name = unique_name(:restart_config_store)
+    apply_store_name = unique_name(:restart_apply_store)
+
+    {:ok, config_store} =
+      ConfigStore.start_link(
+        name: config_store_name,
+        data_dir: data_dir,
+        server_id: @server_id,
+        profile: @profile
+      )
+
+    apply_opts = [
+      name: apply_store_name,
+      data_dir: data_dir,
+      server_id: @server_id,
+      profile: @profile,
+      config_store: config_store
+    ]
+
+    {:ok, first_apply_store} = ConfigApplyStore.start_link(apply_opts)
+
+    {:ok, applier} =
+      ConfigApplier.start_link(base_applier_opts(config_store, apply_store_name, name: nil))
+
+    stop(first_apply_store)
+    {:ok, restarted_apply_store} = ConfigApplyStore.start_link(apply_opts)
+
+    assert {:ok, %{status: :applied}} = ConfigApplier.apply(envelope(1), applier)
+    assert Process.alive?(applier)
+
+    stop(applier)
+    stop(restarted_apply_store)
   end
 
   test "defaults to the literal unavailable production adapter and fails closed", %{
@@ -405,6 +489,27 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
     refute_receive {:adapter_call, _, _}
   end
 
+  test "failed unconfigured snapshots remain valid for init and exact replay" do
+    snapshot =
+      attempt_snapshot(:failed, :complete,
+        failure: %{phase: :validation, reason: "runtime config validation failed"}
+      )
+
+    {:ok, config_store} = ConfigApplierTestConfigStore.start_link(:unused, :unused)
+
+    {:ok, apply_store} =
+      ConfigApplierTestApplyStore.start_scripted(snapshot, %{
+        preflight: [{:replay, snapshot}]
+      })
+
+    applier = start_applier(config_store, apply_store)
+
+    assert {:ok, %{status: :replay, publications: []}} =
+             ConfigApplier.apply(envelope(1), applier)
+
+    refute_receive {:adapter_call, _, _}
+  end
+
   test "different candidate conflicts before ConfigStore current advances", %{data_dir: data_dir} do
     {config_store, apply_store} = start_stores(data_dir)
     applier = start_applier(config_store, apply_store)
@@ -456,6 +561,196 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
              ConfigApplier.apply(envelope(1), applier)
 
     refute_receive {:adapter_call, _, _}
+  end
+
+  test "malformed init and replay snapshots fail closed without disclosure" do
+    delivery = envelope(1)
+    candidate = immutable_document(delivery)
+
+    {:ok, config_store} =
+      ConfigApplierTestConfigStore.start_link({:ok, candidate}, {:ok, candidate})
+
+    secret = "snapshot /private/token"
+
+    malformed_init = %{
+      initial_snapshot()
+      | attempt: %{
+          version: 1,
+          status: :applying,
+          checkpoint: :malformed,
+          raw: secret
+        }
+    }
+
+    {:ok, malformed_init_store} =
+      ConfigApplierTestApplyStore.start_scripted(initial_snapshot(), %{
+        snapshot: [{:ok, malformed_init}]
+      })
+
+    init_result =
+      ConfigApplier.start_link(base_applier_opts(config_store, malformed_init_store, name: nil))
+
+    assert {:error, {:config_applier_recovery_failed, :state}} = init_result
+    refute inspect(init_result) =~ secret
+
+    malformed_replay =
+      update_in(applied_snapshot(), [:attempt], &Map.put(&1, :digest, secret))
+
+    {:ok, malformed_replay_store} =
+      ConfigApplierTestApplyStore.start_scripted(initial_snapshot(), %{
+        preflight: [{:replay, malformed_replay}]
+      })
+
+    applier = start_applier(config_store, malformed_replay_store)
+
+    assert_internal(ConfigApplier.apply(delivery, applier))
+    assert Process.alive?(applier)
+    refute_receive {:adapter_call, _, _}
+  end
+
+  test "malformed pre-side-effect transition snapshots return internal before callbacks" do
+    delivery = envelope(1)
+    candidate = immutable_document(delivery)
+
+    {:ok, config_store} =
+      ConfigApplierTestConfigStore.start_link({:ok, candidate}, {:ok, candidate})
+
+    {:ok, apply_store} =
+      ConfigApplierTestApplyStore.start_scripted(initial_snapshot(), %{
+        {:transition, :delivered} => [
+          {:ok, attempt_snapshot(:delivered, :staged)}
+        ],
+        {:transition, :before_validate} => [
+          {:ok, attempt_snapshot(:delivered, :before_validate)}
+        ],
+        {:transition, :before_install} => [
+          {:ok,
+           attempt_snapshot(:applying, :before_install)
+           |> update_in([:attempt], &Map.delete(&1, :previous))
+           |> Map.put(:private, "malformed /private/before-install")}
+        ]
+      })
+
+    applier = start_applier(config_store, apply_store)
+
+    assert_internal(ConfigApplier.apply(delivery, applier))
+    assert_receive {:adapter_call, :validate_config, [_]}
+    refute_receive {:adapter_call, :install_config, _}
+    assert Process.alive?(applier)
+  end
+
+  test "malformed post-side-effect transition snapshots latch unknown without crashing" do
+    delivery = envelope(1)
+    candidate = immutable_document(delivery)
+
+    {:ok, config_store} =
+      ConfigApplierTestConfigStore.start_link({:ok, candidate}, {:ok, candidate})
+
+    unknown =
+      attempt_snapshot(:applying, :unknown,
+        runtime_status: :unknown,
+        installed_revision: @revision_a
+      )
+
+    {:ok, apply_store} =
+      ConfigApplierTestApplyStore.start_scripted(
+        initial_snapshot(),
+        apply_transition_replies(
+          {:ok, %{applied_snapshot() | known_good: "raw secret"}},
+          {:ok, unknown}
+        )
+      )
+
+    applier = start_applier(config_store, apply_store)
+
+    assert_internal(ConfigApplier.apply(delivery, applier))
+    assert_receive {:adapter_call, :validate_config, [_]}
+    assert_receive {:adapter_call, :install_config, [_, _]}
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
+    assert Process.alive?(applier)
+    assert {:ok, ^unknown} = ConfigApplyStore.snapshot(apply_store)
+  end
+
+  test "malformed unknown-transition success fail-stops after a side effect" do
+    delivery = envelope(1)
+    candidate = immutable_document(delivery)
+
+    {:ok, config_store} =
+      ConfigApplierTestConfigStore.start_link({:ok, candidate}, {:ok, candidate})
+
+    malformed_unknown =
+      attempt_snapshot(:applying, :unknown,
+        runtime_status: :known,
+        installed_revision: @revision_a
+      )
+
+    {:ok, apply_store} =
+      ConfigApplierTestApplyStore.start_scripted(
+        initial_snapshot(),
+        apply_transition_replies(
+          {:ok, %{applied_snapshot() | known_good: "malformed applied"}},
+          {:ok, malformed_unknown}
+        )
+      )
+
+    applier = start_applier(config_store, apply_store)
+    monitor = Process.monitor(applier)
+
+    assert_internal(ConfigApplier.apply(delivery, applier))
+
+    assert_receive {:DOWN, ^monitor, :process, ^applier,
+                    {:config_applier_inconsistent_persistence, :uncertain_after_side_effect}}
+  end
+
+  test "malformed pending publications are never exposed" do
+    valid = config_state_publication(1)
+    second = config_state_publication(2)
+    other_target = config_state_publication(1, target_id: "server-west-1")
+
+    heartbeat = %Heartbeat{
+      target_type: :server,
+      target_id: @server_id,
+      observed_at: ~U[2026-07-17 08:00:00Z]
+    }
+
+    {:ok, encoded_heartbeat} = Message.encode(heartbeat)
+    wrong_type = %{valid | encoded_message: encoded_heartbeat, message: heartbeat}
+
+    malformed_publications = [
+      Enum.map(1..4, &config_state_publication/1),
+      [%{valid | sequence: 0}],
+      [second, valid],
+      [valid, %{second | sequence: 3}],
+      [Map.put(valid, :unexpected, "secret")],
+      [Map.delete(valid, :message)],
+      [wrong_type],
+      [%{valid | encoded_message: valid.encoded_message <> " "}],
+      [%{valid | encoded_message: "raw secret /private/config"}],
+      [other_target],
+      [%{valid | encoded_message: other_target.encoded_message}]
+    ]
+
+    for {publications, index} <- Enum.with_index(malformed_publications) do
+      {:ok, config_store} =
+        ConfigApplierTestConfigStore.start_link({:error, :unused}, {:error, :unused})
+
+      {:ok, apply_store} =
+        ConfigApplierTestApplyStore.start_scripted(initial_snapshot(), %{
+          preflight: [{:replay, applied_snapshot()}],
+          pending_publications: [{:ok, publications}]
+        })
+
+      applier = start_applier(config_store, apply_store)
+      response = ConfigApplier.apply(envelope(1), applier)
+
+      assert_internal(response)
+      refute inspect(response) =~ "secret"
+      assert Process.alive?(applier), "publication case #{index} crashed the applier"
+      refute_receive {:adapter_call, _, _}
+      stop(applier)
+      stop(apply_store)
+      stop(config_store)
+    end
   end
 
   test "a transition failure before install prevents the side effect", %{data_dir: data_dir} do
@@ -818,6 +1113,92 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
           rollback: nil
         }
     }
+  end
+
+  defp attempt_snapshot(status, checkpoint, opts \\ []) do
+    known_good = Keyword.get(opts, :known_good)
+
+    %{
+      initial_snapshot()
+      | known_good: known_good,
+        runtime_status:
+          Keyword.get(
+            opts,
+            :runtime_status,
+            if(is_nil(known_good), do: :unconfigured, else: :known)
+          ),
+        attempt: %{
+          version: 1,
+          digest: envelope(1).payload_digest,
+          operation: @operation,
+          profile: @profile,
+          expected_revision: nil,
+          status: status,
+          checkpoint: checkpoint,
+          previous: Keyword.get(opts, :previous),
+          installed_revision: Keyword.get(opts, :installed_revision),
+          failure: Keyword.get(opts, :failure),
+          rollback: Keyword.get(opts, :rollback)
+        },
+        observed_at: ~U[2026-07-17 08:00:00Z]
+    }
+  end
+
+  defp applied_snapshot do
+    known_good = %{version: 1, digest: envelope(1).payload_digest, revision: @revision_a}
+
+    attempt_snapshot(:applied, :complete,
+      known_good: known_good,
+      installed_revision: @revision_a
+    )
+  end
+
+  defp apply_transition_replies(applied_reply, unknown_reply) do
+    %{
+      {:transition, :delivered} => [
+        {:ok, attempt_snapshot(:delivered, :staged)}
+      ],
+      {:transition, :before_validate} => [
+        {:ok, attempt_snapshot(:delivered, :before_validate)}
+      ],
+      {:transition, :before_install} => [
+        {:ok, attempt_snapshot(:applying, :before_install)}
+      ],
+      {:transition, :before_activate} => [
+        {:ok, attempt_snapshot(:applying, :before_activate, installed_revision: @revision_a)}
+      ],
+      {:transition, :applied} => [applied_reply],
+      {:transition, :uncertain_after_side_effect} => [unknown_reply]
+    }
+  end
+
+  defp config_state_publication(sequence, opts \\ []) do
+    message = %ConfigState{
+      target_type: :server,
+      target_id: Keyword.get(opts, :target_id, @server_id),
+      operation: @operation,
+      state: :applied,
+      version: 1,
+      digest: envelope(1).payload_digest,
+      applied_revision: @revision_a,
+      previous_version: nil,
+      previous_revision: nil,
+      failure: nil,
+      rollback: nil,
+      observed_at: ~U[2026-07-17 08:00:00Z]
+    }
+
+    {:ok, encoded_message} = Message.encode(message)
+
+    %{
+      sequence: sequence,
+      encoded_message: encoded_message,
+      message: message
+    }
+  end
+
+  defp assert_internal(response) do
+    assert {:error, %Error{code: :internal, message: "internal error", details: %{}}} = response
   end
 
   defp drain(store) do

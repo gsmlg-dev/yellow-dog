@@ -122,41 +122,74 @@ defmodule YellowDog.ServerAgent.ConfigApplierTestApplyStore do
   def start_link(snapshot, transition_result \\ :ok),
     do: GenServer.start_link(__MODULE__, {snapshot, transition_result})
 
+  def start_scripted(snapshot, replies) when is_map(replies),
+    do: GenServer.start_link(__MODULE__, {snapshot, :ok, replies})
+
   @impl true
   def init({snapshot, transition_result}),
-    do: {:ok, %{snapshot: snapshot, transition_result: transition_result}}
+    do: init({snapshot, transition_result, %{}})
+
+  def init({snapshot, transition_result, replies}),
+    do: {:ok, %{snapshot: snapshot, transition_result: transition_result, replies: replies}}
 
   @impl true
-  def handle_call(:snapshot, _from, state), do: {:reply, {:ok, state.snapshot}, state}
+  def handle_call(:snapshot, _from, state),
+    do: scripted_reply(:snapshot, {:ok, state.snapshot}, state)
 
-  def handle_call({:preflight, _envelope}, _from, %{snapshot: %{attempt: nil}} = state),
-    do: {:reply, {:admit, :new}, state}
+  def handle_call({:preflight, _envelope}, _from, state) do
+    default =
+      case state.snapshot do
+        %{attempt: nil} -> {:admit, :new}
+        %{attempt: %{checkpoint: :unknown}} -> {:replay, state.snapshot}
+        _other -> {:error, Error.new(:conflict, "operation conflict", %{})}
+      end
 
-  def handle_call(
-        {:preflight, _envelope},
-        _from,
-        %{snapshot: %{attempt: %{checkpoint: :unknown}}} = state
-      ),
-      do: {:reply, {:replay, state.snapshot}, state}
+    scripted_reply(:preflight, default, state)
+  end
 
   def handle_call({:transition, :uncertain_after_side_effect, %{version: _version}}, _from, state) do
-    case state.transition_result do
-      :ok ->
-        snapshot =
-          state.snapshot
-          |> put_in([:attempt, :checkpoint], :unknown)
-          |> Map.put(:runtime_status, :unknown)
+    snapshot =
+      state.snapshot
+      |> put_in([:attempt, :checkpoint], :unknown)
+      |> Map.put(:runtime_status, :unknown)
 
-        {:reply, {:ok, snapshot}, %{state | snapshot: snapshot}}
+    default =
+      case state.transition_result do
+        :ok -> {:ok, snapshot}
+        :error -> {:error, Error.new(:internal, "internal error", %{})}
+      end
 
-      :error ->
-        error = Error.new(:internal, "internal error", %{})
-        {:reply, {:error, error}, state}
+    scripted_reply({:transition, :uncertain_after_side_effect}, default, state)
+  end
+
+  def handle_call({:transition, event, _attrs}, _from, state) do
+    error = Error.new(:internal, "internal error", %{})
+    scripted_reply({:transition, event}, {:error, error}, state)
+  end
+
+  def handle_call(:pending_publications, _from, state) do
+    scripted_reply(:pending_publications, {:ok, state.snapshot.outbox}, state)
+  end
+
+  defp scripted_reply(key, default, state) do
+    case Map.get(state.replies, key, []) do
+      [reply | rest] ->
+        state =
+          state
+          |> Map.put(:replies, Map.put(state.replies, key, rest))
+          |> maybe_store_snapshot(reply)
+
+        {:reply, reply, state}
+
+      [] ->
+        {:reply, default, maybe_store_snapshot(state, default)}
     end
   end
 
-  def handle_call(:pending_publications, _from, state),
-    do: {:reply, {:ok, state.snapshot.outbox}, state}
+  defp maybe_store_snapshot(state, {:ok, %{outbox: _outbox} = snapshot}),
+    do: %{state | snapshot: snapshot}
+
+  defp maybe_store_snapshot(state, _reply), do: state
 end
 
 defmodule YellowDog.ServerAgent.ConfigApplierTestConfigStore do
