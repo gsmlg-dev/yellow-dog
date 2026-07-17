@@ -27,6 +27,9 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
   def run_after(phase, callback) when is_function(callback, 0),
     do: :persistent_term.put(@failure_key, [{:after_success, phase, callback}])
 
+  def run_after_return(phase, callback) when is_function(callback, 0),
+    do: :persistent_term.put(@failure_key, [{:after_return, phase, callback}])
+
   def clear, do: :persistent_term.erase(@failure_key)
 
   def read(path, max_bytes), do: invoke(:read, fn -> FileOps.read(path, max_bytes) end)
@@ -70,6 +73,11 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
             error
         end
 
+      {:after_return, callback} ->
+        result = operation.()
+        callback.()
+        result
+
       :none ->
         operation.()
     end
@@ -89,6 +97,10 @@ defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
         store_failures(rest)
         {:after_success, callback}
 
+      [{:after_return, ^phase, callback} | rest] ->
+        store_failures(rest)
+        {:after_return, callback}
+
       _other ->
         :none
     end
@@ -107,4 +119,28 @@ end
 
 defmodule YellowDog.ServerAgent.CommandJournalTraversalScanner do
   def scan(_directory), do: {:ok, [%{name: "../escape.json", type: :regular}]}
+end
+
+defmodule YellowDog.ServerAgent.CommandJournalSwapAfterScanScanner do
+  alias YellowDog.ServerAgent.CommandJournal.DirectoryScanner
+
+  @callback_key {__MODULE__, :callback}
+
+  def run_after_scan(callback) when is_function(callback, 0),
+    do: :persistent_term.put(@callback_key, callback)
+
+  def clear, do: :persistent_term.erase(@callback_key)
+
+  def scan(directory) do
+    case DirectoryScanner.scan(directory) do
+      {:ok, entries} ->
+        callback = :persistent_term.get(@callback_key)
+        clear()
+        callback.()
+        {:ok, entries}
+
+      error ->
+        error
+    end
+  end
 end

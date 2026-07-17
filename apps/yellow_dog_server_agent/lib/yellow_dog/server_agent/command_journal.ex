@@ -494,7 +494,7 @@ defmodule YellowDog.ServerAgent.CommandJournal do
       [_, request_id] = Regex.run(@journal_file, entry.name)
       path = Path.join(config.directory, entry.name)
 
-      with {:ok, document} <- Storage.read(path, config.storage_opts),
+      with {:ok, document} <- read_record_document(path, config),
            {:ok, record} <- decode_record(document, request_id, path, config.server_id),
            false <- Map.has_key?(idempotency, record.envelope.idempotency_key) do
         {:cont,
@@ -555,16 +555,14 @@ defmodule YellowDog.ServerAgent.CommandJournal do
   end
 
   defp reconcile_replace_error(prior, intended, storage_error, config) do
-    with :ok <- ensure_record_path(intended.path, config),
-         {:ok, durable_document} <- Storage.read(intended.path, config.storage_opts),
+    with {:ok, durable_document} <- read_record_document(intended.path, config),
          {:ok, _durable_record} <-
            decode_record(
              durable_document,
              intended.request_id,
              intended.path,
              config.server_id
-           ),
-         :ok <- ensure_record_path(intended.path, config) do
+           ) do
       cond do
         durable_document == document(intended) -> {:ok, intended}
         durable_document == document(prior) -> {:error, storage_error}
@@ -572,6 +570,17 @@ defmodule YellowDog.ServerAgent.CommandJournal do
       end
     else
       _error -> {:error, :inconsistent}
+    end
+  end
+
+  defp read_record_document(path, config) do
+    with :ok <- ensure_owned_path(config),
+         {:ok, identity} <- regular_record_identity(path),
+         {:ok, document} <- Storage.read(path, config.storage_opts),
+         {:ok, ^identity} <- regular_record_identity(path) do
+      {:ok, document}
+    else
+      _unsafe_or_changed -> {:error, :corrupt}
     end
   end
 
@@ -606,9 +615,25 @@ defmodule YellowDog.ServerAgent.CommandJournal do
   end
 
   defp ensure_regular_record_path(path) do
+    case regular_record_identity(path) do
+      {:ok, _identity} -> :ok
+      {:error, :corrupt} = error -> error
+    end
+  end
+
+  defp regular_record_identity(path) do
     case File.lstat(path) do
-      {:ok, %File.Stat{type: :regular}} -> :ok
-      _other -> {:error, :corrupt}
+      {:ok,
+       %File.Stat{
+         type: :regular,
+         major_device: major_device,
+         minor_device: minor_device,
+         inode: inode
+       }} ->
+        {:ok, {:regular, major_device, minor_device, inode}}
+
+      _other ->
+        {:error, :corrupt}
     end
   rescue
     _exception -> {:error, :corrupt}

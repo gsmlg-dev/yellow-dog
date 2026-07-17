@@ -5,6 +5,7 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
 
   alias YellowDog.ServerAgent.CommandJournal
   alias YellowDog.ServerAgent.CommandJournalFailingScanner
+  alias YellowDog.ServerAgent.CommandJournalSwapAfterScanScanner
   alias YellowDog.ServerAgent.CommandJournalTestClock
   alias YellowDog.ServerAgent.CommandJournalTestFileOps
   alias YellowDog.ServerAgent.CommandJournalTraversalScanner
@@ -42,6 +43,7 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
 
     on_exit(fn ->
       Process.flag(:trap_exit, previous_trap_exit)
+      CommandJournalSwapAfterScanScanner.clear()
       CommandJournalTestFileOps.clear()
       File.rm_rf(data_dir)
     end)
@@ -534,6 +536,78 @@ defmodule YellowDog.ServerAgent.CommandJournalTest do
              CommandJournal.start_link(base_opts(data_dir, name: nil))
 
     refute File.exists?(Path.join(outside, "journals"))
+  end
+
+  test "startup rejects a regular journal swapped to an outside symlink after scanning", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} = start_journal(data_dir)
+    result = success_result()
+
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+    assert {:ok, ^result} = CommandJournal.complete_success(@request_id, result, journal)
+    GenServer.stop(journal)
+
+    path = journal_path(data_dir, @request_id)
+    outside_path = "#{data_dir}-outside.json"
+    outside_document = File.read!(path)
+    File.write!(outside_path, outside_document)
+    on_exit(fn -> File.rm(outside_path) end)
+
+    CommandJournalSwapAfterScanScanner.run_after_scan(fn ->
+      File.rm!(path)
+      File.ln_s!(outside_path, path)
+    end)
+
+    assert {:error, {:journal_recovery_failed, :corrupt}} =
+             CommandJournal.start_link(
+               base_opts(
+                 data_dir,
+                 name: nil,
+                 directory_scanner: CommandJournalSwapAfterScanScanner
+               )
+             )
+
+    assert File.read!(outside_path) == outside_document
+    assert {:ok, %File.Stat{type: :symlink}} = File.lstat(path)
+  end
+
+  test "startup rejects a journal whose file identity changes immediately after read", %{
+    data_dir: data_dir
+  } do
+    {:ok, journal} = start_journal(data_dir)
+    result = success_result()
+
+    assert {:reserved, @request_id} = CommandJournal.reserve(envelope(), journal)
+    assert :ok = CommandJournal.mark_running(@request_id, journal)
+    assert {:ok, ^result} = CommandJournal.complete_success(@request_id, result, journal)
+    GenServer.stop(journal)
+
+    path = journal_path(data_dir, @request_id)
+    replacement_path = "#{data_dir}-replacement.json"
+    File.write!(replacement_path, File.read!(path))
+    on_exit(fn -> File.rm(replacement_path) end)
+
+    assert {:ok, original_stat} = File.lstat(path)
+    assert {:ok, replacement_stat} = File.lstat(replacement_path)
+    refute original_stat.inode == replacement_stat.inode
+
+    CommandJournalTestFileOps.run_after_return(:read, fn ->
+      File.rename!(replacement_path, path)
+    end)
+
+    assert {:error, {:journal_recovery_failed, :corrupt}} =
+             CommandJournal.start_link(
+               base_opts(
+                 data_dir,
+                 name: nil,
+                 storage_opts: [file_ops: CommandJournalTestFileOps]
+               )
+             )
+
+    assert {:ok, changed_stat} = File.lstat(path)
+    assert changed_stat.inode == replacement_stat.inode
   end
 
   test "reserve rejects a final symlink to an exact outside document", %{data_dir: data_dir} do

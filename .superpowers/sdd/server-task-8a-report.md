@@ -40,9 +40,16 @@ DONE
   creation; durable record paths must remain regular non-symlink files before
   the journal claims a reservation or transition. Transition path violations
   fail-stop with `:command_journal_inconsistent_persistence`.
+- Revalidated every startup and reconciliation read at the exact final journal
+  path. The journal now captures the regular file type, device, and inode
+  immediately before `Storage.read/2`, requires the same identity immediately
+  afterward, and rejects changed or symlinked paths before decoding or
+  accepting the returned document.
 - Added regression coverage for exact-content symlinks inserted before reserve,
-  symlinks swapped before a transition, and post-persistence symlink swaps.
-  These cases neither modify outside files nor advance in-memory journal state.
+  symlinks swapped after startup scanning or before a transition,
+  post-persistence symlink swaps, and file identity changes immediately after
+  startup reads. These cases neither replay outside evidence, modify outside
+  files, nor advance in-memory journal state.
 - Capped `max_records` at `YellowDog.Sync.Bounds.max_list_entries/0` so every
   accepted full journal remains wire-projectable.
 - Added exact terminal replay, request/fingerprint conflicts, pending conflicts,
@@ -57,10 +64,10 @@ DONE
 
 - Focused CommandJournal tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test test/yellow_dog/server_agent/command_journal_test.exs'`
-  - Result: 31 tests, 0 failures.
+  - Result: 33 tests, 0 failures.
 - Full Server-agent tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test'`
-  - Result: 110 tests, 0 failures.
+  - Result: 112 tests, 0 failures.
 - Warnings-as-errors compile:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors'`
   - Result: success.
@@ -74,6 +81,14 @@ DONE
 - Guardrail scan:
   - No generic Node abstraction, direct `Concord.*`, raw `:gen_udp`, or
     dependency reference to management core, Store, or Netman in owned files.
+
+## Residual Concern
+
+- Because `Storage.read/2` owns the descriptor open, path-level lstat checks
+  cannot detect the narrow case where an attacker swaps in a symlink for the
+  descriptor open and restores the original same-identity file before the
+  post-read lstat. Closing that race requires descriptor-level no-follow open
+  and identity verification inside Storage.
 
 ## Owned Files
 
