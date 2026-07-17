@@ -185,8 +185,8 @@ defmodule YellowDog.Server.Control.Dns do
   def current("server.dns.conflicts.resolve", payload) when is_map(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.conflicts.resolve", payload),
          {:ok, conflict} <- fetch_provider_conflict(payload["conflict_id"]),
-         {:ok, resource} <- conflict_zone_resource(conflict) do
-      current_resource("server.dns.conflicts.resolve", resource, "server.dns.zones.list")
+         {:ok, _resource, revision_state} <- conflict_zone_revision_state(conflict) do
+      {:ok, revision_state}
     end
   end
 
@@ -381,8 +381,8 @@ defmodule YellowDog.Server.Control.Dns do
          {:ok, resolution} <- conflict_resolution(payload["resolution"]),
          {:ok, conflict} <- fetch_provider_conflict(payload["conflict_id"]),
          :ok <- provider_owner_result(:resolve_conflict, [payload["conflict_id"], resolution]),
-         {:ok, resource} <- conflict_zone_resource(conflict) do
-      revisioned_result("server.dns.conflicts.resolve", "dns_zone", resource)
+         {:ok, resource, revision_state} <- conflict_zone_revision_state(conflict) do
+      conflict_revisioned_result(resource, revision_state)
     else
       {:error, %Error{}} = error -> error
       _failure -> apply_failed_error()
@@ -756,16 +756,31 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
-  defp conflict_zone_resource(conflict) do
+  defp conflict_zone_revision_state(conflict) do
     with zone_name when is_binary(zone_name) <- field(conflict, :zone),
          zone_name <- canonical_name(zone_name),
          true <- zone_name != "",
-         {:ok, zone} <- fetch_zone("default", zone_name),
-         [resource] <- project_zone(zone, "default") do
-      {:ok, resource}
+         {:ok, zone} <- authoritative_zone("default", zone_name),
+         [resource] <- project_zone(zone, "default"),
+         {:ok, resource} <- validate_current_resource("server.dns.zones.list", resource),
+         {:ok, soa_serial} <- authoritative_soa_serial(zone),
+         {:ok, rrsets} <- read_records("default", zone_name) do
+      {:ok, resource,
+       %{
+         "zone" => resource,
+         "soa_serial" => soa_serial,
+         "rrsets" => rrsets
+       }}
     else
       :missing -> not_found_error()
       {:error, %Error{}} = error -> error
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp authoritative_soa_serial(zone) do
+    case zone |> field(:soa, %{}) |> field(:serial) do
+      serial when is_integer(serial) and serial >= 0 -> {:ok, serial}
       _invalid -> apply_failed_error()
     end
   end
@@ -949,6 +964,20 @@ defmodule YellowDog.Server.Control.Dns do
          {:ok, result} <-
            validate_operation_result(operation_name, %{
              "resource_type" => resource_type,
+             "resource_id" => resource_id,
+             "resource" => resource,
+             "revision" => revision
+           }) do
+      {:ok, result}
+    end
+  end
+
+  defp conflict_revisioned_result(resource, revision_state) do
+    with {:ok, revision} <- Revision.calculate(revision_state),
+         {:ok, resource_id} <- resource_identifier("dns_zone", resource),
+         {:ok, result} <-
+           validate_operation_result("server.dns.conflicts.resolve", %{
+             "resource_type" => "dns_zone",
              "resource_id" => resource_id,
              "resource" => resource,
              "revision" => revision

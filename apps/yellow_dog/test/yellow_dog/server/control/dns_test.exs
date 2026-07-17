@@ -1462,11 +1462,12 @@ defmodule YellowDog.Server.Control.DnsTest do
 
   test "resolves a conflict synchronously with the post-application DNS zone revision" do
     conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "Example.Test."}
-    zone = cloud_authoritative_zone()
+    zone = put_in(cloud_authoritative_zone(), [:soa, :serial], 11)
 
     ServerDnsControlFake.configure(%{
       conflicts: %{"conflict-1" => conflict},
-      zone_metadata: %{{"default", "example.test"} => zone}
+      zone_metadata: %{{"default", "example.test"} => zone},
+      record_state: conflict_record_state("192.0.2.2")
     })
 
     payload = %{"conflict_id" => "conflict-1", "resolution" => "use_cloud"}
@@ -1484,14 +1485,21 @@ defmodule YellowDog.Server.Control.DnsTest do
     }
 
     assert result["resource"] == expected_resource
-    assert {:ok, expected_revision} = Revision.calculate(expected_resource)
+
+    expected_state = conflict_revision_state(expected_resource, 11, "192.0.2.2")
+    assert {:ok, expected_revision} = Revision.calculate(expected_state)
     assert result["revision"] == expected_revision
+    refute result["revision"] == elem(Revision.calculate(expected_resource), 1)
 
     assert [
              {:provider_facade, :fetch_conflict, ["conflict-1"]},
              {:provider_facade, :resolve_conflict, ["conflict-1", :use_cloud]},
-             {:zone_store, :get_zone, ["default", "example.test"]}
+             {:zone_store, :get_zone, ["default", "example.test"]},
+             {:zone_store, :list_records, ["default", "example.test"]}
            ] = ServerDnsControlFake.take_calls()
+
+    assert {:ok, current} = Dns.current("server.dns.conflicts.resolve", payload)
+    assert {:ok, ^expected_revision} = Revision.calculate(current)
   end
 
   test "maps conflict resolution owner errors without leaking owner terms" do
@@ -1513,19 +1521,28 @@ defmodule YellowDog.Server.Control.DnsTest do
     refute inspect(result) =~ "credential-token"
   end
 
-  test "Dispatcher rejects a stale conflict resolution before calling the resolver" do
+  test "Dispatcher rejects a conflict revision captured before DNS data changed" do
     conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "example.test"}
     zone = cloud_authoritative_zone()
     payload = %{"conflict_id" => "conflict-1", "resolution" => "use_local"}
 
     ServerDnsControlFake.configure(%{
       conflicts: %{"conflict-1" => conflict},
-      zone_metadata: %{{"default", "example.test"} => zone}
+      zone_metadata: %{{"default", "example.test"} => zone},
+      record_state: conflict_record_state("192.0.2.1")
     })
 
     assert {:ok, current} = Dns.current("server.dns.conflicts.resolve", payload)
-    assert {:ok, current_revision} = Revision.calculate(current)
+    assert {:ok, old_revision} = Revision.calculate(current)
     ServerDnsControlFake.take_calls()
+
+    changed_zone = put_in(zone, [:soa, :serial], 11)
+
+    ServerDnsControlFake.configure(%{
+      zone_metadata: %{{"default", "example.test"} => changed_zone},
+      record_state: conflict_record_state("192.0.2.2")
+    })
+
     {:ok, payload_digest} = Digest.calculate(payload)
 
     assert {:error, %Error{code: :conflict, message: "stale revision"}} =
@@ -1538,16 +1555,15 @@ defmodule YellowDog.Server.Control.DnsTest do
                idempotency_key: @idempotency_key,
                payload: payload,
                payload_digest: payload_digest,
-               expected_revision: String.duplicate("0", 64),
+               expected_revision: old_revision,
                config_version: nil,
                sent_at: @sent_at
              })
 
-    refute current_revision == String.duplicate("0", 64)
-
     assert [
              {:provider_facade, :fetch_conflict, ["conflict-1"]},
-             {:zone_store, :get_zone, ["default", "example.test"]}
+             {:zone_store, :get_zone, ["default", "example.test"]},
+             {:zone_store, :list_records, ["default", "example.test"]}
            ] = ServerDnsControlFake.take_calls()
 
     assert_dispatcher_dns_dependencies()
@@ -2366,6 +2382,36 @@ defmodule YellowDog.Server.Control.DnsTest do
       connector_name: "cf-main",
       provider: :cloudflare
     })
+  end
+
+  defp conflict_record_state(address) do
+    %{
+      {"default", "example.test"} => [
+        %{
+          owner: "www",
+          type: :a,
+          rrset: [%{ttl: 60, rdata: address}]
+        }
+      ]
+    }
+  end
+
+  defp conflict_revision_state(resource, soa_serial, address) do
+    %{
+      "zone" => resource,
+      "soa_serial" => soa_serial,
+      "rrsets" => [
+        %{
+          "view_name" => "default",
+          "zone_name" => "example.test",
+          "record_id" => record_id("www", "A"),
+          "name" => "www",
+          "type" => "A",
+          "ttl" => 60,
+          "values" => [address]
+        }
+      ]
+    }
   end
 
   defp record_payload(type, values) do

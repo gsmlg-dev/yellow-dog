@@ -132,16 +132,12 @@ defmodule YellowDog.DnsProvider.SyncEngine do
   end
 
   def handle_call({:resolve_conflict, conflict}, _from, state) do
-    with {:ok, zone_ref, changeset} <- conflict_changeset(conflict) do
-      case state.provider_module.apply_changeset(zone_ref, changeset, state.provider_state) do
-        {:ok, provider_state} ->
-          {:reply, :ok, %{state | provider_state: provider_state}}
+    case resolve_remote_conflict(conflict, state) do
+      {:ok, provider_state} ->
+        {:reply, :ok, %{state | provider_state: provider_state}}
 
-        {:error, reason, provider_state} ->
-          {:reply, {:error, reason}, %{state | provider_state: provider_state}}
-      end
-    else
-      :error -> {:reply, {:error, :invalid}, state}
+      {:error, reason, provider_state} ->
+        {:reply, {:error, reason}, %{state | provider_state: provider_state}}
     end
   end
 
@@ -299,11 +295,39 @@ defmodule YellowDog.DnsProvider.SyncEngine do
     safe_call(YellowDog.Store.Provider, :put_status, [provider_name, status])
   end
 
-  defp conflict_changeset(conflict) do
+  defp resolve_remote_conflict(conflict, state) do
+    with {:ok, target} <- conflict_target(conflict),
+         {:ok, zones, provider_state} <-
+           state.provider_module.list_zones(state.provider_state),
+         {:ok, zone_ref} <- resolve_zone_ref(zones, target.zone),
+         {:ok, remote_records, provider_state} <-
+           state.provider_module.get_records(zone_ref, provider_state),
+         {:ok, changeset} <- reconcile_conflict(remote_records, target) do
+      apply_remote_changes(state.provider_module, zone_ref, changeset, provider_state)
+    else
+      :error ->
+        {:error, :invalid, state.provider_state}
+
+      {:error, reason} ->
+        {:error, reason, state.provider_state}
+
+      {:error, reason, provider_state} ->
+        {:error, provider_error(reason), provider_state}
+    end
+  end
+
+  defp conflict_target(conflict) do
     with zone when is_binary(zone) <- conflict_field(conflict, :zone),
          local_records when is_list(local_records) <- conflict_field(conflict, :local_records),
-         remote_records when is_list(remote_records) <- conflict_field(conflict, :remote_records) do
-      {:ok, %{name: zone, id: nil}, %{additions: local_records, deletions: remote_records}}
+         remote_records when is_list(remote_records) <- conflict_field(conflict, :remote_records),
+         {:ok, local_records} <- canonical_records(local_records),
+         {:ok, remote_records} <- canonical_records(remote_records) do
+      {:ok,
+       %{
+         zone: canonical_zone(zone),
+         local_records: local_records,
+         remote_records: remote_records
+       }}
     else
       _invalid -> :error
     end
@@ -312,6 +336,104 @@ defmodule YellowDog.DnsProvider.SyncEngine do
   defp conflict_field(conflict, key) do
     Map.get(conflict, key, Map.get(conflict, Atom.to_string(key)))
   end
+
+  defp resolve_zone_ref(zones, zone_name) when is_list(zones) do
+    matches =
+      Enum.filter(zones, fn
+        %{name: name} when is_binary(name) -> canonical_zone(name) == zone_name
+        _invalid -> false
+      end)
+
+    case matches do
+      [%{id: id} = zone_ref] when is_binary(id) and id != "" -> {:ok, zone_ref}
+      [_invalid] -> {:error, :unsupported}
+      [] -> {:error, :not_found}
+      [_first | _rest] -> {:error, :conflict}
+    end
+  end
+
+  defp resolve_zone_ref(_zones, _zone_name), do: {:error, :unsupported}
+
+  defp reconcile_conflict(remote_records, target) when is_list(remote_records) do
+    with {:ok, remote_records} <- canonical_records(remote_records) do
+      remote_keys = MapSet.new(remote_records, &record_key/1)
+
+      deletions =
+        Enum.filter(target.remote_records, fn record ->
+          MapSet.member?(remote_keys, record_key(record))
+        end)
+
+      additions =
+        Enum.reject(target.local_records, fn record ->
+          MapSet.member?(remote_keys, record_key(record))
+        end)
+
+      {:ok, %{additions: additions, deletions: deletions}}
+    end
+  end
+
+  defp reconcile_conflict(_remote_records, _target), do: :error
+
+  defp apply_remote_changes(
+         _provider,
+         _zone_ref,
+         %{additions: [], deletions: []},
+         provider_state
+       ),
+       do: {:ok, provider_state}
+
+  defp apply_remote_changes(provider, zone_ref, changeset, provider_state) do
+    case provider.apply_changeset(zone_ref, changeset, provider_state) do
+      {:ok, provider_state} -> {:ok, provider_state}
+      {:error, reason, provider_state} -> {:error, provider_error(reason), provider_state}
+    end
+  end
+
+  defp canonical_records(records) do
+    records
+    |> Enum.reduce_while({:ok, []}, fn record, {:ok, canonical} ->
+      case canonical_record(record) do
+        {:ok, record} -> {:cont, {:ok, [record | canonical]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, canonical} -> {:ok, canonical |> Enum.uniq_by(&record_key/1) |> Enum.reverse()}
+      :error -> :error
+    end
+  end
+
+  defp canonical_record(record) when is_map(record) do
+    with owner when is_binary(owner) <- conflict_field(record, :owner),
+         type when is_binary(type) <- conflict_field(record, :type),
+         ttl when is_integer(ttl) and ttl >= 0 <- conflict_field(record, :ttl),
+         rdata when not is_nil(rdata) <- conflict_field(record, :rdata) do
+      {:ok,
+       %{
+         owner: owner,
+         type: type,
+         ttl: ttl,
+         rdata: rdata
+       }}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp canonical_record(_record), do: :error
+
+  defp record_key(record) do
+    {canonical_owner(record.owner), String.upcase(record.type), record.ttl, record.rdata}
+  end
+
+  defp canonical_owner(owner), do: owner |> String.downcase() |> ensure_trailing_dot()
+  defp canonical_zone(zone), do: zone |> String.downcase() |> String.trim_trailing(".")
+  defp ensure_trailing_dot(value), do: String.trim_trailing(value, ".") <> "."
+
+  defp provider_error(reason) when reason in [:not_found, :conflict, :unsupported, :invalid],
+    do: reason
+
+  defp provider_error(_reason), do: :apply_failed
 
   # -------------------------------------------------------------------
   # Helpers

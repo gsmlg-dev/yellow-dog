@@ -242,7 +242,8 @@ defmodule YellowDog.DnsProvider do
          true <- field(config, :name) == provider_name,
          true <- field(config, :enabled, true),
          {:ok, provider_type} <- conflict_provider_type(field(config, :type)),
-         {:ok, zone_record} <- fetch_authoritative_zone(zone) do
+         {:ok, zone_record} <- fetch_authoritative_zone(zone),
+         :ok <- validate_cloud_mirror(zone_record, provider_name, provider_type) do
       {:ok,
        %{
          conflict: conflict,
@@ -257,6 +258,7 @@ defmodule YellowDog.DnsProvider do
       false -> {:error, :unsupported}
       {:error, :invalid} -> {:error, :invalid}
       {:error, :not_found} -> {:error, :not_found}
+      {:error, :conflict} -> {:error, :conflict}
       {:error, :unsupported} -> {:error, :unsupported}
       {:error, _reason} -> {:error, :apply_failed}
       :error -> {:error, :unsupported}
@@ -265,9 +267,11 @@ defmodule YellowDog.DnsProvider do
   end
 
   defp resolve_use_cloud(context) do
-    with {:ok, remote_rrset} <- conflict_rrset(context.conflict, :remote_records, context),
+    with {:ok, local_rrset} <- conflict_rrset(context.conflict, :local_records, context),
+         {:ok, remote_rrset} <- conflict_rrset(context.conflict, :remote_records, context),
          {:ok, old_rrset} <- fetch_rrset(context),
-         :ok <- persist_rrset(context, remote_rrset) do
+         {:ok, merged_rrset} <- merge_conflict_rrset(old_rrset, local_rrset, remote_rrset),
+         :ok <- persist_rrset(context, merged_rrset) do
       case reload_zone(context) do
         :ok -> delete_marker(context)
         {:error, :reload_failed} -> rollback_local_rrset(context, old_rrset)
@@ -284,6 +288,7 @@ defmodule YellowDog.DnsProvider do
            @conflict_resolution_timeout
          ) do
       :ok -> delete_marker(context)
+      {:error, reason} when reason in [:not_found, :conflict, :unsupported] -> {:error, reason}
       _failure -> {:error, :apply_failed}
     end
   end
@@ -310,6 +315,32 @@ defmodule YellowDog.DnsProvider do
       {:ok, %{rrset: rrset}} when is_list(rrset) -> {:ok, rrset}
       {:error, :not_found} -> {:ok, :missing}
       _failure -> {:error, :apply_failed}
+    end
+  end
+
+  defp validate_cloud_mirror(zone_record, provider_name, provider_type) do
+    mirror = field(zone_record, :cloud_mirror)
+
+    cond do
+      not is_map(mirror) ->
+        {:error, :conflict}
+
+      field(mirror, :enabled) != true ->
+        {:error, :unsupported}
+
+      field(mirror, :connector_name) != provider_name ->
+        {:error, :conflict}
+
+      true ->
+        validate_mirror_provider(field(mirror, :provider), provider_type)
+    end
+  end
+
+  defp validate_mirror_provider(mirror_provider, provider_type) do
+    case conflict_provider_type(mirror_provider) do
+      {:ok, ^provider_type} -> :ok
+      {:ok, _other_type} -> {:error, :conflict}
+      :error -> {:error, :unsupported}
     end
   end
 
@@ -341,6 +372,62 @@ defmodule YellowDog.DnsProvider do
         {:error, :invalid}
     end
   end
+
+  defp merge_conflict_rrset(old_rrset, local_rrset, remote_rrset) do
+    with {:ok, old_entries} <- rrset_entries(old_rrset),
+         {:ok, local_entries} <- rrset_entries(local_rrset),
+         {:ok, remote_entries} <- rrset_entries(remote_rrset),
+         {:ok, ttl} <- selected_rrset_ttl(old_entries, remote_entries) do
+      local_rdata = MapSet.new(local_entries, &rdata_key/1)
+
+      merged =
+        old_entries
+        |> Enum.reject(&MapSet.member?(local_rdata, rdata_key(&1)))
+        |> Kernel.++(remote_entries)
+        |> Enum.uniq_by(&rdata_key/1)
+        |> Enum.map(&%{ttl: ttl, rdata: &1.rdata})
+        |> Enum.sort_by(&rdata_key/1)
+
+      if merged == [], do: {:ok, :missing}, else: {:ok, merged}
+    end
+  end
+
+  defp rrset_entries(:missing), do: {:ok, []}
+
+  defp rrset_entries(rrset) when is_list(rrset) do
+    rrset
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, entries} ->
+      with ttl when is_integer(ttl) and ttl >= 0 <- field(entry, :ttl),
+           rdata when not is_nil(rdata) <- field(entry, :rdata) do
+        {:cont, {:ok, [%{ttl: ttl, rdata: rdata} | entries]}}
+      else
+        _invalid -> {:halt, {:error, :invalid}}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp rrset_entries(_rrset), do: {:error, :invalid}
+
+  defp selected_rrset_ttl(old_entries, []) do
+    case old_entries |> Enum.map(& &1.ttl) |> Enum.uniq() do
+      [ttl] -> {:ok, ttl}
+      [] -> {:ok, 0}
+      _mixed -> {:error, :invalid}
+    end
+  end
+
+  defp selected_rrset_ttl(_old_entries, remote_entries) do
+    case remote_entries |> Enum.map(& &1.ttl) |> Enum.uniq() do
+      [ttl] -> {:ok, ttl}
+      _mixed_or_empty -> {:error, :invalid}
+    end
+  end
+
+  defp rdata_key(entry), do: :erlang.term_to_binary(entry.rdata)
 
   defp persist_rrset(context, :missing) do
     store_result(

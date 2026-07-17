@@ -2,6 +2,7 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.DnsProvider.{Config, SyncEngine}
+  alias YellowDog.DnsProvider.Provider.Cloudflare
 
   setup do
     case Registry.start_link(keys: :unique, name: YellowDog.DnsProvider.Registry) do
@@ -170,7 +171,7 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
       pid =
         start_engine(config, %{records: %{"example.com" => [remote]}, apply_error: :remote_failed})
 
-      assert {:error, :remote_failed} =
+      assert {:error, :apply_failed} =
                SyncEngine.resolve_conflict(
                  pid,
                  %{
@@ -183,6 +184,83 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
 
       assert %{provider_state: %{records: %{"example.com" => [^remote]}, apply_count: 0}} =
                :sys.get_state(pid)
+    end
+
+    test "resolves and uses the exact nonempty Cloudflare zone ID" do
+      owner = self()
+
+      config = build_config(%{name: "cf-zone-id"})
+      pid = start_cloudflare_engine(config, cloudflare_adapter(owner))
+
+      conflict = conflict_records("example.com.")
+
+      result = SyncEngine.resolve_conflict(pid, conflict, 5_000)
+
+      assert_receive {:request, :get, "/client/v4/zones"}
+      assert_receive {:request, :get, "/client/v4/zones/zone-exact-123/dns_records"}
+      assert_receive {:request, :get, "/client/v4/zones/zone-exact-123/dns_records"}
+
+      assert_receive {:request, :delete,
+                      "/client/v4/zones/zone-exact-123/dns_records/remote-record"}
+
+      assert_receive {:request, :post, "/client/v4/zones/zone-exact-123/dns_records"}
+      refute_receive {:request, _method, "/client/v4/zones//dns_records"}
+      assert :ok = result
+    end
+
+    test "returns not_found before writes when Cloudflare has no matching zone" do
+      owner = self()
+
+      adapter = cloudflare_zone_list_adapter(owner, [])
+
+      config = build_config(%{name: "cf-zone-missing"})
+      pid = start_cloudflare_engine(config, adapter)
+
+      assert {:error, :not_found} =
+               SyncEngine.resolve_conflict(pid, conflict_records("example.com."), 5_000)
+
+      assert_receive {:request, :get, "/client/v4/zones"}
+      refute_receive {:request, :post, _path}
+      refute_receive {:request, :delete, _path}
+    end
+
+    test "returns conflict before writes for duplicate Cloudflare zone mappings" do
+      owner = self()
+
+      adapter =
+        cloudflare_zone_list_adapter(owner, [
+          %{"name" => "example.com", "id" => "zone-one"},
+          %{"name" => "example.com.", "id" => "zone-two"}
+        ])
+
+      config = build_config(%{name: "cf-zone-duplicate"})
+      pid = start_cloudflare_engine(config, adapter)
+
+      assert {:error, :conflict} =
+               SyncEngine.resolve_conflict(pid, conflict_records("example.com."), 5_000)
+
+      assert_receive {:request, :get, "/client/v4/zones"}
+      refute_receive {:request, :post, _path}
+      refute_receive {:request, :delete, _path}
+    end
+
+    test "returns unsupported before writes for an empty Cloudflare zone ID" do
+      owner = self()
+
+      adapter =
+        cloudflare_zone_list_adapter(owner, [
+          %{"name" => "example.com", "id" => ""}
+        ])
+
+      config = build_config(%{name: "cf-zone-invalid"})
+      pid = start_cloudflare_engine(config, adapter)
+
+      assert {:error, :unsupported} =
+               SyncEngine.resolve_conflict(pid, conflict_records("example.com."), 5_000)
+
+      assert_receive {:request, :get, "/client/v4/zones"}
+      refute_receive {:request, :post, _path}
+      refute_receive {:request, :delete, _path}
     end
   end
 
@@ -205,5 +283,89 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
       assert status.sync_count == 1
       assert status.last_error == nil
     end
+  end
+
+  defp start_cloudflare_engine(config, adapter) do
+    req =
+      Req.new(
+        base_url: "https://api.cloudflare.test/client/v4",
+        adapter: adapter
+      )
+
+    config = %{config | credentials: %{api_token: "test-token", req: req}}
+
+    start_supervised!({SyncEngine, config: config, provider_module: Cloudflare})
+  end
+
+  defp conflict_records(zone) do
+    %{
+      zone: zone,
+      local_records: [
+        %{owner: "www.example.com.", type: "A", ttl: 60, rdata: "192.0.2.1"}
+      ],
+      remote_records: [
+        %{owner: "www.example.com.", type: "A", ttl: 60, rdata: "192.0.2.2"}
+      ]
+    }
+  end
+
+  defp cloudflare_adapter(owner) do
+    fn request ->
+      send(owner, {:request, request.method, request.url.path})
+      {request, cloudflare_resolution_response(request)}
+    end
+  end
+
+  defp cloudflare_zone_list_adapter(owner, zones) do
+    fn request ->
+      send(owner, {:request, request.method, request.url.path})
+      {request, Req.Response.new(status: 200, body: %{"result" => zones})}
+    end
+  end
+
+  defp cloudflare_resolution_response(%{method: :get, url: %{path: "/client/v4/zones"}}) do
+    Req.Response.new(
+      status: 200,
+      body: %{"result" => [%{"name" => "example.com", "id" => "zone-exact-123"}]}
+    )
+  end
+
+  defp cloudflare_resolution_response(%{
+         method: :get,
+         url: %{path: "/client/v4/zones/zone-exact-123/dns_records"}
+       }) do
+    Req.Response.new(
+      status: 200,
+      body: %{
+        "result" => [
+          %{
+            "id" => "remote-record",
+            "name" => "www.example.com",
+            "type" => "A",
+            "ttl" => 60,
+            "content" => "192.0.2.2"
+          }
+        ],
+        "result_info" => %{"total_pages" => 1}
+      }
+    )
+  end
+
+  defp cloudflare_resolution_response(%{
+         method: :delete,
+         url: %{path: "/client/v4/zones/zone-exact-123/dns_records/remote-record"}
+       }) do
+    Req.Response.new(status: 200, body: %{"success" => true})
+  end
+
+  defp cloudflare_resolution_response(%{
+         method: :post,
+         url: %{path: "/client/v4/zones/zone-exact-123/dns_records"}
+       }) do
+    Req.Response.new(status: 200, body: %{"success" => true})
+  end
+
+  defp cloudflare_resolution_response(_request) do
+    Req.Response.new(status: 404, body: %{"error" => "unexpected request path"})
   end
 end

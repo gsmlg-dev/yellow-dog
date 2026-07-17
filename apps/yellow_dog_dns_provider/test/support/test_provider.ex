@@ -20,7 +20,7 @@ defmodule YellowDog.DnsProvider.Provider.Test do
 
   @impl true
   def list_zones(state) do
-    refs = Enum.map(state.zones, fn name -> %{name: name, id: nil} end)
+    refs = Enum.map(state.zones, fn name -> %{name: name, id: "test-zone:#{name}"} end)
     {:ok, refs, state}
   end
 
