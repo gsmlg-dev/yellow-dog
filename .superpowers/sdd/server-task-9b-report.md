@@ -432,3 +432,57 @@ capability-authenticated phases.
 - Warnings-as-errors compile, scoped format, strict Credo, dependencies,
   production dependency tree, compile xref/trace, forbidden references, and
   scoped `git diff --check` passed.
+
+## Non-Expiring Child-Spec Handoff Review Fix
+
+Date: 2026-07-18
+
+This section supersedes the pre-claim lifetime wording above only for
+credentials retained into a validated OTP child spec. Ordinary direct
+preparations remain creator-monitored and time-bounded.
+
+### Preparation Versus Retained Handoff
+
+- `Client.prepare_credentials/1` is still the only raw URL, token, Server ID,
+  and socket materialization boundary. It starts no socket and initially
+  monitors its creator with the bounded five-second claim timer.
+- Child-spec construction performs a separate capability-authenticated
+  `Client.retain_credentials/1` transition. Only the live preparation creator
+  can retain. The provider atomically removes and flushes that creator monitor,
+  cancels the claim timer, clears creator identity, and enters a detached
+  retained state.
+- A retained child-spec capability has no wall-clock expiration and is not
+  tied to its transient builder process. A later process holding the opaque
+  capability may explicitly release it or claim it as the actual parent.
+  Claim installs the parent monitor before leaving retained state.
+- Direct `prepare_credentials/1` callers that do not retain still receive both
+  bounded timeout cleanup and creator-death cleanup. Retained providers receive
+  deterministic cleanup on explicit pre-claim release and, after claim, on
+  durable owner death.
+
+### Client Child-Spec Safety
+
+- `Client.child_spec/1` now structurally validates disabled and prepared
+  enabled options before storing them. Raw credential keys, unknown or
+  malformed options, dead capabilities, and invalid values return only
+  `{Client, :start_invalid, []}`.
+- Valid Client restart MFAs continue to contain the opaque capability,
+  non-secret owner PID, typed identity, and explicit callback modules. They
+  contain no management URL, token, socket params, raw socket option, or
+  credential-bearing function.
+
+### Review Verification
+
+- TDD behavioral red: the Client/Supervisor run reported `62 tests,
+  4 failures` for builder-death cleanup, raw direct-Supervisor child specs, and
+  raw invalid-Client child specs.
+- Focused Client/Supervisor/facade run: `66 tests, 0 failures`.
+- Full Server-agent run: `255 tests, 0 failures`.
+- Deterministic lifecycle tests wait 5.25 seconds, beyond the old claim
+  interval, before starting the facade child spec; build the same spec in a
+  short-lived process and start it after the builder exits; and release a
+  retained capability after its builder is killed.
+- Warnings-as-errors compiled 13 files. Strict Credo checked 32 source files
+  and 1,414 modules/functions with no issues. Dependency, production tree,
+  compile xref, Client/Supervisor/facade trace, and forbidden-reference checks
+  passed.

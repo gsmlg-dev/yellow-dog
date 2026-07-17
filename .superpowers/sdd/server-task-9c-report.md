@@ -233,9 +233,11 @@ Date: 2026-07-18
   whole-agent kill, where old named grandchildren can outlive the dead inner
   supervisor briefly. Child declaration order and `:one_for_one` isolation
   remain unchanged.
-- Unstarted prepared specs expire after the provider claim timeout. Validation
-  and failed starts explicitly release creator-owned providers; a provider
-  claimed by a failed supervisor exits through its installed owner monitor.
+- Ordinary unclaimed direct preparations expire after the provider claim
+  timeout. Valid child specs instead enter the non-expiring retained handoff
+  described below. Validation and failed starts explicitly release providers;
+  a provider claimed by a failed supervisor exits through its installed owner
+  monitor.
 
 ### Safe Facade
 
@@ -268,3 +270,62 @@ Date: 2026-07-18
 The final conventional commit SHA is returned in the task response because a
 tracked report cannot contain the hash of the commit that first contains the
 report without changing that hash.
+
+## Final Child-Spec Lifetime And MFA Review Fix
+
+Date: 2026-07-18
+
+### Handoff-Safe Facade Spec
+
+- `YellowDog.ServerAgent.child_spec/1` uses
+  `ServerAgent.Supervisor.prepare_child_spec_options/1` to validate raw options,
+  call the sole `Client.prepare_credentials/1` materialization boundary, scrub
+  URL/token/socket values, and retain the opaque provider capability.
+- Retention is authenticated to the preparation creator. It removes the
+  creator monitor and bounded timer before returning the spec, so the prepared
+  facade spec survives both arbitrary OTP start delay and exit of a transient
+  builder process.
+- The retained capability remains startable until explicit release or claim.
+  The start MFA runs in the actual parent supervisor, claims the provider with
+  that parent as owner, and only then starts the inner Server-agent supervisor.
+  Owner death remains the provider/socket erasure boundary.
+- Ordinary direct preparation is unchanged: without the child-spec retention
+  transition, creator death or the five-second timeout erases the provider and
+  no socket starts.
+
+### Direct Supervisor And Client Specs
+
+- `YellowDog.ServerAgent.Supervisor.child_spec/1` is explicitly overridden.
+  Raw-compatible input is prepared and retained immediately, but its returned
+  parent restart MFA is only
+  `{ServerAgent.Supervisor, :start_prepared_child_link, [scrubbed_opts]}`.
+  Invalid input returns `{ServerAgent.Supervisor, :start_invalid, []}`.
+- The direct prepared start path claims the actual outer parent. Killing and
+  restarting the complete `ServerAgent.Supervisor` child therefore reuses the
+  same clean outer spec and provider, while stopping the parent erases the
+  provider.
+- `Client.child_spec/1` validates its caller options before returning a restart
+  MFA. Every raw, malformed, unknown, or otherwise invalid option set returns
+  the credential-free `{Client, :start_invalid, []}` path.
+- Recursive checks over both direct and facade child specs, outer supervisor
+  state, inner supervisor state, and Client restart MFAs reject the management
+  URL, token, socket/params keys, and credential-bearing functions.
+
+### Final Verification
+
+- TDD behavioral red: `62 tests, 4 failures` covered the missing builder
+  handoff, direct Supervisor override, and safe Client invalid path.
+- Focused Client/Supervisor/facade suite: `66 tests, 0 failures`.
+- Full Server-agent suite: `255 tests, 0 failures`; expected fail-stop
+  persistence cases emitted supervised termination logs while passing.
+- The delayed-start regression waits 5.25 seconds, beyond the former
+  five-second claim interval. Separate deterministic tests start a facade spec
+  after its builder exits and explicitly release a retained spec after its
+  builder is killed.
+- Direct and facade whole-child restart tests reconnect Client with the same
+  opaque provider. Parent shutdown tests prove final provider cleanup.
+- Warnings-as-errors compiled 13 files. Strict Credo checked 32 source files
+  and 1,414 modules/functions with no issues. `mix deps`,
+  `mix deps.tree --only prod`, `mix app.tree --format plain`, compile xref,
+  Client/Supervisor/facade traces, forbidden-reference scans, scoped format,
+  and `git diff --check` passed through `devenv shell`.

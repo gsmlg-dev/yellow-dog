@@ -15,7 +15,7 @@ defmodule YellowDog.ServerAgent do
   end
 
   def child_spec(opts) do
-    case Supervisor.prepare_options(opts) do
+    case Supervisor.prepare_child_spec_options(opts) do
       {:ok, prepared_opts} ->
         %{
           id: __MODULE__,
@@ -33,25 +33,8 @@ defmodule YellowDog.ServerAgent do
   end
 
   @doc false
-  def start_prepared_link(prepared_opts) do
-    with {:ok, credential_ref} <- Keyword.fetch(prepared_opts, :credential_ref),
-         :ok <- Client.claim_credentials(credential_ref) do
-      case Supervisor.start_prepared_link(prepared_opts, self()) do
-        {:ok, _supervisor} = started ->
-          started
-
-        error ->
-          Client.release_credentials(credential_ref)
-          error
-      end
-    else
-      :error ->
-        Supervisor.start_prepared_link(prepared_opts, self())
-
-      _invalid ->
-        {:error, :invalid_configuration}
-    end
-  end
+  def start_prepared_link(prepared_opts),
+    do: Supervisor.start_prepared_child_link(prepared_opts)
 
   @doc false
   def start_invalid, do: {:error, :invalid_configuration}

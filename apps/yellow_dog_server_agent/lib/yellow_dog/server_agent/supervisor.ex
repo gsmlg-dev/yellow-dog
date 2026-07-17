@@ -78,6 +78,24 @@ defmodule YellowDog.ServerAgent.Supervisor do
   @heartbeat_only_options [:name, :agent_id, :supervisor_name]
   @restart_cleanup_timeout 1_000
 
+  def child_spec(opts) do
+    case prepare_child_spec_options(opts) do
+      {:ok, prepared_opts} ->
+        %{
+          id: __MODULE__,
+          start: {__MODULE__, :start_prepared_child_link, [prepared_opts]},
+          type: :supervisor
+        }
+
+      {:error, :invalid_configuration} ->
+        %{
+          id: __MODULE__,
+          start: {__MODULE__, :start_invalid, []},
+          type: :supervisor
+        }
+    end
+  end
+
   def start_link(opts \\ []) do
     with {:ok, prepared_opts} <- prepare_options(opts),
          {:ok, supervisor_name} <-
@@ -94,6 +112,31 @@ defmodule YellowDog.ServerAgent.Supervisor do
       _invalid -> {:error, :invalid_configuration}
     end
   end
+
+  @doc false
+  def prepare_child_spec_options(opts) do
+    with {:ok, prepared_opts} <- prepare_options(opts),
+         :ok <- retain_prepared_credentials(prepared_opts) do
+      {:ok, prepared_opts}
+    else
+      _invalid -> {:error, :invalid_configuration}
+    end
+  end
+
+  @doc false
+  def start_prepared_child_link(prepared_opts)
+      when is_list(prepared_opts) do
+    if Keyword.keyword?(prepared_opts) do
+      start_prepared_child(prepared_opts)
+    else
+      {:error, :invalid_configuration}
+    end
+  end
+
+  def start_prepared_child_link(_prepared_opts), do: {:error, :invalid_configuration}
+
+  @doc false
+  def start_invalid, do: {:error, :invalid_configuration}
 
   @doc false
   def prepare_options(opts) do
@@ -122,6 +165,21 @@ defmodule YellowDog.ServerAgent.Supervisor do
   end
 
   def start_prepared_link(_opts, _owner), do: {:error, :invalid_configuration}
+
+  defp start_prepared_child(prepared_opts) do
+    case Keyword.fetch(prepared_opts, :credential_ref) do
+      {:ok, credential_ref} ->
+        with :ok <- Client.claim_credentials(credential_ref) do
+          result = start_prepared_link(prepared_opts, self())
+          cleanup_failed_start(result, prepared_opts)
+        else
+          _invalid -> {:error, :invalid_configuration}
+        end
+
+      :error ->
+        start_prepared_link(prepared_opts, self())
+    end
+  end
 
   defp put_credential_owner(opts, owner) do
     if Keyword.has_key?(opts, :credential_ref),
@@ -556,6 +614,23 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
       _invalid ->
         {:error, :invalid_configuration}
+    end
+  end
+
+  defp retain_prepared_credentials(opts) do
+    case Keyword.fetch(opts, :credential_ref) do
+      {:ok, credential_ref} ->
+        case Client.retain_credentials(credential_ref) do
+          :ok ->
+            :ok
+
+          :error ->
+            Client.release_credentials(credential_ref)
+            :error
+        end
+
+      :error ->
+        :ok
     end
   end
 

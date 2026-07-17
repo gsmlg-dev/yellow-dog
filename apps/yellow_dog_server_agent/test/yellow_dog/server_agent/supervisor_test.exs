@@ -37,6 +37,7 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
   @capabilities ["runtime.services"]
   @config_revision String.duplicate("a", 64)
   @token "top-secret-token"
+  @old_claim_timeout 5_000
 
   setup do
     data_dir =
@@ -193,6 +194,118 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     refute contains_secret?(child_spec, "management.example.test")
     refute contains_raw_credential_key?(child_spec)
     refute contains_function?(child_spec)
+  end
+
+  test "invalid direct Supervisor child specs use a credential-free controlled error start" do
+    child_spec =
+      ServerAgentSupervisor.child_spec(
+        management_url: "https://management.example.test",
+        management_token: @token
+      )
+
+    assert {ServerAgentSupervisor, :start_invalid, []} = child_spec.start
+    refute contains_secret?(child_spec, @token)
+    refute contains_secret?(child_spec, "management.example.test")
+    refute contains_raw_credential_key?(child_spec)
+    refute contains_function?(child_spec)
+  end
+
+  test "outbound child spec remains startable beyond the old claim timeout", %{
+    data_dir: data_dir
+  } do
+    names = names()
+    outer_name = unique_name(:delayed_outer_supervisor)
+
+    child_spec =
+      data_dir
+      |> complete_opts(names)
+      |> Keyword.merge(outbound_opts())
+      |> YellowDog.ServerAgent.child_spec()
+
+    assert {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]} = child_spec.start
+    credential_ref = Keyword.fetch!(prepared_opts, :credential_ref)
+    provider = provider_pid(credential_ref)
+
+    Process.sleep(@old_claim_timeout + 250)
+
+    assert Process.alive?(provider)
+    assert {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
+    Process.unlink(outer)
+    assert wait_for_pid(names.client)
+    assert_receive {:socket_start, _opts}
+
+    provider_monitor = Process.monitor(provider)
+    Supervisor.stop(outer)
+    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
+  end
+
+  test "retained outbound child-spec credentials can be explicitly released", %{
+    data_dir: data_dir
+  } do
+    parent = self()
+
+    {builder, builder_monitor} =
+      spawn_monitor(fn ->
+        child_spec =
+          data_dir
+          |> complete_opts(names())
+          |> Keyword.merge(outbound_opts())
+          |> YellowDog.ServerAgent.child_spec()
+
+        send(parent, {:releasable_child_spec, child_spec})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:releasable_child_spec,
+                    %{start: {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]}}}
+
+    credential_ref = Keyword.fetch!(prepared_opts, :credential_ref)
+    provider = provider_pid(credential_ref)
+    provider_monitor = Process.monitor(provider)
+
+    Process.exit(builder, :kill)
+    assert_receive {:DOWN, ^builder_monitor, :process, ^builder, :killed}
+    assert Process.alive?(provider)
+    assert :ok = Client.release_credentials(credential_ref)
+    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
+  end
+
+  test "outbound child spec survives handoff from an exited builder process", %{
+    data_dir: data_dir
+  } do
+    parent = self()
+    names = names()
+    outer_name = unique_name(:builder_handoff_outer_supervisor)
+
+    {builder, builder_monitor} =
+      spawn_monitor(fn ->
+        child_spec =
+          data_dir
+          |> complete_opts(names)
+          |> Keyword.merge(outbound_opts())
+          |> YellowDog.ServerAgent.child_spec()
+
+        send(parent, {:retained_child_spec, child_spec})
+      end)
+
+    assert_receive {:retained_child_spec,
+                    child_spec = %{
+                      start: {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]}
+                    }}
+
+    credential_ref = Keyword.fetch!(prepared_opts, :credential_ref)
+    provider = provider_pid(credential_ref)
+
+    assert_receive {:DOWN, ^builder_monitor, :process, ^builder, :normal}
+    assert Process.alive?(provider)
+    assert {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
+    Process.unlink(outer)
+    assert wait_for_pid(names.client)
+    assert_receive {:socket_start, _opts}
+
+    provider_monitor = Process.monitor(provider)
+    Supervisor.stop(outer)
+    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
   end
 
   test "complete durable configuration starts exact ordered local children without Client", %{
@@ -556,6 +669,62 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     restarted_client = wait_for_restart(names.client, client)
 
     assert restarted_agent != agent
+    assert restarted_client != client
+    assert Process.alive?(provider)
+    assert :sys.get_state(restarted_client).config.credential_ref == credential_ref
+    assert_receive {:socket_start, _opts}
+
+    provider_monitor = Process.monitor(provider)
+    Supervisor.stop(outer)
+    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
+  end
+
+  test "direct Supervisor child spec is scrubbed and survives whole-child restart", %{
+    data_dir: data_dir
+  } do
+    names = names()
+    outer_name = unique_name(:direct_supervisor_outer)
+
+    raw_opts =
+      data_dir
+      |> complete_opts(names)
+      |> Keyword.merge(outbound_opts())
+
+    child_spec = ServerAgentSupervisor.child_spec(raw_opts)
+
+    assert {ServerAgentSupervisor, :start_prepared_child_link, [_prepared_opts]} =
+             child_spec.start
+
+    refute contains_secret?(child_spec, @token)
+    refute contains_secret?(child_spec, "management.example.test")
+    refute contains_raw_credential_key?(child_spec)
+    refute contains_function?(child_spec)
+
+    {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
+    Process.unlink(outer)
+
+    on_exit(fn ->
+      if Process.alive?(outer), do: Supervisor.stop(outer)
+    end)
+
+    supervisor = child_pid(outer, ServerAgentSupervisor)
+    client = wait_for_pid(names.client)
+    credential_ref = :sys.get_state(client).config.credential_ref
+    provider = provider_pid(credential_ref)
+
+    for state <- [:sys.get_state(outer), :sys.get_state(supervisor)] do
+      refute contains_secret?(state, @token)
+      refute contains_secret?(state, "management.example.test")
+      refute contains_raw_credential_key?(state)
+      refute contains_function?(state)
+    end
+
+    assert_receive {:socket_start, _opts}
+    Process.exit(supervisor, :kill)
+    restarted_supervisor = wait_for_child_restart(outer, ServerAgentSupervisor, supervisor)
+    restarted_client = wait_for_restart(names.client, client)
+
+    assert restarted_supervisor != supervisor
     assert restarted_client != client
     assert Process.alive?(provider)
     assert :sys.get_state(restarted_client).config.credential_ref == credential_ref

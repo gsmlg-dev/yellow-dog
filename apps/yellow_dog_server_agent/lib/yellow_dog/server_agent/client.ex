@@ -91,6 +91,14 @@ defmodule YellowDog.ServerAgent.Client do
     end
   end
 
+  @spec retain_credentials(credential_ref()) :: :ok | :error
+  def retain_credentials(credential_ref) do
+    case CredentialProvider.retain(credential_ref) do
+      :ok -> :ok
+      _error -> :error
+    end
+  end
+
   @spec claim_credentials(credential_ref()) :: :ok | :error
   def claim_credentials(credential_ref) do
     case CredentialProvider.claim(credential_ref) do
@@ -120,12 +128,25 @@ defmodule YellowDog.ServerAgent.Client do
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
-    %{
-      id: child_id(opts),
-      start: {__MODULE__, :start_link, [opts]},
-      type: :worker
-    }
+    case validate_child_spec_options(opts) do
+      {:ok, _config, name} ->
+        %{
+          id: child_id(name),
+          start: {__MODULE__, :start_link, [opts]},
+          type: :worker
+        }
+
+      {:error, :invalid_options} ->
+        %{
+          id: __MODULE__,
+          start: {__MODULE__, :start_invalid, []},
+          type: :worker
+        }
+    end
   end
+
+  @doc false
+  def start_invalid, do: {:error, :invalid_options}
 
   @spec connected?(GenServer.server()) :: boolean()
   def connected?(server \\ __MODULE__) do
@@ -840,25 +861,30 @@ defmodule YellowDog.ServerAgent.Client do
     _kind, _reason -> :error
   end
 
-  defp validate_options(opts) do
+  defp validate_options(opts), do: validate_options(opts, &server_ref/1)
+
+  defp validate_child_spec_options(opts),
+    do: validate_options(opts, &server_spec_ref/1)
+
+  defp validate_options(opts, server_ref_validator) do
     with true <- Keyword.keyword?(opts),
          keys = Keyword.keys(opts),
          true <- length(keys) == length(Enum.uniq(keys)),
          {:ok, enabled} <- enabled(Keyword.get(opts, :enabled)),
          {:ok, name} <- process_name(Keyword.get(opts, :name, __MODULE__)) do
-      validate_mode(enabled, keys, opts, name)
+      validate_mode(enabled, keys, opts, name, server_ref_validator)
     else
       _invalid -> {:error, :invalid_options}
     end
   end
 
-  defp validate_mode(false, keys, _opts, name) do
+  defp validate_mode(false, keys, _opts, name, _server_ref_validator) do
     if Enum.all?(keys, &(&1 in @disabled_options)),
       do: {:ok, %{enabled: false}, name},
       else: {:error, :invalid_options}
   end
 
-  defp validate_mode(true, keys, opts, name) do
+  defp validate_mode(true, keys, opts, name, server_ref_validator) do
     with true <- Enum.all?(keys, &(&1 in @enabled_options)),
          true <- Enum.all?(@required_enabled_options, &Keyword.has_key?(opts, &1)),
          {:ok, credential_ref} <- credential_ref(Keyword.get(opts, :credential_ref)),
@@ -868,9 +894,12 @@ defmodule YellowDog.ServerAgent.Client do
            callback_module(Keyword.get(opts, :dispatcher), dispatch: 2),
          {:ok, dispatcher_runtime_adapter} <-
            module(Keyword.get(opts, :dispatcher_runtime_adapter)),
-         {:ok, command_journal} <- server_ref(Keyword.get(opts, :command_journal)),
-         {:ok, config_applier} <- server_ref(Keyword.get(opts, :config_applier)),
-         {:ok, config_apply_store} <- server_ref(Keyword.get(opts, :config_apply_store)),
+         {:ok, command_journal} <-
+           server_ref_validator.(Keyword.get(opts, :command_journal)),
+         {:ok, config_applier} <-
+           server_ref_validator.(Keyword.get(opts, :config_applier)),
+         {:ok, config_apply_store} <-
+           server_ref_validator.(Keyword.get(opts, :config_apply_store)),
          {:ok, timer} <- callback_module(Keyword.get(opts, :timer), @timer_callbacks),
          {:ok, monotonic_clock} <-
            callback_module(Keyword.get(opts, :monotonic_clock), @clock_callbacks),
@@ -1047,6 +1076,23 @@ defmodule YellowDog.ServerAgent.Client do
     _kind, _reason -> :error
   end
 
+  defp server_spec_ref(value) when is_pid(value) do
+    if Process.alive?(value), do: {:ok, value}, else: :error
+  end
+
+  defp server_spec_ref(value) when is_atom(value) and not is_nil(value), do: {:ok, value}
+  defp server_spec_ref({:global, _term} = value), do: {:ok, value}
+
+  defp server_spec_ref({:via, module, _term} = value)
+       when is_atom(module) and not is_nil(module),
+       do: {:ok, value}
+
+  defp server_spec_ref({name, node} = value)
+       when is_atom(name) and not is_nil(name) and is_atom(node) and not is_nil(node),
+       do: {:ok, value}
+
+  defp server_spec_ref(_value), do: :error
+
   defp timings(opts) do
     keys = [
       :connection_poll_interval,
@@ -1080,16 +1126,8 @@ defmodule YellowDog.ServerAgent.Client do
     end)
   end
 
-  defp child_id(opts) when is_list(opts) do
-    case Keyword.get(opts, :name, __MODULE__) do
-      nil -> __MODULE__
-      name -> name
-    end
-  rescue
-    _exception -> __MODULE__
-  end
-
-  defp child_id(_opts), do: __MODULE__
+  defp child_id(nil), do: __MODULE__
+  defp child_id(name), do: name
 
   defp empty_timers, do: %{check: nil, rejoin: nil, heartbeat: nil, status: nil, config: nil}
 
@@ -1141,6 +1179,7 @@ defmodule YellowDog.ServerAgent.Client do
         creator_ref: creator_ref,
         claim_timer:
           Process.send_after(self(), {:credential_claim_timeout, capability}, @claim_timeout),
+        retained: false,
         owner: nil,
         owner_ref: nil,
         client: nil,
@@ -1154,6 +1193,9 @@ defmodule YellowDog.ServerAgent.Client do
 
     def claim(credential_ref),
       do: call(credential_ref, :claim, @bind_timeout)
+
+    def retain(credential_ref),
+      do: call(credential_ref, :retain, @bind_timeout)
 
     def bind(credential_ref, client, server_id, owner) when is_pid(client) and is_pid(owner) do
       deadline = System.monotonic_time(:millisecond) + @bind_timeout
@@ -1220,6 +1262,18 @@ defmodule YellowDog.ServerAgent.Client do
 
     defp loop(state) do
       receive do
+        {__MODULE__, caller, capability, ref, :retain}
+        when capability == state.capability ->
+          case retain_for_creator(state, caller) do
+            {:ok, state} ->
+              reply(caller, capability, ref, :ok)
+              loop(state)
+
+            :error ->
+              reply(caller, capability, ref, :error)
+              loop(state)
+          end
+
         {__MODULE__, caller, capability, ref, :claim}
         when capability == state.capability ->
           case claim_owner(state, caller) do
@@ -1298,7 +1352,9 @@ defmodule YellowDog.ServerAgent.Client do
 
         {__MODULE__, caller, capability, ref, :release}
         when capability == state.capability and
-               ((state.owner == nil and caller == state.creator) or caller == state.owner) ->
+               ((state.owner == nil and
+                   (caller == state.creator or state.retained == true)) or
+                  caller == state.owner) ->
           _state = stop_socket(state)
           reply(caller, capability, ref, :ok)
           :ok
@@ -1312,7 +1368,8 @@ defmodule YellowDog.ServerAgent.Client do
           loop(state)
 
         {:credential_claim_timeout, capability}
-        when capability == state.capability and state.owner == nil ->
+        when capability == state.capability and state.owner == nil and
+               state.claim_timer != nil ->
           _state = stop_socket(state)
           :ok
 
@@ -1356,6 +1413,17 @@ defmodule YellowDog.ServerAgent.Client do
 
     defp claim_owner(%{owner: owner} = state, owner), do: {:ok, state}
 
+    defp claim_owner(%{owner: nil, retained: true} = state, owner) when is_pid(owner) do
+      owner_ref = Process.monitor(owner)
+
+      if Process.alive?(owner) do
+        {:ok, %{state | retained: false, owner: owner, owner_ref: owner_ref}}
+      else
+        Process.demonitor(owner_ref, [:flush])
+        :error
+      end
+    end
+
     defp claim_owner(%{owner: nil} = state, owner) when is_pid(owner) do
       owner_ref = Process.monitor(owner)
 
@@ -1379,6 +1447,26 @@ defmodule YellowDog.ServerAgent.Client do
     end
 
     defp claim_owner(_state, _owner), do: :error
+
+    defp retain_for_creator(%{owner: nil, creator: creator} = state, creator) do
+      if Process.alive?(creator) and
+           Process.demonitor(state.creator_ref, [:flush, :info]) do
+        cancel_claim_timer(state.claim_timer)
+
+        {:ok,
+         %{
+           state
+           | creator: nil,
+             creator_ref: nil,
+             claim_timer: nil,
+             retained: true
+         }}
+      else
+        :error
+      end
+    end
+
+    defp retain_for_creator(_state, _creator), do: :error
 
     defp bind_client(
            %{owner: owner, client: nil} = state,

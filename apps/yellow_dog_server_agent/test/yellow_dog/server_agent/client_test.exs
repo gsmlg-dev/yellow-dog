@@ -175,6 +175,26 @@ defmodule YellowDog.ServerAgent.ClientTest do
     refute_receive {:socket_start, _opts}
   end
 
+  test "invalid Client child specs use a credential-free controlled error start" do
+    invalid_options = [
+      [
+        management_url: "https://management.example.test",
+        token: @token,
+        socket: ClientFakeSocket
+      ],
+      [enabled: true, name: @token],
+      :invalid
+    ]
+
+    for opts <- invalid_options do
+      child_spec = Client.child_spec(opts)
+
+      assert {Client, :start_invalid, []} = child_spec.start
+      refute contains_secret?(child_spec, @token)
+      refute contains_secret?(child_spec, "management.example.test")
+    end
+  end
+
   test "rejects duplicate, unknown, and malformed enabled options" do
     {:ok, owner} = Owner.start_link(self())
 
@@ -858,6 +878,21 @@ defmodule YellowDog.ServerAgent.ClientTest do
     assert_receive {:DOWN, ^provider_monitor, :process, _provider, :normal}
     assert :error = Client.release_credentials(credential_ref)
     refute_receive {:socket_start, _opts}
+  end
+
+  test "credential retention is restricted to the preparation creator" do
+    credential_ref = prepare_credentials!()
+    parent = self()
+
+    caller =
+      spawn(fn ->
+        send(parent, {:retain_result, Client.retain_credentials(credential_ref)})
+      end)
+
+    assert_receive {:retain_result, :error}
+    refute Process.alive?(caller)
+    assert Process.alive?(provider_pid(credential_ref))
+    assert :ok = Client.release_credentials(credential_ref)
   end
 
   test "unclaimed credential preparation expires deterministically" do
