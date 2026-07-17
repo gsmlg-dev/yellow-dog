@@ -111,6 +111,19 @@ defmodule YellowDog.Server.Control.Dhcpv4Test do
     assert [] = ServerDhcpv4ControlFake.take_calls()
   end
 
+  test "maps an owner-rejected host-address CIDR to the exact invalid result" do
+    ServerDhcpv4ControlFake.configure(%{responses: %{validate: [{:error, :invalid}]}})
+    invalid = %{@pool | "subnet" => "192.0.2.7/24"}
+
+    assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} =
+             Dhcpv4.dispatch("server.dhcp.pools.create", invalid)
+
+    refute Enum.any?(
+             ServerDhcpv4ControlFake.take_calls(),
+             &match?({:pool_store, :control_persist_snapshot, _}, &1)
+           )
+  end
+
   test "creates a validated pool by persisting before activating the manager" do
     config = pool_config(@pool)
 

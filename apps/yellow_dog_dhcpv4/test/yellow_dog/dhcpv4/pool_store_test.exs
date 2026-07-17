@@ -278,6 +278,24 @@ defmodule YellowDog.Dhcpv4.PoolStoreTest do
   end
 
   describe "control pool snapshots" do
+    test "rejects host-address network CIDRs before persistence", %{tmp_dir: tmp_dir} do
+      use_data_dir(tmp_dir)
+
+      pool = %{
+        name: "host-cidr",
+        network: "192.0.2.7/24",
+        range_start: "192.0.2.20",
+        range_end: "192.0.2.100",
+        subnet_mask: "255.255.255.0",
+        lease_time: 3600
+      }
+
+      assert {:error, :invalid} = PoolStore.control_validate_pool(pool)
+      assert {:error, :invalid} = PoolStore.control_persist_snapshot([pool])
+      assert {:ok, []} = PoolStore.control_snapshot()
+      refute File.exists?(PoolStore.default_index_path())
+    end
+
     test "validates and roundtrips an explicit durable snapshot", %{tmp_dir: tmp_dir} do
       previous = Application.get_env(:yellow_dog, :data_dir)
       Application.put_env(:yellow_dog, :data_dir, tmp_dir)
@@ -303,6 +321,43 @@ defmodule YellowDog.Dhcpv4.PoolStoreTest do
       assert snapshot.name == "control-v4"
       assert snapshot.network == "192.0.2.0/24"
       assert snapshot.range_start == "192.0.2.20"
+    end
+
+    test "keeps the prior snapshot authoritative when index commit fails after staging", %{
+      tmp_dir: tmp_dir
+    } do
+      use_data_dir(tmp_dir)
+
+      original = %{
+        name: "control-v4",
+        network: "192.0.2.0/24",
+        range_start: "192.0.2.20",
+        range_end: "192.0.2.100",
+        subnet_mask: "255.255.255.0",
+        lease_time: 3600
+      }
+
+      candidate = %{
+        original
+        | range_start: "192.0.2.40",
+          range_end: "192.0.2.120",
+          lease_time: 7200
+      }
+
+      assert :ok = PoolStore.control_persist_snapshot([original])
+
+      index_path = PoolStore.default_index_path()
+      original_index = File.read!(index_path)
+
+      # atomic_write/2 reaches this path only after all candidate pool files are staged.
+      File.mkdir_p!(index_path <> ".tmp")
+
+      assert {:error, _reason} = PoolStore.control_persist_snapshot([candidate])
+      assert File.read!(index_path) == original_index
+      assert {:ok, [snapshot]} = PoolStore.control_snapshot()
+      assert snapshot.range_start == "192.0.2.20"
+      assert snapshot.range_end == "192.0.2.100"
+      assert snapshot.lease_time == 3600
     end
   end
 
@@ -355,5 +410,16 @@ defmodule YellowDog.Dhcpv4.PoolStoreTest do
       assert "alpha" in names
       assert "beta" in names
     end
+  end
+
+  defp use_data_dir(tmp_dir) do
+    previous = Application.get_env(:yellow_dog, :data_dir)
+    Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:yellow_dog, :data_dir, previous),
+        else: Application.delete_env(:yellow_dog, :data_dir)
+    end)
   end
 end

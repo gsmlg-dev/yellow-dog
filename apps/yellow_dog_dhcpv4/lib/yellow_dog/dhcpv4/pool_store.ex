@@ -2,20 +2,30 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   @moduledoc """
   Persistence layer for DHCPv4 address pool definitions.
 
-  Uses a two-level storage structure:
+  Uses an index plus individual pool files:
   - Index file: `data/dhcpv4/pools.toml` - lists all pool names
-  - Pool files: `data/dhcpv4/pools/{pool_name}.toml` - individual pool configs
+  - Legacy pool files: `data/dhcpv4/pools/{pool_name}.toml`
+  - Control snapshots:
+    `data/dhcpv4/.pool-snapshots/{snapshot}/pools/{pool_name}.toml`
 
-  This architecture allows:
+  A control snapshot is committed by atomically replacing the index with a
+  pointer to a fully staged immutable generation. Legacy indexes remain
+  readable, and legacy writers preserve snapshot mode after the first control
+  commit. This architecture allows:
   - Quick loading of pool list without reading all configs
-  - Independent management of each pool's configuration
-  - Atomic updates to individual pools without affecting others
+  - Independent pool configuration files
+  - All-or-nothing control snapshot updates
   """
 
   use YellowDog.Data.Collection
 
+  import Bitwise
+
   alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
   import YellowDog.Config.TomlHelpers
+
+  @snapshot_directory ".pool-snapshots"
+  @snapshot_id_pattern ~r/\A[0-9a-f]{32}\z/
 
   defcollection(:dhcpv4_pools,
     key_field: :name,
@@ -56,16 +66,8 @@ defmodule YellowDog.Dhcpv4.PoolStore do
 
   @spec load_pools(String.t()) :: {:ok, [pool_config()]} | {:error, term()}
   def load_pools(index_path) do
-    with {:ok, pool_names} <- load_index(index_path) do
-      # Derive pools directory relative to the index file
-      pools_dir = Path.join(Path.dirname(index_path), "pools")
-
-      pools =
-        for name <- pool_names,
-            pool_path = Path.join(pools_dir, "#{name}.toml"),
-            {:ok, pool} <- [load_pool_file(pool_path, name)],
-            do: pool
-
+    with {:ok, index} <- load_pool_index(index_path),
+         {:ok, pools} <- load_indexed_pools(index_path, index) do
       :telemetry.execute(
         [:yellow_dog, :dhcpv4, :pool_store, :loaded],
         %{pool_count: length(pools)},
@@ -88,23 +90,8 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   """
   @spec load_index(String.t()) :: {:ok, [String.t()]} | {:error, term()}
   def load_index(index_path) do
-    case File.read(index_path) do
-      {:ok, content} ->
-        case Toml.decode(content) do
-          {:ok, data} ->
-            pools = extract_pool_names(data)
-            {:ok, pools}
-
-          {:error, reason} ->
-            {:error, {:toml_parse_error, reason}}
-        end
-
-      {:error, :enoent} ->
-        # Index file doesn't exist - return empty list
-        {:ok, []}
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, index} <- load_pool_index(index_path) do
+      {:ok, index.pool_names}
     end
   end
 
@@ -124,9 +111,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   def save_pool(pool) do
     pool_name = pool[:name] || pool.name
 
-    with :ok <- ensure_directories(),
-         :ok <- save_pool_file(pool),
-         :ok <- add_to_index(pool_name) do
+    with :ok <- persist_pool(pool, pool_name) do
       :telemetry.execute(
         [:yellow_dog, :dhcpv4, :pool_store, :pool_saved],
         %{count: 1},
@@ -151,10 +136,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   """
   @spec remove_pool(String.t()) :: :ok | {:error, term()}
   def remove_pool(pool_name) do
-    pool_path = Path.join(pools_directory(), "#{pool_name}.toml")
-
-    with :ok <- remove_from_index(pool_name),
-         :ok <- delete_pool_file(pool_path) do
+    with :ok <- persist_pool_removal(pool_name) do
       :telemetry.execute(
         [:yellow_dog, :dhcpv4, :pool_store, :pool_removed],
         %{count: 1},
@@ -179,22 +161,11 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   """
   @spec save_all_pools([pool_config()]) :: :ok | {:error, term()}
   def save_all_pools(pools) do
-    with :ok <- ensure_directories() do
-      # Save each pool file
-      results =
-        Enum.map(pools, fn pool ->
-          {pool[:name] || pool.name, save_pool_file(pool)}
-        end)
-
-      # Check for errors
-      errors = Enum.filter(results, fn {_, result} -> result != :ok end)
-
-      if errors == [] do
-        # Rebuild index with all pool names
-        pool_names = Enum.map(pools, fn pool -> pool[:name] || pool.name end)
-        save_index(pool_names)
+    with {:ok, index} <- load_pool_index(default_index_path()) do
+      if index.snapshot do
+        persist_complete_snapshot(pools)
       else
-        {:error, {:save_errors, errors}}
+        save_all_pools_legacy(pools)
       end
     end
   end
@@ -249,9 +220,16 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   @doc false
   @spec control_validate_pool(pool_config()) :: :ok | {:error, term()}
   def control_validate_pool(pool) do
-    with :ok <- validate_pool(pool),
-         {:ok, _address_pool} <- AddressPool.new(pool) do
-      :ok
+    result =
+      with :ok <- validate_pool(pool),
+           :ok <- validate_canonical_network_cidr(pool),
+           {:ok, _address_pool} <- AddressPool.new(pool) do
+        :ok
+      end
+
+    case result do
+      :ok -> :ok
+      {:error, _reason} -> {:error, :invalid}
     end
   end
 
@@ -259,7 +237,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   @spec control_persist_snapshot([pool_config()]) :: :ok | {:error, term()}
   def control_persist_snapshot(pools) when is_list(pools) do
     with :ok <- validate_control_snapshot(pools) do
-      save_all_pools(pools)
+      persist_complete_snapshot(pools)
     end
   end
 
@@ -276,6 +254,27 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     end)
   end
 
+  defp validate_canonical_network_cidr(pool) do
+    network = get_value(pool, [:network, "network"])
+
+    if canonical_network_cidr?(network), do: :ok, else: {:error, :invalid}
+  end
+
+  defp canonical_network_cidr?(network) when is_binary(network) do
+    with [address, prefix_text] <- String.split(network, "/", parts: 2),
+         {:ok, address} <- Ipv4Util.parse(address),
+         {prefix, ""} <- Integer.parse(prefix_text),
+         true <- prefix >= 0 and prefix <= 32 do
+      address = Ipv4Util.to_integer(address)
+      mask = if prefix == 0, do: 0, else: 0xFFFFFFFF <<< (32 - prefix) &&& 0xFFFFFFFF
+      (address &&& mask) == address
+    else
+      _ -> false
+    end
+  end
+
+  defp canonical_network_cidr?(_network), do: false
+
   defp get_data_dir do
     # Get base data directory from application env or use default
     base_dir = Application.get_env(:yellow_dog, :data_dir) || "data"
@@ -290,6 +289,219 @@ defmodule YellowDog.Dhcpv4.PoolStore do
       {:error, reason} -> {:error, {:mkdir_failed, reason}}
     end
   end
+
+  defp load_pool_index(index_path) do
+    case File.read(index_path) do
+      {:ok, content} ->
+        decode_pool_index(content)
+
+      {:error, :enoent} ->
+        {:ok, %{pool_names: [], snapshot: nil}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp decode_pool_index(content) do
+    case Toml.decode(content) do
+      {:ok, data} ->
+        with {:ok, snapshot} <- extract_snapshot_id(data) do
+          {:ok, %{pool_names: extract_pool_names(data), snapshot: snapshot}}
+        end
+
+      {:error, reason} ->
+        {:error, {:toml_parse_error, reason}}
+    end
+  end
+
+  defp extract_snapshot_id(data) do
+    case Map.get(data, "snapshot") do
+      nil ->
+        {:ok, nil}
+
+      snapshot when is_binary(snapshot) ->
+        if Regex.match?(@snapshot_id_pattern, snapshot),
+          do: {:ok, snapshot},
+          else: {:error, :invalid_snapshot_reference}
+
+      _snapshot ->
+        {:error, :invalid_snapshot_reference}
+    end
+  end
+
+  defp load_indexed_pools(index_path, %{pool_names: pool_names, snapshot: nil}) do
+    pools_dir = Path.join(Path.dirname(index_path), "pools")
+
+    pools =
+      for name <- pool_names,
+          pool_path = Path.join(pools_dir, "#{name}.toml"),
+          {:ok, pool} <- [load_pool_file(pool_path, name)],
+          do: pool
+
+    {:ok, pools}
+  end
+
+  defp load_indexed_pools(index_path, %{pool_names: pool_names, snapshot: snapshot}) do
+    pools_dir = snapshot_pools_directory(index_path, snapshot)
+    load_pool_files_strict(pool_names, pools_dir)
+  end
+
+  defp load_pool_files_strict(pool_names, pools_dir) do
+    Enum.reduce_while(pool_names, {:ok, []}, fn name, {:ok, pools} ->
+      pool_path = Path.join(pools_dir, "#{name}.toml")
+
+      case load_pool_file(pool_path, name) do
+        {:ok, pool} ->
+          {:cont, {:ok, [pool | pools]}}
+
+        {:error, reason} ->
+          {:halt, {:error, {:snapshot_pool_load_failed, name, reason}}}
+      end
+    end)
+    |> case do
+      {:ok, pools} -> {:ok, Enum.reverse(pools)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp persist_pool(pool, pool_name) do
+    with {:ok, index} <- load_pool_index(default_index_path()) do
+      if index.snapshot do
+        with {:ok, pools} <- load_indexed_pools(default_index_path(), index) do
+          persist_complete_snapshot(upsert_pool(pools, pool_name, pool))
+        end
+      else
+        with :ok <- ensure_directories(),
+             :ok <- save_pool_file(pool),
+             :ok <- add_to_index(pool_name) do
+          :ok
+        end
+      end
+    end
+  end
+
+  defp upsert_pool(pools, pool_name, pool) do
+    case Enum.find_index(pools, &(pool_config_name(&1) == pool_name)) do
+      nil -> pools ++ [pool]
+      index -> List.replace_at(pools, index, pool)
+    end
+  end
+
+  defp persist_pool_removal(pool_name) do
+    with {:ok, index} <- load_pool_index(default_index_path()) do
+      if index.snapshot do
+        with {:ok, pools} <- load_indexed_pools(default_index_path(), index) do
+          candidate = Enum.reject(pools, &(pool_config_name(&1) == pool_name))
+
+          if length(candidate) == length(pools),
+            do: :ok,
+            else: persist_complete_snapshot(candidate)
+        end
+      else
+        pool_path = Path.join(pools_directory(), "#{pool_name}.toml")
+
+        with :ok <- remove_from_index(pool_name),
+             :ok <- delete_pool_file(pool_path) do
+          :ok
+        end
+      end
+    end
+  end
+
+  defp save_all_pools_legacy(pools) do
+    with :ok <- ensure_directories() do
+      results =
+        Enum.map(pools, fn pool ->
+          {pool_config_name(pool), save_pool_file(pool)}
+        end)
+
+      errors = Enum.filter(results, fn {_name, result} -> result != :ok end)
+
+      if errors == [] do
+        save_index(Enum.map(pools, &pool_config_name/1))
+      else
+        {:error, {:save_errors, errors}}
+      end
+    end
+  end
+
+  defp persist_complete_snapshot(pools) do
+    pool_names = Enum.map(pools, &pool_config_name/1)
+
+    if Enum.uniq(pool_names) == pool_names do
+      stage_and_commit_snapshot(pools, pool_names)
+    else
+      {:error, :duplicate_pool_names}
+    end
+  end
+
+  defp stage_and_commit_snapshot(pools, pool_names) do
+    snapshot = snapshot_id()
+    snapshot_dir = snapshot_directory(default_index_path(), snapshot)
+    pools_dir = Path.join(snapshot_dir, "pools")
+
+    result =
+      with :ok <- make_snapshot_directory(pools_dir),
+           :ok <- save_snapshot_pool_files(pools, pools_dir),
+           {:ok, _staged_pools} <- load_pool_files_strict(pool_names, pools_dir),
+           :ok <- save_snapshot_index(pool_names, snapshot) do
+        :ok
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, _reason} = error ->
+        File.rm_rf(snapshot_dir)
+        error
+    end
+  end
+
+  defp make_snapshot_directory(pools_dir) do
+    case File.mkdir_p(pools_dir) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:mkdir_failed, reason}}
+    end
+  end
+
+  defp save_snapshot_pool_files(pools, pools_dir) do
+    Enum.reduce_while(pools, :ok, fn pool, :ok ->
+      case save_pool_file(pool, pools_dir) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp save_snapshot_index(pool_names, snapshot) do
+    content = """
+    # DHCPv4 Pool Snapshot Index
+    # The snapshot directory is immutable; replacing this index commits the snapshot.
+
+    snapshot = #{encode_toml_string(snapshot)}
+    pools = #{inspect(pool_names)}
+    """
+
+    atomic_write(default_index_path(), content)
+  end
+
+  defp snapshot_id do
+    16
+    |> :crypto.strong_rand_bytes()
+    |> Base.encode16(case: :lower)
+  end
+
+  defp snapshot_directory(index_path, snapshot) do
+    Path.join([Path.dirname(index_path), @snapshot_directory, snapshot])
+  end
+
+  defp snapshot_pools_directory(index_path, snapshot) do
+    Path.join(snapshot_directory(index_path, snapshot), "pools")
+  end
+
+  defp pool_config_name(pool), do: get_value(pool, [:name, "name"])
 
   defp extract_pool_names(data) do
     # Support multiple formats:
@@ -348,9 +560,11 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     end
   end
 
-  defp save_pool_file(pool) do
+  defp save_pool_file(pool), do: save_pool_file(pool, pools_directory())
+
+  defp save_pool_file(pool, pools_dir) do
     pool_name = pool[:name] || pool.name
-    pool_path = Path.join(pools_directory(), "#{pool_name}.toml")
+    pool_path = Path.join(pools_dir, "#{pool_name}.toml")
     content = pool_to_toml(pool)
 
     case atomic_write(pool_path, content) do
