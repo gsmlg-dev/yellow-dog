@@ -153,6 +153,34 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert [] = ServerDnsControlFake.take_calls()
   end
 
+  test "rejects source and blob zone imports before current or dispatch side effects" do
+    source_payload = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "source_type" => "provider",
+      "source_id" => "cf-main",
+      "source_revision" => String.duplicate("a", 64)
+    }
+
+    blob_payload = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "filename" => "example.test.zone",
+      "size" => 42,
+      "blob_digest" => String.duplicate("b", 64)
+    }
+
+    for payload <- [source_payload, blob_payload] do
+      assert {:error, %Error{code: :unsupported}} =
+               Dns.current("server.dns.zones.import", payload)
+
+      assert {:error, %Error{code: :unsupported}} =
+               Dns.dispatch("server.dns.zones.import", payload)
+    end
+
+    assert [] = ServerDnsControlFake.take_calls()
+  end
+
   test "creates an enabled supported provider mirror without scheduling a sync" do
     ServerDnsControlFake.configure(%{
       views: [{"default", self(), 0}],
@@ -1383,24 +1411,29 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert [{:provider_facade, :remove_provider, ["cf-main"]}] = ServerDnsControlFake.take_calls()
   end
 
-  test "rejects unsupported provider writes before facade calls" do
-    external_ref = %{
+  test "rejects provider creation without an authenticated credential materializer" do
+    assert {:error, %Error{code: :unsupported}} =
+             Dns.dispatch("server.dns.providers.create", provider_payload("cf-main"))
+
+    assert [] = ServerDnsControlFake.take_calls()
+  end
+
+  test "rejects external credentials, endpoints, and RFC 2136 before provider facade calls" do
+    external_credential = %{
       "provider_id" => "cf-main",
       "provider_type" => "cloudflare",
       "endpoint" => nil,
       "credential_ref" => "external-secret"
     }
 
-    assert {:error, %Error{code: :unsupported}} =
-             Dns.dispatch("server.dns.providers.create", %{
-               external_ref
-               | "credential_ref" => credential_ref("cf-main")
-             })
-
     for payload <- [
-          external_ref,
-          %{external_ref | "endpoint" => "https://provider.example"},
-          %{external_ref | "provider_type" => "rfc2136", "endpoint" => nil}
+          external_credential,
+          %{
+            external_credential
+            | "credential_ref" => credential_ref("cf-main"),
+              "endpoint" => "https://provider.example"
+          },
+          %{external_credential | "provider_type" => "rfc2136", "endpoint" => nil}
         ] do
       assert {:error, %Error{code: :unsupported}} =
                Dns.dispatch("server.dns.providers.update", payload)
@@ -1519,6 +1552,37 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert result == {:error, Error.new(:apply_failed, "apply failed", %{})}
     refute inspect(result) =~ "owner_failed"
     refute inspect(result) =~ "credential-token"
+  end
+
+  test "preserves the Route53 use_local unsupported owner boundary without local mutation" do
+    conflict = %{
+      id: "conflict-route53",
+      provider_name: "route53-main",
+      zone: "example.test",
+      provider_type: :route53
+    }
+
+    ServerDnsControlFake.configure(%{
+      conflicts: %{"conflict-route53" => conflict},
+      zone_metadata: %{{"default", "example.test"} => cloud_authoritative_zone()},
+      record_state: conflict_record_state("192.0.2.10"),
+      responses: %{resolve_conflict: [{:error, :unsupported}]}
+    })
+
+    before = mutation_state()
+
+    assert {:error, %Error{code: :unsupported}} =
+             Dns.dispatch("server.dns.conflicts.resolve", %{
+               "conflict_id" => "conflict-route53",
+               "resolution" => "use_local"
+             })
+
+    assert mutation_state() == before
+
+    assert [
+             {:provider_facade, :fetch_conflict, ["conflict-route53"]},
+             {:provider_facade, :resolve_conflict, ["conflict-route53", :use_local]}
+           ] = ServerDnsControlFake.take_calls()
   end
 
   test "Dispatcher rejects a conflict revision captured before DNS data changed" do
@@ -2251,6 +2315,37 @@ defmodule YellowDog.Server.Control.DnsTest do
                Dns.current(
                  "server.dns.records.create",
                  %{payload | "type" => "UNREGISTERED-TYPE-#{index}"}
+               )
+    end
+
+    assert :erlang.system_info(:atom_count) == initial_atom_count
+    assert [] = ServerDnsControlFake.take_calls()
+  end
+
+  test "malformed DNS mutation values are rejected without atom growth or dependencies" do
+    payload = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "record_id" => record_id("www", "A"),
+      "name" => "www",
+      "type" => "UNREGISTERED-DISPATCH-TYPE-WARMUP",
+      "ttl" => 60,
+      "values" => ["192.0.2.10"]
+    }
+
+    assert {:error, %Error{code: :invalid}} =
+             Dns.dispatch("server.dns.records.create", payload)
+
+    assert {:error, %Error{code: :invalid}} =
+             Dns.dispatch("server.dns.zones.create", %{zone_payload() | "zone_type" => "unknown"})
+
+    initial_atom_count = :erlang.system_info(:atom_count)
+
+    for index <- 1..100 do
+      assert {:error, %Error{code: :invalid}} =
+               Dns.dispatch(
+                 "server.dns.records.create",
+                 %{payload | "type" => "UNREGISTERED-DISPATCH-TYPE-#{index}"}
                )
     end
 
