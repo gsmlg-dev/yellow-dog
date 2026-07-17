@@ -399,8 +399,7 @@ defmodule YellowDog.Server.Control.NetbootTest do
       {:rollback_failed, {:error, :rollback_failed}},
       {:apply_failed, :malformed},
       {:apply_failed, {:raise, "owner secret /var/lib/yellowdog"}},
-      {:apply_failed, {:throw, "owner secret"}},
-      {:apply_failed, {:exit, :owner_failed}}
+      {:apply_failed, {:throw, "owner secret"}}
     ]
 
     for {code, response} <- mappings do
@@ -409,9 +408,22 @@ defmodule YellowDog.Server.Control.NetbootTest do
       assert_error(code, result)
       refute inspect(result) =~ "/var/lib/yellowdog"
     end
+  end
 
-    ServerNetbootControlFake.configure(%{managed_snapshot: {:exit, :noproc}})
-    assert_error(:apply_failed, Netboot.dispatch("server.netboot.profiles.list", %{}))
+  test "maps owner-process noproc exits to not found and other exits to apply failed" do
+    genserver_noproc =
+      {:noproc,
+       {GenServer, :call,
+        [YellowDog.ServerNetbootControlFake.ManifestStore, :managed_snapshot, 5_000]}}
+
+    for {reason, code} <- [
+          {:noproc, :not_found},
+          {genserver_noproc, :not_found},
+          {:owner_failed, :apply_failed}
+        ] do
+      ServerNetbootControlFake.configure(%{managed_snapshot: {:exit, reason}})
+      assert_error(code, Netboot.dispatch("server.netboot.profiles.list", %{}))
+    end
   end
 
   test "maps UndefinedFunctionError raised inside an exported owner call to apply failed" do

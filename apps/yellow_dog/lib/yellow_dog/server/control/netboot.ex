@@ -597,6 +597,8 @@ defmodule YellowDog.Server.Control.Netboot do
   rescue
     _exception -> apply_failed_error()
   catch
+    :exit, :noproc -> not_found_error()
+    :exit, {:noproc, _details} -> not_found_error()
     _kind, _reason -> apply_failed_error()
   end
 

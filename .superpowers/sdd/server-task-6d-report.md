@@ -210,3 +210,70 @@ exit 0
 cd apps/yellow_dog && mix credo --strict
 50 source files, found no issues
 ```
+
+## Final Re-Review Fix
+
+The final Important finding in `server-task-6d-review.md` corrected the owner
+invocation exit boundary.
+
+`invoke_dependency/3` now maps these two owner-process absence exits to the
+fixed sanitized `not_found` error:
+
+```text
+exit(:noproc)
+exit({:noproc, details})
+```
+
+The second form covers standard `GenServer.call` exit wrappers. Internal
+`UndefinedFunctionError`, other exceptions, throws, and every non-`:noproc`
+exit remain sanitized `apply_failed`. Module and exported-entry preflight
+behavior is unchanged.
+
+Focused coverage now verifies direct `:noproc`, wrapped
+`{:noproc, {GenServer, :call, details}}`, and a non-`:noproc` owner exit. The
+existing internal `UndefinedFunctionError` regression remains in place.
+
+### Final TDD Evidence
+
+The corrected exit regression was run before the adapter change:
+
+```text
+cd apps/yellow_dog &&
+mix test test/yellow_dog/server/control/netboot_test.exs
+15 tests, 1 failure
+```
+
+The failure was the expected `apply_failed` result for direct `:noproc`.
+
+### Final Verification
+
+All commands ran through `devenv`.
+
+```text
+cd apps/yellow_dog &&
+mix test test/yellow_dog/server/control/netboot_test.exs \
+  test/yellow_dog/server/control/dispatcher_test.exs
+40 tests, 0 failures
+```
+
+```text
+cd apps/yellow_dog && mix test
+381 tests, 0 failures
+```
+
+```text
+cd apps/yellow_dog && mix compile --warnings-as-errors
+exit 0
+```
+
+```text
+cd apps/yellow_dog && mix format --check-formatted
+exit 0
+```
+
+```text
+cd apps/yellow_dog && mix credo --strict
+50 source files, found no issues
+```
+
+No remaining Task 6D concerns are known.
