@@ -1,0 +1,396 @@
+defmodule YellowDog.Console.ServerChannel do
+  @moduledoc """
+  Canonical Sync message channel for one authenticated Server connection.
+  """
+
+  use YellowDog.Console, :channel
+
+  alias __MODULE__.SyncCodec
+  alias YellowDog.Console.ServerConnections
+  alias YellowDog.ManagementCore
+
+  @sync_event "sync"
+  @payload_keys ["message", "publication_sequence"]
+
+  @impl true
+  def join("server:control:" <> topic_server_id, _payload, socket) do
+    server_id = socket.assigns.server_id
+
+    if topic_server_id == server_id and
+         :ok == ServerConnections.begin_candidate(server_id, self()) do
+      {:ok, %{}, assign(socket, :handshake_state, :awaiting_hello)}
+    else
+      {:error, error_reply(:invalid)}
+    end
+  end
+
+  def join(_topic, _payload, _socket), do: {:error, error_reply(:invalid)}
+
+  @impl true
+  def handle_in(@sync_event, payload, socket) do
+    with {:ok, encoded, publication_sequence} <- exact_payload(payload),
+         {:ok, message} <- SyncCodec.decode(encoded),
+         :ok <- matching_server(message, socket.assigns.server_id),
+         :ok <- valid_publication_sequence(message.tag, publication_sequence) do
+      dispatch(
+        socket.assigns.handshake_state,
+        message,
+        encoded,
+        publication_sequence,
+        socket
+      )
+    else
+      {:error, code} -> error(code, socket)
+      _invalid -> error(:invalid, socket)
+    end
+  end
+
+  def handle_in(_event, _payload, socket), do: error(:invalid, socket)
+
+  @impl true
+  def handle_info({:server_connection_replaced, _new_channel_pid}, socket) do
+    {:stop, {:shutdown, :replaced}, socket}
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    ServerConnections.disconnect(socket.assigns.server_id, self())
+    :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp dispatch(:awaiting_hello, %{tag: :hello, identity: identity}, _encoded, nil, socket) do
+    socket =
+      socket
+      |> assign(:identity, identity)
+      |> assign(:handshake_state, :awaiting_status)
+
+    accepted(socket)
+  end
+
+  defp dispatch(:awaiting_hello, _message, _encoded, _sequence, socket),
+    do: error(:not_connected, socket)
+
+  defp dispatch(:awaiting_status, %{tag: :status, status: status}, _encoded, nil, socket) do
+    case ServerConnections.activate(
+           socket.assigns.server_id,
+           self(),
+           socket.assigns.identity,
+           status
+         ) do
+      {:ok, _replaced_pid} ->
+        socket = assign(socket, :handshake_state, :active)
+        accepted(socket)
+
+      {:error, _reason} ->
+        error(:invalid, socket)
+    end
+  end
+
+  defp dispatch(:awaiting_status, _message, _encoded, _sequence, socket),
+    do: error(:not_connected, socket)
+
+  defp dispatch(:active, %{tag: :heartbeat}, _encoded, nil, socket) do
+    :ok = ServerConnections.touch(socket.assigns.server_id, self())
+    accepted(socket)
+  end
+
+  defp dispatch(:active, %{tag: :journal}, encoded, nil, socket) do
+    case SyncCodec.reconcile_journal(encoded, socket.assigns.server_id) do
+      :ok ->
+        :ok = ServerConnections.touch(socket.assigns.server_id, self())
+        accepted(socket)
+
+      {:error, code} ->
+        error(code, socket)
+    end
+  end
+
+  defp dispatch(
+         :active,
+         %{tag: :config_state},
+         encoded,
+         publication_sequence,
+         socket
+       ) do
+    case ManagementCore.accept_config_state_publication(
+           :server,
+           socket.assigns.server_id,
+           publication_sequence,
+           encoded
+         ) do
+      {:ok, receipt} when is_map(receipt) ->
+        {:reply, {:ok, receipt}, socket}
+
+      {:error, reason} ->
+        error(management_error_code(reason), socket)
+
+      _invalid ->
+        error(:internal, socket)
+    end
+  catch
+    :exit, _reason -> error(:internal, socket)
+  end
+
+  defp dispatch(:active, _message, _encoded, _sequence, socket),
+    do: error(:unsupported, socket)
+
+  defp exact_payload(payload) when is_map(payload) do
+    if Enum.sort(Map.keys(payload)) == @payload_keys and
+         is_binary(payload["message"]) do
+      {:ok, payload["message"], payload["publication_sequence"]}
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp exact_payload(_payload), do: {:error, :invalid}
+
+  defp matching_server(%{tag: :hello, identity: %{id: server_id}}, server_id), do: :ok
+
+  defp matching_server(
+         %{target_type: :server, target_id: server_id},
+         server_id
+       ),
+       do: :ok
+
+  defp matching_server(%{tag: :result, target_type: :server}, _server_id), do: :ok
+  defp matching_server(_message, _server_id), do: {:error, :invalid}
+
+  defp valid_publication_sequence(:config_state, sequence)
+       when is_integer(sequence) and sequence > 0,
+       do: :ok
+
+  defp valid_publication_sequence(:config_state, _sequence), do: {:error, :invalid}
+  defp valid_publication_sequence(_tag, nil), do: :ok
+  defp valid_publication_sequence(_tag, _sequence), do: {:error, :invalid}
+
+  defp accepted(socket), do: {:reply, {:ok, %{"accepted" => true}}, socket}
+  defp error(code, socket), do: {:reply, {:error, error_reply(code)}, socket}
+  defp error_reply(code), do: %{"error" => wire_error(code)}
+
+  defp wire_error(:not_connected),
+    do: %{"code" => "not_connected", "message" => "not connected", "details" => %{}}
+
+  defp wire_error(:not_found),
+    do: %{"code" => "not_found", "message" => "not found", "details" => %{}}
+
+  defp wire_error(:conflict),
+    do: %{"code" => "conflict", "message" => "conflict", "details" => %{}}
+
+  defp wire_error(:unsupported),
+    do: %{"code" => "unsupported", "message" => "unsupported message", "details" => %{}}
+
+  defp wire_error(:timeout),
+    do: %{"code" => "timeout", "message" => "operation timed out", "details" => %{}}
+
+  defp wire_error(:apply_failed),
+    do: %{"code" => "apply_failed", "message" => "apply failed", "details" => %{}}
+
+  defp wire_error(:rollback_failed),
+    do: %{"code" => "rollback_failed", "message" => "rollback failed", "details" => %{}}
+
+  defp wire_error(:internal),
+    do: %{"code" => "internal", "message" => "internal error", "details" => %{}}
+
+  defp wire_error(_invalid),
+    do: %{"code" => "invalid", "message" => "invalid message", "details" => %{}}
+
+  defp management_error_code(reason) when is_map(reason) do
+    case Map.get(reason, :code) do
+      code
+      when code in [
+             :not_connected,
+             :not_found,
+             :invalid,
+             :conflict,
+             :unsupported,
+             :timeout,
+             :apply_failed,
+             :rollback_failed,
+             :internal
+           ] ->
+        code
+
+      _unknown ->
+        :internal
+    end
+  end
+
+  defp management_error_code(_reason), do: :internal
+
+  defmodule SyncCodec do
+    @moduledoc false
+
+    @message_module :"Elixir.YellowDog.Sync.Message"
+    @hello_module :"Elixir.YellowDog.Sync.Message.Hello"
+    @heartbeat_module :"Elixir.YellowDog.Sync.Message.Heartbeat"
+    @status_module :"Elixir.YellowDog.Sync.Message.Status"
+    @query_module :"Elixir.YellowDog.Sync.Message.Query"
+    @command_module :"Elixir.YellowDog.Sync.Message.Command"
+    @result_module :"Elixir.YellowDog.Sync.Message.Result"
+    @config_delivery_module :"Elixir.YellowDog.Sync.Message.ConfigDelivery"
+    @config_state_module :"Elixir.YellowDog.Sync.Message.ConfigState"
+    @journal_module :"Elixir.YellowDog.Sync.Message.Journal"
+    @event_module :"Elixir.YellowDog.Sync.Message.Event"
+    @server_identity_module :"Elixir.YellowDog.Sync.Identity.Server"
+
+    @spec decode(binary()) :: {:ok, map()} | {:error, :invalid}
+    def decode(encoded) when is_binary(encoded) do
+      with true <- Code.ensure_loaded?(@message_module),
+           {:ok, decoded} <- codec_apply(:decode, [encoded]),
+           {:ok, ^encoded} <- codec_apply(:encode, [decoded]),
+           {:ok, summary} <- summarize(decoded) do
+        {:ok, summary}
+      else
+        _invalid -> {:error, :invalid}
+      end
+    end
+
+    def decode(_encoded), do: {:error, :invalid}
+
+    @spec reconcile_journal(binary(), String.t()) ::
+            :ok | {:error, atom()}
+    def reconcile_journal(encoded, server_id) do
+      with true <- Code.ensure_loaded?(@message_module),
+           {:ok, decoded} <- canonical_decode(encoded),
+           true <- Map.get(decoded, :__struct__) == @journal_module,
+           :server <- Map.get(decoded, :target_type),
+           ^server_id <- Map.get(decoded, :target_id),
+           {:ok, _result} <-
+             YellowDog.ManagementCore.runtime_connected(:server, server_id, decoded) do
+        :ok
+      else
+        {:error, reason} -> {:error, management_error_code(reason)}
+        _invalid -> {:error, :invalid}
+      end
+    rescue
+      _exception -> {:error, :internal}
+    catch
+      :exit, _reason -> {:error, :internal}
+    end
+
+    defp canonical_decode(encoded) do
+      with {:ok, decoded} <- codec_apply(:decode, [encoded]),
+           {:ok, ^encoded} <- codec_apply(:encode, [decoded]) do
+        {:ok, decoded}
+      else
+        _invalid -> {:error, :invalid}
+      end
+    end
+
+    defp codec_apply(function, arguments) do
+      apply(@message_module, function, arguments)
+    rescue
+      _exception -> {:error, :invalid}
+    catch
+      :exit, _reason -> {:error, :invalid}
+    end
+
+    defp summarize(message) do
+      summarize(Map.get(message, :__struct__), message)
+    end
+
+    defp summarize(@hello_module, message) do
+      identity = Map.get(message, :identity)
+
+      if is_map(identity) and Map.get(identity, :__struct__) == @server_identity_module do
+        {:ok,
+         %{
+           tag: :hello,
+           identity:
+             Map.take(identity, [
+               :id,
+               :name,
+               :version,
+               :profile,
+               :capabilities,
+               :config_revision
+             ])
+         }}
+      else
+        {:error, :invalid}
+      end
+    end
+
+    defp summarize(@heartbeat_module, message) do
+      target_summary(:heartbeat, message)
+    end
+
+    defp summarize(@status_module, message) do
+      with {:ok, target} <- target_summary(:status, message) do
+        {:ok,
+         Map.put(target, :status, %{
+           target_type: Map.get(message, :target_type),
+           target_id: Map.get(message, :target_id),
+           state: Map.get(message, :state),
+           details: Map.get(message, :details),
+           observed_at: Map.get(message, :observed_at)
+         })}
+      end
+    end
+
+    defp summarize(@query_module, message), do: envelope_summary(:query, message)
+    defp summarize(@command_module, message), do: envelope_summary(:command, message)
+
+    defp summarize(@result_module, message) do
+      {:ok, %{tag: :result, target_type: Map.get(message, :target_type)}}
+    end
+
+    defp summarize(@config_delivery_module, message),
+      do: envelope_summary(:config_delivery, message)
+
+    defp summarize(@config_state_module, message), do: target_summary(:config_state, message)
+    defp summarize(@journal_module, message), do: target_summary(:journal, message)
+    defp summarize(@event_module, message), do: target_summary(:event, message)
+    defp summarize(_module, _message), do: {:error, :invalid}
+
+    defp target_summary(tag, message) do
+      {:ok,
+       %{
+         tag: tag,
+         target_type: Map.get(message, :target_type),
+         target_id: Map.get(message, :target_id)
+       }}
+    end
+
+    defp envelope_summary(tag, message) do
+      envelope = Map.get(message, :envelope)
+
+      if is_map(envelope) do
+        {:ok,
+         %{
+           tag: tag,
+           target_type: Map.get(envelope, :target_type),
+           target_id: Map.get(envelope, :target_id)
+         }}
+      else
+        {:error, :invalid}
+      end
+    end
+
+    defp management_error_code(reason) when is_map(reason) do
+      case Map.get(reason, :code) do
+        code
+        when code in [
+               :not_connected,
+               :not_found,
+               :invalid,
+               :conflict,
+               :unsupported,
+               :timeout,
+               :apply_failed,
+               :rollback_failed,
+               :internal
+             ] ->
+          code
+
+        _unknown ->
+          :internal
+      end
+    end
+
+    defp management_error_code(_reason), do: :internal
+  end
+end

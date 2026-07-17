@@ -76,6 +76,7 @@ config :yellow_dog_netman,
   netlink_backend: :mock
 
 config :yellow_dog_console, :netman_socket_token, "test-token"
+config :yellow_dog_console, :management_token, "test-management-token"
 
 # Abyss DHCP socket NIF: skip Rust compilation in test (cargo may not be available).
 # Tests use DhcpSocket.UdpFallback configured via :socket_impl env key.

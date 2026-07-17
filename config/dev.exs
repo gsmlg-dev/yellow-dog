@@ -139,3 +139,4 @@ config :yellow_dog_netman, :console,
   token: "dev-token"
 
 config :yellow_dog_console, :netman_socket_token, "dev-token"
+config :yellow_dog_console, :management_token, "dev-management-token"

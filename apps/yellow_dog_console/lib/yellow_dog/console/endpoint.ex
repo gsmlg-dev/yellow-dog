@@ -29,6 +29,7 @@ defmodule YellowDog.Console.Endpoint do
     longpoll: [connect_info: [session: @session_options]]
 
   socket "/netman/ws", YellowDog.Console.NetmanSocket, websocket: true
+  socket "/server/ws", YellowDog.Console.ServerSocket, websocket: true
 
   # Serve at "/" the static files from "priv/static" directory.
   #
