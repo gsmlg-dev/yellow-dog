@@ -5,66 +5,118 @@ defmodule YellowDog.ServerAgent.TestStorageFileOps do
 
   @key {__MODULE__, :failure}
   @capture_key {__MODULE__, :capture_open_to}
+  @call_capture_key {__MODULE__, :capture_calls_to}
   @return_key {__MODULE__, :returns}
+  @after_return_key {__MODULE__, :after_returns}
+  @crash_key {__MODULE__, :crashes}
 
   def fail_at(phase), do: Process.put(@key, phase)
   def clear_failure, do: Process.delete(@key)
   def capture_open_to(pid) when is_pid(pid), do: Process.put(@capture_key, pid)
   def clear_capture, do: Process.delete(@capture_key)
+  def capture_calls_to(pid) when is_pid(pid), do: Process.put(@call_capture_key, pid)
+  def clear_call_capture, do: Process.delete(@call_capture_key)
   def return_at(phase, value), do: Process.put(@return_key, %{phase => value})
-  def clear_returns, do: Process.delete(@return_key)
 
-  def read(path, max_bytes), do: maybe_return(:read, fn -> FileOps.read(path, max_bytes) end)
-  def mkdir_p(path), do: maybe_fail(:mkdir_p, fn -> FileOps.mkdir_p(path) end)
-  def exists?(path), do: maybe_return(:exists?, fn -> FileOps.exists?(path) end)
+  def return_sequence_at(phase, values) do
+    Process.put(@return_key, Map.put(Process.get(@return_key, %{}), phase, values))
+  end
+
+  def clear_returns, do: Process.delete(@return_key)
+  def return_after_at(phase, value), do: Process.put(@after_return_key, %{phase => value})
+  def clear_after_returns, do: Process.delete(@after_return_key)
+  def crash_at(phase, crash), do: Process.put(@crash_key, %{phase => crash})
+  def clear_crashes, do: Process.delete(@crash_key)
+
+  def read(path, max_bytes), do: invoke(:read, fn -> FileOps.read(path, max_bytes) end)
+  def mkdir_p(path), do: invoke(:mkdir_p, fn -> FileOps.mkdir_p(path) end)
+  def exists?(path), do: invoke(:exists?, fn -> FileOps.exists?(path) end)
 
   def open(path) do
     capture_open(path)
-    maybe_fail(:open, fn -> FileOps.open(path) end)
+    invoke(:open, fn -> FileOps.open(path) end)
   end
 
-  def write(device, contents) do
-    maybe_fail(:write, fn -> FileOps.write(device, contents) end)
-  end
-
-  def sync(device) do
-    maybe_fail(:sync, fn -> FileOps.sync(device) end)
-  end
-
-  def close(device) do
-    result = FileOps.close(device)
-
-    maybe_return(:close, fn ->
-      if failure?(:close), do: {:error, :eio}, else: result
-    end)
-  end
+  def write(device, contents), do: invoke(:write, fn -> FileOps.write(device, contents) end)
+  def sync(device), do: invoke(:sync, fn -> FileOps.sync(device) end)
+  def close(device), do: invoke(:close, fn -> FileOps.close(device) end)
 
   def rename(source, target) do
-    maybe_fail(:rename, fn -> FileOps.rename(source, target) end)
+    invoke(:rename, fn -> FileOps.rename(source, target) end)
   end
 
   def link(source, target) do
-    maybe_fail(:link, fn -> FileOps.link(source, target) end)
+    invoke(:link, fn -> FileOps.link(source, target) end)
   end
 
-  def rm(path), do: maybe_return(:rm, fn -> FileOps.rm(path) end)
+  def rm(path), do: invoke(:rm, fn -> FileOps.rm(path) end)
 
-  def sync_dir(path) do
-    maybe_fail(:sync_dir, fn -> FileOps.sync_dir(path) end)
+  def same_file?(source, target) do
+    invoke(:same_file, fn -> FileOps.same_file?(source, target) end)
   end
 
-  defp maybe_fail(phase, operation) do
-    maybe_return(phase, fn ->
-      if failure?(phase), do: {:error, :eio}, else: operation.()
-    end)
+  def sync_dir(path), do: invoke(:sync_dir, fn -> FileOps.sync_dir(path) end)
+
+  defp invoke(phase, operation) do
+    capture_call(phase)
+    maybe_crash(phase)
+
+    case configured_return(phase) do
+      {:ok, :delegate} -> operation.()
+      {:ok, value} -> value
+      :none -> invoke_default(phase, operation)
+    end
   end
 
-  defp failure?(phase), do: Process.get(@key) == phase
+  defp invoke_default(phase, operation) do
+    if Process.get(@key) == phase do
+      {:error, :eio}
+    else
+      result = operation.()
 
-  defp maybe_return(phase, operation) do
-    case Process.get(@return_key, %{}) do
-      %{^phase => value} -> value
-      _returns -> operation.()
+      case Process.get(@after_return_key, %{}) do
+        %{^phase => value} -> value
+        _returns -> result
+      end
+    end
+  end
+
+  defp configured_return(phase) do
+    returns = Process.get(@return_key, %{})
+
+    case Map.fetch(returns, phase) do
+      {:ok, [value | remaining]} ->
+        Process.put(@return_key, update_sequence(returns, phase, remaining))
+        {:ok, value}
+
+      {:ok, []} ->
+        Process.put(@return_key, Map.delete(returns, phase))
+        :none
+
+      :error ->
+        :none
+
+      {:ok, value} ->
+        {:ok, value}
+    end
+  end
+
+  defp update_sequence(returns, phase, []), do: Map.delete(returns, phase)
+  defp update_sequence(returns, phase, remaining), do: Map.put(returns, phase, remaining)
+
+  defp maybe_crash(phase) do
+    case Process.get(@crash_key, %{}) do
+      %{^phase => {:raise, message}} -> raise message
+      %{^phase => {:throw, reason}} -> throw(reason)
+      %{^phase => {:exit, reason}} -> exit(reason)
+      _crashes -> :ok
+    end
+  end
+
+  defp capture_call(phase) do
+    case Process.get(@call_capture_key) do
+      pid when is_pid(pid) -> send(pid, {:storage_file_op, phase})
+      _other -> :ok
     end
   end
 
@@ -91,6 +143,7 @@ defmodule YellowDog.ServerAgent.OversizedSuccessFileOps do
   defdelegate rename(source, target), to: FileOps
   defdelegate link(source, target), to: FileOps
   defdelegate rm(path), to: FileOps
+  defdelegate same_file?(source, target), to: FileOps
   defdelegate sync_dir(path), to: FileOps
 end
 
@@ -133,6 +186,7 @@ defmodule YellowDog.ServerAgent.ForeignStageRaceFileOps do
   defdelegate rename(source, target), to: FileOps
   defdelegate link(source, target), to: FileOps
   defdelegate rm(path), to: FileOps
+  defdelegate same_file?(source, target), to: FileOps
   defdelegate sync_dir(path), to: FileOps
 end
 
@@ -156,6 +210,7 @@ defmodule YellowDog.ServerAgent.TimeoutBeforeRenameFileOps do
 
   def link(source, target), do: FileOps.link(source, target)
   def rm(path), do: FileOps.rm(path)
+  def same_file?(source, target), do: FileOps.same_file?(source, target)
   def sync_dir(path), do: FileOps.sync_dir(path)
 end
 
@@ -178,6 +233,7 @@ defmodule YellowDog.ServerAgent.TimeoutDuringSyncDirFileOps do
   defdelegate rename(source, target), to: FileOps
   defdelegate link(source, target), to: FileOps
   defdelegate rm(path), to: FileOps
+  defdelegate same_file?(source, target), to: FileOps
 
   def sync_dir(_path) do
     send(Process.whereis(:yellow_dog_server_agent_storage_timeout_test), :sync_dir_started)
@@ -209,7 +265,24 @@ defmodule YellowDog.ServerAgent.AmbiguousRenameFileOps do
 
   defdelegate link(source, target), to: FileOps
   defdelegate rm(path), to: FileOps
+  defdelegate same_file?(source, target), to: FileOps
   defdelegate sync_dir(path), to: FileOps
+end
+
+defmodule YellowDog.ServerAgent.MissingSyncDirFileOps do
+  alias YellowDog.ServerAgent.Storage.FileOps
+
+  defdelegate read(path, max_bytes), to: FileOps
+  defdelegate mkdir_p(path), to: FileOps
+  defdelegate exists?(path), to: FileOps
+  defdelegate open(path), to: FileOps
+  defdelegate write(device, contents), to: FileOps
+  defdelegate sync(device), to: FileOps
+  defdelegate close(device), to: FileOps
+  defdelegate rename(source, target), to: FileOps
+  defdelegate link(source, target), to: FileOps
+  defdelegate rm(path), to: FileOps
+  defdelegate same_file?(source, target), to: FileOps
 end
 
 defmodule YellowDog.ServerAgent.JsonEncodableStruct do

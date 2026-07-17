@@ -10,6 +10,19 @@ defmodule YellowDog.ServerAgent.Storage do
   @max_temp_attempts 32
 
   @type result(value) :: {:ok, value} | {:error, Error.t()}
+  @type phase ::
+          :mkdir
+          | :open
+          | :write
+          | :file_sync
+          | :close
+          | :rename
+          | :link
+          | :stage_cleanup
+          | :directory_sync
+          | :read
+  @type phase_error ::
+          {:storage_phase, phase(), :timeout | :not_found | :overflow | :exists | :failure}
 
   @spec read(Path.t(), keyword()) :: result(map())
   def read(path, opts \\ [])
@@ -18,15 +31,16 @@ defmodule YellowDog.ServerAgent.Storage do
     if Keyword.keyword?(opts) do
       with {:ok, ops} <- file_ops(opts),
            {:ok, max_bytes} <- max_bytes(opts),
-           {:ok, contents} <- phase(ops, :read, [path, max_bytes]),
+           {:ok, contents} <- phase(ops, :read, :read, [path, max_bytes]),
            :ok <- enforce_max_bytes(contents, max_bytes) do
         decode_object(contents)
       else
-        {:error, :enoent} -> not_found()
+        {:error, {:storage_phase, :read, :not_found}} -> not_found()
+        {:error, {:storage_phase, :read, :overflow}} -> oversized()
+        {:error, {:storage_phase, :read, :timeout}} -> timeout()
         {:error, :eoverflow} -> oversized()
-        {:error, :timeout} -> timeout()
         {:error, %Error{} = error} -> {:error, error}
-        {:error, _reason} -> internal()
+        _error -> internal()
       end
     else
       invalid()
@@ -45,60 +59,25 @@ defmodule YellowDog.ServerAgent.Storage do
     write(path, document, :mutable, opts)
   end
 
-  @doc false
-  @spec reconcile_timeout(Path.t(), map(), keyword()) :: result(Path.t())
-  def reconcile_timeout(path, document, opts \\ [])
-
-  def reconcile_timeout(path, document, opts)
-      when is_binary(path) and is_map(document) and is_list(opts) do
-    if Keyword.keyword?(opts) do
-      with {:ok, _contents, normalized} <- encode_object(document),
-           {:ok, ops} <- file_ops(opts),
-           true <- exact_document?(path, normalized, opts),
-           :ok <- sync_directory(ops, Path.dirname(path)) do
-        {:ok, path}
-      else
-        {:error, %Error{} = error} -> {:error, error}
-        _result -> timeout()
-      end
-    else
-      invalid()
-    end
-  end
-
-  def reconcile_timeout(_path, _document, _opts), do: invalid()
-
   defp write(path, document, mode, opts)
        when is_binary(path) and is_map(document) and mode in [:immutable, :mutable] and
               is_list(opts) do
     if Keyword.keyword?(opts) do
       with :ok <- validate_write_opts(opts),
+           {:ok, max_bytes} <- max_bytes(opts),
            {:ok, contents, normalized} <- encode_object(document),
+           :ok <- enforce_max_bytes(contents, max_bytes),
            {:ok, ops} <- file_ops(opts),
            :ok <- ensure_parent(path, ops),
            {:ok, temporary_path, device} <- open_temporary(path, ops) do
-        result =
-          commit(
-            ops,
-            temporary_path,
-            device,
-            path,
-            contents,
-            mode,
-            normalized,
-            opts
-          )
-
-        handle_commit_result(
-          result,
-          path,
-          normalized,
-          Keyword.put(opts, :file_ops, ops)
-        )
+        ops
+        |> commit(temporary_path, device, path, contents, mode, normalized, max_bytes)
+        |> write_result(path)
       else
-        {:error, :timeout} -> reconcile_unowned_timeout(path, document, opts)
+        {:error, :eoverflow} -> oversized()
         {:error, %Error{} = error} -> {:error, error}
-        {:error, _reason} -> internal()
+        {:error, {:storage_phase, _phase, :timeout}} -> timeout()
+        _error -> internal()
       end
     else
       invalid()
@@ -107,38 +86,18 @@ defmodule YellowDog.ServerAgent.Storage do
 
   defp write(_path, _document, _mode, _opts), do: invalid()
 
-  defp handle_commit_result({:ok, path}, path, _normalized, _opts), do: {:ok, path}
-  defp handle_commit_result({:error, :conflict}, _path, _normalized, _opts), do: conflict()
+  defp write_result({:ok, path}, path), do: {:ok, path}
+  defp write_result({:error, :conflict}, _path), do: conflict()
+  defp write_result({:error, {:storage_phase, _phase, :timeout}}, _path), do: timeout()
+  defp write_result(_result, _path), do: internal()
 
-  defp handle_commit_result({:error, :timeout}, path, normalized, opts),
-    do: reconcile_timeout(path, normalized, opts)
-
-  defp handle_commit_result(_result, _path, _normalized, _opts), do: internal()
-
-  defp reconcile_unowned_timeout(path, document, opts) do
-    with {:ok, _contents, normalized} <- encode_object(document) do
-      _match? = exact_document?(path, normalized, opts)
-    end
-
-    timeout()
-  end
-
-  defp commit(ops, temporary_path, device, path, contents, :mutable, _normalized, _opts) do
+  defp commit(ops, temporary_path, device, path, contents, :mutable, normalized, max_bytes) do
     case write_temporary(ops, device, contents) do
       :ok ->
-        case phase(ops, :rename, [temporary_path, path]) do
-          :ok ->
-            case sync_directory(ops, Path.dirname(path)) do
-              :ok -> {:ok, path}
-              {:error, reason} -> {:error, reason}
-            end
+        promote_mutable(ops, temporary_path, path, normalized, max_bytes)
 
-          {:error, reason} ->
-            cleanup_then_error(ops, temporary_path, reason)
-        end
-
-      {:error, reason} ->
-        cleanup_then_error(ops, temporary_path, reason)
+      {:error, _reason} = error ->
+        cleanup_then_error(ops, temporary_path, error)
     end
   end
 
@@ -150,82 +109,175 @@ defmodule YellowDog.ServerAgent.Storage do
          contents,
          :immutable,
          normalized,
-         opts
+         max_bytes
        ) do
     with :ok <- write_temporary(ops, device, contents) do
-      case phase(ops, :link, [temporary_path, path]) do
+      case phase(ops, :link, :link, [temporary_path, path]) do
         :ok ->
-          finish_immutable_promotion(ops, temporary_path, path)
+          finish_immutable_promotion(
+            ops,
+            temporary_path,
+            path,
+            normalized,
+            max_bytes
+          )
 
-        {:error, :eexist} ->
-          case cleanup(ops, temporary_path) do
-            :ok ->
-              if exact_document?(path, normalized, Keyword.put(opts, :file_ops, ops)),
-                do: {:ok, path},
-                else: {:error, :conflict}
+        {:error, {:storage_phase, :link, :exists}} ->
+          finish_immutable_eexist(ops, temporary_path, path, normalized, max_bytes)
 
-            {:error, _reason} ->
-              {:error, :cleanup_failed}
-          end
+        {:error, {:storage_phase, :link, :timeout}} = error ->
+          reconcile_link_timeout(
+            ops,
+            temporary_path,
+            path,
+            normalized,
+            max_bytes,
+            error
+          )
 
-        {:error, reason} ->
-          cleanup_then_error(ops, temporary_path, reason)
+        {:error, _reason} = error ->
+          cleanup_then_error(ops, temporary_path, error)
       end
     else
-      {:error, reason} -> cleanup_then_error(ops, temporary_path, reason)
+      {:error, _reason} = error -> cleanup_then_error(ops, temporary_path, error)
     end
   end
 
-  defp finish_immutable_promotion(ops, temporary_path, path) do
-    cleanup_result = cleanup(ops, temporary_path)
-    sync_result = sync_directory(ops, Path.dirname(path))
+  defp promote_mutable(ops, temporary_path, path, normalized, max_bytes) do
+    case phase(ops, :rename, :rename, [temporary_path, path]) do
+      :ok ->
+        sync_after_promotion(ops, path, normalized, max_bytes)
 
-    case {cleanup_result, sync_result} do
-      {:ok, :ok} -> {:ok, path}
-      {{:error, _reason}, _sync_result} -> {:error, :cleanup_failed}
-      {:ok, {:error, reason}} -> {:error, reason}
+      {:error, {:storage_phase, :rename, :timeout}} = error ->
+        reconcile_rename_timeout(
+          ops,
+          temporary_path,
+          path,
+          normalized,
+          max_bytes,
+          error
+        )
+
+      {:error, _reason} = error ->
+        cleanup_then_error(ops, temporary_path, error)
     end
   end
 
-  defp cleanup_then_error(ops, temporary_path, reason) do
+  defp reconcile_rename_timeout(
+         ops,
+         temporary_path,
+         path,
+         normalized,
+         max_bytes,
+         timeout_error
+       ) do
+    case phase(ops, :rename, :exists?, [temporary_path]) do
+      false ->
+        case document_match(ops, path, normalized, max_bytes) do
+          :exact -> sync_after_promotion(ops, path, normalized, max_bytes)
+          :different -> timeout_error
+          {:error, _reason} = error -> error
+        end
+
+      _stage_present_or_unknown ->
+        cleanup_then_error(ops, temporary_path, timeout_error)
+    end
+  end
+
+  defp finish_immutable_promotion(ops, temporary_path, path, normalized, max_bytes) do
     case cleanup(ops, temporary_path) do
-      :ok -> {:error, reason}
-      {:error, _cleanup_reason} -> {:error, :cleanup_failed}
+      :ok -> sync_after_promotion(ops, path, normalized, max_bytes)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp finish_immutable_eexist(ops, temporary_path, path, normalized, max_bytes) do
+    case cleanup(ops, temporary_path) do
+      :ok ->
+        case document_match(ops, path, normalized, max_bytes) do
+          :exact -> sync_after_promotion(ops, path, normalized, max_bytes)
+          :different -> {:error, :conflict}
+          {:error, _reason} = error -> error
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp reconcile_link_timeout(
+         ops,
+         temporary_path,
+         path,
+         normalized,
+         max_bytes,
+         timeout_error
+       ) do
+    case phase(ops, :link, :same_file?, [temporary_path, path]) do
+      true ->
+        reconcile_proven_link_timeout(
+          ops,
+          temporary_path,
+          path,
+          normalized,
+          max_bytes,
+          timeout_error
+        )
+
+      false ->
+        cleanup_then_error(ops, temporary_path, timeout_error)
+
+      {:error, _reason} = error ->
+        cleanup_then_error(ops, temporary_path, error)
+    end
+  end
+
+  defp reconcile_proven_link_timeout(
+         ops,
+         temporary_path,
+         path,
+         normalized,
+         max_bytes,
+         timeout_error
+       ) do
+    case document_match(ops, path, normalized, max_bytes) do
+      :exact ->
+        case cleanup(ops, temporary_path) do
+          :ok -> sync_after_promotion(ops, path, normalized, max_bytes)
+          {:error, _reason} = error -> error
+        end
+
+      :different ->
+        cleanup_then_error(ops, temporary_path, timeout_error)
+
+      {:error, _reason} = error ->
+        cleanup_then_error(ops, temporary_path, error)
     end
   end
 
   defp write_temporary(ops, device, contents) do
     write_result =
-      with :ok <- phase(ops, :write, [device, contents]),
-           :ok <- phase(ops, :sync, [device]) do
+      with :ok <- phase(ops, :write, :write, [device, contents]),
+           :ok <- phase(ops, :file_sync, :sync, [device]) do
         :ok
       end
 
-    close_result = close_temporary(ops, device)
+    close_result = phase(ops, :close, :close, [device])
 
     case {write_result, close_result} do
       {:ok, :ok} -> :ok
-      {{:error, reason}, _close_result} -> {:error, reason}
-      {:ok, {:error, reason}} -> {:error, reason}
+      {{:error, _reason} = error, _close_result} -> error
+      {:ok, {:error, _reason} = error} -> error
     end
   end
 
-  defp ensure_parent(path, ops), do: phase(ops, :mkdir_p, [Path.dirname(path)])
-
-  defp close_temporary(ops, device) do
-    case phase(ops, :close, [device]) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        _result = phase(ops, :close, [device])
-        {:error, reason}
-    end
-  end
+  defp ensure_parent(path, ops),
+    do: phase(ops, :mkdir, :mkdir_p, [Path.dirname(path)])
 
   defp open_temporary(path, ops), do: open_temporary(path, ops, 0)
 
-  defp open_temporary(_path, _ops, @max_temp_attempts), do: {:error, :eexist}
+  defp open_temporary(_path, _ops, @max_temp_attempts),
+    do: phase_error(:open, :failure)
 
   defp open_temporary(path, ops, attempt) do
     temporary_path =
@@ -234,26 +286,51 @@ defmodule YellowDog.ServerAgent.Storage do
         ".#{Path.basename(path)}.#{Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)}.stage"
       )
 
-    case phase(ops, :exists?, [temporary_path]) do
+    case phase(ops, :open, :exists?, [temporary_path]) do
       false -> acquire_temporary(path, temporary_path, ops, attempt)
       true -> open_temporary(path, ops, attempt + 1)
-      {:error, reason} -> {:error, reason}
+      {:error, _reason} = error -> error
     end
   end
 
   defp acquire_temporary(path, temporary_path, ops, attempt) do
-    case phase(ops, :open, [temporary_path]) do
+    case phase(ops, :open, :open, [temporary_path]) do
       {:ok, device} -> {:ok, temporary_path, device}
-      {:error, :eexist} -> open_temporary(path, ops, attempt + 1)
-      {:error, reason} -> {:error, reason}
+      {:error, {:storage_phase, :open, :exists}} -> open_temporary(path, ops, attempt + 1)
+      {:error, _reason} = error -> error
     end
   end
 
   defp sync_directory(ops, directory) do
-    if function_exported?(ops, :sync_dir, 1) do
-      phase(ops, :sync_dir, [directory])
-    else
-      :ok
+    phase(ops, :directory_sync, :sync_dir, [directory])
+  end
+
+  defp sync_after_promotion(ops, path, normalized, max_bytes) do
+    case sync_directory(ops, Path.dirname(path)) do
+      :ok ->
+        {:ok, path}
+
+      {:error, {:storage_phase, :directory_sync, :timeout}} = timeout_error ->
+        retry_directory_sync(ops, path, normalized, max_bytes, timeout_error)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp retry_directory_sync(ops, path, normalized, max_bytes, timeout_error) do
+    case document_match(ops, path, normalized, max_bytes) do
+      :exact ->
+        case sync_directory(ops, Path.dirname(path)) do
+          :ok -> {:ok, path}
+          {:error, _reason} = error -> error
+        end
+
+      :different ->
+        timeout_error
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -321,33 +398,38 @@ defmodule YellowDog.ServerAgent.Storage do
     if Keyword.has_key?(opts, :timeout) do
       invalid()
     else
-      case max_bytes(opts) do
-        {:ok, _max_bytes} -> :ok
-        {:error, %Error{} = error} -> {:error, error}
-      end
+      :ok
     end
   end
 
   defp enforce_max_bytes(contents, max_bytes) when byte_size(contents) <= max_bytes, do: :ok
   defp enforce_max_bytes(_contents, _max_bytes), do: {:error, :eoverflow}
 
-  defp exact_document?(path, normalized, opts) do
-    case read(path, opts) do
-      {:ok, ^normalized} -> true
-      _result -> false
+  defp document_match(ops, path, normalized, max_bytes) do
+    case phase(ops, :read, :read, [path, max_bytes]) do
+      {:ok, contents} when byte_size(contents) <= max_bytes ->
+        if decode_object(contents) == {:ok, normalized}, do: :exact, else: :different
+
+      {:ok, _oversized_contents} ->
+        :different
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
-  defp phase(ops, function, arguments) do
+  defp phase(ops, phase, function, arguments) do
     ops
     |> call(function, arguments)
     |> validate_phase_result(function)
+    |> sanitize_phase_result(phase)
   end
 
   defp validate_phase_result({:ok, contents} = result, :read) when is_binary(contents),
     do: result
 
   defp validate_phase_result(value, :exists?) when is_boolean(value), do: value
+  defp validate_phase_result(value, :same_file?) when is_boolean(value), do: value
   defp validate_phase_result({:ok, _device} = result, :open), do: result
 
   defp validate_phase_result(:ok, function)
@@ -356,6 +438,25 @@ defmodule YellowDog.ServerAgent.Storage do
 
   defp validate_phase_result({:error, _reason} = result, _function), do: result
   defp validate_phase_result(_result, _function), do: {:error, :malformed_file_ops_return}
+
+  defp sanitize_phase_result({:error, :timeout}, phase), do: phase_error(phase, :timeout)
+
+  defp sanitize_phase_result({:error, :enoent}, phase)
+       when phase in [:read, :stage_cleanup],
+       do: phase_error(phase, :not_found)
+
+  defp sanitize_phase_result({:error, :eoverflow}, :read),
+    do: phase_error(:read, :overflow)
+
+  defp sanitize_phase_result({:error, :eexist}, phase) when phase in [:open, :link],
+    do: phase_error(phase, :exists)
+
+  defp sanitize_phase_result({:error, _reason}, phase), do: phase_error(phase, :failure)
+  defp sanitize_phase_result(result, _phase), do: result
+
+  @spec phase_error(phase(), :timeout | :not_found | :overflow | :exists | :failure) ::
+          {:error, phase_error()}
+  defp phase_error(phase, reason), do: {:error, {:storage_phase, phase, reason}}
 
   defp call(ops, function, arguments) do
     if function_exported?(ops, function, length(arguments)) do
@@ -370,22 +471,39 @@ defmodule YellowDog.ServerAgent.Storage do
   end
 
   defp cleanup(ops, path) do
-    case phase(ops, :rm, [path]) do
+    case phase(ops, :stage_cleanup, :rm, [path]) do
       :ok -> :ok
-      {:error, :enoent} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:error, {:storage_phase, :stage_cleanup, :not_found}} -> :ok
+      {:error, _reason} = error -> error
     end
   end
 
-  defp not_found, do: {:error, %Error{code: :not_found, message: "storage document not found"}}
+  defp cleanup_then_error(ops, temporary_path, original_error) do
+    case cleanup(ops, temporary_path) do
+      :ok -> original_error
+      {:error, _reason} = cleanup_error -> cleanup_error
+    end
+  end
+
+  defp not_found,
+    do: {:error, %Error{code: :not_found, message: "storage document not found", details: %{}}}
 
   defp oversized,
-    do: {:error, %Error{code: :invalid, message: "storage document exceeds size limit"}}
+    do:
+      {:error,
+       %Error{code: :invalid, message: "storage document exceeds size limit", details: %{}}}
 
-  defp invalid, do: {:error, %Error{code: :invalid, message: "invalid storage document"}}
-  defp conflict, do: {:error, %Error{code: :conflict, message: "storage document conflicts"}}
-  defp timeout, do: {:error, %Error{code: :timeout, message: "storage operation timed out"}}
-  defp internal, do: {:error, %Error{code: :internal, message: "storage operation failed"}}
+  defp invalid,
+    do: {:error, %Error{code: :invalid, message: "invalid storage document", details: %{}}}
+
+  defp conflict,
+    do: {:error, %Error{code: :conflict, message: "storage document conflicts", details: %{}}}
+
+  defp timeout,
+    do: {:error, %Error{code: :timeout, message: "storage operation timed out", details: %{}}}
+
+  defp internal,
+    do: {:error, %Error{code: :internal, message: "storage operation failed", details: %{}}}
 end
 
 defmodule YellowDog.ServerAgent.Storage.FileOps do
@@ -407,6 +525,7 @@ defmodule YellowDog.ServerAgent.Storage.FileOps do
   @callback rename(Path.t(), Path.t()) :: :ok | {:error, term()}
   @callback link(Path.t(), Path.t()) :: :ok | {:error, term()}
   @callback rm(Path.t()) :: :ok | {:error, term()}
+  @callback same_file?(Path.t(), Path.t()) :: boolean() | {:error, term()}
   @callback sync_dir(Path.t()) :: :ok | {:error, term()}
 
   @spec read(Path.t(), pos_integer()) :: {:ok, binary()} | {:error, term()}
@@ -434,9 +553,25 @@ defmodule YellowDog.ServerAgent.Storage.FileOps do
   def link(source, target), do: :file.make_link(source, target)
   def rm(path), do: File.rm(path)
 
+  def same_file?(source, target) do
+    with {:ok, source_stat} <- File.stat(source),
+         {:ok, target_stat} <- File.stat(target) do
+      source_stat.inode == target_stat.inode and
+        source_stat.major_device == target_stat.major_device
+    else
+      {:error, :enoent} -> false
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def sync_dir(directory) do
     with {:ok, device} <- :file.open(directory, [:read, :raw, :directory]) do
-      result = :file.sync(device)
+      result =
+        case :file.sync(device) do
+          {:error, :enotsup} -> :ok
+          other -> other
+        end
+
       finalize_close(result, :file.close(device))
     else
       {:error, :enotsup} -> :ok
