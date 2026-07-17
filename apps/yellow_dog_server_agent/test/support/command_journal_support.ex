@@ -1,0 +1,54 @@
+defmodule YellowDog.ServerAgent.CommandJournalTestClock do
+  def start_link(values), do: Agent.start_link(fn -> values end)
+
+  def now(clock) do
+    Agent.get_and_update(clock, fn
+      [value | rest] -> {value, rest}
+      [] -> {~U[2026-07-17 00:00:00Z], []}
+    end)
+  end
+end
+
+defmodule YellowDog.ServerAgent.CommandJournalTestFileOps do
+  alias YellowDog.ServerAgent.Storage.FileOps
+
+  @failure_key {__MODULE__, :failure}
+
+  def fail_next(phase), do: :persistent_term.put(@failure_key, phase)
+  def clear, do: :persistent_term.erase(@failure_key)
+
+  def read(path, max_bytes), do: invoke(:read, fn -> FileOps.read(path, max_bytes) end)
+  def mkdir_p(path), do: invoke(:mkdir_p, fn -> FileOps.mkdir_p(path) end)
+  def exists?(path), do: invoke(:exists?, fn -> FileOps.exists?(path) end)
+  def open(path), do: invoke(:open, fn -> FileOps.open(path) end)
+  def write(device, contents), do: invoke(:write, fn -> FileOps.write(device, contents) end)
+  def sync(device), do: invoke(:sync, fn -> FileOps.sync(device) end)
+  def close(device), do: invoke(:close, fn -> FileOps.close(device) end)
+  def rename(source, target), do: invoke(:rename, fn -> FileOps.rename(source, target) end)
+  def link(source, target), do: invoke(:link, fn -> FileOps.link(source, target) end)
+  def rm(path), do: invoke(:rm, fn -> FileOps.rm(path) end)
+
+  def same_file?(source, target),
+    do: invoke(:same_file?, fn -> FileOps.same_file?(source, target) end)
+
+  def sync_dir(path), do: invoke(:sync_dir, fn -> FileOps.sync_dir(path) end)
+
+  defp invoke(phase, operation) do
+    case :persistent_term.get(@failure_key, nil) do
+      ^phase ->
+        clear()
+        {:error, :eio}
+
+      _other ->
+        operation.()
+    end
+  end
+end
+
+defmodule YellowDog.ServerAgent.CommandJournalFailingScanner do
+  def scan(_directory), do: {:error, :eacces}
+end
+
+defmodule YellowDog.ServerAgent.CommandJournalTraversalScanner do
+  def scan(_directory), do: {:ok, [%{name: "../escape.json", type: :regular}]}
+end
