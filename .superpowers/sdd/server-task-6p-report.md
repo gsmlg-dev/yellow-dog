@@ -32,3 +32,30 @@
 The full Netboot test run still reports the existing unavailable TFTP-root and
 missing EEx assign warnings from unrelated tests; the suite passes and this
 task does not change those modules.
+
+## Important Review Finding Fix
+
+`AtomicJson.read/3` previously enforced `:max_bytes` only against the metadata
+returned by `size/2`. A file that grew or was replaced before `read/2` could
+return larger bytes that were decoded without another bound check.
+
+The read path now checks `byte_size(contents)` against the same `:max_bytes`
+limit before calling `Jason.decode/1`. The focused regression injects
+`size: {:ok, 2}` and a larger valid JSON response from `read/2`, then verifies
+the public result is `{:error, :too_large}`.
+
+## Fix Verification
+
+- RED: `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix test test/yellow_dog/netboot/managed_storage/atomic_json_test.exs'`
+  reproduced the defect with 11 tests, 1 failure: the expected
+  `{:error, :too_large}` was `{:ok, %{"payload" => "abc"}}`.
+- GREEN: `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix test test/yellow_dog/netboot/managed_storage/atomic_json_test.exs'`
+  passed with 11 tests, 0 failures.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix test'` passed
+  with 334 tests, 0 failures.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix compile --warnings-as-errors'`
+  completed successfully.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix format --check-formatted'`
+  completed successfully.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix credo --strict'`
+  checked 39 source files and found no issues.

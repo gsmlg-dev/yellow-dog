@@ -31,16 +31,22 @@ defmodule YellowDog.Netboot.ManagedStorage.TestFileOps do
       send(owner, {:managed_storage_file_op, operation, arguments})
     end
 
-    case context[:fail] do
-      ^operation when operation == :close ->
-        _ = fallback.()
-        {:error, :injected}
+    case Map.fetch(context[:responses] || %{}, operation) do
+      {:ok, response} ->
+        response
 
-      ^operation ->
-        {:error, :injected}
+      :error ->
+        case context[:fail] do
+          ^operation when operation == :close ->
+            _ = fallback.()
+            {:error, :injected}
 
-      _other ->
-        fallback.()
+          ^operation ->
+            {:error, :injected}
+
+          _other ->
+            fallback.()
+        end
     end
   end
 end

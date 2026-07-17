@@ -49,6 +49,23 @@ defmodule YellowDog.Netboot.ManagedStorage.AtomicJsonTest do
     assert {:error, :too_large} = AtomicJson.read(path, %{}, max_bytes: 2)
   end
 
+  test "rejects bytes that grow beyond the stat size before decode", %{root: root} do
+    path = Path.join(root, "managed_profiles.json")
+    oversized = ~s({"payload":"abc"})
+
+    file_ops =
+      {TestFileOps,
+       %{
+         responses: %{
+           size: {:ok, 2},
+           read: {:ok, oversized}
+         }
+       }}
+
+    assert {:error, :too_large} =
+             AtomicJson.read(path, %{}, max_bytes: 2, file_ops: file_ops)
+  end
+
   test "atomically replaces an existing sidecar from a same-directory temporary file", %{
     root: root
   } do

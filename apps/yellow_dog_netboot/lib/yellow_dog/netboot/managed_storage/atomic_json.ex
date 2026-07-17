@@ -77,7 +77,7 @@ defmodule YellowDog.Netboot.ManagedStorage.AtomicJson do
   defp read_file(path, default, ops, max_bytes) do
     case call(ops, :size, [path]) do
       {:ok, size} when is_integer(size) and size >= 0 and size <= max_bytes ->
-        decode_file(path, default, ops)
+        decode_file(path, default, ops, max_bytes)
 
       {:ok, size} when is_integer(size) and size > max_bytes ->
         {:error, :too_large}
@@ -90,11 +90,19 @@ defmodule YellowDog.Netboot.ManagedStorage.AtomicJson do
     end
   end
 
-  defp decode_file(path, default, ops) do
+  defp decode_file(path, default, ops, max_bytes) do
     case call(ops, :read, [path]) do
-      {:ok, contents} when is_binary(contents) -> decode(contents)
-      {:error, :enoent} -> {:ok, default}
-      _other -> {:error, :read_failed}
+      {:ok, contents} when is_binary(contents) and byte_size(contents) <= max_bytes ->
+        decode(contents)
+
+      {:ok, contents} when is_binary(contents) ->
+        {:error, :too_large}
+
+      {:error, :enoent} ->
+        {:ok, default}
+
+      _other ->
+        {:error, :read_failed}
     end
   end
 
