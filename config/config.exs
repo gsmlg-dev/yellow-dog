@@ -16,7 +16,11 @@ config :yellow_dog_tasks, time_zone_database: Tz.TimeZoneDatabase
 
 config :yellow_dog_console,
   ecto_repos: [YellowDog.Console.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  server_handshake_timeout_ms: 5_000,
+  server_max_candidates: 256,
+  server_max_candidates_per_server: 1,
+  server_max_pending_requests_per_server: 128
 
 # Configures the endpoint
 config :yellow_dog_console, YellowDog.Console.Endpoint,

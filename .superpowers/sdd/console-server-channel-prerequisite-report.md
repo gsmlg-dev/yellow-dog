@@ -98,3 +98,61 @@ This work did not modify, stage, or revert the four protected dirty files:
 
 No Netman, LiveView/router, ManagementCore, Sync, agent, release, asset, or
 protocol source was changed.
+
+## 2026-07-18 Review Fix Evidence
+
+### Corrected Control Boundary
+
+- `ServerSocket` now accepts exactly `token`, `server_id`, and Phoenix socket
+  `vsn`; only `vsn` `"2.0.0"` is supported.
+- Candidate admission is configured and validated at 5,000 ms handshake
+  timeout, 256 global candidates, and one candidate per concrete Server.
+  Candidate timers and monitors are removed on activation, disconnect, DOWN,
+  reset, replacement, and timeout without evicting an active connection.
+- Periodic canonical Status is accepted only from the active channel PID.
+  `ManagementCore.update_server_status/2` persists the concrete state before
+  the bounded connection record changes or the channel acknowledges it.
+- Registry calls fail closed with stable internal or not-connected outcomes.
+
+### Correlated Management Transport
+
+- Added `YellowDog.Console.ManagementTransport` as the Console-owned
+  `YellowDog.Management.Transport` adapter and select it only while Console
+  starts with ManagementCore present.
+- Query and Command requests are validated by the dynamic Sync operation
+  registry, encoded as canonical wrappers, and pushed only as event `"sync"`
+  with exact `message` and `publication_sequence` keys.
+- Pending requests are bounded at 128 per Server and correlated by request ID,
+  target type, operation, and active channel PID. Pending state is removed
+  before reply and cleared with typed timeout or not-connected errors on
+  timeout, disconnect, reset, or replacement.
+- Late, duplicate, wrong-operation, wrong-target, and stale-channel Results are
+  ignored without mutation. Fully validated successful and typed error Results
+  are returned to ManagementCore.
+- ConfigDelivery is validated and handed to the current active Server without
+  treating handoff as application.
+- The dynamic codec now constructs Query, Command, and ConfigDelivery and
+  summarizes Result without a direct Console-to-Sync compile dependency.
+- Existing ConfigState durable receipt ordering and Journal activation
+  reconciliation remain unchanged.
+
+### Verification
+
+- Focused socket/channel/connection/transport suite: 39 tests, 0 failures.
+- ManagementCore transport contract suite: 5 tests, 0 failures.
+- Full Console suite: 7 doctests and 1,732 tests; one known unrelated
+  `BootControllerTest` failure and four skipped. The failure is the persisted
+  boot-state HTTP 422 `:invalid_transition`, and `mix test --failed`
+  reproduced that single failure.
+- `mix compile --warnings-as-errors`: passed for the umbrella.
+- Scoped `mix format --check-formatted`: passed.
+- Strict Credo: 195 Console source files checked, no issues.
+- Compile xref for `ServerChannel` and `ManagementTransport`: no Sync compile
+  edge; `ServerChannel` retains only the Console macro compile dependency.
+- `MIX_ENV=prod mix release yellow_dog_management_core --overwrite`: passed.
+  A live release boot reported `ManagementTransport` configured with
+  `ServerConnections` and Endpoint both running.
+
+The protected dirty Console files, root `mix.exs`, concurrent ServerAgent work,
+Netman, protocol schemas/parsers, releases, storage, and unrelated UI were not
+modified or staged by this fix.

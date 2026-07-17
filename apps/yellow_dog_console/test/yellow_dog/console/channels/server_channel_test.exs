@@ -212,15 +212,29 @@ defmodule YellowDog.Console.ServerChannelTest do
     assert_reply replay_ref, :ok, ^receipt
   end
 
-  test "returns unsupported for valid Result and Event wrappers without side effects" do
+  test "accepts ignorable valid Result and rejects unsupported Event wrappers" do
     server_id = unique_id("unsupported")
     socket = join_registered(server_id)
     activate(socket, server_id)
 
-    for message <- [result(), event(server_id)] do
-      ref = push(socket, "sync", payload(message))
-      assert_reply ref, :error, %{"error" => %{"code" => "unsupported"}}
-    end
+    ref = push(socket, "sync", payload(result()))
+    assert_reply ref, :ok, %{"accepted" => true}
+
+    ref = push(socket, "sync", payload(event(server_id)))
+    assert_reply ref, :error, %{"error" => %{"code" => "unsupported"}}
+  end
+
+  test "persists periodic Status only from the active channel before acknowledgement" do
+    server_id = unique_id("periodic-status")
+    socket = join_registered(server_id)
+    activate(socket, server_id)
+    periodic = %{status(server_id, "periodic") | state: :offline}
+
+    ref = push(socket, "sync", payload(periodic))
+    assert_reply ref, :ok, %{"accepted" => true}
+
+    assert {:ok, %{status: :offline}} = ManagementCore.get_server(server_id)
+    assert {:ok, %{status: %{state: :offline}}} = ServerConnections.get(server_id)
   end
 
   test "candidate disconnect does not evict active, while active disconnect marks offline" do

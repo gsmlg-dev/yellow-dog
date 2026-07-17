@@ -9,6 +9,8 @@ defmodule YellowDog.Console.Application do
 
   @impl true
   def start(_type, _args) do
+    configure_management_transport()
+
     children =
       optional_child(GeoIpDb.Database) ++
         [
@@ -48,6 +50,16 @@ defmodule YellowDog.Console.Application do
       [module]
     else
       []
+    end
+  end
+
+  defp configure_management_transport do
+    if Process.whereis(YellowDog.ManagementCore.Supervisor) do
+      Application.put_env(
+        :yellow_dog_management_core,
+        :transport_module,
+        YellowDog.Console.ManagementTransport
+      )
     end
   end
 end

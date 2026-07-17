@@ -16,11 +16,15 @@ defmodule YellowDog.Console.ServerChannel do
   def join("server:control:" <> topic_server_id, _payload, socket) do
     server_id = socket.assigns.server_id
 
-    if topic_server_id == server_id and
-         :ok == ServerConnections.begin_candidate(server_id, self()) do
-      {:ok, %{}, assign(socket, :handshake_state, :awaiting_hello)}
-    else
-      {:error, error_reply(:invalid)}
+    cond do
+      topic_server_id != server_id ->
+        {:error, error_reply(:invalid)}
+
+      :ok == ServerConnections.begin_candidate(server_id, self()) ->
+        {:ok, %{}, assign(socket, :handshake_state, :awaiting_hello)}
+
+      true ->
+        {:error, error_reply(:internal)}
     end
   end
 
@@ -50,6 +54,20 @@ defmodule YellowDog.Console.ServerChannel do
   @impl true
   def handle_info({:server_connection_replaced, _new_channel_pid}, socket) do
     {:stop, {:shutdown, :replaced}, socket}
+  end
+
+  def handle_info(:server_handshake_timeout, socket) do
+    {:stop, {:shutdown, :handshake_timeout}, socket}
+  end
+
+  def handle_info({:server_management_push, encoded}, socket) when is_binary(encoded) do
+    :ok =
+      push(socket, @sync_event, %{
+        "message" => encoded,
+        "publication_sequence" => nil
+      })
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -92,15 +110,40 @@ defmodule YellowDog.Console.ServerChannel do
     do: error(:not_connected, socket)
 
   defp dispatch(:active, %{tag: :heartbeat}, _encoded, nil, socket) do
-    :ok = ServerConnections.touch(socket.assigns.server_id, self())
-    accepted(socket)
+    case ServerConnections.touch(socket.assigns.server_id, self()) do
+      :ok -> accepted(socket)
+      {:error, _reason} -> error(:not_connected, socket)
+    end
+  end
+
+  defp dispatch(:active, %{tag: :status, status: status}, _encoded, nil, socket) do
+    case ServerConnections.update_status(socket.assigns.server_id, self(), status) do
+      :ok -> accepted(socket)
+      {:error, code} -> error(code, socket)
+    end
+  end
+
+  defp dispatch(:active, %{tag: :result} = result, _encoded, nil, socket) do
+    result =
+      ServerConnections.resolve_result(
+        socket.assigns.server_id,
+        self(),
+        result
+      )
+
+    case result do
+      {:error, code} -> error(code, socket)
+      _resolved_or_ignored -> accepted(socket)
+    end
   end
 
   defp dispatch(:active, %{tag: :journal}, encoded, nil, socket) do
     case SyncCodec.reconcile_journal(encoded, socket.assigns.server_id) do
       :ok ->
-        :ok = ServerConnections.touch(socket.assigns.server_id, self())
-        accepted(socket)
+        case ServerConnections.touch(socket.assigns.server_id, self()) do
+          :ok -> accepted(socket)
+          {:error, _reason} -> error(:not_connected, socket)
+        end
 
       {:error, code} ->
         error(code, socket)
@@ -155,7 +198,10 @@ defmodule YellowDog.Console.ServerChannel do
        ),
        do: :ok
 
-  defp matching_server(%{tag: :result, target_type: :server}, _server_id), do: :ok
+  defp matching_server(%{tag: :result, target_type: target_type}, _server_id)
+       when target_type in [:server, :netman],
+       do: :ok
+
   defp matching_server(_message, _server_id), do: {:error, :invalid}
 
   defp valid_publication_sequence(:config_state, sequence)
@@ -235,6 +281,9 @@ defmodule YellowDog.Console.ServerChannel do
     @journal_module :"Elixir.YellowDog.Sync.Message.Journal"
     @event_module :"Elixir.YellowDog.Sync.Message.Event"
     @server_identity_module :"Elixir.YellowDog.Sync.Identity.Server"
+    @envelope_module :"Elixir.YellowDog.Sync.Envelope"
+    @operation_module :"Elixir.YellowDog.Sync.Operation"
+    @error_module :"Elixir.YellowDog.Sync.Error"
 
     @spec decode(binary()) :: {:ok, map()} | {:error, :invalid}
     def decode(encoded) when is_binary(encoded) do
@@ -249,6 +298,27 @@ defmodule YellowDog.Console.ServerChannel do
     end
 
     def decode(_encoded), do: {:error, :invalid}
+
+    @spec encode_request(map()) :: {:ok, binary(), map()} | {:error, :invalid}
+    def encode_request(envelope) do
+      with {:ok, kind} <- request_kind(envelope),
+           {:ok, encoded} <- encode_envelope_wrapper(envelope, kind),
+           {:ok, summary} <- envelope_correlation(envelope) do
+        {:ok, encoded, summary}
+      else
+        _invalid -> {:error, :invalid}
+      end
+    end
+
+    @spec encode_config_delivery(map()) :: {:ok, binary(), map()} | {:error, :invalid}
+    def encode_config_delivery(envelope) do
+      with {:ok, encoded} <- encode_envelope_wrapper(envelope, :config),
+           {:ok, summary} <- envelope_correlation(envelope) do
+        {:ok, encoded, summary}
+      else
+        _invalid -> {:error, :invalid}
+      end
+    end
 
     @spec reconcile_journal(binary(), String.t()) ::
             :ok | {:error, atom()}
@@ -335,7 +405,27 @@ defmodule YellowDog.Console.ServerChannel do
     defp summarize(@command_module, message), do: envelope_summary(:command, message)
 
     defp summarize(@result_module, message) do
-      {:ok, %{tag: :result, target_type: Map.get(message, :target_type)}}
+      request_id = Map.get(message, :request_id)
+      target_type = Map.get(message, :target_type)
+      operation = Map.get(message, :operation)
+      value = Map.get(message, :value)
+      result_error = Map.get(message, :error)
+
+      with true <- is_binary(request_id),
+           true <- target_type in [:server, :netman],
+           true <- is_binary(operation),
+           {:ok, outcome} <- result_outcome(value, result_error) do
+        {:ok,
+         %{
+           tag: :result,
+           request_id: request_id,
+           target_type: target_type,
+           operation: operation,
+           outcome: outcome
+         }}
+      else
+        _invalid -> {:error, :invalid}
+      end
     end
 
     defp summarize(@config_delivery_module, message),
@@ -368,6 +458,80 @@ defmodule YellowDog.Console.ServerChannel do
       else
         {:error, :invalid}
       end
+    end
+
+    defp request_kind(envelope) do
+      with true <- Code.ensure_loaded?(@operation_module),
+           true <- is_map(envelope),
+           true <- Map.get(envelope, :__struct__) == @envelope_module,
+           operation when is_binary(operation) <- Map.get(envelope, :operation),
+           {:ok, operation_spec} <- dynamic_apply(@operation_module, :lookup, [operation]),
+           kind when kind in [:query, :command] <- Map.get(operation_spec, :kind) do
+        {:ok, kind}
+      else
+        _invalid -> {:error, :invalid}
+      end
+    end
+
+    defp encode_envelope_wrapper(envelope, kind) do
+      with true <- Code.ensure_loaded?(@message_module),
+           true <- Code.ensure_loaded?(@operation_module),
+           true <- is_map(envelope),
+           true <- Map.get(envelope, :__struct__) == @envelope_module,
+           {:ok, ^envelope} <-
+             dynamic_apply(@operation_module, :validate_envelope, [envelope, kind]),
+           {:ok, wrapper_module} <- wrapper_module(kind),
+           wrapper <- struct(wrapper_module, envelope: envelope),
+           {:ok, encoded} <- codec_apply(:encode, [wrapper]),
+           {:ok, ^wrapper} <- codec_apply(:decode, [encoded]) do
+        {:ok, encoded}
+      else
+        _invalid -> {:error, :invalid}
+      end
+    end
+
+    defp wrapper_module(:query), do: {:ok, @query_module}
+    defp wrapper_module(:command), do: {:ok, @command_module}
+    defp wrapper_module(:config), do: {:ok, @config_delivery_module}
+    defp wrapper_module(_kind), do: {:error, :invalid}
+
+    defp envelope_correlation(envelope) do
+      request_id = Map.get(envelope, :request_id)
+      target_type = Map.get(envelope, :target_type)
+      target_id = Map.get(envelope, :target_id)
+      operation = Map.get(envelope, :operation)
+
+      if is_binary(request_id) and target_type == :server and is_binary(target_id) and
+           is_binary(operation) do
+        {:ok,
+         %{
+           request_id: request_id,
+           target_type: target_type,
+           target_id: target_id,
+           operation: operation
+         }}
+      else
+        {:error, :invalid}
+      end
+    end
+
+    defp result_outcome(value, nil) when is_map(value), do: {:ok, {:ok, value}}
+
+    defp result_outcome(nil, result_error)
+         when is_map(result_error) do
+      if Map.get(result_error, :__struct__) == @error_module,
+        do: {:ok, {:error, result_error}},
+        else: {:error, :invalid}
+    end
+
+    defp result_outcome(_value, _error), do: {:error, :invalid}
+
+    defp dynamic_apply(module, function, arguments) do
+      apply(module, function, arguments)
+    rescue
+      _exception -> {:error, :invalid}
+    catch
+      :exit, _reason -> {:error, :invalid}
     end
 
     defp management_error_code(reason) when is_map(reason) do

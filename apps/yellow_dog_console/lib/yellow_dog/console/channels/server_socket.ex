@@ -8,16 +8,17 @@ defmodule YellowDog.Console.ServerSocket do
   alias YellowDog.ManagementCore
 
   @max_id_bytes 128
+  @supported_vsn "2.0.0"
 
   channel "server:control:*", YellowDog.Console.ServerChannel
 
   @impl true
   def connect(
-        %{"token" => token, "server_id" => server_id} = params,
+        %{"token" => token, "server_id" => server_id, "vsn" => @supported_vsn} = params,
         socket,
         _connect_info
       )
-      when map_size(params) == 2 do
+      when map_size(params) == 3 do
     with true <- valid_server_id?(server_id),
          true <- valid_token?(token),
          {:ok, _server} <- registered_server(server_id) do
