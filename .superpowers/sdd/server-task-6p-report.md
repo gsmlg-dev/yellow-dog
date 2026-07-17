@@ -59,3 +59,25 @@ the public result is `{:error, :too_large}`.
   completed successfully.
 - `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix credo --strict'`
   checked 39 source files and found no issues.
+
+## Successful Replacement Coverage
+
+The focused suite now distinguishes initial creation from successful
+replacement. The replacement test first writes and reads a valid prior object
+at the final sidecar path, calls `AtomicJson.write/3` with a different object,
+verifies the final file decodes to exactly the replacement object, confirms
+the prior bytes are gone, and verifies no caller-owned temporary files remain.
+The existing production implementation passed this coverage unchanged.
+
+## Replacement Coverage Verification
+
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix test test/yellow_dog/netboot/managed_storage/atomic_json_test.exs'`
+  passed with 12 tests, 0 failures.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix test'` passed
+  with 335 tests, 0 failures.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix compile --warnings-as-errors'`
+  completed successfully.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix format --check-formatted'`
+  completed successfully.
+- `devenv shell -- bash -lc 'cd apps/yellow_dog_netboot && mix credo --strict'`
+  checked 39 source files and found no issues.

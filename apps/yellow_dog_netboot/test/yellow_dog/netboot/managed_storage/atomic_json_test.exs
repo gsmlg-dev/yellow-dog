@@ -66,7 +66,7 @@ defmodule YellowDog.Netboot.ManagedStorage.AtomicJsonTest do
              AtomicJson.read(path, %{}, max_bytes: 2, file_ops: file_ops)
   end
 
-  test "atomically replaces an existing sidecar from a same-directory temporary file", %{
+  test "creates a sidecar from a same-directory temporary file", %{
     root: root
   } do
     path = Path.join([root, "nested", "managed_profiles.json"])
@@ -80,6 +80,21 @@ defmodule YellowDog.Netboot.ManagedStorage.AtomicJsonTest do
     assert Path.dirname(temporary_path) == Path.dirname(path)
     assert temporary_path != path
     refute File.exists?(temporary_path)
+  end
+
+  test "atomically replaces an existing sidecar and removes its temporary file", %{root: root} do
+    path = Path.join(root, "managed_profiles.json")
+    previous = %{"version" => 1, "profiles" => [%{"id" => "previous"}]}
+    replacement = %{"version" => 2, "profiles" => [%{"id" => "replacement"}]}
+
+    File.write!(path, Jason.encode!(previous))
+    assert {:ok, ^previous} = AtomicJson.read(path, %{})
+
+    assert :ok = AtomicJson.write(path, replacement)
+
+    assert {:ok, ^replacement} = path |> File.read!() |> Jason.decode()
+    refute File.read!(path) == Jason.encode!(previous)
+    assert [] == Path.wildcard(Path.join(root, ".managed_profiles.json.*.tmp"))
   end
 
   for phase <- [:write, :sync, :close, :rename] do
