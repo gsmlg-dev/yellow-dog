@@ -6,7 +6,7 @@ defmodule YellowDog.DnsProvider.Config do
   the console UI or the `YellowDog.DnsProvider` public API.
   """
 
-  @valid_types [:iana_root, :aws, :cloudflare, :gcp, :vultr]
+  @valid_types [:iana_root, :aws, :route53, :cloudflare, :gcp, :vultr]
   @valid_strategies [:local_wins, :remote_wins, :manual]
 
   @enforce_keys [:name, :type, :zones]

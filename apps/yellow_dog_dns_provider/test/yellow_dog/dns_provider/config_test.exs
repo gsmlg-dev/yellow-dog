@@ -31,6 +31,14 @@ defmodule YellowDog.DnsProvider.ConfigTest do
                Config.new(%{name: "x", type: :unknown, zones: ["."]})
     end
 
+    test "accepts canonical Route 53 without rewriting legacy AWS configs" do
+      assert {:ok, %Config{type: :route53}} =
+               Config.new(%{name: "canonical", type: :route53, zones: []})
+
+      assert {:ok, %Config{type: :aws}} =
+               Config.from_map(%{name: "legacy", type: :aws, zones: []})
+    end
+
     test "returns error for invalid conflict strategy" do
       assert {:error, :invalid_conflict_strategy} =
                Config.new(%{

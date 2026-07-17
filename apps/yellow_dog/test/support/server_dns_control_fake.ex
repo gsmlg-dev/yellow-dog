@@ -379,6 +379,79 @@ defmodule YellowDog.ServerDnsControlFake.ProviderStore do
   end
 end
 
+defmodule YellowDog.ServerDnsControlFake.ProviderFacade do
+  @moduledoc false
+
+  def fetch_provider(provider_id) do
+    YellowDog.ServerDnsControlFake.operation(
+      :fetch_provider,
+      {:provider_facade, :fetch_provider, [provider_id]},
+      fn state ->
+        result =
+          case state.providers do
+            {:ok, providers} when is_list(providers) ->
+              case Enum.find(providers, &(Map.get(&1, :name) == provider_id)) do
+                nil -> {:error, :not_found}
+                provider -> {:ok, provider}
+              end
+
+            _ ->
+              {:error, :not_found}
+          end
+
+        {result, state}
+      end
+    )
+  end
+
+  def update_provider(provider_id, changes) do
+    YellowDog.ServerDnsControlFake.operation(
+      :update_provider,
+      {:provider_facade, :update_provider, [provider_id, changes]},
+      fn state ->
+        case state.providers do
+          {:ok, providers} when is_list(providers) ->
+            case Enum.find_index(providers, &(Map.get(&1, :name) == provider_id)) do
+              nil ->
+                {{:error, :not_found}, state}
+
+              index ->
+                provider = providers |> Enum.at(index) |> Map.merge(changes)
+                {:ok, %{state | providers: {:ok, List.replace_at(providers, index, provider)}}}
+            end
+
+          _ ->
+            {{:error, :not_found}, state}
+        end
+      end
+    )
+  end
+
+  def remove_provider(provider_id) do
+    YellowDog.ServerDnsControlFake.operation(
+      :remove_provider,
+      {:provider_facade, :remove_provider, [provider_id]},
+      fn state ->
+        case state.providers do
+          {:ok, providers} when is_list(providers) ->
+            if Enum.any?(providers, &(Map.get(&1, :name) == provider_id)) do
+              {:ok,
+               %{
+                 state
+                 | providers: {:ok, Enum.reject(providers, &(Map.get(&1, :name) == provider_id))}
+               }}
+            else
+              {{:error, :not_found}, state}
+            end
+
+          _ ->
+            {{:error, :not_found}, state}
+        end
+      end
+    )
+  end
+end
+
 defmodule YellowDog.ServerDnsControlFake.QueryLogger do
   @moduledoc false
 

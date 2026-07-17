@@ -8,7 +8,7 @@ defmodule YellowDog.DnsProvider do
   via `SyncSupervisor`.
   """
 
-  alias YellowDog.DnsProvider.{Config, SyncEngine, SyncSupervisor}
+  alias YellowDog.DnsProvider.{Config, ConfigWatcher, SyncEngine}
   alias YellowDog.Store.Provider, as: StoreProvider
 
   # -------------------------------------------------------------------
@@ -18,26 +18,46 @@ defmodule YellowDog.DnsProvider do
   @doc "Add a new provider from an attribute map."
   @spec add_provider(map()) :: :ok | {:error, term()}
   def add_provider(attrs) do
-    with {:ok, config} <- Config.new(attrs) do
-      StoreProvider.put_config(Config.to_map(config))
+    with {:ok, config} <- Config.new(attrs),
+         :ok <- store_provider().put_config(Config.to_map(config)) do
+      case config_watcher().reconcile(config.name) do
+        :ok -> :ok
+        {:error, _reason} -> compensate_create(config.name)
+      end
     end
   end
+
+  @doc "Fetches one provider config without reducing owner errors to a list projection."
+  @spec fetch_provider(String.t()) :: {:ok, map()} | {:error, term()}
+  def fetch_provider(name), do: store_provider().get_config(name)
 
   @doc "Update an existing provider, merging `changes` into stored config."
   @spec update_provider(String.t(), map()) :: :ok | {:error, term()}
   def update_provider(name, changes) do
-    with {:ok, existing} <- StoreProvider.get_config(name),
+    with {:ok, existing} <- fetch_provider(name),
          merged = Map.merge(existing, changes),
          {:ok, config} <- Config.from_map(merged) do
-      StoreProvider.put_config(Config.to_map(config))
+      candidate = Config.to_map(config)
+
+      with :ok <- store_provider().put_config(candidate) do
+        case config_watcher().reconcile(name) do
+          :ok -> :ok
+          {:error, _reason} -> compensate_update(name, existing)
+        end
+      end
     end
   end
 
   @doc "Remove a provider, stopping its engine if running."
   @spec remove_provider(String.t()) :: :ok | {:error, term()}
   def remove_provider(name) do
-    SyncSupervisor.stop_engine(name)
-    StoreProvider.delete_config(name)
+    with {:ok, existing} <- fetch_provider(name),
+         :ok <- store_provider().delete_config(name) do
+      case config_watcher().reconcile(name) do
+        :ok -> :ok
+        {:error, _reason} -> compensate_update(name, existing)
+      end
+    end
   end
 
   @doc "List all providers with their runtime status."
@@ -70,7 +90,6 @@ defmodule YellowDog.DnsProvider do
   @doc "Disable a provider, stopping its engine immediately."
   @spec stop_provider(String.t()) :: :ok | {:error, term()}
   def stop_provider(name) do
-    SyncSupervisor.stop_engine(name)
     update_provider(name, %{enabled: false})
   end
 
@@ -175,5 +194,38 @@ defmodule YellowDog.DnsProvider do
       {:ok, _pid} -> :running
       :error -> :stopped
     end
+  end
+
+  defp compensate_create(name) do
+    with :ok <- store_provider().delete_config(name),
+         :ok <- config_watcher().reconcile(name) do
+      {:error, :apply_failed}
+    else
+      _ -> {:error, :rollback_failed}
+    end
+  end
+
+  defp compensate_update(name, existing) do
+    with :ok <- store_provider().put_config(existing),
+         :ok <- config_watcher().reconcile(name) do
+      {:error, :apply_failed}
+    else
+      _ -> {:error, :rollback_failed}
+    end
+  end
+
+  if Mix.env() == :test do
+    defp store_provider do
+      Application.get_env(:yellow_dog_dns_provider, __MODULE__, [])
+      |> Keyword.get(:provider_store, StoreProvider)
+    end
+
+    defp config_watcher do
+      Application.get_env(:yellow_dog_dns_provider, __MODULE__, [])
+      |> Keyword.get(:config_watcher, ConfigWatcher)
+    end
+  else
+    defp store_provider, do: StoreProvider
+    defp config_watcher, do: ConfigWatcher
   end
 end

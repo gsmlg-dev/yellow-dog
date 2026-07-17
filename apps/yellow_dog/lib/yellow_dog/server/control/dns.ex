@@ -45,6 +45,7 @@ defmodule YellowDog.Server.Control.Dns do
     acl_registry: Module.concat(["YellowDog", "Dns", "AclRegistry"]),
     acl_codec: Module.concat(["YellowDog", "Dns", "View", "ACL"]),
     provider_store: Module.concat(["YellowDog", "Store", "Provider"]),
+    provider_facade: Module.concat(["YellowDog", "DnsProvider"]),
     zone_controller: Module.concat(["YellowDog", "Dns", "ZoneController"]),
     query_logger: Module.concat(["YellowDog", "Dns", "QueryLogger"]),
     metrics_collector: Module.concat(["YellowDog", "Dns", "MetricsCollector"]),
@@ -118,6 +119,23 @@ defmodule YellowDog.Server.Control.Dns do
   def dispatch("server.dns.records.delete", payload) when is_map(payload),
     do: mutate_record(:delete, payload)
 
+  def dispatch(
+        "server.dns.providers.create",
+        %{"provider_id" => _, "provider_type" => _, "endpoint" => _, "credential_ref" => _} =
+          payload
+      ),
+      do: create_provider(payload)
+
+  def dispatch(
+        "server.dns.providers.update",
+        %{"provider_id" => _, "provider_type" => _, "endpoint" => _, "credential_ref" => _} =
+          payload
+      ),
+      do: update_provider(payload)
+
+  def dispatch("server.dns.providers.delete", %{"provider_id" => _} = payload),
+    do: delete_provider(payload)
+
   def dispatch(operation, _payload) when operation in @mutation_operations,
     do: unsupported_error()
 
@@ -179,12 +197,15 @@ defmodule YellowDog.Server.Control.Dns do
              "server.dns.providers.update",
              "server.dns.providers.delete"
            ] do
-    with {:ok, providers} <- read_providers() do
-      current_resource(
-        operation,
-        Enum.find(providers, &(&1["provider_id"] == provider_id)),
-        "server.dns.providers.list"
-      )
+    case fetch_provider_resource(provider_id) do
+      {:ok, resource} ->
+        current_resource(operation, resource, "server.dns.providers.list")
+
+      {:error, %Error{code: :not_found}} ->
+        current_resource(operation, nil, "server.dns.providers.list")
+
+      {:error, %Error{}} = error ->
+        error
     end
   end
 
@@ -307,6 +328,37 @@ defmodule YellowDog.Server.Control.Dns do
       {:ok, _zone} -> conflict_error()
       {:error, %Error{}} = error -> error
       _invalid -> invalid_error()
+    end
+  end
+
+  defp create_provider(payload) do
+    with {:ok, _payload} <- validate_operation_payload("server.dns.providers.create", payload) do
+      unsupported_error()
+    end
+  end
+
+  defp update_provider(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.providers.update", payload),
+         :ok <- validate_provider_update(payload),
+         {:ok, provider} <- fetch_provider(payload["provider_id"]),
+         {:ok, stored_type} <- provider_wire_type(provider),
+         true <- stored_type == payload["provider_type"] || conflict_error(),
+         :ok <- provider_owner_result(:update_provider, [payload["provider_id"], %{}]) do
+      revisioned_result("server.dns.providers.update", "dns_provider", payload)
+    else
+      {:error, %Error{}} = error -> error
+      false -> conflict_error()
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp delete_provider(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.providers.delete", payload),
+         :ok <- provider_owner_result(:remove_provider, [payload["provider_id"]]) do
+      deleted_result("server.dns.providers.delete", "dns_provider", payload)
+    else
+      {:error, %Error{}} = error -> error
+      _failure -> apply_failed_error()
     end
   end
 
@@ -597,6 +649,54 @@ defmodule YellowDog.Server.Control.Dns do
   defp provider_atom("route53"), do: :route53
   defp provider_atom("cloudflare"), do: :cloudflare
 
+  defp validate_provider_update(%{
+         "provider_id" => provider_id,
+         "provider_type" => provider_type,
+         "endpoint" => nil,
+         "credential_ref" => credential_ref
+       }) do
+    cond do
+      provider_type == "rfc2136" -> unsupported_error()
+      credential_ref != credential_ref(provider_id) -> unsupported_error()
+      true -> :ok
+    end
+  end
+
+  defp validate_provider_update(_payload), do: unsupported_error()
+
+  defp fetch_provider(provider_id) do
+    with {:ok, result} <- dependency_call(:provider_facade, :fetch_provider, [provider_id]) do
+      unwrap_provider(result)
+    end
+  end
+
+  defp fetch_provider_resource(provider_id) do
+    with {:ok, provider} <- fetch_provider(provider_id),
+         [resource] <- project_provider(provider) do
+      {:ok, resource}
+    else
+      {:error, %Error{}} = error -> error
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp provider_wire_type(provider) do
+    case wire_provider_type(field(provider, :type)) do
+      {:ok, type} -> {:ok, type}
+      :error -> unsupported_error()
+    end
+  end
+
+  defp provider_owner_result(function, arguments) do
+    case dependency_call(:provider_facade, function, arguments) do
+      {:ok, :ok} -> :ok
+      {:ok, {:error, :not_found}} -> not_found_error()
+      {:ok, {:error, _reason}} -> apply_failed_error()
+      {:error, %Error{}} = error -> error
+      _invalid -> apply_failed_error()
+    end
+  end
+
   defp zone_options(nil), do: []
   defp zone_options(cloud_mirror), do: [cloud_mirror: cloud_mirror]
 
@@ -761,6 +861,7 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp resource_identifier("dns_zone", resource), do: {:ok, resource["zone_name"]}
   defp resource_identifier("dns_record", resource), do: {:ok, resource["record_id"]}
+  defp resource_identifier("dns_provider", resource), do: {:ok, resource["provider_id"]}
 
   defp zone_reference(payload),
     do: Map.take(zone_resource(payload), ["view_name", "zone_name"])

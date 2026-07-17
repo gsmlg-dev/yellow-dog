@@ -59,6 +59,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       acl_registry: ServerDnsControlFake.AclRegistry,
       acl_codec: ServerDnsControlFake.AclCodec,
       provider_store: ServerDnsControlFake.ProviderStore,
+      provider_facade: ServerDnsControlFake.ProviderFacade,
       query_logger: ServerDnsControlFake.QueryLogger,
       metrics_collector: ServerDnsControlFake.MetricsCollector,
       clock: ServerDnsControlFake.Clock
@@ -1151,6 +1152,135 @@ defmodule YellowDog.Server.Control.DnsTest do
     refute encoded =~ "DnsProvider.Provider"
     refute encoded =~ "/etc/yellowdog"
     refute encoded =~ inspect(self())
+  end
+
+  test "updates a legacy Route 53 provider without exposing or changing credentials" do
+    provider = %{
+      name: "legacy-aws",
+      type: :aws,
+      credentials: %{access_key_id: "AKIA-SECRET", secret_access_key: "secret"}
+    }
+
+    ServerDnsControlFake.configure(%{providers: {:ok, [provider]}})
+
+    payload = %{
+      "provider_id" => "legacy-aws",
+      "provider_type" => "route53",
+      "endpoint" => nil,
+      "credential_ref" => credential_ref("legacy-aws")
+    }
+
+    assert {:ok, result} = Dns.dispatch("server.dns.providers.update", payload)
+    assert_valid_result("server.dns.providers.update", result)
+    assert result["resource"] == payload
+
+    assert [
+             {:provider_facade, :fetch_provider, ["legacy-aws"]},
+             {:provider_facade, :update_provider, ["legacy-aws", %{}]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert {:ok, [stored]} = ServerDnsControlFake.snapshot().providers
+    assert stored.type == :aws
+    assert stored.credentials == provider.credentials
+    refute inspect(result) =~ "SECRET"
+    refute inspect(result) =~ "secret"
+  end
+
+  test "deletes a provider with the exact deleted resource result" do
+    ServerDnsControlFake.configure(%{providers: {:ok, [%{name: "cf-main", type: :cloudflare}]}})
+
+    assert {:ok, result} =
+             Dns.dispatch("server.dns.providers.delete", %{"provider_id" => "cf-main"})
+
+    assert_valid_result("server.dns.providers.delete", result)
+    assert result["resource_type"] == "dns_provider"
+    assert result["resource_id"] == "cf-main"
+    assert result["resource_ref"] == %{"provider_id" => "cf-main"}
+    assert [{:provider_facade, :remove_provider, ["cf-main"]}] = ServerDnsControlFake.take_calls()
+  end
+
+  test "rejects unsupported provider writes before facade calls" do
+    external_ref = %{
+      "provider_id" => "cf-main",
+      "provider_type" => "cloudflare",
+      "endpoint" => nil,
+      "credential_ref" => "external-secret"
+    }
+
+    assert {:error, %Error{code: :unsupported}} =
+             Dns.dispatch("server.dns.providers.create", %{
+               external_ref
+               | "credential_ref" => credential_ref("cf-main")
+             })
+
+    for payload <- [
+          external_ref,
+          %{external_ref | "endpoint" => "https://provider.example"},
+          %{external_ref | "provider_type" => "rfc2136", "endpoint" => nil}
+        ] do
+      assert {:error, %Error{code: :unsupported}} =
+               Dns.dispatch("server.dns.providers.update", payload)
+    end
+
+    assert [] = ServerDnsControlFake.take_calls()
+  end
+
+  test "maps non-lossy provider facade failures to bounded errors" do
+    payload = %{
+      "provider_id" => "cf-main",
+      "provider_type" => "cloudflare",
+      "endpoint" => nil,
+      "credential_ref" => credential_ref("cf-main")
+    }
+
+    ServerDnsControlFake.configure(%{responses: %{fetch_provider: [{:error, :not_found}]}})
+
+    assert {:error, %Error{code: :not_found}} =
+             Dns.dispatch("server.dns.providers.update", payload)
+
+    ServerDnsControlFake.configure(%{
+      responses: %{fetch_provider: [{:error, :owner_unavailable}]}
+    })
+
+    assert {:error, %Error{code: :apply_failed}} =
+             Dns.dispatch("server.dns.providers.update", payload)
+  end
+
+  test "Dispatcher rejects stale provider updates before the provider facade mutates" do
+    provider = %{name: "cf-main", type: :cloudflare, credentials: %{api_token: "secret"}}
+
+    payload = %{
+      "provider_id" => "cf-main",
+      "provider_type" => "cloudflare",
+      "endpoint" => nil,
+      "credential_ref" => credential_ref("cf-main")
+    }
+
+    ServerDnsControlFake.configure(%{providers: {:ok, [provider]}})
+
+    assert {:ok, current} = Dns.current("server.dns.providers.update", payload)
+    {:ok, current_revision} = Revision.calculate(current)
+    ServerDnsControlFake.take_calls()
+    {:ok, payload_digest} = Digest.calculate(payload)
+
+    assert {:error, %Error{code: :conflict, message: "stale revision"}} =
+             Dispatcher.dispatch(%Envelope{
+               protocol_version: 1,
+               request_id: @request_id,
+               target_type: :server,
+               target_id: "server-task-3d",
+               operation: "server.dns.providers.update",
+               idempotency_key: @idempotency_key,
+               payload: payload,
+               payload_digest: payload_digest,
+               expected_revision: String.duplicate("0", 64),
+               config_version: nil,
+               sent_at: @sent_at
+             })
+
+    refute current_revision == String.duplicate("0", 64)
+    assert [{:provider_facade, :fetch_provider, ["cf-main"]}] = ServerDnsControlFake.take_calls()
+    assert_dispatcher_dns_dependencies()
   end
 
   test "rejects mixed-action and geo ACLs instead of projecting altered policies" do

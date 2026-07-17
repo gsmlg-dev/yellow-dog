@@ -61,3 +61,66 @@ defmodule YellowDog.DnsProvider.Provider.Test do
     {:ok, 2_024_010_100, state}
   end
 end
+
+defmodule YellowDog.DnsProvider.LifecycleFake do
+  @moduledoc false
+
+  use Agent
+
+  def start_link(_opts) do
+    Agent.start_link(fn -> %{configs: %{}, calls: [], responses: %{}} end, name: __MODULE__)
+  end
+
+  def configure(values), do: Agent.update(__MODULE__, &Map.merge(&1, values))
+
+  def snapshot, do: Agent.get(__MODULE__, & &1)
+
+  def take_calls do
+    Agent.get_and_update(__MODULE__, fn state ->
+      {Enum.reverse(state.calls), %{state | calls: []}}
+    end)
+  end
+
+  def get_config(name) do
+    operation(:get_config, [name], fn state ->
+      result =
+        case Map.fetch(state.configs, name) do
+          {:ok, config} -> {:ok, config}
+          :error -> {:error, :not_found}
+        end
+
+      {result, state}
+    end)
+  end
+
+  def put_config(%{name: name} = config) do
+    operation(:put_config, [config], fn state ->
+      {:ok, %{state | configs: Map.put(state.configs, name, config)}}
+    end)
+  end
+
+  def delete_config(name) do
+    operation(:delete_config, [name], fn state ->
+      {:ok, %{state | configs: Map.delete(state.configs, name)}}
+    end)
+  end
+
+  def reconcile(name) do
+    operation(:reconcile, [name], fn state -> {:ok, state} end)
+  end
+
+  defp operation(name, args, default) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      {response, responses} = pop_response(state.responses, name)
+      {result, next_state} = if response == :default, do: default.(state), else: {response, state}
+      {result, %{next_state | responses: responses, calls: [{name, args} | next_state.calls]}}
+    end)
+  end
+
+  defp pop_response(responses, name) do
+    case Map.get(responses, name, []) do
+      [response | rest] -> {response, Map.put(responses, name, rest)}
+      [] -> {:default, responses}
+    end
+  end
+end

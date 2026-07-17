@@ -19,6 +19,21 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @doc "Synchronously reconciles a provider engine with its persisted config."
+  @spec reconcile(String.t()) :: :ok | {:error, term()}
+  def reconcile(name) when is_binary(name) do
+    case YellowDog.Store.Provider.get_config(name) do
+      {:ok, config_map} -> reconcile_config(config_map)
+      {:error, :not_found} -> ensure_stopped(name)
+      {:error, _reason} = error -> error
+      _ -> {:error, :apply_failed}
+    end
+  rescue
+    _exception -> {:error, :apply_failed}
+  catch
+    :exit, _reason -> {:error, :apply_failed}
+  end
+
   @impl true
   def init(_opts) do
     state = %{subscription_ref: nil, bridge_monitor: nil}
@@ -93,7 +108,7 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
     case YellowDog.Store.Provider.list_configs() do
       {:ok, configs} ->
         Enum.each(configs, fn config ->
-          if Map.get(config, :enabled, true), do: start_from_map(config)
+          reconcile(Map.get(config, :name))
         end)
 
       _ ->
@@ -105,45 +120,87 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
   end
 
   defp handle_config_change(:put, key) do
-    name = extract_provider_name(key)
-    SyncSupervisor.stop_engine(name)
-
-    case YellowDog.Store.Provider.get_config(name) do
-      {:ok, config_map} ->
-        if Map.get(config_map, :enabled, true), do: start_from_map(config_map)
-
-      _ ->
-        :ok
-    end
+    reconcile_and_log(extract_provider_name(key))
   end
 
   defp handle_config_change(:delete, key) do
-    name = extract_provider_name(key)
-    SyncSupervisor.stop_engine(name)
+    reconcile_and_log(extract_provider_name(key))
   end
 
-  defp start_from_map(config_map) do
+  defp reconcile_and_log(name) do
+    case reconcile(name) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("ConfigWatcher: reconcile failed for #{name}: #{inspect(reason)}")
+    end
+  end
+
+  defp reconcile_config(config_map) do
     case Config.from_map(config_map) do
       {:ok, config} ->
-        case provider_module_for(config.type) do
-          nil ->
-            Logger.warning("ConfigWatcher: unknown provider type #{inspect(config.type)}")
-
-          module ->
-            case SyncSupervisor.start_engine(config, module) do
-              {:ok, _pid} ->
-                Logger.info("ConfigWatcher: started engine for #{config.name}")
-
-              {:error, reason} ->
-                Logger.warning(
-                  "ConfigWatcher: failed to start engine for #{config.name}: #{inspect(reason)}"
-                )
-            end
+        if config.enabled do
+          reconcile_running(config)
+        else
+          ensure_stopped(config.name)
         end
 
       {:error, reason} ->
-        Logger.warning("ConfigWatcher: invalid config: #{inspect(reason)}")
+        {:error, reason}
     end
+  end
+
+  defp reconcile_running(config) do
+    case running_config(config.name) do
+      {:ok, ^config} ->
+        :ok
+
+      {:ok, _other} ->
+        with :ok <- ensure_stopped(config.name), do: start_and_verify(config)
+
+      :error ->
+        start_and_verify(config)
+    end
+  end
+
+  defp start_and_verify(config) do
+    case provider_module_for(config.type) do
+      nil ->
+        {:error, :invalid_type}
+
+      module ->
+        case SyncSupervisor.start_engine(config, module) do
+          {:ok, _pid} -> verify_running(config)
+          {:error, _reason} -> {:error, :apply_failed}
+        end
+    end
+  end
+
+  defp verify_running(config) do
+    case running_config(config.name) do
+      {:ok, ^config} -> :ok
+      _ -> {:error, :apply_failed}
+    end
+  end
+
+  defp ensure_stopped(name) do
+    case SyncSupervisor.stop_engine(name) do
+      :ok -> :ok
+      {:error, :not_found} -> :ok
+      {:error, _reason} -> {:error, :apply_failed}
+    end
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp running_config(name) do
+    case Registry.lookup(YellowDog.DnsProvider.Registry, name) do
+      [{pid, _}] when is_pid(pid) -> {:ok, :sys.get_state(pid).config}
+      [] -> :error
+    end
+  rescue
+    ArgumentError -> :error
   end
 
   # Key format: dns:provider:{name}:config
@@ -155,6 +212,7 @@ defmodule YellowDog.DnsProvider.ConfigWatcher do
 
   defp provider_module_for(:iana_root), do: YellowDog.DnsProvider.Provider.IanaRoot
   defp provider_module_for(:aws), do: YellowDog.DnsProvider.Provider.Aws
+  defp provider_module_for(:route53), do: YellowDog.DnsProvider.Provider.Aws
   defp provider_module_for(:cloudflare), do: YellowDog.DnsProvider.Provider.Cloudflare
   defp provider_module_for(:gcp), do: YellowDog.DnsProvider.Provider.Gcp
   defp provider_module_for(:vultr), do: YellowDog.DnsProvider.Provider.Vultr
