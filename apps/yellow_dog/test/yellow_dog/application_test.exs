@@ -2,6 +2,7 @@ defmodule YellowDog.ApplicationTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.ApplicationAgentFake
+  alias YellowDog.ApplicationServiceFake
   alias YellowDog.Server.ServiceRegistry
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.ServerOperation
@@ -20,12 +21,14 @@ defmodule YellowDog.ApplicationTest do
       module: Application.fetch_env(:yellow_dog, :server_agent_module),
       owner: Application.fetch_env(:yellow_dog, :application_test_owner),
       result: Application.fetch_env(:yellow_dog, :application_test_agent_result),
+      service_overrides: Application.fetch_env(:yellow_dog, :service_module_overrides),
       runtime: Application.fetch_env(:yellow_dog_server_agent, :runtime)
     }
 
     Application.put_env(:yellow_dog, :server_agent_module, @agent_module)
     Application.put_env(:yellow_dog, :application_test_owner, self())
     Application.put_env(:yellow_dog, :application_test_agent_result, :ok)
+    Application.put_env(:yellow_dog, :service_module_overrides, %{})
     Application.put_env(:yellow_dog_server_agent, :runtime, @runtime_defaults)
 
     tmp_dir =
@@ -44,6 +47,7 @@ defmodule YellowDog.ApplicationTest do
       restore_env(:yellow_dog, :server_agent_module, saved_env.module)
       restore_env(:yellow_dog, :application_test_owner, saved_env.owner)
       restore_env(:yellow_dog, :application_test_agent_result, saved_env.result)
+      restore_env(:yellow_dog, :service_module_overrides, saved_env.service_overrides)
       restore_env(:yellow_dog_server_agent, :runtime, saved_env.runtime)
       File.rm_rf!(tmp_dir)
     end)
@@ -84,6 +88,67 @@ defmodule YellowDog.ApplicationTest do
              Supervisor.which_children(YellowDog.Supervisor),
              &(elem(&1, 0) == YellowDog.ServerAgent)
            )
+  end
+
+  test "public ServiceManager start stop and restart preserve the late-bound agent contract", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir, server_agent: false)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+    Application.put_env(:yellow_dog_server_agent, :runtime, server_id: "public-agent")
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    refute child_pid(YellowDog.ServerAgent)
+
+    assert :ok = YellowDog.ServiceManager.start_service(:server_agent)
+    assert_receive {:server_agent_started, first_pid, first_opts, supervisor}, 2_000
+    assert supervisor == Process.whereis(YellowDog.Supervisor)
+    assert first_opts[:server_id] == "public-agent"
+    assert child_pid(YellowDog.ServerAgent) == first_pid
+    assert service_flag(:server_agent) == true
+
+    assert :ok = YellowDog.ServiceManager.stop_service(:server_agent)
+    refute child_pid(YellowDog.ServerAgent)
+    assert service_flag(:server_agent) == false
+
+    assert :ok = YellowDog.ServiceManager.start_service(:server_agent)
+    assert_receive {:server_agent_started, second_pid, second_opts, ^supervisor}, 2_000
+    assert second_pid != first_pid
+    assert second_opts[:server_id] == "public-agent"
+    assert child_pid(YellowDog.ServerAgent) == second_pid
+    assert service_flag(:server_agent) == true
+  end
+
+  test "public ServerAgent start rejects legacy profiles and restores the attempted flag", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_legacy_config(tmp_dir, false)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    assert service_flag(:server_agent) == false
+
+    assert {:error, :unsupported_profile} =
+             YellowDog.ServiceManager.start_service(:server_agent)
+
+    assert service_flag(:server_agent) == false
+    refute child_pid(YellowDog.ServerAgent)
+  end
+
+  test "public ServerAgent start rejects a missing selected module and restores the flag", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir, server_agent: false)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+    Application.put_env(:yellow_dog, :server_agent_module, YellowDog.MissingServerAgent)
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+
+    assert {:error, :module_not_available} =
+             YellowDog.ServiceManager.start_service(:server_agent)
+
+    assert service_flag(:server_agent) == false
+    refute child_pid(YellowDog.ServerAgent)
   end
 
   test "disabled custom and legacy configurations never start the agent", %{tmp_dir: tmp_dir} do
@@ -173,7 +238,136 @@ defmodule YellowDog.ApplicationTest do
     assert opts[:config_revision] == expected_revision
     assert opts[:capabilities] == expected_capabilities(config)
     assert Enum.uniq(opts[:capabilities]) == opts[:capabilities]
+    assert Enum.any?(opts[:capabilities], &String.starts_with?(&1, "runtime."))
+    refute Enum.any?(opts[:capabilities], &String.starts_with?(&1, "settings."))
     refute String.contains?(opts[:data_dir], "/server/server")
+  end
+
+  test "capabilities exclude settings unsupported by the production runtime adapter" do
+    start_config!(server_config(id: "server-1"))
+
+    runtime_adapter = :"Elixir.YellowDog.Server.Control"
+
+    assert Code.ensure_loaded?(runtime_adapter)
+
+    required_callbacks = [
+      validate_config: 1,
+      install_config: 2,
+      activate_config: 1,
+      restore_config: 1
+    ]
+
+    refute Enum.all?(required_callbacks, fn {callback, arity} ->
+             function_exported?(runtime_adapter, callback, arity)
+           end)
+
+    assert {:ok, pid} = YellowDog.Application.start_server_agent(@agent_module)
+    assert_receive {:server_agent_started, ^pid, opts, nil}
+
+    assert "runtime.capabilities" in opts[:capabilities]
+
+    refute Enum.any?(opts[:capabilities], fn capability ->
+             capability in [
+               "settings.read",
+               "settings.config.write",
+               "settings.apply",
+               "settings.reload",
+               "settings.rollback"
+             ]
+           end)
+  end
+
+  test "successful public service changes rebuild and then restore agent identity", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+
+    Application.put_env(:yellow_dog, :service_module_overrides, %{
+      identity: ApplicationServiceFake
+    })
+
+    Application.put_env(:yellow_dog_server_agent, :runtime,
+      management_url: "wss://management.example.test",
+      management_token: @secret,
+      server_id: "refresh-server",
+      reconnect_initial_ms: 1_000,
+      reconnect_max_ms: 30_000
+    )
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    assert_receive {:server_agent_started, initial_pid, initial_opts, supervisor}, 2_000
+    assert supervisor == Process.whereis(YellowDog.Supervisor)
+    refute Enum.any?(initial_opts[:capabilities], &String.starts_with?(&1, "identity."))
+
+    assert :ok = YellowDog.ServiceManager.start_service(:identity)
+    assert_receive {:application_service_started, service_pid, _service_opts}, 2_000
+    assert_receive {:server_agent_started, started_pid, started_opts, ^supervisor}, 2_000
+
+    assert started_pid != initial_pid
+    assert Process.alive?(service_pid)
+    assert started_opts[:config_revision] != initial_opts[:config_revision]
+    assert Enum.any?(started_opts[:capabilities], &String.starts_with?(&1, "identity."))
+    assert service_flag(:identity) == true
+
+    assert :ok = YellowDog.ServiceManager.stop_service(:identity)
+    assert_receive {:server_agent_started, stopped_pid, stopped_opts, ^supervisor}, 2_000
+
+    assert stopped_pid != started_pid
+    refute Process.alive?(service_pid)
+    assert stopped_opts[:config_revision] == initial_opts[:config_revision]
+    assert stopped_opts[:capabilities] == initial_opts[:capabilities]
+    assert service_flag(:identity) == false
+  end
+
+  test "agent identity refresh failure is sanitized and cannot reverse a changed service", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = write_server_config(tmp_dir)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+
+    Application.put_env(:yellow_dog, :service_module_overrides, %{
+      identity: ApplicationServiceFake
+    })
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    assert_receive {:server_agent_started, _pid, _opts, supervisor}, 2_000
+    assert supervisor == Process.whereis(YellowDog.Supervisor)
+
+    Application.put_env(
+      :yellow_dog,
+      :application_test_agent_result,
+      {:error, {:secret, @secret}}
+    )
+
+    handler_id = "identity-refresh-failure-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :application, :error],
+        fn _event, _measurements, metadata, owner ->
+          if metadata[:operation] == :identity_refresh do
+            send(owner, {:identity_refresh_error, metadata})
+          end
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert :ok = YellowDog.ServiceManager.start_service(:identity)
+    assert_receive {:application_service_started, service_pid, _service_opts}, 2_000
+    assert_receive {:server_agent_failed, _failed_opts, ^supervisor}, 2_000
+    assert_receive {:identity_refresh_error, metadata}, 2_000
+
+    assert Process.alive?(service_pid)
+    assert service_flag(:identity) == true
+    assert metadata.service == :server_agent
+    assert metadata.trigger_service == :identity
+    assert metadata.reason == :refresh_failed
+    refute inspect(metadata) =~ @secret
+    refute inspect(metadata) =~ "management.example.test"
   end
 
   test "uses the YellowDog base data dir and retry defaults only when both retry values are absent",
@@ -437,7 +631,7 @@ defmodule YellowDog.ApplicationTest do
     path
   end
 
-  defp write_legacy_config(tmp_dir) do
+  defp write_legacy_config(tmp_dir, server_agent \\ true) do
     path = Path.join(tmp_dir, "legacy.toml")
 
     File.write!(
@@ -452,7 +646,7 @@ defmodule YellowDog.ApplicationTest do
       dhcpv6 = false
       netboot = false
       identity = false
-      server_agent = true
+      server_agent = #{server_agent}
       """
     )
 
@@ -476,7 +670,7 @@ defmodule YellowDog.ApplicationTest do
       end)
       |> Enum.map(&elem(&1, 1))
       |> MapSet.new()
-      |> MapSet.union(MapSet.new(["runtime", "settings"]))
+      |> MapSet.union(MapSet.new(["runtime"]))
 
     ServerOperation.all()
     |> Map.values()
@@ -489,6 +683,19 @@ defmodule YellowDog.ApplicationTest do
   defp service_available?(service) do
     {:ok, metadata} = ServiceRegistry.fetch(service)
     metadata.available?
+  end
+
+  defp child_pid(child_id) do
+    case Enum.find(Supervisor.which_children(YellowDog.Supervisor), &(elem(&1, 0) == child_id)) do
+      {_id, pid, _type, _modules} when is_pid(pid) -> pid
+      _missing -> nil
+    end
+  end
+
+  defp service_flag(service) do
+    YellowDog.Server.ProfileResolver.resolve()
+    |> Map.fetch!(:services)
+    |> Map.fetch!(service)
   end
 
   defp capability_domain(capability), do: capability |> String.split(".", parts: 2) |> hd()

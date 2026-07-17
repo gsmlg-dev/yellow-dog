@@ -173,7 +173,50 @@ case target do
       assert!.(service in services, "server service #{service} missing")
     end)
 
-    {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    mode = System.fetch_env!("YELLOW_DOG_RELEASE_SMOKE_SERVER_MODE")
+
+    startup_barrier =
+      if mode == "disabled" do
+        handler_id = "release-smoke-disabled-server-agent"
+        owner = self()
+
+        {:ok, _apps} = Application.ensure_all_started(:telemetry)
+
+        :ok =
+          :telemetry.attach(
+            handler_id,
+            [:yellow_dog, :application, :start],
+            fn _event, _measurements, metadata, owner ->
+              skipped_services =
+                metadata
+                |> Map.get(:skipped_services, "")
+                |> String.split(", ", trim: true)
+
+              if "SERVER_AGENT" in skipped_services do
+                send(owner, :server_agent_startup_skipped)
+              end
+            end,
+            owner
+          )
+
+        handler_id
+      end
+
+    if startup_barrier do
+      try do
+        {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+
+        receive do
+          :server_agent_startup_skipped -> :ok
+        after
+          5_000 -> raise "disabled server agent startup selection did not complete"
+        end
+      after
+        :telemetry.detach(startup_barrier)
+      end
+    else
+      {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    end
 
     started_apps =
       Application.started_applications()
@@ -183,8 +226,6 @@ case target do
       :yellow_dog_server_agent in started_apps,
       "server agent OTP application must remain loaded-only"
     )
-
-    mode = System.fetch_env!("YELLOW_DOG_RELEASE_SMOKE_SERVER_MODE")
 
     wait_for = fn predicate, message ->
       deadline = System.monotonic_time(:millisecond) + 5_000
@@ -232,8 +273,6 @@ case target do
         )
 
       "disabled" ->
-        Process.sleep(250)
-
         assert!.(
           is_nil(Process.whereis(YellowDog.ServerAgent.Supervisor)),
           "disabled server agent started"

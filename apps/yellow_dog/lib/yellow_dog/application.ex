@@ -96,9 +96,27 @@ defmodule YellowDog.Application do
   - `{:error, reason}` if start failed
   """
   @spec start_service_supervisor(atom(), module()) :: {:ok, pid()} | {:error, term()}
+  def start_service_supervisor(:server_agent, _supervisor_module) do
+    case ProfileResolver.resolve(current_config()) do
+      %{source: :yellow_dog_server} ->
+        module = server_agent_module()
+
+        if Code.ensure_loaded?(module) and function_exported?(module, :start_link, 1) do
+          start_service_child(:server_agent, server_agent_child_spec(module))
+        else
+          {:error, :module_not_available}
+        end
+
+      _unsupported_profile ->
+        {:error, :unsupported_profile}
+    end
+  end
+
   def start_service_supervisor(service, _supervisor_module) do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, module: app_module}} ->
+        app_module = service_module(service, app_module)
+
         # Guard: module may not be available in all releases
         if not Code.ensure_loaded?(app_module) do
           {:error, :module_not_available}
@@ -122,6 +140,10 @@ defmodule YellowDog.Application do
     # Build child spec
     child_spec = {app_module, server_options: server_options}
 
+    start_service_child(service, child_spec)
+  end
+
+  defp start_service_child(service, child_spec) do
     # Start the child under the main supervisor
     case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
       {:ok, pid} ->
@@ -131,6 +153,7 @@ defmodule YellowDog.Application do
           %{source: __MODULE__, service: service, pid: inspect(pid), severity: :info}
         )
 
+        refresh_server_agent_identity(service)
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
@@ -146,13 +169,19 @@ defmodule YellowDog.Application do
           }
         )
 
+        refresh_server_agent_identity(service)
         {:error, {:already_started, pid}}
 
       {:error, reason} = error ->
         :telemetry.execute(
           [:yellow_dog, :application, :error],
           %{count: 1},
-          %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            service: service,
+            reason: service_start_error(service, reason),
+            severity: :error
+          }
         )
 
         error
@@ -174,10 +203,15 @@ defmodule YellowDog.Application do
   def stop_service_supervisor(service, _supervisor_module) do
     case ServiceRegistry.fetch(service) do
       {:ok, %{controllable?: true, module: app_module}} ->
-        case Supervisor.terminate_child(YellowDog.Supervisor, app_module) do
+        child_id =
+          if service == :server_agent,
+            do: @default_server_agent_module,
+            else: service_module(service, app_module)
+
+        case Supervisor.terminate_child(YellowDog.Supervisor, child_id) do
           :ok ->
             # Also delete the child spec so it can be restarted later
-            Supervisor.delete_child(YellowDog.Supervisor, app_module)
+            Supervisor.delete_child(YellowDog.Supervisor, child_id)
 
             :telemetry.execute(
               [:yellow_dog, :service, :stopped],
@@ -185,6 +219,7 @@ defmodule YellowDog.Application do
               %{source: __MODULE__, service: service, severity: :info}
             )
 
+            refresh_server_agent_identity(service)
             :ok
 
           {:error, :not_found} ->
@@ -194,6 +229,7 @@ defmodule YellowDog.Application do
               %{source: __MODULE__, service: service, not_found: true, severity: :debug}
             )
 
+            refresh_server_agent_identity(service)
             {:error, :not_found}
 
           {:error, reason} = error ->
@@ -505,6 +541,8 @@ defmodule YellowDog.Application do
   end
 
   defp service_child_spec(config, _resolved_profile, %{module: module, name: service_name}) do
+    module = service_module(service_name, module)
+
     if Code.ensure_loaded?(module) do
       server_options = build_server_options(config, service_name)
       {module, server_options: server_options}
@@ -599,7 +637,7 @@ defmodule YellowDog.Application do
     enabled_domains =
       resolved_profile
       |> enabled_server_domains()
-      |> MapSet.union(MapSet.new(["runtime", "settings"]))
+      |> MapSet.put("runtime")
 
     ServerOperation.all()
     |> Map.values()
@@ -632,7 +670,7 @@ defmodule YellowDog.Application do
 
   defp service_available?(service) do
     case ServiceRegistry.fetch(service) do
-      {:ok, %{available?: available?}} -> available?
+      {:ok, %{module: module}} -> Code.ensure_loaded?(service_module(service, module))
       :error -> false
     end
   end
@@ -718,6 +756,68 @@ defmodule YellowDog.Application do
       module when is_atom(module) -> module
       _invalid -> @default_server_agent_module
     end
+  end
+
+  if @compile_env == :test do
+    defp service_module(service, default_module) do
+      case Application.get_env(:yellow_dog, :service_module_overrides, %{}) do
+        overrides when is_map(overrides) ->
+          case Map.get(overrides, service, default_module) do
+            module when is_atom(module) and not is_nil(module) -> module
+            _invalid -> default_module
+          end
+
+        _invalid ->
+          default_module
+      end
+    end
+  else
+    defp service_module(_service, default_module), do: default_module
+  end
+
+  defp refresh_server_agent_identity(:server_agent), do: :ok
+
+  defp refresh_server_agent_identity(trigger_service) do
+    case Supervisor.terminate_child(YellowDog.Supervisor, @default_server_agent_module) do
+      :ok ->
+        restart_server_agent_child(trigger_service)
+
+      {:error, :not_found} ->
+        :ok
+
+      {:error, _reason} ->
+        emit_server_agent_refresh_error(trigger_service)
+    end
+  rescue
+    _exception -> emit_server_agent_refresh_error(trigger_service)
+  catch
+    _kind, _reason -> emit_server_agent_refresh_error(trigger_service)
+  end
+
+  defp restart_server_agent_child(trigger_service) do
+    case Supervisor.restart_child(YellowDog.Supervisor, @default_server_agent_module) do
+      {:ok, _pid} -> :ok
+      {:ok, _pid, _info} -> :ok
+      {:error, reason} when reason in [:not_found, :running] -> :ok
+      {:error, _reason} -> emit_server_agent_refresh_error(trigger_service)
+    end
+  end
+
+  defp emit_server_agent_refresh_error(trigger_service) do
+    :telemetry.execute(
+      [:yellow_dog, :application, :error],
+      %{count: 1},
+      %{
+        source: __MODULE__,
+        service: :server_agent,
+        trigger_service: trigger_service,
+        operation: :identity_refresh,
+        reason: :refresh_failed,
+        severity: :warning
+      }
+    )
+
+    :ok
   end
 
   defp sanitize_server_agent_start({:ok, pid} = started) when is_pid(pid), do: started

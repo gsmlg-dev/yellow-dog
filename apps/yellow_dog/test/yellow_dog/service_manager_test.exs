@@ -544,32 +544,6 @@ defmodule YellowDog.ServiceManagerTest do
       assert result == {:error, :unknown_service}
     end
 
-    test "start_service accepts server agent when available in the release" do
-      result =
-        try do
-          ServiceManager.start_service(:server_agent)
-        rescue
-          ArgumentError -> {:error, :supervisor_not_running}
-        catch
-          :exit, _ -> {:error, :supervisor_not_running}
-        end
-
-      assert result in [:ok, {:error, :supervisor_not_running}, {:error, :module_not_available}]
-    end
-
-    test "stop_service accepts server agent when available in the release" do
-      result =
-        try do
-          ServiceManager.stop_service(:server_agent)
-        rescue
-          _ -> {:error, :supervisor_not_running}
-        catch
-          :exit, _ -> {:error, :supervisor_not_running}
-        end
-
-      assert result in [:ok, {:error, :not_found}, {:error, :supervisor_not_running}]
-    end
-
     test "start_service updates active yellow_dog_server service flags" do
       original = YellowDog.Config.get_all()
 

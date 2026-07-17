@@ -1,66 +1,137 @@
 # Server Task 10 Report
 
 Date: 2026-07-18
+Base commit: `39a29cd7`
 
 ## Result
 
-Task 10 is implemented with `yellow_dog_server_agent: :load` unchanged.
-`YellowDog.Application` is the sole profile-driven lifecycle owner.
+Task 10 keeps `yellow_dog_server_agent: :load`. `YellowDog.Application` remains
+the sole profile-driven owner of the Server agent lifecycle; the agent OTP
+application is never made permanent or explicitly started.
 
-The Server agent child stored by `YellowDog.Supervisor` contains only:
+The long-lived child stored by `YellowDog.Supervisor` has ID
+`YellowDog.ServerAgent` and the secret-free start MFA:
 
 ```elixir
 {YellowDog.Application, :start_server_agent, [module]}
 ```
 
-Its child ID remains `YellowDog.ServerAgent`, matching the service registry and
-`YellowDog.ServiceManager.stop_service/1` contract even when tests inject a
-different implementation module.
+At initial start and restart, the MFA reads current `YellowDog.Config` state
+and sanitized runtime application configuration, rebuilds all options, and
+dynamically invokes the selected module's `start_link/1`. The child spec stores
+no management URL, credential, socket, configuration map, or function.
 
-At every initial start or supervisor restart, that function reads the current
-`YellowDog.Config` state and `:yellow_dog_server_agent, :runtime` application
-configuration, derives fresh options, and dynamically calls the available
-facade module's `start_link/1`. The stored child spec contains no management
-URL, credential, socket, configuration map, or function.
+Modern `[yellow_dog_server]` is the only source that may start the agent.
+Disabled custom profiles, legacy `[core]`, and missing modules remain
+non-fatal during application boot.
 
-Keeping the agent application loaded-only avoids an unconditional application
-start, duplicate named supervisors, and activation under disabled or legacy
-profiles. Modern `[yellow_dog_server]` is the only source that may select the
-agent. Disabled custom profiles, legacy `[core]`, and missing modules remain
-non-fatal.
+## Review Findings
+
+### Public lifecycle
+
+`YellowDog.Application.start_service_supervisor/2` now has a dedicated
+`:server_agent` path. It requires a modern profile and a selected module that
+is loaded and exports `start_link/1`, then installs the same late-bound child
+used at boot. Legacy profiles return `{:error, :unsupported_profile}` and
+missing modules return `{:error, :module_not_available}`, allowing
+`YellowDog.ServiceManager` to restore its attempted config flag.
+
+Public start, stop, and start-after-stop preserve child ID
+`YellowDog.ServerAgent`. The old permissive ServiceManager tests were replaced
+with strict lifecycle assertions while the real `YellowDog.Supervisor` runs.
+
+### Capability contract
+
+Capabilities remain sorted, unique, bounded strings derived from
+`YellowDog.Sync.ServerOperation.all/0`. Runtime capabilities are advertised;
+DNS, DHCP, mDNS, Netboot, and Identity capabilities require both an enabled
+service and an available production module.
+
+Settings capabilities are not advertised. The production
+`YellowDog.Server.Control` module is loaded in the contract test and is proven
+not to implement the ConfigApplier callbacks required for config application.
+The test also proves `settings.config.write` and the other wholly unsupported
+settings capabilities are absent.
+
+### Identity refresh
+
+After a successful public mutation of any non-agent service, the existing
+Server agent child is best-effort terminated and restarted from its stored
+late-bound spec. This rebuilds config revision and capabilities from the
+post-mutation config before subsequent status publication or reconnect.
+
+The public operation remains authoritative: an agent refresh failure never
+rolls back or changes the result of a target service mutation. Missing and
+racing children are harmless. Refresh telemetry contains only fixed atoms and
+the triggering service name; raw refresh failures are never inspected.
+Agent start failures likewise use the registry service atom so injected module
+failures remain sanitized.
+
+### Release barrier
+
+The disabled release VM starts only the telemetry dependency, attaches a
+handler before `Application.ensure_all_started(:yellow_dog)`, and waits for the
+startup-selection event whose skipped-service metadata contains
+`SERVER_AGENT`. It then detaches the handler and asserts that neither the named
+agent process nor the YellowDog child exists. The fixed sleep was removed.
+
+The enabled and disabled checks still run in separate release eval VMs with
+separate TOMLs. Neither VM explicitly starts the Server agent application.
 
 ## Runtime Behavior
 
-- Runtime configuration owns all six Server management environment reads.
-- Blank values are trimmed to `nil`; malformed retry integers become invalid
-  sentinels without raising during boot.
+- Runtime configuration is the sole reader of the six management environment
+  values.
+- Blank values are trimmed to `nil`; malformed retry integers fail closed
+  without raising during boot.
 - Retry defaults are `1_000` and `30_000` milliseconds only when both values
-  are absent. Values must be positive, ordered, and no greater than one day.
-- Runtime Server ID and agent data directory override profile/config values.
+  are absent. Bounds must be positive, ordered, and no greater than one day.
+- Runtime Server ID and agent data directory override profile values.
 - A concrete Server ID enables durable local state using the base YellowDog
-  data directory. The agent continues to own its `server/` subdirectory.
-- No concrete ID starts heartbeat-only. Incomplete outbound identity,
-  management configuration, or retry bounds keep durable local state but omit
-  the Client configuration.
-- Capabilities are sorted unique strings derived from
-  `YellowDog.Sync.ServerOperation.all/0`: runtime/settings are always
-  advertised, while DNS, DHCP, mDNS, Netboot, and Identity capabilities require
-  both an enabled profile service and an available service module.
-- Startup telemetry tracks the registry service name (`:server_agent`) rather
-  than the injected implementation module. Agent start failures are reduced to
-  bounded atoms before telemetry emission.
+  data directory; the agent owns its `server/` subdirectory.
+- No concrete ID starts heartbeat-only.
+- Incomplete outbound identity, management configuration, or retry bounds keep
+  durable local state but omit the Client and socket.
+- Management unavailability cannot fail YellowDog boot; reconnect remains a
+  background concern.
+
+## Test Coverage
+
+Focused application coverage proves:
+
+- modern enabled startup occurs once after `YellowDog.Supervisor` exists;
+- disabled custom, legacy, and missing-module selections do not start;
+- public start/stop/start uses the late-bound child and stable module ID;
+- legacy and missing-module public starts restore the attempted service flag;
+- option derivation, runtime overrides, data directory, revision, and
+  capabilities;
+- unsupported settings capabilities are absent;
+- missing outbound fields and invalid retries create no Client or socket;
+- complete configuration with an unavailable endpoint starts the real
+  dynamically loaded `YellowDog.ServerAgent` successfully using isolated
+  temporary state and no reconnect sleeps;
+- child specs recursively exclude URLs, credentials, sockets, maps, and
+  closures;
+- status, errors, and practical telemetry metadata remain sanitized;
+- a real safe service start changes revision/capabilities and stop restores
+  both;
+- refresh failure cannot reverse a completed target-service mutation.
 
 ## Files
 
+Task 10 total owned surface:
+
 - `apps/yellow_dog/lib/yellow_dog/application.ex`
 - `apps/yellow_dog/test/support/application_agent_fake.ex`
+- `apps/yellow_dog/test/support/application_service_fake.ex`
 - `apps/yellow_dog/test/yellow_dog/application_test.exs`
+- `apps/yellow_dog/test/yellow_dog/service_manager_test.exs`
 - `config/runtime.exs`
 - `config/test.exs`
 - `scripts/e2e/release_smoke.sh`
 - `.superpowers/sdd/server-task-10-report.md`
 
-No root `mix.exs`, protected console file, or ServerAgent production/test file
+No root `mix.exs`, protected Console file, or ServerAgent production/test file
 was edited or staged by Task 10.
 
 ## Verification
@@ -69,59 +140,56 @@ Red phase:
 
 ```text
 devenv shell -- mix cmd --app yellow_dog mix test test/yellow_dog/application_test.exs
+15 tests, 7 failures
 ```
 
-Result: failed on the missing late-bound APIs and the old controlled-invalid
-direct ServerAgent child, establishing the requested behavior before
-production edits.
+The public lifecycle regression reproduced the confirmed controlled-invalid
+failure: `invalid_configuration` containing the
+`{YellowDog.ServerAgent, :start_invalid, []}` child start, with no child
+installed. The remaining failures covered settings over-advertisement and the
+missing identity refresh.
 
-The focused suite also starts the real dynamically loaded
-`YellowDog.ServerAgent` with complete outbound configuration, isolated
-temporary durable data, and an unavailable loopback endpoint. YellowDog and
-the agent supervision tree remain alive while the Client reconnects in the
-background. No reconnect sleep is used by the assertion.
-
-Passing tests and compiles:
+Green tests:
 
 ```text
 devenv shell -- mix cmd --app yellow_dog mix test test/yellow_dog/application_test.exs
-9 tests, 0 failures
+15 tests, 0 failures
+
+devenv shell -- mix cmd --app yellow_dog mix test test/yellow_dog/application_test.exs test/yellow_dog/service_manager_test.exs
+71 tests, 0 failures
 
 devenv shell -- mix cmd --app yellow_dog mix test
-416 tests, 0 failures
+420 tests, 0 failures
 
+devenv shell -- mix cmd --app yellow_dog_server_agent mix test
+253 tests, 0 failures
+```
+
+Compiles:
+
+```text
 devenv shell -- mix cmd --app yellow_dog mix compile --warnings-as-errors
 passed
 
 devenv shell -- mix cmd --app yellow_dog_server_agent mix compile --warnings-as-errors
 passed
-
-devenv shell -- mix cmd --app yellow_dog_server_agent mix test
-253 tests, 0 failures
 ```
 
 Release:
 
 ```text
 devenv shell -- scripts/e2e/release_smoke.sh yellow_dog_server
-release built; enabled eval passed; disabled eval passed
+release built; enabled eval passed; disabled telemetry-barrier eval passed
 ```
-
-The Server smoke uses two separate TOMLs and release eval VMs. The enabled VM
-starts `:yellow_dog`, verifies the agent application itself was not started,
-verifies the YellowDog-owned durable agent and configured Server ID, and
-verifies no Client exists without management credentials. The disabled VM
-verifies both the named agent supervisor and YellowDog child are absent.
-Existing management-core and Netman module-boundary assertions remain.
 
 Static checks:
 
 ```text
-devenv shell -- mix format --check-formatted apps/yellow_dog/lib/yellow_dog/application.ex apps/yellow_dog/test/support/application_agent_fake.ex apps/yellow_dog/test/yellow_dog/application_test.exs config/runtime.exs config/test.exs
+devenv shell -- mix format --check-formatted <Task 10 Elixir files>
 passed
 
 devenv shell -- mix cmd --app yellow_dog mix credo --strict
-58 files, no issues
+59 files, no issues
 
 devenv shell -- mix cmd --app yellow_dog mix xref trace lib/yellow_dog/application.ex
 passed; only declared runtime dependencies reported
@@ -129,21 +197,22 @@ passed; only declared runtime dependencies reported
 bash -n scripts/e2e/release_smoke.sh
 passed
 
-git diff --check -- apps/yellow_dog/lib/yellow_dog/application.ex apps/yellow_dog/test config/runtime.exs config/test.exs scripts/e2e/release_smoke.sh
+git diff --check -- <Task 10 files>
 passed
 ```
 
-Forbidden scans for protocol-library changes, added `:gen_udp`, protocol-path
-files, and direct `Concord.*` calls all returned no matches.
+Forbidden scans found no added `:gen_udp`, direct `Concord.*` calls, production
+ServerAgent alias/direct calls, protocol-path changes, or ServerAgent file
+changes.
 
 ## Tooling Notes
 
-- `mix xref warnings` is not supported by Elixir 1.18; the supported scoped
-  `mix xref trace` command was used instead.
+- `mix cmd --app` emits the Elixir 1.18 deprecation warning recommending
+  `mix do --app`; all requested commands execute successfully.
+- `mix xref warnings` is unsupported by Elixir 1.18, so the supported scoped
+  `mix xref trace` command was used.
 - `shellcheck` is unavailable in the devenv; `bash -n` passed.
-- `mix cmd --app` emits an upstream deprecation warning recommending
-  `mix do --app`; the requested commands still execute successfully.
-- The first final ServerAgent suite run had one unchanged
-  `ConfigApplierTestAdapter.clear/0` teardown race (253 tests, 1 failure). The
-  exact test passed in isolation, and the immediate full-suite rerun passed all
-  253 tests. No ServerAgent file was changed.
+- The first telemetry-barrier smoke attempt reached the disabled VM before the
+  telemetry application was running. Starting only that dependency before
+  handler attachment fixed the barrier; the subsequent full build and both
+  isolated evals passed.
