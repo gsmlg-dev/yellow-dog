@@ -21,13 +21,17 @@ were made.
 - Exposes only `stage/2`, `current/1`, and `previous/1`; reads validate the
   exact manifest/document shapes, pointer-derived filename, identity, digest,
   config kind, profile, expected revision, and timestamp.
+- Before staging a higher version, validates every non-nil current and
+  previous pointer through the same strict immutable read path. Missing,
+  corrupt, mismatched, or swapped history fails closed before the incoming
+  immutable document or manifest can change.
 - Defers all Task 9 runtime activation, applied-pointer, lifecycle, and
   rollback behavior.
 
 ## Verification
 
-1. Focused ConfigStore tests: `12 tests, 0 failures`.
-2. Full Server-agent tests: `91 tests, 0 failures`.
+1. Focused ConfigStore tests: `15 tests, 0 failures`.
+2. Full Server-agent tests: `94 tests, 0 failures`.
 3. `mix compile --warnings-as-errors`: passed.
 4. Scoped `mix format --check-formatted`: passed.
-5. Scoped `mix credo --strict`: `80 mods/funs, found no issues`.
+5. Scoped `mix credo --strict`: `394 mods/funs, found no issues`.

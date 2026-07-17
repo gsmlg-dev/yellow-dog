@@ -95,6 +95,7 @@ defmodule YellowDog.ServerAgent.ConfigStore do
   defp stage_config(envelope, state) do
     with {:ok, config} <- validate_delivery(envelope, state),
          {:ok, manifest} <- manifest_for_staging(state),
+         :ok <- validate_staged_versions(manifest, state),
          {:ok, next_manifest, replace_manifest?} <- next_manifest(manifest, config),
          {:ok, _path} <-
            Storage.create(
@@ -113,9 +114,7 @@ defmodule YellowDog.ServerAgent.ConfigStore do
   defp read_selector(selector, state) when selector in [:current, :previous] do
     with {:ok, manifest} <- read_manifest(state),
          {:ok, pointer} <- selected_pointer(manifest, selector),
-         path <- version_path(state, pointer.version, pointer.digest),
-         {:ok, document} <- read_version(path, state),
-         {:ok, document} <- validate_immutable(document, pointer, path, state) do
+         {:ok, document} <- read_manifest_version(pointer, state) do
       {:ok, document}
     else
       {:error, %Error{}} = error -> error
@@ -175,6 +174,32 @@ defmodule YellowDog.ServerAgent.ConfigStore do
     case Storage.read(path, state.storage_opts) do
       {:error, %Error{code: :not_found}} -> invalid()
       other -> other
+    end
+  end
+
+  defp validate_staged_versions(%{current: current, previous: previous}, state) do
+    with :ok <- validate_staged_version(current, state),
+         :ok <- validate_staged_version(previous, state) do
+      :ok
+    end
+  end
+
+  defp validate_staged_versions(_manifest, _state), do: invalid()
+
+  defp validate_staged_version(nil, _state), do: :ok
+
+  defp validate_staged_version(pointer, state) do
+    with {:ok, _document} <- read_manifest_version(pointer, state) do
+      :ok
+    end
+  end
+
+  defp read_manifest_version(pointer, state) do
+    path = version_path(state, pointer.version, pointer.digest)
+
+    with {:ok, document} <- read_version(path, state),
+         {:ok, document} <- validate_immutable(document, pointer, path, state) do
+      {:ok, document}
     end
   end
 

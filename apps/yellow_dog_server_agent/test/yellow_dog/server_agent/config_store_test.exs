@@ -166,6 +166,77 @@ defmodule YellowDog.ServerAgent.ConfigStoreTest do
     assert {:error, %Error{code: :invalid}} = ConfigStore.current(store)
   end
 
+  test "fails closed staging N+1 after the current immutable document is deleted", %{
+    data_dir: data_dir
+  } do
+    store = start_store(data_dir)
+    first = envelope(1)
+    second = envelope(2)
+    incoming = envelope(3)
+
+    assert {:ok, _} = ConfigStore.stage(first, store)
+    assert {:ok, _} = ConfigStore.stage(second, store)
+    assert {:ok, manifest} = Storage.read(manifest_path(data_dir))
+    File.rm!(version_path(data_dir, 2, second.payload_digest))
+
+    assert {:error, %Error{code: :invalid}} = ConfigStore.stage(incoming, store)
+    assert {:ok, ^manifest} = Storage.read(manifest_path(data_dir))
+    refute File.exists?(version_path(data_dir, 3, incoming.payload_digest))
+  end
+
+  test "fails closed staging N+1 after the current immutable document is corrupt or mismatched",
+       %{
+         data_dir: data_dir
+       } do
+    for {name, replacement} <- [
+          {"corrupt", %{"invalid" => true}},
+          {"mismatched", %{"target_id" => "server-west-1"}}
+        ] do
+      test_data_dir = Path.join(data_dir, name)
+      store = start_store(test_data_dir)
+      first = envelope(1)
+      second = envelope(2)
+      incoming = envelope(3)
+
+      assert {:ok, _} = ConfigStore.stage(first, store)
+      assert {:ok, _} = ConfigStore.stage(second, store)
+      assert {:ok, manifest} = Storage.read(manifest_path(test_data_dir))
+      current_path = version_path(test_data_dir, 2, second.payload_digest)
+      assert {:ok, current} = Storage.read(current_path)
+      assert {:ok, _} = Storage.replace(current_path, Map.merge(current, replacement))
+
+      assert {:error, %Error{code: :invalid}} = ConfigStore.stage(incoming, store)
+      assert {:ok, ^manifest} = Storage.read(manifest_path(test_data_dir))
+      refute File.exists?(version_path(test_data_dir, 3, incoming.payload_digest))
+    end
+  end
+
+  test "fails closed staging N+1 after the previous immutable document is corrupt or missing", %{
+    data_dir: data_dir
+  } do
+    for name <- ["corrupt", "missing"] do
+      test_data_dir = Path.join(data_dir, name)
+      store = start_store(test_data_dir)
+      first = envelope(1)
+      second = envelope(2)
+      incoming = envelope(3)
+
+      assert {:ok, _} = ConfigStore.stage(first, store)
+      assert {:ok, _} = ConfigStore.stage(second, store)
+      assert {:ok, manifest} = Storage.read(manifest_path(test_data_dir))
+      previous_path = version_path(test_data_dir, 1, first.payload_digest)
+
+      case name do
+        "corrupt" -> assert {:ok, _} = Storage.replace(previous_path, %{"invalid" => true})
+        "missing" -> assert :ok = File.rm(previous_path)
+      end
+
+      assert {:error, %Error{code: :invalid}} = ConfigStore.stage(incoming, store)
+      assert {:ok, ^manifest} = Storage.read(manifest_path(test_data_dir))
+      refute File.exists?(version_path(test_data_dir, 3, incoming.payload_digest))
+    end
+  end
+
   test "rejects cross-id, cross-target, corrupt, and missing persisted state", %{
     data_dir: data_dir
   } do
