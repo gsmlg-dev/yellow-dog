@@ -218,12 +218,12 @@ defmodule YellowDog.Server.Control.Identity do
   end
 
   defp list_result(operation, items, payload, id_fun) do
-    bounded =
-      items
-      |> Enum.sort_by(id_fun)
-      |> Enum.take(Bounds.max_list_entries())
-
-    with {:ok, revision} <- Revision.calculate(bounded),
+    with :ok <- validate_unique_ids(items, id_fun),
+         bounded <-
+           items
+           |> Enum.sort_by(id_fun)
+           |> Enum.take(Bounds.max_list_entries()),
+         {:ok, revision} <- Revision.calculate(bounded),
          page <- paginate(bounded, payload, id_fun),
          {:ok, observed_at} <- observation_time(),
          result = %{
@@ -234,6 +234,12 @@ defmodule YellowDog.Server.Control.Identity do
          {:ok, result} <- validate_result(operation, result) do
       {:ok, result}
     end
+  end
+
+  defp validate_unique_ids(items, id_fun) do
+    if length(items) == length(Enum.uniq_by(items, id_fun)),
+      do: :ok,
+      else: invalid_error()
   end
 
   defp paginate(items, payload, id_fun) do

@@ -115,6 +115,32 @@ defmodule YellowDog.Server.Control.IdentityControlTest do
     refute inspect(rejected) =~ "audit-secret"
   end
 
+  test "cursor-paginated lists reject duplicate canonical IDs before bounding" do
+    duplicate_audit_id = "audit-duplicate"
+
+    duplicate_audits = [
+      Map.put(audit(1), "audit_id", duplicate_audit_id),
+      Map.put(audit(2), "audit_id", duplicate_audit_id)
+    ]
+
+    duplicate_hosts = [
+      host("host-duplicate", "pending"),
+      host("host-duplicate", "approved")
+    ]
+
+    for {operation, owner_function, response} <- [
+          {"server.identity.audit.list", :control_list_audit, {:ok, duplicate_audits}},
+          {"server.identity.hosts.list", :control_list_hosts, {:ok, duplicate_hosts}}
+        ] do
+      YellowDog.ServerIdentityControlFake.configure(%{owner_function => response})
+
+      result = Dispatcher.dispatch(envelope(operation, %{"limit" => 1}))
+
+      assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} = result
+      assert [{^owner_function, []}] = YellowDog.ServerIdentityControlFake.take_calls()
+    end
+  end
+
   test "approve, revoke, and delete use exact owner snapshots through the real Dispatcher" do
     pending = host("host-1", "pending")
     approved = host("host-1", "approved")

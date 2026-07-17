@@ -26,8 +26,11 @@ operations:
 - `server.identity.hosts.revoke`
 - `server.identity.hosts.delete`
 
-Host and audit lists are fully validated before any bound is applied, sorted by
-their fixed IDs, bounded to the Sync collection limit, revisioned over the
+Host and audit lists are fully validated before any bound is applied. Duplicate
+canonical `host_id` or `audit_id` values are rejected with the fixed sanitized
+`invalid` error before sorting, bounding, revisioning, or pagination, so a
+cursor cannot silently skip ambiguous owner snapshots. Unique lists are sorted
+by their fixed IDs, bounded to the Sync collection limit, revisioned over the
 complete bounded list before pagination, and timestamped through the injected
 clock. Host snapshots are accepted only when their fixed `revision` equals the
 canonical Server revision of the exact owner map.
@@ -122,6 +125,17 @@ list bounds/revisions/pagination, disabled and unavailable service gates,
 validation-first unsupported behavior, fixed owner resolution, invalid owner
 returns, and disclosure safety.
 
+### Independent Review Regression
+
+An independent review found that the fixed audit projection can produce equal
+`audit_id` values when separate entries share action, subject, and timestamp.
+The adapter now checks canonical-ID uniqueness after owner-item validation and
+before any list bound or cursor pagination. Focused real Dispatcher tests use
+no cursor, request `limit: 1`, assert the fake owner list function was called,
+and require the exact fixed `invalid value` error for duplicate audit and host
+IDs. This proves the rejection comes from validated owner-list handling rather
+than request validation, and that no lossy page is returned.
+
 ## Verification
 
 All commands ran through the repository devenv:
@@ -147,6 +161,33 @@ mix format --check-formatted \
   apps/yellow_dog/lib/yellow_dog/server/control/identity.ex \
   apps/yellow_dog/test/support/server_identity_control_fake.ex \
   apps/yellow_dog/test/yellow_dog/server/control/identity_control_test.exs
+# exit 0
+```
+
+### Independent Review Fix Verification
+
+```text
+cd apps/yellow_dog
+mix test test/yellow_dog/server/control/identity_control_test.exs --seed 0
+# 12 tests, 0 failures
+
+mix test --seed 0
+# 405 tests, 0 failures
+
+MIX_ENV=test mix compile --force --warnings-as-errors
+# Compiling 33 files; exit 0
+
+mix format --check-formatted \
+  lib/yellow_dog/server/control/identity.ex \
+  test/yellow_dog/server/control/identity_control_test.exs
+# exit 0
+
+MIX_ENV=test mix credo --strict \
+  lib/yellow_dog/server/control/identity.ex \
+  test/yellow_dog/server/control/identity_control_test.exs
+# 2 source files, 73 mods/funs, found no issues
+
+git diff --check
 # exit 0
 ```
 
