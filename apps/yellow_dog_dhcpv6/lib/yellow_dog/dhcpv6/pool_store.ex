@@ -132,11 +132,9 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
   @spec save_pool(pool_config()) :: :ok | {:error, term()}
   def save_pool(pool) do
-    pool_name = pool[:name] || pool.name
+    pool_name = pool_name(pool)
 
-    with :ok <- ensure_directories(),
-         :ok <- save_pool_file(pool),
-         :ok <- add_to_index(pool_name) do
+    with :ok <- persist_pool(pool) do
       :telemetry.execute(
         [:yellow_dog, :dhcpv6, :pool_store, :pool_saved],
         %{count: 1},
@@ -161,10 +159,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
   @spec remove_pool(String.t()) :: :ok | {:error, term()}
   def remove_pool(pool_name) do
-    pool_path = Path.join(pools_directory(), "#{pool_name}.toml")
-
-    with :ok <- remove_from_index(pool_name),
-         :ok <- delete_pool_file(pool_path) do
+    with :ok <- persist_pool_removal(pool_name) do
       :telemetry.execute(
         [:yellow_dog, :dhcpv6, :pool_store, :pool_removed],
         %{count: 1},
@@ -189,23 +184,15 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
   @spec save_all_pools([pool_config()]) :: :ok | {:error, term()}
   def save_all_pools(pools) do
-    with :ok <- ensure_directories() do
-      # Save each pool file
-      results =
-        Enum.map(pools, fn pool ->
-          {pool[:name] || pool.name, save_pool_file(pool)}
-        end)
+    case active_snapshot_directory() do
+      {:ok, _directory} ->
+        persist_snapshot(pools)
 
-      # Check for errors
-      errors = Enum.filter(results, fn {_, result} -> result != :ok end)
+      {:error, :snapshot_pointer_missing} ->
+        save_all_pools_legacy(pools)
 
-      if errors == [] do
-        # Rebuild index with all pool names
-        pool_names = Enum.map(pools, fn pool -> pool[:name] || pool.name end)
-        save_index(pool_names)
-      else
-        {:error, {:save_errors, errors}}
-      end
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -271,7 +258,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   @spec control_persist_snapshot([pool_config()]) :: :ok | {:error, term()}
   def control_persist_snapshot(pools) when is_list(pools) do
     with :ok <- validate_control_snapshot(pools) do
-      persist_control_snapshot(pools)
+      persist_snapshot(pools)
     end
   end
 
@@ -334,7 +321,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   defp active_index_path do
     case active_snapshot_directory() do
       {:ok, directory} -> {:ok, Path.join(directory, "pools.toml")}
-      {:error, :snapshot_pointer_missing} -> {:ok, Path.join(get_data_dir(), "pools.toml")}
+      {:error, :snapshot_pointer_missing} -> {:ok, legacy_index_path()}
       {:error, _reason} = error -> error
     end
   end
@@ -367,7 +354,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
       else: {:error, :invalid_snapshot_pointer}
   end
 
-  defp persist_control_snapshot(pools) do
+  defp persist_snapshot(pools) do
     generation = snapshot_generation()
     generation_directory = Path.join(snapshot_root(), generation)
     pools_directory = Path.join(generation_directory, "pools")
@@ -424,9 +411,85 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
   defp pool_name(pool), do: pool[:name] || pool.name
 
-  defp ensure_directories do
-    pools_dir = pools_directory()
+  defp persist_pool(pool) do
+    case active_snapshot_directory() do
+      {:ok, directory} ->
+        with {:ok, pools} <- load_pools(Path.join(directory, "pools.toml")) do
+          persist_snapshot(upsert_pool(pools, pool))
+        end
 
+      {:error, :snapshot_pointer_missing} ->
+        save_pool_legacy(pool)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp persist_pool_removal(pool_name) do
+    case active_snapshot_directory() do
+      {:ok, directory} ->
+        with {:ok, pools} <- load_pools(Path.join(directory, "pools.toml")) do
+          persist_snapshot(Enum.reject(pools, &(pool_name(&1) == pool_name)))
+        end
+
+      {:error, :snapshot_pointer_missing} ->
+        remove_pool_legacy(pool_name)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp upsert_pool(pools, pool) do
+    case Enum.find_index(pools, &(pool_name(&1) == pool_name(pool))) do
+      nil -> pools ++ [pool]
+      index -> List.replace_at(pools, index, pool)
+    end
+  end
+
+  defp save_pool_legacy(pool) do
+    pools_directory = legacy_pools_directory()
+
+    with :ok <- ensure_directories(pools_directory),
+         :ok <- save_pool_file(pool, pools_directory),
+         :ok <- add_to_legacy_index(pool_name(pool)) do
+      :ok
+    end
+  end
+
+  defp remove_pool_legacy(pool_name) do
+    pool_path = Path.join(legacy_pools_directory(), "#{pool_name}.toml")
+
+    with :ok <- remove_from_legacy_index(pool_name),
+         :ok <- delete_pool_file(pool_path) do
+      :ok
+    end
+  end
+
+  defp save_all_pools_legacy(pools) do
+    pools_directory = legacy_pools_directory()
+
+    with :ok <- ensure_directories(pools_directory) do
+      results =
+        Enum.map(pools, fn pool ->
+          {pool_name(pool), save_pool_file(pool, pools_directory)}
+        end)
+
+      errors = Enum.filter(results, fn {_, result} -> result != :ok end)
+
+      if errors == [] do
+        save_index(Enum.map(pools, &pool_name/1), legacy_index_path())
+      else
+        {:error, {:save_errors, errors}}
+      end
+    end
+  end
+
+  defp legacy_index_path, do: Path.join(get_data_dir(), "pools.toml")
+  defp legacy_pools_directory, do: Path.join(get_data_dir(), "pools")
+
+  defp ensure_directories(pools_dir) do
     case File.mkdir_p(pools_dir) do
       :ok -> :ok
       {:error, reason} -> {:error, {:mkdir_failed, reason}}
@@ -491,9 +554,9 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     end
   end
 
-  defp save_pool_file(pool) do
-    pool_name = pool[:name] || pool.name
-    pool_path = Path.join(pools_directory(), "#{pool_name}.toml")
+  defp save_pool_file(pool, pools_directory) do
+    pool_name = pool_name(pool)
+    pool_path = Path.join(pools_directory, "#{pool_name}.toml")
     content = pool_to_toml(pool)
 
     case atomic_write(pool_path, content) do
@@ -510,8 +573,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     end
   end
 
-  defp save_index(pool_names) do
-    index_path = default_index_path()
+  defp save_index(pool_names, index_path) do
     atomic_write(index_path, pool_index_toml(pool_names))
   end
 
@@ -525,29 +587,29 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     """
   end
 
-  defp add_to_index(pool_name) do
-    index_path = default_index_path()
+  defp add_to_legacy_index(pool_name) do
+    index_path = legacy_index_path()
 
     case load_index(index_path) do
       {:ok, names} ->
         if pool_name in names do
           :ok
         else
-          save_index(names ++ [pool_name])
+          save_index(names ++ [pool_name], index_path)
         end
 
       {:error, _} ->
-        save_index([pool_name])
+        save_index([pool_name], index_path)
     end
   end
 
-  defp remove_from_index(pool_name) do
-    index_path = default_index_path()
+  defp remove_from_legacy_index(pool_name) do
+    index_path = legacy_index_path()
 
     case load_index(index_path) do
       {:ok, names} ->
         new_names = Enum.reject(names, &(&1 == pool_name))
-        save_index(new_names)
+        save_index(new_names, index_path)
 
       {:error, _} ->
         :ok

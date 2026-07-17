@@ -5,24 +5,29 @@ defmodule YellowDog.Dhcpv6.PoolStoreFaultFileOps do
 
   @count_key {__MODULE__, :write_count}
   @failure_key {__MODULE__, :failure_write}
+  @paths_key {__MODULE__, :write_paths}
 
   def reset do
     Process.delete(@count_key)
     Process.delete(@failure_key)
+    Process.delete(@paths_key)
   end
 
   def fail_on_write(write_number) do
     Process.put(@count_key, 0)
     Process.put(@failure_key, write_number)
+    Process.put(@paths_key, [])
   end
 
   def write_count, do: Process.get(@count_key, 0)
+  def write_paths, do: Process.get(@paths_key, []) |> Enum.reverse()
 
   def mkdir_p(path), do: File.mkdir_p(path)
 
   def atomic_write(path, content) do
     write_number = Process.get(@count_key, 0) + 1
     Process.put(@count_key, write_number)
+    Process.put(@paths_key, [path | Process.get(@paths_key, [])])
 
     if write_number == Process.get(@failure_key) do
       {:error, {:injected_write_failure, write_number}}
@@ -345,6 +350,79 @@ defmodule YellowDog.Dhcpv6.PoolStoreTest do
   end
 
   describe "control pool facade" do
+    test "single-pool writers publish new generations after a control commit", %{
+      tmp_dir: tmp_dir
+    } do
+      use_snapshot_storage(tmp_dir)
+      {old_snapshot, committed} = commit_snapshot(tmp_dir)
+      [updated_office | _] = update_office_range(old_snapshot)
+
+      assert :ok = PoolStore.save_pool(updated_office)
+      updated_pointer = File.read!(committed.pointer_path)
+      refute updated_pointer == committed.pointer
+      assert File.read!(committed.pool_path) == committed.pool
+
+      assert {:ok, updated_pools} = PoolStore.load_pools()
+      assert Enum.find(updated_pools, &(&1.name == "office")).range_end == "2001:db8:1::2ff"
+
+      assert :ok = PoolStore.remove_pool("guest")
+      removed_pointer = File.read!(committed.pointer_path)
+      refute removed_pointer == updated_pointer
+
+      assert {:ok, remaining_pools} = PoolStore.load_pools()
+      assert Enum.map(remaining_pools, & &1.name) == ["office"]
+      assert File.read!(committed.pool_path) == committed.pool
+    end
+
+    test "legacy batch failure cannot mutate the committed generation", %{tmp_dir: tmp_dir} do
+      use_snapshot_storage(tmp_dir)
+      {old_snapshot, committed} = commit_snapshot(tmp_dir)
+      updated_snapshot = update_office_range(old_snapshot)
+
+      PoolStoreFaultFileOps.fail_on_write(2)
+
+      assert {:error, {:injected_write_failure, 2}} =
+               PoolStore.save_all_pools(updated_snapshot)
+
+      assert PoolStoreFaultFileOps.write_count() == 2
+      assert_prior_snapshot_authoritative(committed, old_snapshot)
+    end
+
+    test "generation-index staging failure keeps the prior snapshot authoritative", %{
+      tmp_dir: tmp_dir
+    } do
+      use_snapshot_storage(tmp_dir)
+      {old_snapshot, committed} = commit_snapshot(tmp_dir)
+
+      PoolStoreFaultFileOps.fail_on_write(3)
+
+      assert {:error, {:injected_write_failure, 3}} =
+               PoolStore.control_persist_snapshot(update_office_range(old_snapshot))
+
+      assert PoolStoreFaultFileOps.write_count() == 3
+
+      failed_path = List.last(PoolStoreFaultFileOps.write_paths())
+      assert Path.basename(failed_path) == "pools.toml"
+      assert String.starts_with?(failed_path, committed.snapshot_root <> "/")
+      assert_prior_snapshot_authoritative(committed, old_snapshot)
+    end
+
+    test "pointer activation failure keeps the prior snapshot authoritative", %{
+      tmp_dir: tmp_dir
+    } do
+      use_snapshot_storage(tmp_dir)
+      {old_snapshot, committed} = commit_snapshot(tmp_dir)
+
+      PoolStoreFaultFileOps.fail_on_write(4)
+
+      assert {:error, {:injected_write_failure, 4}} =
+               PoolStore.control_persist_snapshot(update_office_range(old_snapshot))
+
+      assert PoolStoreFaultFileOps.write_count() == 4
+      assert List.last(PoolStoreFaultFileOps.write_paths()) == committed.pointer_path
+      assert_prior_snapshot_authoritative(committed, old_snapshot)
+    end
+
     test "partial snapshot write keeps the complete prior generation authoritative", %{
       tmp_dir: tmp_dir
     } do
@@ -505,6 +583,71 @@ defmodule YellowDog.Dhcpv6.PoolStoreTest do
       preferred_lifetime: lifetime,
       valid_lifetime: lifetime
     }
+  end
+
+  defp use_snapshot_storage(tmp_dir) do
+    previous_data_dir = Application.get_env(:yellow_dog, :data_dir)
+    previous_pool_store = Application.get_env(:yellow_dog_dhcpv6, PoolStore)
+
+    Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+    Application.put_env(:yellow_dog_dhcpv6, PoolStore, snapshot_file_ops: PoolStoreFaultFileOps)
+    PoolStoreFaultFileOps.reset()
+
+    on_exit(fn ->
+      PoolStoreFaultFileOps.reset()
+      restore_env(:yellow_dog, :data_dir, previous_data_dir)
+      restore_env(:yellow_dog_dhcpv6, PoolStore, previous_pool_store)
+    end)
+  end
+
+  defp commit_snapshot(tmp_dir) do
+    old_snapshot = [
+      control_pool("office", "2001:db8:1::", 3600),
+      control_pool("guest", "2001:db8:2::", 3600)
+    ]
+
+    assert :ok = PoolStore.control_persist_snapshot(old_snapshot)
+
+    data_dir = Path.join(tmp_dir, "dhcpv6")
+    pointer_path = Path.join(data_dir, "pools.current")
+    snapshot_root = Path.join(data_dir, "pool_snapshots")
+    pointer = File.read!(pointer_path)
+    generation = String.trim(pointer)
+    generation_dir = Path.join(snapshot_root, generation)
+    index_path = Path.join(generation_dir, "pools.toml")
+    pool_path = Path.join([generation_dir, "pools", "office.toml"])
+
+    committed = %{
+      pointer_path: pointer_path,
+      pointer: pointer,
+      snapshot_root: snapshot_root,
+      generation: generation,
+      index_path: index_path,
+      index: File.read!(index_path),
+      pool_path: pool_path,
+      pool: File.read!(pool_path)
+    }
+
+    {old_snapshot, committed}
+  end
+
+  defp update_office_range(pools) do
+    Enum.map(pools, fn
+      %{name: "office"} = pool -> %{pool | range_end: "2001:db8:1::2ff"}
+      pool -> pool
+    end)
+  end
+
+  defp assert_prior_snapshot_authoritative(committed, old_snapshot) do
+    assert File.read!(committed.pointer_path) == committed.pointer
+    assert File.read!(committed.index_path) == committed.index
+    assert File.read!(committed.pool_path) == committed.pool
+    assert File.ls!(committed.snapshot_root) == [committed.generation]
+
+    assert {:ok, persisted_pools} = PoolStore.load_pools()
+
+    assert Enum.map(persisted_pools, &{&1.name, &1.range_end}) ==
+             Enum.map(old_snapshot, &{&1.name, &1.range_end})
   end
 
   defp restore_env(application, key, nil), do: Application.delete_env(application, key)
