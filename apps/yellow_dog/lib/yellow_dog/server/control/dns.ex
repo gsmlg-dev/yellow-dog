@@ -46,6 +46,7 @@ defmodule YellowDog.Server.Control.Dns do
     acl_codec: Module.concat(["YellowDog", "Dns", "View", "ACL"]),
     provider_store: Module.concat(["YellowDog", "Store", "Provider"]),
     provider_facade: Module.concat(["YellowDog", "DnsProvider"]),
+    tasks: Module.concat(["YellowDog", "Tasks"]),
     zone_controller: Module.concat(["YellowDog", "Dns", "ZoneController"]),
     query_logger: Module.concat(["YellowDog", "Dns", "QueryLogger"]),
     metrics_collector: Module.concat(["YellowDog", "Dns", "MetricsCollector"]),
@@ -109,6 +110,9 @@ defmodule YellowDog.Server.Control.Dns do
 
   def dispatch("server.dns.zones.delete", payload) when is_map(payload),
     do: delete_zone(payload)
+
+  def dispatch("server.dns.zones.sync", payload) when is_map(payload),
+    do: sync_zone(payload)
 
   def dispatch("server.dns.records.create", payload) when is_map(payload),
     do: mutate_record(:create, payload)
@@ -432,6 +436,25 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
+  defp sync_zone(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.zones.sync", payload),
+         payload <- canonicalize_zone_payload(payload),
+         {:ok, enqueue_result} <-
+           dependency_call(:tasks, :enqueue_cloud_zone_sync, [
+             payload["view_name"],
+             payload["zone_name"],
+             payload["provider_id"]
+           ]),
+         :ok <- cloud_sync_enqueue_result(enqueue_result),
+         {:ok, zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
+         {:ok, result} <- cloud_sync_result(payload, zone) do
+      {:ok, result}
+    else
+      {:error, %Error{}} = error -> error
+      _failure -> apply_failed_error()
+    end
+  end
+
   defp mutate_record(action, payload) do
     operation = "server.dns.records.#{action}"
 
@@ -640,6 +663,29 @@ defmodule YellowDog.Server.Control.Dns do
   end
 
   defp provider_binding(_provider_id), do: invalid_error()
+
+  defp cloud_sync_enqueue_result({:ok, _job}), do: :ok
+  defp cloud_sync_enqueue_result({:error, :not_found}), do: not_found_error()
+  defp cloud_sync_enqueue_result({:error, :conflict}), do: conflict_error()
+  defp cloud_sync_enqueue_result({:error, :unsupported}), do: unsupported_error()
+  defp cloud_sync_enqueue_result({:error, :apply_failed}), do: apply_failed_error()
+  defp cloud_sync_enqueue_result(_result), do: apply_failed_error()
+
+  defp cloud_sync_result(payload, zone) do
+    with [resource] <- project_zone(zone, payload["view_name"]),
+         {:ok, revision} <- Revision.calculate(resource),
+         {:ok, result} <-
+           validate_operation_result("server.dns.zones.sync", %{
+             "view_name" => payload["view_name"],
+             "zone_name" => payload["zone_name"],
+             "changed_records" => 0,
+             "revision" => revision
+           }) do
+      {:ok, result}
+    else
+      _invalid -> invalid_error()
+    end
+  end
 
   defp unwrap_provider({:ok, provider}) when is_map(provider), do: {:ok, provider}
   defp unwrap_provider({:error, :not_found}), do: not_found_error()

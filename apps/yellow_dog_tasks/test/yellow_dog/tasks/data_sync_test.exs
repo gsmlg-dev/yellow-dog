@@ -11,6 +11,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
   alias YellowDog.Tasks.Workers.SyncIpDatabaseWorker
   alias YellowDog.Tasks.Workers.SyncMacDatabaseWorker
   alias YellowDog.Store.Backend.Ets, as: EtsBackend
+  alias YellowDog.Store.Provider
   alias YellowDog.Store.Zone
 
   defmodule ExitWorker do
@@ -92,6 +93,7 @@ defmodule YellowDog.Tasks.DataSyncTest do
         :cloud_zone_sync_fun,
         :store_backend,
         :task_supervisor,
+        :task_starter,
         :test_minute_id,
         :test_parent
       ])
@@ -153,6 +155,115 @@ defmodule YellowDog.Tasks.DataSyncTest do
 
     refute "cloud_zone:default:#{disabled_zone_name}" in task_keys
     refute "cloud_zone:default:#{plain_zone_name}" in task_keys
+  end
+
+  test "validates cloud-zone bindings before creating a job" do
+    zone_name = "cloud-validate-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :cloudflare)
+    key = "cloud_zone:default:#{zone_name}"
+
+    assert {:error, :not_found} =
+             Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+    assert [] = Tasks.recent_jobs(key)
+
+    :ok =
+      Provider.put_config(%{
+        name: "cloud-main",
+        type: :cloudflare,
+        credentials: %{api_token: "test-token"},
+        enabled: false
+      })
+
+    assert {:error, :unsupported} =
+             Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+    assert [] = Tasks.recent_jobs(key)
+
+    assert {:error, :conflict} =
+             Tasks.enqueue_cloud_zone_sync("default", zone_name, "different-provider")
+
+    assert [] = Tasks.recent_jobs(key)
+  end
+
+  test "does not bypass disabled mirrors or unsupported provider types" do
+    disabled_zone = "cloud-disabled-#{System.unique_integer([:positive])}.example.com"
+    unsupported_zone = "cloud-unsupported-#{System.unique_integer([:positive])}.example.com"
+
+    create_cloud_zone("default", disabled_zone, :cloudflare, enabled: false)
+    create_cloud_zone("default", unsupported_zone, :rfc2136)
+
+    :ok =
+      Provider.put_config(%{
+        name: "cloud-main",
+        type: :cloudflare,
+        credentials: %{api_token: "test-token"},
+        enabled: true
+      })
+
+    assert {:error, :unsupported} =
+             Tasks.enqueue_cloud_zone_sync("default", disabled_zone, "cloud-main")
+
+    assert {:error, :unsupported} =
+             Tasks.enqueue_cloud_zone_sync("default", unsupported_zone, "cloud-main")
+
+    assert [] = Tasks.recent_jobs("cloud_zone:default:#{disabled_zone}")
+    assert [] = Tasks.recent_jobs("cloud_zone:default:#{unsupported_zone}")
+  end
+
+  test "manually enqueues distinct cloud-zone jobs when its schedule is disabled" do
+    zone_name = "cloud-manual-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :route53)
+    key = "cloud_zone:default:#{zone_name}"
+
+    :ok =
+      Provider.put_config(%{
+        name: "cloud-main",
+        type: :aws,
+        credentials: %{},
+        enabled: true
+      })
+
+    Application.put_env(:yellow_dog_tasks, :tasks_config, %{
+      "sync" => %{key => %{"enabled" => false, "cron" => "0 * * * *", "max_attempts" => 3}}
+    })
+
+    Application.put_env(:yellow_dog_tasks, :task_starter, fn task_key, job_id ->
+      assert {:ok, %{args: %{"force" => true}}} = Store.get_job(task_key, job_id)
+      :ok
+    end)
+
+    assert {:ok, first} = Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+    assert {:ok, second} = Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+    assert first.id != second.id
+
+    assert Enum.map(Tasks.recent_jobs(key), & &1.id) |> Enum.sort() ==
+             Enum.sort([first.id, second.id])
+  end
+
+  test "deletes a cloud-zone job when child startup fails" do
+    zone_name = "cloud-start-failure-#{System.unique_integer([:positive])}.example.com"
+    create_cloud_zone("default", zone_name, :cloudflare)
+    key = "cloud_zone:default:#{zone_name}"
+
+    :ok =
+      Provider.put_config(%{
+        name: "cloud-main",
+        type: :cloudflare,
+        credentials: %{api_token: "test-token"},
+        enabled: true
+      })
+
+    Application.put_env(:yellow_dog_tasks, :task_starter, fn task_key, job_id ->
+      assert {:ok, _job} = Store.get_job(task_key, job_id)
+      {:error, :child_start_failed}
+    end)
+
+    assert {:error, :apply_failed} =
+             Tasks.enqueue_cloud_zone_sync("default", zone_name, "cloud-main")
+
+    assert [] = Tasks.recent_jobs(key)
   end
 
   test "updates cloud zone task schedule without creating atoms" do

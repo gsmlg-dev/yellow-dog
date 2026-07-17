@@ -9,6 +9,41 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
   alias YellowDog.Store.Provider
   alias YellowDog.Store.Zone
 
+  defmodule ReplacementStore do
+    use Agent
+
+    def start_link(_opts), do: Agent.start_link(fn -> %{} end, name: __MODULE__)
+    def configure(state), do: Agent.update(__MODULE__, &Map.merge(&1, state))
+    def calls, do: Agent.get(__MODULE__, &Enum.reverse(Map.get(&1, :calls, [])))
+
+    def get_zone(_view_name, _zone_name), do: call(:get_zone, &{{:ok, &1.zone}, &1})
+    def get_config(_provider_id), do: call(:get_config, &{{:ok, &1.provider}, &1})
+
+    def replace_records(_view_name, _zone_name, records) do
+      call({:replace_records, records}, fn state ->
+        [result | remaining] = state.replace_results
+        {result, %{state | replace_results: remaining}}
+      end)
+    end
+
+    def reload_zone(_view_name, :auth, _zone_name, []) do
+      call(:reload_zone, fn state ->
+        [result | remaining] = state.reload_results
+        {result, %{state | reload_results: remaining}}
+      end)
+    end
+
+    def cache_invalidated(_view_name, _zone_name), do: call(:cache_invalidated, &{:ok, &1})
+    def fetched, do: call(:fetched, &{:ok, &1})
+
+    defp call(label, fun) do
+      Agent.get_and_update(__MODULE__, fn state ->
+        {result, state} = fun.(state)
+        {result, Map.update(state, :calls, [label], &[label | &1])}
+      end)
+    end
+  end
+
   setup do
     previous_backend = Backend.active()
 
@@ -66,9 +101,14 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
 
     assert Auth.get_records(pid, "www.#{zone_name}", :a) == []
 
+    assert :ok =
+             Zone.put_rrset(view_name, zone_name, "stale.#{zone_name}", :a, [
+               %{address: "192.0.2.99", ttl: 60}
+             ])
+
     test_pid = self()
 
-    assert {:ok, %{records_synced: 3, provider: :cloudflare}} =
+    assert {:ok, %{records_synced: 4, provider: :cloudflare}} =
              CloudDnsSync.sync_zone_from_cloud(view_name, zone_name,
                request_fun: &cloudflare_fixture/1,
                cache_invalidator: fn invalidated_view, invalidated_zone ->
@@ -83,6 +123,7 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
     assert Enum.any?(rrsets, &(&1.owner == "www.#{zone_name}" and &1.type == :a))
     assert Enum.any?(rrsets, &(&1.owner == zone_name and &1.type == :txt))
     assert Enum.any?(rrsets, &(&1.owner == zone_name and &1.type == :mx))
+    refute Enum.any?(rrsets, &(&1.owner == "stale.#{zone_name}" and &1.type == :a))
 
     records = Auth.get_records(pid, "www.#{zone_name}", :a)
     assert [%{data: %{data: {192, 0, 2, 10}}, ttl: 120}] = records
@@ -136,6 +177,107 @@ defmodule YellowDog.Dns.CloudDnsSyncTest do
 
     records = Auth.get_records(pid, "www.#{zone_name}", :a)
     assert [%{data: %{data: {198, 51, 100, 25}}, ttl: 60}] = records
+  end
+
+  test "fetches complete remote records before replacement, then reloads and invalidates caches" do
+    start_supervised!(ReplacementStore)
+
+    previous = [%{owner: "stale.gsmlg.dev", type: :a, rrset: [%{address: "192.0.2.99", ttl: 60}]}]
+
+    ReplacementStore.configure(%{
+      zone: cloud_zone(),
+      provider: cloudflare_provider(),
+      replace_results: [{:ok, %{previous: previous, changed_count: 3}}],
+      reload_results: [:ok]
+    })
+
+    assert {:ok, %{provider: :cloudflare, records_synced: 3}} =
+             CloudDnsSync.sync_zone_from_cloud("default", "gsmlg.dev",
+               request_fun: &recording_cloudflare_fixture/1,
+               zone_store: ReplacementStore,
+               provider_store: ReplacementStore,
+               zone_controller: ReplacementStore,
+               cache_invalidator: &ReplacementStore.cache_invalidated/2
+             )
+
+    calls = ReplacementStore.calls()
+    replace_index = Enum.find_index(calls, &match?({:replace_records, _}, &1))
+    assert Enum.count(Enum.take(calls, replace_index), &(&1 == :fetched)) == 2
+    assert calls |> Enum.drop_while(&(&1 != :reload_zone)) |> hd() == :reload_zone
+    assert List.last(calls) == :cache_invalidated
+  end
+
+  test "restores the prior replacement and reloads it when activation fails" do
+    start_supervised!(ReplacementStore)
+
+    previous = [%{owner: "stale.gsmlg.dev", type: :a, rrset: [%{address: "192.0.2.99", ttl: 60}]}]
+
+    ReplacementStore.configure(%{
+      zone: cloud_zone(),
+      provider: cloudflare_provider(),
+      replace_results: [
+        {:ok, %{previous: previous, changed_count: 3}},
+        {:ok, %{previous: [], changed_count: 3}}
+      ],
+      reload_results: [{:error, :reload_failed}, :ok]
+    })
+
+    assert {:error, :apply_failed} =
+             CloudDnsSync.sync_zone_from_cloud("default", "gsmlg.dev",
+               request_fun: &recording_cloudflare_fixture/1,
+               zone_store: ReplacementStore,
+               provider_store: ReplacementStore,
+               zone_controller: ReplacementStore,
+               cache_invalidator: &ReplacementStore.cache_invalidated/2
+             )
+
+    assert [
+             {:replace_records, _desired},
+             :reload_zone,
+             {:replace_records, ^previous},
+             :reload_zone
+           ] =
+             ReplacementStore.calls()
+             |> Enum.filter(&(match?({:replace_records, _}, &1) or &1 == :reload_zone))
+
+    refute :cache_invalidated in ReplacementStore.calls()
+  end
+
+  test "reports rollback failure when restored activation also fails" do
+    start_supervised!(ReplacementStore)
+
+    previous = [%{owner: "stale.gsmlg.dev", type: :a, rrset: [%{address: "192.0.2.99", ttl: 60}]}]
+
+    ReplacementStore.configure(%{
+      zone: cloud_zone(),
+      provider: cloudflare_provider(),
+      replace_results: [
+        {:ok, %{previous: previous, changed_count: 3}},
+        {:ok, %{previous: [], changed_count: 3}}
+      ],
+      reload_results: [{:error, :reload_failed}, {:error, :restored_reload_failed}]
+    })
+
+    assert {:error, :rollback_failed} =
+             CloudDnsSync.sync_zone_from_cloud("default", "gsmlg.dev",
+               request_fun: &recording_cloudflare_fixture/1,
+               zone_store: ReplacementStore,
+               provider_store: ReplacementStore,
+               zone_controller: ReplacementStore
+             )
+  end
+
+  defp cloud_zone do
+    %{cloud_mirror: %{enabled: true, connector_name: "cf-main", zone_id: ""}}
+  end
+
+  defp cloudflare_provider do
+    %{name: "cf-main", type: :cloudflare, credentials: %{api_token: "test-token"}, enabled: true}
+  end
+
+  defp recording_cloudflare_fixture(opts) do
+    ReplacementStore.fetched()
+    cloudflare_fixture(opts)
   end
 
   defp cloudflare_fixture(opts) do

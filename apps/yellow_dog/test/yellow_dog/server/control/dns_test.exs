@@ -60,6 +60,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       acl_codec: ServerDnsControlFake.AclCodec,
       provider_store: ServerDnsControlFake.ProviderStore,
       provider_facade: ServerDnsControlFake.ProviderFacade,
+      tasks: ServerDnsControlFake.Tasks,
       query_logger: ServerDnsControlFake.QueryLogger,
       metrics_collector: ServerDnsControlFake.MetricsCollector,
       clock: ServerDnsControlFake.Clock
@@ -195,6 +196,64 @@ defmodule YellowDog.Server.Control.DnsTest do
               ]},
              {:zone_controller, :start_zone, [:auth, "example.test", [view_name: "default"]]}
            ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "accepts a cloud-zone sync without reporting completed record changes" do
+    zone =
+      Map.put(authoritative_zone(), :cloud_mirror, %{
+        enabled: true,
+        connector_name: "cf-main",
+        provider: :cloudflare
+      })
+
+    ServerDnsControlFake.configure(%{
+      zone_metadata: %{{"default", "example.test"} => zone}
+    })
+
+    assert {:ok, result} =
+             Dns.dispatch("server.dns.zones.sync", %{
+               "view_name" => "default",
+               "zone_name" => "Example.Test.",
+               "provider_id" => "cf-main"
+             })
+
+    assert result["view_name"] == "default"
+    assert result["zone_name"] == "example.test"
+    assert result["changed_records"] == 0
+    assert_valid_result("server.dns.zones.sync", result)
+
+    expected_resource = %{
+      "view_name" => "default",
+      "zone_name" => "example.test",
+      "zone_type" => "authoritative",
+      "provider_id" => "cf-main"
+    }
+
+    assert {:ok, expected_revision} = Revision.calculate(expected_resource)
+    assert result["revision"] == expected_revision
+
+    assert [
+             {:tasks, :enqueue_cloud_zone_sync, ["default", "example.test", "cf-main"]},
+             {:zone_store, :get_zone, ["default", "example.test"]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "maps cloud-zone enqueue failures to stable Sync errors" do
+    for {owner_result, code} <- [
+          {{:error, :not_found}, :not_found},
+          {{:error, :conflict}, :conflict},
+          {{:error, :unsupported}, :unsupported},
+          {{:error, :apply_failed}, :apply_failed}
+        ] do
+      ServerDnsControlFake.configure(%{responses: %{enqueue_cloud_zone_sync: [owner_result]}})
+
+      assert {:error, %Error{code: ^code}} =
+               Dns.dispatch("server.dns.zones.sync", %{
+                 "view_name" => "default",
+                 "zone_name" => "example.test",
+                 "provider_id" => "cf-main"
+               })
+    end
   end
 
   test "creates each fixed RR type with its exact Store encoding" do
@@ -1987,6 +2046,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       "server.dns.zones.create",
       "server.dns.zones.update",
       "server.dns.zones.delete",
+      "server.dns.zones.sync",
       "server.dns.records.create",
       "server.dns.records.update",
       "server.dns.records.delete"

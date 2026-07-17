@@ -452,6 +452,18 @@ defmodule YellowDog.ServerDnsControlFake.ProviderFacade do
   end
 end
 
+defmodule YellowDog.ServerDnsControlFake.Tasks do
+  @moduledoc false
+
+  def enqueue_cloud_zone_sync(view_name, zone_name, provider_id) do
+    YellowDog.ServerDnsControlFake.operation(
+      :enqueue_cloud_zone_sync,
+      {:tasks, :enqueue_cloud_zone_sync, [view_name, zone_name, provider_id]},
+      fn state -> {{:ok, %{id: "cloud-sync-job"}}, state} end
+    )
+  end
+end
+
 defmodule YellowDog.ServerDnsControlFake.QueryLogger do
   @moduledoc false
 

@@ -31,15 +31,19 @@ defmodule YellowDog.Dns.CloudDnsSync do
           {:ok, sync_result()} | {:error, term()}
   def sync_zone_from_cloud(view_name, zone_name, opts \\ [])
       when is_binary(view_name) and is_binary(zone_name) do
-    with {:ok, zone} <- StoreZone.get_zone(view_name, zone_name),
+    zone_store = Keyword.get(opts, :zone_store, StoreZone)
+    provider_store = Keyword.get(opts, :provider_store, StoreProvider)
+    zone_controller = Keyword.get(opts, :zone_controller, ZoneController)
+
+    with {:ok, zone} <- zone_store.get_zone(view_name, zone_name),
          {:ok, mirror} <- cloud_mirror(zone),
-         {:ok, connector} <- StoreProvider.get_config(mirror.connector_name),
+         {:ok, connector} <- provider_store.get_config(mirror.connector_name),
          :ok <- connector_enabled(connector),
          {:ok, records} <- fetch_records(connector, mirror, zone_name, opts),
-         :ok <- persist_records(view_name, zone_name, records),
-         :ok <- reload_running_zone(view_name, zone_name),
+         {:ok, changed_count} <-
+           replace_and_activate(zone_store, zone_controller, view_name, zone_name, records),
          :ok <- invalidate_zone_cache(view_name, zone_name, opts) do
-      {:ok, %{provider: connector_type(connector), records_synced: length(records)}}
+      {:ok, %{provider: connector_type(connector), records_synced: changed_count}}
     end
   end
 
@@ -842,21 +846,43 @@ defmodule YellowDog.Dns.CloudDnsSync do
 
   defp caa_record(_owner, _data, _ttl), do: :skip
 
-  defp persist_records(view_name, zone_name, records) do
-    records
-    |> Enum.group_by(fn record -> {record.owner, record.type} end)
-    |> Enum.reduce_while(:ok, fn {{owner, type}, rrset_records}, :ok ->
-      rrset = Enum.map(rrset_records, & &1.rdata)
+  defp replace_and_activate(zone_store, zone_controller, view_name, zone_name, records) do
+    desired_records =
+      records
+      |> Enum.group_by(fn record -> {record.owner, record.type} end)
+      |> Enum.map(fn {{owner, type}, rrset_records} ->
+        %{owner: owner, type: type, rrset: Enum.map(rrset_records, & &1.rdata)}
+      end)
 
-      case StoreZone.put_rrset(view_name, zone_name, owner, type, rrset) do
-        :ok -> {:cont, :ok}
-        {:error, _reason} = error -> {:halt, error}
-      end
-    end)
+    case zone_store.replace_records(view_name, zone_name, desired_records) do
+      {:ok, %{previous: previous, changed_count: changed_count}} when is_list(previous) ->
+        case reload_running_zone(zone_controller, view_name, zone_name) do
+          :ok ->
+            {:ok, changed_count}
+
+          {:error, _reason} ->
+            restore_replacement(zone_store, zone_controller, view_name, zone_name, previous)
+        end
+
+      {:error, _reason} ->
+        {:error, :apply_failed}
+
+      _unexpected ->
+        {:error, :apply_failed}
+    end
   end
 
-  defp reload_running_zone(view_name, zone_name) do
-    case ZoneController.reload_zone(view_name, :auth, zone_name, []) do
+  defp restore_replacement(zone_store, zone_controller, view_name, zone_name, previous) do
+    with {:ok, _restored} <- zone_store.replace_records(view_name, zone_name, previous),
+         :ok <- reload_running_zone(zone_controller, view_name, zone_name) do
+      {:error, :apply_failed}
+    else
+      _failure -> {:error, :rollback_failed}
+    end
+  end
+
+  defp reload_running_zone(zone_controller, view_name, zone_name) do
+    case zone_controller.reload_zone(view_name, :auth, zone_name, []) do
       :ok -> :ok
       {:error, :not_found} -> :ok
       {:error, _reason} = error -> error

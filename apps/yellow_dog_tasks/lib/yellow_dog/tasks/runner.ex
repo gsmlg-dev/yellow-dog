@@ -129,14 +129,20 @@ defmodule YellowDog.Tasks.Runner do
   end
 
   defp run_async(task_key, job_id) do
-    case Process.whereis(task_supervisor()) do
-      nil ->
-        run_job(task_key, job_id)
+    case Application.get_env(:yellow_dog_tasks, :task_starter) do
+      starter when is_function(starter, 2) ->
+        starter.(task_key, job_id)
 
-      _pid ->
-        case Task.Supervisor.start_child(task_supervisor(), fn -> run_job(task_key, job_id) end) do
-          {:ok, _pid} -> :ok
-          {:error, reason} -> {:error, reason}
+      _starter ->
+        case Process.whereis(task_supervisor()) do
+          nil ->
+            run_job(task_key, job_id)
+
+          _pid ->
+            case Task.Supervisor.start_child(task_supervisor(), fn -> run_job(task_key, job_id) end) do
+              {:ok, _pid} -> :ok
+              {:error, reason} -> {:error, reason}
+            end
         end
     end
   end
