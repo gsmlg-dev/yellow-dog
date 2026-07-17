@@ -21,21 +21,59 @@ defmodule YellowDog.Netboot.TFTP.FileIndex do
   @doc "Scan the TFTP root directory and populate the index."
   @spec scan(String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
   def scan(root_dir) do
-    root = Path.expand(root_dir)
-
-    if File.dir?(root) do
-      :ets.delete_all_objects(@table)
-
-      count =
-        root
-        |> scan_recursive("")
-        |> Enum.count()
-
-      {:ok, count}
-    else
-      {:error, :not_a_directory}
+    with {:ok, snapshot} <- build_snapshot(root_dir),
+         :ok <- replace(snapshot) do
+      {:ok, length(snapshot)}
     end
   end
+
+  @doc false
+  @spec build_snapshot(String.t(), keyword()) ::
+          {:ok, [{String.t(), String.t(), non_neg_integer()}]} | {:error, term()}
+  def build_snapshot(root_dir, opts \\ [])
+
+  def build_snapshot(root_dir, opts) when is_binary(root_dir) and is_list(opts) do
+    root = Path.expand(root_dir)
+
+    with true <- File.dir?(root),
+         {:ok, excluded} <- excluded_paths(opts) do
+      snapshot =
+        root
+        |> scan_recursive("", excluded)
+        |> Enum.sort()
+
+      {:ok, snapshot}
+    else
+      false -> {:error, :not_a_directory}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def build_snapshot(_root_dir, _opts), do: {:error, :invalid_options}
+
+  @doc false
+  @spec snapshot() :: [{String.t(), String.t(), non_neg_integer()}]
+  def snapshot do
+    @table
+    |> :ets.tab2list()
+    |> Enum.sort()
+  end
+
+  @doc false
+  @spec replace([{String.t(), String.t(), non_neg_integer()}]) ::
+          :ok | {:error, :invalid_snapshot}
+  def replace(snapshot) when is_list(snapshot) do
+    with :ok <- validate_snapshot(snapshot) do
+      init()
+      :ets.delete_all_objects(@table)
+      true = :ets.insert(@table, snapshot)
+      :ok
+    end
+  rescue
+    _exception -> {:error, :invalid_snapshot}
+  end
+
+  def replace(_snapshot), do: {:error, :invalid_snapshot}
 
   @doc """
   Look up a file by its relative path.
@@ -89,33 +127,74 @@ defmodule YellowDog.Netboot.TFTP.FileIndex do
 
   # --- Private ---
 
-  defp scan_recursive(root, prefix) do
+  defp scan_recursive(root, prefix, excluded) do
     full_path = Path.join(root, prefix)
 
-    if File.dir?(full_path) do
-      case File.ls(full_path) do
-        {:ok, entries} ->
-          Enum.flat_map(entries, fn entry ->
-            relative = if prefix == "", do: entry, else: Path.join(prefix, entry)
-            scan_recursive(root, relative)
-          end)
+    case File.lstat(full_path) do
+      {:ok, %{type: :directory}} ->
+        case File.ls(full_path) do
+          {:ok, entries} ->
+            Enum.flat_map(entries, fn entry ->
+              relative = if prefix == "", do: entry, else: Path.join(prefix, entry)
+              scan_recursive(root, relative, excluded)
+            end)
 
-        {:error, _} ->
-          []
-      end
-    else
-      case File.stat(full_path) do
-        {:ok, %{size: size, type: :regular}} ->
-          normalized = normalize_path(prefix)
-          abs_path = Path.expand(full_path)
-          :ets.insert(@table, {normalized, abs_path, size})
-          [normalized]
+          {:error, _reason} ->
+            []
+        end
 
-        _ ->
+      {:ok, %{size: size, type: :regular}} ->
+        normalized = normalize_path(prefix)
+
+        if MapSet.member?(excluded, normalized) do
           []
-      end
+        else
+          [{normalized, Path.expand(full_path), size}]
+        end
+
+      _other ->
+        []
     end
   end
+
+  defp excluded_paths(opts) do
+    case Keyword.get(opts, :exclude, []) do
+      paths when is_list(paths) ->
+        if Enum.all?(paths, &valid_relative_path?/1) do
+          {:ok, MapSet.new(paths)}
+        else
+          {:error, :invalid_options}
+        end
+
+      _paths ->
+        {:error, :invalid_options}
+    end
+  end
+
+  defp validate_snapshot(snapshot) do
+    valid_entries? = Enum.all?(snapshot, &valid_entry?/1)
+    filenames = Enum.map(snapshot, &elem(&1, 0))
+
+    if valid_entries? and length(filenames) == length(Enum.uniq(filenames)),
+      do: :ok,
+      else: {:error, :invalid_snapshot}
+  end
+
+  defp valid_entry?({filename, absolute_path, size}) do
+    valid_relative_path?(filename) and
+      is_binary(absolute_path) and
+      Path.type(absolute_path) == :absolute and
+      is_integer(size) and
+      size >= 0
+  end
+
+  defp valid_entry?(_entry), do: false
+
+  defp valid_relative_path?(path) when is_binary(path) and path != "" do
+    not path_traversal?(path) and normalize_path(path) == path
+  end
+
+  defp valid_relative_path?(_path), do: false
 
   defp normalize_path(path) do
     path

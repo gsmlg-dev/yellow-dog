@@ -26,6 +26,59 @@ defmodule YellowDog.Netboot.TFTP.FileIndexTest do
 
     test "returns error for non-existent directory" do
       assert {:error, :not_a_directory} = FileIndex.scan("/nonexistent/path")
+      assert FileIndex.count() == 3
+    end
+  end
+
+  describe "owner snapshots" do
+    test "build_snapshot/2 is deterministic and does not mutate the active index" do
+      File.write!(Path.join(@tmp_root, "new.bin"), "new")
+
+      assert {:ok, snapshot} = FileIndex.build_snapshot(@tmp_root)
+      assert snapshot == Enum.sort(snapshot)
+
+      assert Enum.map(snapshot, &elem(&1, 0)) == [
+               "initrd.img",
+               "kernel.img",
+               "new.bin",
+               "subdir/nested.bin"
+             ]
+
+      assert FileIndex.count() == 3
+      assert {:error, :not_found} = FileIndex.lookup("new.bin", @tmp_root)
+    end
+
+    test "build_snapshot/2 excludes only exact normalized filenames" do
+      File.write!(Path.join(@tmp_root, ".kernel.img.yellowdog-delete"), "tombstone")
+
+      assert {:ok, snapshot} =
+               FileIndex.build_snapshot(@tmp_root,
+                 exclude: [".kernel.img.yellowdog-delete"]
+               )
+
+      filenames = Enum.map(snapshot, &elem(&1, 0))
+      refute ".kernel.img.yellowdog-delete" in filenames
+      assert "kernel.img" in filenames
+    end
+
+    test "snapshot/0 and replace/1 support deterministic compensation" do
+      previous = FileIndex.snapshot()
+      replacement = [{"only.bin", Path.join(@tmp_root, "only.bin"), 10}]
+
+      assert :ok = FileIndex.replace(replacement)
+      assert FileIndex.snapshot() == replacement
+
+      assert :ok = FileIndex.replace(previous)
+      assert FileIndex.snapshot() == previous
+    end
+
+    test "replace/1 rejects malformed snapshots without changing the active index" do
+      previous = FileIndex.snapshot()
+
+      assert {:error, :invalid_snapshot} =
+               FileIndex.replace([{"../escape", "/tmp/escape", 1}])
+
+      assert FileIndex.snapshot() == previous
     end
   end
 
