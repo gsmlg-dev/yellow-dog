@@ -433,56 +433,65 @@ capability-authenticated phases.
   production dependency tree, compile xref/trace, forbidden references, and
   scoped `git diff --check` passed.
 
-## Non-Expiring Child-Spec Handoff Review Fix
+## Side-Effect-Free Child-Spec Final Review Fix
 
 Date: 2026-07-18
 
-This section supersedes the pre-claim lifetime wording above only for
-credentials retained into a validated OTP child spec. Ordinary direct
-preparations remain creator-monitored and time-bounded.
+This section supersedes the detached retained-provider handoff contract from
+the preceding review iteration. A child spec cannot both materialize a secret
+provider immediately and remain safely discardable for an unbounded time.
 
-### Preparation Versus Retained Handoff
+### Pure Module Child Specs
 
-- `Client.prepare_credentials/1` is still the only raw URL, token, Server ID,
-  and socket materialization boundary. It starts no socket and initially
-  monitors its creator with the bounded five-second claim timer.
-- Child-spec construction performs a separate capability-authenticated
-  `Client.retain_credentials/1` transition. Only the live preparation creator
-  can retain. The provider atomically removes and flushes that creator monitor,
-  cancels the claim timer, clears creator identity, and enters a detached
-  retained state.
-- A retained child-spec capability has no wall-clock expiration and is not
-  tied to its transient builder process. A later process holding the opaque
-  capability may explicitly release it or claim it as the actual parent.
-  Claim installs the parent monitor before leaving retained state.
-- Direct `prepare_credentials/1` callers that do not retain still receive both
-  bounded timeout cleanup and creator-death cleanup. Retained providers receive
-  deterministic cleanup on explicit pre-claim release and, after claim, on
-  durable owner death.
+- `YellowDog.ServerAgent.child_spec/1` and
+  `YellowDog.ServerAgent.Supervisor.child_spec/1` validate only heartbeat-only
+  or complete durable-local options. They do not call
+  `Client.prepare_credentials/1`, spawn a provider, or materialize a socket.
+- Any raw outbound option set, including an otherwise complete one, returns a
+  fixed credential-free `start_invalid/0` MFA. The returned term contains no
+  URL, token, socket option, capability, function, or caller option list.
+- Valid heartbeat-only and durable-local specs remain side-effect-free and
+  retain their ordinary `start_link/1` MFA with exact validated local options.
+- Outbound module supervision now intentionally requires a late-bound
+  lifecycle owner. Task 10 `YellowDog.Application` will provide that boundary;
+  this task does not keep the impossible delayed/exited-builder handoff
+  contract or add a production resolver abstraction.
 
-### Client Child-Spec Safety
+### Bounded Preparation And Durable Ownership
 
-- `Client.child_spec/1` now structurally validates disabled and prepared
-  enabled options before storing them. Raw credential keys, unknown or
-  malformed options, dead capabilities, and invalid values return only
-  `{Client, :start_invalid, []}`.
-- Valid Client restart MFAs continue to contain the opaque capability,
-  non-secret owner PID, typed identity, and explicit callback modules. They
-  contain no management URL, token, socket params, raw socket option, or
-  credential-bearing function.
+- `Client.prepare_credentials/1` remains the only raw URL, token, Server ID,
+  and socket materialization boundary. Ordinary direct preparation still
+  monitors its creator, expires after five seconds if unclaimed, and starts no
+  socket.
+- The detached retention API, retained provider state, and claim-timer bypass
+  are removed. A provider is either creator-bound and bounded or claimed by
+  its durable owner.
+- Direct facade and Supervisor `start_link/1` calls preserve raw-option
+  compatibility. They prepare at startup and claim before installing any
+  long-lived outbound restart MFA or state.
+- The test-only late-bound start helper resolves raw options from a
+  lifecycle-owned store in the actual outer parent, replaces them with
+  scrubbed prepared options, and reuses that capability across whole-agent
+  child restarts. Parent death remains the provider and socket cleanup
+  boundary.
+- `Client.child_spec/1` continues to validate before storing caller options.
+  Raw, malformed, unknown, dead-capability, or otherwise invalid input returns
+  only `{Client, :start_invalid, []}`.
 
 ### Review Verification
 
-- TDD behavioral red: the Client/Supervisor run reported `62 tests,
-  4 failures` for builder-death cleanup, raw direct-Supervisor child specs, and
-  raw invalid-Client child specs.
-- Focused Client/Supervisor/facade run: `66 tests, 0 failures`.
-- Full Server-agent run: `255 tests, 0 failures`.
-- Deterministic lifecycle tests wait 5.25 seconds, beyond the old claim
-  interval, before starting the facade child spec; build the same spec in a
-  short-lived process and start it after the builder exits; and release a
-  retained capability after its builder is killed.
+- TDD behavioral red: the selective Supervisor regressions reported
+  `17 tests, 3 failures, 13 excluded` because both raw outbound module child
+  specs spawned providers and local facade specs still used the prepared path.
+- Focused Client/Supervisor/facade run: `63 tests, 0 failures`.
+- Full Server-agent run: `252 tests, 0 failures`; expected fail-stop
+  persistence cases emitted supervised termination logs while passing.
+- Deterministic process tracing proves discarded facade and Supervisor
+  outbound specs spawn nothing. Recursive spec/state checks reject raw
+  credentials and functions, while direct startup and the explicit test
+  lifecycle boundary prove Client and whole-agent child reconnection with the
+  same claimed provider.
 - Warnings-as-errors compiled 13 files. Strict Credo checked 32 source files
-  and 1,414 modules/functions with no issues. Dependency, production tree,
+  and 1,422 modules/functions with no issues. Dependency, production tree,
   compile xref, Client/Supervisor/facade trace, and forbidden-reference checks
   passed.

@@ -880,21 +880,6 @@ defmodule YellowDog.ServerAgent.ClientTest do
     refute_receive {:socket_start, _opts}
   end
 
-  test "credential retention is restricted to the preparation creator" do
-    credential_ref = prepare_credentials!()
-    parent = self()
-
-    caller =
-      spawn(fn ->
-        send(parent, {:retain_result, Client.retain_credentials(credential_ref)})
-      end)
-
-    assert_receive {:retain_result, :error}
-    refute Process.alive?(caller)
-    assert Process.alive?(provider_pid(credential_ref))
-    assert :ok = Client.release_credentials(credential_ref)
-  end
-
   test "unclaimed credential preparation expires deterministically" do
     credential_ref = prepare_credentials!()
     provider_monitor = Process.monitor(provider_pid(credential_ref))

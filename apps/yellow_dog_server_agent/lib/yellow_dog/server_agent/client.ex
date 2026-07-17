@@ -91,14 +91,6 @@ defmodule YellowDog.ServerAgent.Client do
     end
   end
 
-  @spec retain_credentials(credential_ref()) :: :ok | :error
-  def retain_credentials(credential_ref) do
-    case CredentialProvider.retain(credential_ref) do
-      :ok -> :ok
-      _error -> :error
-    end
-  end
-
   @spec claim_credentials(credential_ref()) :: :ok | :error
   def claim_credentials(credential_ref) do
     case CredentialProvider.claim(credential_ref) do
@@ -1179,7 +1171,6 @@ defmodule YellowDog.ServerAgent.Client do
         creator_ref: creator_ref,
         claim_timer:
           Process.send_after(self(), {:credential_claim_timeout, capability}, @claim_timeout),
-        retained: false,
         owner: nil,
         owner_ref: nil,
         client: nil,
@@ -1193,9 +1184,6 @@ defmodule YellowDog.ServerAgent.Client do
 
     def claim(credential_ref),
       do: call(credential_ref, :claim, @bind_timeout)
-
-    def retain(credential_ref),
-      do: call(credential_ref, :retain, @bind_timeout)
 
     def bind(credential_ref, client, server_id, owner) when is_pid(client) and is_pid(owner) do
       deadline = System.monotonic_time(:millisecond) + @bind_timeout
@@ -1262,18 +1250,6 @@ defmodule YellowDog.ServerAgent.Client do
 
     defp loop(state) do
       receive do
-        {__MODULE__, caller, capability, ref, :retain}
-        when capability == state.capability ->
-          case retain_for_creator(state, caller) do
-            {:ok, state} ->
-              reply(caller, capability, ref, :ok)
-              loop(state)
-
-            :error ->
-              reply(caller, capability, ref, :error)
-              loop(state)
-          end
-
         {__MODULE__, caller, capability, ref, :claim}
         when capability == state.capability ->
           case claim_owner(state, caller) do
@@ -1352,9 +1328,7 @@ defmodule YellowDog.ServerAgent.Client do
 
         {__MODULE__, caller, capability, ref, :release}
         when capability == state.capability and
-               ((state.owner == nil and
-                   (caller == state.creator or state.retained == true)) or
-                  caller == state.owner) ->
+               ((state.owner == nil and caller == state.creator) or caller == state.owner) ->
           _state = stop_socket(state)
           reply(caller, capability, ref, :ok)
           :ok
@@ -1368,8 +1342,7 @@ defmodule YellowDog.ServerAgent.Client do
           loop(state)
 
         {:credential_claim_timeout, capability}
-        when capability == state.capability and state.owner == nil and
-               state.claim_timer != nil ->
+        when capability == state.capability and state.owner == nil ->
           _state = stop_socket(state)
           :ok
 
@@ -1413,17 +1386,6 @@ defmodule YellowDog.ServerAgent.Client do
 
     defp claim_owner(%{owner: owner} = state, owner), do: {:ok, state}
 
-    defp claim_owner(%{owner: nil, retained: true} = state, owner) when is_pid(owner) do
-      owner_ref = Process.monitor(owner)
-
-      if Process.alive?(owner) do
-        {:ok, %{state | retained: false, owner: owner, owner_ref: owner_ref}}
-      else
-        Process.demonitor(owner_ref, [:flush])
-        :error
-      end
-    end
-
     defp claim_owner(%{owner: nil} = state, owner) when is_pid(owner) do
       owner_ref = Process.monitor(owner)
 
@@ -1447,26 +1409,6 @@ defmodule YellowDog.ServerAgent.Client do
     end
 
     defp claim_owner(_state, _owner), do: :error
-
-    defp retain_for_creator(%{owner: nil, creator: creator} = state, creator) do
-      if Process.alive?(creator) and
-           Process.demonitor(state.creator_ref, [:flush, :info]) do
-        cancel_claim_timer(state.claim_timer)
-
-        {:ok,
-         %{
-           state
-           | creator: nil,
-             creator_ref: nil,
-             claim_timer: nil,
-             retained: true
-         }}
-      else
-        :error
-      end
-    end
-
-    defp retain_for_creator(_state, _creator), do: :error
 
     defp bind_client(
            %{owner: owner, client: nil} = state,

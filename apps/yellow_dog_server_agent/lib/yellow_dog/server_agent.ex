@@ -15,11 +15,11 @@ defmodule YellowDog.ServerAgent do
   end
 
   def child_spec(opts) do
-    case Supervisor.prepare_child_spec_options(opts) do
-      {:ok, prepared_opts} ->
+    case Supervisor.local_child_spec_options(opts) do
+      {:ok, local_opts} ->
         %{
           id: __MODULE__,
-          start: {__MODULE__, :start_prepared_link, [prepared_opts]},
+          start: {__MODULE__, :start_link, [local_opts]},
           type: :supervisor
         }
 

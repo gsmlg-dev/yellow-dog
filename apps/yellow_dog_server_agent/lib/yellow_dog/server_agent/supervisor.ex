@@ -79,11 +79,11 @@ defmodule YellowDog.ServerAgent.Supervisor do
   @restart_cleanup_timeout 1_000
 
   def child_spec(opts) do
-    case prepare_child_spec_options(opts) do
-      {:ok, prepared_opts} ->
+    case local_child_spec_options(opts) do
+      {:ok, local_opts} ->
         %{
           id: __MODULE__,
-          start: {__MODULE__, :start_prepared_child_link, [prepared_opts]},
+          start: {__MODULE__, :start_link, [local_opts]},
           type: :supervisor
         }
 
@@ -114,10 +114,12 @@ defmodule YellowDog.ServerAgent.Supervisor do
   end
 
   @doc false
-  def prepare_child_spec_options(opts) do
-    with {:ok, prepared_opts} <- prepare_options(opts),
-         :ok <- retain_prepared_credentials(prepared_opts) do
-      {:ok, prepared_opts}
+  def local_child_spec_options(opts) do
+    with true <- is_list(opts) and Keyword.keyword?(opts),
+         :ok <- validate_public_top_level(opts),
+         {:ok, false} <- outbound_mode(opts),
+         {:ok, _children} <- children(opts) do
+      {:ok, opts}
     else
       _invalid -> {:error, :invalid_configuration}
     end
@@ -614,23 +616,6 @@ defmodule YellowDog.ServerAgent.Supervisor do
 
       _invalid ->
         {:error, :invalid_configuration}
-    end
-  end
-
-  defp retain_prepared_credentials(opts) do
-    case Keyword.fetch(opts, :credential_ref) do
-      {:ok, credential_ref} ->
-        case Client.retain_credentials(credential_ref) do
-          :ok ->
-            :ok
-
-          :error ->
-            Client.release_credentials(credential_ref)
-            :error
-        end
-
-      :error ->
-        :ok
     end
   end
 

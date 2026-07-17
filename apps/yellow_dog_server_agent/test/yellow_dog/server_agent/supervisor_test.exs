@@ -32,12 +32,73 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     def init(child_spec), do: Supervisor.init([child_spec], strategy: :one_for_one)
   end
 
+  defmodule TestLifecycleStore do
+    @moduledoc false
+
+    use GenServer
+
+    def start_link(raw_opts), do: GenServer.start_link(__MODULE__, raw_opts)
+    def resolve(store), do: GenServer.call(store, :resolve)
+    def save_prepared(store, prepared_opts), do: GenServer.call(store, {:save, prepared_opts})
+
+    @impl true
+    def init(raw_opts), do: {:ok, {:raw, raw_opts}}
+
+    @impl true
+    def handle_call(:resolve, _from, state), do: {:reply, state, state}
+
+    def handle_call({:save, prepared_opts}, _from, {:raw, _raw_opts}),
+      do: {:reply, :ok, {:prepared, prepared_opts}}
+
+    def handle_call({:save, _prepared_opts}, _from, state),
+      do: {:reply, :error, state}
+  end
+
+  defmodule TestLifecycleStart do
+    @moduledoc false
+
+    alias YellowDog.ServerAgent
+    alias YellowDog.ServerAgent.Client
+    alias YellowDog.ServerAgent.Supervisor, as: ServerAgentSupervisor
+    alias YellowDog.ServerAgent.SupervisorTest.TestLifecycleStore
+
+    def start_link(store) do
+      case TestLifecycleStore.resolve(store) do
+        {:raw, raw_opts} -> prepare_and_start(store, raw_opts)
+        {:prepared, prepared_opts} -> ServerAgent.start_prepared_link(prepared_opts)
+      end
+    end
+
+    defp prepare_and_start(store, raw_opts) do
+      case ServerAgentSupervisor.prepare_options(raw_opts) do
+        {:ok, prepared_opts} ->
+          save_and_start(store, prepared_opts)
+
+        {:error, :invalid_configuration} = error ->
+          error
+      end
+    end
+
+    defp save_and_start(store, prepared_opts) do
+      case TestLifecycleStore.save_prepared(store, prepared_opts) do
+        :ok ->
+          ServerAgent.start_prepared_link(prepared_opts)
+
+        :error ->
+          prepared_opts
+          |> Keyword.fetch!(:credential_ref)
+          |> Client.release_credentials()
+
+          {:error, :invalid_configuration}
+      end
+    end
+  end
+
   @server_id "server-east-1"
   @profile "dns_only"
   @capabilities ["runtime.services"]
   @config_revision String.duplicate("a", 64)
   @token "top-secret-token"
-  @old_claim_timeout 5_000
 
   setup do
     data_dir =
@@ -182,12 +243,18 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
              ServerAgentSupervisor.start_link(outbound ++ [management_token: @token])
   end
 
-  test "invalid outer child specs use a credential-free controlled error start" do
+  test "discarded outbound facade child specs spawn nothing and retain no credentials", %{
+    data_dir: data_dir
+  } do
+    raw_opts =
+      data_dir
+      |> complete_opts(names())
+      |> Keyword.merge(outbound_opts())
+
     child_spec =
-      YellowDog.ServerAgent.child_spec(
-        management_url: "https://management.example.test",
-        management_token: @token
-      )
+      assert_no_process_spawn(fn ->
+        YellowDog.ServerAgent.child_spec(raw_opts)
+      end)
 
     assert {YellowDog.ServerAgent, :start_invalid, []} = child_spec.start
     refute contains_secret?(child_spec, @token)
@@ -196,12 +263,18 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     refute contains_function?(child_spec)
   end
 
-  test "invalid direct Supervisor child specs use a credential-free controlled error start" do
+  test "rejected outbound Supervisor child specs spawn nothing and retain no credentials", %{
+    data_dir: data_dir
+  } do
+    raw_opts =
+      data_dir
+      |> complete_opts(names())
+      |> Keyword.merge(outbound_opts())
+
     child_spec =
-      ServerAgentSupervisor.child_spec(
-        management_url: "https://management.example.test",
-        management_token: @token
-      )
+      assert_no_process_spawn(fn ->
+        ServerAgentSupervisor.child_spec(raw_opts)
+      end)
 
     assert {ServerAgentSupervisor, :start_invalid, []} = child_spec.start
     refute contains_secret?(child_spec, @token)
@@ -210,102 +283,26 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     refute contains_function?(child_spec)
   end
 
-  test "outbound child spec remains startable beyond the old claim timeout", %{
+  test "heartbeat-only and durable-local module child specs are valid and side-effect-free", %{
     data_dir: data_dir
   } do
-    names = names()
-    outer_name = unique_name(:delayed_outer_supervisor)
+    durable_opts = complete_opts(data_dir, names())
 
-    child_spec =
-      data_dir
-      |> complete_opts(names)
-      |> Keyword.merge(outbound_opts())
-      |> YellowDog.ServerAgent.child_spec()
+    for {module, opts} <- [
+          {YellowDog.ServerAgent, []},
+          {YellowDog.ServerAgent, durable_opts},
+          {ServerAgentSupervisor, []},
+          {ServerAgentSupervisor, durable_opts}
+        ] do
+      child_spec =
+        assert_no_process_spawn(fn ->
+          module.child_spec(opts)
+        end)
 
-    assert {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]} = child_spec.start
-    credential_ref = Keyword.fetch!(prepared_opts, :credential_ref)
-    provider = provider_pid(credential_ref)
-
-    Process.sleep(@old_claim_timeout + 250)
-
-    assert Process.alive?(provider)
-    assert {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
-    Process.unlink(outer)
-    assert wait_for_pid(names.client)
-    assert_receive {:socket_start, _opts}
-
-    provider_monitor = Process.monitor(provider)
-    Supervisor.stop(outer)
-    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
-  end
-
-  test "retained outbound child-spec credentials can be explicitly released", %{
-    data_dir: data_dir
-  } do
-    parent = self()
-
-    {builder, builder_monitor} =
-      spawn_monitor(fn ->
-        child_spec =
-          data_dir
-          |> complete_opts(names())
-          |> Keyword.merge(outbound_opts())
-          |> YellowDog.ServerAgent.child_spec()
-
-        send(parent, {:releasable_child_spec, child_spec})
-        Process.sleep(:infinity)
-      end)
-
-    assert_receive {:releasable_child_spec,
-                    %{start: {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]}}}
-
-    credential_ref = Keyword.fetch!(prepared_opts, :credential_ref)
-    provider = provider_pid(credential_ref)
-    provider_monitor = Process.monitor(provider)
-
-    Process.exit(builder, :kill)
-    assert_receive {:DOWN, ^builder_monitor, :process, ^builder, :killed}
-    assert Process.alive?(provider)
-    assert :ok = Client.release_credentials(credential_ref)
-    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
-  end
-
-  test "outbound child spec survives handoff from an exited builder process", %{
-    data_dir: data_dir
-  } do
-    parent = self()
-    names = names()
-    outer_name = unique_name(:builder_handoff_outer_supervisor)
-
-    {builder, builder_monitor} =
-      spawn_monitor(fn ->
-        child_spec =
-          data_dir
-          |> complete_opts(names)
-          |> Keyword.merge(outbound_opts())
-          |> YellowDog.ServerAgent.child_spec()
-
-        send(parent, {:retained_child_spec, child_spec})
-      end)
-
-    assert_receive {:retained_child_spec,
-                    child_spec = %{
-                      start: {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]}
-                    }}
-
-    credential_ref = Keyword.fetch!(prepared_opts, :credential_ref)
-    provider = provider_pid(credential_ref)
-
-    assert_receive {:DOWN, ^builder_monitor, :process, ^builder, :normal}
-    assert Process.alive?(provider)
-    assert {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
-    Process.unlink(outer)
-    assert wait_for_pid(names.client)
-    assert_receive {:socket_start, _opts}
-
-    provider_monitor = Process.monitor(provider)
-    Supervisor.stop(outer)
-    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
+      assert {^module, :start_link, [^opts]} = child_spec.start
+      refute contains_raw_credential_key?(child_spec)
+      refute contains_function?(child_spec)
+    end
   end
 
   test "complete durable configuration starts exact ordered local children without Client", %{
@@ -431,6 +428,45 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     refute inspect(status) =~ @token
     refute inspect(status) =~ "management.example.test"
     refute inspect(status) =~ data_dir
+  end
+
+  test "facade direct start_link preserves raw compatibility and scrubs OTP state", %{
+    data_dir: data_dir
+  } do
+    names = names()
+
+    raw_opts =
+      data_dir
+      |> complete_opts(names)
+      |> Keyword.merge(outbound_opts())
+
+    assert {:ok, supervisor} = YellowDog.ServerAgent.start_link(raw_opts)
+    Process.unlink(supervisor)
+    client = wait_for_pid(names.client)
+    client_state = :sys.get_state(client)
+    credential_ref = client_state.config.credential_ref
+    provider = provider_pid(credential_ref)
+
+    assert client_state.config.credential_owner == self()
+    assert_receive {:socket_start, _opts}
+
+    supervisor_state = :sys.get_state(supervisor)
+
+    for state <- [supervisor_state, client_state] do
+      refute contains_secret?(state, @token)
+      refute contains_secret?(state, "management.example.test")
+      refute contains_function?(state)
+    end
+
+    refute contains_raw_credential_key?(supervisor_state)
+    assert client_state.config.socket == Client.CredentialProvider
+    assert client_state.socket == credential_ref
+
+    provider_monitor = Process.monitor(provider)
+    Supervisor.stop(supervisor)
+    assert Process.alive?(provider)
+    assert :ok = Client.release_credentials(credential_ref)
+    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
   end
 
   test "fixed role IDs avoid registered-name collisions and preserve restart behavior", %{
@@ -624,7 +660,7 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     assert Process.whereis(names.config_applier) == config_applier
   end
 
-  test "outer ServerAgent child spec is scrubbed and survives whole-agent restart", %{
+  test "test-owned late-bound lifecycle starts scrubbed outer specs across restarts", %{
     data_dir: data_dir
   } do
     names = names()
@@ -635,13 +671,18 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
       |> complete_opts(names)
       |> Keyword.merge(outbound_opts())
 
-    child_spec = YellowDog.ServerAgent.child_spec(raw_opts)
+    {:ok, lifecycle_store} = TestLifecycleStore.start_link(raw_opts)
 
-    assert {YellowDog.ServerAgent, :start_prepared_link, [prepared_opts]} = child_spec.start
-    refute contains_secret?(prepared_opts, @token)
-    refute contains_secret?(prepared_opts, "management.example.test")
-    refute contains_raw_credential_key?(prepared_opts)
-    refute contains_function?(prepared_opts)
+    child_spec = %{
+      id: YellowDog.ServerAgent,
+      start: {TestLifecycleStart, :start_link, [lifecycle_store]},
+      type: :supervisor
+    }
+
+    refute contains_secret?(child_spec, @token)
+    refute contains_secret?(child_spec, "management.example.test")
+    refute contains_raw_credential_key?(child_spec)
+    refute contains_function?(child_spec)
 
     {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
     Process.unlink(outer)
@@ -669,62 +710,6 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     restarted_client = wait_for_restart(names.client, client)
 
     assert restarted_agent != agent
-    assert restarted_client != client
-    assert Process.alive?(provider)
-    assert :sys.get_state(restarted_client).config.credential_ref == credential_ref
-    assert_receive {:socket_start, _opts}
-
-    provider_monitor = Process.monitor(provider)
-    Supervisor.stop(outer)
-    assert_receive {:DOWN, ^provider_monitor, :process, ^provider, :normal}
-  end
-
-  test "direct Supervisor child spec is scrubbed and survives whole-child restart", %{
-    data_dir: data_dir
-  } do
-    names = names()
-    outer_name = unique_name(:direct_supervisor_outer)
-
-    raw_opts =
-      data_dir
-      |> complete_opts(names)
-      |> Keyword.merge(outbound_opts())
-
-    child_spec = ServerAgentSupervisor.child_spec(raw_opts)
-
-    assert {ServerAgentSupervisor, :start_prepared_child_link, [_prepared_opts]} =
-             child_spec.start
-
-    refute contains_secret?(child_spec, @token)
-    refute contains_secret?(child_spec, "management.example.test")
-    refute contains_raw_credential_key?(child_spec)
-    refute contains_function?(child_spec)
-
-    {:ok, outer} = OuterSupervisor.start_link(child_spec, outer_name)
-    Process.unlink(outer)
-
-    on_exit(fn ->
-      if Process.alive?(outer), do: Supervisor.stop(outer)
-    end)
-
-    supervisor = child_pid(outer, ServerAgentSupervisor)
-    client = wait_for_pid(names.client)
-    credential_ref = :sys.get_state(client).config.credential_ref
-    provider = provider_pid(credential_ref)
-
-    for state <- [:sys.get_state(outer), :sys.get_state(supervisor)] do
-      refute contains_secret?(state, @token)
-      refute contains_secret?(state, "management.example.test")
-      refute contains_raw_credential_key?(state)
-      refute contains_function?(state)
-    end
-
-    assert_receive {:socket_start, _opts}
-    Process.exit(supervisor, :kill)
-    restarted_supervisor = wait_for_child_restart(outer, ServerAgentSupervisor, supervisor)
-    restarted_client = wait_for_restart(names.client, client)
-
-    assert restarted_supervisor != supervisor
     assert restarted_client != client
     assert Process.alive?(provider)
     assert :sys.get_state(restarted_client).config.credential_ref == credential_ref
@@ -896,6 +881,44 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
   defp provider_pid({provider, capability})
        when is_pid(provider) and is_reference(capability),
        do: provider
+
+  defp assert_no_process_spawn(callback) do
+    caller = self()
+    tracer = spawn(fn -> collect_process_trace(caller, false) end)
+    assert 1 = :erlang.trace(caller, true, [:procs, {:tracer, tracer}])
+
+    try do
+      result = callback.()
+      trace_ref = :erlang.trace_delivered(caller)
+      assert_receive {:trace_delivered, ^caller, ^trace_ref}
+      snapshot_ref = make_ref()
+      send(tracer, {:snapshot, caller, snapshot_ref})
+      assert_receive {:process_trace_snapshot, ^snapshot_ref, spawned?}
+
+      refute spawned?
+      result
+    after
+      :erlang.trace(caller, false, [:procs])
+      send(tracer, :stop)
+    end
+  end
+
+  defp collect_process_trace(parent, spawned?) do
+    receive do
+      {:trace, _caller, :spawn, _pid, _mfa} ->
+        collect_process_trace(parent, true)
+
+      {:snapshot, ^parent, snapshot_ref} ->
+        send(parent, {:process_trace_snapshot, snapshot_ref, spawned?})
+        collect_process_trace(parent, spawned?)
+
+      :stop ->
+        :ok
+
+      _other ->
+        collect_process_trace(parent, spawned?)
+    end
+  end
 
   defp contains_secret?(value, secret) when is_binary(value),
     do: String.contains?(value, secret)

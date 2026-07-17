@@ -221,23 +221,23 @@ Date: 2026-07-18
   `ServerAgent.Supervisor` process before constructing any long-lived Client
   child spec. The Client restart MFA contains only scrubbed options, the
   opaque capability, and the non-secret owner PID.
-- `YellowDog.ServerAgent.child_spec/1` prepares credentials before returning
-  the outer child spec. The returned start MFA is
-  `start_prepared_link/1` with scrubbed options only; invalid input returns a
-  controlled `start_invalid/0` spec with no fallback raw arguments.
-- The outer start path claims ownership from the actual outer parent
-  supervisor process. Same-owner claims are idempotent, so restarting the
-  entire YellowDog.ServerAgent child reuses the clean outer spec and the same
-  provider capability.
+- `YellowDog.ServerAgent.child_spec/1` and
+  `ServerAgent.Supervisor.child_spec/1` are side-effect-free. Heartbeat-only
+  and durable-local options return ordinary local `start_link/1` specs; raw
+  outbound options return controlled `start_invalid/0` specs with no fallback
+  arguments and create no provider.
+- Outbound whole-agent supervision uses a late-bound lifecycle owner. The
+  focused regression supplies an explicit test-owned start helper that
+  prepares and claims in the actual outer parent, then reuses the scrubbed
+  capability when the complete YellowDog.ServerAgent child restarts.
 - A bounded pre-start name-release wait handles the OTP race after a brutal
   whole-agent kill, where old named grandchildren can outlive the dead inner
   supervisor briefly. Child declaration order and `:one_for_one` isolation
   remain unchanged.
 - Ordinary unclaimed direct preparations expire after the provider claim
-  timeout. Valid child specs instead enter the non-expiring retained handoff
-  described below. Validation and failed starts explicitly release providers;
-  a provider claimed by a failed supervisor exits through its installed owner
-  monitor.
+  timeout or creator death. The detached retained-provider state is removed.
+  Validation and failed direct starts explicitly release providers; a provider
+  claimed by a failed supervisor exits through its installed owner monitor.
 
 ### Safe Facade
 
@@ -271,61 +271,63 @@ The final conventional commit SHA is returned in the task response because a
 tracked report cannot contain the hash of the commit that first contains the
 report without changing that hash.
 
-## Final Child-Spec Lifetime And MFA Review Fix
+## Side-Effect-Free Child-Spec Final Review Fix
 
 Date: 2026-07-18
 
-### Handoff-Safe Facade Spec
+This section supersedes the retained child-spec lifetime design from the
+preceding review iteration.
 
-- `YellowDog.ServerAgent.child_spec/1` uses
-  `ServerAgent.Supervisor.prepare_child_spec_options/1` to validate raw options,
-  call the sole `Client.prepare_credentials/1` materialization boundary, scrub
-  URL/token/socket values, and retain the opaque provider capability.
-- Retention is authenticated to the preparation creator. It removes the
-  creator monitor and bounded timer before returning the spec, so the prepared
-  facade spec survives both arbitrary OTP start delay and exit of a transient
-  builder process.
-- The retained capability remains startable until explicit release or claim.
-  The start MFA runs in the actual parent supervisor, claims the provider with
-  that parent as owner, and only then starts the inner Server-agent supervisor.
-  Owner death remains the provider/socket erasure boundary.
-- Ordinary direct preparation is unchanged: without the child-spec retention
-  transition, creator death or the five-second timeout erases the provider and
-  no socket starts.
+### Discardable Module Specs
 
-### Direct Supervisor And Client Specs
+- `YellowDog.ServerAgent.child_spec/1` and
+  `YellowDog.ServerAgent.Supervisor.child_spec/1` do not prepare credentials or
+  spawn a provider. Complete raw outbound options are deliberately rejected
+  with fixed credential-free `start_invalid/0` MFAs.
+- Heartbeat-only and complete durable-local specs remain valid, pure module
+  child specs. Partial, duplicate, unknown, and malformed options remain
+  controlled invalid specs.
+- The removed `Client.retain_credentials/1` path no longer detaches a provider
+  from its creator or disables bounded claim cleanup. A direct unclaimed
+  preparation is erased on creator death or after five seconds.
+- This intentionally drops arbitrary delayed-start and exited-builder handoff.
+  Task 10 `YellowDog.Application` must provide the production late-bound
+  lifecycle owner for outbound module supervision.
 
-- `YellowDog.ServerAgent.Supervisor.child_spec/1` is explicitly overridden.
-  Raw-compatible input is prepared and retained immediately, but its returned
-  parent restart MFA is only
-  `{ServerAgent.Supervisor, :start_prepared_child_link, [scrubbed_opts]}`.
-  Invalid input returns `{ServerAgent.Supervisor, :start_invalid, []}`.
-- The direct prepared start path claims the actual outer parent. Killing and
-  restarting the complete `ServerAgent.Supervisor` child therefore reuses the
-  same clean outer spec and provider, while stopping the parent erases the
-  provider.
-- `Client.child_spec/1` validates its caller options before returning a restart
-  MFA. Every raw, malformed, unknown, or otherwise invalid option set returns
-  the credential-free `{Client, :start_invalid, []}` path.
-- Recursive checks over both direct and facade child specs, outer supervisor
-  state, inner supervisor state, and Client restart MFAs reject the management
-  URL, token, socket/params keys, and credential-bearing functions.
+### Direct And Explicit Lifecycle Starts
+
+- Raw compatibility remains at both public direct `start_link/1` boundaries.
+  Startup prepares credentials and claims them before OTP retains any outbound
+  child MFA or state; failed validation/start releases the provider.
+- The test-only lifecycle store/start helper demonstrates the required Task 10
+  boundary without adding a production resolver. Its start MFA contains only a
+  store PID, resolves raw options in the actual outer parent, replaces them
+  with scrubbed prepared options, and reuses the same provider when the entire
+  Server-agent child restarts.
+- Client death and normal termination still clear the one active lease and
+  transport while preserving the provider under its owner. Outer owner death
+  erases the provider and socket.
+- `Client.child_spec/1` retains its hardened validation: every raw, malformed,
+  unknown, or otherwise invalid option set returns only
+  `{Client, :start_invalid, []}`.
+- Recursive checks over generated specs, outer and inner supervisor state, and
+  Client restart MFAs reject the management URL, token, socket/params keys, and
+  credential-bearing functions.
 
 ### Final Verification
 
-- TDD behavioral red: `62 tests, 4 failures` covered the missing builder
-  handoff, direct Supervisor override, and safe Client invalid path.
-- Focused Client/Supervisor/facade suite: `66 tests, 0 failures`.
-- Full Server-agent suite: `255 tests, 0 failures`; expected fail-stop
+- TDD behavioral red: the selective Supervisor regressions reported
+  `17 tests, 3 failures, 13 excluded` for provider-spawning raw child specs and
+  the non-local facade start path.
+- Focused Client/Supervisor/facade suite: `63 tests, 0 failures`.
+- Full Server-agent suite: `252 tests, 0 failures`; expected fail-stop
   persistence cases emitted supervised termination logs while passing.
-- The delayed-start regression waits 5.25 seconds, beyond the former
-  five-second claim interval. Separate deterministic tests start a facade spec
-  after its builder exits and explicitly release a retained spec after its
-  builder is killed.
-- Direct and facade whole-child restart tests reconnect Client with the same
-  opaque provider. Parent shutdown tests prove final provider cleanup.
+- Deterministic caller process tracing proves discarded/rejected outbound
+  facade and Supervisor specs spawn no process. Direct raw startup and the
+  explicit late-bound test boundary prove inner Client and complete agent-child
+  restart with the same opaque provider, followed by cleanup on owner death.
 - Warnings-as-errors compiled 13 files. Strict Credo checked 32 source files
-  and 1,414 modules/functions with no issues. `mix deps`,
-  `mix deps.tree --only prod`, `mix app.tree --format plain`, compile xref,
+  and 1,422 modules/functions with no issues. `mix deps`,
+  `mix deps.tree --only prod`, `mix app.tree`, compile xref,
   Client/Supervisor/facade traces, forbidden-reference scans, scoped format,
   and `git diff --check` passed through `devenv shell`.
