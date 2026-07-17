@@ -1,85 +1,103 @@
-# Server Task 7B Report: Durable `YellowDog.Config.Manager`
+# Server Task 7B Report: Config Manager Unsupported Boundary
 
 ## Status
 
-Complete. `YellowDog.Config.Manager` is the console-independent serialized
-owner for durable service-scoped configuration reads, versions, activation,
-and rollback.
+Complete. This report supersedes the durable Manager claims in the Task 7B
+report committed by `b1dea263`.
 
-## Owned Changes
+The independent review established that the current runtime and fixed Settings
+transport cannot support the proposed durable mutation lifecycle safely. Task
+7B now provides only a small, console-independent
+`YellowDog.Config.Manager` facade that validates bounded owner inputs and
+returns stable typed errors.
 
-- Added `YellowDog.Config.Manager` with effective/source/revision/validation
-  reads and update/apply/rollback owner operations.
-- Added local durable storage primitives for unique same-directory temporary
-  writes, file sync, close, atomic rename, directory sync where supported,
-  immutable history creation, and safe rereads.
-- Added `YellowDog.Config.Application` supervision for the production Manager.
-- Added `YellowDog.Config.Writer.encode_config/2` so the Manager uses the
-  existing TOML encoder without delegating installation ownership.
-- Added focused Manager and Writer tests.
-- Added only `:crypto` as an OTP extra application; no umbrella application or
-  management-core dependency was introduced.
+## Implemented Boundary
 
-## Transaction And History Model
+`YellowDog.Config.Manager` exposes:
 
-- Mutations lock on the canonical expanded config path across Manager
-  processes and are also serialized by each Manager GenServer.
-- The complete original TOML bytes and exact prior Config Agent map are
-  captured before mutation.
-- The complete TOML is decoded, merged with `Schema.defaults/0`, updated only
-  for the selected service, and validated as a full candidate.
-- Each service receives a durable positive baseline version. Immutable version
-  records retain exact snapshot bytes and a stable SHA-256 digest. Lifecycle
-  changes are append-only records, so failed versions remain evidence but
-  never become the next operation's prior applied version.
-- Installation uses a unique same-directory temporary file followed by write,
-  sync, close, atomic rename, directory sync where supported, and exact
-  reread/full-schema validation.
-- The Config Agent is replaced only from the validated installed reread.
-  Activation runs afterward through an injected concrete owner. `applied` is
-  recorded only after activation succeeds.
-- Any failure after durable version creation compensates by atomically
-  restoring exact prior bytes, restoring the exact prior Agent map, and
-  reactivating prior runtime state. Failure and rollback reasons are bounded
-  and sanitized. Incomplete compensation returns distinct `rollback_failed`.
+- `effective/1`
+- `source/1`
+- `revision/1`
+- `validation/1`
+- `update/2`
+- `apply/1`
+- `reload/1`
+- `rollback/2`
 
-## Public Safety
+Every well-formed operation returns `{:error, :unsupported}`. Malformed or
+unbounded service identifiers, typed entry payloads, and rollback digests
+return `{:error, :invalid}`.
 
-- Effective reads return recursively typed entries and redact credential,
-  material, local-path, raw-body, and unsupported compound values.
-- Source reads return only `managed`, `local`, or `default`.
-- Revision reads return only the normalized selected-service digest.
-- Validation reads return bounded field/message documents without parser
-  exceptions or local paths.
-- No API returns the config path, history path, raw TOML, snapshots, secrets,
-  file handles, PIDs, or raw exceptions.
-- Durable revisions do not use `YellowDog.Config.get_version/0`.
-- Generic reload and update/apply/rollback without a concrete activation owner
-  return typed `unsupported`.
+The Manager is a pure module. Calls perform no filesystem, Config Agent,
+runtime adapter, history, telemetry, process, or secret access or mutation.
+They return no paths, raw TOML, configuration values, local counters, runtime
+references, or raw errors.
+
+## Removed And Restored
+
+The rejected implementation from `b1dea263` was removed:
+
+- deleted `YellowDog.Config.Manager.Storage`;
+- deleted immutable history and target-file writes;
+- deleted activation, compensation, rollback, and path-lock logic;
+- deleted Config Agent reads and replacement;
+- deleted Manager application supervision;
+- removed the added `:crypto` extra application;
+- restored `YellowDog.Config.Writer` exactly to its pre-Task 7B behavior;
+- removed the Task 7B Writer test for the reverted encode-only API.
+
+No Server adapter, Identity, console, root Mix, runtime config, protocol,
+Concord, Mnesia, or protected file was modified.
+
+## Deferred Lifecycle Requirements
+
+A future durable Settings owner requires a separate cross-cutting design and
+must not be inferred from this facade. At minimum, that design must provide:
+
+1. A revised Settings entry schema that can losslessly represent ordinary
+   current configuration, including ports, paths, nested tables, and arrays.
+2. One durable source of truth for immutable positive versions, digests,
+   snapshots, lifecycle state, and bounded failure evidence.
+3. Startup recovery for every crash window across history reservation, target
+   installation, Config Agent replacement, activation, and lifecycle commit.
+4. Durable path ownership and serialization across processes and nodes.
+5. Exact-byte target restoration with proven atomic write, sync, close,
+   rename, directory-sync, and reread behavior on supported platforms.
+6. A recoverable protocol for coordinating installed bytes and Config Agent
+   state without treating the restart-local Agent counter as a revision.
+7. A concrete activation and restore owner for each supported service. A file
+   write or Agent replacement alone must never be reported as applied.
+8. Idempotent activation and rollback semantics that remain correct after
+   process or node restart.
+9. A failure model that can distinguish validation, delivery, apply, and
+   rollback failure without exposing paths, secrets, raw TOML, or exceptions.
+10. End-to-end tests that inject crashes, not only returned errors, at every
+    persistence and runtime transition.
+
+Until those requirements have an accepted design and implementation, all
+Settings reads and mutations remain explicitly unsupported.
 
 ## Verification
 
-- Focused Manager/Writer:
-  `cd apps/yellow_dog_config && mix test test/yellow_dog/config/manager_test.exs test/yellow_dog/config/writer_test.exs`
-  - 23 tests, 0 failures.
+- Focused Manager:
+  `cd apps/yellow_dog_config && mix test test/yellow_dog/config/manager_test.exs`
+  - 8 tests, 0 failures.
 - Full Config app: `cd apps/yellow_dog_config && mix test`
-  - 105 tests, 0 failures.
+  - 90 tests, 0 failures.
 - Compile:
   `cd apps/yellow_dog_config && mix compile --warnings-as-errors --force`
-  - 10 files compiled, no warnings.
-- Format: root `mix format --check-formatted` with the owned Config file list.
+  - 8 files compiled, no warnings.
+- Format: root `mix format --check-formatted` over `yellow_dog_config` Mix,
+  library, and test files.
   - Passed.
 - Credo: `cd apps/yellow_dog_config && mix credo --strict`
-  - 17 files checked, no issues.
+  - 14 files checked, no issues.
 
-## Concerns And Integration Notes
+## Concerns
 
-- Task 7B intentionally does not invent generic service activation. Production
-  update/apply/rollback remains unsupported until a later integration supplies
-  a concrete activation owner for that service.
-- Generic reload remains unsupported by design.
-- The Manager stores immutable sidecar history beside the configured TOML by
-  default; deployments may set `:history_dir` in the Manager application
-  options when a dedicated durable location is required.
-- Unrelated console, root Mix, Netboot control, and other worktree changes were
-  not modified or staged.
+- The later Settings adapter must preserve `:invalid` versus `:unsupported`
+  and must not bypass this owner boundary with direct Config Agent, Writer,
+  filesystem, console, or runtime calls.
+- Unsupported reads are intentional: the fixed Settings grammar cannot
+  currently provide a lossless, safe effective/source/revision/validation
+  projection.

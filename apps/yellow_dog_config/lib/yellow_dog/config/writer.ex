@@ -29,25 +29,13 @@ defmodule YellowDog.Config.Writer do
   """
   @spec write_config(Path.t(), map(), keyword()) :: :ok | {:error, term()}
   def write_config(path, config, opts \\ []) do
-    with {:ok, content} <- encode_config(config, opts),
-         :ok <- TomlHelpers.atomic_write(path, content) do
-      :ok
-    end
-  end
-
-  @doc """
-  Validates and encodes a configuration map without writing it.
-
-  Durable owners use this function so TOML serialization remains centralized
-  in the Writer while they retain control of installation and rollback.
-  """
-  @spec encode_config(map(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def encode_config(config, opts \\ []) when is_map(config) do
     validate? = Keyword.get(opts, :validate, true)
     header = Keyword.get(opts, :header, default_header())
 
-    with :ok <- maybe_validate(config, validate?) do
-      {:ok, TomlEncoder.encode(config, header: header)}
+    with :ok <- maybe_validate(config, validate?),
+         content = TomlEncoder.encode(config, header: header),
+         :ok <- TomlHelpers.atomic_write(path, content) do
+      :ok
     end
   end
 
