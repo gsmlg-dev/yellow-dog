@@ -10,6 +10,8 @@ defmodule YellowDog.Server.Control.SettingsControlTest do
   alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
+  alias YellowDog.Sync.Operation
+  alias YellowDog.Sync.ServerOperation
 
   @request_id "00000000-0000-0000-0000-0000000007d1"
   @idempotency_key "00000000-0000-0000-0000-0000000007d2"
@@ -158,15 +160,37 @@ defmodule YellowDog.Server.Control.SettingsControlTest do
     end
   end
 
-  test "returns not found for an unavailable Manager owner and rejects invalid overrides" do
-    Application.put_env(:yellow_dog, Settings, manager: YellowDog.MissingSettingsManager)
+  test "sanitizes malformed Manager results through the adapter fallback" do
+    raw_material = "token=settings-secret path=/tmp/settings"
 
-    assert {:error, %Error{code: :not_found, details: %{}}} =
+    for response <- [
+          {:ok, raw_material},
+          {:ok, [raw_material]},
+          {:error, :unknown_manager_reason},
+          {:unexpected_manager_result, raw_material}
+        ] do
+      ServerSettingsControlFake.configure(:source, response)
+
+      assert {:error, %Error{code: :apply_failed, details: %{}} = error} =
+               Settings.dispatch("server.settings.source.get", %{"service" => "dns"})
+
+      refute inspect(error) =~ "settings-secret"
+      refute inspect(error) =~ "/tmp/settings"
+    end
+  end
+
+  test "returns fixed errors for exported Manager owner absence and invalid overrides" do
+    assert Code.ensure_loaded?(Manager)
+    assert function_exported?(Manager, :source, 1)
+
+    stop_supervised!(ServerSettingsControlFake)
+
+    assert {:error, %Error{code: :not_found, message: "resource not found", details: %{}}} =
              Settings.dispatch("server.settings.source.get", %{"service" => "dns"})
 
     Application.put_env(:yellow_dog, Settings, unexpected: Manager)
 
-    assert {:error, %Error{code: :internal, details: %{}}} =
+    assert {:error, %Error{code: :internal, message: "internal error", details: %{}}} =
              Settings.dispatch("server.settings.source.get", %{"service" => "dns"})
   end
 
@@ -211,9 +235,24 @@ defmodule YellowDog.Server.Control.SettingsControlTest do
     refute inspect(result) =~ secret
   end
 
-  test "Dispatcher enforces bounded effective entries and validation diagnostics from Manager results" do
+  test "Dispatcher rejects over-bound effective entries and validation diagnostics from Manager results" do
     maximum = Bounds.max_list_entries()
+
+    effective_result = %{
+      "service" => "dns",
+      "entries" => List.duplicate(entry(), maximum + 1)
+    }
+
     validation_error = %{"field" => "service", "message" => "invalid"}
+
+    assert {:ok, operation} = ServerOperation.fetch("server.settings.effective.get")
+    assert_invalid(Operation.validate_result(operation, effective_result))
+
+    ServerSettingsControlFake.configure(:effective, {:ok, effective_result})
+
+    assert_invalid(
+      Control.dispatch(envelope("server.settings.effective.get", %{"service" => "dns"}))
+    )
 
     ServerSettingsControlFake.configure(:validation, {
       :ok,
