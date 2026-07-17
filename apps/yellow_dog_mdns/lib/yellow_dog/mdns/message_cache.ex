@@ -181,15 +181,12 @@ defmodule YellowDog.Mdns.MessageCache do
 
   @impl true
   def handle_call(:control_snapshot, _from, state) do
-    {:reply, {:ok, control_snapshot_entries()}, state}
+    {:reply, control_snapshot_entries(), state}
   end
 
   @impl true
   def handle_call(:control_clear, _from, state) do
-    count = :ets.info(@table_name, :size)
-    clear_entries()
-
-    {:reply, {:ok, count}, state}
+    {:reply, control_clear_entries(), state}
   end
 
   @impl true
@@ -221,14 +218,32 @@ defmodule YellowDog.Mdns.MessageCache do
   end
 
   defp control_snapshot_entries do
-    now = System.system_time(:second)
+    if :ets.whereis(@table_name) == :undefined do
+      {:error, :cache_absent}
+    else
+      now = System.system_time(:second)
 
-    @table_name
-    |> :ets.tab2list()
-    |> Enum.flat_map(fn {_key, entry} -> project_control_entry(entry, now) end)
-    |> Enum.sort_by(fn %{"name" => name, "type" => type, "values" => values} ->
-      {name, type, values}
-    end)
+      entries =
+        @table_name
+        |> :ets.tab2list()
+        |> Enum.flat_map(fn {_key, entry} -> project_control_entry(entry, now) end)
+        |> Enum.sort_by(fn %{"name" => name, "type" => type, "values" => values} ->
+          {name, type, values}
+        end)
+
+      {:ok, entries}
+    end
+  end
+
+  defp control_clear_entries do
+    case :ets.info(@table_name, :size) do
+      :undefined ->
+        {:error, :cache_absent}
+
+      count ->
+        clear_entries()
+        {:ok, count}
+    end
   end
 
   defp project_control_entry(
@@ -319,7 +334,7 @@ defmodule YellowDog.Mdns.MessageCache do
   defp control_srv_data(priority, weight, port, target)
        when priority in 0..65_535 and weight in 0..65_535 and port in 0..65_535 and
               is_binary(target) do
-    if valid_dns_name?(target) do
+    if valid_srv_target?(target) do
       {:ok, "SRV", ["#{priority} #{weight} #{port} #{target}"]}
     else
       :error
@@ -327,6 +342,9 @@ defmodule YellowDog.Mdns.MessageCache do
   end
 
   defp control_srv_data(_priority, _weight, _port, _target), do: :error
+
+  defp valid_srv_target?("."), do: true
+  defp valid_srv_target?(target), do: valid_dns_name?(target)
 
   defp control_txt(%DNS.Message.Record.Data.TXT{data: values}), do: control_txt(values)
 

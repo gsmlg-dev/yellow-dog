@@ -94,6 +94,18 @@ defmodule YellowDog.Mdns.MessageCacheTest do
     }
   end
 
+  defp delete_cache_table_from_owner do
+    pid = Process.whereis(MessageCache)
+
+    :sys.replace_state(pid, fn state ->
+      :ets.delete(:mdns_message_cache)
+      state
+    end)
+
+    assert :undefined == :ets.whereis(:mdns_message_cache)
+    pid
+  end
+
   setup do
     # Start the MessageCache for each test
     start_supervised!(MessageCache)
@@ -448,6 +460,51 @@ defmodule YellowDog.Mdns.MessageCacheTest do
              ]
     end
 
+    test "projects an SRV unavailable-service root target" do
+      record = %Record{
+        name: DNS.Message.Domain.new("instance._http._tcp.local"),
+        type: ResourceRecordType.new(:srv),
+        class: :IN,
+        ttl: 4500,
+        data: Data.SRV.new({0, 0, 0, "."})
+      }
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(answers: [record]),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      assert {:ok,
+              [
+                %{
+                  "name" => "instance._http._tcp.local.",
+                  "type" => "SRV",
+                  "values" => ["0 0 0 ."]
+                }
+              ]} = MessageCache.control_snapshot()
+    end
+
+    test "omits TXT records containing zero-length segments as unrepresentable" do
+      record = %Record{
+        name: DNS.Message.Domain.new("instance._http._tcp.local"),
+        type: ResourceRecordType.new(:txt),
+        class: :IN,
+        ttl: 4500,
+        data: Data.TXT.new(["path=/", ""])
+      }
+
+      assert :ok =
+               MessageCache.cache_message(
+                 create_dns_message(answers: [record]),
+                 {192, 0, 2, 1},
+                 5353
+               )
+
+      assert {:ok, []} = MessageCache.control_snapshot()
+    end
+
     test "projects supported legacy cache data shapes" do
       records = [
         create_a_record("host.local", {192, 0, 2, 11}),
@@ -596,6 +653,28 @@ defmodule YellowDog.Mdns.MessageCacheTest do
 
       assert {:error, :cache_absent} = MessageCache.control_snapshot()
       assert {:error, :cache_absent} = MessageCache.control_clear()
+    end
+
+    test "snapshot returns cache_absent without restarting a live owner when its table is absent" do
+      pid = delete_cache_table_from_owner()
+      monitor = Process.monitor(pid)
+
+      assert {:error, :cache_absent} = MessageCache.control_snapshot()
+      assert Process.whereis(MessageCache) == pid
+      assert Process.alive?(pid)
+      assert :undefined == :ets.whereis(:mdns_message_cache)
+      refute_receive {:DOWN, ^monitor, :process, ^pid, _reason}
+    end
+
+    test "clear returns cache_absent without restarting a live owner when its table is absent" do
+      pid = delete_cache_table_from_owner()
+      monitor = Process.monitor(pid)
+
+      assert {:error, :cache_absent} = MessageCache.control_clear()
+      assert Process.whereis(MessageCache) == pid
+      assert Process.alive?(pid)
+      assert :undefined == :ets.whereis(:mdns_message_cache)
+      refute_receive {:DOWN, ^monitor, :process, ^pid, _reason}
     end
   end
 
