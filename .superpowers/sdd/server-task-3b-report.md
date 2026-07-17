@@ -150,17 +150,22 @@ devenv shell -- bash -lc 'cd apps/yellow_dog_store && mix credo --strict'
 exit 0: 62 source files, 797 mods/funs, no issues
 ```
 
-Scoped `mix format --check-formatted` and `git diff --check` also pass. Existing
-deprecated legacy Key API warnings remain in key/property tests and are unrelated.
+Scoped `mix format --check-formatted` and `git diff --check` also pass. The full
+test run emits existing deprecated legacy Key API warnings in key/property tests,
+plus expected EventBridge retry warnings from the startup-order coverage; neither
+is a compiler warning or test failure.
 
 ## Limitations
 
 - The Store Mix application has no application callback or independent ordered
   supervisor. The only current startup sequence is in out-of-scope
   `YellowDog.Application`, where recovery must run after `TaskSupervisor` and
-  `EventBridge` but before consumers. This change therefore exposes synchronous
-  `Zone.recover_pending_replacements/0` and recovers on every relevant access,
-  but does not claim an automatic startup hook.
+  `EventBridge` but before consumers. This limitation applies to scanning Zone
+  replacement intents: Store exposes synchronous
+  `Zone.recover_pending_replacements/0` and also recovers on every relevant
+  access, but does not claim an automatic Zone-intent startup hook. It does not
+  limit EventBridge: every EventBridge start automatically scans pending durable
+  events and retries a temporarily unavailable backend.
 - Event cursor semantics are at least once. Pending records do not expire; after
   fan-out acknowledgement they remain replayable for 24 hours. A crash after
   dispatch and before acknowledgement may duplicate an RR event with the same
