@@ -6,21 +6,12 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
   @max_size 9_223_372_036_854_775_807
   @digest_pattern ~r/\A[0-9a-f]{64}\z/
   @control_pattern ~r/\p{Cc}/u
-  @active_keys MapSet.new(~w(asset_id filename size blob_digest ownership lifecycle))
-  @tombstoned_keys MapSet.put(@active_keys, "tombstone_filename")
+  @keys MapSet.new(~w(asset_id filename size blob_digest ownership lifecycle))
 
   @enforce_keys [:asset_id, :filename, :size, :blob_digest, :ownership, :lifecycle]
-  defstruct [
-    :asset_id,
-    :filename,
-    :size,
-    :blob_digest,
-    :ownership,
-    :lifecycle,
-    :tombstone_filename
-  ]
+  defstruct [:asset_id, :filename, :size, :blob_digest, :ownership, :lifecycle]
 
-  @type lifecycle :: :active | :tombstoned
+  @type lifecycle :: :active
 
   @type t :: %__MODULE__{
           asset_id: String.t(),
@@ -28,27 +19,18 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
           size: non_neg_integer(),
           blob_digest: String.t(),
           ownership: :managed,
-          lifecycle: lifecycle(),
-          tombstone_filename: String.t() | nil
+          lifecycle: lifecycle()
         }
 
   @spec from_document(term()) :: {:ok, t()} | {:error, atom()}
   def from_document(document) when is_map(document) do
     with {:ok, lifecycle} <- lifecycle(document),
-         :ok <- validate_keys(document, lifecycle),
+         :ok <- validate_keys(document),
          :ok <- validate_asset_id(document["asset_id"]),
          :ok <- validate_filename(document["filename"], :invalid_filename),
-         :ok <- validate_distinct_owned_paths(document["asset_id"], document["filename"]),
          :ok <- validate_size(document["size"]),
          :ok <- validate_digest(document["blob_digest"]),
-         :ok <- validate_ownership(document["ownership"]),
-         :ok <-
-           validate_tombstone(
-             document["asset_id"],
-             document["filename"],
-             document["tombstone_filename"],
-             lifecycle
-           ) do
+         :ok <- validate_ownership(document["ownership"]) do
       {:ok,
        %__MODULE__{
          asset_id: document["asset_id"],
@@ -56,8 +38,7 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
          size: document["size"],
          blob_digest: document["blob_digest"],
          ownership: :managed,
-         lifecycle: lifecycle,
-         tombstone_filename: document["tombstone_filename"]
+         lifecycle: lifecycle
        }}
     end
   end
@@ -66,7 +47,7 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
 
   @spec to_document(t()) :: map()
   def to_document(%__MODULE__{} = asset) do
-    document = %{
+    %{
       "asset_id" => asset.asset_id,
       "filename" => asset.filename,
       "size" => asset.size,
@@ -74,12 +55,6 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
       "ownership" => Atom.to_string(asset.ownership),
       "lifecycle" => Atom.to_string(asset.lifecycle)
     }
-
-    if asset.lifecycle == :tombstoned do
-      Map.put(document, "tombstone_filename", asset.tombstone_filename)
-    else
-      document
-    end
   end
 
   @spec to_resource(t()) :: map()
@@ -92,59 +67,21 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
     }
   end
 
-  @spec tombstone(t(), String.t()) :: {:ok, t()} | {:error, atom()}
-  def tombstone(%__MODULE__{lifecycle: :active} = asset, tombstone_filename) do
-    asset
-    |> to_document()
-    |> Map.put("lifecycle", "tombstoned")
-    |> Map.put("tombstone_filename", tombstone_filename)
-    |> from_document()
-  end
-
-  def tombstone(%__MODULE__{}, _tombstone_filename), do: {:error, :invalid_lifecycle}
-
-  @spec tombstone_filename(t()) :: String.t()
-  def tombstone_filename(%__MODULE__{} = asset) do
-    tombstone_filename(asset.asset_id, asset.filename)
-  end
-
-  @spec owned_filenames(t()) :: [String.t()]
-  def owned_filenames(%__MODULE__{} = asset) do
-    [asset.filename, tombstone_filename(asset)]
-  end
-
-  defp tombstone_filename(asset_id, payload_filename) do
-    digest =
-      :crypto.hash(:sha256, asset_id)
-      |> Base.encode16(case: :lower)
-
-    filename = ".yellowdog-delete-#{digest}.tombstone"
-
-    case Path.dirname(payload_filename) do
-      "." -> filename
-      directory -> Path.join(directory, filename)
-    end
-  end
-
   @spec active?(t()) :: boolean()
   def active?(%__MODULE__{lifecycle: :active}), do: true
   def active?(%__MODULE__{}), do: false
+
+  @spec valid_asset_id?(term()) :: boolean()
+  def valid_asset_id?(asset_id), do: validate_asset_id(asset_id) == :ok
 
   @spec valid_filename?(term()) :: boolean()
   def valid_filename?(filename), do: validate_filename(filename, :invalid_filename) == :ok
 
   defp lifecycle(%{"lifecycle" => "active"}), do: {:ok, :active}
-  defp lifecycle(%{"lifecycle" => "tombstoned"}), do: {:ok, :tombstoned}
   defp lifecycle(_document), do: {:error, :invalid_lifecycle}
 
-  defp validate_keys(document, :active) do
-    if document |> Map.keys() |> MapSet.new() |> MapSet.equal?(@active_keys),
-      do: :ok,
-      else: {:error, :invalid_asset}
-  end
-
-  defp validate_keys(document, :tombstoned) do
-    if document |> Map.keys() |> MapSet.new() |> MapSet.equal?(@tombstoned_keys),
+  defp validate_keys(document) do
+    if document |> Map.keys() |> MapSet.new() |> MapSet.equal?(@keys),
       do: :ok,
       else: {:error, :invalid_asset}
   end
@@ -195,24 +132,4 @@ defmodule YellowDog.Netboot.Asset.ManagedAsset do
 
   defp validate_ownership("managed"), do: :ok
   defp validate_ownership(_ownership), do: {:error, :invalid_ownership}
-
-  defp validate_distinct_owned_paths(asset_id, filename) do
-    if filename == tombstone_filename(asset_id, filename),
-      do: {:error, :invalid_filename},
-      else: :ok
-  end
-
-  defp validate_tombstone(_asset_id, _filename, nil, :active), do: :ok
-
-  defp validate_tombstone(asset_id, filename, tombstone, :tombstoned) do
-    with :ok <- validate_filename(tombstone, :invalid_tombstone_filename),
-         true <- tombstone == tombstone_filename(asset_id, filename) do
-      :ok
-    else
-      _ -> {:error, :invalid_tombstone_filename}
-    end
-  end
-
-  defp validate_tombstone(_asset_id, _filename, _tombstone_filename, _lifecycle),
-    do: {:error, :invalid_asset}
 end

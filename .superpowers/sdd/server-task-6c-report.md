@@ -2,153 +2,144 @@
 
 ## Status
 
-Complete.
+Complete against the revised Task 6C brief and decisions dated 2026-07-17.
 
-## Scope
+This report supersedes every earlier Task 6C claim that control deletion moves,
+tombstones, restores, unlinks, or otherwise mutates payload files.
 
-Implemented only the Task 6C-owned Netboot asset ledger, asset owner, narrow
-FileIndex compensation seam, focused tests/support, and this report.
+## Security Decision
 
-No Supervisor, profile, device, packet, TFTP handler/server/transfer, iPXE,
-socket, Server adapter, console, application dependency, or root Mix files were
-modified by this task.
+The TFTP root is operator-writable. A pathname can therefore be replaced after
+content or inode verification and before a path-based move or unlink takes
+effect. The prior FileOps/GNU `mv` design could detect some replacements after
+the transition, but it could not guarantee that no untracked file had already
+been moved or deleted.
 
-## Implementation
+The safe foundation consequently performs no physical remote/control delete.
+Physical deletion is deferred until managed payloads live in an authenticated,
+agent-owned namespace with exclusive lifecycle ownership.
 
-### Versioned managed asset ledger
+## Implemented Behavior
 
-- Added `YellowDog.Netboot.Asset.ManagedAsset`.
-- Added `YellowDog.Netboot.Asset.Ledger`.
-- The ledger is a strict JSON object:
+### Active-only managed ledger
 
-  ```json
-  {
-    "version": 1,
-    "assets": []
-  }
-  ```
-
-- Active entries contain exactly:
-  - `asset_id`
-  - normalized relative `filename`
-  - bounded non-negative `size`
-  - lowercase 64-character SHA-256 `blob_digest`
-  - `ownership: "managed"`
-  - `lifecycle: "active"`
-- Tombstoned entries additionally contain a normalized same-directory
-  `tombstone_filename` and use `lifecycle: "tombstoned"`.
-- Loading and every ledger mutation revalidate the complete document.
-- Duplicate asset IDs and payload filenames are rejected.
-- IDs are bounded, valid normalized UTF-8, printable, and cannot be path forms.
-- Filenames must be normalized relative paths without traversal, absolute
-  prefixes, backslashes, NUL bytes, duplicate separators, or dot segments.
-- Unknown fields, versions, ownership values, lifecycle values, invalid sizes,
-  and malformed/uppercase digests are rejected.
-- Persistence uses the approved
+- `YellowDog.Netboot.Asset.ManagedAsset` accepts exactly six fields:
+  `asset_id`, `filename`, `size`, `blob_digest`, `ownership`, and `lifecycle`.
+- The only accepted ownership and lifecycle values are `"managed"` and
+  `"active"`.
+- Obsolete `"tombstoned"` lifecycle values and any `tombstone_filename` field
+  are rejected. Startup never attempts to recover them.
+- Asset IDs are bounded, normalized UTF-8 without path separators or Unicode
+  control characters.
+- Filenames are bounded, normalized safe relative paths without traversal,
+  absolute forms, backslashes, duplicate separators, dot segments, NULs, or
+  Unicode control characters.
+- Size is a bounded non-negative integer. The digest is exactly 64 lowercase
+  hexadecimal SHA-256 characters.
+- `YellowDog.Netboot.Asset.Ledger` rejects duplicate IDs and filenames on load
+  and mutation and serializes entries deterministically by asset ID.
+- The versioned JSON ledger remains outside the TFTP root and uses the approved
   `YellowDog.Netboot.ManagedStorage.AtomicJson`.
 
-The default ledger path is the TFTP root's sibling
-`managed_assets.json`. Tests can configure `managed_assets_path`. Startup
-rejects any ledger path inside the TFTP payload tree.
+### Control API boundary
 
-### Asset owner APIs
+- `control_snapshot/1` returns deterministic active ledger-owned resources
+  only. Disk discovery never creates managed IDs, ownership, or digests.
+- `control_delete_asset/1` and `/2` validate the asset ID.
+- A valid existing or missing ID returns `{:error, :unsupported}`.
+- A malformed ID returns `{:error, :invalid}`.
+- The handler does not inspect the ledger for existence and invokes no file,
+  ledger-write, FileIndex-mutation, or broadcast operation.
+- Remote upload remains unsupported at the unchanged control boundary.
 
-`YellowDog.Netboot.Asset.Store` now owns the loaded ledger and exposes:
+Focused regressions compare the Store process state, raw ledger bytes, full
+FileIndex snapshot, and payload bytes before and after control delete for both
+an existing managed ID and a missing valid ID.
 
-- `control_snapshot/0`: deterministic active managed resources only.
-- `control_delete_asset/1`: asset-ID based managed deletion.
-- `control_rescan/1`: exact `"all"` or `"missing"` discovery count.
-- `managed_assets_path/0`: owner path inspection.
+### Local console compatibility
 
-Control snapshots are derived only from active ledger entries. Files discovered
-on disk are never assigned IDs, digests, ownership, or lifecycle state.
+- `upload_file/2` remains exported and preserves parent-directory creation,
+  local copy, overwrite, traversal rejection, and native source errors.
+- `delete_file/1` remains exported and preserves local path deletion, traversal
+  rejection, and native file errors.
+- These local APIs are intentionally distinct from the unsupported remote
+  control boundary.
 
-Upload remains `{:error, :unsupported}` because no authenticated blob resolver
-exists. Legacy path deletion is also unsupported so it cannot remove an
-untracked operator file.
+### FileIndex and restart
 
-### Recoverable delete state machine
+- Every successful `Asset.Store` init loads and validates the ledger, discovers
+  the complete TFTP root, and activates a full FileIndex snapshot.
+- A Store-only restart recreates its ETS table and indexes both managed and
+  untracked safe regular files, so a one-for-one restart does not leave an
+  empty live index.
+- Protocol lookup reads remain unchanged.
+- `build_snapshot/2`, `snapshot/0`, and validated `replace/1` remain as the
+  narrow deterministic index-owner seam.
+- The obsolete per-path `FileIndex.remove/1` compensation operation was
+  removed.
 
-Managed delete performs the following ordering:
+### List and rescan
 
-1. Fetch an active ledger entry by stable asset ID.
-2. Verify the current regular payload's exact size and streaming SHA-256.
-3. Refuse deletion when the deterministic tombstone path already exists.
-4. Snapshot the active FileIndex.
-5. Rename the payload to a deterministic same-directory tombstone.
-6. Durably write the tombstoned candidate ledger with `AtomicJson`.
-7. Build a complete candidate FileIndex excluding the owned tombstone.
-8. Activate the rebuilt FileIndex.
-9. Remove the tombstone.
-10. Durably write the final ledger without the deleted entry.
-
-Before index activation, failures compensate the payload path, prior ledger,
-and prior FileIndex. Compensation refuses to overwrite a concurrently created
-path and reports `:rollback_failed` when complete restoration is impossible.
-
-After candidate activation, tombstone-removal or final-ledger failures leave a
-durable tombstoned entry. A retry or process restart resumes deterministically.
-Startup also recovers the interruption window after payload rename but before
-candidate-ledger persistence.
-
-An untracked file is never deleted or overwritten. Payload replacement,
-tombstone collisions, ambiguous interrupted states, and digest/size mismatch
-are conflicts.
-
-### FileIndex owner seam
-
-Added narrow owner operations without changing lookup/protocol reads:
-
-- `build_snapshot/2`: non-mutating deterministic disk discovery with exact
-  exclusions.
-- `snapshot/0`: deterministic active ETS snapshot.
-- `replace/1`: validated complete replacement.
-
-`scan/1` now builds and validates a candidate before replacing ETS, so a failed
-scan preserves the active index. Discovery uses `File.lstat/1` and skips
-symlinks and non-regular files.
-
-### Rescan semantics
-
-- `"all"` counts every safe regular file in the candidate disk snapshot, then
-  replaces FileIndex.
-- `"missing"` compares candidate filenames with the pre-scan FileIndex, counts
-  only absent filenames, then replaces FileIndex.
+- Local listing reports all safe regular files without claiming ownership.
+- `"all"` rescans count every safe regular file discovered, then replace the
+  complete FileIndex.
+- `"missing"` rescans compare discovered filenames with the pre-scan index,
+  count only previously absent files, then replace the complete FileIndex.
+- Symlinks and non-regular files are skipped.
 - Both scopes leave the ledger byte-for-byte unchanged.
-- Managed tombstones are excluded from serving and rescan counts.
+- Discovery failure preserves the active index and returns
+  `{:error, :apply_failed}`.
+
+## Removed Unsafe Surfaces
+
+- Deleted `YellowDog.Netboot.Asset.FileOps`.
+- Deleted all GNU `mv`, tombstone move, restore, verification, unlink, and
+  recovery code.
+- Deleted tombstone lifecycle/model fields and derived path calculations.
+- Deleted ledger replace/delete operations used only by physical deletion.
+- Deleted max-derived-tombstone, `preserve_tombstoned`, rollback-failed, and
+  delete-compensation failure surfaces.
+- Deleted FileOps fault/race support and physical-deletion tests.
+- Retained only persisted obsolete-state rejection tests required by the
+  revised contract.
 
 ## TDD Evidence
 
-RED cycles were observed for:
+The revised tests were written and run before production changes.
 
-- missing `ManagedAsset` and `Ledger` modules;
-- missing FileIndex snapshot/build/replace operations;
-- missing Store owner APIs and startup ledger validation;
-- root-level tombstone normalization;
-- injected payload, ledger, index, cleanup, and rollback failures;
-- ledger-inside-root validation when the TFTP root is `/`.
+RED result:
 
-GREEN coverage includes:
+```text
+57 tests, 6 failures
+```
 
-- restart ledger load and strict malformed/duplicate validation;
-- active-only deterministic managed snapshots;
-- untracked file preservation and unsupported upload/path delete;
-- payload digest/size replacement conflicts;
-- successful tombstone deletion and final ledger cleanup;
-- candidate-ledger failure rollback;
-- index activation failure and deterministic index rollback;
-- tombstone removal failure plus restart recovery;
-- final ledger failure plus retry recovery;
-- failed compensation plus startup recovery;
-- interrupted active and tombstoned lifecycle states;
-- tombstone collision preservation;
-- `all` and `missing` rescan counts;
-- symlink exclusion and failed-rescan index preservation.
+The failures proved:
+
+- the model and ledger still accepted `"tombstoned"` entries;
+- Store startup still recovered an obsolete tombstoned document;
+- an existing control delete still removed the managed asset;
+- a missing valid ID returned `:not_found` instead of typed unsupported;
+- malformed string IDs were looked up rather than strictly validated.
+
+After removing the unsafe machinery and implementing the non-mutating boundary,
+the same focused command was GREEN:
+
+```text
+57 tests, 0 failures
+```
+
+Coverage includes active-only and obsolete-state validation, duplicate/path/
+digest/control-character validation, deterministic snapshots, untracked files,
+existing and missing control deletes, malformed delete requests, local upload
+and delete compatibility, Store-only restart, failed discovery compensation,
+and both rescan scopes.
 
 ## Verification
 
 All commands ran through `devenv`.
 
+Focused asset and FileIndex tests:
+
 ```text
 cd apps/yellow_dog_netboot &&
 mix test test/asset/managed_asset_test.exs \
@@ -157,199 +148,57 @@ mix test test/asset/managed_asset_test.exs \
   test/tftp/file_index_test.exs
 ```
 
-Result: 59 tests, 0 failures.
+Result: 57 tests, 0 failures.
+
+Full Netboot tests:
 
 ```text
 cd apps/yellow_dog_netboot && mix test
 ```
 
-Result: 372 tests, 0 failures.
+Result: 392 tests, 0 failures.
 
-```text
-mix compile --warnings-as-errors
-```
-
-Result: exit 0.
-
-```text
-mix format --check-formatted
-```
-
-Result: exit 0.
-
-```text
-cd apps/yellow_dog_netboot && mix credo --strict
-```
-
-Result: 49 source files, 585 modules/functions, no issues.
-
-The full test run emits the existing intentional EEx missing-assign warning
-from `ScriptEngine` coverage; it does not produce a test failure or compile
-warning.
-
-## Integration Notes
-
-- There is intentionally no managed asset creation API in Task 6C. The ledger
-  can be populated only by a future authenticated blob workflow.
-- Task 6D should consume `control_snapshot/0`,
-  `control_delete_asset/1`, and `control_rescan/1`.
-- Existing console upload and path-delete calls now receive
-  `{:error, :unsupported}`. Console changes were outside this task's ownership.
-
-## Independent Review Remediation
-
-This section supersedes the original report where behavior changed in response
-to `.superpowers/sdd/server-task-6c-review.md`.
-
-### C1: deterministic, globally exclusive tombstones
-
-- Persisted `tombstone_filename` must now equal
-  `ManagedAsset.tombstone_filename/1` for that exact asset.
-- Every asset reserves two owned paths even while active: its payload and its
-  deterministic same-directory tombstone.
-- `Ledger.put/2`, `Ledger.replace/2`, and ledger loading reject intersections
-  between any payload/tombstone pair as `:duplicate_asset_path`, in addition to
-  the existing duplicate ID and duplicate payload checks.
-- An asset whose own payload equals its derived tombstone is invalid.
-- The exact C1 malicious restart ledger is covered: tombstoned asset `a`
-  persists `b.img` while active asset `b` owns `b.img`, and both entries use
-  identical bytes. Startup rejects the ledger as
-  `:invalid_tombstone_filename` and proves `b.img` remains unchanged.
-
-### C2: verified no-replace transitions
-
-- Added the asset-scoped Linux file boundary
-  `YellowDog.Netboot.Asset.FileOps`.
-- A transition opens and verifies the source as a regular file, binds the open
-  descriptor to the path by Linux device/inode identity, and streams its size
-  and SHA-256 before transition.
-- The same-directory move uses GNU coreutils
-  `mv --update=none-fail --no-copy -T`, which fails when the target exists and
-  cannot fall back to copying.
-- The source descriptor remains open across the transition. Afterward, the
-  target is reopened and revalidated for device/inode identity, size, digest,
-  and stable final path identity.
-- The same primitive is used for payload-to-tombstone moves, rollback restore,
-  active-ledger startup restore, and tombstoned resume. Restore never replaces
-  a concurrently created payload.
-- Tombstone removal also revalidates descriptor identity and content
-  immediately before removal. A replacement detected at that boundary is left
-  untouched.
-- On ambiguous source identity/content, Store removes both owned paths from
-  FileIndex and leaves the filesystem bytes and durable ledger state
-  non-destructively recoverable.
-- Deterministic race coverage creates a target after source verification,
-  swaps the source after verification, mutates the same inode after
-  verification, and replaces a tombstone before removal. Tests assert exact
-  bytes at every surviving path.
-
-### I1: failed restore remains tombstoned and non-serving
-
-- Rollback removes the asset payload/tombstone from FileIndex before attempting
-  restoration.
-- Only a proven payload restore, required ledger compensation, and prior-index
-  replacement restore the active state.
-- If restore fails, Store durably writes or re-writes the tombstoned candidate,
-  rebuilds FileIndex with both the payload and tombstone excluded, retains the
-  tombstoned in-memory state, and returns `:rollback_failed`.
-- Coverage injects an index activation failure and creates an untracked payload
-  at the restore target. The untracked payload is not overwritten, managed
-  bytes remain at the tombstone, both TFTP lookups return `:not_found`, the
-  control snapshot is empty, and restart completes recovery after the
-  conflicting untracked path is removed.
-- A second test combines the initial candidate-ledger write failure with the
-  same restore conflict and proves the retry persists tombstoned state.
-
-### I2: complete FileIndex rebuild on every Store init
-
-- Every `Asset.Store` init initializes and clears FileIndex before ledger
-  recovery, then rebuilds the complete root snapshot after recovery.
-- Startup excludes both paths of every durable tombstoned asset.
-- A Store-only restart regression proves the Store-owned ETS table is
-  destroyed, recreated, and repopulated with both managed and untracked safe
-  files while the rest of the supervision tree remains untouched.
-
-### I3: local compatibility APIs restored
-
-- `upload_file/2` again creates parent directories and copies a local source,
-  including legacy overwrite behavior.
-- `delete_file/1` again removes a local relative path and returns native file
-  errors.
-- Both local APIs retain traversal rejection.
-- Remote/control upload remains unsupported in the unchanged control adapter;
-  control deletion remains asset-ID based and ledger-owned only.
-
-### M1: explicit control-character rejection
-
-- Asset IDs and filenames now reject Unicode control code points (`\p{Cc}`),
-  including newline, tab, carriage return, and escape, rather than relying only
-  on `String.printable?/1`.
-
-## Review TDD Evidence
-
-RED was recorded before production changes. The normal focused command first
-encountered unrelated, concurrently edited `Device.Registry` compile errors
-outside Task 6C ownership. Running the focused files against the existing test
-build without starting the unrelated supervision tree produced:
-
-```text
-68 tests, 16 failures
-```
-
-The failures included control-character acceptance, arbitrary tombstone
-acceptance, missing global path reservation, missing asset file-ops module,
-malicious-ledger startup success, local API regressions, source/target races,
-empty FileIndex after Store-only restart, and stale active state after failed
-restore.
-
-GREEN focused verification:
-
-```text
-cd apps/yellow_dog_netboot &&
-mix test test/asset/managed_asset_test.exs \
-  test/asset/ledger_test.exs \
-  test/asset/file_ops_test.exs \
-  test/asset/store_test.exs \
-  test/tftp/file_index_test.exs
-```
-
-Result: 70 tests, 0 failures.
-
-## Review Verification
-
-All final commands ran through `devenv`.
-
-```text
-cd apps/yellow_dog_netboot && mix test
-```
-
-Final result: 405 tests, 0 failures.
-
-An earlier full run at seed `537193` had two order-dependent failures in
-`Boot.DhcpIntegrationTest` while the unowned `Device.Registry` files were being
-modified concurrently. That test file passed independently (5 tests,
-0 failures), and the complete rerun at seed `568363` passed. No device or boot
-files were changed by Task 6C.
+Warnings-as-errors compile:
 
 ```text
 cd apps/yellow_dog_netboot && mix compile --force --warnings-as-errors
 ```
 
-Result: 23 files compiled, exit 0.
+Result: 22 files compiled, exit 0.
+
+Formatting:
 
 ```text
-mix compile --warnings-as-errors
-mix format --check-formatted
+cd apps/yellow_dog_netboot && mix format --check-formatted
 ```
 
-Result: both exit 0.
+Result: exit 0.
+
+Strict Credo:
 
 ```text
 cd apps/yellow_dog_netboot && mix credo --strict
 ```
 
-Result: 51 source files, 691 modules/functions, no issues.
+Result: 48 source files, 615 modules/functions, no issues.
 
-The full suite still emits the existing intentional EEx missing-assign warning
-from `ScriptEngine` coverage and expected warnings for unavailable test TFTP
-roots; neither produces a test or compile failure.
+The full suite emits its existing deliberate ScriptEngine missing-assign
+warning and expected unavailable-test-root warnings. Neither is a failure. An
+earlier non-forced compile also surfaced an unrelated warning in concurrently
+modified `yellow_dog_config` code; the forced Netboot compile above was clean,
+and no out-of-scope file was changed.
+
+## Scope Confirmation
+
+Changes are limited to Task 6C-owned asset modules, the narrow FileIndex owner
+surface, focused tests/support, and this report. Supervisor, profiles, devices,
+TFTP handlers/server/transfers/iPXE/packet/socket code, Server adapters,
+console, Mix files, protocol code, and protected files were not modified by
+this task.
+
+## Remaining Concern
+
+Remote physical asset deletion is intentionally unavailable. It must not be
+implemented against the operator-writable TFTP tree; it requires the future
+authenticated, agent-owned payload namespace described in the revised
+decisions.

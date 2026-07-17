@@ -49,15 +49,15 @@ defmodule YellowDog.Netboot.TFTP.FileIndexTest do
     end
 
     test "build_snapshot/2 excludes only exact normalized filenames" do
-      File.write!(Path.join(@tmp_root, ".kernel.img.yellowdog-delete"), "tombstone")
+      File.write!(Path.join(@tmp_root, ".index-internal"), "internal")
 
       assert {:ok, snapshot} =
                FileIndex.build_snapshot(@tmp_root,
-                 exclude: [".kernel.img.yellowdog-delete"]
+                 exclude: [".index-internal"]
                )
 
       filenames = Enum.map(snapshot, &elem(&1, 0))
-      refute ".kernel.img.yellowdog-delete" in filenames
+      refute ".index-internal" in filenames
       assert "kernel.img" in filenames
     end
 

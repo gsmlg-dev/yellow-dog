@@ -2,10 +2,8 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Netboot.Asset.Ledger
-  alias YellowDog.Netboot.Asset.FileOps, as: AssetFileOps
   alias YellowDog.Netboot.Asset.ManagedAsset
   alias YellowDog.Netboot.Asset.Store
-  alias YellowDog.Netboot.Asset.StoreTestFileOps
   alias YellowDog.Netboot.Asset.StoreTestIndexOps
   alias YellowDog.Netboot.TFTP.FileIndex
 
@@ -23,62 +21,85 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     %{base: base, root: root, ledger_path: ledger_path}
   end
 
-  test "restart loads only active ledger-owned assets and never claims untracked files",
-       context do
-    File.write!(Path.join(context.root, "operator.img"), "operator data")
-    asset = put_asset(context, "installer", "images/installer.img", "managed data")
+  test "snapshot is deterministic, active-only, and never claims untracked files", context do
+    zeta = put_asset(context, "zeta", "images/zeta.img", "zeta")
+    alpha = put_asset(context, "alpha", "images/alpha.img", "alpha")
+    File.write!(Path.join(context.root, "operator.img"), "operator")
 
     store = start_store(context)
 
+    assert {:ok, resources} = Store.control_snapshot(store)
+
+    assert resources == [
+             ManagedAsset.to_resource(alpha),
+             ManagedAsset.to_resource(zeta)
+           ]
+
+    refute Enum.any?(resources, &(&1["filename"] == "operator.img"))
+
+    assert store
+           |> Store.list_files()
+           |> Enum.map(& &1.path)
+           |> Enum.sort() == ["images/alpha.img", "images/zeta.img", "operator.img"]
+  end
+
+  test "restart reloads the active ledger without changing it", context do
+    asset = put_asset(context, "installer", "images/installer.img", "managed")
+    ledger_before = File.read!(context.ledger_path)
+
+    store = start_store(context)
     assert {:ok, [resource]} = Store.control_snapshot(store)
     assert resource == ManagedAsset.to_resource(asset)
-    refute Enum.any?(elem(Store.control_snapshot(store), 1), &(&1["filename"] == "operator.img"))
 
     stop_store(store)
     restarted = start_store(context)
+
     assert {:ok, [^resource]} = Store.control_snapshot(restarted)
+    assert File.read!(context.ledger_path) == ledger_before
   end
 
-  test "startup rejects a malformed or duplicate ledger", context do
+  test "startup rejects a duplicate ledger", context do
     duplicate = [
       asset_document("one", "installer.img", "one"),
       asset_document("two", "installer.img", "two")
     ]
 
-    File.mkdir_p!(Path.dirname(context.ledger_path))
+    write_ledger_document(context, duplicate)
 
-    File.write!(
-      context.ledger_path,
-      Jason.encode!(%{"version" => 1, "assets" => duplicate})
-    )
-
-    assert {:error, {:ledger_load_failed, :duplicate_filename}} = start_store_result(context)
+    assert {:error, {:ledger_load_failed, :duplicate_filename}} =
+             start_store_result(context)
   end
 
-  test "restart rejects a malicious tombstone alias without deleting another payload", context do
-    contents = "same managed bytes"
-    File.write!(Path.join(context.root, "b.img"), contents)
-
-    malicious =
-      asset_document("a", "a.img", contents)
+  test "startup rejects an obsolete tombstoned entry without recovering it", context do
+    tombstoned =
+      asset_document("installer", "installer.img", "managed")
       |> Map.put("lifecycle", "tombstoned")
-      |> Map.put("tombstone_filename", "b.img")
+      |> Map.put("tombstone_filename", legacy_tombstone_filename("installer"))
 
-    ledger = %{
-      "version" => 1,
-      "assets" => [malicious, asset_document("b", "b.img", contents)]
-    }
+    write_ledger_document(context, [tombstoned])
+    ledger_before = File.read!(context.ledger_path)
 
-    File.mkdir_p!(Path.dirname(context.ledger_path))
-    File.write!(context.ledger_path, Jason.encode!(ledger))
-
-    assert {:error, {:ledger_load_failed, :invalid_tombstone_filename}} =
+    assert {:error, {:ledger_load_failed, :invalid_lifecycle}} =
              start_store_result(context)
 
-    assert File.read!(Path.join(context.root, "b.img")) == contents
+    assert File.read!(context.ledger_path) == ledger_before
   end
 
-  test "the configurable ledger path remains outside the TFTP root", context do
+  test "startup rejects obsolete tombstone metadata on an active entry", context do
+    active =
+      asset_document("installer", "installer.img", "managed")
+      |> Map.put("tombstone_filename", legacy_tombstone_filename("installer"))
+
+    write_ledger_document(context, [active])
+    ledger_before = File.read!(context.ledger_path)
+
+    assert {:error, {:ledger_load_failed, :invalid_asset}} =
+             start_store_result(context)
+
+    assert File.read!(context.ledger_path) == ledger_before
+  end
+
+  test "the configured ledger path remains outside the TFTP root", context do
     store = start_store(context)
 
     assert Store.root_dir(store) == context.root
@@ -90,7 +111,7 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
            )
   end
 
-  test "startup rejects any ledger path inside a root TFTP tree" do
+  test "startup rejects any ledger path inside the TFTP root" do
     assert {:error, {:asset_store_start_failed, :ledger_inside_tftp_root}} =
              GenServer.start(
                Store,
@@ -104,11 +125,12 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
              )
   end
 
-  test "local upload preserves the legacy copy and overwrite behavior", context do
+  test "local upload preserves the legacy copy and overwrite API", context do
     source = Path.join(context.base, "source.img")
     File.write!(source, "source")
     store = start_store(context)
 
+    assert function_exported?(Store, :upload_file, 2)
     assert :ok = Store.upload_file("nested/installer.img", source, store)
     assert File.read!(Path.join(context.root, "nested/installer.img")) == "source"
 
@@ -128,115 +150,55 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
              Store.upload_file("installer.img", "/nonexistent/source", store)
   end
 
-  test "delete rejects untracked files and preserves their bytes", context do
+  test "local delete preserves the legacy path-based API", context do
     operator_path = Path.join(context.root, "operator.img")
     File.write!(operator_path, "operator")
     store = start_store(context)
 
-    assert {:error, :not_found} = Store.control_delete_asset("operator", store)
-    assert File.read!(operator_path) == "operator"
-  end
-
-  test "local path deletion preserves the legacy API", context do
-    operator_path = Path.join(context.root, "operator.img")
-    File.write!(operator_path, "operator")
-    store = start_store(context)
-
+    assert function_exported?(Store, :delete_file, 1)
     assert :ok = Store.delete_file("operator.img", store)
     refute File.exists?(operator_path)
     assert {:error, :enoent} = Store.delete_file("operator.img", store)
     assert {:error, :path_traversal} = Store.delete_file("../operator.img", store)
   end
 
-  test "delete removes an active managed payload, ledger entry, and index entry", context do
-    asset = put_asset(context, "installer", "images/installer.img", "managed data")
-    assert {:ok, 1} = FileIndex.scan(context.root)
+  test "control delete of an existing asset is unsupported with zero mutation", context do
+    asset = put_asset(context, "installer", "images/installer.img", "managed")
     store = start_store(context)
 
-    assert {:ok, resource} = Store.control_delete_asset("installer", store)
+    before = owner_state(context, store, asset.filename)
+
+    assert {:error, :unsupported} = Store.control_delete_asset(asset.asset_id, store)
+    assert owner_state(context, store, asset.filename) == before
+    assert {:ok, [resource]} = Store.control_snapshot(store)
     assert resource == ManagedAsset.to_resource(asset)
-    refute File.exists?(Path.join(context.root, asset.filename))
+  end
+
+  test "control delete of a missing valid ID is unsupported with zero mutation", context do
+    operator_path = Path.join(context.root, "operator.img")
+    File.write!(operator_path, "operator")
+    store = start_store(context)
+
+    before = owner_state(context, store, "operator.img")
+
+    assert {:error, :unsupported} = Store.control_delete_asset("missing-asset", store)
+    assert owner_state(context, store, "operator.img") == before
     assert {:ok, []} = Store.control_snapshot(store)
-    assert {:error, :not_found} = FileIndex.lookup(asset.filename, context.root)
-    assert {:ok, %Ledger{assets: %{}}} = Ledger.load(context.ledger_path)
-    assert [] == Path.wildcard(Path.join([context.root, "images", ".yellowdog-delete-*"]))
   end
 
-  test "delete never removes bytes that no longer match the ledger", context do
-    asset = put_asset(context, "installer", "installer.img", "managed data")
-    payload_path = Path.join(context.root, asset.filename)
-    File.write!(payload_path, "operator replacement")
-    assert {:ok, 1} = FileIndex.scan(context.root)
-    previous_index = FileIndex.snapshot()
-    previous_ledger = File.read!(context.ledger_path)
+  test "control delete rejects malformed asset IDs without mutation", context do
     store = start_store(context)
+    before = owner_state(context, store, nil)
 
-    assert {:error, :conflict} = Store.control_delete_asset("installer", store)
-    assert File.read!(payload_path) == "operator replacement"
-    assert File.read!(context.ledger_path) == previous_ledger
-    refute FileIndex.snapshot() == previous_index
-    assert {:error, :not_found} = FileIndex.lookup(asset.filename, context.root)
-  end
-
-  test "delete does not overwrite an untracked file at the tombstone path", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    tombstone_path = tombstone_path(context, asset)
-    store = start_store(context)
-    File.write!(tombstone_path, "operator")
-
-    assert {:error, :conflict} = Store.control_delete_asset("installer", store)
-    assert File.read!(Path.join(context.root, asset.filename)) == "managed"
-    assert File.read!(tombstone_path) == "operator"
-    assert {:ok, [_resource]} = Store.control_snapshot(store)
-  end
-
-  test "delete never overwrites a tombstone created after payload verification", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    payload_path = Path.join(context.root, asset.filename)
-    tombstone_path = tombstone_path(context, asset)
-
-    before_transition = fn ^payload_path, ^tombstone_path ->
-      File.write!(tombstone_path, "operator")
-      :ok
+    for asset_id <- [nil, "", ".", "..", "bad/id", "bad\\id", "bad\nid"] do
+      assert {:error, :invalid} = Store.control_delete_asset(asset_id, store)
     end
 
-    store =
-      start_store(context,
-        asset_file_ops: {AssetFileOps, before_transition: before_transition}
-      )
-
-    assert {:error, :conflict} = Store.control_delete_asset("installer", store)
-    assert File.read!(payload_path) == "managed"
-    assert File.read!(tombstone_path) == "operator"
-    assert {:ok, [_resource]} = Store.control_snapshot(store)
+    assert owner_state(context, store, nil) == before
   end
 
-  test "delete detects a replaced source after moving it and never deletes its bytes", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    payload_path = Path.join(context.root, asset.filename)
-    tombstone_path = tombstone_path(context, asset)
-    preserved_path = Path.join(context.root, "preserved-managed.img")
-
-    before_transition = fn ^payload_path, ^tombstone_path ->
-      File.rename!(payload_path, preserved_path)
-      File.write!(payload_path, "operator")
-      :ok
-    end
-
-    store =
-      start_store(context,
-        asset_file_ops: {AssetFileOps, before_transition: before_transition}
-      )
-
-    assert {:error, :conflict} = Store.control_delete_asset("installer", store)
-    assert File.read!(preserved_path) == "managed"
-    assert File.read!(tombstone_path) == "operator"
-    refute File.exists?(payload_path)
-    assert {:error, :not_found} = FileIndex.lookup(asset.filename, context.root)
-    assert {:ok, [_resource]} = Store.control_snapshot(store)
-  end
-
-  test "rescan all counts every safe regular file and leaves the ledger unchanged", context do
+  test "rescan all counts every safe regular file and leaves the ledger byte-identical",
+       context do
     _asset = put_asset(context, "installer", "installer.img", "managed")
     File.mkdir_p!(Path.join(context.root, "nested"))
     File.write!(Path.join(context.root, "operator.img"), "operator")
@@ -250,7 +212,7 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     assert {:ok, [_resource]} = Store.control_snapshot(store)
   end
 
-  test "rescan missing counts files absent from the pre-scan index then rebuilds it", context do
+  test "rescan missing counts files absent from the pre-scan index and rebuilds it", context do
     File.write!(Path.join(context.root, "known.img"), "known")
     store = start_store(context)
     File.write!(Path.join(context.root, "new.img"), "new")
@@ -268,68 +230,14 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     File.write!(outside, "outside")
     File.ln_s!(outside, Path.join(context.root, "linked.img"))
     File.write!(Path.join(context.root, "regular.img"), "regular")
-    assert {:ok, 1} = FileIndex.scan(context.root)
-    previous_index = FileIndex.snapshot()
     {:ok, index_ops} = StoreTestIndexOps.start_link(%{})
     store = start_store(context, index_ops: {StoreTestIndexOps, index_ops})
+    previous_index = FileIndex.snapshot()
     StoreTestIndexOps.fail_next(index_ops, :build_snapshot)
 
     assert {:error, :apply_failed} = Store.control_rescan("all", store)
     assert FileIndex.snapshot() == previous_index
     assert {:ok, []} = Store.control_snapshot(store)
-  end
-
-  test "restart restores a deterministic tombstone when the active ledger was not committed",
-       context do
-    asset = put_asset(context, "installer", "images/installer.img", "managed")
-    payload_path = Path.join(context.root, asset.filename)
-    tombstone_filename = ManagedAsset.tombstone_filename(asset)
-    tombstone_path = Path.join(context.root, tombstone_filename)
-    File.rename!(payload_path, tombstone_path)
-
-    store = start_store(context)
-
-    assert File.read!(payload_path) == "managed"
-    refute File.exists?(tombstone_path)
-    assert {:ok, [_resource]} = Store.control_snapshot(store)
-  end
-
-  test "restart completes a durably tombstoned delete", context do
-    asset = put_asset(context, "installer", "images/installer.img", "managed")
-    tombstone_filename = ManagedAsset.tombstone_filename(asset)
-    {:ok, tombstoned} = ManagedAsset.tombstone(asset, tombstone_filename)
-    {:ok, ledger} = Ledger.load(context.ledger_path)
-    {:ok, ledger} = Ledger.replace(ledger, tombstoned)
-    :ok = Ledger.write(context.ledger_path, ledger)
-
-    payload_path = Path.join(context.root, asset.filename)
-    tombstone_path = Path.join(context.root, tombstone_filename)
-    File.rename!(payload_path, tombstone_path)
-    assert {:ok, 1} = FileIndex.scan(context.root)
-
-    store = start_store(context)
-
-    refute File.exists?(payload_path)
-    refute File.exists?(tombstone_path)
-    assert {:ok, []} = Store.control_snapshot(store)
-    assert FileIndex.count() == 0
-    assert {:ok, %Ledger{assets: %{}}} = Ledger.load(context.ledger_path)
-  end
-
-  test "restart completes a tombstoned ledger whose payload rename was compensated", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    tombstone_filename = ManagedAsset.tombstone_filename(asset)
-    {:ok, tombstoned} = ManagedAsset.tombstone(asset, tombstone_filename)
-    {:ok, ledger} = Ledger.load(context.ledger_path)
-    {:ok, ledger} = Ledger.replace(ledger, tombstoned)
-    :ok = Ledger.write(context.ledger_path, ledger)
-
-    store = start_store(context)
-
-    refute File.exists?(Path.join(context.root, asset.filename))
-    refute File.exists?(Path.join(context.root, tombstone_filename))
-    assert {:ok, []} = Store.control_snapshot(store)
-    assert {:ok, %Ledger{assets: %{}}} = Ledger.load(context.ledger_path)
   end
 
   test "a Store-only restart rebuilds the complete live FileIndex", context do
@@ -347,181 +255,23 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     stop_store(store)
     assert :ets.whereis(FileIndex) == :undefined
 
-    _restarted = start_store(context)
+    restarted = start_store(context)
     assert {:ok, _, _} = FileIndex.lookup(asset.filename, context.root)
     assert {:ok, ^operator_path, _} = FileIndex.lookup("operator.img", context.root)
+    assert :ets.info(FileIndex, :owner) == restarted
   end
 
-  test "payload rename failure preserves the active file, ledger, and index", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    assert {:ok, 1} = FileIndex.scan(context.root)
-    index_before = FileIndex.snapshot()
-    ledger_before = File.read!(context.ledger_path)
-    tombstone_path = tombstone_path(context, asset)
-
-    before_transition = fn _source, ^tombstone_path ->
-      {:error, :injected}
-    end
-
-    store =
-      start_store(context,
-        asset_file_ops: {AssetFileOps, before_transition: before_transition}
-      )
-
-    assert {:error, :apply_failed} = Store.control_delete_asset("installer", store)
-    assert File.read!(Path.join(context.root, asset.filename)) == "managed"
-    refute File.exists?(tombstone_path)
-    assert File.read!(context.ledger_path) == ledger_before
-    assert FileIndex.snapshot() == index_before
+  defp owner_state(context, store, payload_filename) do
+    %{
+      process: :sys.get_state(store),
+      ledger: File.read(context.ledger_path),
+      index: FileIndex.snapshot(),
+      payload: read_payload(context.root, payload_filename)
+    }
   end
 
-  test "candidate ledger failure restores the file and prior index", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    assert {:ok, 1} = FileIndex.scan(context.root)
-    index_before = FileIndex.snapshot()
-    ledger_before = File.read!(context.ledger_path)
-    {:ok, file_ops} = StoreTestFileOps.start_link(%{{:rename, context.ledger_path} => [1]})
-    store = start_store(context, file_ops: {StoreTestFileOps, file_ops})
-
-    assert {:error, :apply_failed} = Store.control_delete_asset("installer", store)
-    assert File.read!(Path.join(context.root, asset.filename)) == "managed"
-    refute File.exists?(tombstone_path(context, asset))
-    assert File.read!(context.ledger_path) == ledger_before
-    assert FileIndex.snapshot() == index_before
-  end
-
-  test "failed candidate write and failed restore persist tombstoned non-serving state",
-       context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    payload_path = Path.join(context.root, asset.filename)
-    tombstone_path = tombstone_path(context, asset)
-    {:ok, file_ops} = StoreTestFileOps.start_link(%{{:rename, context.ledger_path} => [1]})
-
-    before_transition = fn
-      ^tombstone_path, ^payload_path ->
-        File.write!(payload_path, "operator")
-        :ok
-
-      _source, _target ->
-        :ok
-    end
-
-    store =
-      start_store(context,
-        file_ops: {StoreTestFileOps, file_ops},
-        asset_file_ops: {AssetFileOps, before_transition: before_transition}
-      )
-
-    assert {:error, :rollback_failed} = Store.control_delete_asset("installer", store)
-    assert File.read!(payload_path) == "operator"
-    assert File.read!(tombstone_path) == "managed"
-    assert {:error, :not_found} = FileIndex.lookup(asset.filename, context.root)
-
-    assert {:ok, ledger} = Ledger.load(context.ledger_path)
-    assert {:ok, %{lifecycle: :tombstoned}} = Ledger.fetch(ledger, asset.asset_id)
-    assert {:ok, []} = Store.control_snapshot(store)
-  end
-
-  test "index activation failure restores the file, prior ledger, and prior index", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    assert {:ok, 1} = FileIndex.scan(context.root)
-    index_before = FileIndex.snapshot()
-    ledger_before = File.read!(context.ledger_path)
-    {:ok, index_ops} = StoreTestIndexOps.start_link(%{})
-    store = start_store(context, index_ops: {StoreTestIndexOps, index_ops})
-    StoreTestIndexOps.fail_next(index_ops, :replace)
-
-    assert {:error, :apply_failed} = Store.control_delete_asset("installer", store)
-    assert File.read!(Path.join(context.root, asset.filename)) == "managed"
-    refute File.exists?(tombstone_path(context, asset))
-    assert File.read!(context.ledger_path) == ledger_before
-    assert FileIndex.snapshot() == index_before
-  end
-
-  test "tombstone removal failure leaves a recoverable ledger and restart completes delete",
-       context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    tombstone_path = tombstone_path(context, asset)
-
-    before_remove = fn ^tombstone_path ->
-      {:error, :injected}
-    end
-
-    store =
-      start_store(context,
-        asset_file_ops: {AssetFileOps, before_remove: before_remove}
-      )
-
-    assert {:error, :apply_failed} = Store.control_delete_asset("installer", store)
-    assert File.exists?(tombstone_path)
-    assert {:ok, ledger} = Ledger.load(context.ledger_path)
-    assert {:ok, %{lifecycle: :tombstoned}} = Ledger.fetch(ledger, "installer")
-
-    stop_store(store)
-    restarted = start_store(context)
-    assert {:ok, []} = Store.control_snapshot(restarted)
-    refute File.exists?(tombstone_path)
-    assert {:ok, %Ledger{assets: %{}}} = Ledger.load(context.ledger_path)
-  end
-
-  test "final ledger failure is recoverable by retry after the tombstone is removed", context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    {:ok, file_ops} = StoreTestFileOps.start_link(%{{:rename, context.ledger_path} => [2]})
-    store = start_store(context, file_ops: {StoreTestFileOps, file_ops})
-
-    assert {:error, :apply_failed} = Store.control_delete_asset("installer", store)
-    refute File.exists?(Path.join(context.root, asset.filename))
-    refute File.exists?(tombstone_path(context, asset))
-    assert {:ok, ledger} = Ledger.load(context.ledger_path)
-    assert {:ok, %{lifecycle: :tombstoned}} = Ledger.fetch(ledger, "installer")
-
-    assert {:ok, _resource} = Store.control_delete_asset("installer", store)
-    assert {:ok, %Ledger{assets: %{}}} = Ledger.load(context.ledger_path)
-  end
-
-  test "failed payload restoration leaves durable tombstoned non-serving state",
-       context do
-    asset = put_asset(context, "installer", "installer.img", "managed")
-    payload_path = Path.join(context.root, asset.filename)
-    tombstone_path = tombstone_path(context, asset)
-    {:ok, index_ops} = StoreTestIndexOps.start_link(%{})
-
-    before_transition = fn
-      ^tombstone_path, ^payload_path ->
-        File.write!(payload_path, "operator")
-        :ok
-
-      _source, _target ->
-        :ok
-    end
-
-    store =
-      start_store(context,
-        asset_file_ops: {AssetFileOps, before_transition: before_transition},
-        index_ops: {StoreTestIndexOps, index_ops}
-      )
-
-    StoreTestIndexOps.fail_next(index_ops, :replace)
-
-    assert {:error, :rollback_failed} = Store.control_delete_asset("installer", store)
-    assert File.read!(payload_path) == "operator"
-    assert File.read!(tombstone_path) == "managed"
-    assert {:error, :not_found} = FileIndex.lookup(asset.filename, context.root)
-
-    assert {:error, :not_found} =
-             FileIndex.lookup(ManagedAsset.tombstone_filename(asset), context.root)
-
-    assert {:ok, ledger} = Ledger.load(context.ledger_path)
-    assert {:ok, %{lifecycle: :tombstoned}} = Ledger.fetch(ledger, asset.asset_id)
-    assert {:ok, []} = Store.control_snapshot(store)
-
-    stop_store(store)
-    File.rm!(payload_path)
-    restarted = start_store(context)
-    refute File.exists?(payload_path)
-    refute File.exists?(tombstone_path)
-    assert {:ok, []} = Store.control_snapshot(restarted)
-  end
+  defp read_payload(_root, nil), do: :not_applicable
+  defp read_payload(root, filename), do: File.read(Path.join(root, filename))
 
   defp put_asset(context, asset_id, filename, contents) do
     path = Path.join(context.root, filename)
@@ -532,12 +282,7 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
       asset_document(asset_id, filename, contents)
       |> ManagedAsset.from_document()
 
-    ledger =
-      case Ledger.load(context.ledger_path) do
-        {:ok, ledger} -> ledger
-        {:error, :enoent} -> Ledger.empty()
-      end
-
+    {:ok, ledger} = Ledger.load(context.ledger_path)
     {:ok, ledger} = Ledger.put(ledger, asset)
     :ok = Ledger.write(context.ledger_path, ledger)
     asset
@@ -554,26 +299,38 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     }
   end
 
+  defp write_ledger_document(context, assets) do
+    File.mkdir_p!(Path.dirname(context.ledger_path))
+    File.write!(context.ledger_path, Jason.encode!(%{"version" => 1, "assets" => assets}))
+  end
+
   defp start_store(context, opts \\ []) do
     assert {:ok, pid} = start_store_result(context, opts)
-    on_exit(fn -> stop_store(pid) end)
     pid
   end
 
   defp start_store_result(context, opts \\ []) do
-    GenServer.start(
-      Store,
-      Keyword.merge(
-        [
-          config: %{
-            tftp_root: context.root,
-            managed_assets_path: context.ledger_path
-          }
-        ],
-        opts
-      ),
-      []
-    )
+    result =
+      GenServer.start(
+        Store,
+        Keyword.merge(
+          [
+            config: %{
+              tftp_root: context.root,
+              managed_assets_path: context.ledger_path
+            }
+          ],
+          opts
+        ),
+        []
+      )
+
+    case result do
+      {:ok, pid} -> on_exit(fn -> stop_store(pid) end)
+      _other -> :ok
+    end
+
+    result
   end
 
   defp stop_store(store) do
@@ -585,8 +342,9 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     |> Base.encode16(case: :lower)
   end
 
-  defp tombstone_path(context, asset) do
-    Path.join(context.root, ManagedAsset.tombstone_filename(asset))
+  defp legacy_tombstone_filename(asset_id) do
+    digest = sha256(asset_id)
+    ".yellowdog-delete-#{digest}.tombstone"
   end
 
   defp unique, do: System.unique_integer([:positive, :monotonic])

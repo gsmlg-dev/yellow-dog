@@ -113,26 +113,19 @@ defmodule YellowDog.Netboot.Asset.ManagedAssetTest do
              |> ManagedAsset.from_document()
   end
 
-  test "requires the asset's deterministic tombstone filename only in tombstoned state" do
-    assert {:ok, active} = ManagedAsset.from_document(valid_document())
-
+  test "rejects the obsolete tombstoned lifecycle" do
     tombstoned =
-      active
-      |> ManagedAsset.to_document()
+      valid_document()
       |> Map.put("lifecycle", "tombstoned")
-      |> Map.put("tombstone_filename", ManagedAsset.tombstone_filename(active))
+      |> Map.put("tombstone_filename", legacy_tombstone_filename("installer"))
 
-    assert {:ok, asset} = ManagedAsset.from_document(tombstoned)
-    assert asset.lifecycle == :tombstoned
+    assert {:error, :invalid_lifecycle} = ManagedAsset.from_document(tombstoned)
+  end
 
-    assert {:error, :invalid_tombstone_filename} =
-             tombstoned
-             |> Map.put("tombstone_filename", ".arbitrary-yellowdog-delete")
-             |> ManagedAsset.from_document()
-
+  test "rejects obsolete tombstone metadata on an active asset" do
     assert {:error, :invalid_asset} =
              valid_document()
-             |> Map.put("tombstone_filename", "installer.img.tombstone")
+             |> Map.put("tombstone_filename", legacy_tombstone_filename("installer"))
              |> ManagedAsset.from_document()
   end
 
@@ -145,5 +138,13 @@ defmodule YellowDog.Netboot.Asset.ManagedAssetTest do
       "ownership" => "managed",
       "lifecycle" => "active"
     }
+  end
+
+  defp legacy_tombstone_filename(asset_id) do
+    digest =
+      :crypto.hash(:sha256, asset_id)
+      |> Base.encode16(case: :lower)
+
+    ".yellowdog-delete-#{digest}.tombstone"
   end
 end

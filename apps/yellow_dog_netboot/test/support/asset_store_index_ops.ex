@@ -19,7 +19,6 @@ defmodule YellowDog.Netboot.Asset.StoreTestIndexOps do
 
   def init(_agent), do: FileIndex.init()
   def snapshot(_agent), do: FileIndex.snapshot()
-  def remove(paths, _agent), do: FileIndex.remove(paths)
 
   def build_snapshot(root, opts, agent) do
     if fail?(agent, :build_snapshot) do

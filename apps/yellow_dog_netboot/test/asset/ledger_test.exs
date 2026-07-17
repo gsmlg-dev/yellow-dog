@@ -69,16 +69,28 @@ defmodule YellowDog.Netboot.Asset.LedgerTest do
              Ledger.put(ledger, managed_asset("other", "installer.img"))
   end
 
-  test "reserves every payload and deterministic tombstone path globally" do
-    installer = managed_asset("installer", "installer.img")
-    tombstone_filename = ManagedAsset.tombstone_filename(installer)
-    colliding = managed_asset("other", tombstone_filename)
+  test "rejects obsolete tombstoned entries", %{path: path} do
+    tombstoned =
+      asset_document("installer", "installer.img")
+      |> Map.put("lifecycle", "tombstoned")
+      |> Map.put("tombstone_filename", legacy_tombstone_filename("installer"))
 
-    assert {:ok, ledger} = Ledger.put(Ledger.empty(), installer)
-    assert {:error, :duplicate_asset_path} = Ledger.put(ledger, colliding)
+    File.write!(path, Jason.encode!(%{"version" => 1, "assets" => [tombstoned]}))
 
-    assert {:ok, reverse_ledger} = Ledger.put(Ledger.empty(), colliding)
-    assert {:error, :duplicate_asset_path} = Ledger.put(reverse_ledger, installer)
+    assert {:error, :invalid_lifecycle} = Ledger.load(path)
+  end
+
+  test "rejects obsolete tombstone metadata on active entries", %{path: path} do
+    active_with_tombstone =
+      asset_document("installer", "installer.img")
+      |> Map.put("tombstone_filename", legacy_tombstone_filename("installer"))
+
+    File.write!(
+      path,
+      Jason.encode!(%{"version" => 1, "assets" => [active_with_tombstone]})
+    )
+
+    assert {:error, :invalid_asset} = Ledger.load(path)
   end
 
   defp managed_asset(asset_id, filename) do
@@ -99,5 +111,13 @@ defmodule YellowDog.Netboot.Asset.LedgerTest do
       "ownership" => "managed",
       "lifecycle" => "active"
     }
+  end
+
+  defp legacy_tombstone_filename(asset_id) do
+    digest =
+      :crypto.hash(:sha256, asset_id)
+      |> Base.encode16(case: :lower)
+
+    ".yellowdog-delete-#{digest}.tombstone"
   end
 end
