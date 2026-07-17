@@ -30,8 +30,8 @@ were made.
 
 ## Verification
 
-1. Focused ConfigStore tests: `15 tests, 0 failures`.
-2. Full Server-agent tests: `94 tests, 0 failures`.
+1. Focused ConfigStore tests: `18 tests, 0 failures`.
+2. Full Server-agent tests: `106 tests, 0 failures`.
 3. `mix compile --warnings-as-errors`: passed.
 4. Scoped `mix format --check-formatted`: passed.
-5. Scoped `mix credo --strict`: `394 mods/funs, found no issues`.
+5. Scoped `mix credo --strict`: `417 mods/funs, found no issues`.

@@ -148,10 +148,18 @@ defmodule YellowDog.ServerAgent.ConfigStoreTest do
   } do
     delivery = envelope(1)
 
-    for {name, link_path} <- [
-          {"data-dir", & &1},
-          {"server", &Path.join(&1, "server")},
-          {"versions", &Path.join(&1, "server/versions")}
+    for {name, link_path, outside_paths} <- [
+          {"data-dir", & &1,
+           [
+             Path.join(["server", "manifest.json"]),
+             Path.join(["server", "versions", "1-#{delivery.payload_digest}.json"])
+           ]},
+          {"server", &Path.join(&1, "server"),
+           [
+             "manifest.json",
+             Path.join(["versions", "1-#{delivery.payload_digest}.json"])
+           ]},
+          {"versions", &Path.join(&1, "server/versions"), ["1-#{delivery.payload_digest}.json"]}
         ] do
       test_data_dir = Path.join(data_dir, name)
       outside_dir = Path.join(data_dir, "#{name}-outside")
@@ -170,11 +178,31 @@ defmodule YellowDog.ServerAgent.ConfigStoreTest do
       store = start_store(test_data_dir)
       assert {:error, %Error{code: :invalid}} = ConfigStore.stage(delivery, store)
 
-      refute File.exists?(Path.join(outside_dir, "server/manifest.json"))
+      for path <- outside_paths do
+        refute File.exists?(Path.join(outside_dir, path))
+      end
+    end
+  end
 
-      refute File.exists?(
-               Path.join(outside_dir, "server/versions/1-#{delivery.payload_digest}.json")
-             )
+  test "rejects non-directory owned components without writes", %{data_dir: data_dir} do
+    delivery = envelope(1)
+
+    for {name, component_path, setup} <- [
+          {"data-dir", & &1, fn _path -> :ok end},
+          {"server", &Path.join(&1, "server"), fn path -> File.mkdir_p!(Path.dirname(path)) end},
+          {"versions", &Path.join(&1, "server/versions"),
+           fn path -> File.mkdir_p!(Path.dirname(path)) end}
+        ] do
+      test_data_dir = Path.join(data_dir, name)
+      path = component_path.(test_data_dir)
+      setup.(path)
+      File.write!(path, "not-a-directory")
+
+      store = start_store(test_data_dir)
+      assert {:error, %Error{code: :invalid}} = ConfigStore.stage(delivery, store)
+      assert File.read!(path) == "not-a-directory"
+      refute File.exists?(manifest_path(test_data_dir))
+      refute File.exists?(version_path(test_data_dir, 1, delivery.payload_digest))
     end
   end
 
