@@ -123,3 +123,89 @@ fallback.
 - Scoped `git diff --check`: passed.
 
 Commit SHA is reported after the conventional commit is created.
+
+## Blocking Review Fixes
+
+Date: 2026-07-18
+
+All four blocking Client review findings were addressed within the Task 9B
+ownership boundary.
+
+### Sensitive Credential Ownership
+
+- Replaced the inspectable socket-params closure with a dedicated sensitive
+  credential provider process.
+- Client state retains only the opaque provider PID. Recursive state probes,
+  including nested function environments, contain no raw token.
+- The provider has no `GenServer`/`:sys` state surface, is marked as an Erlang
+  sensitive process, sanitizes adapter failures, and is destroyed with the
+  Client.
+- Provider operations are restricted to the bound Client PID, so a process
+  that obtains the opaque reference cannot redirect authentication to another
+  endpoint.
+- The provider owns underlying socket creation and passes the unchanged exact
+  params `%{"token" => token, "server_id" => server_id}`. The underlying
+  socket PID is not retained in Client state.
+- Production-shaped unsolicited socket messages are forwarded through the
+  provider with the real channel PID, preserving inbound routing.
+
+### Explicit Enabled Configuration
+
+Enabled mode now requires every option explicitly except optional `:name`.
+There are deletion tests for all 21 required keys, including Dispatcher,
+runtime adapter, owner refs, injected socket/timer/clocks, and every timing
+value. No production module or timing default remains in enabled validation.
+The disabled-only `:enabled`/optional-`:name` gate is unchanged.
+
+### Strict Management URL
+
+Management URLs now use `URI.new/1` plus structured `:uri_string.parse/1`
+authority validation. Only HTTPS URLs with a valid DNS/IP host, no
+userinfo/query/fragment, and a port in `1..65535` are accepted. Empty,
+alphabetic, zero, and out-of-range explicit ports are rejected, including the
+empty-port form that `URI.new/1` otherwise normalizes. Host names are
+canonicalized to lowercase and the endpoint is derived exactly as
+`wss://<authority>/server/ws/websocket`.
+
+### ConfigState Failure Classes
+
+- Timeout, closed, raised/exited, and other socket push failures retain the
+  durable outbox head, clean the current channel/socket, and enter the existing
+  bounded reconnect/backoff path.
+- Malformed or mismatched receipts and local acknowledgement failures retain
+  the head while keeping the active transport and scheduling only the
+  generation-bound local publication retry.
+- Neither path reruns ConfigApplier or fabricates transport/local success.
+
+### Result Path Dependency
+
+The Client still emits the canonical `Result` wrapper returned by Dispatcher
+through the fixed `sync` event. End-to-end production Result correlation on
+the receiving side remains owned by the separate Console worker and is still
+an external dependency until that worker lands. No Console behavior was edited
+or locally worked around in this fix.
+
+### Fix Verification
+
+- TDD red evidence: focused failures proved the token closure capture, missing
+  explicit Dispatcher requirement, alpha/empty-port URL acceptance,
+  ConfigState timeout local retry, provider message drop, and unauthorized
+  provider redirect.
+- Focused Client suite: `26 tests, 0 failures`.
+- Token/state probes: recursive Client state and closure-environment scan,
+  opaque provider `:sys` timeout, sanitized authentication failure, log scan,
+  and unauthorized provider-call rejection all passed.
+- `mix compile --warnings-as-errors --force`: passed, 13 files compiled.
+- Scoped `mix format --check-formatted`: passed.
+- `mix credo --strict`: 32 files checked, no issues.
+- `mix deps`: all 10 direct/transitive entries available.
+- `mix xref graph --label compile`: passed with no compile edges reported.
+- Dependency tree remains limited to Sync, Jason, `phoenix_socket_client`, and
+  runtime dependencies.
+- Forbidden-reference and scoped `git diff --check` scans: clean.
+- Full Server-agent suite currently reports `227 tests, 5 failures`. All five
+  are in the concurrently edited, out-of-scope `SupervisorTest`, whose new
+  durable/outbound expectations currently receive
+  `{:error, :invalid_configuration}` from the unchanged Supervisor
+  implementation. No owned Client test fails, and those protected files were
+  not modified by this fix.

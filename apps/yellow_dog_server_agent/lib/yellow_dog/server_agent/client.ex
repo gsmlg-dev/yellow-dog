@@ -11,9 +11,9 @@ defmodule YellowDog.ServerAgent.Client do
   use GenServer
 
   alias YellowDog.ServerAgent.CommandJournal
+  alias YellowDog.ServerAgent.Client.CredentialProvider
   alias YellowDog.ServerAgent.ConfigApplier
   alias YellowDog.ServerAgent.ConfigApplyStore
-  alias YellowDog.ServerAgent.Dispatcher
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Error
   alias YellowDog.Sync.Identity.Server
@@ -53,6 +53,7 @@ defmodule YellowDog.ServerAgent.Client do
     :initial_backoff,
     :max_backoff
   ]
+  @required_enabled_options @enabled_options -- [:name]
   @socket_callbacks [start_link: 1, connected?: 1, join: 4, push: 4, stop: 1]
   @timer_callbacks [send_after: 3, cancel: 1]
   @clock_callbacks [now: 0]
@@ -64,14 +65,40 @@ defmodule YellowDog.ServerAgent.Client do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) when is_list(opts) do
     with {:ok, config, name} <- validate_options(opts) do
-      case name do
-        nil -> GenServer.start_link(__MODULE__, config)
-        name -> GenServer.start_link(__MODULE__, config, name: name)
-      end
+      start_validated(config, name)
     end
   end
 
   def start_link(_opts), do: {:error, :invalid_options}
+
+  defp start_validated(%{enabled: false} = config, name),
+    do: start_client(config, name)
+
+  defp start_validated(config, name) do
+    %{socket: socket, token: token, identity: identity} = config
+
+    with {:ok, credential_ref} <- CredentialProvider.start_owner(token, identity.id, socket) do
+      client_config =
+        config
+        |> Map.delete(:token)
+        |> Map.put(:credential_ref, credential_ref)
+        |> Map.put(:socket, CredentialProvider)
+
+      case start_client(client_config, name) do
+        {:ok, _client} = started ->
+          started
+
+        error ->
+          CredentialProvider.destroy(credential_ref)
+          error
+      end
+    else
+      _error -> {:error, :invalid_options}
+    end
+  end
+
+  defp start_client(config, nil), do: GenServer.start_link(__MODULE__, config)
+  defp start_client(config, name), do: GenServer.start_link(__MODULE__, config, name: name)
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
@@ -104,21 +131,25 @@ defmodule YellowDog.ServerAgent.Client do
   def init(config) do
     Process.flag(:trap_exit, true)
 
-    {:ok,
-     %{
-       enabled: true,
-       config: config,
-       status: :connecting,
-       socket: nil,
-       socket_ref: nil,
-       channel: nil,
-       channel_ref: nil,
-       generation: 0,
-       connection_id: 0,
-       connect_started_at: nil,
-       attempt: 0,
-       timers: empty_timers()
-     }, {:continue, :connect}}
+    with :ok <- CredentialProvider.bind(config.credential_ref, self()) do
+      {:ok,
+       %{
+         enabled: true,
+         config: config,
+         status: :connecting,
+         socket: nil,
+         socket_ref: nil,
+         channel: nil,
+         channel_ref: nil,
+         generation: 0,
+         connection_id: 0,
+         connect_started_at: nil,
+         attempt: 0,
+         timers: empty_timers()
+       }, {:continue, :connect}}
+    else
+      _error -> {:stop, :invalid_options}
+    end
   end
 
   @impl true
@@ -247,11 +278,19 @@ defmodule YellowDog.ServerAgent.Client do
     {:noreply, schedule_rejoin(state)}
   end
 
+  def handle_info(
+        {:credential_socket_down, credential_ref},
+        %{config: %{credential_ref: credential_ref}} = state
+      ) do
+    {:noreply, schedule_rejoin(state)}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl true
   def terminate(_reason, %{enabled: true} = state) do
     _state = cleanup_connection(state)
+    CredentialProvider.destroy(state.config.credential_ref)
     :ok
   end
 
@@ -264,7 +303,7 @@ defmodule YellowDog.ServerAgent.Client do
 
   defp start_socket_reply(state) do
     state = cleanup_connection(state)
-    socket_opts = [url: state.config.url, params: state.config.socket_params.()]
+    socket_opts = [url: state.config.url, credential_ref: state.config.credential_ref]
 
     case safe_apply(state.config.socket, :start_link, [socket_opts]) do
       {:ok, socket} when is_pid(socket) ->
@@ -482,7 +521,8 @@ defmodule YellowDog.ServerAgent.Client do
            end) do
       flush_publications(rest, state)
     else
-      _error -> schedule_config_retry(state)
+      {:error, :transport} -> schedule_rejoin(state)
+      _local_or_receipt_error -> schedule_config_retry(state)
     end
   end
 
@@ -516,7 +556,8 @@ defmodule YellowDog.ServerAgent.Client do
 
     case socket_push(payload, state) do
       {:ok, receipt} when is_map(receipt) -> {:ok, receipt}
-      _error -> :error
+      {:ok, _malformed_receipt} -> {:error, :receipt}
+      _transport_error -> {:error, :transport}
     end
   end
 
@@ -569,12 +610,13 @@ defmodule YellowDog.ServerAgent.Client do
   end
 
   defp socket_push(payload, state) do
-    safe_apply(state.config.socket, :push, [
+    CredentialProvider.push(
+      state.socket,
       state.channel,
       @event,
       payload,
       state.config.push_timeout
-    ])
+    )
   end
 
   defp publish_periodic(message, timer_key, state) do
@@ -788,28 +830,29 @@ defmodule YellowDog.ServerAgent.Client do
 
   defp validate_mode(true, keys, opts, name) do
     with true <- Enum.all?(keys, &(&1 in @enabled_options)),
+         true <- Enum.all?(@required_enabled_options, &Keyword.has_key?(opts, &1)),
          {:ok, url} <- management_url(Keyword.get(opts, :management_url)),
          {:ok, token} <- token(Keyword.get(opts, :token)),
          {:ok, identity} <- identity(Keyword.get(opts, :identity)),
          {:ok, dispatcher} <-
-           callback_module(Keyword.get(opts, :dispatcher, Dispatcher), dispatch: 2),
+           callback_module(Keyword.get(opts, :dispatcher), dispatch: 2),
          {:ok, dispatcher_runtime_adapter} <-
            module(Keyword.get(opts, :dispatcher_runtime_adapter)),
          {:ok, command_journal} <- server_ref(Keyword.get(opts, :command_journal)),
          {:ok, config_applier} <- server_ref(Keyword.get(opts, :config_applier)),
          {:ok, config_apply_store} <- server_ref(Keyword.get(opts, :config_apply_store)),
-         {:ok, socket} <- callback_module(Keyword.get(opts, :socket, Socket), @socket_callbacks),
-         {:ok, timer} <- callback_module(Keyword.get(opts, :timer, Timer), @timer_callbacks),
+         {:ok, socket} <- callback_module(Keyword.get(opts, :socket), @socket_callbacks),
+         {:ok, timer} <- callback_module(Keyword.get(opts, :timer), @timer_callbacks),
          {:ok, monotonic_clock} <-
-           callback_module(Keyword.get(opts, :monotonic_clock, MonotonicClock), @clock_callbacks),
+           callback_module(Keyword.get(opts, :monotonic_clock), @clock_callbacks),
          {:ok, wall_clock} <-
-           callback_module(Keyword.get(opts, :wall_clock, WallClock), @clock_callbacks),
+           callback_module(Keyword.get(opts, :wall_clock), @clock_callbacks),
          {:ok, timings} <- timings(opts) do
       config =
         Map.merge(timings, %{
           enabled: true,
           url: url,
-          socket_params: socket_params_provider(token, identity.id),
+          token: token,
           identity: identity,
           dispatcher: dispatcher,
           dispatcher_runtime_adapter: dispatcher_runtime_adapter,
@@ -842,21 +885,24 @@ defmodule YellowDog.ServerAgent.Client do
   defp process_name(_value), do: :error
 
   defp management_url(value) when is_binary(value) do
-    with %URI{
-           scheme: "https",
-           host: host,
-           userinfo: nil,
-           query: nil,
-           fragment: nil
-         } = uri <- URI.parse(value),
-         true <- is_binary(host) and host != "" do
+    with {:ok,
+          %URI{
+            scheme: "https",
+            host: host,
+            port: port,
+            userinfo: nil,
+            query: nil,
+            fragment: nil
+          }} <- URI.new(value),
+         true <- valid_management_host?(host),
+         true <- valid_management_authority?(value, host),
+         true <- is_integer(port) and port in 1..65_535 do
       {:ok,
-       URI.to_string(%{
-         uri
-         | scheme: "wss",
-           path: "/server/ws/websocket",
-           query: nil,
-           fragment: nil
+       URI.to_string(%URI{
+         scheme: "wss",
+         host: normalize_management_host(host),
+         port: port,
+         path: "/server/ws/websocket"
        })}
     else
       _invalid -> :error
@@ -864,6 +910,44 @@ defmodule YellowDog.ServerAgent.Client do
   end
 
   defp management_url(_value), do: :error
+
+  defp valid_management_host?(host) when is_binary(host) and host != "" do
+    valid_ip_address?(host) or valid_dns_host?(host)
+  end
+
+  defp valid_management_host?(_host), do: false
+
+  defp valid_management_authority?(value, host) do
+    case :uri_string.parse(value) do
+      %{scheme: scheme, host: ^host} = parts when is_binary(scheme) ->
+        String.downcase(scheme, :ascii) == "https" and Map.get(parts, :port) != :undefined
+
+      _invalid ->
+        false
+    end
+  end
+
+  defp valid_ip_address?(host) do
+    match?({:ok, _address}, :inet.parse_address(String.to_charlist(host)))
+  end
+
+  defp valid_dns_host?(host) when byte_size(host) <= 253 do
+    host
+    |> String.split(".", trim: false)
+    |> Enum.all?(&valid_dns_label?/1)
+  end
+
+  defp valid_dns_host?(_host), do: false
+
+  defp valid_dns_label?(label) when byte_size(label) in 1..63 do
+    Regex.match?(~r/\A[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\z/, label)
+  end
+
+  defp valid_dns_label?(_label), do: false
+
+  defp normalize_management_host(host) do
+    if valid_ip_address?(host), do: host, else: String.downcase(host, :ascii)
+  end
 
   defp token(value) do
     with {:ok, value} <- Bounds.message(value),
@@ -959,11 +1043,234 @@ defmodule YellowDog.ServerAgent.Client do
 
   defp child_id(_opts), do: __MODULE__
 
-  defp socket_params_provider(token, server_id) do
-    fn -> %{"token" => token, "server_id" => server_id} end
-  end
-
   defp empty_timers, do: %{check: nil, rejoin: nil, heartbeat: nil, status: nil, config: nil}
+
+  defmodule CredentialProvider do
+    @moduledoc false
+
+    @call_timeout 5_000
+
+    def start_owner(token, server_id, socket) do
+      creator = self()
+
+      owner =
+        spawn(fn ->
+          Process.flag(:trap_exit, true)
+          Process.flag(:sensitive, true)
+
+          loop(%{
+            token: token,
+            server_id: server_id,
+            socket_adapter: socket,
+            creator: creator,
+            client: nil,
+            client_ref: nil,
+            socket: nil,
+            socket_ref: nil,
+            channel: nil
+          })
+        end)
+
+      {:ok, owner}
+    end
+
+    def bind(owner, client) when is_pid(owner) and is_pid(client),
+      do: call(owner, {:bind, client}, @call_timeout)
+
+    def start_link(opts) do
+      with {:ok, owner} <- Keyword.fetch(opts, :credential_ref),
+           {:ok, url} <- Keyword.fetch(opts, :url),
+           {:ok, ^owner} <- call(owner, {:start_socket, url}, @call_timeout) do
+        {:ok, owner}
+      else
+        _error -> :error
+      end
+    end
+
+    def connected?(owner) when is_pid(owner),
+      do: call(owner, :connected?, @call_timeout) == true
+
+    def join(owner, topic, params, timeout) when is_pid(owner) do
+      call(owner, {:join, topic, params, timeout}, timeout + 100)
+    end
+
+    def push(owner, channel, event, payload, timeout) when is_pid(owner) do
+      call(owner, {:push, channel, event, payload, timeout}, timeout + 100)
+    end
+
+    def stop(owner) when is_pid(owner),
+      do: call(owner, :stop_socket, @call_timeout)
+
+    def destroy(owner) when is_pid(owner),
+      do: call(owner, :destroy, @call_timeout)
+
+    defp call(owner, request, timeout) do
+      if Process.alive?(owner) do
+        ref = make_ref()
+        send(owner, {__MODULE__, self(), ref, request})
+
+        receive do
+          {__MODULE__, ^ref, reply} -> reply
+        after
+          timeout -> :error
+        end
+      else
+        :error
+      end
+    end
+
+    defp loop(state) do
+      receive do
+        {__MODULE__, caller, ref, {:bind, client}}
+        when caller == client and state.client_ref == nil ->
+          state = bind_client(state, client)
+          reply(caller, ref, :ok)
+          loop(state)
+
+        {__MODULE__, caller, ref, {:start_socket, url}} when caller == state.client ->
+          {reply_value, state} = start_socket(state, url)
+          reply(caller, ref, reply_value)
+          loop(state)
+
+        {__MODULE__, caller, ref, :connected?} when caller == state.client ->
+          reply(caller, ref, socket_connected?(state))
+          loop(state)
+
+        {__MODULE__, caller, ref, {:join, topic, params, timeout}}
+        when caller == state.client ->
+          {reply_value, state} = socket_join(state, topic, params, timeout)
+          reply(caller, ref, reply_value)
+          loop(state)
+
+        {__MODULE__, caller, ref, {:push, channel, event, payload, timeout}}
+        when caller == state.client ->
+          reply(caller, ref, socket_push(state, channel, event, payload, timeout))
+          loop(state)
+
+        {__MODULE__, caller, ref, :stop_socket} when caller == state.client ->
+          state = stop_socket(state)
+          reply(caller, ref, :ok)
+          loop(state)
+
+        {__MODULE__, caller, ref, :destroy}
+        when caller == state.client or (state.client == nil and caller == state.creator) ->
+          _state = stop_socket(state)
+          reply(caller, ref, :ok)
+          :ok
+
+        {__MODULE__, caller, ref, _unauthorized_request} ->
+          reply(caller, ref, :error)
+          loop(state)
+
+        {:DOWN, ref, :process, _pid, _reason} when ref == state.client_ref ->
+          _state = stop_socket(state)
+          :ok
+
+        {:DOWN, ref, :process, _pid, _reason} when ref == state.socket_ref ->
+          if is_pid(state.client) do
+            send(state.client, {:credential_socket_down, self()})
+          end
+
+          loop(%{state | socket: nil, socket_ref: nil, channel: nil})
+
+        {:EXIT, _pid, _reason} ->
+          loop(state)
+
+        %Phoenix.SocketClient.Message{} = message ->
+          forward_socket_message(message, state)
+          loop(state)
+
+        _message ->
+          loop(state)
+      end
+    end
+
+    defp bind_client(%{client_ref: nil} = state, client) do
+      %{state | client: client, client_ref: Process.monitor(client)}
+    end
+
+    defp bind_client(state, _client), do: state
+
+    defp start_socket(state, url) do
+      state = stop_socket(state)
+
+      opts = [
+        url: url,
+        params: %{"token" => state.token, "server_id" => state.server_id}
+      ]
+
+      case invoke(state.socket_adapter, :start_link, [opts]) do
+        {:ok, socket} when is_pid(socket) ->
+          Process.unlink(socket)
+          socket_ref = Process.monitor(socket)
+          {{:ok, self()}, %{state | socket: socket, socket_ref: socket_ref}}
+
+        _error ->
+          {:error, state}
+      end
+    end
+
+    defp socket_connected?(%{socket: socket, socket_adapter: adapter}) when is_pid(socket) do
+      invoke(adapter, :connected?, [socket]) == true
+    end
+
+    defp socket_connected?(_state), do: false
+
+    defp socket_join(
+           %{socket: socket, socket_adapter: adapter} = state,
+           topic,
+           params,
+           timeout
+         )
+         when is_pid(socket) do
+      case invoke(adapter, :join, [socket, topic, params, timeout]) do
+        {:ok, _reply, channel} when is_pid(channel) ->
+          Process.unlink(channel)
+          {{:ok, %{}, channel}, %{state | channel: channel}}
+
+        _error ->
+          {{:error, :transport}, state}
+      end
+    end
+
+    defp socket_join(state, _topic, _params, _timeout), do: {{:error, :transport}, state}
+
+    defp socket_push(%{socket_adapter: adapter}, channel, event, payload, timeout) do
+      case invoke(adapter, :push, [channel, event, payload, timeout]) do
+        {:ok, reply} -> {:ok, reply}
+        _error -> {:error, :transport}
+      end
+    end
+
+    defp stop_socket(%{socket: nil} = state), do: %{state | channel: nil}
+
+    defp stop_socket(state) do
+      Process.demonitor(state.socket_ref, [:flush])
+      _result = invoke(state.socket_adapter, :stop, [state.socket])
+      %{state | socket: nil, socket_ref: nil, channel: nil}
+    end
+
+    defp forward_socket_message(
+           %Phoenix.SocketClient.Message{} = message,
+           %{client: client, channel: channel}
+         )
+         when is_pid(client) and is_pid(channel) do
+      send(client, %{message | channel_pid: channel})
+    end
+
+    defp forward_socket_message(_message, _state), do: :ok
+
+    defp invoke(module, function, arguments) do
+      apply(module, function, arguments)
+    rescue
+      _exception -> :error
+    catch
+      _kind, _reason -> :error
+    end
+
+    defp reply(caller, ref, value),
+      do: send(caller, {__MODULE__, ref, value})
+  end
 
   defmodule Socket do
     @moduledoc false

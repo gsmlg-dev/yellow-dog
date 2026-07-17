@@ -7,6 +7,7 @@ defmodule YellowDog.ServerAgent.ClientFakeSocket do
     state = %{
       owner: owner,
       connected: Keyword.get(opts, :connected, true),
+      starts: Keyword.get(opts, :starts, []),
       joins: Keyword.get(opts, :joins, []),
       pushes: Keyword.get(opts, :pushes, [])
     }
@@ -31,7 +32,11 @@ defmodule YellowDog.ServerAgent.ClientFakeSocket do
   def start_link(opts) do
     state = state()
     send(state.owner, {:socket_start, opts})
-    Agent.start_link(fn -> %{owner: state.owner} end)
+
+    case pop(:starts, :ok) do
+      :ok -> Agent.start_link(fn -> %{owner: state.owner} end)
+      other -> other
+    end
   end
 
   def connected?(_socket) do
@@ -51,7 +56,8 @@ defmodule YellowDog.ServerAgent.ClientFakeSocket do
 
     case reply do
       :ok ->
-        {:ok, channel} = Agent.start_link(fn -> %{owner: state.owner} end)
+        caller = self()
+        {:ok, channel} = Agent.start_link(fn -> %{owner: state.owner, caller: caller} end)
         send(state.owner, {:socket_channel, channel})
         {:ok, %{}, channel}
 
@@ -79,6 +85,10 @@ defmodule YellowDog.ServerAgent.ClientFakeSocket do
     Agent.update(state_pid(), &%{&1 | connected: value})
   end
 
+  def set_starts(replies) when is_list(replies) do
+    Agent.update(state_pid(), &%{&1 | starts: replies})
+  end
+
   def set_pushes(replies) when is_list(replies) do
     Agent.update(state_pid(), &%{&1 | pushes: replies})
   end
@@ -89,6 +99,16 @@ defmodule YellowDog.ServerAgent.ClientFakeSocket do
 
   def channel_message(client, channel, event, payload) do
     send(client, {:yellow_dog_socket_message, channel, event, payload})
+  end
+
+  def provider_message(channel, payload) do
+    caller = Agent.get(channel, & &1.caller)
+
+    send(caller, %Phoenix.SocketClient.Message{
+      channel_pid: caller,
+      event: "sync",
+      payload: payload
+    })
   end
 
   defp pop(key, default) do

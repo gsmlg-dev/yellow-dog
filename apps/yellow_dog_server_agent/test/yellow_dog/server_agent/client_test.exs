@@ -32,6 +32,29 @@ defmodule YellowDog.ServerAgent.ClientTest do
   @revision String.duplicate("a", 64)
   @sent_at ~U[2026-07-17 10:00:00Z]
   @later ~U[2026-07-17 10:00:01Z]
+  @required_enabled_keys [
+    :enabled,
+    :management_url,
+    :token,
+    :identity,
+    :dispatcher,
+    :dispatcher_runtime_adapter,
+    :command_journal,
+    :config_applier,
+    :config_apply_store,
+    :socket,
+    :timer,
+    :monotonic_clock,
+    :wall_clock,
+    :connection_poll_interval,
+    :connect_timeout,
+    :join_timeout,
+    :push_timeout,
+    :heartbeat_interval,
+    :status_interval,
+    :initial_backoff,
+    :max_backoff
+  ]
 
   defmodule Dispatcher do
     @moduledoc false
@@ -73,7 +96,8 @@ defmodule YellowDog.ServerAgent.ClientTest do
              entries: []
            }),
          publications: Keyword.get(opts, :publications, []),
-         apply_replies: Keyword.get(opts, :apply_replies, [])
+         apply_replies: Keyword.get(opts, :apply_replies, []),
+         acknowledge_replies: Keyword.get(opts, :acknowledge_replies, [])
        }}
     end
 
@@ -90,9 +114,19 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
     def handle_call({:acknowledge_publication, sequence}, _from, state) do
       send(state.owner, {:acknowledge_publication, sequence})
-      publications = Enum.reject(state.publications, &(&1.sequence == sequence))
-      {:reply, {:ok, %{outbox: publications}}, %{state | publications: publications}}
+
+      case state.acknowledge_replies do
+        [reply | rest] ->
+          {:reply, reply, %{state | acknowledge_replies: rest}}
+
+        [] ->
+          publications = Enum.reject(state.publications, &(&1.sequence == sequence))
+          {:reply, {:ok, %{outbox: publications}}, %{state | publications: publications}}
+      end
     end
+
+    def handle_call(:publications, _from, state),
+      do: {:reply, state.publications, state}
 
     def handle_call({:apply, envelope}, _from, state) do
       send(state.owner, {:config_apply, envelope})
@@ -143,19 +177,19 @@ defmodule YellowDog.ServerAgent.ClientTest do
   end
 
   test "rejects duplicate, unknown, and malformed enabled options" do
+    {:ok, owner} = Owner.start_link(self())
+
     invalid = [
       [],
       [enabled: true],
-      Keyword.delete(base_opts(), :token),
-      Keyword.delete(base_opts(), :identity),
-      Keyword.put(base_opts(), :management_url, "http://management.example.test"),
-      Keyword.put(base_opts(), :management_url, "wss://management.example.test"),
-      Keyword.put(base_opts(), :token, ""),
-      Keyword.put(base_opts(), :identity, %{id: @server_id}),
-      Keyword.put(base_opts(), :heartbeat_interval, 0),
-      Keyword.put(base_opts(), :initial_backoff, 2_000),
-      Keyword.put(base_opts(), :unknown, true),
-      base_opts() ++ [token: "duplicate"]
+      Keyword.put(base_opts(owner), :management_url, "http://management.example.test"),
+      Keyword.put(base_opts(owner), :management_url, "wss://management.example.test"),
+      Keyword.put(base_opts(owner), :token, ""),
+      Keyword.put(base_opts(owner), :identity, %{id: @server_id}),
+      Keyword.put(base_opts(owner), :heartbeat_interval, 0),
+      Keyword.put(base_opts(owner), :initial_backoff, 2_000),
+      Keyword.put(base_opts(owner), :unknown, true),
+      base_opts(owner) ++ [token: "duplicate"]
     ]
 
     for opts <- invalid do
@@ -164,6 +198,80 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
     assert {:error, :invalid_options} = Client.start_link(:invalid)
     assert {:error, :invalid_options} = Client.start_link(enabled: false, token: @token)
+  end
+
+  test "enabled mode rejects deletion of every required explicit option" do
+    {:ok, owner} = Owner.start_link(self())
+
+    for key <- @required_enabled_keys do
+      result =
+        owner
+        |> base_opts()
+        |> Keyword.delete(key)
+        |> Client.start_link()
+
+      assert result == {:error, :invalid_options},
+             "missing enabled option #{inspect(key)} was accepted"
+    end
+  end
+
+  test "accepts only strict HTTPS management authorities and valid ports" do
+    {:ok, owner} = Owner.start_link(self())
+
+    invalid_urls = [
+      "http://management.example.test",
+      "wss://management.example.test",
+      "https://",
+      "https://:443",
+      "https://management.example.test:",
+      "https://management.example.test:/base",
+      "https://management.example.test:alpha",
+      "https://management.example.test:0",
+      "https://management.example.test:65536",
+      "https://management example.test",
+      "https://user@management.example.test",
+      "https://management.example.test?query=true",
+      "https://management.example.test#fragment",
+      "https://-management.example.test",
+      "https://management_.example.test",
+      "https://management..example.test"
+    ]
+
+    for url <- invalid_urls do
+      result =
+        owner
+        |> base_opts()
+        |> Keyword.put(:management_url, url)
+        |> Client.start_link()
+
+      assert result == {:error, :invalid_options},
+             "invalid management URL #{inspect(url)} was accepted"
+    end
+  end
+
+  test "derives canonical endpoints for default, explicit default, and IPv6 ports" do
+    {:ok, owner} = Owner.start_link(self())
+
+    cases = [
+      {"https://management.example.test/base",
+       "wss://management.example.test/server/ws/websocket"},
+      {"https://MANAGEMENT.example.test:443/base",
+       "wss://management.example.test/server/ws/websocket"},
+      {"https://[2001:db8::1]:4443/base", "wss://[2001:db8::1]:4443/server/ws/websocket"}
+    ]
+
+    for {management_url, expected_url} <- cases do
+      assert {:ok, client} =
+               owner
+               |> base_opts()
+               |> Keyword.put(:management_url, management_url)
+               |> Client.start_link()
+
+      assert_receive {:socket_start, socket_opts}
+      assert socket_opts[:url] == expected_url
+      assert socket_opts[:params] == %{"token" => @token, "server_id" => @server_id}
+      GenServer.stop(client, :normal)
+    end
   end
 
   test "derives exact TLS endpoint, params, topic, and activates after Hello then Status" do
@@ -289,10 +397,60 @@ defmodule YellowDog.ServerAgent.ClientTest do
     drain_activation(channel)
     refute_receive {:acknowledge_publication, 1}
     assert_receive {:timer_scheduled, ^client, {:flush_config, generation}, 100, _ref}
+    assert Client.connection_state(client) == :active
+    refute_receive {:socket_stop, _pid}
 
     send(client, {:flush_config, generation})
     assert_receive {:acknowledge_publication, 1}
     refute_receive {:config_apply, _envelope}
+  end
+
+  test "ConfigState transport failure retains the head and enters reconnect backoff" do
+    publication = config_publication(1, :delivered)
+
+    ClientFakeSocket.set_pushes(
+      List.duplicate({:ok, %{"accepted" => true}}, 3) ++ [{:error, :timeout}]
+    )
+
+    {:ok, owner} = Owner.start_link(self(), publications: [publication])
+    {:ok, client} = start_client(owner)
+    channel = receive_channel()
+    drain_activation(channel)
+
+    assert_receive {:socket_stop, _socket}
+    assert_receive {:timer_scheduled, ^client, {:rejoin, 1}, 100, _ref}
+    assert Client.connection_state(client) == :backoff
+    refute_receive {:acknowledge_publication, 1}
+    assert GenServer.call(owner, :publications) == [publication]
+  end
+
+  test "ConfigState local acknowledgement failure retains the head and retries locally" do
+    publication = config_publication(1, :delivered)
+
+    ClientFakeSocket.set_pushes(
+      List.duplicate({:ok, %{"accepted" => true}}, 3) ++
+        [{:ok, receipt(publication, 1)}, {:ok, receipt(publication, 1)}]
+    )
+
+    {:ok, owner} =
+      Owner.start_link(self(),
+        publications: [publication],
+        acknowledge_replies: [{:error, Error.new(:internal, "internal error", %{})}]
+      )
+
+    {:ok, client} = start_client(owner)
+    channel = receive_channel()
+    drain_activation(channel)
+
+    assert_receive {:acknowledge_publication, 1}
+    assert_receive {:timer_scheduled, ^client, {:flush_config, generation}, 100, _ref}
+    assert Client.connection_state(client) == :active
+    refute_receive {:socket_stop, _pid}
+    assert GenServer.call(owner, :publications) == [publication]
+
+    send(client, {:flush_config, generation})
+    assert_receive {:acknowledge_publication, 1}
+    assert GenServer.call(owner, :publications) == []
   end
 
   test "validates exact failure-phase receipt revisions before acknowledgement" do
@@ -343,6 +501,19 @@ defmodule YellowDog.ServerAgent.ClientTest do
     assert published.value == result
     assert published.error == nil
     refute_receive {:dispatch, _, _}
+  end
+
+  test "routes production socket messages through the opaque credential provider" do
+    result = %{"service" => "dns", "state" => "running"}
+    Dispatcher.configure(self(), [{:ok, result}])
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, _client} = start_client(owner)
+    channel = receive_channel()
+
+    ClientFakeSocket.provider_message(channel, sync_payload(command()))
+
+    assert_receive {:dispatch, %Envelope{}, _dispatcher_opts}
+    {_payload, %Result{value: ^result}} = receive_message(channel, Result)
   end
 
   test "routes duplicate commands through Dispatcher replay without client-side duplication" do
@@ -521,10 +692,17 @@ defmodule YellowDog.ServerAgent.ClientTest do
   test "public inspection and logs never expose token" do
     {:ok, owner} = Owner.start_link(self())
     {:ok, active_client} = start_client(owner)
-    refute inspect(:sys.get_state(active_client)) =~ @token
+    active_state = :sys.get_state(active_client)
+    refute contains_secret?(active_state, @token)
+    refute inspect(active_state) =~ @token
+    assert active_state.socket == active_state.config.credential_ref
+
+    assert {:timeout, {:sys, :get_state, _arguments}} =
+             catch_exit(:sys.get_state(active_state.socket, 10))
+
     GenServer.stop(active_client, :normal)
 
-    ClientFakeSocket.set_pushes([{:error, {:auth, @token}}])
+    ClientFakeSocket.set_starts([{:error, {:auth, @token}}])
     {:ok, failed_owner} = Owner.start_link(self())
 
     log =
@@ -532,18 +710,38 @@ defmodule YellowDog.ServerAgent.ClientTest do
         {:ok, client} = start_client(failed_owner)
         refute Client.connected?(client)
         assert Client.connection_state(client) == :backoff
-        refute inspect(:sys.get_state(client)) =~ @token
+        failed_state = :sys.get_state(client)
+        refute contains_secret?(failed_state, @token)
+        refute inspect(failed_state) =~ @token
       end)
 
     refute log =~ @token
     refute inspect(Client.connection_state(unique_name())) =~ @token
   end
 
+  test "opaque credential reference rejects calls outside its bound Client" do
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    assert_receive {:socket_start, _initial_opts}
+    credential_ref = :sys.get_state(client).config.credential_ref
+
+    assert :error =
+             Client.CredentialProvider.start_link(
+               url: "wss://attacker.example.test/server/ws/websocket",
+               credential_ref: credential_ref
+             )
+
+    refute_receive {:socket_start,
+                    [url: "wss://attacker.example.test/server/ws/websocket", params: _params]}
+
+    assert Client.connected?(client)
+  end
+
   defp start_client(owner, overrides \\ []) do
     Client.start_link(Keyword.merge(base_opts(owner), overrides))
   end
 
-  defp base_opts(owner \\ unique_name()) do
+  defp base_opts(owner) do
     [
       enabled: true,
       name: nil,
@@ -742,4 +940,31 @@ defmodule YellowDog.ServerAgent.ClientTest do
     {:ok, digest} = Digest.calculate(value)
     digest
   end
+
+  defp contains_secret?(value, secret) when is_binary(value),
+    do: String.contains?(value, secret)
+
+  defp contains_secret?(value, secret) when is_function(value) do
+    {:env, environment} = :erlang.fun_info(value, :env)
+    contains_secret?(environment, secret)
+  end
+
+  defp contains_secret?(value, secret) when is_map(value) do
+    value
+    |> Map.to_list()
+    |> Enum.any?(fn {key, item} ->
+      contains_secret?(key, secret) or contains_secret?(item, secret)
+    end)
+  end
+
+  defp contains_secret?(value, secret) when is_tuple(value) do
+    value
+    |> Tuple.to_list()
+    |> contains_secret?(secret)
+  end
+
+  defp contains_secret?(value, secret) when is_list(value),
+    do: Enum.any?(value, &contains_secret?(&1, secret))
+
+  defp contains_secret?(_value, _secret), do: false
 end
