@@ -167,7 +167,6 @@ defmodule YellowDogIdentity.ControlFacadeTest do
         })
       end
 
-      Registry.append_audit("unsupported.action", "ignored-host", %{secret: "ignored"})
       flush_registry()
 
       assert {:ok, entries} = YellowDogIdentity.control_list_audit()
@@ -184,7 +183,6 @@ defmodule YellowDogIdentity.ControlFacadeTest do
 
       encoded = inspect(entries)
       refute encoded =~ "raw-detail"
-      refute encoded =~ "ignored-host"
       refute encoded =~ "details"
     end
 
@@ -230,6 +228,63 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       assert Registry.read_audit_log() == []
       assert YellowDogIdentity.audit_log() == []
       assert Process.alive?(Process.whereis(Registry))
+    end
+
+    test "valid UTF-8 garbage fails the entire strict audit read",
+         %{tmp_dir: tmp_dir} do
+      audit_path = Path.join(tmp_dir, "audit.log")
+      File.write!(audit_path, "this is not an audit record\n")
+
+      assert {:error, :persistence_failed} = Registry.control_read_audit_log()
+
+      result = YellowDogIdentity.control_list_audit()
+      assert result == {:error, :persistence_failed}
+      refute inspect(result) =~ audit_path
+      assert Registry.read_audit_log() == []
+      assert YellowDogIdentity.audit_log() == []
+      assert Process.alive?(Process.whereis(Registry))
+    end
+
+    test "a mixed valid and malformed log returns no partial control result",
+         %{tmp_dir: tmp_dir} do
+      audit_path = Path.join(tmp_dir, "audit.log")
+
+      File.write!(
+        audit_path,
+        """
+        2024-01-01T00:00:00Z host.registered host=valid-audit-host
+        malformed durable audit record
+        """
+      )
+
+      assert {:error, :persistence_failed} = Registry.control_read_audit_log()
+
+      result = YellowDogIdentity.control_list_audit()
+      assert result == {:error, :persistence_failed}
+      refute inspect(result) =~ "valid-audit-host"
+      assert [%{host_id: "valid-audit-host"}] = Registry.read_audit_log()
+      assert Process.alive?(Process.whereis(Registry))
+    end
+
+    test "grammar-valid records must produce strict public owner records",
+         %{tmp_dir: tmp_dir} do
+      audit_path = Path.join(tmp_dir, "audit.log")
+
+      invalid_records = [
+        "2024-01-01T00:00:00Z unsupported.action host=unsupported-action",
+        "not-a-timestamp host.registered host=invalid-timestamp",
+        "2024-01-01T00:00:00Z host.registered host=#{String.duplicate("x", 129)}"
+      ]
+
+      for record <- invalid_records do
+        File.write!(audit_path, record <> "\n")
+
+        result = YellowDogIdentity.control_list_audit()
+        assert result == {:error, :persistence_failed}
+        refute inspect(result) =~ record
+        assert [_legacy_entry] = Registry.read_audit_log()
+        assert Process.alive?(Process.whereis(Registry))
+      end
     end
   end
 

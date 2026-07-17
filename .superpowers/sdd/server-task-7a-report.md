@@ -285,3 +285,78 @@ cd apps/yellow_dog_identity
 mix credo --strict
 # 468 mods/funs, found no issues
 ```
+
+## Final Strict Audit Grammar Resolution
+
+This section appends the final Task 7A review resolution and supersedes the
+focused/full verification counts above.
+
+Registry audit parsing now has explicit `:best_effort` and `:strict` modes.
+Legacy `read_audit_log/1` retains its historical behavior: malformed lines are
+filtered while valid records continue through legacy filters and limits.
+
+The strict control path instead parses every present nonblank UTF-8 line before
+applying any filter or limit. Any line that does not match the durable audit
+grammar fails the entire read with `{:error, :persistence_failed}`. Missing
+`audit.log` and a genuinely empty file remain `{:ok, []}`.
+
+The facade requests all strict records and projects every one before applying
+the 100-item public bound. Unsupported actions, invalid timestamps, invalid or
+unbounded subject IDs, malformed owner shapes, and any other record that cannot
+produce the fixed public owner snapshot fail the entire operation with the same
+sanitized `:persistence_failed` result. A mixed valid/malformed file cannot
+return a partial public list. No raw durable content, path, or parser reason is
+returned, and Registry remains alive after each rejected read.
+
+### Final TDD Evidence
+
+The expanded strict-audit tests were first run against the prior implementation:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 18 tests, 3 failures
+```
+
+The failures proved that valid UTF-8 garbage became successful emptiness, a
+mixed valid/malformed file returned a partial result, and grammar-valid records
+with unsupported actions, invalid timestamps, or invalid owner identifiers
+were silently dropped.
+
+After the all-or-nothing parser and projection change:
+
+```text
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 18 tests, 0 failures
+```
+
+Coverage now includes malformed-only and mixed durable files, direct strict
+Registry read failure, no partial public result, semantic owner-record
+validation, exact typed sanitation, owner liveness, missing-file success, and
+unchanged legacy malformed-line filtering.
+
+### Final Task Verification
+
+All commands ran through the repository devenv:
+
+```text
+cd apps/yellow_dog_identity
+mix test test/yellow_dog_identity/control_facade_test.exs
+# 18 tests, 0 failures
+
+mix test
+# 406 tests, 0 failures
+
+mix compile --warnings-as-errors
+# exit 0
+
+cd ../..
+mix format --check-formatted \
+  apps/yellow_dog_identity/lib/yellow_dog_identity.ex \
+  apps/yellow_dog_identity/lib/yellow_dog_identity/registry.ex \
+  apps/yellow_dog_identity/test/yellow_dog_identity/control_facade_test.exs
+# exit 0
+
+cd apps/yellow_dog_identity
+mix credo --strict
+# 475 mods/funs, found no issues
+```

@@ -365,7 +365,7 @@ defmodule YellowDogIdentity.Registry do
 
   def handle_call({:read_audit_log, opts}, _from, state) do
     entries =
-      case read_audit_entries(state.data_dir, opts, state.file_ops) do
+      case read_audit_entries(state.data_dir, opts, state.file_ops, :best_effort) do
         {:ok, entries} -> entries
         {:error, :persistence_failed} -> []
       end
@@ -374,7 +374,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:control_read_audit_log, opts}, _from, state) do
-    {:reply, read_audit_entries(state.data_dir, opts, state.file_ops), state}
+    {:reply, read_audit_entries(state.data_dir, opts, state.file_ops, :strict), state}
   end
 
   @impl true
@@ -697,12 +697,12 @@ defmodule YellowDogIdentity.Registry do
     e -> Logger.warning("Unexpected error writing audit log: #{Exception.message(e)}")
   end
 
-  defp read_audit_entries(data_dir, opts, file_ops) do
+  defp read_audit_entries(data_dir, opts, file_ops, mode) do
     audit_path = Path.join(data_dir, "audit.log")
 
     case file_call(file_ops, :read, [audit_path]) do
       {:ok, content} ->
-        parse_audit_entries(content, opts)
+        parse_audit_entries(content, opts, mode)
 
       {:error, :enoent} ->
         {:ok, []}
@@ -712,24 +712,19 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  defp parse_audit_entries(content, opts) do
+  defp parse_audit_entries(content, opts, mode) do
     try do
       if is_binary(content) and String.valid?(content) do
         limit = Keyword.get(opts, :limit, 100)
         host_filter = Keyword.get(opts, :host_id)
         event_filter = Keyword.get(opts, :event)
 
-        entries =
-          content
-          |> String.split("\n", trim: true)
-          |> Enum.reverse()
-          |> Stream.map(&parse_audit_line/1)
-          |> Stream.reject(&is_nil/1)
+        with {:ok, entries} <- parse_audit_lines(content, mode) do
+          entries
           |> maybe_filter(:host_id, host_filter)
           |> maybe_filter(:event, event_filter)
-          |> Enum.take(limit)
-
-        {:ok, entries}
+          |> take_audit_entries(limit)
+        end
       else
         {:error, :persistence_failed}
       end
@@ -739,6 +734,46 @@ defmodule YellowDogIdentity.Registry do
       _kind, _reason -> {:error, :persistence_failed}
     end
   end
+
+  defp parse_audit_lines(content, :best_effort) do
+    entries =
+      content
+      |> String.split("\n", trim: true)
+      |> Enum.reverse()
+      |> Enum.flat_map(fn line ->
+        case parse_audit_line(line) do
+          nil -> []
+          entry -> [entry]
+        end
+      end)
+
+    {:ok, entries}
+  end
+
+  defp parse_audit_lines(content, :strict) do
+    content
+    |> String.split("\n", trim: true)
+    |> Enum.reverse()
+    |> Enum.reduce_while({:ok, []}, fn line, {:ok, entries} ->
+      case parse_audit_line(line) do
+        nil -> {:halt, {:error, :persistence_failed}}
+        entry -> {:cont, {:ok, [entry | entries]}}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
+      {:error, :persistence_failed} = error -> error
+    end
+  end
+
+  defp parse_audit_lines(_content, _mode), do: {:error, :persistence_failed}
+
+  defp take_audit_entries(entries, :all), do: {:ok, Enum.to_list(entries)}
+
+  defp take_audit_entries(entries, limit) when is_integer(limit),
+    do: {:ok, Enum.take(entries, limit)}
+
+  defp take_audit_entries(_entries, _limit), do: {:error, :persistence_failed}
 
   defp parse_audit_line(line) do
     # Format: "2024-01-01T00:00:00Z event host=<id> <details>"

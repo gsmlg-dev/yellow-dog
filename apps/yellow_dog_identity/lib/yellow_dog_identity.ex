@@ -436,19 +436,9 @@ defmodule YellowDogIdentity do
           {:ok, [map()]} | {:error, :persistence_failed | :apply_failed}
   def control_list_audit do
     control_boundary(fn ->
-      case Registry.control_read_audit_log(limit: 1_000) do
+      case Registry.control_read_audit_log(limit: :all) do
         {:ok, entries} when is_list(entries) ->
-          snapshots =
-            entries
-            |> Enum.flat_map(fn entry ->
-              case public_audit(entry) do
-                {:ok, snapshot} -> [snapshot]
-                :error -> []
-              end
-            end)
-            |> Enum.take(@max_control_items)
-
-          {:ok, snapshots}
+          project_audit_entries(entries)
 
         {:error, reason} ->
           control_owner_error(reason)
@@ -548,6 +538,22 @@ defmodule YellowDogIdentity do
   end
 
   defp public_audit(_entry), do: :error
+
+  defp project_audit_entries(entries) do
+    Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, snapshots} ->
+      case public_audit(entry) do
+        {:ok, snapshot} -> {:cont, {:ok, [snapshot | snapshots]}}
+        :error -> {:halt, {:error, :persistence_failed}}
+      end
+    end)
+    |> case do
+      {:ok, snapshots} ->
+        {:ok, snapshots |> Enum.reverse() |> Enum.take(@max_control_items)}
+
+      {:error, :persistence_failed} = error ->
+        error
+    end
+  end
 
   defp project_hosts(hosts) do
     Enum.reduce_while(hosts, {:ok, []}, fn
