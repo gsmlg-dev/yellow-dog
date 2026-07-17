@@ -477,6 +477,48 @@ defmodule YellowDog.Dhcpv4.LeaseManagerTest do
     end
   end
 
+  describe "control facades" do
+    test "returns manager absence without falling through to lease storage" do
+      assert {:error, :manager_absent} = LeaseManager.control_status()
+      assert {:error, :manager_absent} = LeaseManager.control_list_leases()
+    end
+
+    test "applies runtime snapshots without persistence and releases opaque lease ids" do
+      {:ok, pid} = LeaseManager.start_link(pools: [@test_pool_config])
+      on_exit(fn -> stop_manager(pid) end)
+
+      assert {:ok, [snapshot]} = LeaseManager.control_pool_snapshot()
+      assert snapshot.name == "test_pool"
+
+      refute File.exists?(
+               Path.join([Application.fetch_env!(:yellow_dog, :data_dir), "dhcpv4", "pools.toml"])
+             )
+
+      replacement = %{
+        @test_pool_config
+        | name: "control_pool",
+          range_start: {192, 168, 2, 100},
+          range_end: {192, 168, 2, 200}
+      }
+
+      assert :ok = LeaseManager.control_apply_pool_snapshot([replacement])
+      assert [runtime_pool] = LeaseManager.get_pools()
+      assert runtime_pool.name == "control_pool"
+
+      refute File.exists?(
+               Path.join([Application.fetch_env!(:yellow_dog, :data_dir), "dhcpv4", "pools.toml"])
+             )
+
+      {:ok, _lease} = LeaseManager.allocate_lease(@test_mac, nil, nil, "control_pool", nil)
+      assert {:ok, true} = LeaseManager.control_pool_has_active_leases?("control_pool")
+      assert {:ok, [lease]} = LeaseManager.control_list_leases()
+      assert lease.lease_id == "lease-aabbccddeeff"
+      assert lease.address == "192.168.2.100"
+      assert {:ok, ^lease} = LeaseManager.control_release_lease(lease.lease_id)
+      assert {:ok, []} = LeaseManager.control_list_leases()
+    end
+  end
+
   # Helper function to stop manager safely
   defp stop_manager(pid) do
     if Process.alive?(pid) do

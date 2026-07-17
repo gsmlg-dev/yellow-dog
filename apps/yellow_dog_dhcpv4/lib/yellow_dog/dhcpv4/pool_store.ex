@@ -242,7 +242,39 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     end
   end
 
+  @doc false
+  @spec control_snapshot() :: {:ok, [pool_config()]} | {:error, term()}
+  def control_snapshot, do: load_pools()
+
+  @doc false
+  @spec control_validate_pool(pool_config()) :: :ok | {:error, term()}
+  def control_validate_pool(pool) do
+    with :ok <- validate_pool(pool),
+         {:ok, _address_pool} <- AddressPool.new(pool) do
+      :ok
+    end
+  end
+
+  @doc false
+  @spec control_persist_snapshot([pool_config()]) :: :ok | {:error, term()}
+  def control_persist_snapshot(pools) when is_list(pools) do
+    with :ok <- validate_control_snapshot(pools) do
+      save_all_pools(pools)
+    end
+  end
+
+  def control_persist_snapshot(_pools), do: {:error, :invalid_snapshot}
+
   # Private functions
+
+  defp validate_control_snapshot(pools) do
+    Enum.reduce_while(pools, :ok, fn pool, :ok ->
+      case control_validate_pool(pool) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
 
   defp get_data_dir do
     # Get base data directory from application env or use default

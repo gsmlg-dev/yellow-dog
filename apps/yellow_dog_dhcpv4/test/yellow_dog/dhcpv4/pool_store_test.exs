@@ -277,6 +277,35 @@ defmodule YellowDog.Dhcpv4.PoolStoreTest do
     end
   end
 
+  describe "control pool snapshots" do
+    test "validates and roundtrips an explicit durable snapshot", %{tmp_dir: tmp_dir} do
+      previous = Application.get_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:yellow_dog, :data_dir, previous),
+          else: Application.delete_env(:yellow_dog, :data_dir)
+      end)
+
+      pool = %{
+        name: "control-v4",
+        network: "192.0.2.0/24",
+        range_start: "192.0.2.20",
+        range_end: "192.0.2.100",
+        subnet_mask: "255.255.255.0",
+        lease_time: 3600
+      }
+
+      assert :ok = PoolStore.control_validate_pool(pool)
+      assert :ok = PoolStore.control_persist_snapshot([pool])
+      assert {:ok, [snapshot]} = PoolStore.control_snapshot()
+      assert snapshot.name == "control-v4"
+      assert snapshot.network == "192.0.2.0/24"
+      assert snapshot.range_start == "192.0.2.20"
+    end
+  end
+
   describe "default_file_path/0" do
     test "returns a path ending with pools.toml" do
       path = PoolStore.default_file_path()
