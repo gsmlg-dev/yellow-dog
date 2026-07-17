@@ -8,6 +8,9 @@ defmodule YellowDog.ServerDnsControlFake do
     view_stats: %{views: %{}},
     zones: {:ok, []},
     records: %{},
+    zone_metadata: %{},
+    record_state: %{},
+    responses: %{},
     acls: [],
     providers: {:ok, []},
     logs: [],
@@ -34,6 +37,24 @@ defmodule YellowDog.ServerDnsControlFake do
     Agent.get_and_update(__MODULE__, fn state ->
       {Enum.reverse(state.calls), %{state | calls: []}}
     end)
+  end
+
+  def snapshot, do: Agent.get(__MODULE__, &Map.drop(&1, [:calls]))
+
+  def operation(name, call, default) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      {response, responses} = pop_response(state.responses, name)
+      {result, next_state} = if response == :default, do: default.(state), else: {response, state}
+      {result, %{next_state | responses: responses, calls: [call | next_state.calls]}}
+    end)
+    |> run()
+  end
+
+  defp pop_response(responses, name) do
+    case Map.get(responses, name, []) do
+      [response | rest] -> {response, Map.put(responses, name, rest)}
+      _ -> {:default, responses}
+    end
   end
 
   def control_views do
@@ -89,13 +110,172 @@ defmodule YellowDog.ServerDnsControlFake.ZoneStore do
   end
 
   def list_records(view_name, zone_name) do
-    case YellowDog.ServerDnsControlFake.fetch(
-           :records,
-           {:zone_store, :list_records, [view_name, zone_name]}
-         ) do
-      records when is_map(records) -> Map.get(records, {view_name, zone_name}, {:ok, []})
-      result -> result
-    end
+    YellowDog.ServerDnsControlFake.operation(
+      :list_records,
+      {:zone_store, :list_records, [view_name, zone_name]},
+      fn state -> {{:ok, records_for(state, view_name, zone_name)}, state} end
+    )
+  end
+
+  def get_zone(view_name, zone_name) do
+    YellowDog.ServerDnsControlFake.operation(
+      :get_zone,
+      {:zone_store, :get_zone, [view_name, zone_name]},
+      fn state ->
+        result = Map.get(state.zone_metadata, {view_name, zone_name}, {:error, :not_found})
+        {{:ok, result} |> unwrap_zone_result(), state}
+      end
+    )
+  end
+
+  defp unwrap_zone_result({:ok, {:error, :not_found}}), do: {:error, :not_found}
+  defp unwrap_zone_result({:ok, zone}), do: {:ok, zone}
+
+  def create_zone(view_name, zone_name, soa, opts) do
+    YellowDog.ServerDnsControlFake.operation(
+      :create_zone,
+      {:zone_store, :create_zone, [view_name, zone_name, soa, opts]},
+      fn state ->
+        zone = %{
+          view_name: view_name,
+          origin: zone_name,
+          zone_type: :auth,
+          soa: soa,
+          default_ttl: Keyword.get(opts, :default_ttl, 3600),
+          authoritative: Keyword.get(opts, :authoritative, true),
+          allow_dynamic_update: Keyword.get(opts, :allow_dynamic_update, false),
+          serial_strategy: Keyword.get(opts, :serial_strategy, :date_serial),
+          cloud_mirror: Keyword.get(opts, :cloud_mirror)
+        }
+
+        {:ok, put_in(state, [:zone_metadata, {view_name, zone_name}], zone)}
+      end
+    )
+  end
+
+  def update_zone(view_name, zone_name, attrs) do
+    YellowDog.ServerDnsControlFake.operation(
+      :update_zone,
+      {:zone_store, :update_zone, [view_name, zone_name, attrs]},
+      fn state ->
+        key = {view_name, zone_name}
+
+        case Map.fetch(state.zone_metadata, key) do
+          {:ok, zone} -> {:ok, put_in(state, [:zone_metadata, key], Map.merge(zone, attrs))}
+          :error -> {{:error, :not_found}, state}
+        end
+      end
+    )
+  end
+
+  def delete_zone(view_name, zone_name) do
+    YellowDog.ServerDnsControlFake.operation(
+      :delete_zone,
+      {:zone_store, :delete_zone, [view_name, zone_name]},
+      fn state ->
+        {:ok,
+         state
+         |> update_in([:zone_metadata], &Map.delete(&1, {view_name, zone_name}))
+         |> update_in([:record_state], fn records ->
+           records
+           |> Enum.reject(fn {{stored_view, stored_zone}, _records} ->
+             stored_view == view_name and stored_zone == zone_name
+           end)
+           |> Map.new()
+         end)}
+      end
+    )
+  end
+
+  def default_soa(zone_name), do: %{mname: "ns1.#{zone_name}", rname: "hostmaster.#{zone_name}"}
+
+  def get_rrset(view_name, zone_name, owner, type) do
+    YellowDog.ServerDnsControlFake.operation(
+      :get_rrset,
+      {:zone_store, :get_rrset, [view_name, zone_name, owner, type]},
+      fn state ->
+        records = records_for(state, view_name, zone_name)
+
+        result =
+          case Enum.filter(records, &(&1.owner == owner and &1.type == type)) do
+            [record] -> {:ok, record}
+            [] -> {:error, :not_found}
+          end
+
+        {result, state}
+      end
+    )
+  end
+
+  def put_rrset(view_name, zone_name, owner, type, rrset) do
+    YellowDog.ServerDnsControlFake.operation(
+      :put_rrset,
+      {:zone_store, :put_rrset, [view_name, zone_name, owner, type, rrset]},
+      fn state ->
+        records = records_for(state, view_name, zone_name)
+        record = %{owner: owner, type: type, rrset: rrset}
+        updated = [record | Enum.reject(records, &(&1.owner == owner and &1.type == type))]
+        {:ok, put_in(state, [:record_state, {view_name, zone_name}], updated)}
+      end
+    )
+  end
+
+  def delete_rrset(view_name, zone_name, owner, type) do
+    YellowDog.ServerDnsControlFake.operation(
+      :delete_rrset,
+      {:zone_store, :delete_rrset, [view_name, zone_name, owner, type]},
+      fn state ->
+        updated =
+          state
+          |> records_for(view_name, zone_name)
+          |> Enum.reject(&(&1.owner == owner and &1.type == type))
+
+        {:ok, put_in(state, [:record_state, {view_name, zone_name}], updated)}
+      end
+    )
+  end
+
+  defp records_for(state, view_name, zone_name) do
+    Map.get_lazy(state.record_state, {view_name, zone_name}, fn ->
+      case state.records do
+        records when is_map(records) ->
+          case Map.get(records, {view_name, zone_name}, {:ok, []}) do
+            {:ok, entries} -> entries
+            _ -> []
+          end
+
+        _ ->
+          []
+      end
+    end)
+  end
+end
+
+defmodule YellowDog.ServerDnsControlFake.ZoneController do
+  @moduledoc false
+
+  def start_zone(zone_type, zone_name, config) do
+    YellowDog.ServerDnsControlFake.operation(
+      :start_zone,
+      {:zone_controller, :start_zone, [zone_type, zone_name, config]},
+      fn state -> {{:ok, self()}, state} end
+    )
+  end
+
+  def reload_zone(view_name, zone_type, zone_name, config) do
+    YellowDog.ServerDnsControlFake.operation(
+      :reload_zone,
+      {:zone_controller, :reload_zone, [view_name, zone_type, zone_name, config]},
+      fn state -> {:ok, state} end
+    )
+  end
+
+  def stop_zone(view_name, zone_type, zone_name) do
+    YellowDog.ServerDnsControlFake.operation(
+      :stop_zone,
+      {:zone_controller, :stop_zone, [view_name, zone_type, zone_name]},
+      fn state -> {:ok, state} end
+    )
   end
 end
 
@@ -132,6 +312,28 @@ defmodule YellowDog.ServerDnsControlFake.ProviderStore do
 
   def list_configs,
     do: YellowDog.ServerDnsControlFake.fetch(:providers, {:provider_store, :list_configs, []})
+
+  def get_config(provider_id) do
+    YellowDog.ServerDnsControlFake.operation(
+      :get_provider,
+      {:provider_store, :get_config, [provider_id]},
+      fn state ->
+        result =
+          case state.providers do
+            {:ok, providers} when is_list(providers) ->
+              case Enum.find(providers, &(Map.get(&1, :name) == provider_id)) do
+                nil -> {:error, :not_found}
+                provider -> {:ok, provider}
+              end
+
+            _ ->
+              {:error, :not_found}
+          end
+
+        {result, state}
+      end
+    )
+  end
 end
 
 defmodule YellowDog.ServerDnsControlFake.QueryLogger do

@@ -45,6 +45,7 @@ defmodule YellowDog.Server.Control.Dns do
     acl_registry: Module.concat(["YellowDog", "Dns", "AclRegistry"]),
     acl_codec: Module.concat(["YellowDog", "Dns", "View", "ACL"]),
     provider_store: Module.concat(["YellowDog", "Store", "Provider"]),
+    zone_controller: Module.concat(["YellowDog", "Dns", "ZoneController"]),
     query_logger: Module.concat(["YellowDog", "Dns", "QueryLogger"]),
     metrics_collector: Module.concat(["YellowDog", "Dns", "MetricsCollector"]),
     clock: DateTime
@@ -98,6 +99,24 @@ defmodule YellowDog.Server.Control.Dns do
       {:ok, result}
     end
   end
+
+  def dispatch("server.dns.zones.create", payload) when is_map(payload),
+    do: create_zone(payload)
+
+  def dispatch("server.dns.zones.update", payload) when is_map(payload),
+    do: update_zone(payload)
+
+  def dispatch("server.dns.zones.delete", payload) when is_map(payload),
+    do: delete_zone(payload)
+
+  def dispatch("server.dns.records.create", payload) when is_map(payload),
+    do: mutate_record(:create, payload)
+
+  def dispatch("server.dns.records.update", payload) when is_map(payload),
+    do: mutate_record(:update, payload)
+
+  def dispatch("server.dns.records.delete", payload) when is_map(payload),
+    do: mutate_record(:delete, payload)
 
   def dispatch(operation, _payload) when operation in @mutation_operations,
     do: unsupported_error()
@@ -264,6 +283,470 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
+  defp create_zone(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.zones.create", payload),
+         "authoritative" <- payload["zone_type"] || unsupported_error(),
+         :ok <- ensure_view(payload["view_name"]),
+         :missing <- fetch_zone(payload["view_name"], payload["zone_name"]),
+         {:ok, cloud_mirror} <- provider_binding(payload["provider_id"]),
+         soa <- dependency_module(:zone_store).default_soa(payload["zone_name"]),
+         :ok <-
+           store_ok(:create_zone, [
+             payload["view_name"],
+             payload["zone_name"],
+             soa,
+             zone_options(cloud_mirror)
+           ]) do
+      case start_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+        :ok -> revisioned_result("server.dns.zones.create", "dns_zone", zone_resource(payload))
+        {:error, %Error{}} -> rollback_create(payload["view_name"], payload["zone_name"])
+      end
+    else
+      "forward" -> unsupported_error()
+      {:error, %Error{}} = error -> error
+      _invalid -> invalid_error()
+    end
+  end
+
+  defp update_zone(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.zones.update", payload),
+         {:ok, old_zone} <- fetch_zone(payload["view_name"], payload["zone_name"]),
+         {:ok, "authoritative"} <- stored_zone_type(old_zone),
+         "authoritative" <- payload["zone_type"] || conflict_error(),
+         {:ok, cloud_mirror} <- provider_binding(payload["provider_id"]),
+         attrs <- %{cloud_mirror: cloud_mirror} do
+      case store_ok(:update_zone, [payload["view_name"], payload["zone_name"], attrs]) do
+        :ok ->
+          case reload_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+            :ok ->
+              revisioned_result("server.dns.zones.update", "dns_zone", zone_resource(payload))
+
+            {:error, %Error{}} = error ->
+              rollback_zone_update(payload, old_zone, error)
+          end
+
+        {:error, %Error{}} = error ->
+          error
+      end
+    else
+      :missing ->
+        not_found_error()
+
+      "forward" ->
+        conflict_error()
+
+      {:ok, _other} ->
+        conflict_error()
+
+      {:error, %Error{}} = error ->
+        error
+
+      _invalid ->
+        invalid_error()
+    end
+  end
+
+  defp delete_zone(payload) do
+    with {:ok, payload} <- validate_operation_payload("server.dns.zones.delete", payload),
+         {:ok, zone} <- fetch_zone(payload["view_name"], payload["zone_name"]),
+         {:ok, "authoritative"} <- stored_zone_type(zone),
+         {:ok, records} <- list_store_records(payload["view_name"], payload["zone_name"]) do
+      case store_ok(:delete_zone, [payload["view_name"], payload["zone_name"]]) do
+        :ok ->
+          case stop_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+            :ok -> deleted_result("server.dns.zones.delete", "dns_zone", zone_reference(payload))
+            {:error, %Error{}} = error -> rollback_zone_delete(payload, zone, records, error)
+          end
+
+        {:error, %Error{}} = error ->
+          error
+      end
+    else
+      :missing ->
+        not_found_error()
+
+      {:ok, _other} ->
+        unsupported_error()
+
+      {:error, %Error{}} = error ->
+        error
+
+      _invalid ->
+        invalid_error()
+    end
+  end
+
+  defp mutate_record(action, payload) do
+    operation = "server.dns.records.#{action}"
+
+    with {:ok, payload} <- validate_operation_payload(operation, payload),
+         :ok <- validate_record_reference(operation, payload),
+         {:ok, _zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
+         {:ok, mutation} <- record_mutation(action, payload),
+         {:ok, result} <- apply_record_mutation(action, payload, mutation) do
+      {:ok, result}
+    else
+      {:error, %Error{}} = error -> error
+      _invalid -> invalid_error()
+    end
+  end
+
+  defp record_mutation(:delete, payload) do
+    with {:ok, record} <-
+           resolve_record_id(payload["view_name"], payload["zone_name"], payload["record_id"]),
+         {:ok, store_type} <- store_record_type(record["type"]),
+         {:ok, old} <-
+           fetch_rrset(payload["view_name"], payload["zone_name"], record["name"], store_type) do
+      {:ok, %{owner: record["name"], type: store_type, old: old, resource: record}}
+    end
+  end
+
+  defp record_mutation(action, payload) when action in [:create, :update] do
+    with {:ok, store_type} <- store_record_type(payload["type"]),
+         {:ok, rrset} <- encode_rrset(payload["type"], payload["values"], payload["ttl"]),
+         {:ok, old} <-
+           fetch_rrset_or_missing(
+             payload["view_name"],
+             payload["zone_name"],
+             payload["name"],
+             store_type
+           ),
+         :ok <- ensure_record_state(action, old),
+         {:ok, resource} <-
+           project_record(
+             %{owner: canonical_owner(payload["name"]), type: store_type, rrset: rrset},
+             payload["view_name"],
+             canonical_name(payload["zone_name"])
+           ) do
+      {:ok,
+       %{
+         owner: canonical_owner(payload["name"]),
+         type: store_type,
+         old: old,
+         rrset: rrset,
+         resource: resource
+       }}
+    end
+  end
+
+  defp apply_record_mutation(action, payload, mutation) do
+    apply_result =
+      case action do
+        :delete ->
+          store_ok(:delete_rrset, [
+            payload["view_name"],
+            payload["zone_name"],
+            mutation.owner,
+            mutation.type
+          ])
+
+        _ ->
+          store_ok(:put_rrset, [
+            payload["view_name"],
+            payload["zone_name"],
+            mutation.owner,
+            mutation.type,
+            mutation.rrset
+          ])
+      end
+
+    with :ok <- apply_result,
+         :ok <- reload_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+      case action do
+        :delete ->
+          deleted_result("server.dns.records.delete", "dns_record", record_reference(payload))
+
+        _ ->
+          revisioned_result("server.dns.records.#{action}", "dns_record", mutation.resource)
+      end
+    else
+      {:error, %Error{code: :apply_failed}} = error ->
+        rollback_record(payload, mutation, error)
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
+
+  defp rollback_zone_update(payload, old_zone, _error) do
+    case store_ok(:update_zone, [payload["view_name"], payload["zone_name"], old_zone]) do
+      :ok ->
+        case reload_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+          :ok -> apply_failed_error()
+          {:error, %Error{}} -> rollback_failed_error()
+        end
+
+      {:error, %Error{}} ->
+        rollback_failed_error()
+    end
+  end
+
+  defp rollback_zone_delete(payload, zone, records, _error) do
+    with :ok <- restore_zone(payload["view_name"], payload["zone_name"], zone),
+         :ok <- restore_records(payload["view_name"], payload["zone_name"], records),
+         :ok <- start_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+      apply_failed_error()
+    else
+      {:error, %Error{}} -> rollback_failed_error()
+    end
+  end
+
+  defp rollback_record(payload, mutation, _error) do
+    with :ok <- restore_rrset(payload["view_name"], payload["zone_name"], mutation),
+         :ok <- reload_authoritative_zone(payload["view_name"], payload["zone_name"]) do
+      apply_failed_error()
+    else
+      {:error, %Error{}} -> rollback_failed_error()
+    end
+  end
+
+  defp ensure_view(view_name) do
+    with {:ok, views} <- read_views(),
+         true <- Enum.any?(views, &(&1["view_name"] == view_name)) do
+      :ok
+    else
+      false -> not_found_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp fetch_zone(view_name, zone_name) do
+    case dependency_call(:zone_store, :get_zone, [view_name, zone_name]) do
+      {:ok, {:ok, zone}} when is_map(zone) -> {:ok, zone}
+      {:ok, {:error, :not_found}} -> :missing
+      {:ok, :error} -> :missing
+      {:ok, {:error, _reason}} -> apply_failed_error()
+      {:error, %Error{}} = error -> error
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp authoritative_zone(view_name, zone_name) do
+    with {:ok, zone} <- fetch_zone(view_name, zone_name),
+         {:ok, "authoritative"} <- stored_zone_type(zone) do
+      {:ok, zone}
+    else
+      :missing -> not_found_error()
+      {:ok, _other} -> unsupported_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp stored_zone_type(zone) do
+    case wire_zone_type(field(zone, :zone_type)) do
+      {:ok, type} -> {:ok, type}
+      :error -> invalid_error()
+    end
+  end
+
+  defp provider_binding(nil), do: {:ok, nil}
+
+  defp provider_binding(provider_id) when is_binary(provider_id) do
+    with {:ok, provider} <- dependency_call(:provider_store, :get_config, [provider_id]),
+         {:ok, provider} <- unwrap_provider(provider),
+         true <- field(provider, :enabled, true),
+         {:ok, provider_type} <- wire_provider_type(field(provider, :type)) do
+      {:ok,
+       %{
+         enabled: true,
+         connector_name: provider_id,
+         provider: provider_atom(provider_type),
+         zone_id: "",
+         direction: :pull_from_cloud,
+         conflict_strategy: :cloud_wins
+       }}
+    else
+      {:error, %Error{}} = error -> error
+      false -> unsupported_error()
+      :error -> unsupported_error()
+      _invalid -> not_found_error()
+    end
+  end
+
+  defp provider_binding(_provider_id), do: invalid_error()
+
+  defp unwrap_provider({:ok, provider}) when is_map(provider), do: {:ok, provider}
+  defp unwrap_provider({:error, :not_found}), do: not_found_error()
+  defp unwrap_provider({:error, _reason}), do: apply_failed_error()
+  defp unwrap_provider(_result), do: apply_failed_error()
+
+  defp provider_atom("route53"), do: :route53
+  defp provider_atom("cloudflare"), do: :cloudflare
+
+  defp zone_options(nil), do: []
+  defp zone_options(cloud_mirror), do: [cloud_mirror: cloud_mirror]
+
+  defp start_authoritative_zone(view_name, zone_name) do
+    case dependency_call(:zone_controller, :start_zone, [:auth, zone_name, [view_name: view_name]]) do
+      {:ok, {:ok, _pid}} -> :ok
+      {:ok, :ok} -> :ok
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp rollback_create(view_name, zone_name) do
+    stop = dependency_call(:zone_controller, :stop_zone, [view_name, :auth, zone_name])
+    delete = store_ok(:delete_zone, [view_name, zone_name])
+
+    with true <- lifecycle_ok?(stop),
+         :ok <- delete,
+         :missing <- fetch_zone(view_name, zone_name) do
+      apply_failed_error()
+    else
+      _failed_cleanup -> rollback_failed_error()
+    end
+  end
+
+  defp stop_authoritative_zone(view_name, zone_name) do
+    case dependency_call(:zone_controller, :stop_zone, [view_name, :auth, zone_name]) do
+      {:ok, :ok} -> :ok
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp reload_authoritative_zone(view_name, zone_name) do
+    case dependency_call(:zone_controller, :reload_zone, [view_name, :auth, zone_name, []]) do
+      {:ok, :ok} -> :ok
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp lifecycle_ok?({:ok, :ok}), do: true
+  defp lifecycle_ok?({:ok, {:ok, _pid}}), do: true
+  defp lifecycle_ok?({:ok, {:error, :not_found}}), do: true
+  defp lifecycle_ok?(_result), do: false
+
+  defp store_ok(function, arguments) do
+    case dependency_call(:zone_store, function, arguments) do
+      {:ok, :ok} -> :ok
+      {:ok, {:error, :already_exists}} -> conflict_error()
+      {:ok, {:error, :not_found}} -> not_found_error()
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp list_store_records(view_name, zone_name) do
+    with {:ok, result} <- dependency_call(:zone_store, :list_records, [view_name, zone_name]),
+         {:ok, records} <- unwrap_store_list(result) do
+      {:ok, records}
+    end
+  end
+
+  defp fetch_rrset(view_name, zone_name, owner, type) do
+    case dependency_call(:zone_store, :get_rrset, [view_name, zone_name, owner, type]) do
+      {:ok, {:ok, record}} when is_map(record) -> {:ok, record}
+      {:ok, {:error, :not_found}} -> not_found_error()
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp fetch_rrset_or_missing(view_name, zone_name, owner, type) do
+    case fetch_rrset(view_name, zone_name, owner, type) do
+      {:error, %Error{code: :not_found}} -> {:ok, :missing}
+      result -> result
+    end
+  end
+
+  defp ensure_record_state(:create, :missing), do: :ok
+  defp ensure_record_state(:create, _old), do: conflict_error()
+  defp ensure_record_state(:update, :missing), do: not_found_error()
+  defp ensure_record_state(:update, _old), do: :ok
+
+  defp restore_zone(view_name, zone_name, zone) do
+    soa = field(zone, :soa)
+
+    options =
+      [
+        default_ttl: field(zone, :default_ttl, 3600),
+        authoritative: field(zone, :authoritative, true),
+        allow_dynamic_update: field(zone, :allow_dynamic_update, false),
+        serial_strategy: field(zone, :serial_strategy, :date_serial)
+      ] ++ zone_options(field(zone, :cloud_mirror))
+
+    store_ok(:create_zone, [view_name, zone_name, soa, options])
+  end
+
+  defp restore_records(view_name, zone_name, records) do
+    Enum.reduce_while(records, :ok, fn record, :ok ->
+      with owner when is_binary(owner) <- field(record, :owner),
+           type when is_atom(type) <- field(record, :type),
+           rrset when is_list(rrset) <- field(record, :rrset),
+           :ok <- store_ok(:put_rrset, [view_name, zone_name, owner, type, rrset]) do
+        {:cont, :ok}
+      else
+        _failure -> {:halt, apply_failed_error()}
+      end
+    end)
+  end
+
+  defp restore_rrset(view_name, zone_name, %{old: :missing} = mutation),
+    do: store_ok(:delete_rrset, [view_name, zone_name, mutation.owner, mutation.type])
+
+  defp restore_rrset(view_name, zone_name, %{old: old} = mutation) do
+    case field(old, :rrset) do
+      rrset when is_list(rrset) ->
+        store_ok(:put_rrset, [view_name, zone_name, mutation.owner, mutation.type, rrset])
+
+      _invalid ->
+        apply_failed_error()
+    end
+  end
+
+  defp validate_operation_payload(operation_name, payload) do
+    with {:ok, operation} <- ServerOperation.fetch(operation_name),
+         {:ok, payload} <- Operation.validate_payload(operation, payload) do
+      {:ok, payload}
+    else
+      _invalid -> invalid_error()
+    end
+  end
+
+  defp revisioned_result(operation_name, resource_type, resource) do
+    with {:ok, revision} <- Revision.calculate(resource),
+         {:ok, resource_id} <- resource_identifier(resource_type, resource),
+         {:ok, result} <-
+           validate_operation_result(operation_name, %{
+             "resource_type" => resource_type,
+             "resource_id" => resource_id,
+             "resource" => resource,
+             "revision" => revision
+           }) do
+      {:ok, result}
+    end
+  end
+
+  defp deleted_result(operation_name, resource_type, resource_ref) do
+    with {:ok, revision} <- Revision.calculate(resource_ref),
+         {:ok, resource_id} <- resource_identifier(resource_type, resource_ref),
+         {:ok, result} <-
+           validate_operation_result(operation_name, %{
+             "resource_type" => resource_type,
+             "resource_id" => resource_id,
+             "resource_ref" => resource_ref,
+             "revision" => revision
+           }) do
+      {:ok, result}
+    end
+  end
+
+  defp resource_identifier("dns_zone", resource), do: {:ok, resource["zone_name"]}
+  defp resource_identifier("dns_record", resource), do: {:ok, resource["record_id"]}
+
+  defp zone_reference(payload),
+    do: Map.take(zone_resource(payload), ["view_name", "zone_name"])
+
+  defp zone_resource(payload) do
+    %{
+      "view_name" => payload["view_name"],
+      "zone_name" => canonical_name(payload["zone_name"]),
+      "zone_type" => payload["zone_type"],
+      "provider_id" => payload["provider_id"]
+    }
+  end
+
+  defp record_reference(payload),
+    do: Map.take(payload, ["view_name", "zone_name", "record_id"])
+
   defp project_zone(%{} = zone, fallback_view) do
     with name when is_binary(name) <- field(zone, :origin, field(zone, :name)),
          {:ok, zone_type} <- wire_zone_type(field(zone, :zone_type)),
@@ -365,6 +848,7 @@ defmodule YellowDog.Server.Control.Dns do
         txt: "TXT"
       ] do
     defp wire_record_type(unquote(store)), do: {:ok, unquote(wire)}
+    defp store_record_type(unquote(wire)), do: {:ok, unquote(store)}
   end
 
   for type <- ["A", "AAAA", "CNAME", "MX", "NS", "PTR", "SRV", "TXT"] do
@@ -372,7 +856,82 @@ defmodule YellowDog.Server.Control.Dns do
   end
 
   defp wire_record_type(_type), do: :error
+  defp store_record_type(_type), do: invalid_error()
   defp validate_wire_record_type(_type), do: invalid_error()
+
+  defp encode_rrset(type, values, ttl) when is_list(values) and is_integer(ttl) do
+    values
+    |> Enum.reduce_while({:ok, []}, fn value, {:ok, entries} ->
+      case encode_rdata(type, value) do
+        {:ok, rdata} -> {:cont, {:ok, [%{rdata: rdata, ttl: ttl} | entries]}}
+        :error -> {:halt, invalid_error()}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, entries |> Enum.uniq() |> Enum.sort_by(&inspect/1)}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp encode_rrset(_type, _values, _ttl), do: invalid_error()
+
+  defp encode_rdata(type, value) when type in ["A", "AAAA"] and is_binary(value) do
+    with {:ok, address} <- parse_ip(value),
+         true <- ip_matches_type?(type, address) do
+      {:ok, address}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp encode_rdata(type, value) when type in ["CNAME", "NS", "PTR"] and is_binary(value),
+    do: {:ok, canonical_target(value)}
+
+  defp encode_rdata("MX", value) when is_binary(value) do
+    case String.split(value, ~r/\s+/, parts: 2, trim: true) do
+      [preference, target] ->
+        with {preference, ""} when preference in 0..65_535 <- Integer.parse(preference) do
+          {:ok, {preference, canonical_target(target)}}
+        else
+          _invalid -> :error
+        end
+
+      _invalid ->
+        :error
+    end
+  end
+
+  defp encode_rdata("SRV", value) when is_binary(value) do
+    case String.split(value, ~r/\s+/, trim: true) do
+      [priority, weight, port, target] ->
+        with {priority, ""} when priority in 0..65_535 <- Integer.parse(priority),
+             {weight, ""} when weight in 0..65_535 <- Integer.parse(weight),
+             {port, ""} when port in 0..65_535 <- Integer.parse(port) do
+          {:ok, {priority, weight, port, canonical_target(target)}}
+        else
+          _invalid -> :error
+        end
+
+      _invalid ->
+        :error
+    end
+  end
+
+  defp encode_rdata("TXT", value) when is_binary(value), do: {:ok, value}
+  defp encode_rdata(_type, _value), do: :error
+
+  defp parse_ip(value) do
+    case :inet.parse_address(String.to_charlist(value)) do
+      {:ok, address} -> {:ok, address}
+      {:error, _reason} -> :error
+    end
+  end
+
+  defp ip_matches_type?("A", address), do: tuple_size(address) == 4
+  defp ip_matches_type?("AAAA", address), do: tuple_size(address) == 8
+
+  defp canonical_target("."), do: "."
+  defp canonical_target(value), do: canonical_name(value)
 
   defp record_ttl(rrset) do
     Enum.reduce_while(rrset, {:ok, :unset}, fn entry, {:ok, expected_ttl} ->
@@ -952,7 +1511,7 @@ defmodule YellowDog.Server.Control.Dns do
   defp unwrap_store_list(_result), do: apply_failed_error()
 
   defp dependency_call(key, function, arguments) do
-    module = Map.fetch!(dependencies(), key)
+    module = dependency_module(key)
     {:ok, apply(module, function, arguments)}
   rescue
     UndefinedFunctionError -> not_found_error()
@@ -964,6 +1523,8 @@ defmodule YellowDog.Server.Control.Dns do
     :exit, _reason -> apply_failed_error()
     _kind, _reason -> apply_failed_error()
   end
+
+  defp dependency_module(key), do: Map.fetch!(dependencies(), key)
 
   defp field(map, key, default \\ nil)
 
@@ -990,6 +1551,7 @@ defmodule YellowDog.Server.Control.Dns do
   defp conflict_error, do: {:error, Error.new(:conflict, "operation conflict", %{})}
   defp unsupported_error, do: {:error, Error.new(:unsupported, "unsupported operation", %{})}
   defp apply_failed_error, do: {:error, Error.new(:apply_failed, "apply failed", %{})}
+  defp rollback_failed_error, do: {:error, Error.new(:rollback_failed, "rollback failed", %{})}
 
   if @test_environment do
     defp dependencies do
