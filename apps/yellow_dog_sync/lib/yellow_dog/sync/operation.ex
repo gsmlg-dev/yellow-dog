@@ -261,7 +261,7 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:netboot_asset_upload) do
     object(%{
       "asset_id" => :id,
-      "filename" => :filename,
+      "filename" => :normalized_relative_filename,
       "size" => nonnegative_integer(),
       "blob_digest" => :digest
     })
@@ -559,7 +559,7 @@ defmodule YellowDog.Sync.Operation do
   defp netboot_asset do
     object(%{
       "asset_id" => :id,
-      "filename" => :filename,
+      "filename" => :normalized_relative_filename,
       "size" => nonnegative_integer(),
       "blob_digest" => :digest
     })
@@ -900,6 +900,15 @@ defmodule YellowDog.Sync.Operation do
     with :ok <- validate_type(value, :nonempty_text, 0),
          {:ok, normalized} <- normalize_unicode(value),
          false <- identifier_path_value?(normalized) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :normalized_relative_filename, _depth) do
+    with :ok <- validate_type(value, :nonempty_text, 0),
+         true <- normalized_relative_filename?(value) do
       :ok
     else
       _ -> invalid_error()
@@ -1910,6 +1919,17 @@ defmodule YellowDog.Sync.Operation do
     String.contains?(value, ["/", "\\"]) or
       Regex.match?(~r/\A[A-Za-z]:/, value) or
       value in [".", "..", "~"]
+  end
+
+  defp normalized_relative_filename?(value) do
+    parts = String.split(value, "/", trim: false)
+
+    String.normalize(value, :nfc) == value and
+      String.printable?(value) and
+      not Regex.match?(~r/\p{C}/u, value) and
+      not String.contains?(value, ["\\", <<0>>]) and
+      not Regex.match?(~r/\A[A-Za-z]:/, value) and
+      Enum.all?(parts, &(&1 not in ["", ".", ".."]))
   end
 
   defp supported_http_uri?(value) do

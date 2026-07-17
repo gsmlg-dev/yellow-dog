@@ -1003,6 +1003,94 @@ defmodule YellowDog.Sync.ServerOperationTest do
     )
   end
 
+  test "Netboot asset schemas accept normalized relative filenames" do
+    filename = "images/installer.img"
+    payload = Map.put(Fixtures.valid(:netboot_asset_upload), "filename", filename)
+    asset = Map.put(Fixtures.valid(:netboot_asset), "filename", filename)
+    list_result = %{Fixtures.valid(:netboot_asset_list) | "items" => [asset]}
+
+    assert {:ok, ^payload} =
+             Operation.validate_payload(
+               "server.netboot.assets.upload",
+               :server,
+               :command,
+               payload
+             )
+
+    assert {:ok, ^asset} =
+             Operation.validate_result("server.netboot.assets.upload", :server, :command, asset)
+
+    assert {:ok, ^list_result} =
+             Operation.validate_result(
+               "server.netboot.assets.list",
+               :server,
+               :query,
+               list_result
+             )
+  end
+
+  test "Netboot asset schemas reject unsafe or non-normalized relative filenames" do
+    payload = Fixtures.valid(:netboot_asset_upload)
+    list_result = Fixtures.valid(:netboot_asset_list)
+    non_normalized = "images/cafe" <> <<0xCC, 0x81>> <> ".img"
+
+    invalid_filenames = [
+      "/images/installer.img",
+      "C:/images/installer.img",
+      "\\\\server\\share\\installer.img",
+      "images\\installer.img",
+      "images/\0installer.img",
+      "images/\tinstaller.img",
+      "",
+      ".",
+      "..",
+      "./installer.img",
+      "../installer.img",
+      "images/../installer.img",
+      "images//installer.img",
+      "images/installer.img/",
+      non_normalized,
+      String.duplicate("x", 1_025)
+    ]
+
+    for filename <- invalid_filenames do
+      invalid_payload = Map.put(payload, "filename", filename)
+      invalid_asset = Map.put(hd(list_result["items"]), "filename", filename)
+      invalid_list_result = %{list_result | "items" => [invalid_asset]}
+
+      assert_invalid(
+        Operation.validate_payload(
+          "server.netboot.assets.upload",
+          :server,
+          :command,
+          invalid_payload
+        )
+      )
+
+      assert_invalid(
+        Operation.validate_result(
+          "server.netboot.assets.list",
+          :server,
+          :query,
+          invalid_list_result
+        )
+      )
+    end
+  end
+
+  test "generic filenames remain leaf names" do
+    zone_import = Fixtures.valid(:dns_zone_import)
+
+    assert {:ok, ^zone_import} = Operation.validate_schema(:dns_zone_import, zone_import)
+
+    assert_invalid(
+      Operation.validate_schema(
+        :dns_zone_import,
+        Map.put(zone_import, "filename", "images/installer.img")
+      )
+    )
+  end
+
   test "blob metadata schemas reject cross-domain payloads" do
     dns_import = Fixtures.valid(:dns_zone_import)
     asset_upload = Fixtures.valid(:netboot_asset_upload)
