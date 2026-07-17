@@ -28,7 +28,8 @@ defmodule YellowDogIdentity.Registry do
           data_dir: String.t(),
           hosts: %{String.t() => Host.t()},
           tokens: %{String.t() => Token.t()},
-          fingerprint_index: %{String.t() => String.t()}
+          fingerprint_index: %{String.t() => String.t()},
+          file_ops: module() | {module(), term()}
         }
 
   # Client API
@@ -102,10 +103,6 @@ defmodule YellowDogIdentity.Registry do
   @spec delete_token(String.t()) :: :ok | {:error, term()}
   def delete_token(id), do: GenServer.call(__MODULE__, {:delete_token, id})
 
-  @doc false
-  @spec control_revoke_token(String.t()) :: {:ok, Token.t()} | {:error, term()}
-  def control_revoke_token(id), do: GenServer.call(__MODULE__, {:control_revoke_token, id})
-
   @doc """
   Atomically verifies a raw token and increments its use count in a single GenServer call.
 
@@ -133,29 +130,33 @@ defmodule YellowDogIdentity.Registry do
   @impl true
   def init(opts) do
     data_dir = Keyword.get(opts, :data_dir, default_data_dir())
+    file_ops = Keyword.get(opts, :file_ops, File)
     hosts_dir = Path.join(data_dir, "hosts")
     tokens_dir = Path.join(data_dir, "tokens")
 
-    File.mkdir_p!(hosts_dir)
-    File.mkdir_p!(tokens_dir)
+    with :ok <- file_call(file_ops, :mkdir_p, [hosts_dir]),
+         :ok <- file_call(file_ops, :mkdir_p, [tokens_dir]) do
+      # Load existing data from disk
+      {hosts, fingerprint_index} = load_hosts(hosts_dir)
+      tokens = load_tokens(tokens_dir)
 
-    # Load existing data from disk
-    {hosts, fingerprint_index} = load_hosts(hosts_dir)
-    tokens = load_tokens(tokens_dir)
+      state = %{
+        data_dir: data_dir,
+        hosts: hosts,
+        tokens: tokens,
+        fingerprint_index: fingerprint_index,
+        file_ops: file_ops
+      }
 
-    state = %{
-      data_dir: data_dir,
-      hosts: hosts,
-      tokens: tokens,
-      fingerprint_index: fingerprint_index
-    }
-
-    {:ok, state}
+      {:ok, state}
+    else
+      _failure -> {:stop, :persistence_failed}
+    end
   end
 
   @impl true
   def handle_call({:put_host, host}, _from, state) do
-    case persist_host(state.data_dir, host) do
+    case persist_host(state, host) do
       :ok ->
         hosts = Map.put(state.hosts, host.id, host)
         fingerprint_index = Map.put(state.fingerprint_index, host.key_fingerprint, host.id)
@@ -252,7 +253,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:put_token, token}, _from, state) do
-    case persist_token(state.data_dir, token) do
+    case persist_token(state, token) do
       :ok ->
         tokens = Map.put(state.tokens, token.id, token)
         {:reply, :ok, %{state | tokens: tokens}}
@@ -280,17 +281,10 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  def handle_call({:control_revoke_token, id}, _from, state) do
-    case delete_token_record(state, id) do
-      {:ok, token, state} -> {:reply, {:ok, token}, state}
-      {:error, reason} -> {:reply, {:error, reason}, state}
-    end
-  end
-
   def handle_call({:consume_token, raw_token, hostname}, _from, state) do
     tokens = Map.values(state.tokens)
 
-    case do_consume_token(tokens, raw_token, hostname, state.data_dir) do
+    case do_consume_token(tokens, raw_token, hostname, state) do
       {:ok, updated_token} ->
         new_tokens = Map.put(state.tokens, updated_token.id, updated_token)
         {:reply, {:ok, updated_token}, %{state | tokens: new_tokens}}
@@ -316,13 +310,13 @@ defmodule YellowDogIdentity.Registry do
 
   # Token consumption helper (used by consume_token handle_call)
 
-  defp do_consume_token(tokens, raw_token, hostname, data_dir) do
+  defp do_consume_token(tokens, raw_token, hostname, state) do
     Enum.reduce_while(tokens, {:error, :invalid_token}, fn token, acc ->
       case Token.verify(token, raw_token, hostname) do
         :ok ->
           updated = Token.increment_use(token)
 
-          case persist_token(data_dir, updated) do
+          case persist_token(state, updated) do
             :ok -> {:halt, {:ok, updated}}
             {:error, _} = error -> {:halt, error}
           end
@@ -337,7 +331,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   defp reply_host_update(state, prior, updated) do
-    case persist_host(state.data_dir, updated) do
+    case persist_host(state, updated) do
       :ok ->
         hosts = Map.put(state.hosts, updated.id, updated)
         fingerprint_index = Map.put(state.fingerprint_index, updated.key_fingerprint, updated.id)
@@ -345,8 +339,8 @@ defmodule YellowDogIdentity.Registry do
         {:reply, {:ok, prior, updated},
          %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
 
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
+      {:error, :persistence_failed} = error ->
+        {:reply, error, state}
     end
   end
 
@@ -356,7 +350,7 @@ defmodule YellowDogIdentity.Registry do
         {:error, :not_found}
 
       host ->
-        with :ok <- delete_file(host_path(state.data_dir, id), :host) do
+        with :ok <- delete_file(host_path(state.data_dir, id), :host, state.file_ops) do
           hosts = Map.delete(state.hosts, id)
           fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
           {:ok, host, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
@@ -370,64 +364,100 @@ defmodule YellowDogIdentity.Registry do
         {:error, :not_found}
 
       token ->
-        with :ok <- delete_file(token_path(state.data_dir, id), :token) do
+        with :ok <- delete_file(token_path(state.data_dir, id), :token, state.file_ops) do
           {:ok, token, %{state | tokens: Map.delete(state.tokens, id)}}
         end
     end
   end
 
-  defp delete_file(path, kind) do
-    case File.rm(path) do
+  defp delete_file(path, kind, file_ops) do
+    case file_call(file_ops, :rm, [path]) do
       :ok ->
         :ok
 
       {:error, :enoent} ->
         :ok
 
-      {:error, reason} ->
-        Logger.warning("Failed to delete #{kind} file: #{reason}")
-        {:error, {:delete_failed, reason}}
+      {:error, :persistence_failed} ->
+        Logger.warning("Failed to delete #{kind} persistence record")
+        {:error, :persistence_failed}
     end
   end
 
   # Persistence helpers
 
-  defp persist_host(data_dir, host) do
-    path = host_path(data_dir, host.id)
+  defp persist_host(state, host) do
+    path = host_path(state.data_dir, host.id)
     toml_map = Host.to_toml_map(host)
-    atomic_write_toml(path, toml_map)
+    atomic_write_toml(path, toml_map, state.file_ops)
   end
 
-  defp persist_token(data_dir, token) do
-    path = token_path(data_dir, token.id)
+  defp persist_token(state, token) do
+    path = token_path(state.data_dir, token.id)
     toml_map = Token.to_toml_map(token)
-    atomic_write_toml(path, toml_map)
+    atomic_write_toml(path, toml_map, state.file_ops)
   end
 
-  defp atomic_write_toml(path, map) do
-    content = encode_toml(map)
+  defp atomic_write_toml(path, map, file_ops) do
     tmp_path = path <> ".tmp"
     dir = Path.dirname(path)
-    File.mkdir_p!(dir)
 
-    with :ok <- File.write(tmp_path, content),
-         # Validate round-trip
-         {:ok, _} <- read_and_parse_toml(tmp_path),
-         :ok <- File.rename(tmp_path, path) do
-      :ok
-    else
-      {:error, reason} ->
-        File.rm(tmp_path)
-        {:error, reason}
+    result =
+      try do
+        content = encode_toml(map)
+
+        with :ok <- file_call(file_ops, :mkdir_p, [dir]),
+             :ok <- file_call(file_ops, :write, [tmp_path, content]),
+             {:ok, _parsed} <- read_and_parse_toml(tmp_path, file_ops),
+             :ok <- file_call(file_ops, :rename, [tmp_path, path]) do
+          :ok
+        else
+          _failure -> {:error, :persistence_failed}
+        end
+      rescue
+        _exception -> {:error, :persistence_failed}
+      catch
+        _kind, _reason -> {:error, :persistence_failed}
+      end
+
+    if result != :ok do
+      _cleanup_result = file_call(file_ops, :rm, [tmp_path])
     end
+
+    result
   end
 
-  defp read_and_parse_toml(path) do
-    case File.read(path) do
+  defp read_and_parse_toml(path, file_ops) do
+    case file_call(file_ops, :read, [path]) do
       {:ok, content} -> Toml.decode(content)
-      error -> error
+      _failure -> {:error, :persistence_failed}
     end
   end
+
+  defp file_call({module, context}, operation, arguments) do
+    module
+    |> apply(operation, [context | arguments])
+    |> normalize_file_result()
+  rescue
+    _exception -> {:error, :persistence_failed}
+  catch
+    _kind, _reason -> {:error, :persistence_failed}
+  end
+
+  defp file_call(module, operation, arguments) do
+    module
+    |> apply(operation, arguments)
+    |> normalize_file_result()
+  rescue
+    _exception -> {:error, :persistence_failed}
+  catch
+    _kind, _reason -> {:error, :persistence_failed}
+  end
+
+  defp normalize_file_result(:ok), do: :ok
+  defp normalize_file_result({:ok, _value} = result), do: result
+  defp normalize_file_result({:error, :enoent}), do: {:error, :enoent}
+  defp normalize_file_result(_failure), do: {:error, :persistence_failed}
 
   defp encode_toml(map) do
     encode_toml_section(map, [])

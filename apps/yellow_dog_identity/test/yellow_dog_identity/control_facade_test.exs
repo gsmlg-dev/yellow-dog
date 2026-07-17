@@ -1,7 +1,28 @@
 defmodule YellowDogIdentity.ControlFacadeTest do
   use ExUnit.Case, async: false
 
+  alias YellowDog.Server.Control.Revision
   alias YellowDogIdentity.{Host, Registry}
+
+  defmodule FileOps do
+    @moduledoc false
+
+    def mkdir_p(context, path), do: invoke(context, :mkdir_p, [path])
+    def write(context, path, contents), do: invoke(context, :write, [path, contents])
+    def read(context, path), do: invoke(context, :read, [path])
+    def rename(context, source, destination), do: invoke(context, :rename, [source, destination])
+    def rm(context, path), do: invoke(context, :rm, [path])
+
+    defp invoke(context, operation, arguments) do
+      case Agent.get(context, &Map.get(&1, operation, :pass)) do
+        :pass -> apply(File, operation, arguments)
+        {:error, reason} -> {:error, reason}
+        {:raise, message} -> raise message
+        {:throw, value} -> throw(value)
+        {:exit, reason} -> exit(reason)
+      end
+    end
+  end
 
   @valid_key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBxRhNpqVVPZOFRZNvKGVfCjXN5US8MLXiEy1Ox7xDT6 test@host"
   @valid_age "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
@@ -15,19 +36,20 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       )
 
     YellowDogIdentity.TestHelper.stop_app_identity()
-    start_registry!(tmp_dir)
+    {:ok, file_ops} = Agent.start_link(fn -> %{} end)
+    start_registry!(tmp_dir, file_ops)
 
     on_exit(fn ->
       stop_registry()
       File.rm_rf!(tmp_dir)
     end)
 
-    %{tmp_dir: tmp_dir}
+    %{tmp_dir: tmp_dir, file_ops: file_ops}
   end
 
   describe "canonical public snapshots" do
-    test "host and approval snapshots contain only fixed fields with stable revisions",
-         %{tmp_dir: tmp_dir} do
+    test "host snapshots contain fixed fields and the canonical Server revision",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
       host =
         put_host!("public-host",
           trust_evidence: %{"authorization" => "secret"},
@@ -49,45 +71,23 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       assert revision =~ ~r/\A[0-9a-f]{64}\z/
       assert Map.keys(snapshot) |> Enum.sort() == ~w(host_id name revision state)
 
-      assert {:ok,
-              [
-                %{
-                  "approval_id" => ^host_id,
-                  "host_id" => ^host_id,
-                  "state" => "pending"
-                }
-              ]} = YellowDogIdentity.control_list_approvals()
+      canonical_resource = Map.delete(snapshot, "revision")
+      assert {:ok, ^revision} = Revision.calculate(canonical_resource)
+      assert {:ok, ^revision} = Revision.calculate(snapshot)
 
-      restart_registry!(tmp_dir)
+      restart_registry!(tmp_dir, file_ops)
 
       assert {:ok, [^snapshot]} = YellowDogIdentity.control_list_hosts()
       assert {:ok, ^snapshot} = YellowDogIdentity.control_host(host.id)
     end
 
-    test "token snapshots never expose raw tokens or hashes" do
-      {:ok, active, raw_token} =
-        YellowDogIdentity.create_token(%{
-          hostname_pattern: "private-*",
-          created_by: "sensitive-actor"
-        })
+    test "approval and token owner surfaces are typed unsupported without an owner" do
+      stop_registry()
 
-      {:ok, expired, _raw_token} = YellowDogIdentity.create_token(%{ttl_seconds: -1})
-
-      assert {:ok, snapshots} = YellowDogIdentity.control_list_tokens()
-
-      assert snapshots ==
-               [
-                 %{"token_id" => active.id, "label" => active.id, "state" => "active"},
-                 %{"token_id" => expired.id, "label" => expired.id, "state" => "expired"}
-               ]
-               |> Enum.sort_by(& &1["token_id"])
-
-      encoded = inspect(snapshots)
-      refute encoded =~ raw_token
-      refute encoded =~ active.token_hash
-      refute encoded =~ "hostname_pattern"
-      refute encoded =~ "created_by"
-      assert Enum.all?(snapshots, &(Map.keys(&1) |> Enum.sort() == ~w(label state token_id)))
+      assert {:error, :unsupported} = YellowDogIdentity.control_list_approvals()
+      assert {:error, :unsupported} = YellowDogIdentity.control_list_tokens()
+      assert {:error, :unsupported} = YellowDogIdentity.control_token("token-id")
+      assert {:error, :unsupported} = YellowDogIdentity.control_revoke_token("token-id")
     end
 
     test "audit snapshots are deterministic, bounded, and omit raw details" do
@@ -171,53 +171,122 @@ defmodule YellowDogIdentity.ControlFacadeTest do
     end
 
     test "delete failure returns no snapshot and leaves the host in owner state",
-         %{tmp_dir: tmp_dir} do
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
       host = put_host!("failed-delete-host")
       host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      persisted = File.read!(host_path)
 
-      File.rm!(host_path)
-      File.mkdir!(host_path)
+      set_file_failure(file_ops, :rm, {:error, {:raw_path, host_path}})
 
-      assert {:error, _reason} = YellowDogIdentity.control_delete_host(host.id)
+      assert {:error, :persistence_failed} =
+               YellowDogIdentity.control_delete_host(host.id)
+
       assert {:ok, %{"host_id" => host_id}} = YellowDogIdentity.control_host(host.id)
       assert host_id == host.id
+      assert File.read!(host_path) == persisted
+    end
+
+    test "mkdir and write failures are sanitized without changing state or disk",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("failed-write-host")
+      host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      persisted = File.read!(host_path)
+
+      failures = [
+        {:mkdir_p, {:error, {:raw_path, Path.dirname(host_path)}}},
+        {:write, {:error, {:raw_path, host_path}}},
+        {:write, {:raise, "raw path #{host_path}"}},
+        {:write, {:throw, {:raw_path, host_path}}},
+        {:write, {:exit, {:raw_path, host_path}}},
+        {:rename, {:error, {:raw_path, host_path}}}
+      ]
+
+      for {operation, failure} <- failures do
+        set_file_failure(file_ops, operation, failure)
+
+        assert {:error, :persistence_failed} =
+                 YellowDogIdentity.control_approve_host(host.id)
+
+        assert {:ok, persisted_host} = Registry.get_host(host.id)
+        assert persisted_host.status == :pending
+        assert File.read!(host_path) == persisted
+        assert Process.alive?(Process.whereis(Registry))
+
+        clear_file_failures(file_ops)
+      end
+    end
+
+    test "delete exceptions are sanitized without changing state or disk",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      host = put_host!("failed-delete-exception-host")
+      host_path = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      persisted = File.read!(host_path)
+
+      failures = [
+        {:raise, "raw path #{host_path}"},
+        {:throw, {:raw_path, host_path}},
+        {:exit, {:raw_path, host_path}}
+      ]
+
+      for failure <- failures do
+        set_file_failure(file_ops, :rm, failure)
+
+        assert {:error, :persistence_failed} =
+                 YellowDogIdentity.control_delete_host(host.id)
+
+        assert {:ok, persisted_host} = Registry.get_host(host.id)
+        assert persisted_host.status == :pending
+        assert File.read!(host_path) == persisted
+        assert Process.alive?(Process.whereis(Registry))
+
+        clear_file_failures(file_ops)
+      end
+    end
+
+    test "missing Registry exits are mapped to apply_failed" do
+      host = put_host!("owner-exit-host")
+      stop_registry()
+
+      assert {:error, :apply_failed} = YellowDogIdentity.control_list_hosts()
+      assert {:error, :apply_failed} = YellowDogIdentity.control_host(host.id)
+      assert {:error, :apply_failed} = YellowDogIdentity.control_approve_host(host.id)
+      assert {:error, :apply_failed} = YellowDogIdentity.control_revoke_host(host.id)
+      assert {:error, :apply_failed} = YellowDogIdentity.control_delete_host(host.id)
+      assert {:error, :apply_failed} = YellowDogIdentity.control_list_audit()
     end
   end
 
-  describe "serialized token revoke" do
-    test "returns a revoked public snapshot only after durable deletion", %{tmp_dir: tmp_dir} do
-      {:ok, token, raw_token} = YellowDogIdentity.create_token(%{})
+  describe "unsupported token control" do
+    test "never exposes or revokes an exhausted persisted token", %{tmp_dir: tmp_dir} do
+      {:ok, token, raw_token} =
+        YellowDogIdentity.create_token(%{
+          hostname_pattern: "*",
+          max_uses: 1,
+          created_by: "sensitive-actor"
+        })
+
+      assert {:ok, exhausted} = Registry.consume_token(raw_token, "host")
+      assert exhausted.use_count == exhausted.max_uses
+
       token_path = Path.join([tmp_dir, "tokens", "#{token.id}.toml"])
+      persisted = File.read!(token_path)
 
-      assert {:ok, %{"state" => "active"} = prior, %{"state" => "revoked"} = revoked} =
-               YellowDogIdentity.control_revoke_token(token.id)
+      results = [
+        YellowDogIdentity.control_list_tokens(),
+        YellowDogIdentity.control_token(token.id),
+        YellowDogIdentity.control_revoke_token(token.id)
+      ]
 
-      assert prior["token_id"] == token.id
-      assert revoked == %{prior | "state" => "revoked"}
-      refute inspect(revoked) =~ raw_token
-      refute inspect(revoked) =~ token.token_hash
-      refute File.exists?(token_path)
-      assert {:error, :not_found} = YellowDogIdentity.control_token(token.id)
-      assert {:ok, []} = YellowDogIdentity.control_list_tokens()
+      assert results == [
+               {:error, :unsupported},
+               {:error, :unsupported},
+               {:error, :unsupported}
+             ]
 
-      restart_registry!(tmp_dir)
-      assert {:ok, []} = YellowDogIdentity.control_list_tokens()
-    end
-
-    test "delete failure returns no revoked snapshot and keeps the token active",
-         %{tmp_dir: tmp_dir} do
-      {:ok, token, _raw_token} = YellowDogIdentity.create_token(%{})
-      token_path = Path.join([tmp_dir, "tokens", "#{token.id}.toml"])
-
-      File.rm!(token_path)
-      File.mkdir!(token_path)
-
-      assert {:error, _reason} = YellowDogIdentity.control_revoke_token(token.id)
-
-      assert {:ok, %{"token_id" => token_id, "state" => "active"}} =
-               YellowDogIdentity.control_token(token.id)
-
-      assert token_id == token.id
+      refute inspect(results) =~ raw_token
+      refute inspect(results) =~ token.token_hash
+      assert {:ok, ^exhausted} = Registry.get_token(token.id)
+      assert File.read!(token_path) == persisted
     end
   end
 
@@ -234,13 +303,18 @@ defmodule YellowDogIdentity.ControlFacadeTest do
     host
   end
 
-  defp restart_registry!(tmp_dir) do
+  defp restart_registry!(tmp_dir, file_ops) do
     stop_registry()
-    start_registry!(tmp_dir)
+    start_registry!(tmp_dir, file_ops)
   end
 
-  defp start_registry!(tmp_dir) do
-    {:ok, _pid} = Registry.start_link(data_dir: tmp_dir, name: Registry)
+  defp start_registry!(tmp_dir, file_ops) do
+    {:ok, _pid} =
+      Registry.start_link(
+        data_dir: tmp_dir,
+        name: Registry,
+        file_ops: {FileOps, file_ops}
+      )
   end
 
   defp stop_registry do
@@ -256,6 +330,12 @@ defmodule YellowDogIdentity.ControlFacadeTest do
         end
     end
   end
+
+  defp set_file_failure(file_ops, operation, failure) do
+    Agent.update(file_ops, &Map.put(&1, operation, failure))
+  end
+
+  defp clear_file_failures(file_ops), do: Agent.update(file_ops, fn _state -> %{} end)
 
   defp flush_registry, do: :sys.get_state(Registry)
 end
