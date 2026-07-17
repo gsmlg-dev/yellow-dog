@@ -84,7 +84,6 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
           profile: String.t(),
           config_store: server(),
           config_apply_store: server(),
-          config_apply_store_pid: pid(),
           runtime_adapter: module()
         }
 
@@ -115,7 +114,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
 
   @impl true
   def init(config) do
-    ownership_key = {__MODULE__, :config_apply_store, config.config_apply_store_pid}
+    ownership_key = {__MODULE__, :server_id, config.server_id}
 
     case claim_ownership(ownership_key) do
       :ok ->
@@ -732,8 +731,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
          {:ok, server_id} <- server_id(Keyword.get(opts, :server_id)),
          {:ok, profile} <- profile(Keyword.get(opts, :profile)),
          {:ok, config_store} <- server_ref(Keyword.get(opts, :config_store)),
-         {:ok, config_apply_store, config_apply_store_pid} <-
-           server_ref_with_pid(Keyword.get(opts, :config_apply_store)),
+         {:ok, config_apply_store} <- server_ref(Keyword.get(opts, :config_apply_store)),
          {:ok, runtime_adapter} <-
            runtime_adapter(Keyword.get(opts, :runtime_adapter, @default_runtime_adapter)) do
       {:ok,
@@ -742,7 +740,6 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
          profile: profile,
          config_store: config_store,
          config_apply_store: config_apply_store,
-         config_apply_store_pid: config_apply_store_pid,
          runtime_adapter: runtime_adapter
        }, name}
     else
@@ -763,17 +760,6 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
   defp server_ref(value) do
     case GenServer.whereis(value) do
       pid when is_pid(pid) -> {:ok, value}
-      _missing -> :error
-    end
-  rescue
-    _exception -> :error
-  catch
-    _kind, _reason -> :error
-  end
-
-  defp server_ref_with_pid(value) do
-    case GenServer.whereis(value) do
-      pid when is_pid(pid) -> {:ok, value, pid}
       _missing -> :error
     end
   rescue

@@ -112,7 +112,7 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
     assert {:error, :invalid_options} = ConfigApplier.start_link(duplicate_opts)
   end
 
-  test "one applier owns each resolved apply store across public-name races", %{
+  test "one applier owns each server identity across public-name races", %{
     data_dir: data_dir
   } do
     {config_store, apply_store} = start_stores(data_dir)
@@ -161,6 +161,8 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
   } do
     config_store_name = unique_name(:restart_config_store)
     apply_store_name = unique_name(:restart_apply_store)
+    applier_name = unique_name(:restart_applier)
+    contender_name = unique_name(:restart_applier_contender)
 
     {:ok, config_store} =
       ConfigStore.start_link(
@@ -181,16 +183,66 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
     {:ok, first_apply_store} = ConfigApplyStore.start_link(apply_opts)
 
     {:ok, applier} =
-      ConfigApplier.start_link(base_applier_opts(config_store, apply_store_name, name: nil))
+      ConfigApplier.start_link(
+        base_applier_opts(config_store, apply_store_name, name: applier_name)
+      )
 
     stop(first_apply_store)
     {:ok, restarted_apply_store} = ConfigApplyStore.start_link(apply_opts)
 
+    assert {:error, :config_applier_already_started} =
+             ConfigApplier.start_link(
+               base_applier_opts(config_store, restarted_apply_store, name: contender_name)
+             )
+
     assert {:ok, %{status: :applied}} = ConfigApplier.apply(envelope(1), applier)
+    assert_receive {:adapter_call, :validate_config, [_]}
+    assert_receive {:adapter_call, :install_config, [_, _]}
+    assert_receive {:adapter_call, :activate_config, [_]}
+    refute_receive {:adapter_call, _, _}
     assert Process.alive?(applier)
 
     stop(applier)
     stop(restarted_apply_store)
+  end
+
+  test "different server identities own independent appliers", %{data_dir: data_dir} do
+    {config_store, apply_store} = start_stores(Path.join(data_dir, "east"))
+    other_server_id = "server-west-1"
+    other_data_dir = Path.join(data_dir, "west")
+
+    {:ok, other_config_store} =
+      ConfigStore.start_link(
+        name: unique_name(:other_config_store),
+        data_dir: other_data_dir,
+        server_id: other_server_id,
+        profile: @profile
+      )
+
+    {:ok, other_apply_store} =
+      ConfigApplyStore.start_link(
+        name: unique_name(:other_apply_store),
+        data_dir: other_data_dir,
+        server_id: other_server_id,
+        profile: @profile,
+        config_store: other_config_store
+      )
+
+    assert {:ok, applier} =
+             ConfigApplier.start_link(
+               base_applier_opts(config_store, apply_store, name: unique_name(:east_applier))
+             )
+
+    assert {:ok, other_applier} =
+             ConfigApplier.start_link(
+               base_applier_opts(other_config_store, other_apply_store,
+                 name: unique_name(:west_applier),
+                 server_id: other_server_id
+               )
+             )
+
+    stop(applier)
+    stop(other_applier)
   end
 
   test "defaults to the literal unavailable production adapter and fails closed", %{

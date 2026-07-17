@@ -43,12 +43,13 @@ DONE
   outbox. Publication acknowledgement/failure never invokes runtime work.
 - ConfigApplier retains no apply evidence itself; GenServer ownership supplies
   serial exclusion for concurrent deliveries.
-- A secondary atomic registration keyed by the resolved ConfigApplyStore PID
-  now enforces one ConfigApplier owner independently of nil or differing public
-  process names. Contending starts fail before serving, and termination releases
-  the registration. The configured ConfigApplyStore name/reference remains
-  unchanged for calls so a store restarted under the same name remains
-  reachable; the resolved PID is retained separately only for ownership.
+- A secondary atomic registration keyed by the concrete validated Server
+  identity enforces one ConfigApplier owner per `server_id`, independently of
+  ConfigApplyStore names, aliases, PIDs, or restarts. Contending starts fail
+  before serving, different Server identities remain independent, and
+  termination releases the registration. The configured ConfigApplyStore
+  name/reference remains unchanged for calls so a store restarted under the same
+  name remains reachable. Startup still validates that reference is live.
 - Every ConfigApplyStore success is validated before snapshot dereference or
   public return. Compact validators prove target identity plus only the
   init/replay fields ConfigApplier consumes and the event-specific
@@ -79,9 +80,12 @@ Focused coverage includes:
 - known-good rollback success, restore failure, and reactivation failure;
 - exact terminal replay, conflict-before-stage, and safe pure resume;
 - stage/current equality enforcement and concurrent call serialization;
-- ConfigApplyStore PID ownership races across distinct public names, nil-name
-  contention, and registration release on termination;
-- named ConfigApplyStore restart through the retained configured reference;
+- ConfigApplier ownership races across distinct public names, nil-name
+  contention, different Server identities, and registration release on
+  termination;
+- named ConfigApplyStore restart through the retained configured reference,
+  same-Server contention through the replacement PID, and one callback sequence
+  through the original owner;
 - valid failed/unconfigured init and replay snapshots;
 - malformed init, preflight replay, pre-side-effect, post-side-effect, and
   unknown-transition success shapes;
@@ -105,21 +109,24 @@ Focused coverage includes:
     before-install dereference crash, and malformed post-activation acceptance.
   - Named-store restart regression result: `30 tests, 1 failure`, reproducing
     the stale resolved-PID call reference after a same-name store restart.
+  - Server-identity restart regression result: `32 tests, 1 failure`,
+    reproducing successful ownership by a second applier after a same-name store
+    restart.
 - Focused tests:
   - Same focused command after implementation and expanded coverage.
-  - Result: `31 tests, 0 failures`.
+  - Result: `32 tests, 0 failures`.
 - Full Server-agent tests:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix test'`
-  - Result: `193 tests, 0 failures`.
+  - Result: `194 tests, 0 failures`.
 - Warnings-as-errors compile:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix compile --warnings-as-errors --force'`
   - Result: exit 0, 12 files compiled, no warnings.
 - Scoped format:
-  - `devenv shell -- mix format --check-formatted <three modified owned Elixir files>`
+  - `devenv shell -- mix format --check-formatted <two modified owned Elixir files>`
   - Result: exit 0.
 - Strict Credo:
   - `devenv shell -- bash -lc 'cd apps/yellow_dog_server_agent && mix credo --strict'`
-  - Result: 26 source files, 994 mods/funs, no issues.
+  - Result: 26 source files, 993 mods/funs, no issues.
 - Dependency guard:
   - `mix deps.tree --only prod` reports only `yellow_dog_sync` as an umbrella
     dependency plus the existing Hex packages; there is no `yellow_dog`
