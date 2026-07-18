@@ -47,6 +47,7 @@ defmodule YellowDog.Netman.MixProject do
       {:yellow_dog_telemetry, in_umbrella: true},
       {:yellow_dog_dhcp_client, in_umbrella: true},
       {:yellow_dog_resolved, in_umbrella: true},
+      {:yellow_dog_sync, in_umbrella: true},
       {:ex_dhcp, in_umbrella: true},
       {:yellow_dog_netman_agent, in_umbrella: true, only: [:test], runtime: false},
       {:phoenix_socket_client, "~> 0.7.0"},

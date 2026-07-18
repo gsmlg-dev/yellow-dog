@@ -355,7 +355,8 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:settings_validation),
     do: object(%{"service" => :id, "valid" => :boolean, "errors" => list(validation_error())})
 
-  defp schema_spec(:apply_mode), do: object(%{"mode" => enum(["managed", "standalone"])})
+  defp schema_spec(:apply_mode),
+    do: object(%{"mode" => enum(["managed", "standalone", "observe_first", "observe"])})
 
   defp schema_spec(:reconciliation_health),
     do: object(%{"status" => health(), "pending_changes" => nonnegative_integer()})
@@ -752,6 +753,20 @@ defmodule YellowDog.Sync.Operation do
        )
        when schema in [:revisioned_resource, :deleted_resource] do
     if operation_resource_type(name) == resource_type, do: :ok, else: invalid_error()
+  end
+
+  defp validate_result_domain(
+         %__MODULE__{target_type: :netman, result_schema: :apply_mode},
+         %{"mode" => mode}
+       ) do
+    if mode in ["managed", "observe_first", "observe"], do: :ok, else: invalid_error()
+  end
+
+  defp validate_result_domain(
+         %__MODULE__{target_type: :server, result_schema: :apply_mode},
+         %{"mode" => mode}
+       ) do
+    if mode in ["managed", "standalone"], do: :ok, else: invalid_error()
   end
 
   defp validate_result_domain(_operation, _result), do: :ok

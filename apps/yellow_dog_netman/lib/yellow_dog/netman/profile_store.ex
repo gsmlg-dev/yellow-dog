@@ -68,7 +68,11 @@ defmodule YellowDog.Netman.ProfileStore do
     put(id, profile, [])
   end
 
-  @doc "Durably store a profile if its current revision matches the expected revision."
+  @doc """
+  Durably store a profile if its current revision matches the expected revision.
+
+  Pass `expected_revision: :missing` to require that the profile is absent.
+  """
   @spec put(String.t(), Profile.t(), keyword()) :: :ok | {:error, term()}
   def put(id, %Profile{} = profile, opts) do
     GenServer.call(__MODULE__, {:put, id, profile, opts})
@@ -344,6 +348,7 @@ defmodule YellowDog.Netman.ProfileStore do
   end
 
   defp validate_mutation_options([]), do: :ok
+  defp validate_mutation_options(expected_revision: :missing), do: :ok
 
   defp validate_mutation_options(expected_revision: revision)
        when is_binary(revision) and byte_size(revision) == 64 do
@@ -363,6 +368,13 @@ defmodule YellowDog.Netman.ProfileStore do
     case Keyword.fetch(opts, :expected_revision) do
       :error ->
         :ok
+
+      {:ok, :missing} ->
+        case current_revision(state, id, path) do
+          {:error, :not_found} -> :ok
+          {:ok, current_revision} -> {:error, {:conflict, current_revision}}
+          {:error, _reason} = error -> error
+        end
 
       {:ok, expected_revision} ->
         case current_revision(state, id, path) do

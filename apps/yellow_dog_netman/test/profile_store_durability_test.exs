@@ -221,6 +221,24 @@ defmodule YellowDog.Netman.ProfileStoreDurabilityTest do
     assert {:ok, ^first_revision} = revision(store, first.id)
   end
 
+  test "missing revision precondition only creates an absent profile", %{
+    profile_dir: profile_dir
+  } do
+    {:ok, store} = start_store(profile_dir)
+    original = profile("create-only-profile", priority: 10)
+    attempted = profile("create-only-profile", priority: 99)
+
+    assert :ok = put(store, original.id, original, expected_revision: :missing)
+    assert {:ok, current_revision} = revision(store, original.id)
+    assert {:ok, original_contents} = File.read(profile_path(profile_dir, original.id))
+
+    assert {:error, {:conflict, ^current_revision}} =
+             put(store, attempted.id, attempted, expected_revision: :missing)
+
+    assert {:ok, ^original} = get(store, original.id)
+    assert File.read!(profile_path(profile_dir, original.id)) == original_contents
+  end
+
   test "stale expected revisions reject put and delete without changing disk or cache", %{
     profile_dir: profile_dir
   } do

@@ -952,6 +952,27 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "Server apply-mode results accept only Server runtime modes" do
+    operation = %Operation{
+      name: "server.runtime.apply_mode.get",
+      target_type: :server,
+      kind: :query,
+      capability: "runtime.apply_mode",
+      payload_schema: :empty,
+      result_schema: :apply_mode,
+      online?: true
+    }
+
+    for mode <- ["managed", "standalone"] do
+      assert {:ok, %{"mode" => ^mode}} =
+               Operation.validate_result(operation, %{"mode" => mode})
+    end
+
+    for mode <- ["observe", "observe_first"] do
+      assert_invalid(Operation.validate_result(operation, %{"mode" => mode}))
+    end
+  end
+
   test "rejects unknown operations without creating atoms" do
     _ = ServerOperation.fetch("server.runtime.services.list")
     initial_atom_count = :erlang.system_info(:atom_count)

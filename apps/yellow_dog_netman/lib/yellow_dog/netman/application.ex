@@ -44,7 +44,7 @@ defmodule YellowDog.Netman.Application do
   defp netman_children(profile) do
     features = Map.get(profile, :features, %{})
 
-    []
+    [{YellowDog.Netman.RuntimeState, netman_opts(profile)}]
     |> maybe_add_child(Map.get(features, :dns_client, false), {YellowDog.Resolved.Supervisor, []})
     |> maybe_add_child(
       start_netman_supervisor?(features),

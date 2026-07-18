@@ -91,6 +91,17 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     end
   end
 
+  test "Netman apply-mode results accept only Netman runtime modes" do
+    assert {:ok, operation} = NetmanOperation.fetch("netman.runtime.apply_mode.get")
+
+    for mode <- ["managed", "observe_first", "observe"] do
+      assert {:ok, %{"mode" => ^mode}} =
+               Operation.validate_result(operation, %{"mode" => mode})
+    end
+
+    assert_invalid(Operation.validate_result(operation, %{"mode" => "standalone"}))
+  end
+
   test "rejects unknown operations without creating atoms" do
     _ = NetmanOperation.fetch("netman.runtime.capabilities.get")
     _last_warmup_name = reject_unknown_batch("warmup")
