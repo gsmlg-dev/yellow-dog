@@ -3,9 +3,21 @@ defmodule YellowDog.Netman.ProfileStoreTest do
 
   alias YellowDog.Netman.ProfileStore
   alias YellowDog.Netman.Types.Profile
+  alias YellowDog.Netman
 
-  setup do
-    # Seed a known profile via CRUD (startup may not have loaded test profiles)
+  setup_all do
+    profile_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "netman-profile-store-singleton-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.mkdir_p!(profile_dir)
+
+    supervisor = Process.whereis(YellowDog.Netman.Supervisor)
+    :ok = Supervisor.terminate_child(supervisor, ProfileStore)
+    {:ok, owned_store} = ProfileStore.start_link(profile_dir: profile_dir, watcher: false)
+
     dhcp_profile = %Profile{
       id: "test-dhcp",
       type: :ethernet,
@@ -14,22 +26,44 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       autoconnect_priority: 100,
       zone: "trusted",
       ethernet: %{mtu: 1500},
-      ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
-      ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
     }
 
-    ProfileStore.put("test-dhcp", dhcp_profile)
+    assert :ok = ProfileStore.put("test-dhcp", dhcp_profile)
 
     on_exit(fn ->
-      ProfileStore.delete("test-dhcp")
+      if Process.alive?(owned_store), do: GenServer.stop(owned_store)
+
+      case Supervisor.restart_child(supervisor, ProfileStore) do
+        {:ok, _pid} -> :ok
+        {:ok, _pid, _info} -> :ok
+      end
+
+      File.rm_rf!(profile_dir)
+    end)
+
+    {:ok, dhcp_profile: dhcp_profile, profile_dir: profile_dir}
+  end
+
+  setup do
+    on_exit(fn ->
       ProfileStore.delete("crud-test")
       ProfileStore.delete("delete-test")
     end)
 
-    {:ok, dhcp_profile: dhcp_profile}
+    :ok
   end
 
   describe "profile operations" do
+    test "singleton store uses only its temporary profile directory", %{profile_dir: profile_dir} do
+      state = :sys.get_state(ProfileStore)
+
+      assert state.profile_dir == profile_dir
+      refute String.starts_with?(state.profile_dir, "/etc/")
+      refute String.contains?(state.profile_dir, "/test/support/test_profiles")
+    end
+
     test "list includes seeded profile" do
       profiles = ProfileStore.list()
       assert length(profiles) >= 1
@@ -67,6 +101,39 @@ defmodule YellowDog.Netman.ProfileStoreTest do
 
     test "delete nonexistent returns error" do
       assert {:error, :not_found} = ProfileStore.delete("nonexistent")
+    end
+
+    test "revision and expected revision options are available through the public API" do
+      profile = %Profile{id: "revision-api-test", type: :ethernet}
+      updated = %{profile | autoconnect_priority: 10}
+
+      on_exit(fn -> ProfileStore.delete(profile.id) end)
+
+      assert :ok = ProfileStore.put(profile.id, profile)
+      assert {:ok, revision} = ProfileStore.revision(profile.id)
+      assert revision =~ ~r/\A[0-9a-f]{64}\z/
+
+      assert :ok = ProfileStore.put(profile.id, updated, expected_revision: revision)
+      assert {:ok, updated_revision} = ProfileStore.revision(profile.id)
+      refute updated_revision == revision
+
+      assert {:error, {:conflict, ^updated_revision}} =
+               ProfileStore.delete(profile.id, expected_revision: revision)
+
+      assert :ok = ProfileStore.delete(profile.id, expected_revision: updated_revision)
+    end
+
+    test "Netman facade preserves mutation APIs and exposes revision-aware overloads" do
+      profile = %Profile{id: "netman-facade-revision", type: :ethernet}
+      updated = %{profile | autoconnect_priority: 10}
+
+      on_exit(fn -> ProfileStore.delete(profile.id) end)
+
+      assert :ok = Netman.put_profile(profile.id, profile)
+      assert {:ok, revision} = Netman.profile_revision(profile.id)
+      assert :ok = Netman.put_profile(profile.id, updated, expected_revision: revision)
+      assert {:ok, updated_revision} = Netman.profile_revision(profile.id)
+      assert :ok = Netman.delete_profile(profile.id, expected_revision: updated_revision)
     end
   end
 
@@ -319,12 +386,9 @@ defmodule YellowDog.Netman.ProfileStoreTest do
 
     test "match_interface with non-ethernet type" do
       wifi = %Profile{id: "wifi-test", type: :wifi, interface: "wlan0"}
-      ProfileStore.put("wifi-test", wifi)
-      on_exit(fn -> ProfileStore.delete("wifi-test") end)
 
-      profile = ProfileStore.match_interface("wlan0", :wifi)
-      assert profile != nil
-      assert profile.id == "wifi-test"
+      assert {:error, {:invalid_profile, _reason}} = ProfileStore.put("wifi-test", wifi)
+      assert ProfileStore.match_interface("wlan0", :wifi) == nil
     end
   end
 

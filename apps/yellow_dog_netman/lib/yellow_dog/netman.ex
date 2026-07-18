@@ -98,6 +98,25 @@ defmodule YellowDog.Netman do
 
   ## Profile Management
 
+  @doc "Creates or updates a durable connection profile."
+  @spec put_profile(String.t(), YellowDog.Netman.Types.Profile.t()) :: :ok | {:error, term()}
+  def put_profile(id, profile) do
+    ProfileStore.put(id, profile)
+  end
+
+  @doc "Creates or updates a durable connection profile with optimistic concurrency."
+  @spec put_profile(String.t(), YellowDog.Netman.Types.Profile.t(), keyword()) ::
+          :ok | {:error, term()}
+  def put_profile(id, profile, opts) do
+    ProfileStore.put(id, profile, opts)
+  end
+
+  @doc "Returns the canonical revision for a connection profile."
+  @spec profile_revision(String.t()) :: {:ok, String.t()} | {:error, :not_found | :invalid_id}
+  def profile_revision(id) do
+    ProfileStore.revision(id)
+  end
+
   @doc "Imports a TOML profile from a file path."
   @spec import_profile(String.t()) :: {:ok, YellowDog.Netman.Types.Profile.t()} | {:error, term()}
   def import_profile(path) do
@@ -108,5 +127,11 @@ defmodule YellowDog.Netman do
   @spec delete_profile(String.t()) :: :ok | {:error, term()}
   def delete_profile(id) do
     ProfileStore.delete(id)
+  end
+
+  @doc "Deletes a connection profile with optimistic concurrency."
+  @spec delete_profile(String.t(), keyword()) :: :ok | {:error, term()}
+  def delete_profile(id, opts) do
+    ProfileStore.delete(id, opts)
   end
 end

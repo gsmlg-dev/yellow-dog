@@ -56,6 +56,8 @@ defmodule YellowDog.Netman.Types.Profile do
   @valid_ipv6_methods ~w(auto manual disabled link-local)
   @valid_types ~w(ethernet)
 
+  alias YellowDog.Config.TomlEncoder
+
   @doc "Parses a TOML map into a Profile struct."
   @spec from_toml(map()) :: {:ok, t()} | {:error, String.t()}
   def from_toml(toml) when is_map(toml) do
@@ -102,6 +104,14 @@ defmodule YellowDog.Netman.Types.Profile do
     |> put_ethernet(profile.ethernet)
     |> put_ipv4(profile.ipv4)
     |> put_ipv6(profile.ipv6)
+  end
+
+  @doc "Serializes a Profile to deterministic TOML bytes."
+  @spec canonical_toml(t()) :: String.t()
+  def canonical_toml(%__MODULE__{} = profile) do
+    profile
+    |> to_toml()
+    |> TomlEncoder.encode()
   end
 
   # Connection section
@@ -338,8 +348,13 @@ defmodule YellowDog.Netman.Types.Profile do
   @max_id_length 128
   @id_pattern ~r/^[a-zA-Z0-9_\-\.]+$/
 
-  defp validate_id(id) do
+  @doc false
+  @spec validate_id(term()) :: :ok | {:error, String.t()}
+  def validate_id(id) when is_binary(id) do
     cond do
+      id in [".", ".."] ->
+        {:error, "connection.id is not a safe profile filename"}
+
       byte_size(id) > @max_id_length ->
         {:error, "connection.id is too long (max #{@max_id_length} characters)"}
 
@@ -350,6 +365,8 @@ defmodule YellowDog.Netman.Types.Profile do
         :ok
     end
   end
+
+  def validate_id(_id), do: {:error, "connection.id must be a string"}
 
   defp validate_autoconnect(val) when is_boolean(val), do: {:ok, val}
 

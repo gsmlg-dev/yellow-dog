@@ -1,6 +1,8 @@
-Application.put_env(:yellow_dog_netman, :profile_dir, Path.join(__DIR__, "support/test_profiles"))
 Application.put_env(:yellow_dog_netman, :reconciliation_interval_ms, 60_000)
 Application.put_env(:yellow_dog_netman, :netlink_backend, :mock)
+
+profile_dir = Application.fetch_env!(:yellow_dog_netman, :profile_dir)
+File.mkdir_p!(profile_dir)
 
 # Start the DHCP client supervision tree since it was converted from an
 # Application to a Supervisor. Netman FSM tests call DhcpClient.start_interface/2
@@ -16,3 +18,4 @@ if :os.type() == {:unix, :darwin} do
 end
 
 ExUnit.start(exclude: [:integration, :privileged])
+ExUnit.after_suite(fn _result -> File.rm_rf!(profile_dir) end)

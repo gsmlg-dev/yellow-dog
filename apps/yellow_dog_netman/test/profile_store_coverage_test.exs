@@ -28,6 +28,60 @@ defmodule YellowDog.Netman.ProfileStoreCoverageTest do
     end
   end
 
+  describe "mutation input validation" do
+    test "put rejects a non-binary filename ID without crashing" do
+      profile = %YellowDog.Netman.Types.Profile{id: "valid-profile", type: :ethernet}
+
+      on_exit(fn -> ProfileStore.delete("valid-profile") end)
+
+      assert {:error, {:invalid_profile, _reason}} = ProfileStore.put(42, profile)
+    end
+
+    test "revision rejects a non-binary filename ID without crashing" do
+      assert {:error, :invalid_id} = ProfileStore.revision(nil)
+    end
+
+    test "revision rejects unsafe binary filename IDs" do
+      for id <- ["../x", ".", "..", "nested/profile"] do
+        assert {:error, :invalid_id} = ProfileStore.revision(id)
+      end
+    end
+
+    test "put and delete reject non-keyword and unknown mutation options" do
+      profile = %YellowDog.Netman.Types.Profile{id: "invalid-options", type: :ethernet}
+
+      assert {:error, :invalid_options} = ProfileStore.put(profile.id, profile, :invalid)
+      assert {:error, :invalid_options} = ProfileStore.put(profile.id, profile, [:invalid])
+      assert {:error, :invalid_options} = ProfileStore.put(profile.id, profile, force: true)
+
+      assert {:error, :invalid_options} = ProfileStore.delete(profile.id, :invalid)
+      assert {:error, :invalid_options} = ProfileStore.delete(profile.id, [:invalid])
+      assert {:error, :invalid_options} = ProfileStore.delete(profile.id, force: true)
+    end
+
+    test "put and delete reject non-canonical expected revisions" do
+      profile = %YellowDog.Netman.Types.Profile{id: "invalid-revision", type: :ethernet}
+      uppercase_revision = String.duplicate("A", 64)
+
+      for revision <- [nil, "", "abc", uppercase_revision, String.duplicate("0", 63)] do
+        assert {:error, :invalid_revision} =
+                 ProfileStore.put(profile.id, profile, expected_revision: revision)
+
+        assert {:error, :invalid_revision} =
+                 ProfileStore.delete(profile.id, expected_revision: revision)
+      end
+    end
+
+    test "put and delete reject duplicate expected revision options" do
+      profile = %YellowDog.Netman.Types.Profile{id: "duplicate-options", type: :ethernet}
+      revision = String.duplicate("0", 64)
+      opts = [expected_revision: revision, expected_revision: revision]
+
+      assert {:error, :invalid_options} = ProfileStore.put(profile.id, profile, opts)
+      assert {:error, :invalid_options} = ProfileStore.delete(profile.id, opts)
+    end
+  end
+
   describe "file_event for watcher stop" do
     test "watcher :stop message clears watcher_pid in state" do
       pid = Process.whereis(ProfileStore)

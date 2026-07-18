@@ -29,15 +29,17 @@
 - Modify: `apps/yellow_dog_netman/lib/yellow_dog/netman/profile_store.ex`
 - Modify: `apps/yellow_dog_netman/lib/yellow_dog/netman/types/profile.ex`
 - Modify: `apps/yellow_dog_netman/lib/yellow_dog/netman.ex`
+- Modify: `apps/yellow_dog_netman/test/test_helper.exs`
 - Modify: `apps/yellow_dog_netman/test/profile_store_test.exs`
 - Modify: `apps/yellow_dog_netman/test/profile_store_coverage_test.exs`
 - Create: `apps/yellow_dog_netman/test/profile_store_durability_test.exs`
+- Modify: `config/test.exs`
 
-- [ ] Add tests proving `put/2` creates or atomically replaces `<profile_dir>/<id>.toml`, updates in-memory state only after the write, and survives process restart.
-- [ ] Add tests proving `delete/1` removes the backing file before removing memory state and does not resurrect through watcher events.
-- [ ] Test ID/file-name validation, TOML round trip through `Profile.from_toml/1`, stale expected revision, write/delete failures, temporary-file cleanup, and watcher self-events.
-- [ ] Run focused tests and verify current memory-only `put/2` and `delete/1` fail restart durability.
-- [ ] Extend the API without breaking callers:
+- [x] Add tests proving `put/2` creates or atomically replaces `<profile_dir>/<id>.toml`, updates in-memory state only after the write, and survives process restart.
+- [x] Add tests proving `delete/1` removes the backing file before removing memory state and does not resurrect through watcher events.
+- [x] Test ID/file-name validation, TOML round trip through `Profile.from_toml/1`, stale expected revision, write/delete failures, temporary-file cleanup, and watcher self-events.
+- [x] Run focused tests and verify current memory-only `put/2` and `delete/1` fail restart durability.
+- [x] Extend the API without breaking callers:
 
 ```elixir
 put(id, profile)
@@ -47,11 +49,11 @@ delete(id, expected_revision: revision)
 revision(id)
 ```
 
-- [ ] Generate revisions from canonical `Profile.to_toml/1` output.
-- [ ] Write, sync, close, and same-directory rename before updating the cache or publishing `netman:profile:changed`.
-- [ ] Keep import validation in `Profile.from_toml/1`; do not add a second profile parser.
-- [ ] Re-run all ProfileStore tests and compile Netman with warnings as errors.
-- [ ] Commit with `feat(netman): persist profile mutations`.
+- [x] Generate revisions from canonical `Profile.to_toml/1` output.
+- [x] Write, sync, close, and same-directory rename before updating the cache or publishing `netman:profile:changed`.
+- [x] Keep import validation in `Profile.from_toml/1`; do not add a second profile parser.
+- [x] Re-run all ProfileStore tests and compile Netman with warnings as errors.
+- [x] Commit with `feat(netman): persist profile mutations`.
 
 ### Task 2: Add the Netman control dispatcher and apply-mode gate
 
