@@ -69,14 +69,14 @@
 - Modify: `apps/yellow_dog_console/lib/yellow_dog/console/plugs/management_release_only.ex`
 - Create: `apps/yellow_dog_console/test/yellow_dog/console/controllers/management_blob_controller_test.exs`
 
-- [ ] Test token rejection, malformed digest, missing blob, content-length limit, digest verification, and successful streaming.
-- [ ] Run the test and verify route/controller absence.
-- [ ] Add `GET /management/blobs/:sha256` through a token-authenticated API pipeline.
-- [ ] Resolve files only through management-core blob APIs. Never concatenate an unvalidated digest into a path in the controller.
-- [ ] Use constant-time token comparison and do not expose filesystem paths in responses.
-- [ ] Permit the route in the management-release-only plug.
-- [ ] Re-run controller and plug tests.
-- [ ] Commit with `feat(console): serve authenticated config blobs`.
+- [x] Test token rejection, malformed digest, missing blob, content-length limit, digest verification, and successful streaming.
+- [x] Run the test and verify route/controller absence.
+- [x] Add `GET /management/blobs/:sha256` through a token-authenticated API pipeline.
+- [x] Resolve files only through management-core blob APIs. Never concatenate an unvalidated digest into a path in the controller.
+- [x] Use constant-time token comparison and do not expose filesystem paths in responses.
+- [x] Permit the route in the management-release-only plug.
+- [x] Re-run controller and plug tests.
+- [x] Commit with `feat(console): serve authenticated config blobs`.
 
 ### Task 3: Add selector pages, route scope, and deterministic legacy redirects
 
