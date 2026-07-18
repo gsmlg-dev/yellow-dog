@@ -59,20 +59,28 @@ revision(id)
 
 **Files:**
 - Modify: `apps/yellow_dog_netman/mix.exs`
+- Modify: `apps/yellow_dog_netman/lib/yellow_dog/netman/application.ex`
+- Modify: `apps/yellow_dog_netman/lib/yellow_dog/netman/profile_store.ex`
+- Modify: `apps/yellow_dog_sync/lib/yellow_dog/sync/operation.ex`
 - Create: `apps/yellow_dog_netman/lib/yellow_dog/netman/control.ex`
 - Create: `apps/yellow_dog_netman/lib/yellow_dog/netman/control/dispatcher.ex`
 - Create: `apps/yellow_dog_netman/lib/yellow_dog/netman/control/mode_gate.ex`
 - Create: `apps/yellow_dog_netman/lib/yellow_dog/netman/control/revision.ex`
 - Create: `apps/yellow_dog_netman/lib/yellow_dog/netman/control/result.ex`
+- Create: `apps/yellow_dog_netman/lib/yellow_dog/netman/runtime_state.ex`
 - Create: `apps/yellow_dog_netman/test/control/dispatcher_test.exs`
 - Create: `apps/yellow_dog_netman/test/control/mode_gate_test.exs`
+- Modify: `apps/yellow_dog_netman/test/profile_store_durability_test.exs`
+- Modify: `apps/yellow_dog_netman/test/yellow_dog/netman/application_test.exs`
+- Modify: `apps/yellow_dog_sync/test/yellow_dog/sync/netman_operation_test.exs`
+- Modify: `apps/yellow_dog_sync/test/yellow_dog/sync/server_operation_test.exs`
 
-- [ ] Add `yellow_dog_sync` as an umbrella dependency. Do not add Store.
-- [ ] Test target-type checks, operation allowlisting, capability checks, input bounds, result normalization, exception redaction, and atom safety.
-- [ ] Test query permission in all apply modes; mutation rejection in `:observe`; and explicit approval/policy behavior in `:observe_first`.
-- [ ] Test conflict results against canonical resource revisions.
-- [ ] Run focused tests and verify missing-module failures.
-- [ ] Implement one public entry point accepting only validated Netman envelopes:
+- [x] Add `yellow_dog_sync` as an umbrella dependency. Do not add Store.
+- [x] Test target-type checks, operation allowlisting, capability checks, input bounds, result normalization, exception redaction, and atom safety.
+- [x] Test query permission in all apply modes; mutation rejection in `:observe`; and explicit approval/policy behavior in `:observe_first`.
+- [x] Test conflict results against canonical resource revisions.
+- [x] Run focused tests and verify missing-module failures.
+- [x] Implement one public entry point accepting only validated Netman envelopes:
 
 ```elixir
 @spec dispatch(YellowDog.Sync.Envelope.t()) ::
@@ -80,10 +88,10 @@ revision(id)
 def dispatch(%Envelope{target_type: :netman} = envelope)
 ```
 
-- [ ] Read apply mode from the running Netman supervisor/profile state. Do not trust a mode in the incoming payload.
-- [ ] Map every operation to a fixed domain adapter and return wire-safe data without PIDs, ports, or local paths.
-- [ ] Re-run dispatcher tests and compile with warnings as errors.
-- [ ] Commit with `feat(netman): add typed control dispatcher`.
+- [x] Read apply mode from the running Netman supervisor/profile state. Do not trust a mode in the incoming payload.
+- [x] Map every operation to a fixed domain adapter and return wire-safe data without PIDs, ports, or local paths.
+- [x] Re-run dispatcher tests and compile with warnings as errors.
+- [x] Commit with `feat(netman): add typed control dispatcher`.
 
 ### Task 3: Expose runtime, profile, interface, route, and connection operations
 
