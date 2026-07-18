@@ -28,15 +28,16 @@ defmodule YellowDog.Management.BlobsTest do
     digest = sha256(content)
     write_blob!(digest, content)
 
-    assert {:ok, %{digest: ^digest, path: path, size: 13}} =
-             ManagementCore.get_blob(digest, 1024)
-
-    assert File.read!(path) == content
+    assert {:ok, handle} = ManagementCore.open_blob(digest, 1024)
+    assert ManagementCore.blob_digest(handle) == digest
+    assert ManagementCore.blob_size(handle) == 13
+    assert read_blob(handle) == content
+    assert :ok = ManagementCore.close_blob(handle)
   end
 
   test "rejects malformed and mismatched digests without exposing paths" do
     assert {:error, %{code: :invalid, details: %{}}} =
-             ManagementCore.get_blob("../asset", 1024)
+             ManagementCore.open_blob("../asset", 1024)
 
     digest = sha256("expected")
     write_blob!(digest, "different")
@@ -46,14 +47,14 @@ defmodule YellowDog.Management.BlobsTest do
               code: :invalid,
               message: "blob digest verification failed",
               details: %{"reason" => "digest_mismatch"}
-            }} = ManagementCore.get_blob(digest, 1024)
+            }} = ManagementCore.open_blob(digest, 1024)
   end
 
   test "distinguishes missing and oversized blobs with bounded errors" do
     digest = sha256("missing")
 
     assert {:error, %{code: :not_found, message: "blob was not found", details: %{}}} =
-             ManagementCore.get_blob(digest, 1024)
+             ManagementCore.open_blob(digest, 1024)
 
     content = "too large"
     digest = sha256(content)
@@ -64,7 +65,7 @@ defmodule YellowDog.Management.BlobsTest do
               code: :invalid,
               message: "blob exceeds configured size limit",
               details: %{"reason" => "too_large"}
-            }} = ManagementCore.get_blob(digest, 4)
+            }} = ManagementCore.open_blob(digest, 4)
   end
 
   test "rejects invalid size limits" do
@@ -75,21 +76,27 @@ defmodule YellowDog.Management.BlobsTest do
               code: :invalid,
               message: "invalid blob size limit",
               details: %{"reason" => "invalid_limit"}
-            }} = ManagementCore.get_blob(digest, 0)
+            }} = ManagementCore.open_blob(digest, 0)
   end
 
   test "accepts empty and exact-limit blobs" do
     empty_digest = sha256("")
     write_blob!(empty_digest, "")
 
-    assert {:ok, %{digest: ^empty_digest, size: 0}} =
-             ManagementCore.get_blob(empty_digest, 1)
+    assert {:ok, empty_handle} = ManagementCore.open_blob(empty_digest, 1)
+    assert ManagementCore.blob_digest(empty_handle) == empty_digest
+    assert ManagementCore.blob_size(empty_handle) == 0
+    assert read_blob(empty_handle) == ""
+    assert :ok = ManagementCore.close_blob(empty_handle)
 
     content = "1234"
     digest = sha256(content)
     write_blob!(digest, content)
 
-    assert {:ok, %{digest: ^digest, size: 4}} = ManagementCore.get_blob(digest, 4)
+    assert {:ok, handle} = ManagementCore.open_blob(digest, 4)
+    assert ManagementCore.blob_digest(handle) == digest
+    assert ManagementCore.blob_size(handle) == 4
+    assert :ok = ManagementCore.close_blob(handle)
   end
 
   test "rejects symbolic links even when their target matches the digest" do
@@ -107,7 +114,22 @@ defmodule YellowDog.Management.BlobsTest do
               code: :invalid,
               message: "invalid blob file",
               details: %{"reason" => "invalid_file"}
-            }} = ManagementCore.get_blob(digest, 1024)
+            }} = ManagementCore.open_blob(digest, 1024)
+  end
+
+  test "an open verified handle is stable when its path is replaced" do
+    original = "verified content"
+    digest = sha256(original)
+    write_blob!(digest, original)
+
+    assert {:ok, handle} = ManagementCore.open_blob(digest, 1024)
+    {:ok, path} = StoragePath.blob(digest)
+    replacement = path <> ".replacement"
+    File.write!(replacement, "tampered")
+    File.rename!(replacement, path)
+
+    assert read_blob(handle) == original
+    assert :ok = ManagementCore.close_blob(handle)
   end
 
   defp write_blob!(digest, content) do
@@ -119,6 +141,13 @@ defmodule YellowDog.Management.BlobsTest do
   defp sha256(content) do
     :crypto.hash(:sha256, content)
     |> Base.encode16(case: :lower)
+  end
+
+  defp read_blob(handle, chunks \\ []) do
+    case ManagementCore.read_blob(handle) do
+      {:ok, chunk} -> read_blob(handle, [chunk | chunks])
+      :eof -> chunks |> Enum.reverse() |> IO.iodata_to_binary()
+    end
   end
 
   defp restore_data_dir(nil), do: Application.delete_env(:yellow_dog_management_core, :data_dir)

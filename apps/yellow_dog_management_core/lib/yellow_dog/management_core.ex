@@ -61,13 +61,29 @@ defmodule YellowDog.ManagementCore do
   @doc "Lists management events in deterministic global order."
   def list_events, do: EventStore.list()
 
-  @doc "Reads a validated management-owned blob using the configured size limit."
-  @spec get_blob(term()) :: Blobs.result()
-  def get_blob(digest), do: Blobs.get(digest)
+  @doc "Opens a verified management-owned blob using the configured size limit."
+  @spec open_blob(term()) :: Blobs.result(Blobs.handle())
+  def open_blob(digest), do: Blobs.open(digest)
 
-  @doc "Reads a validated management-owned blob using an explicit size limit."
-  @spec get_blob(term(), term()) :: Blobs.result()
-  def get_blob(digest, max_bytes), do: Blobs.get(digest, max_bytes)
+  @doc "Opens a verified management-owned blob using an explicit size limit."
+  @spec open_blob(term(), term()) :: Blobs.result(Blobs.handle())
+  def open_blob(digest, max_bytes), do: Blobs.open(digest, max_bytes)
+
+  @doc "Returns the verified digest for an open management blob."
+  @spec blob_digest(Blobs.handle()) :: String.t()
+  def blob_digest(handle), do: Blobs.digest(handle)
+
+  @doc "Returns the verified byte size for an open management blob."
+  @spec blob_size(Blobs.handle()) :: non_neg_integer()
+  def blob_size(handle), do: Blobs.size(handle)
+
+  @doc "Reads the next bounded chunk from an open management blob."
+  @spec read_blob(Blobs.handle()) :: {:ok, binary()} | :eof | {:error, Error.t()}
+  def read_blob(handle), do: Blobs.read(handle)
+
+  @doc "Closes an open management blob."
+  @spec close_blob(Blobs.handle()) :: :ok
+  def close_blob(handle), do: Blobs.close(handle)
 
   @doc "Publishes an immutable desired configuration for a registered server."
   def publish_server_config(server_id, attrs),

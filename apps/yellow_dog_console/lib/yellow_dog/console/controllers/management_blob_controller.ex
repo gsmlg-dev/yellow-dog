@@ -10,15 +10,9 @@ defmodule YellowDog.Console.ManagementBlobController do
   @default_max_blob_bytes 500 * 1024 * 1024
 
   def show(conn, %{"sha256" => digest}) do
-    case ManagementCore.get_blob(digest, max_blob_bytes()) do
-      {:ok, %{digest: ^digest, path: path, size: size}}
-      when is_binary(path) and is_integer(size) and size >= 0 ->
-        conn
-        |> put_resp_header("cache-control", "private, no-store")
-        |> put_resp_header("content-length", Integer.to_string(size))
-        |> put_resp_header("content-type", "application/octet-stream")
-        |> put_resp_header("etag", ~s("#{digest}"))
-        |> send_file(200, path)
+    case ManagementCore.open_blob(digest, max_blob_bytes()) do
+      {:ok, handle} ->
+        stream_blob(conn, handle)
 
       {:error, %{code: :invalid, details: %{"reason" => "too_large"}}} ->
         send_error(conn, 413, "Payload Too Large")
@@ -45,6 +39,37 @@ defmodule YellowDog.Console.ManagementBlobController do
          ) do
       limit when is_integer(limit) and limit > 0 -> limit
       _invalid -> @default_max_blob_bytes
+    end
+  end
+
+  defp stream_blob(conn, handle) do
+    digest = ManagementCore.blob_digest(handle)
+
+    try do
+      conn
+      |> put_resp_header("cache-control", "private, no-store")
+      |> put_resp_header("content-type", "application/octet-stream")
+      |> put_resp_header("etag", ~s("#{digest}"))
+      |> send_chunked(200)
+      |> stream_chunks(handle)
+    after
+      ManagementCore.close_blob(handle)
+    end
+  end
+
+  defp stream_chunks(conn, handle) do
+    case ManagementCore.read_blob(handle) do
+      {:ok, content} ->
+        case chunk(conn, content) do
+          {:ok, conn} -> stream_chunks(conn, handle)
+          {:error, _reason} -> halt(conn)
+        end
+
+      :eof ->
+        conn
+
+      {:error, _reason} ->
+        halt(conn)
     end
   end
 

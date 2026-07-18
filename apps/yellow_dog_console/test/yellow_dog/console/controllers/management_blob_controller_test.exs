@@ -1,17 +1,10 @@
 defmodule YellowDog.Console.ManagementBlobControllerTest do
   use YellowDog.Console.ConnCase, async: false
 
-  alias YellowDog.Console.ManagementBlobController
   alias YellowDog.Management.Storage.Path, as: StoragePath
 
   @token "management-blob-test-token"
   @max_blob_bytes 1_024
-
-  defmodule SendFileCaptureAdapter do
-    def send_file(payload, _status, _headers, path, offset, length) do
-      {:ok, {:file, path, offset, length}, payload}
-    end
-  end
 
   setup do
     data_dir =
@@ -129,21 +122,10 @@ defmodule YellowDog.Console.ManagementBlobControllerTest do
       refute body =~ data_dir
     end
 
-    test "streams a verified blob with its exact content length", %{conn: conn} do
+    test "streams a verified blob from the same open handle used for validation" do
       contents = <<0, 1, 2, 3, 255, 254, 253>>
       digest = put_blob(contents)
       assert {:ok, path} = StoragePath.blob(digest)
-
-      captured_conn =
-        %{conn | adapter: {SendFileCaptureAdapter, %{}}}
-        |> ManagementBlobController.show(%{"sha256" => digest})
-
-      assert captured_conn.state == :file
-      assert captured_conn.resp_body == {:file, path, 0, :all}
-
-      assert get_resp_header(captured_conn, "content-length") == [
-               Integer.to_string(byte_size(contents))
-             ]
 
       routed_conn =
         build_conn()
@@ -152,13 +134,8 @@ defmodule YellowDog.Console.ManagementBlobControllerTest do
 
       assert response(routed_conn, 200) == contents
       assert get_resp_header(routed_conn, "content-type") == ["application/octet-stream"]
-
-      assert get_resp_header(routed_conn, "content-length") == [
-               Integer.to_string(byte_size(contents))
-             ]
-
       assert get_resp_header(routed_conn, "etag") == [~s("#{digest}")]
-      assert routed_conn.state == :file
+      assert routed_conn.state == :chunked
 
       refute Enum.any?(routed_conn.resp_headers, fn {_name, value} ->
                String.contains?(value, path)
@@ -173,10 +150,12 @@ defmodule YellowDog.Console.ManagementBlobControllerTest do
                |> :code.which()
                |> :beam_lib.chunks([:imports])
 
-      assert {YellowDog.ManagementCore, :get_blob, 2} in imports
-      assert {Plug.Conn, :send_file, 3} in imports
-      refute {Plug.Conn, :send_chunked, 2} in imports
-      refute {Plug.Conn, :chunk, 2} in imports
+      assert {YellowDog.ManagementCore, :open_blob, 2} in imports
+      assert {YellowDog.ManagementCore, :read_blob, 1} in imports
+      assert {YellowDog.ManagementCore, :close_blob, 1} in imports
+      assert {Plug.Conn, :send_chunked, 2} in imports
+      assert {Plug.Conn, :chunk, 2} in imports
+      refute {Plug.Conn, :send_file, 3} in imports
 
       refute Enum.any?(imports, fn {imported_module, _function, _arity} ->
                imported_module in [File, YellowDog.Management.Storage.Path]
