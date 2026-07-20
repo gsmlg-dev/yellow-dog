@@ -456,6 +456,28 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       assert html =~ ~s(class="navbar appbar-primary appbar-bordered")
     end
 
+    test "navbar orders product sections by hierarchy", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/server/dashboard")
+
+      top_menu =
+        view
+        |> element(".navbar ul")
+        |> render()
+
+      top_menu_paths =
+        ~r/href="([^"]+)"/
+        |> Regex.scan(top_menu, capture: :all_but_first)
+        |> List.flatten()
+
+      assert top_menu_paths == [
+               "/management",
+               "/server/dashboard",
+               "/netman",
+               "/tool/geoip",
+               "/system/process-map"
+             ]
+    end
+
     test "navbar has theme switcher component", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/server/dashboard")
       assert html =~ "theme-toggle" or html =~ "theme-switcher" or html =~ "dm_theme_switcher"
