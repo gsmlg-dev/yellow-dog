@@ -4,7 +4,7 @@ defmodule YellowDog.Umbrella.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "1.1.4",
+      version: "1.2.0",
       start_permanent: Mix.env() == :prod,
       description: "YellowDog DNS/DHCP server and network manager",
       releases: [
