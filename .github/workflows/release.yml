@@ -361,7 +361,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release view "${RELEASE_TAG}" --json body --jq '.body' > release-body.md
+          gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json body --jq '.body' > release-body.md
           mapfile -t note_files < <(find docker-notes -maxdepth 1 -type f -name 'docker-image-*.md' | sort)
 
           if [ "${#note_files[@]}" -eq 0 ]; then
@@ -389,4 +389,4 @@ jobs:
             cat docker-image-notes.md
           } > release-body-updated.md
 
-          gh release edit "${RELEASE_TAG}" --notes-file release-body-updated.md
+          gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --notes-file release-body-updated.md
