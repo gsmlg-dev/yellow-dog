@@ -1,523 +1,359 @@
 defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
-  @moduledoc """
-  Boot profile editor for creating and managing boot profiles.
+  @moduledoc "Management-backed editor for a Netboot profile on one selected Server."
 
-  Supports creating new profiles, editing existing ones, and cloning profiles
-  with pre-filled settings. Profiles define iPXE boot scripts with custom arguments,
-  architecture selection, and script preview functionality.
-  """
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.ServiceHelper
-
   alias YellowDog.Console.Layouts
-  alias YellowDog.Netboot.Boot.Profile
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.NetbootLive.ManagementComponents
+  alias YellowDog.Console.NetbootLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
-  @valid_arches ~w(x86_64 aarch64 bios_x86)
+  @empty_form %{
+    "profile_id" => "",
+    "name" => "",
+    "boot_asset_id" => "",
+    "arguments" => ""
+  }
 
   @impl true
-  def mount(params, _session, socket) do
-    {mode, profile, clone_source} = load_profile(params)
+  def mount(_params, _session, socket) do
+    {:ok,
+     assign(socket,
+       page_title: "Boot Profile",
+       subscribed_server_id: nil,
+       mode: :new,
+       profile_id: nil,
+       clone_source: nil,
+       profiles: [],
+       assets: [],
+       devices: [],
+       device_count: 0,
+       form: to_form(@empty_form, as: "profile"),
+       errors: %{},
+       management_error: nil,
+       operation_result: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil,
+       commands_enabled?: false
+     )}
+  end
 
-    form_data = profile_to_form(profile)
+  @impl true
+  def handle_params(%{"server_id" => server_id} = params, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_editor(socket, server_id, params), else: socket)}
+  end
 
-    device_count =
-      if mode == :edit do
-        safe_call(
-          YellowDog.Netboot.Device.Registry,
-          fn ->
-            YellowDog.Netboot.Device.Registry.list()
-            |> Enum.count(&(&1.profile_id == profile.id))
-          end,
-          0
+  @impl true
+  def handle_event("validate", %{"profile" => params}, socket) do
+    {:noreply,
+     assign(socket,
+       form: to_form(normalize_params(params, socket.assigns), as: "profile"),
+       errors: validate_profile(params, socket.assigns.mode)
+     )}
+  end
+
+  def handle_event("save", %{"profile" => params}, socket) do
+    normalized = normalize_params(params, socket.assigns)
+    errors = validate_profile(normalized, socket.assigns.mode)
+
+    with :ok <- ManagementSupport.mutable(socket),
+         true <- errors == %{} || {:error, "Please correct the profile fields"},
+         {:ok, revision} <- expected_revision(socket) do
+      result =
+        ServerManagement.netboot_profiles_put(
+          ManagementSupport.selected_id(socket),
+          profile_payload(normalized),
+          ManagementSupport.command_options(revision)
         )
-      else
-        0
+
+      socket =
+        socket
+        |> put_profile(result)
+        |> assign(:errors, %{})
+        |> ManagementSupport.finish(result, "Profile saved")
+
+      {:noreply, socket}
+    else
+      {:error, message} ->
+        {:noreply, socket |> assign(:errors, errors) |> put_flash(:error, message)}
+    end
+  end
+
+  def handle_event("delete_profile", _params, socket) do
+    with :ok <- ManagementSupport.mutable(socket),
+         profile_id when is_binary(profile_id) <- socket.assigns.profile_id,
+         {:ok, revision} <- profile_revision(socket.assigns.profiles, profile_id) do
+      result =
+        ServerManagement.netboot_profiles_delete(
+          ManagementSupport.selected_id(socket),
+          %{"profile_id" => profile_id},
+          ManagementSupport.command_options(revision)
+        )
+
+      socket =
+        if result.status == :ok do
+          update(
+            socket,
+            :profiles,
+            &Enum.reject(&1, fn profile -> profile["profile_id"] == profile_id end)
+          )
+        else
+          socket
+        end
+
+      {:noreply, ManagementSupport.finish(socket, result, "Profile deleted")}
+    else
+      nil -> {:noreply, put_flash(socket, :error, "Profile is not present in this snapshot")}
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    params =
+      case socket.assigns.mode do
+        :edit -> %{"server_id" => server_id, "id" => socket.assigns.profile_id}
+        :new -> %{"server_id" => server_id}
       end
 
-    {:ok,
+    {:noreply,
      socket
-     |> assign(
-       page_title: if(mode == :new, do: "New Boot Profile", else: "Edit: #{profile.id}"),
-       mode: mode,
-       profile_id: profile.id,
-       clone_source: clone_source,
-       device_count: device_count,
-       valid_arches: @valid_arches,
-       errors: %{}
-     )
-     |> assign(:form, to_form(form_data, as: "profile"))
-     |> assign(:file_warnings, %{})
-     |> assign(:indexed_files, load_indexed_files())}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_editor(server_id, params)}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="breadcrumbs text-sm">
-          <ul>
-            <li><.link navigate="/server/netboot">Netboot</.link></li>
-            <li><.link navigate="/server/netboot/profiles">Profiles</.link></li>
-            <li>{if @mode == :new, do: "New", else: @profile_id}</li>
-          </ul>
-        </div>
+      <div id="server-netboot-profile-editor" class="space-y-6">
+        <ManagementComponents.page_header
+          title={if @mode == :new, do: "New Boot Profile", else: "Edit Boot Profile"}
+          subtitle={if @profile_id, do: @profile_id, else: "New profile"}
+          server={@selected_server}
+          online?={@service_online?}
+          back={ServicePaths.server_path(@selected_server.id, :netboot_profiles)}
+        />
 
-        <div class="flex items-center gap-4">
-          <div>
-            <h1 class="text-4xl font-bold">
-              {if @mode == :new, do: "New Boot Profile", else: "Edit Profile"}
-            </h1>
-            <p class="mt-1 text-on-surface-variant">
-              {if @mode == :new,
-                do: "Create a new PXE boot profile",
-                else: "Modify boot profile: #{@profile_id}"}
-            </p>
-            <p :if={@clone_source} class="mt-1 text-sm text-info">
-              Cloned from <span class="font-mono font-medium">{@clone_source}</span>
-            </p>
-            <p :if={@mode == :edit && @device_count > 0} class="mt-1 text-sm text-warning">
-              {@device_count} device(s) currently using this profile
-            </p>
-          </div>
-        </div>
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
+
+        <p :if={@clone_source} class="text-info">
+          Cloned from <span class="font-mono">{@clone_source}</span>
+        </p>
+        <p :if={@mode == :edit && @device_count > 0} class="text-warning">
+          {@device_count} device(s) currently use this profile.
+        </p>
 
         <.card>
-          <form phx-submit="save" phx-change="validate" class="space-y-4">
-            <div class="form-group w-full">
-              <label class="form-label">Profile ID</label>
+          <form id="netboot-profile-form" phx-submit="save" phx-change="validate" class="space-y-4">
+            <label class="form-control w-full">
+              <span class="label-text">Profile ID</span>
               <input
-                type="text"
-                name="profile[id]"
-                value={@form[:id].value}
-                class={"input w-full #{if @errors[:id], do: "input-error"}"}
-                placeholder="e.g. nixos-minimal"
+                name="profile[profile_id]"
+                value={@form[:profile_id].value}
                 disabled={@mode == :edit}
+                class={"input input-bordered w-full #{if @errors[:profile_id], do: "input-error"}"}
               />
-              <span :if={@errors[:id]} class="helper-text text-error">{@errors[:id]}</span>
-            </div>
+              <span :if={@errors[:profile_id]} class="text-sm text-error">{@errors[:profile_id]}</span>
+            </label>
 
-            <div class="form-group w-full">
-              <label class="form-label">Description</label>
+            <label class="form-control w-full">
+              <span class="label-text">Name</span>
               <input
-                type="text"
-                name="profile[description]"
-                value={@form[:description].value}
-                class="input w-full"
-                placeholder="e.g. NixOS Minimal Install"
+                name="profile[name]"
+                value={@form[:name].value}
+                class={"input input-bordered w-full #{if @errors[:name], do: "input-error"}"}
               />
-            </div>
+              <span :if={@errors[:name]} class="text-sm text-error">{@errors[:name]}</span>
+            </label>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-group w-full">
-                <label class="form-label">Kernel Path</label>
-                <input
-                  type="text"
-                  name="profile[kernel]"
-                  value={@form[:kernel].value}
-                  list="tftp-files"
-                  class={"input w-full #{if @errors[:kernel], do: "input-error"}"}
-                  placeholder="e.g. nixos/bzImage"
-                />
-                <span :if={@errors[:kernel]} class="helper-text text-error">{@errors[:kernel]}</span>
-                <span :if={@file_warnings[:kernel]} class="helper-text text-warning">
-                  {@file_warnings[:kernel]} —
-                  <.link navigate="/server/netboot/tftp" class="link link-primary">upload</.link>
-                </span>
-              </div>
-
-              <div class="form-group w-full">
-                <label class="form-label">Initrd Path</label>
-                <input
-                  type="text"
-                  name="profile[initrd]"
-                  value={@form[:initrd].value}
-                  list="tftp-files"
-                  class={"input w-full #{if @errors[:initrd], do: "input-error"}"}
-                  placeholder="e.g. nixos/initrd.img"
-                />
-                <span :if={@errors[:initrd]} class="helper-text text-error">{@errors[:initrd]}</span>
-                <span :if={@file_warnings[:initrd]} class="helper-text text-warning">
-                  {@file_warnings[:initrd]} —
-                  <.link navigate="/server/netboot/tftp" class="link link-primary">upload</.link>
-                </span>
-              </div>
-            </div>
-
-            <div class="form-group w-full">
-              <label class="form-label">Kernel Arguments</label>
-              <input
-                type="text"
-                name="profile[kernel_args]"
-                value={@form[:kernel_args].value}
-                class="input w-full"
-                placeholder="e.g. init=/nix/store/...-init ip=dhcp"
-              />
-            </div>
-
-            <div class="form-group w-full">
-              <label class="form-label">Installer Image</label>
-              <input
-                type="text"
-                name="profile[installer_image]"
-                value={@form[:installer_image].value}
-                list="tftp-files"
-                class="input w-full"
-                placeholder="e.g. nixos/installer.squashfs"
-              />
-            </div>
-
-            <div class="form-group w-full">
-              <label class="form-label">Architectures</label>
-              <div class="flex gap-4">
-                <label :for={arch <- @valid_arches} class="form-label cursor-pointer gap-2">
-                  <input
-                    type="checkbox"
-                    name="profile[arch][]"
-                    value={arch}
-                    checked={arch in (@form[:arch].value || [])}
-                    class="checkbox checkbox-sm"
-                  />
-                  {arch}
-                </label>
-              </div>
-            </div>
-
-            <div class="divider">Manifest (Optional)</div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-group w-full">
-                <label class="form-label">Disk Layout</label>
-                <select name="profile[disk_layout]" class="select w-full">
-                  <option value="" selected={@form[:disk_layout].value in [nil, ""]}>
-                    None
-                  </option>
-                  <option
-                    value="single-root-btrfs"
-                    selected={@form[:disk_layout].value == "single-root-btrfs"}
-                  >
-                    Single Root (Btrfs)
-                  </option>
-                  <option
-                    value="single-root-ext4"
-                    selected={@form[:disk_layout].value == "single-root-ext4"}
-                  >
-                    Single Root (ext4)
-                  </option>
-                  <option value="zfs-mirror" selected={@form[:disk_layout].value == "zfs-mirror"}>
-                    ZFS Mirror
-                  </option>
-                </select>
-              </div>
-
-              <div class="form-group w-full">
-                <label class="form-label">Slot Strategy</label>
-                <select name="profile[slot_strategy]" class="select w-full">
-                  <option value="single" selected={@form[:slot_strategy].value in [nil, "single"]}>
-                    Single
-                  </option>
-                  <option value="ab" selected={@form[:slot_strategy].value == "ab"}>
-                    A/B
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-group w-full">
-              <label class="form-label">Flake URL</label>
-              <input
-                type="text"
-                name="profile[flake]"
-                value={@form[:flake].value}
-                class="input w-full"
-                placeholder="e.g. github:user/system#x86_64-linux"
-              />
-            </div>
-
-            <div class="flex justify-between mt-6">
-              <div>
-                <button
-                  :if={@mode == :edit}
-                  type="button"
-                  phx-click="delete_profile"
-                  phx-disable-with="Deleting..."
-                  data-confirm={"Delete profile \"#{@profile_id}\"?"}
-                  class="btn btn-error btn-sm"
+            <label class="form-control w-full">
+              <span class="label-text">Boot asset</span>
+              <select
+                name="profile[boot_asset_id]"
+                class={"select select-bordered w-full #{if @errors[:boot_asset_id], do: "select-error"}"}
+              >
+                <option value="">Select an asset</option>
+                <option
+                  :for={asset <- @assets}
+                  value={asset["asset_id"]}
+                  selected={asset["asset_id"] == @form[:boot_asset_id].value}
                 >
-                  Delete Profile
-                </button>
-              </div>
+                  {asset["filename"]} ({asset["asset_id"]})
+                </option>
+              </select>
+              <span :if={@errors[:boot_asset_id]} class="text-sm text-error">{@errors[:boot_asset_id]}</span>
+            </label>
+
+            <label class="form-control w-full">
+              <span class="label-text">Arguments</span>
+              <textarea name="profile[arguments]" class="textarea textarea-bordered w-full" rows="5">{@form[:arguments].value}</textarea>
+              <span class="text-sm text-on-surface-variant">One argument per line or comma-separated.</span>
+            </label>
+
+            <div class="flex justify-between gap-2">
+              <button
+                :if={@mode == :edit}
+                type="button"
+                phx-click="delete_profile"
+                disabled={!@commands_enabled?}
+                class="btn btn-error btn-sm"
+              >Delete Profile</button>
+              <span :if={@mode == :new}></span>
               <div class="flex gap-2">
-                <.link navigate="/server/netboot/profiles" class="btn btn-ghost">Cancel</.link>
-                <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+                <.link
+                  navigate={ServicePaths.server_path(@selected_server.id, :netboot_profiles)}
+                  class="btn btn-ghost"
+                >Cancel</.link>
+                <button type="submit" disabled={!@commands_enabled?} class="btn btn-primary">
                   {if @mode == :new, do: "Create Profile", else: "Save Changes"}
                 </button>
               </div>
             </div>
           </form>
         </.card>
-
-        <datalist :if={@indexed_files} id="tftp-files">
-          <option :for={path <- indexed_file_list(@indexed_files)} value={path} />
-        </datalist>
-
-        <.card :if={@form[:kernel].value != "" and @form[:initrd].value != ""}>
-          <h2 class="card-title mb-4">iPXE Script Preview</h2>
-          <pre class="bg-surface-container p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{render_preview(@form)}</pre>
-        </.card>
       </div>
     </Layouts.app>
     """
   end
 
-  @impl true
-  def handle_event("validate", %{"profile" => params}, socket) do
-    errors = validate_profile(params, socket.assigns.mode)
-    form_data = normalize_params(params)
-    warnings = check_file_warnings(params, socket.assigns.indexed_files)
-
-    {:noreply,
-     socket
-     |> assign(:form, to_form(form_data, as: "profile"))
-     |> assign(:errors, errors)
-     |> assign(:file_warnings, warnings)}
-  end
-
-  @impl true
-  def handle_event("save", %{"profile" => params}, socket) do
-    errors = validate_profile(params, socket.assigns.mode)
-
-    if errors == %{} do
-      profile = params_to_profile(params, socket.assigns)
-
-      result =
-        safe_call(
-          YellowDog.Netboot.Manifest.Store,
-          fn -> YellowDog.Netboot.Manifest.Store.put_profile(profile) end,
-          {:error, :unavailable}
-        )
-
-      case result do
-        :ok ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Profile #{profile.id} saved successfully")
-           |> push_navigate(to: "/server/netboot/profiles")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
-      end
-    else
-      {:noreply, assign(socket, :errors, errors)}
-    end
-  end
-
-  @impl true
-  def handle_event("delete_profile", _params, socket) do
-    id = socket.assigns.profile_id
-
-    result =
-      safe_call(
-        YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
-        {:error, :service_unavailable}
-      )
-
-    socket =
-      case result do
-        :ok ->
-          socket
-          |> put_flash(:info, "Profile '#{id}' deleted successfully")
-          |> push_navigate(to: "/server/netboot/profiles")
-
-        {:error, _reason} ->
-          put_flash(socket, :error, "Failed to delete profile '#{id}'")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event(_event, _params, socket), do: {:noreply, socket}
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  # --- Private ---
-
-  defp load_profile(%{"id" => id}) do
-    case safe_call(
-           YellowDog.Netboot.Manifest.Store,
-           fn -> YellowDog.Netboot.Manifest.Store.get_profile(id) end,
-           {:error, :unavailable}
-         ) do
-      {:ok, profile} -> {:edit, profile, nil}
-      _ -> {:edit, %Profile{id: id, kernel: "", initrd: ""}, nil}
-    end
-  end
-
-  defp load_profile(%{"clone" => source_id}) do
-    case safe_call(
-           YellowDog.Netboot.Manifest.Store,
-           fn -> YellowDog.Netboot.Manifest.Store.get_profile(source_id) end,
-           {:error, :unavailable}
-         ) do
-      {:ok, profile} ->
-        {:new, %{profile | id: "#{profile.id}-copy"}, source_id}
-
-      _ ->
-        {:new, %Profile{id: "", kernel: "", initrd: ""}, nil}
-    end
-  end
-
-  defp load_profile(_params) do
-    {:new, %Profile{id: "", kernel: "", initrd: ""}, nil}
-  end
-
-  defp profile_to_form(%Profile{} = p) do
-    %{
-      "id" => p.id || "",
-      "description" => p.description || "",
-      "kernel" => p.kernel || "",
-      "initrd" => p.initrd || "",
-      "kernel_args" => p.kernel_args || "",
-      "installer_image" => p.installer_image || "",
-      "arch" => Enum.map(p.arch, &to_string/1),
-      "disk_layout" => Map.get(p.manifest, "disk_layout", ""),
-      "slot_strategy" => Map.get(p.manifest, "slot_strategy", "single"),
-      "flake" => Map.get(p.manifest, "flake", "")
-    }
-  end
-
-  defp normalize_params(params) do
-    %{
-      "id" => Map.get(params, "id", ""),
-      "description" => Map.get(params, "description", ""),
-      "kernel" => Map.get(params, "kernel", ""),
-      "initrd" => Map.get(params, "initrd", ""),
-      "kernel_args" => Map.get(params, "kernel_args", ""),
-      "installer_image" => Map.get(params, "installer_image", ""),
-      "arch" => Map.get(params, "arch", []),
-      "disk_layout" => Map.get(params, "disk_layout", ""),
-      "slot_strategy" => Map.get(params, "slot_strategy", "single"),
-      "flake" => Map.get(params, "flake", "")
-    }
-  end
-
-  defp params_to_profile(params, assigns) do
-    id = if assigns.mode == :edit, do: assigns.profile_id, else: Map.get(params, "id", "")
-    arch_list = Map.get(params, "arch", [])
-
-    manifest =
-      %{}
-      |> maybe_put("disk_layout", Map.get(params, "disk_layout", ""))
-      |> maybe_put("slot_strategy", Map.get(params, "slot_strategy", ""))
-      |> maybe_put("flake", Map.get(params, "flake", ""))
-
-    %Profile{
-      id: id,
-      description: Map.get(params, "description"),
-      kernel: Map.get(params, "kernel", ""),
-      initrd: Map.get(params, "initrd", ""),
-      kernel_args: Map.get(params, "kernel_args"),
-      installer_image: Map.get(params, "installer_image"),
-      arch:
-        Enum.flat_map(arch_list, fn a ->
-          if a in @valid_arches, do: [String.to_existing_atom(a)], else: []
-        end),
-      manifest: manifest
-    }
-  end
-
-  defp render_preview(form) do
-    kernel = form[:kernel].value || ""
-    initrd = form[:initrd].value || ""
-    kernel_args = form[:kernel_args].value || ""
-
-    args =
-      [kernel_args, "yellowdog.mac=${mac}", "yellowdog.api=http://<server>:<port>"]
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.join(" ")
-
-    """
-    #!ipxe
-    echo YellowDog Netboot - ${mac}
-    dhcp
-    set base-url http://<server>:<port>/boot/assets
-
-    kernel ${base-url}/#{kernel} #{args}
-    initrd ${base-url}/#{initrd}
-    boot\
-    """
-  end
-
-  defp indexed_file_list(%MapSet{} = files), do: Enum.sort(MapSet.to_list(files))
-  defp indexed_file_list(_), do: []
-
-  defp maybe_put(map, _key, ""), do: map
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  defp load_indexed_files do
-    case safe_call(
-           YellowDog.Netboot.TFTP.FileIndex,
-           fn -> YellowDog.Netboot.TFTP.FileIndex.list() end,
-           nil
-         ) do
-      nil -> nil
-      entries -> MapSet.new(entries, fn {rel_path, _abs_path, _size} -> rel_path end)
-    end
-  end
-
-  defp check_file_warnings(_params, nil), do: %{}
-
-  defp check_file_warnings(params, file_set) do
-    kernel = Map.get(params, "kernel", "") |> String.trim()
-    initrd = Map.get(params, "initrd", "") |> String.trim()
-
-    warnings = %{}
-
-    warnings =
-      if kernel != "" and kernel not in file_set,
-        do: Map.put(warnings, :kernel, "File not found in TFTP root"),
-        else: warnings
-
-    warnings =
-      if initrd != "" and initrd not in file_set,
-        do: Map.put(warnings, :initrd, "File not found in TFTP root"),
-        else: warnings
-
-    warnings
-  end
-
   def validate_profile(params, mode) do
     errors = %{}
-    id = Map.get(params, "id", "")
-    kernel = Map.get(params, "kernel", "")
-    initrd = Map.get(params, "initrd", "")
+    profile_id = String.trim(params["profile_id"] || params["id"] || "")
+    name = String.trim(params["name"] || params["description"] || "")
+    boot_asset_id = String.trim(params["boot_asset_id"] || params["kernel"] || "")
 
     errors =
-      if mode == :new and String.trim(id) == "",
-        do: Map.put(errors, :id, "ID is required"),
+      if mode == :new and profile_id == "",
+        do: Map.put(errors, :profile_id, "Profile ID is required"),
         else: errors
 
     errors =
-      if mode == :new and not Regex.match?(~r/\A[a-z0-9][a-z0-9_-]*\z/, id) and
-           String.trim(id) != "",
-         do: Map.put(errors, :id, "ID must be lowercase alphanumeric with hyphens/underscores"),
+      if mode == :new and profile_id != "" and
+           not Regex.match?(~r/\A[a-z0-9][a-z0-9_-]*\z/, profile_id),
+         do:
+           Map.put(errors, :profile_id, "Use lowercase letters, numbers, hyphens, or underscores"),
          else: errors
 
-    errors =
-      if String.trim(kernel) == "",
-        do: Map.put(errors, :kernel, "Kernel path is required"),
-        else: errors
+    errors = if name == "", do: Map.put(errors, :name, "Name is required"), else: errors
 
-    errors =
-      if String.trim(initrd) == "",
-        do: Map.put(errors, :initrd, "Initrd path is required"),
-        else: errors
-
-    errors
+    if boot_asset_id == "",
+      do: Map.put(errors, :boot_asset_id, "Boot asset is required"),
+      else: errors
   end
+
+  defp load_editor(socket, server_id, params) do
+    profiles_result = ServerManagement.netboot_profiles_list(server_id)
+    assets_result = ServerManagement.netboot_assets_list(server_id)
+    devices_result = ServerManagement.netboot_devices_list(server_id)
+    results = [profiles_result, assets_result, devices_result]
+    profiles = ManagementSupport.items(profiles_result)
+    assets = ManagementSupport.items(assets_result)
+    devices = ManagementSupport.items(devices_result)
+    {mode, profile_id, clone_source, form_data} = editor_state(params, profiles)
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Boot Profile",
+      mode: mode,
+      profile_id: profile_id,
+      clone_source: clone_source,
+      profiles: profiles,
+      assets: assets,
+      devices: devices,
+      device_count: Enum.count(devices, &(&1["profile_id"] == profile_id)),
+      form: to_form(form_data, as: "profile"),
+      errors: %{},
+      management_error: ManagementSupport.first_error(results),
+      cached_snapshot?: ManagementSupport.cached?(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at),
+      commands_enabled?: socket.assigns.service_online?
+    )
+  end
+
+  defp editor_state(%{"id" => profile_id}, profiles) do
+    profile = Enum.find(profiles, &(&1["profile_id"] == profile_id))
+
+    {:edit, profile_id, nil,
+     profile_to_form(profile || Map.put(@empty_form, "profile_id", profile_id))}
+  end
+
+  defp editor_state(%{"clone" => source_id}, profiles) do
+    case Enum.find(profiles, &(&1["profile_id"] == source_id)) do
+      nil ->
+        {:new, nil, nil, @empty_form}
+
+      profile ->
+        {:new, nil, source_id,
+         profile |> profile_to_form() |> Map.put("profile_id", "#{source_id}-copy")}
+    end
+  end
+
+  defp editor_state(_params, _profiles), do: {:new, nil, nil, @empty_form}
+
+  defp profile_to_form(profile) do
+    %{
+      "profile_id" => profile["profile_id"] || "",
+      "name" => profile["name"] || "",
+      "boot_asset_id" => profile["boot_asset_id"] || "",
+      "arguments" => Enum.join(profile["arguments"] || [], "\n")
+    }
+  end
+
+  defp normalize_params(params, assigns) do
+    %{
+      "profile_id" =>
+        if(assigns.mode == :edit,
+          do: assigns.profile_id,
+          else: String.trim(params["profile_id"] || params["id"] || "")
+        ),
+      "name" => String.trim(params["name"] || params["description"] || ""),
+      "boot_asset_id" => String.trim(params["boot_asset_id"] || params["kernel"] || ""),
+      "arguments" => params["arguments"] || params["kernel_args"] || ""
+    }
+  end
+
+  defp profile_payload(params) do
+    %{
+      "profile_id" => params["profile_id"],
+      "name" => params["name"],
+      "boot_asset_id" => params["boot_asset_id"],
+      "arguments" => ManagementSupport.csv(params["arguments"])
+    }
+  end
+
+  defp expected_revision(%{assigns: %{mode: :new}}), do: {:ok, nil}
+
+  defp expected_revision(socket) do
+    profile_revision(socket.assigns.profiles, socket.assigns.profile_id)
+  end
+
+  defp profile_revision(profiles, profile_id) do
+    ManagementSupport.exact_revision(profiles, &(&1["profile_id"] == profile_id), "Profile")
+  end
+
+  defp put_profile(socket, %ManagementResult{status: :ok, value: %{"resource" => profile}}) do
+    profiles = [
+      profile | Enum.reject(socket.assigns.profiles, &(&1["profile_id"] == profile["profile_id"]))
+    ]
+
+    assign(socket,
+      profiles: profiles,
+      mode: :edit,
+      profile_id: profile["profile_id"],
+      form: to_form(profile_to_form(profile), as: "profile")
+    )
+  end
+
+  defp put_profile(socket, _result), do: socket
 end

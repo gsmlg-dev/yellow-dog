@@ -132,11 +132,4 @@ config :yellow_dog_resolved, enabled: false
 # Use `mix netman.server` to start the Netman daemon separately.
 config :yellow_dog_netman, netman_autostart: false
 
-# Netman: auto-connect to the local console in dev
-config :yellow_dog_netman, :console,
-  enabled: true,
-  url: "ws://localhost:4270/netman/ws/websocket",
-  token: "dev-token"
-
-config :yellow_dog_console, :netman_socket_token, "dev-token"
 config :yellow_dog_console, :management_token, "dev-management-token"

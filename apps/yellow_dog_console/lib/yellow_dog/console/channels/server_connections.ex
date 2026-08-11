@@ -55,6 +55,19 @@ defmodule YellowDog.Console.ServerConnections do
     )
   end
 
+  @doc false
+  def activate_after_journal(server_id, channel_pid, identity, status, encoded)
+      when is_binary(encoded) do
+    safe_call(
+      __MODULE__,
+      {:activate_after_journal, server_id, channel_pid, identity, status, encoded},
+      {:error, :internal}
+    )
+  end
+
+  def activate_after_journal(_server_id, _channel_pid, _identity, _status, _encoded),
+    do: {:error, :invalid}
+
   @spec update_status(String.t(), pid(), map()) ::
           :ok | {:error, :internal | :invalid | :not_connected}
   def update_status(server_id, channel_pid, status) do
@@ -211,38 +224,39 @@ defmodule YellowDog.Console.ServerConnections do
     with {:ok, candidate} <- Map.fetch(state.candidates, key),
          true <- valid_identity?(identity, server_id),
          true <- valid_status?(status, server_id) do
-      cancel_timer(candidate.timer_ref)
-      {state, replaced_pid} = replace_active(state, server_id)
-      now = DateTime.utc_now(:second)
+      {state, connection, replaced_pid} =
+        activate_candidate(state, key, candidate, identity, status)
 
-      connection = %{
-        server_id: server_id,
-        channel_pid: channel_pid,
-        monitor_ref: candidate.monitor_ref,
-        identity: identity,
-        status: status,
-        pending_requests: %{},
-        connected?: true,
-        connected_at: now,
-        last_seen_at: now
-      }
-
-      state =
-        state
-        |> update_in([:candidates], &Map.delete(&1, key))
-        |> put_in([:connections, server_id], connection)
-        |> put_in(
-          [:monitors, candidate.monitor_ref],
-          {:active, server_id, channel_pid}
-        )
-
-      if replaced_pid, do: send(replaced_pid, {:server_connection_replaced, channel_pid})
-      broadcast(server_id, {:server_connection, :online, public_connection(connection)})
-
+      announce_activation(connection, replaced_pid)
       {:reply, {:ok, replaced_pid}, state}
     else
       :error -> {:reply, {:error, :not_candidate}, state}
       false -> {:reply, {:error, :invalid}, state}
+    end
+  end
+
+  def handle_call(
+        {:activate_after_journal, server_id, channel_pid, identity, status, encoded},
+        _from,
+        state
+      ) do
+    key = {server_id, channel_pid}
+
+    with {:ok, candidate} <- Map.fetch(state.candidates, key),
+         true <- valid_identity?(identity, server_id),
+         true <- valid_status?(status, server_id),
+         {:ok, result} <- SyncCodec.reconcile_journal(encoded, server_id),
+         {:ok, pending_config} <- pending_config_message(result, server_id, channel_pid) do
+      {state, connection, replaced_pid} =
+        activate_candidate(state, key, candidate, identity, status)
+
+      announce_activation(connection, replaced_pid)
+      deliver_pending_config(pending_config, connection)
+      {:reply, {:ok, replaced_pid}, state}
+    else
+      :error -> {:reply, {:error, :not_candidate}, state}
+      false -> {:reply, {:error, :invalid}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -376,7 +390,8 @@ defmodule YellowDog.Console.ServerConnections do
   def handle_call({:reconcile_journal, server_id, channel_pid, encoded}, _from, state) do
     with {:ok, connection} <- active_connection(state, server_id, channel_pid),
          {:ok, result} <- SyncCodec.reconcile_journal(encoded, server_id),
-         :ok <- deliver_pending_config(result, connection),
+         {:ok, pending_config} <- pending_config_message(result, server_id, channel_pid),
+         :ok <- deliver_pending_config(pending_config, connection),
          {:ok, updated} <- touch_connection(connection) do
       state = put_in(state, [:connections, server_id], updated)
       broadcast(server_id, {:server_connection, :updated, public_connection(updated)})
@@ -545,6 +560,45 @@ defmodule YellowDog.Console.ServerConnections do
       end) >= state.config.max_candidates_per_server
   end
 
+  defp activate_candidate(state, key, candidate, identity, status) do
+    cancel_timer(candidate.timer_ref)
+    {state, replaced_pid} = replace_active(state, candidate.server_id)
+    now = DateTime.utc_now(:second)
+
+    connection = %{
+      server_id: candidate.server_id,
+      channel_pid: candidate.channel_pid,
+      monitor_ref: candidate.monitor_ref,
+      identity: identity,
+      status: status,
+      pending_requests: %{},
+      connected?: true,
+      connected_at: now,
+      last_seen_at: now
+    }
+
+    state =
+      state
+      |> update_in([:candidates], &Map.delete(&1, key))
+      |> put_in([:connections, candidate.server_id], connection)
+      |> put_in(
+        [:monitors, candidate.monitor_ref],
+        {:active, candidate.server_id, candidate.channel_pid}
+      )
+
+    {state, connection, replaced_pid}
+  end
+
+  defp announce_activation(connection, replaced_pid) do
+    if replaced_pid,
+      do: send(replaced_pid, {:server_connection_replaced, connection.channel_pid})
+
+    broadcast(
+      connection.server_id,
+      {:server_connection, :online, public_connection(connection)}
+    )
+  end
+
   defp replace_active(state, server_id) do
     case Map.get(state.connections, server_id) do
       %{connected?: true, channel_pid: old_pid, monitor_ref: monitor_ref} = connection ->
@@ -630,15 +684,15 @@ defmodule YellowDog.Console.ServerConnections do
     end
   end
 
-  defp deliver_pending_config(%{pending_config: nil}, _connection), do: :ok
+  defp pending_config_message(%{pending_config: nil}, _server_id, _channel_pid),
+    do: {:ok, nil}
 
-  defp deliver_pending_config(%{pending_config: version}, connection) do
+  defp pending_config_message(%{pending_config: version}, server_id, channel_pid) do
     with {:ok, encoded, summary} <- SyncCodec.encode_config_version_delivery(version),
          true <- summary.target_type == :server,
-         true <- summary.target_id == connection.server_id,
-         true <- Process.alive?(connection.channel_pid) do
-      send(connection.channel_pid, {:server_management_push, encoded})
-      :ok
+         true <- summary.target_id == server_id,
+         true <- Process.alive?(channel_pid) do
+      {:ok, encoded}
     else
       false -> {:error, :not_connected}
       {:error, _reason} -> {:error, :internal}
@@ -646,7 +700,14 @@ defmodule YellowDog.Console.ServerConnections do
     end
   end
 
-  defp deliver_pending_config(_result, _connection), do: {:error, :internal}
+  defp pending_config_message(_result, _server_id, _channel_pid), do: {:error, :internal}
+
+  defp deliver_pending_config(nil, _connection), do: :ok
+
+  defp deliver_pending_config(encoded, connection) when is_binary(encoded) do
+    send(connection.channel_pid, {:server_management_push, encoded})
+    :ok
+  end
 
   defp touch_connection(%{connected?: true} = connection) do
     {:ok, %{connection | last_seen_at: DateTime.utc_now(:second)}}

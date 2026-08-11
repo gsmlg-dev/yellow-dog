@@ -129,14 +129,14 @@ defmodule YellowDog.Netman.Types.ProfileCoverageTest do
   end
 
   describe "valid_cidr? with IPv6 address" do
-    test "IPv6 CIDR as ipv4.address value is accepted (hits IPv6 branch in valid_cidr?)" do
-      # valid_cidr?/1 has an IPv6 case (line 275) that is hit when addr parses as 8-tuple
+    test "IPv6 CIDR as ipv4.address value is rejected" do
       toml = %{
         "connection" => %{"id" => "ipv6-cidr", "type" => "ethernet"},
         "ipv4" => %{"method" => "manual", "address" => "2001:db8::1/64"}
       }
 
-      assert {:ok, _profile} = Profile.from_toml(toml)
+      assert {:error, message} = Profile.from_toml(toml)
+      assert message =~ "ipv4.address"
     end
   end
 end

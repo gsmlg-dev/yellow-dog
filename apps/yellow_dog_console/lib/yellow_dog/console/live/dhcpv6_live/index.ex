@@ -1,103 +1,90 @@
 defmodule YellowDog.Console.Dhcpv6Live.Index do
-  @moduledoc """
-  LiveView for DHCPv6 service overview.
-
-  Displays service status, statistics (active IA_NA/IA_PD bindings, pool
-  utilization), and recent DHCPv6 events. Subscribes to telemetry events
-  for real-time updates when addresses/prefixes are delegated.
-  """
+  @moduledoc "Management-backed DHCPv6 overview for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.FormatHelper
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.DhcpLive.ManagementComponents
+  alias YellowDog.Console.DhcpLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
+
+  @family :ipv6
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      # Subscribe to DHCPv6 telemetry events for real-time updates
-      :telemetry.attach(
-        "dhcpv6-live-#{inspect(self())}",
-        [:yellow_dog, :dhcpv6, :lease_allocated],
-        &handle_telemetry_event/4,
-        %{pid: self()}
-      )
-    end
-
     {:ok,
-     socket
-     |> assign(:page_title, "DHCPv6 Overview")
-     |> assign(:last_event, nil)
-     |> assign(:status, get_status())
-     |> load_dhcp_data()}
+     assign(socket,
+       page_title: "DHCPv6 Overview",
+       subscribed_server_id: nil,
+       family_label: ManagementSupport.family_label(@family),
+       base_path: nil,
+       leases_path: nil,
+       pools_path: nil,
+       activity_path: nil,
+       service_running: false,
+       pools: [],
+       leases: [],
+       activities: [],
+       management_error: nil,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_info({:telemetry_event, event, _measurements, metadata}, socket) do
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign_paths(server_id)
+
+    {:noreply, if(connected?(socket), do: load_overview(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, load_overview(socket)}
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:last_event, %{event: event, time: DateTime.utc_now(), metadata: metadata})
-     |> load_dhcp_data()}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_overview()}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def render(assigns), do: ManagementComponents.overview(assigns)
 
-  @impl true
-  def terminate(_reason, _socket) do
-    :telemetry.detach("dhcpv6-live-#{inspect(self())}")
-    :ok
-  end
+  defp load_overview(socket) do
+    server_id = socket.assigns.selected_server.id
+    payload = %{"family" => ManagementSupport.family_wire(@family)}
+    status = ServerManagement.dhcp_status_get(server_id, payload)
+    pools = ServerManagement.dhcp_pools_list(server_id, payload)
+    leases = ServerManagement.dhcp_leases_list(server_id, payload)
+    activity = ServerManagement.dhcp_activity_list(server_id, payload)
+    results = [status, pools, leases, activity]
 
-  # Private Functions
-
-  defp load_dhcp_data(socket) do
-    stats = get_dhcp_stats()
-    pool_stats = get_pool_stats()
-    pools = get_pools()
-
-    socket
-    |> assign(:stats, stats)
-    |> assign(:pool_stats, pool_stats)
-    |> assign(:pools, pools)
-  end
-
-  defp get_dhcp_stats do
-    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.stats() end, default_stats())
-  end
-
-  defp default_stats do
-    %{
-      total_leases: 0,
-      active_leases: 0,
-      expired_leases: 0,
-      by_state: %{},
-      by_ia_type: %{}
-    }
-  end
-
-  defp get_pool_stats do
-    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.get_all_pool_stats() end, %{})
-  end
-
-  defp get_pools do
-    safe_call(
-      YellowDog.Dhcpv6.LeaseManager,
-      fn -> YellowDog.Dhcpv6.LeaseManager.get_pools() end,
-      []
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DHCPv6",
+      service_running: ManagementSupport.service_running?(status, @family),
+      pools: pools |> ManagementSupport.items(@family) |> ManagementSupport.pool_views(),
+      leases: leases |> ManagementSupport.items(@family) |> ManagementSupport.lease_views(),
+      activities:
+        activity |> ManagementSupport.items(@family) |> ManagementSupport.activity_views(),
+      management_error: ManagementSupport.first_error(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
     )
   end
 
-  defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
-    send(pid, {:telemetry_event, event, measurements, metadata})
-  end
-
-  defp format_ia_type_verbose(:ia_na), do: "IA_NA (Non-temporary)"
-  defp format_ia_type_verbose(:ia_ta), do: "IA_TA (Temporary)"
-  defp format_ia_type_verbose(:ia_pd), do: "IA_PD (Prefix Delegation)"
-  defp format_ia_type_verbose(type), do: to_string(type)
-
-  defp get_status do
-    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.status() end, %{running: false})
+  defp assign_paths(socket, server_id) do
+    assign(socket,
+      base_path: ServicePaths.server_path(server_id, :dhcpv6),
+      leases_path: ServicePaths.server_path(server_id, :dhcpv6_leases),
+      pools_path: ServicePaths.server_path(server_id, :dhcpv6_pools),
+      activity_path: ServicePaths.server_path(server_id, :dhcpv6_activity)
+    )
   end
 end

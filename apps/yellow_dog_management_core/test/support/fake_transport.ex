@@ -30,6 +30,10 @@ defmodule YellowDog.Management.FakeTransport do
     GenServer.call(__MODULE__, {:script, replies})
   end
 
+  def script_config(replies) when is_list(replies) do
+    GenServer.call(__MODULE__, {:script_config, replies})
+  end
+
   def recorded do
     GenServer.call(__MODULE__, :recorded)
   end
@@ -82,6 +86,10 @@ defmodule YellowDog.Management.FakeTransport do
     {:reply, :ok, %{state | replies: :queue.from_list(replies)}}
   end
 
+  def handle_call({:script_config, replies}, _from, state) do
+    {:reply, :ok, %{state | config_replies: :queue.from_list(replies)}}
+  end
+
   def handle_call(:recorded, _from, state) do
     {:reply, Enum.reverse(state.recorded), state}
   end
@@ -106,7 +114,9 @@ defmodule YellowDog.Management.FakeTransport do
     case Operation.validate_envelope(envelope, :config) do
       {:ok, ^envelope} ->
         recorded = [%{envelope: envelope, timeout: nil, kind: :config} | state.recorded]
-        {:reply, :ok, %{state | recorded: recorded}}
+        {reply, config_replies} = pop_config_reply(state.config_replies)
+        state = %{state | recorded: recorded, config_replies: config_replies}
+        handle_config_reply(reply, envelope, state)
 
       {:error, %Error{}} = error ->
         {:reply, error, state}
@@ -136,6 +146,19 @@ defmodule YellowDog.Management.FakeTransport do
 
   defp handle_scripted_reply(response, _envelope, _from, state), do: {:reply, response, state}
 
+  defp handle_config_reply({:report_committed_version, owner}, envelope, state) do
+    result =
+      case envelope.target_type do
+        :server -> ManagementCore.get_server_config_version(envelope.target_id, envelope.config_version)
+        :netman -> ManagementCore.get_netman_config_version(envelope.target_id, envelope.config_version)
+      end
+
+    send(owner, {:committed_version_during_delivery, result})
+    {:reply, :ok, state}
+  end
+
+  defp handle_config_reply(response, _envelope, state), do: {:reply, response, state}
+
   defp pop_reply(replies) do
     case :queue.out(replies) do
       {{:value, reply}, rest} -> {reply, rest}
@@ -143,7 +166,20 @@ defmodule YellowDog.Management.FakeTransport do
     end
   end
 
+  defp pop_config_reply(replies) do
+    case :queue.out(replies) do
+      {{:value, reply}, rest} -> {reply, rest}
+      {:empty, rest} -> {:ok, rest}
+    end
+  end
+
   defp empty_state do
-    %{connected: MapSet.new(), recorded: [], replies: :queue.new(), deferred: %{}}
+    %{
+      connected: MapSet.new(),
+      recorded: [],
+      replies: :queue.new(),
+      config_replies: :queue.new(),
+      deferred: %{}
+    }
   end
 end

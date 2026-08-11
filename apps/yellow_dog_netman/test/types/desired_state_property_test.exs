@@ -53,7 +53,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn.priority == profile.autoconnect_priority
     end
   end
@@ -64,7 +64,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn.mtu == profile.ethernet.mtu
     end
   end
@@ -75,7 +75,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
 
       expected_dns =
         (profile.ipv4.dns || []) ++ (profile.ipv6.dns || [])
@@ -90,7 +90,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn.interface == iface
     end
   end
@@ -108,8 +108,8 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
 
       desired = DesiredState.from_profiles([{p1, i1}, {p2, i2}])
       assert map_size(desired.connections) == 2
-      assert Map.has_key?(desired.connections, p1.id)
-      assert Map.has_key?(desired.connections, p2.id)
+      assert Map.has_key?(desired.connections, {p1.id, i1})
+      assert Map.has_key?(desired.connections, {p2.id, i2})
     end
   end
 
@@ -119,7 +119,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn.ipv4 == profile.ipv4
     end
   end
@@ -137,7 +137,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
       assert conn.profile_id == profile.id
     end
@@ -149,7 +149,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn.ipv6 == profile.ipv6
     end
   end
@@ -162,7 +162,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       non_autoconnect = %{profile | autoconnect: false}
       desired = DesiredState.from_profiles([{non_autoconnect, iface}])
       # Profiles with autoconnect: false are still included — activation is decided by the FSM
-      conn = desired.connections[non_autoconnect.id]
+      conn = desired.connections[{non_autoconnect.id, iface}]
 
       assert conn != nil,
              "autoconnect: false profile #{non_autoconnect.id} missing from desired state"
@@ -175,7 +175,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       for key <- [:profile_id, :interface, :ipv4, :ipv6, :mtu, :priority, :dns, :dns_search] do
@@ -210,7 +210,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert is_list(conn.dns),
@@ -229,7 +229,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert is_integer(conn.priority) and conn.priority >= 0,
@@ -243,7 +243,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert is_binary(conn.interface),
@@ -251,7 +251,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
-  property "profiles with duplicate IDs produce at most 1 connection" do
+  property "one profile produces one connection per unique interface" do
     check all(
             profile <- profile_gen(),
             iface1 <- interface_gen(),
@@ -259,9 +259,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
           ) do
       pairs = [{profile, iface1}, {profile, iface2}]
       desired = DesiredState.from_profiles(pairs)
+      expected_count = MapSet.size(MapSet.new([iface1, iface2]))
 
-      assert map_size(desired.connections) == 1,
-             "Expected 1 connection for duplicate profile ID, got #{map_size(desired.connections)}"
+      assert map_size(desired.connections) == expected_count,
+             "Expected #{expected_count} profile-interface connections, got #{map_size(desired.connections)}"
     end
   end
 
@@ -271,7 +272,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert conn[:profile_id] == profile.id,
@@ -285,7 +286,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert is_nil(conn.mtu) or (is_integer(conn.mtu) and conn.mtu > 0),
@@ -309,9 +310,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
 
       input_ids = MapSet.new(indexed_profiles, & &1.id)
 
-      for {conn_id, _conn} <- desired.connections do
+      for {{conn_id, interface}, conn} <- desired.connections do
         assert MapSet.member?(input_ids, conn_id),
                "Connection #{conn_id} not in input profiles"
+
+        assert conn.interface == interface
       end
     end
   end
@@ -332,7 +335,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
-  property "DesiredState connections is always a map with binary string keys" do
+  property "DesiredState connections is always a map with profile-interface tuple keys" do
     check all(
             count <- StreamData.integer(0..4),
             profiles <- StreamData.list_of(profile_gen(), length: count),
@@ -344,9 +347,9 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_map(desired.connections),
              "Expected connections to be a map, got: #{inspect(desired.connections)}"
 
-      for {key, _} <- desired.connections do
-        assert is_binary(key),
-               "Expected binary string key in connections, got: #{inspect(key)}"
+      for {{profile_id, interface}, _} <- desired.connections do
+        assert is_binary(profile_id)
+        assert is_binary(interface)
       end
     end
   end
@@ -374,7 +377,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
-  property "from_profiles connections map keys are always binary strings" do
+  property "from_profiles connection keys preserve profile and interface identity" do
     check all(
             count <- StreamData.integer(0..4),
             profiles <- StreamData.list_of(profile_gen(), length: count),
@@ -383,9 +386,9 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       pairs = Enum.zip(profiles, ifaces)
       desired = DesiredState.from_profiles(pairs)
 
-      for {key, _} <- desired.connections do
-        assert is_binary(key),
-               "Expected binary key in connections map, got: #{inspect(key)}"
+      for {{profile_id, interface}, connection} <- desired.connections do
+        assert connection.profile_id == profile_id
+        assert connection.interface == interface
       end
     end
   end
@@ -408,7 +411,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert Map.has_key?(conn, :profile_id),
@@ -438,11 +441,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
-  property "from_profiles result connections size equals unique profile id count" do
+  property "from_profiles result connections size equals unique profile-interface pair count" do
     check all(profiles <- list_of(profile_gen(), min_length: 1, max_length: 3)) do
       pairs = Enum.map(profiles, &{&1, "ds_iface_#{:erlang.unique_integer([:positive])}"})
       desired = DesiredState.from_profiles(pairs)
-      expected_count = pairs |> Enum.map(fn {p, _} -> p.id end) |> Enum.uniq() |> length()
+
+      expected_count =
+        pairs |> Enum.map(fn {p, iface} -> {p.id, iface} end) |> Enum.uniq() |> length()
 
       assert map_size(desired.connections) == expected_count,
              "Expected #{expected_count} connections, got #{map_size(desired.connections)}"
@@ -486,17 +491,17 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
-  property "from_profiles result connection map key matches the profile_id" do
+  property "from_profiles result connection map key matches profile and interface" do
     check all(
             profile <- profile_gen(),
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
-      assert conn.profile_id == profile.id,
-             "Expected profile_id #{profile.id} to equal the map key"
+      assert conn.profile_id == profile.id
+      assert conn.interface == iface
     end
   end
 
@@ -506,7 +511,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert is_list(conn.dns),
@@ -520,7 +525,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert is_binary(conn.interface) and byte_size(conn.interface) > 0,
@@ -534,7 +539,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
             iface <- interface_gen()
           ) do
       desired = DesiredState.from_profiles([{profile, iface}])
-      conn = desired.connections[profile.id]
+      conn = desired.connections[{profile.id, iface}]
       assert conn != nil
 
       assert conn.ipv4 != nil,

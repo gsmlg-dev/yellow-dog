@@ -39,6 +39,8 @@ defmodule YellowDog.ServerAgent.ClientTest do
     :identity,
     :dispatcher,
     :dispatcher_runtime_adapter,
+    :query_dispatcher,
+    :query_runtime_adapter,
     :command_journal,
     :config_applier,
     :config_apply_store,
@@ -67,6 +69,34 @@ defmodule YellowDog.ServerAgent.ClientTest do
     def dispatch(envelope, opts) do
       {owner, agent} = :persistent_term.get({__MODULE__, :state})
       send(owner, {:dispatch, envelope, opts})
+
+      Agent.get_and_update(agent, fn
+        [reply | rest] -> {reply, rest}
+      end)
+    end
+
+    def dispatch(envelope) do
+      {owner, agent} = :persistent_term.get({__MODULE__, :state})
+      send(owner, {:runtime_dispatch, envelope})
+
+      Agent.get_and_update(agent, fn
+        [reply | rest] -> {reply, rest}
+      end)
+    end
+  end
+
+  defmodule QueryDispatcher do
+    @moduledoc false
+
+    def configure(owner, replies) do
+      {:ok, agent} = Agent.start_link(fn -> replies end)
+      :persistent_term.put({__MODULE__, :state}, {owner, agent})
+      agent
+    end
+
+    def dispatch(envelope, opts) do
+      {owner, agent} = :persistent_term.get({__MODULE__, :state})
+      send(owner, {:query_dispatch, envelope, opts})
 
       Agent.get_and_update(agent, fn
         [reply | rest] -> {reply, rest}
@@ -164,6 +194,57 @@ defmodule YellowDog.ServerAgent.ClientTest do
     end)
 
     :ok
+  end
+
+  test "production socket selects the Server forwarding channel" do
+    assert {:ok, socket} =
+             Client.Socket.start_link(
+               url: "ws://127.0.0.1:1/server/ws/websocket",
+               params: %{"server_id" => @server_id}
+             )
+
+    on_exit(fn -> Client.Socket.stop(socket) end)
+
+    assert Phoenix.SocketClient.get_state(socket, :default_channel_module) ==
+             Client.SocketChannel
+  end
+
+  test "Server socket channel forwards the sync event and channel identity" do
+    channel = self()
+    payload = %{"message" => "encoded-server-command"}
+
+    state = %Phoenix.SocketClient.Channel.State{
+      caller: channel,
+      topic: "server:control:server-east-1"
+    }
+
+    assert {:noreply, ^state} = Client.SocketChannel.handle_message("sync", payload, state)
+    assert_receive {:yellow_dog_socket_message, ^channel, "sync", ^payload}
+  end
+
+  test "credential provider forwards only its joined SocketChannel events to Client" do
+    result = %{"service" => "dns", "state" => "running"}
+    Dispatcher.configure(self(), [{:ok, result}])
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    channel = receive_channel()
+    payload = sync_payload(command())
+    credential_ref = :sys.get_state(client).config.credential_ref
+
+    send(provider_pid(credential_ref), {
+      :yellow_dog_socket_message,
+      self(),
+      "sync",
+      payload
+    })
+
+    refute_receive {:dispatch, %Envelope{}, _dispatcher_opts}, 20
+
+    assert {:noreply, %Phoenix.SocketClient.Channel.State{}} =
+             ClientFakeSocket.socket_channel_message(channel, payload)
+
+    assert_receive {:dispatch, %Envelope{}, _dispatcher_opts}
+    {_payload, %Result{value: ^result}} = receive_message(channel, Result)
   end
 
   test "disabled client is inert and needs no network configuration" do
@@ -621,7 +702,32 @@ defmodule YellowDog.ServerAgent.ClientTest do
     refute_receive {:dispatch, _, _}
   end
 
-  test "routes a canonical Query through Dispatcher exactly once" do
+  test "routes a canonical Query through QueryDispatcher exactly once without journal options" do
+    result = %{
+      "items" => [],
+      "revision" => @revision,
+      "observed_at" => DateTime.to_iso8601(@sent_at)
+    }
+
+    QueryDispatcher.configure(self(), [{:ok, result}])
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    channel = receive_channel()
+    query = query()
+
+    ClientFakeSocket.channel_message(client, channel, sync_payload(query))
+
+    assert_receive {:query_dispatch, %Envelope{request_id: request_id}, query_dispatcher_opts}
+    assert request_id == query.envelope.request_id
+    assert query_dispatcher_opts[:server_id] == @server_id
+    assert query_dispatcher_opts[:capabilities] == identity().capabilities
+    refute Keyword.has_key?(query_dispatcher_opts, :command_journal)
+    {_payload, %Result{value: ^result}} = receive_message(channel, Result)
+    refute_receive {:query_dispatch, _, _}
+    refute_receive {:dispatch, _, _}
+  end
+
+  test "routes a Query through the production QueryDispatcher without a journal claim" do
     result = %{
       "items" => [],
       "revision" => @revision,
@@ -630,31 +736,22 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
     Dispatcher.configure(self(), [{:ok, result}])
     {:ok, owner} = Owner.start_link(self())
-    {:ok, client} = start_client(owner)
-    channel = receive_channel()
-    query = query()
-
-    ClientFakeSocket.channel_message(client, channel, sync_payload(query))
-
-    assert_receive {:dispatch, %Envelope{request_id: request_id}, _dispatcher_opts}
-    assert request_id == query.envelope.request_id
-    {_payload, %Result{value: ^result}} = receive_message(channel, Result)
-    refute_receive {:dispatch, _, _}
-  end
-
-  test "production Dispatcher rejects Query without a false runtime or journal claim" do
-    {:ok, owner} = Owner.start_link(self())
 
     {:ok, client} =
       start_client(owner,
         dispatcher: YellowDog.ServerAgent.Dispatcher,
-        dispatcher_runtime_adapter: Dispatcher
+        dispatcher_runtime_adapter: Dispatcher,
+        query_dispatcher: YellowDog.ServerAgent.QueryDispatcher,
+        query_runtime_adapter: Dispatcher
       )
 
     channel = receive_channel()
     ClientFakeSocket.channel_message(client, channel, sync_payload(query()))
 
-    {_payload, %Result{value: nil, error: %Error{code: :invalid}}} =
+    assert_receive {:runtime_dispatch, %Envelope{request_id: request_id}}
+    assert request_id == query().envelope.request_id
+
+    {_payload, %Result{value: ^result, error: nil}} =
       receive_message(channel, Result)
 
     refute_receive {:dispatch, _, _}
@@ -740,6 +837,44 @@ defmodule YellowDog.ServerAgent.ClientTest do
 
     send(client, {:status, generation})
     {_payload, %Status{target_id: @server_id, state: :online}} = receive_message(channel, Status)
+  end
+
+  test "refreshes managed identity in place and immediately publishes status" do
+    {:ok, owner} = Owner.start_link(self())
+    {:ok, client} = start_client(owner)
+    assert_receive {:socket_start, _opts}
+    channel = receive_channel()
+    drain_activation(channel)
+    revision = String.duplicate("b", 64)
+
+    assert :ok =
+             Client.refresh_identity(
+               %{
+                 profile: "dns_only",
+                 capabilities: ["config.write", "dns.zones.read"],
+                 config_revision: revision
+               },
+               client
+             )
+
+    {_payload, status} = receive_message(channel, Status)
+
+    assert status.details == %{
+             "capabilities" => ["config.write", "dns.zones.read"],
+             "config_revision" => revision,
+             "profile" => "dns_only",
+             "version" => "1.1.4"
+           }
+
+    assert Process.alive?(client)
+
+    assert {:error, :invalid_identity} =
+             Client.refresh_identity(
+               %{profile: "dns_only", capabilities: ["duplicate", "duplicate"], config_revision: revision},
+               client
+             )
+
+    refute_receive {:socket_start, _opts}
   end
 
   test "disconnect cleanup ignores late messages and follows exact bounded backoff reset" do
@@ -1016,6 +1151,8 @@ defmodule YellowDog.ServerAgent.ClientTest do
       identity: identity(),
       dispatcher: Dispatcher,
       dispatcher_runtime_adapter: Dispatcher,
+      query_dispatcher: QueryDispatcher,
+      query_runtime_adapter: Dispatcher,
       command_journal: owner,
       config_applier: owner,
       config_apply_store: owner,

@@ -402,6 +402,8 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
     assert client_opts[:max_backoff] == 1_000
     assert client_opts[:dispatcher] == Dispatcher
     assert client_opts[:dispatcher_runtime_adapter] == :"Elixir.YellowDog.Server.Control"
+    assert client_opts[:query_dispatcher] == YellowDog.ServerAgent.QueryDispatcher
+    assert client_opts[:query_runtime_adapter] == :"Elixir.YellowDog.Server.Control"
     assert client_opts[:credential_owner] == supervisor
     assert opaque_credential_ref?(client_opts[:credential_ref])
 
@@ -414,6 +416,8 @@ defmodule YellowDog.ServerAgent.SupervisorTest do
                :identity,
                :dispatcher,
                :dispatcher_runtime_adapter,
+               :query_dispatcher,
+               :query_runtime_adapter,
                :command_journal,
                :config_applier,
                :config_apply_store,

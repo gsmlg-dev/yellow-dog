@@ -1,488 +1,139 @@
 defmodule YellowDog.Console.DnsLive.QueryLogsLive do
-  @moduledoc """
-  LiveView for DNS query log viewing.
-
-  Displays recent DNS queries with real-time streaming via PubSub,
-  filtering by client IP, view, query name, type, and response code.
-  """
+  @moduledoc "Management-backed DNS query logs for one selected Server and view."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
-  import YellowDog.Console.ServiceHelper
-  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
+  import YellowDog.Console.DnsLive.ManagementComponents, only: [input: 1]
 
-  alias YellowDog.Console.Layouts
-  alias YellowDog.Dns.QueryLogger
-
-  @max_display 200
-  @refresh_interval 2_000
-
-  @rcode_badges %{
-    "noerror" => "badge-success",
-    "nxdomain" => "badge-warning",
-    "servfail" => "badge-error",
-    "refused" => "badge-error"
-  }
-
-  @protocol_badges %{"udp" => "badge-info", "tcp" => "badge-primary"}
-
-  @resolution_badges %{
-    "auth" => "badge-primary",
-    "recursive" => "badge-secondary"
-  }
+  alias YellowDog.Console.DnsLive.ManagementComponents
+  alias YellowDog.Console.DnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, QueryLogger.pubsub_topic())
-      Process.send_after(self(), :refresh, @refresh_interval)
-    end
-
     {:ok,
-     socket
-     |> assign(
+     assign(socket,
        page_title: "DNS Query Logs",
-       connected: connected?(socket),
-       service_running: service_running?(YellowDog.Dns),
-       search_query: "",
-       filter_view: "all",
-       filter_rcode: "all",
-       filter_protocol: "all",
-       paused: false,
-       entries: [],
-       stats: default_stats()
-     )
-     |> load_entries()}
+       subscribed_server_id: nil,
+       view_name: "default",
+       selection_form: to_form(%{"view_name" => "default"}, as: "selection"),
+       logs: [],
+       management_error: nil,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_event("search", %{"search" => query}, socket) do
-    {:noreply,
-     socket
-     |> assign(:search_query, query)
-     |> load_entries()}
-  end
+  def handle_params(%{"server_id" => server_id} = params, _uri, socket) do
+    view_name = params["view_name"] || "default"
 
-  @impl true
-  def handle_event("filter_view", %{"view" => view}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_view, view)
-     |> load_entries()}
-  end
-
-  @impl true
-  def handle_event("filter_rcode", %{"rcode" => rcode}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_rcode, rcode)
-     |> load_entries()}
-  end
-
-  @impl true
-  def handle_event("filter_protocol", %{"protocol" => protocol}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_protocol, protocol)
-     |> load_entries()}
-  end
-
-  @impl true
-  def handle_event("toggle_pause", _params, socket) do
-    {:noreply, assign(socket, :paused, !socket.assigns.paused)}
-  end
-
-  @impl true
-  def handle_event("clear", _params, socket) do
-    try do
-      QueryLogger.clear_buffer()
-    catch
-      _, _ -> :ok
-    end
-
-    {:noreply, assign(socket, :entries, [])}
-  end
-
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    entries = socket.assigns.entries
-    csv = build_csv(entries)
-    filename = "dns_queries_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
-
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
-  end
-
-  @impl true
-  def handle_info({:query_logged, _entry}, %{assigns: %{paused: true}} = socket) do
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:query_logged, _entry}, socket) do
-    {:noreply, load_entries(socket)}
-  end
-
-  @impl true
-  def handle_info(:refresh, socket) do
     socket =
-      if socket.assigns.paused do
-        socket
-      else
-        socket
-        |> load_entries()
-        |> assign(:stats, fetch_stats())
-      end
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(
+        view_name: view_name,
+        selection_form: to_form(%{"view_name" => view_name}, as: "selection")
+      )
 
-    Process.send_after(self(), :refresh, @refresh_interval)
-    {:noreply, socket}
+    {:noreply, if(connected?(socket), do: load_logs(socket, server_id), else: socket)}
   end
 
   @impl true
-  def handle_info(_msg, socket) do
-    {:noreply, socket}
+  def handle_event("refresh", _params, socket) do
+    {:noreply, load_logs(socket, ManagementSupport.selected_id(socket))}
+  end
+
+  def handle_event("select_view", %{"selection" => %{"view_name" => view_name}}, socket) do
+    path =
+      ServicePaths.server_path(ManagementSupport.selected_id(socket), :dns_logs) <>
+        "?" <> URI.encode_query(%{"view_name" => view_name})
+
+    {:noreply, push_patch(socket, to: path)}
   end
 
   @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, QueryLogger.pubsub_topic())
-    :ok
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_logs(server_id)}
   end
 
-  defp load_entries(socket) do
-    entries =
-      try do
-        all = QueryLogger.get_recent_logs(limit: @max_display)
-        filter_entries(all, socket.assigns)
-      catch
-        _, _ -> []
-      end
-
-    assign(socket, :entries, entries)
-  end
-
-  defp filter_entries(entries, assigns) do
-    entries
-    |> maybe_filter_search(assigns.search_query)
-    |> maybe_filter_view(assigns.filter_view)
-    |> maybe_filter_rcode(assigns.filter_rcode)
-    |> maybe_filter_protocol(assigns.filter_protocol)
-  end
-
-  defp maybe_filter_search(entries, ""), do: entries
-
-  defp maybe_filter_search(entries, query) do
-    q = String.downcase(query)
-
-    Enum.filter(entries, fn e ->
-      (e.qname && downcase_contains?(to_string(e.qname), q)) ||
-        (e.client_ip && String.contains?(format_ip(e.client_ip), q)) ||
-        (e.zone_used && downcase_contains?(to_string(e.zone_used), q))
-    end)
-  end
-
-  defp maybe_filter_view(entries, "all"), do: entries
-
-  defp maybe_filter_view(entries, view) do
-    Enum.filter(entries, fn e -> to_string(e.view) == view end)
-  end
-
-  defp maybe_filter_rcode(entries, "all"), do: entries
-
-  defp maybe_filter_rcode(entries, rcode) do
-    Enum.filter(entries, fn e -> to_string(e.response_code) == rcode end)
-  end
-
-  defp maybe_filter_protocol(entries, "all"), do: entries
-
-  defp maybe_filter_protocol(entries, protocol) do
-    Enum.filter(entries, fn e -> to_string(e.protocol) == protocol end)
-  end
-
-  defp fetch_stats do
-    try do
-      QueryLogger.stats()
-    catch
-      _, _ -> default_stats()
-    end
-  end
-
-  defp default_stats do
-    %{buffer_size: 0, current_entries: 0, total_logged: 0, enabled: false}
-  end
-
-  defp format_ip(nil), do: "-"
-  defp format_ip(ip), do: YellowDog.Dns.IpFormat.format(ip)
-
-  defp format_response_time(nil), do: "-"
-  defp format_response_time(us) when us < 1_000, do: "#{us}us"
-  defp format_response_time(us) when us < 1_000_000, do: "#{Float.round(us / 1_000, 1)}ms"
-  defp format_response_time(us), do: "#{Float.round(us / 1_000_000, 2)}s"
-
-  defp rcode_badge(code), do: Map.get(@rcode_badges, code, "badge-ghost")
-
-  defp protocol_badge(proto), do: Map.get(@protocol_badges, proto, "badge-ghost")
-
-  defp resolution_badge(type), do: Map.get(@resolution_badges, to_string(type), "badge-ghost")
-
-  defp resolution_label(:auth), do: "Auth"
-  defp resolution_label("auth"), do: "Auth"
-  defp resolution_label(:recursive), do: "Recursive"
-  defp resolution_label("recursive"), do: "Recursive"
-  defp resolution_label(nil), do: "-"
-  defp resolution_label(type), do: type |> to_string() |> String.capitalize()
-
-  defp format_zone(nil), do: "-"
-  defp format_zone(""), do: "-"
-  defp format_zone(zone), do: to_string(zone)
-
-  defp build_csv(entries) do
-    header =
-      "Timestamp,Client IP,Query Name,QType,Type,Zone,Protocol,Response Code,Latency (us),Cache Hit,View\r\n"
-
-    rows =
-      Enum.map_join(entries, "\r\n", fn e ->
-        [
-          csv_escape(format_time_ms(e.timestamp)),
-          csv_escape(format_ip(e.client_ip)),
-          csv_escape(to_string(e.qname || "")),
-          csv_escape(to_string(e.qtype || "")),
-          csv_escape(resolution_label(e.resolution_type)),
-          csv_escape(format_zone(e.zone_used)),
-          csv_escape(to_string(e.protocol || "")),
-          csv_escape(to_string(e.response_code || "")),
-          to_string(e.response_time_us || ""),
-          to_string(e.cache_hit || false),
-          csv_escape(to_string(e.view || ""))
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-4">
-        <.service_alert :if={not @service_running} service="DNS" />
-
-        <%!-- Header --%>
-        <div class="flex flex-wrap justify-between items-center gap-4">
-          <h1 class="text-2xl font-bold">DNS Query Logs</h1>
-          <div class="flex">
-            <button
-              phx-click="toggle_pause"
-              class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
-            >
-              <%= if @paused do %>
-                <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Resume
-              <% else %>
-                <.dm_mdi name="pause-circle-outline" class="h-4 w-4" /> Pause
-              <% end %>
-            </button>
-            <button phx-click="clear" class="btn btn-sm btn-ghost">
-              <.dm_mdi name="delete" class="h-4 w-4" /> Clear
-            </button>
-            <button
-              phx-click="export_csv"
-              class="btn btn-sm btn-ghost"
-              id="csv-export"
-              phx-hook="CsvDownload"
-            >
-              <.dm_mdi name="download" class="h-4 w-4" /> Export CSV
-            </button>
-          </div>
+      <div class="space-y-6" id="server-dns-logs">
+        <div class="flex items-center justify-between gap-4">
+          <ManagementComponents.page_header
+            title="DNS Query Logs"
+            subtitle={"View #{@view_name}"}
+            server={@selected_server}
+            online?={@service_online?}
+            back={ServicePaths.server_path(@selected_server.id, :dns)}
+          />
+          <button phx-click="refresh" class="btn btn-ghost btn-sm">Refresh</button>
         </div>
 
-        <%!-- Stats --%>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Total Logged</div>
-              <div class="text-2xl font-bold">{@stats.total_logged}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Buffer</div>
-              <div class="text-2xl font-bold">{@stats.current_entries} / {@stats.buffer_size}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Displayed</div>
-              <div class="text-2xl font-bold">{length(@entries)}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Logger</div>
-              <div class="text-2xl font-bold">
-                <%= if @stats.enabled do %>
-                  <span class="text-success">Active</span>
-                <% else %>
-                  <span class="text-error">Disabled</span>
-                <% end %>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ManagementComponents.offline_snapshot
+          :if={not @service_online?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error
+          :if={ManagementSupport.error_result?(@management_error)}
+          result={@management_error}
+        />
 
-        <%!-- Filters --%>
-        <div class="card bg-surface-container">
-          <div class="card-body py-3 px-4">
-            <div class="flex flex-wrap gap-4 items-center">
-              <%!-- Search --%>
-              <div class="form-group">
-                <input
-                  type="text"
-                  placeholder="Search domain or IP..."
-                  aria-label="Search DNS query logs"
-                  class="input input-sm w-48"
-                  phx-change="search"
-                  phx-debounce="300"
-                  name="search"
-                  value={@search_query}
-                />
-              </div>
+        <.form for={@selection_form} id="dns-log-view" phx-change="select_view" class="max-w-md">
+          <.input field={@selection_form[:view_name]} label="View" phx-debounce="300" />
+        </.form>
 
-              <%!-- Response Code Filter --%>
-              <div class="form-group">
-                <select
-                  class="select select-sm"
-                  phx-change="filter_rcode"
-                  aria-label="Filter by response code"
-                  name="rcode"
-                >
-                  <option value="all" selected={@filter_rcode == "all"}>All Codes</option>
-                  <option value="noerror" selected={@filter_rcode == "noerror"}>NOERROR</option>
-                  <option value="nxdomain" selected={@filter_rcode == "nxdomain"}>NXDOMAIN</option>
-                  <option value="servfail" selected={@filter_rcode == "servfail"}>SERVFAIL</option>
-                  <option value="refused" selected={@filter_rcode == "refused"}>REFUSED</option>
-                </select>
-              </div>
-
-              <%!-- Protocol Filter --%>
-              <div class="form-group">
-                <select
-                  class="select select-sm"
-                  phx-change="filter_protocol"
-                  aria-label="Filter by protocol"
-                  name="protocol"
-                >
-                  <option value="all" selected={@filter_protocol == "all"}>All Protocols</option>
-                  <option value="udp" selected={@filter_protocol == "udp"}>UDP</option>
-                  <option value="tcp" selected={@filter_protocol == "tcp"}>TCP</option>
-                </select>
-              </div>
-
-              <%!-- Paused indicator --%>
-              <%= if @paused do %>
-                <span class="badge badge-warning badge-sm">Paused</span>
-              <% end %>
-            </div>
+        <.card title="Recent queries">
+          <p :if={@logs == []} class="text-sm text-on-surface-variant">No query logs reported</p>
+          <div :if={@logs != []} class="overflow-x-auto">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Time</th><th>Query</th><th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @logs}>
+                  <td>{entry["occurred_at"]}</td>
+                  <td class="font-mono">{entry["query_name"]}</td>
+                  <td>
+                    <.badge color={action_color(entry["action"])} size="sm">{entry["action"]}</.badge>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
-
-        <%!-- Query Log Table --%>
-        <div class="card bg-surface shadow">
-          <div class="card-body p-0">
-            <div class="overflow-x-auto">
-              <table class="table table-striped table-sm">
-                <thead>
-                  <tr>
-                    <th scope="col">Time</th>
-                    <th scope="col">Client</th>
-                    <th scope="col">Query Name</th>
-                    <th scope="col">QType</th>
-                    <th scope="col">Type</th>
-                    <th scope="col">Zone</th>
-                    <th scope="col">Proto</th>
-                    <th scope="col">RCode</th>
-                    <th scope="col">Latency</th>
-                    <th scope="col">Cache</th>
-                    <th scope="col">View</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <%= if Enum.empty?(@entries) do %>
-                    <tr>
-                      <td colspan="11" class="text-center text-on-surface-variant py-8">
-                        No DNS queries recorded yet
-                      </td>
-                    </tr>
-                  <% else %>
-                    <%= for entry <- @entries do %>
-                      <tr class="hover">
-                        <td class="font-mono text-xs whitespace-nowrap">
-                          {format_time_ms(entry.timestamp)}
-                        </td>
-                        <td class="font-mono text-xs">
-                          {format_ip(entry.client_ip)}
-                        </td>
-                        <td
-                          class="font-mono text-sm max-w-xs truncate"
-                          title={to_string(entry.qname || "")}
-                        >
-                          {to_string(entry.qname || "-")}
-                        </td>
-                        <td>
-                          <span class="badge badge-ghost badge-xs">
-                            {entry.qtype |> to_string() |> String.upcase()}
-                          </span>
-                        </td>
-                        <td>
-                          <span class={"badge badge-xs " <> resolution_badge(entry.resolution_type)}>
-                            {resolution_label(entry.resolution_type)}
-                          </span>
-                        </td>
-                        <td class="font-mono text-xs">{format_zone(entry.zone_used)}</td>
-                        <td>
-                          <span class={"badge badge-xs " <> protocol_badge(to_string(entry.protocol))}>
-                            {entry.protocol |> to_string() |> String.upcase()}
-                          </span>
-                        </td>
-                        <td>
-                          <%= if entry.response_code do %>
-                            <span class={"badge badge-xs " <> rcode_badge(to_string(entry.response_code))}>
-                              {entry.response_code |> to_string() |> String.upcase()}
-                            </span>
-                          <% else %>
-                            <span class="text-on-surface-variant">-</span>
-                          <% end %>
-                        </td>
-                        <td class="text-xs">
-                          {format_response_time(entry.response_time_us)}
-                        </td>
-                        <td>
-                          <%= if entry.cache_hit do %>
-                            <span class="badge badge-success badge-xs">HIT</span>
-                          <% else %>
-                            <span class="text-on-surface-variant text-xs">miss</span>
-                          <% end %>
-                        </td>
-                        <td class="text-xs">{entry.view || "-"}</td>
-                      </tr>
-                    <% end %>
-                  <% end %>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Footer --%>
-        <div class="text-xs text-on-surface-variant flex justify-between">
-          <span>Showing {length(@entries)} entries</span>
-          <span :if={@connected} class="flex items-center gap-1">
-            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected
-          </span>
-        </div>
+        </.card>
       </div>
     </Layouts.app>
     """
   end
+
+  defp load_logs(socket, server_id) do
+    result = ServerManagement.dns_logs_list(server_id, %{"view_name" => socket.assigns.view_name})
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Query Logs",
+      logs: ManagementSupport.items(result),
+      management_error: if(ManagementSupport.error_result?(result), do: result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(
+          [result],
+          socket.assigns.selected_server.last_seen_at
+        )
+    )
+  end
+
+  defp action_color("answered"), do: "success"
+  defp action_color("forwarded"), do: "info"
+  defp action_color("refused"), do: "warning"
+  defp action_color(_action), do: "error"
 end

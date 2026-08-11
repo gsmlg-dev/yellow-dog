@@ -1,219 +1,141 @@
 defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
-  @moduledoc """
-  LiveView for DHCPv6 lease management.
-
-  Displays all active IA_NA (address) and IA_PD (prefix) bindings with
-  filtering by DUID, IA type, state, and pool. Shows preferred/valid
-  lifetimes and supports real-time updates via telemetry subscriptions.
-  """
+  @moduledoc "Management-backed DHCPv6 leases for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.DhcpLive.ManagementComponents
+  alias YellowDog.Console.DhcpLive.ManagementSupport
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
+
+  @family :ipv6
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      # Subscribe to lease events
-      :telemetry.attach(
-        "dhcpv6-leases-#{inspect(self())}",
-        [:yellow_dog, :dhcpv6, :lease_allocated],
-        &handle_telemetry_event/4,
-        %{pid: self()}
-      )
-    end
-
     {:ok,
-     socket
-     |> assign(
+     assign(socket,
        page_title: "DHCPv6 Leases",
-       service_running: service_running?(YellowDog.Dhcpv6.LeaseManager),
+       subscribed_server_id: nil,
+       family_label: ManagementSupport.family_label(@family),
+       base_path: nil,
+       service_running: false,
+       all_leases: [],
+       leases: [],
        search_query: "",
        filter_state: "all",
-       filter_ia_type: "all",
-       filter_pool: "all"
-     )
-     |> load_leases()}
+       commands_enabled?: false,
+       management_error: nil,
+       cached_observed_at: nil
+     )}
+  end
+
+  @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(:base_path, ServicePaths.server_path(server_id, :dhcpv6))
+
+    {:noreply, if(connected?(socket), do: load_leases(socket), else: socket)}
   end
 
   @impl true
   def handle_event("search", %{"search" => query}, socket) do
-    {:noreply,
-     socket
-     |> assign(:search_query, query)
-     |> load_leases()}
+    {:noreply, socket |> assign(:search_query, query) |> filter_leases()}
   end
 
-  @impl true
   def handle_event("filter_state", %{"state" => state}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_state, state)
-     |> load_leases()}
+    state = if state in ["all", "active", "released", "expired"], do: state, else: "all"
+    {:noreply, socket |> assign(:filter_state, state) |> filter_leases()}
   end
 
-  @impl true
-  def handle_event("filter_ia_type", %{"ia_type" => ia_type}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_ia_type, ia_type)
-     |> load_leases()}
-  end
+  def handle_event("filter_ia_type", _params, socket), do: {:noreply, socket}
+  def handle_event("filter_pool", _params, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_event("filter_pool", %{"pool" => pool}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_pool, pool)
-     |> load_leases()}
-  end
+  def handle_event("release_lease", %{"lease-id" => lease_id}, socket) do
+    with :ok <- ManagementSupport.mutable(socket),
+         lease when not is_nil(lease) <-
+           ManagementSupport.find_lease(socket.assigns.all_leases, lease_id),
+         opts when is_list(opts) <- ManagementSupport.command_options(lease.resource) do
+      result =
+        ServerManagement.dhcp_leases_release(
+          socket.assigns.selected_server.id,
+          %{"family" => ManagementSupport.family_wire(@family), "lease_id" => lease_id},
+          opts
+        )
 
-  @impl true
-  def handle_event("release_lease", %{"duid" => duid_str, "iaid" => iaid_str}, socket) do
-    with {iaid, ""} <- Integer.parse(iaid_str),
-         duid_binary <- parse_duid_string(duid_str) do
-      case YellowDog.Dhcpv6.release_lease(duid_binary, iaid) do
-        :ok ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Lease released successfully")
-           |> load_leases()}
-
-        {:error, reason} ->
-          {:noreply,
-           socket
-           |> put_flash(:error, "Failed to release lease: #{inspect(reason)}")}
-      end
+      finish_release(socket, result, lease_id)
     else
-      _ ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Invalid DUID or IAID format")}
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+      nil -> {:noreply, put_flash(socket, :error, "Lease revision is unavailable")}
+      _invalid -> {:noreply, put_flash(socket, :error, "Lease revision is unavailable")}
     end
   end
 
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    leases = socket.assigns.leases
-    csv = build_csv(leases)
-    filename = "dhcpv6_leases_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+  def handle_event("refresh", _params, socket), do: {:noreply, load_leases(socket)}
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_leases()}
   end
 
-  @impl true
-  def handle_info({:telemetry_event, _event, _measurements, _metadata}, socket) do
-    {:noreply, load_leases(socket)}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, _socket) do
-    :telemetry.detach("dhcpv6-leases-#{inspect(self())}")
-    :ok
-  end
-
-  # Private Functions
+  def render(assigns), do: ManagementComponents.leases(assigns)
 
   defp load_leases(socket) do
-    leases = get_leases()
-    pools = get_pools()
-
-    filtered_leases =
-      leases
-      |> filter_by_search(socket.assigns.search_query)
-      |> filter_by_state(socket.assigns.filter_state)
-      |> filter_by_ia_type(socket.assigns.filter_ia_type)
-      |> filter_by_pool(socket.assigns.filter_pool)
+    server_id = socket.assigns.selected_server.id
+    payload = %{"family" => ManagementSupport.family_wire(@family)}
+    status = ServerManagement.dhcp_status_get(server_id, payload)
+    leases_result = ServerManagement.dhcp_leases_list(server_id, payload)
+    results = [status, leases_result]
+    management_error = ManagementSupport.first_error(results)
 
     socket
-    |> assign(:leases, filtered_leases)
-    |> assign(:pools, pools)
+    |> assign(
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DHCPv6 Leases",
+      service_running: ManagementSupport.service_running?(status, @family),
+      all_leases:
+        leases_result
+        |> ManagementSupport.items(@family)
+        |> ManagementSupport.lease_views(),
+      commands_enabled?:
+        socket.assigns.service_online? and is_nil(management_error) and
+          not ManagementSupport.cached?(results),
+      management_error: management_error,
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
+    )
+    |> filter_leases()
   end
 
-  defp get_leases do
-    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.list_leases() end, [])
-  end
-
-  defp get_pools do
-    safe_call(
-      YellowDog.Dhcpv6.LeaseManager,
-      fn ->
-        YellowDog.Dhcpv6.LeaseManager.get_pools()
-        |> Enum.map(& &1.name)
-        |> Enum.sort()
-      end,
-      []
+  defp filter_leases(socket) do
+    assign(
+      socket,
+      :leases,
+      ManagementSupport.filter_leases(
+        socket.assigns.all_leases,
+        socket.assigns.search_query,
+        socket.assigns.filter_state
+      )
     )
   end
 
-  defp filter_by_search(leases, ""), do: leases
-
-  defp filter_by_search(leases, query) do
-    query_lower = String.downcase(query)
-
-    Enum.filter(leases, fn lease ->
-      duid_str = format_duid(lease.duid) |> String.downcase()
-
-      ip_str =
-        if(lease.ia_type == :ia_pd,
-          do: format_prefix(lease.delegated_prefix),
-          else: format_ipv6(lease.ip_address)
-        )
-        |> String.downcase()
-
-      hostname_str = (lease[:hostname] || "") |> String.downcase()
-
-      String.contains?(duid_str, query_lower) or
-        String.contains?(ip_str, query_lower) or
-        String.contains?(hostname_str, query_lower)
-    end)
+  defp finish_release(socket, %ManagementResult{status: :ok}, lease_id) do
+    {:noreply,
+     socket
+     |> assign(:all_leases, ManagementSupport.release_lease(socket.assigns.all_leases, lease_id))
+     |> filter_leases()
+     |> put_flash(:info, "Lease released successfully")}
   end
 
-  defp filter_by_ia_type(leases, "all"), do: leases
-
-  defp filter_by_ia_type(leases, ia_type),
-    do: Enum.filter(leases, fn l -> to_string(l.ia_type) == ia_type end)
-
-  defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
-    send(pid, {:telemetry_event, event, measurements, metadata})
-  end
-
-  defp build_csv(leases) do
-    header =
-      "DUID,IAID,IA Type,IPv6 Address/Prefix,State,Pool,Preferred Lifetime,Valid Lifetime,Allocated At\r\n"
-
-    rows =
-      Enum.map_join(leases, "\r\n", fn lease ->
-        [
-          csv_escape(format_duid(lease.duid)),
-          csv_escape(to_string(lease.iaid)),
-          csv_escape(to_string(lease.ia_type)),
-          csv_escape(format_ipv6_or_prefix(lease)),
-          csv_escape(to_string(lease.state)),
-          csv_escape(lease.pool_name || ""),
-          csv_escape(format_duration(lease.preferred_lifetime)),
-          csv_escape(format_duration(lease.valid_lifetime)),
-          csv_escape(format_expiration(lease.allocated_at))
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
-  end
-
-  defp format_ipv6_or_prefix(%{ia_type: :ia_na, ipv6_address: addr}) when addr != nil do
-    format_ipv6(addr)
-  end
-
-  defp format_ipv6_or_prefix(%{ia_type: :ia_pd, prefix: prefix, prefix_length: len})
-       when prefix != nil and len != nil do
-    "#{format_ipv6(prefix)}/#{len}"
-  end
-
-  defp format_ipv6_or_prefix(_), do: "N/A"
+  defp finish_release(socket, %ManagementResult{status: :error, message: message}, _lease_id),
+    do: {:noreply, put_flash(socket, :error, message)}
 end

@@ -1,451 +1,174 @@
 defmodule YellowDog.Console.IdentityLiveTest do
-  @moduledoc """
-  LiveView tests for identity management pages.
-  Tests page mounting and basic rendering when identity service may not be running.
-  """
-  use YellowDog.Console.ConnCase, async: true
+  use YellowDog.Console.ConnCase, async: false
+
   import Phoenix.LiveViewTest
 
-  @identity_routes [
-    "/server/identity",
-    "/server/identity/hosts",
-    "/server/identity/approvals",
-    "/server/identity/tokens",
-    "/server/identity/policies",
-    "/server/identity/audit",
-    "/server/identity/hosts/00000000-0000-0000-0000-000000000000"
-  ]
+  alias YellowDog.Console.TestManagementTransport
+  alias YellowDog.ManagementCore
+  alias YellowDog.Sync.Digest
+  alias YellowDog.Sync.Error
 
-  describe "Identity shared layout" do
-    test "renders the server sidebar on all identity pages", %{conn: conn} do
-      for path <- @identity_routes do
-        {:ok, _view, html} = live(conn, path)
+  @observed_at "2026-08-10T01:02:03Z"
 
-        assert html =~ ~r/class="[^"]*yd-sidebar[^"]*"/
-        assert html =~ ~s(href="/server/identity/hosts")
-      end
+  setup do
+    previous =
+      Map.new([:data_dir, :transport_module, :request_timeout], fn key ->
+        {key, Application.fetch_env(:yellow_dog_management_core, key)}
+      end)
+
+    data_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "yellow-dog-server-identity-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    Application.stop(:yellow_dog_management_core)
+    Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
+    Application.put_env(:yellow_dog_management_core, :transport_module, TestManagementTransport)
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 50)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+    start_supervised!(TestManagementTransport)
+
+    register_server("server-a", "Alpha Server", :online)
+    register_server("server-b", "Beta Server", :online)
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    :ok = TestManagementTransport.connect(:server, "server-b")
+
+    on_exit(fn ->
+      Application.stop(:yellow_dog_management_core)
+      Enum.each(previous, fn {key, value} -> restore_env(key, value) end)
+      {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+      File.rm_rf(data_dir)
+    end)
+
+    :ok
+  end
+
+  test "hosts page is selected-Server scoped and approve uses the exact host revision", %{
+    conn: conn
+  } do
+    pending = host("host-a", "alpha.example", "pending")
+    :ok = TestManagementTransport.script_request([list_result([pending])])
+
+    {:ok, view, html} = live(conn, "/server/server-a/identity/hosts")
+    assert html =~ "Alpha Server"
+    assert html =~ "alpha.example"
+    refute has_element?(view, "#identity-hosts", "Beta Server")
+    assert has_element?(view, "a[href='/server/server-a/identity/hosts/host-a']")
+
+    approved = host("host-a", "alpha.example", "approved")
+
+    :ok =
+      TestManagementTransport.script_request([
+        {:ok,
+         %{
+           "resource_type" => "identity_host",
+           "resource_id" => "host-a",
+           "revision" => approved["revision"],
+           "resource" => approved
+         }}
+      ])
+
+    assert render_click(view, "approve", %{"id" => "host-a"}) =~ "Host approved"
+
+    command = List.last(request_envelopes())
+    assert command.target_id == "server-a"
+    assert command.operation == "server.identity.hosts.approve"
+    assert command.payload == %{"host_id" => "host-a"}
+    assert command.expected_revision == pending["revision"]
+    assert is_binary(command.idempotency_key)
+  end
+
+  test "identity overview, detail, and audit preserve the selected Server", %{conn: conn} do
+    approved = host("host-a", "alpha.example", "approved")
+    :ok = TestManagementTransport.script_request([list_result([approved])])
+    {:ok, overview, html} = live(conn, "/server/server-a/identity")
+    assert html =~ "1 total"
+
+    for destination <- ~w(hosts approvals tokens policies audit) do
+      assert has_element?(overview, "a[href='/server/server-a/identity/#{destination}']")
+    end
+
+    :ok = TestManagementTransport.script_request([list_result([approved])])
+    {:ok, detail, html} = live(conn, "/server/server-a/identity/hosts/host-a")
+    assert html =~ "alpha.example"
+    assert has_element?(detail, "a[href='/server/server-a/identity/hosts']")
+
+    audit = %{
+      "audit_id" => "audit-1",
+      "action" => "host.approved",
+      "subject_id" => "host-a",
+      "occurred_at" => @observed_at
+    }
+
+    :ok = TestManagementTransport.script_request([list_result([audit])])
+    {:ok, _audit, html} = live(conn, "/server/server-a/identity/audit")
+    assert html =~ "host.approved"
+    assert Enum.all?(request_envelopes(), &(&1.target_id == "server-a"))
+  end
+
+  test "unsupported Identity owners are visible and never expose imperative controls", %{
+    conn: conn
+  } do
+    unsupported = {:error, Error.new(:unsupported, "unsupported operation", %{})}
+
+    for {path, operation, page_id} <- [
+          {"approvals", "server.identity.approvals.list", "identity-approvals"},
+          {"tokens", "server.identity.tokens.list", "identity-tokens"},
+          {"policies", "server.identity.policies.get", "identity-policies"}
+        ] do
+      :ok = TestManagementTransport.script_request([unsupported])
+      {:ok, view, html} = live(conn, "/server/server-a/identity/#{path}")
+      assert html =~ "unsupported operation"
+      assert has_element?(view, "##{page_id}")
+      refute has_element?(view, "##{page_id} button[data-management-command]")
+      assert List.last(request_envelopes()).operation == operation
     end
   end
 
-  # ============================================================================
-  # Identity Index
-  # ============================================================================
+  test "offline hosts use the cached snapshot and never dispatch a mutation", %{conn: conn} do
+    pending = host("host-a", "cached.example", "pending")
+    :ok = TestManagementTransport.script_request([list_result([pending])])
+    {:ok, _online, _html} = live(conn, "/server/server-a/identity/hosts")
+    request_count = length(request_envelopes())
 
-  describe "Identity Index /identity" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "Host Identity Registry"
-    end
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
 
-    test "shows stats", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "Total Hosts"
-      assert html =~ "Pending"
-      assert html =~ "Approved"
-      assert html =~ "Revoked"
-    end
+    {:ok, offline, html} = live(conn, "/server/server-a/identity/hosts")
+    assert html =~ "Offline cached snapshot"
+    assert html =~ "cached.example"
+    assert has_element?(offline, "#identity-hosts button[disabled]")
+    assert length(request_envelopes()) == request_count
 
-    test "shows service status badge", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "Running" or html =~ "Stopped"
-    end
+    assert render_click(offline, "approve", %{"id" => "host-a"}) =~
+             "selected Server is offline"
 
-    test "shows quick action links", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "View All Hosts"
-      assert html =~ "Pending Approvals"
-      assert html =~ "Provisioning Tokens"
-      assert html =~ "Approval Policies"
-      assert html =~ "Audit Log"
-    end
-
-    test "shows export buttons", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "Export YAML"
-      assert html =~ "Export sops"
-    end
-
-    test "refresh event works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity")
-      html = render_click(view, "refresh")
-      assert html =~ "Host Identity Registry"
-    end
-
-    test "shows trust level distribution card", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "Trust Level Distribution"
-    end
-
-    test "shows trust providers card", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity")
-      assert html =~ "Trust Providers"
-    end
-
-    test "preview_export yaml event shows export preview", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity")
-      html = render_click(view, "preview_export", %{"format" => "yaml"})
-      assert html =~ "Export Preview" or html =~ "YAML"
-    end
-
-    test "preview_export sops event shows sops preview", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity")
-      html = render_click(view, "preview_export", %{"format" => "sops"})
-      assert html =~ "Export Preview" or html =~ "SOPS"
-    end
-
-    test "close_export hides the preview", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity")
-      render_click(view, "preview_export", %{"format" => "yaml"})
-      html = render_click(view, "close_export")
-      assert html =~ "Host Identity Registry"
-    end
+    assert length(request_envelopes()) == request_count
   end
 
-  # ============================================================================
-  # Hosts List
-  # ============================================================================
-
-  describe "Hosts List /identity/hosts" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/hosts")
-      assert html =~ "All Hosts"
-    end
-
-    test "shows search input", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/hosts")
-      assert html =~ "Search hostname"
-    end
-
-    test "shows table headers", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/hosts")
-      assert html =~ "Hostname"
-      assert html =~ "Status"
-      assert html =~ "Trust"
-    end
-
-    test "filter event works for pending", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_click(view, "filter", %{"status" => "pending"})
-      assert html =~ "Hostname"
-    end
-
-    test "filter event works for approved", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_click(view, "filter", %{"status" => "approved"})
-      assert html =~ "Hostname"
-    end
-
-    test "filter event works for revoked", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_click(view, "filter", %{"status" => "revoked"})
-      assert html =~ "Hostname"
-    end
-
-    test "filter event works for all", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_click(view, "filter", %{"status" => "all"})
-      assert html =~ "Hostname"
-    end
-
-    test "search event filters by hostname", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_change(view, "search", %{"q" => "node-01"})
-      assert html =~ "Hostname"
-    end
-
-    test "search event with empty query shows all", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_change(view, "search", %{"q" => ""})
-      assert html =~ "Hostname"
-    end
-
-    test "refresh event reloads host list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/hosts")
-      html = render_click(view, "refresh")
-      assert html =~ "Hostname"
-    end
-
-    test "shows empty state when no hosts registered", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/hosts")
-      assert html =~ "No hosts registered" or html =~ "Hostname"
-    end
+  defp host(id, name, state) do
+    stable = %{"host_id" => id, "name" => name, "state" => state}
+    assert {:ok, revision} = Digest.calculate(stable)
+    Map.put(stable, "revision", revision)
   end
 
-  # ============================================================================
-  # Pending Approvals
-  # ============================================================================
-
-  describe "Approvals /identity/approvals" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/approvals")
-      assert html =~ "Pending Approvals"
-    end
-
-    test "shows empty state when no pending hosts", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/approvals")
-      assert html =~ "No pending approvals" or html =~ "Pending Approvals"
-    end
-
-    test "refresh event works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "refresh")
-      assert html =~ "Pending Approvals"
-    end
-
-    test "select_all event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "select_all")
-      assert html =~ "Pending Approvals"
-    end
-
-    test "select_none event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "select_none")
-      assert html =~ "Pending Approvals"
-    end
-
-    test "bulk_approve with empty selection does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "bulk_approve")
-      assert html =~ "Pending Approvals"
-    end
-
-    test "bulk_reject with empty selection does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "bulk_reject")
-      assert html =~ "Pending Approvals"
-    end
-
-    test "approve event for nonexistent host handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "approve", %{"id" => "nonexistent-id"})
-      assert html =~ "Pending Approvals"
-    end
-
-    test "reject event for nonexistent host handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      html = render_click(view, "reject", %{"id" => "nonexistent-id"})
-      assert html =~ "Pending Approvals"
-    end
-
-    test "PubSub host_registered message triggers reload", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      send(view.pid, {:host_registered, %{id: "new-host-id"}})
-      html = render(view)
-      assert html =~ "Pending Approvals"
-    end
-
-    test "PubSub host_updated message triggers reload", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      send(view.pid, {:host_updated, %{id: "some-host-id"}})
-      html = render(view)
-      assert html =~ "Pending Approvals"
-    end
-
-    test "unknown PubSub messages are silently ignored", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/approvals")
-      send(view.pid, {:unknown_message, :data})
-      html = render(view)
-      assert html =~ "Pending Approvals"
-    end
+  defp list_result(items) do
+    assert {:ok, revision} = Digest.calculate(items)
+    {:ok, %{"items" => items, "revision" => revision, "observed_at" => @observed_at}}
   end
 
-  # ============================================================================
-  # Provisioning Tokens
-  # ============================================================================
-
-  describe "Tokens /identity/tokens" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/tokens")
-      assert html =~ "Provisioning Tokens"
-    end
-
-    test "shows create token button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/tokens")
-      assert html =~ "New Token"
-    end
-
-    test "shows table headers", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/tokens")
-      assert html =~ "Pattern"
-      assert html =~ "Uses"
-      assert html =~ "Expires"
-    end
-
-    test "toggle create form", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/tokens")
-      html = render_click(view, "toggle_create")
-      assert html =~ "Create Provisioning Token"
-      assert html =~ "Hostname Pattern"
-      assert html =~ "Max Uses"
-    end
-
-    test "toggle create form twice hides it again", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/tokens")
-      render_click(view, "toggle_create")
-      html = render_click(view, "toggle_create")
-      # Form should be hidden again
-      assert html =~ "Provisioning Tokens"
-    end
-
-    test "create_token form submission handles unavailable service gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/tokens")
-      render_click(view, "toggle_create")
-
-      html =
-        view
-        |> form("form",
-          hostname_pattern: "node-*",
-          max_uses: "1",
-          ttl_hours: "24",
-          role: ""
-        )
-        |> render_submit()
-
-      # Either token created (if service running) or error flash shown
-      assert html =~ "Provisioning Tokens"
-    end
-
-    test "revoke_token for nonexistent id handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/tokens")
-      html = render_click(view, "revoke_token", %{"id" => "nonexistent-token-id"})
-      assert html =~ "Provisioning Tokens"
-    end
-
-    test "refresh event works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/tokens")
-      html = render_click(view, "refresh")
-      assert html =~ "Provisioning Tokens"
-    end
-
-    test "dismiss_token event clears new token display", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/tokens")
-      html = render_click(view, "dismiss_token")
-      assert html =~ "Provisioning Tokens"
-    end
+  defp request_envelopes do
+    for {:request, envelope, _timeout} <- TestManagementTransport.recorded(), do: envelope
   end
 
-  # ============================================================================
-  # Approval Policies
-  # ============================================================================
-
-  describe "Policies /identity/policies" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/policies")
-      assert html =~ "Approval Policies"
-    end
-
-    test "shows config info alert", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/policies")
-      assert html =~ "config.toml"
-      assert html =~ "identity.approval"
-    end
-
-    test "shows default action", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/policies")
-      assert html =~ "Default action"
-    end
-
-    test "refresh event works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/policies")
-      html = render_click(view, "refresh")
-      assert html =~ "Approval Policies"
-    end
+  defp register_server(id, name, status) do
+    assert {:ok, _server} =
+             ManagementCore.register_server(%{id: id, name: name, profile: :full, status: status})
   end
 
-  # ============================================================================
-  # Audit Log
-  # ============================================================================
+  defp restore_env(key, {:ok, value}),
+    do: Application.put_env(:yellow_dog_management_core, key, value)
 
-  describe "Audit /identity/audit" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/audit")
-      assert html =~ "Audit Log"
-    end
-
-    test "shows filter controls", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/audit")
-      assert html =~ "All Events" or html =~ "Event Type"
-    end
-
-    test "filter event works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/audit")
-      html = render_change(view, "filter", %{"event" => "host.approved", "host" => ""})
-      assert html =~ "Audit Log"
-    end
-
-    test "filter with host id works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/audit")
-      html = render_change(view, "filter", %{"event" => "", "host" => "some-host-id"})
-      assert html =~ "Audit Log"
-    end
-
-    test "filter reset works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/audit")
-      html = render_change(view, "filter", %{"event" => "", "host" => ""})
-      assert html =~ "Audit Log"
-    end
-
-    test "refresh event works", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/identity/audit")
-      html = render_click(view, "refresh")
-      assert html =~ "Audit Log"
-    end
-
-    test "shows empty state when no entries", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/identity/audit")
-      assert html =~ "No audit entries found" or html =~ "Timestamp"
-    end
-  end
-
-  # ============================================================================
-  # Host Detail
-  # ============================================================================
-
-  describe "Host Detail /identity/hosts/:id" do
-    test "mounts successfully for unknown host id", %{conn: conn} do
-      {:ok, _view, html} =
-        live(conn, "/server/identity/hosts/00000000-0000-0000-0000-000000000000")
-
-      assert html =~ "Host not found" or html =~ "Host"
-    end
-
-    test "shows back navigation link", %{conn: conn} do
-      {:ok, _view, html} =
-        live(conn, "/server/identity/hosts/00000000-0000-0000-0000-000000000000")
-
-      assert html =~ "Back" or html =~ "/server/identity/hosts"
-    end
-
-    test "shows not found alert for missing host", %{conn: conn} do
-      {:ok, _view, html} =
-        live(conn, "/server/identity/hosts/00000000-0000-0000-0000-000000000000")
-
-      assert html =~ "Host not found" or html =~ "Host"
-    end
-
-    test "page title contains Host", %{conn: conn} do
-      {:ok, _view, html} =
-        live(conn, "/server/identity/hosts/00000000-0000-0000-0000-000000000000")
-
-      assert html =~ "Host"
-    end
-
-    test "approve event handles gracefully when host not found", %{conn: conn} do
-      {:ok, view, _html} =
-        live(conn, "/server/identity/hosts/00000000-0000-0000-0000-000000000000")
-
-      # approve event should not crash the LiveView
-      html = render_click(view, "approve")
-      assert html =~ "Host"
-    end
-
-    test "revoke event handles gracefully when host not found", %{conn: conn} do
-      {:ok, view, _html} =
-        live(conn, "/server/identity/hosts/00000000-0000-0000-0000-000000000000")
-
-      html = render_click(view, "revoke")
-      assert html =~ "Host"
-    end
-  end
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
 end

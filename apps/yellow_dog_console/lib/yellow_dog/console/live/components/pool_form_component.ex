@@ -14,7 +14,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
   @impl true
   def update(assigns, socket) do
     pool = assigns[:pool] || %AddressPool{}
-    changeset = AddressPool.changeset(pool, %{})
+    changeset = pool_changeset(pool, %{}, assigns[:management_fields_only] || false)
 
     {:ok,
      socket
@@ -26,8 +26,11 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
   @impl true
   def handle_event("validate", %{"address_pool" => pool_params}, socket) do
     changeset =
-      socket.assigns.pool
-      |> AddressPool.changeset(pool_params)
+      pool_changeset(
+        socket.assigns.pool,
+        pool_params,
+        socket.assigns[:management_fields_only] || false
+      )
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, :changeset, changeset)}
@@ -35,7 +38,12 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
 
   @impl true
   def handle_event("save", %{"address_pool" => pool_params}, socket) do
-    changeset = AddressPool.changeset(socket.assigns.pool, pool_params)
+    changeset =
+      pool_changeset(
+        socket.assigns.pool,
+        pool_params,
+        socket.assigns[:management_fields_only] || false
+      )
 
     if changeset.valid? do
       pool = Ecto.Changeset.apply_changes(changeset)
@@ -61,8 +69,10 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
   def render(assigns) do
     protocol = assigns[:protocol] || :ipv4
     mode = assigns[:mode] || :create
+    management_fields_only = assigns[:management_fields_only] || false
     assigns = assign(assigns, :protocol, protocol)
     assigns = assign(assigns, :mode, mode)
+    assigns = assign(assigns, :management_fields_only, management_fields_only)
 
     ~H"""
     <div
@@ -124,13 +134,18 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               name="address_pool[network]"
               value={Ecto.Changeset.get_field(@changeset, :network)}
               placeholder={network_placeholder(@protocol)}
+              required={@management_fields_only}
               class={[
                 "input w-full",
                 Keyword.has_key?(@changeset.errors, :network) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:network} />
-            <span class="helper-text">The subnet this pool belongs to (optional)</span>
+            <span class="helper-text">
+              {if @management_fields_only,
+                do: "The subnet reported by Server management",
+                else: "The subnet this pool belongs to (optional)"}
+            </span>
           </div>
 
           <!-- IP Range -->
@@ -186,7 +201,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               <span class="helper-text">Minimum 60 seconds. Common: 3600 (1h), 86400 (1d)</span>
             </div>
 
-            <div class="form-group">
+            <div :if={not @management_fields_only} class="form-group">
               <label class="form-label">Gateway (Optional)</label>
               <input
                 type="text"
@@ -240,7 +255,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
           <% end %>
 
           <!-- DNS Servers (comma-separated) -->
-          <div class="form-group">
+          <div :if={not @management_fields_only} class="form-group">
             <label class="form-label">DNS Servers (Optional, comma-separated)</label>
             <input
               type="text"
@@ -292,4 +307,12 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
   defp format_dns_servers([]), do: ""
   defp format_dns_servers(nil), do: ""
   defp format_dns_servers(servers) when is_list(servers), do: Enum.join(servers, ", ")
+
+  defp pool_changeset(pool, attrs, true) do
+    pool
+    |> AddressPool.changeset(attrs)
+    |> Ecto.Changeset.validate_required([:network])
+  end
+
+  defp pool_changeset(pool, attrs, false), do: AddressPool.changeset(pool, attrs)
 end

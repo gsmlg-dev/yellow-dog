@@ -49,8 +49,12 @@ defmodule YellowDog.Server.Control.RuntimeTest do
                 %{"service" => "dns", "state" => "running"},
                 %{"service" => "server_agent", "state" => "failed"}
               ],
-              "next_cursor" => nil
+              "revision" => revision,
+              "observed_at" => observed_at
             }} = Runtime.dispatch("server.runtime.services.list", %{})
+
+    assert is_binary(revision) and byte_size(revision) == 64
+    assert {:ok, _observed_at, 0} = DateTime.from_iso8601(observed_at)
 
     assert {:ok,
             %{
@@ -97,6 +101,23 @@ defmodule YellowDog.Server.Control.RuntimeTest do
              Runtime.dispatch("server.runtime.services.start", %{"service" => "dns"})
 
     assert [stop: :dns, start: :dns] = ServerRuntimeControlFake.take_calls()
+  end
+
+  test "every runtime service command hashes the exact approved list item for CAS" do
+    assert {:ok, %{"items" => items}} =
+             Runtime.dispatch("server.runtime.services.list", %{})
+
+    list_item = Enum.find(items, &(&1["service"] == "dns"))
+    assert {:ok, expected_revision} = Revision.calculate(list_item)
+
+    for operation <- [
+          "server.runtime.services.start",
+          "server.runtime.services.stop",
+          "server.runtime.services.restart"
+        ] do
+      assert {:ok, ^list_item} = Runtime.current(operation, %{"service" => "dns"})
+      assert {:ok, ^expected_revision} = Revision.calculate(list_item)
+    end
   end
 
   test "restart preserves bounded phase outcomes when the start phase fails" do

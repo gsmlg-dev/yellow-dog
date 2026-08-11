@@ -1,187 +1,110 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-6">
-    <.service_alert :if={not @service_running} service="mDNS" />
-    <!-- Header -->
-    <div class="flex items-center justify-between">
+  <div id="mdns-monitor" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Network Monitor</h1>
-        <p class="mt-2 text-on-surface-variant">Real-time mDNS query and response monitoring</p>
+        <h1 class="text-4xl font-bold">mDNS Monitor</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
+        </p>
       </div>
       <div class="flex items-center gap-2">
-        <.dm_btn
-          variant={if @auto_refresh, do: "success", else: "ghost"}
-          size="sm"
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
           type="button"
-          phx-click="toggle_auto_refresh"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
         >
-          <%= if @auto_refresh do %>
-            <.dm_mdi name="pause-circle-outline" class="w-5 h-5" />
-          <% else %>
-            <.dm_mdi name="play-circle-outline" class="w-5 h-5" />
-          <% end %>
-          {if @auto_refresh, do: "Auto-Refresh On", else: "Auto-Refresh Off"}
-        </.dm_btn>
-        <.dm_btn
-          variant="error"
-          size="sm"
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
+        <button
           type="button"
+          class="btn btn-error btn-sm gap-2"
           phx-click="clear_cache"
-          phx-disable-with="Clearing..."
-          data-confirm="Are you sure you want to clear all cached data?"
+          disabled={!@commands_enabled? or is_nil(@cache_revision)}
+          data-confirm="Clear the selected Server's mDNS cache?"
         >
-          <.dm_mdi name="delete" class="w-5 h-5" /> Clear Cache
-        </.dm_btn>
-        <.dm_btn
-          variant="ghost"
-          size="sm"
-          type="button"
-          phx-click="export_csv"
-          id="export-csv"
-          phx-hook="CsvDownload"
-          aria-label="Export CSV"
-        >
-          <.dm_mdi name="download" class="w-5 h-5" /> Export CSV
-        </.dm_btn>
+          <.dm_mdi name="delete" class="h-4 w-4" /> Clear Cache
+        </button>
       </div>
     </div>
-    <!-- Network Statistics -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Total Queries</h2>
-          <div class="text-2xl font-semibold">{@stats.total_queries}</div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Total Responses</h2>
-          <div class="text-2xl font-semibold">{@stats.total_responses}</div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Queries/Min</h2>
-          <div class="text-2xl font-semibold text-info">
-            {Float.round(@stats.queries_per_minute, 1)}
-          </div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Unique Hosts</h2>
-          <div class="text-2xl font-semibold text-secondary">{@stats.unique_hosts}</div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Active Services</h2>
-          <div class="text-2xl font-semibold text-success">{@stats.active_services}</div>
-        </div>
-      </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-monitor-offline">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+        Cache mutations are disabled.
+      </span>
     </div>
-    <!-- Most Queried Services -->
-    <%= if @stats.most_queried_services && @stats.most_queried_services != [] do %>
-      <div class="card bg-surface shadow-sm">
-        <div class="card-body">
-          <h2 class="card-title">Most Queried Services</h2>
-          <div class="space-y-3">
-            <div
-              :for={service <- Enum.take(@stats.most_queried_services, 5)}
-              class="flex items-center justify-between"
-            >
-              <div class="flex-1">
-                <p class="text-sm font-medium">{elem(service, 0)}</p>
-                <progress
-                  class="progress progress-primary w-full"
-                  value={calculate_percentage(elem(service, 1), @stats.most_queried_services)}
-                  max="100"
-                ></progress>
-              </div>
-              <div class="ml-4">
-                <span class="text-sm font-semibold">{elem(service, 1)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-    <!-- Query Log -->
-    <div class="card bg-surface shadow-sm">
-      <div class="card-body p-0">
-        <div class="flex items-center justify-between gap-4 px-6 py-4">
-          <h2 class="card-title shrink-0">Recent Queries</h2>
-          <input
-            type="text"
-            placeholder="Search queries..."
-            aria-label="Search mDNS queries"
-            value={@search}
-            phx-change="search"
-            phx-debounce="300"
-            name="search"
-            class="input input-sm flex-1 max-w-xs"
-          />
-          <select
-            phx-change="set_limit"
-            name="limit"
-            class="select select-sm"
-            aria-label="Results per page"
-          >
-            <option value="50" selected={@limit == 50}>50 queries</option>
-            <option value="100" selected={@limit == 100}>100 queries</option>
-            <option value="200" selected={@limit == 200}>200 queries</option>
-            <option value="500" selected={@limit == 500}>500 queries</option>
-          </select>
-        </div>
-        <div class="overflow-x-auto">
-          <%= if Enum.empty?(@queries) do %>
-            <div class="p-12 text-center">
-              <.dm_mdi name="chart-bar" class="mx-auto h-12 w-12 text-on-surface-variant" />
-              <h3 class="mt-2 text-sm font-medium">No queries logged yet</h3>
-              <p class="mt-1 text-sm text-on-surface-variant">
-                mDNS queries will appear here as they are detected on the network
-              </p>
-            </div>
-          <% else %>
-            <table class="table table-striped">
-              <thead>
-                <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Source IP</th>
-                  <th scope="col">Query Name</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Class</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr :for={query <- filtered_queries(@queries, @search)}>
-                  <td class="text-on-surface-variant">
-                    {format_time(query.timestamp)}
-                  </td>
-                  <td class="font-medium">
-                    {format_ip(query.source_ip)}
-                  </td>
-                  <td>
-                    {query.name}
-                  </td>
-                  <td>
-                    <span class="badge badge-info badge-sm">
-                      {query.type}
-                    </span>
-                  </td>
-                  <td class="text-on-surface-variant">
-                    {query.class}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          <% end %>
-        </div>
-        <%= if @search != "" do %>
-          <div class="px-6 py-2 text-sm text-on-surface-variant">
-            Showing {length(filtered_queries(@queries, @search))} of {length(@queries)} queries
-          </div>
-        <% end %>
-      </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-monitor-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error.message}</span>
     </div>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Recent queries</div>
+        <div class="mt-1 text-3xl font-semibold">{length(@queries)}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Cached records</div>
+        <div class="mt-1 text-3xl font-semibold">{length(@cache_entries)}</div>
+      </.card>
+    </div>
+
+    <div class="flex flex-col gap-3 sm:flex-row">
+      <input
+        type="search"
+        name="search"
+        value={@search}
+        placeholder="Search queries"
+        aria-label="Search mDNS queries"
+        class="input w-full"
+        phx-change="search"
+        phx-debounce="300"
+      />
+      <select name="limit" class="select" aria-label="Query limit" phx-change="set_limit">
+        <option :for={limit <- [50, 100, 200, 500]} value={limit} selected={@limit == limit}>
+          {limit} queries
+        </option>
+      </select>
+    </div>
+
+    <.card title="Recent queries">
+      <div
+        :if={filtered_queries(@queries, @search) == []}
+        class="py-10 text-center text-on-surface-variant"
+      >
+        No mDNS queries match this filter.
+      </div>
+      <div :if={filtered_queries(@queries, @search) != []} class="overflow-x-auto">
+        <table class="table table-striped" id="mdns-query-table">
+          <thead>
+            <tr>
+              <th>Observed</th><th>Source</th><th>Name</th><th>Type</th><th>Answered</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={query <- filtered_queries(@queries, @search)}>
+              <td>{query["occurred_at"]}</td>
+              <td class="font-mono text-sm">
+                {query["source_address"]}:{query["source_port"]}
+              </td>
+              <td>{query["query_name"]}</td>
+              <td>
+                <.badge color="info" size="sm">{query["record_type"]}</.badge>
+              </td>
+              <td>{if query["answered"], do: "Yes", else: "No"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
   </div>
 </Layouts.app>

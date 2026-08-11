@@ -63,6 +63,7 @@ defmodule YellowDog.Console.MixProject do
 
       # YellowDog dependencies
       {:yellow_dog_management_core, in_umbrella: true, runtime: management_runtime?},
+      {:yellow_dog_sync, in_umbrella: true},
       {:yellow_dog, in_umbrella: true, runtime: service_runtime?},
       {:yellow_dog_store, in_umbrella: true, runtime: service_runtime?},
       {:yellow_dog_mdns, in_umbrella: true, runtime: service_runtime?},

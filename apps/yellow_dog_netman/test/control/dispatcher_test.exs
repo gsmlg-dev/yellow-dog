@@ -43,9 +43,6 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
     wrong_target = %{envelope("netman.profiles.list", %{}) | target_type: :server}
     assert {:error, %Error{code: :invalid}} = Control.dispatch(wrong_target)
 
-    assert {:error, %Error{code: :unsupported}} =
-             Control.dispatch(envelope("netman.runtime.capabilities.get", %{}))
-
     initial_atom_count = :erlang.system_info(:atom_count)
 
     assert {:error, %Error{code: :invalid}} =
@@ -57,12 +54,10 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
   test "validates envelope payload bounds before routing an adapter" do
     assert {:error, %Error{code: :invalid}} =
              Control.dispatch(
-               envelope("netman.profiles.validate", %{
-                 "profile_id" => "office",
-                 "name" => "Office",
-                 "interfaces" => [],
-                 "approved" => true
-               })
+               envelope(
+                 "netman.profiles.validate",
+                 Map.put(profile_payload(), "approved", true)
+               )
              )
 
     assert [] = NetmanControlTestAdapter.take_calls()
@@ -73,18 +68,16 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
     NetmanControlTestAdapter.configure(response: {:ok, result})
 
     assert {:ok, ^result} =
-             Control.dispatch(
-               envelope("netman.profiles.validate", %{
-                 "profile_id" => "office",
-                 "name" => "Office",
-                 "interfaces" => []
-               })
-             )
+             Control.dispatch(envelope("netman.profiles.validate", profile_payload()))
 
     assert [{:dispatch, "netman.profiles.validate"}] = NetmanControlTestAdapter.take_calls()
   end
 
-  test "returns unsupported for a known route without a production adapter" do
+  test "returns unsupported for a known route whose configured adapter is unavailable" do
+    Application.put_env(:yellow_dog_netman, Dispatcher,
+      adapters: %{resolved: NetmanUnavailableControlAdapter}
+    )
+
     assert {:error, %Error{code: :unsupported}} =
              Control.dispatch(envelope("netman.resolved.upstreams.list", %{}))
   end
@@ -102,10 +95,12 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
           {"netman.network.links.list", %{}, :link_state},
           {"netman.network.addresses.list", %{}, :interfaces},
           {"netman.network.routes.list", %{}, :routes},
-          {"netman.network.connection_state.get", %{"connection_id" => "office"}, :interfaces},
-          {"netman.network.connection_state.get", %{"connection_id" => "office"}, :link_state},
+          {"netman.network.connection_state.get", connection_ref(), :interfaces},
+          {"netman.network.connection_state.get", connection_ref(), :link_state},
           {"netman.resolved.upstreams.list", %{}, :dns_client},
-          {"netman.dhcp_client.fsm.get", %{}, :dhcp_client},
+          {"netman.resolved.link_dns.list", %{}, :dns_client},
+          {"netman.resolved.queries.list", %{"limit" => 10}, :dns_client},
+          {"netman.dhcp_client.fsm.get", connection_ref(), :dhcp_client},
           {"netman.vpn.profile.get", %{}, :vpn}
         ] do
       features = Map.put(all_features(), disabled_feature, false)
@@ -143,11 +138,18 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
           {"netman.network.links.list", %{}, list_result(network_link())},
           {"netman.network.addresses.list", %{}, list_result(network_address())},
           {"netman.network.routes.list", %{}, list_result(network_route())},
-          {"netman.network.connection_state.get", %{"connection_id" => "office"},
-           %{"connection_id" => "office", "state" => "activated"}},
-          {"netman.resolved.upstreams.list", %{}, list_result(resolved_upstream())},
-          {"netman.dhcp_client.fsm.get", %{}, %{"connection_id" => "office", "state" => "bound"}},
-          {"netman.vpn.profile.get", %{}, %{"profile_id" => "vpn-default", "state" => "resolved"}}
+          {"netman.network.connection_state.get", connection_ref(),
+           Map.put(connection_ref(), "state", "activated")},
+          {"netman.resolved.upstreams.list", %{},
+           resolved_upstream()
+           |> list_result()
+           |> Map.put("config_revision", @revision)},
+          {"netman.resolved.link_dns.list", %{}, list_result(resolved_link_dns())},
+          {"netman.resolved.queries.list", %{"limit" => 10}, list_result(resolved_query())},
+          {"netman.dhcp_client.fsm.get", connection_ref(),
+           Map.put(connection_ref(), "state", "bound")},
+          {"netman.vpn.profile.get", %{},
+           %{"profile_id" => "vpn-default", "state" => "resolved", "revision" => @revision}}
         ] do
       NetmanControlTestAdapter.configure(response: {:ok, result})
 
@@ -445,8 +447,32 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
   end
 
   defp profile_payload(profile_id \\ "office") do
-    %{"profile_id" => profile_id, "name" => "Office", "interfaces" => []}
+    %{
+      "profile_id" => profile_id,
+      "type" => "ethernet",
+      "interface" => "eth0",
+      "autoconnect" => true,
+      "autoconnect_priority" => 0,
+      "zone" => "default",
+      "ethernet" => %{"mtu" => nil},
+      "ipv4" => %{
+        "method" => "auto",
+        "address" => nil,
+        "gateway" => nil,
+        "dns" => [],
+        "dns_search" => []
+      },
+      "ipv6" => %{
+        "method" => "auto",
+        "address" => nil,
+        "gateway" => nil,
+        "dns" => [],
+        "dns_search" => []
+      }
+    }
   end
+
+  defp connection_ref, do: %{"profile_id" => "office", "interface" => "eth0"}
 
   defp profile_validation do
     %{"profile_id" => "office", "valid" => true, "errors" => []}
@@ -466,12 +492,30 @@ defmodule YellowDog.Netman.Control.DispatcherTest do
 
   defp resolved_upstream, do: %{"address" => "1.1.1.1", "source" => "managed"}
 
+  defp resolved_link_dns do
+    %{
+      "link_id" => "eth0",
+      "servers" => ["1.1.1.1"],
+      "search_domains" => ["example.test"],
+      "priority" => 100
+    }
+  end
+
+  defp resolved_query do
+    %{
+      "timestamp" => DateTime.to_iso8601(@sent_at),
+      "domain" => "example.test",
+      "type" => "A",
+      "source" => "cache",
+      "duration_us" => 25
+    }
+  end
+
   defp revisioned_profile(profile_id, revision) do
     %{
-      "resource_type" => "netman_profile",
-      "resource_id" => profile_id,
-      "resource" => profile_payload(profile_id),
-      "revision" => revision
+      "profile" => profile_payload(profile_id),
+      "desired_revision" => revision,
+      "active_revision" => nil
     }
   end
 

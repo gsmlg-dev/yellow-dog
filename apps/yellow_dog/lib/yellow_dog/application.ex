@@ -8,7 +8,7 @@ defmodule YellowDog.Application do
 
   use Application
 
-  alias YellowDog.Server.ProfileResolver
+  alias YellowDog.Server.{BootConfig, ConfigReconciler, ProfileResolver}
   alias YellowDog.Server.ServiceRegistry
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Digest
@@ -22,6 +22,7 @@ defmodule YellowDog.Application do
   @max_reconnect_ms 86_400_000
   @server_agent_reconcile_attempts 3
   @server_agent_terminal_reconcile_attempts 3
+  @managed_reconcile_key {__MODULE__, :managed_reconcile}
 
   @impl true
   def start(_type, _args) do
@@ -35,8 +36,17 @@ defmodule YellowDog.Application do
       Abyss.Logger.attach_logger(log_level)
     end
 
-    # Load TOML configuration in the application
-    config = load_toml_config()
+    # Load the local/bootstrap TOML first, then select only the exact managed
+    # revision acknowledged as known-good by the durable Server-agent journal.
+    case load_boot_config() do
+      {:ok, boot} -> start_with_boot(boot)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp start_with_boot(boot) do
+    bootstrap = boot.bootstrap
+    config = boot.effective
 
     # Log which config file was loaded and enabled services
     log_config_info(config)
@@ -54,7 +64,7 @@ defmodule YellowDog.Application do
     # prevent other services from starting.
     children = [
       # Configuration manager - must start first
-      {YellowDog.Config, config},
+      {YellowDog.Config, [bootstrap: bootstrap, effective: config]},
       # Data layer supervisor (Registry for collection tracking)
       YellowDog.Data.Supervisor,
       # Store mode detector: creates ETS table, detects single-node vs. cluster
@@ -85,6 +95,37 @@ defmodule YellowDog.Application do
         error
     end
   end
+
+  @doc "Returns the local directory shared by managed config history and apply evidence."
+  @spec managed_config_data_dir(map()) :: String.t()
+  def managed_config_data_dir(bootstrap) when is_map(bootstrap) do
+    case runtime_value(server_agent_runtime(), :data_dir) do
+      value when is_binary(value) and value != "" -> resolve_data_dir(value)
+      _unset -> get_data_dir(bootstrap)
+    end
+  end
+
+  @doc "Hot-reconciles only service supervisors affected by an effective config change."
+  @spec reconcile_config(map(), map()) :: :ok | {:error, term()}
+  def reconcile_config(previous, next) when is_map(previous) and is_map(next) do
+    previous_flag = Process.get(@managed_reconcile_key)
+    Process.put(@managed_reconcile_key, true)
+
+    try do
+      case ConfigReconciler.reconcile(previous, next) do
+        :ok ->
+          refresh_managed_server_agent_identity(next)
+          :ok
+
+        {:error, _reason} = error ->
+          error
+      end
+    after
+      restore_process_flag(previous_flag)
+    end
+  end
+
+  def reconcile_config(_previous, _next), do: {:error, :invalid_reconciliation_input}
 
   @doc """
   Starts a service supervisor dynamically.
@@ -446,6 +487,75 @@ defmodule YellowDog.Application do
     config
     |> maybe_adjust_for_test()
     |> maybe_adjust_for_platform()
+  end
+
+  defp load_boot_config do
+    bootstrap = load_toml_config()
+    data_dir = managed_config_data_dir(bootstrap)
+    server_id = managed_server_id(bootstrap)
+    selection = BootConfig.select(bootstrap, data_dir, server_id)
+
+    :telemetry.execute(
+      [:yellow_dog, :config, :boot_selected],
+      %{count: 1},
+      %{
+        source: selection.source,
+        revision: selection.revision,
+        error: selection.error,
+        severity: boot_selection_severity(selection)
+      }
+    )
+
+    case selection do
+      %{config: config} when is_map(config) ->
+        {:ok, %{bootstrap: bootstrap, effective: config}}
+
+      %{source: :managed_unavailable, error: error} ->
+        {:error, {:managed_config_unavailable, error}}
+
+      _invalid ->
+        {:error, {:managed_config_unavailable, :invalid_selection}}
+    end
+  end
+
+  defp managed_server_id(bootstrap) do
+    runtime_value(server_agent_runtime(), :server_id) ||
+      bootstrap
+      |> ProfileResolver.resolve()
+      |> Map.get(:id)
+      |> normalize_text()
+  end
+
+  defp boot_selection_severity(%{error: nil}), do: :info
+  defp boot_selection_severity(%{source: :managed_unavailable}), do: :error
+  defp boot_selection_severity(%{error: _reason}), do: :warning
+
+  defp restore_process_flag(nil), do: Process.delete(@managed_reconcile_key)
+  defp restore_process_flag(value), do: Process.put(@managed_reconcile_key, value)
+
+  defp refresh_managed_server_agent_identity(config) do
+    module = server_agent_module()
+    resolved_profile = ProfileResolver.resolve(config)
+
+    with true <- Code.ensure_loaded?(module),
+         true <- function_exported?(module, :refresh_identity, 1),
+         {:ok, config_revision} <- Digest.calculate(config),
+         :ok <-
+           apply(module, :refresh_identity, [
+             %{
+               profile: Atom.to_string(resolved_profile.profile),
+               capabilities: server_capabilities(resolved_profile),
+               config_revision: config_revision
+             }
+           ]) do
+      :ok
+    else
+      _unavailable_or_inactive -> {:error, :unavailable}
+    end
+  rescue
+    _exception -> {:error, :unavailable}
+  catch
+    _kind, _reason -> {:error, :unavailable}
   end
 
   # In test environment, disable most services and use default ports
@@ -902,6 +1012,7 @@ defmodule YellowDog.Application do
     enabled_domains =
       resolved_profile
       |> enabled_server_domains()
+      |> MapSet.put("config")
       |> MapSet.put("runtime")
 
     ServerOperation.all()
@@ -1067,29 +1178,14 @@ defmodule YellowDog.Application do
   defp refresh_server_agent_identity(:server_agent), do: :ok
 
   defp refresh_server_agent_identity(trigger_service) do
-    case Supervisor.terminate_child(YellowDog.Supervisor, @default_server_agent_module) do
-      :ok ->
-        restart_server_agent_child(trigger_service)
-
-      {:error, :not_found} ->
-        :ok
-
-      {:error, _reason} ->
-        emit_server_agent_refresh_error(trigger_service)
+    case refresh_managed_server_agent_identity(YellowDog.Config.get_all()) do
+      :ok -> :ok
+      {:error, _reason} -> emit_server_agent_refresh_error(trigger_service)
     end
   rescue
     _exception -> emit_server_agent_refresh_error(trigger_service)
   catch
     _kind, _reason -> emit_server_agent_refresh_error(trigger_service)
-  end
-
-  defp restart_server_agent_child(trigger_service) do
-    case Supervisor.restart_child(YellowDog.Supervisor, @default_server_agent_module) do
-      {:ok, _pid} -> :ok
-      {:ok, _pid, _info} -> :ok
-      {:error, reason} when reason in [:not_found, :running] -> :ok
-      {:error, _reason} -> emit_server_agent_refresh_error(trigger_service)
-    end
   end
 
   defp emit_server_agent_refresh_error(trigger_service) do

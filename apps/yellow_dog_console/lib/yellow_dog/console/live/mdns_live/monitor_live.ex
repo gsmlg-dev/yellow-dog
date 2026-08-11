@@ -1,182 +1,165 @@
 defmodule YellowDog.Console.MdnsLive.MonitorLive do
-  @moduledoc """
-  LiveView for real-time monitoring of mDNS network activity.
-  """
+  @moduledoc "Management-backed mDNS query monitor for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_time: 1]
-  import YellowDog.Console.ServiceHelper
-  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.MdnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Sync.Digest
+
+  @limits [50, 100, 200, 500]
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "mdns:monitor")
-      # Refresh queries every 5 seconds
-      :timer.send_interval(5_000, self(), :refresh)
-    end
-
     {:ok,
      assign(socket,
-       page_title: "Network Monitor",
-       service_running: service_running?(YellowDog.Mdns),
-       queries: get_recent_queries(50),
-       stats: get_network_stats(),
+       page_title: "mDNS Monitor",
+       subscribed_server_id: nil,
+       queries: [],
+       cache_entries: [],
+       cache_revision: nil,
        limit: 50,
        search: "",
-       auto_refresh: true
+       management_error: nil,
+       cached_observed_at: nil,
+       commands_enabled?: false
      )}
   end
 
   @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_monitor(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, load_monitor(socket)}
+
+  def handle_event("search", %{"search" => search}, socket),
+    do: {:noreply, assign(socket, :search, search)}
+
   def handle_event("set_limit", %{"limit" => limit}, socket) do
     case Integer.parse(limit) do
-      {limit_int, ""} when limit_int > 0 ->
-        {:noreply,
-         socket
-         |> assign(:limit, limit_int)
-         |> assign(:queries, get_recent_queries(limit_int))}
+      {limit, ""} when limit in @limits ->
+        {:noreply, socket |> assign(:limit, limit) |> load_monitor()}
 
-      _ ->
+      _invalid ->
         {:noreply, socket}
     end
   end
 
-  @impl true
-  def handle_event("toggle_auto_refresh", _params, socket) do
-    {:noreply, assign(socket, :auto_refresh, !socket.assigns.auto_refresh)}
-  end
-
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    csv = build_monitor_csv(socket.assigns.stats, socket.assigns.queries)
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
-    filename = "mdns_monitor_#{timestamp}.csv"
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
-  end
-
-  @impl true
-  def handle_event("search", %{"search" => search}, socket) do
-    {:noreply, assign(socket, :search, search)}
-  end
-
-  @impl true
   def handle_event("clear_cache", _params, socket) do
-    try do
-      YellowDog.Mdns.clear_cache()
-      {:noreply, put_flash(socket, :info, "Cache cleared successfully")}
-    catch
-      _, _ ->
-        {:noreply, put_flash(socket, :error, "mDNS service is not running")}
-    end
-  end
+    with true <- socket.assigns.commands_enabled?,
+         revision when is_binary(revision) <- socket.assigns.cache_revision do
+      result =
+        ServerManagement.mdns_cache_clear(
+          socket.assigns.selected_server.id,
+          %{},
+          expected_revision: revision,
+          idempotency_key: Ecto.UUID.generate()
+        )
 
-  @impl true
-  def handle_info(:refresh, socket) do
-    if socket.assigns.auto_refresh do
-      {:noreply,
-       socket
-       |> assign(:queries, get_recent_queries(socket.assigns.limit))
-       |> assign(:stats, get_network_stats())}
+      case result do
+        %ManagementResult{status: :ok, value: %{"cleared_entries" => _count}} ->
+          {:noreply,
+           socket
+           |> assign(cache_entries: [], cache_revision: cache_revision([]))
+           |> put_flash(:info, "Cache cleared")}
+
+        %ManagementResult{status: :error, message: message} ->
+          {:noreply, put_flash(socket, :error, message)}
+      end
     else
-      {:noreply, socket}
+      false -> {:noreply, put_flash(socket, :error, "The selected Server is offline")}
+      nil -> {:noreply, put_flash(socket, :error, "Cache revision is unavailable")}
     end
   end
 
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
   @impl true
-  def handle_info(:network_update, socket) do
-    if socket.assigns.auto_refresh do
-      {:noreply, assign(socket, :stats, get_network_stats())}
-    else
-      {:noreply, socket}
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_monitor()}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp load_monitor(socket) do
+    server_id = socket.assigns.selected_server.id
+
+    query_result =
+      ServerManagement.mdns_monitor_list(server_id, %{"limit" => socket.assigns.limit})
+
+    cache_result = ServerManagement.mdns_cache_get(server_id)
+    queries = result_items(query_result)
+    cache_entries = cache_entries(cache_result)
+    results = [query_result, cache_result]
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — mDNS Monitor",
+      queries: queries,
+      cache_entries: cache_entries,
+      cache_revision: if(success?(cache_result), do: cache_revision(cache_entries), else: nil),
+      management_error: first_error(results),
+      cached_observed_at: latest_observed_at(results),
+      commands_enabled?: socket.assigns.service_online? and success?(cache_result)
+    )
+  end
+
+  defp result_items(%ManagementResult{status: :ok, value: %{"items" => items}})
+       when is_list(items),
+       do: items
+
+  defp result_items(_result), do: []
+
+  defp cache_entries(%ManagementResult{status: :ok, value: %{"entries" => entries}})
+       when is_list(entries),
+       do: entries
+
+  defp cache_entries(_result), do: []
+
+  defp cache_revision(entries) do
+    case Digest.calculate(%{"entries" => entries}) do
+      {:ok, revision} -> revision
+      {:error, _error} -> nil
     end
   end
 
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  defp success?(%ManagementResult{status: :ok}), do: true
+  defp success?(_result), do: false
 
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:monitor")
-    :ok
-  end
-
-  @doc "Filters queries by search term against name, type, or source IP. Public for testability."
-  def filtered_queries(queries, ""), do: queries
-
-  def filtered_queries(queries, search) do
-    term = String.downcase(search)
-
-    Enum.filter(queries, fn query ->
-      downcase_contains?(query.name, term) or
-        downcase_contains?(to_string(query.type), term) or
-        downcase_contains?(format_ip(query.source_ip), term)
+  defp first_error(results) do
+    Enum.find_value(results, fn
+      %ManagementResult{status: :error} = result -> result
+      _result -> nil
     end)
   end
 
-  defp get_recent_queries(limit) do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.get_recent_queries(limit: limit) end, [])
+  defp latest_observed_at(results) do
+    results
+    |> Enum.flat_map(fn
+      %ManagementResult{observed_at: %DateTime{} = observed_at} -> [observed_at]
+      _result -> []
+    end)
+    |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)
   end
 
-  defp get_network_stats do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.network_stats() end, %{
-      total_responses: 0,
-      total_queries: 0,
-      active_services: 0,
-      unique_hosts: 0,
-      queries_per_minute: 0.0,
-      most_queried_services: []
-    })
-  end
+  defp filtered_queries(queries, search) do
+    term = String.downcase(search)
 
-  defp build_monitor_csv(stats, queries) do
-    # Section 1: Network Statistics
-    stats_section =
-      "Network Statistics\n" <>
-        "Metric,Value\n" <>
-        "Total Queries,#{stats.total_queries}\n" <>
-        "Total Responses,#{stats.total_responses}\n" <>
-        "Queries/Min,#{Float.round(stats.queries_per_minute, 1)}\n" <>
-        "Unique Hosts,#{stats.unique_hosts}\n" <>
-        "Active Services,#{stats.active_services}\n"
-
-    # Section 2: Most Queried Services
-    services_section =
-      if stats.most_queried_services && stats.most_queried_services != [] do
-        "\nMost Queried Services\n" <>
-          "Service,Query Count\n" <>
-          Enum.map_join(stats.most_queried_services, "\n", fn {name, count} ->
-            "#{csv_escape(name)},#{count}"
-          end) <> "\n"
-      else
-        ""
-      end
-
-    # Section 3: Recent Queries
-    queries_section =
-      if Enum.any?(queries) do
-        "\nRecent Queries\n" <>
-          "Time,Source IP,Query Name,Type,Class\n" <>
-          Enum.map_join(queries, "\n", fn query ->
-            [
-              csv_escape(format_time(query.timestamp)),
-              csv_escape(format_ip(query.source_ip)),
-              csv_escape(query.name),
-              csv_escape(to_string(query.type)),
-              csv_escape(to_string(query.class))
-            ]
-            |> Enum.join(",")
-          end) <> "\n"
-      else
-        ""
-      end
-
-    stats_section <> services_section <> queries_section
-  end
-
-  defp calculate_percentage(count, services) do
-    max_count = Enum.reduce(services, 1, fn s, acc -> max(elem(s, 1), acc) end)
-    if max_count > 0, do: count / max_count * 100, else: 0
+    if term == "" do
+      queries
+    else
+      Enum.filter(queries, fn query ->
+        Enum.any?(["query_name", "record_type", "source_address"], fn key ->
+          String.contains?(String.downcase(to_string(query[key] || "")), term)
+        end)
+      end)
+    end
   end
 end

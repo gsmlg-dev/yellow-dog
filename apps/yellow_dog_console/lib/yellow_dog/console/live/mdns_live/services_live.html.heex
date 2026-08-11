@@ -1,268 +1,205 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-4">
-    <.service_alert :if={not @service_running} service="mDNS" />
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+  <div id="mdns-services" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-bold">Registered Services</h1>
-        <p class="mt-2 text-on-surface-variant">Manage your mDNS service registrations</p>
-      </div>
-      <div class="flex gap-2">
-        <button
-          phx-click="export_csv"
-          id="export-csv"
-          phx-hook="CsvDownload"
-          class="btn btn-outline btn-sm"
-          aria-label="Export CSV"
-        >
-          <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
-        </button>
-        <.dm_btn
-          variant="primary"
-          phx-click="show_new_form"
-        >
-          <:prefix><.dm_mdi name="plus" class="w-5 h-5" /></:prefix>
-          Register Service
-        </.dm_btn>
-      </div>
-    </div>
-    <!-- Filter Tabs -->
-    <div role="tablist" class="tabs w-fit">
-      <button
-        role="tab"
-        phx-click="filter"
-        phx-value-filter="all"
-        class={["tab", @filter == :all && "tab-active"]}
-      >
-        All Services
-      </button>
-      <button
-        role="tab"
-        phx-click="filter"
-        phx-value-filter="enabled"
-        class={["tab", @filter == :enabled && "tab-active"]}
-      >
-        Enabled
-      </button>
-      <button
-        role="tab"
-        phx-click="filter"
-        phx-value-filter="disabled"
-        class={["tab", @filter == :disabled && "tab-active"]}
-      >
-        Disabled
-      </button>
-    </div>
-    <!-- Services List -->
-    <%= if Enum.empty?(@services) do %>
-      <.card class="text-center py-12">
-        <.dm_mdi name="file-document-outline" class="mx-auto h-16 w-16 text-on-surface-variant" />
-        <h3 class="mt-4 text-lg font-medium">No services found</h3>
+        <h1 class="text-4xl font-bold">Registered mDNS Services</h1>
         <p class="mt-2 text-on-surface-variant">
-          Get started by registering your first mDNS service.
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
         </p>
-        <div class="mt-6">
-          <.dm_btn variant="outline" phx-click="show_new_form">
-            <:prefix><.dm_mdi name="plus" class="w-5 h-5" /></:prefix>
-            Register Service
-          </.dm_btn>
-        </div>
-      </.card>
-    <% else %>
-      <.card>
-        <.table id="services-table" rows={@services} zebra hover>
-          <:col :let={service} label="Service Name">
-            <div class="flex items-center gap-2">
-              <span class="font-semibold">{service.name}</span>
-              <.badge :if={service.enabled} color="success" size="sm">Enabled</.badge>
-              <.badge :if={!service.enabled} color="ghost" size="sm">Disabled</.badge>
-            </div>
-          </:col>
-          <:col :let={service} label="Type">
-            <code class="text-sm">{service.type}</code>
-          </:col>
-          <:col :let={service} label="Port">
-            <.badge color="info">{service.port}</.badge>
-          </:col>
-          <:col :let={service} label="Domain">
-            <span class="text-sm">{service.domain}</span>
-          </:col>
-          <:col :let={service} label="Source">
-            <.badge :if={service.source == :file} color="secondary" size="sm">File</.badge>
-            <.badge :if={service.source != :file} color="primary" size="sm">API</.badge>
-          </:col>
-          <:col :let={service} label="Status">
-            <.status_indicator
-              status={if service.enabled, do: "running", else: "stopped"}
-              pulse={service.enabled}
-            />
-          </:col>
-          <:action :let={service}>
-            <div class="flex gap-2">
-              <.dm_btn
-                variant="ghost"
-                size="xs"
-                phx-click="toggle_service"
-                phx-value-id={service.id}
-                phx-disable-with="..."
-                title={if service.enabled, do: "Disable", else: "Enable"}
-                aria-label={if service.enabled, do: "Disable", else: "Enable"}
-              >
-                <%= if service.enabled do %>
-                  <.dm_mdi name="pause-circle-outline" class="w-4 h-4" />
-                <% else %>
-                  <.dm_mdi name="play-circle-outline" class="w-4 h-4" />
-                <% end %>
-              </.dm_btn>
-              <.dm_btn
-                variant="ghost"
-                size="xs"
-                phx-click="show_edit_form"
-                phx-value-id={service.id}
-                title="Edit"
-                aria-label="Edit"
-              >
-                <.dm_mdi name="pencil" class="w-4 h-4" />
-              </.dm_btn>
-              <.dm_btn
-                variant="ghost"
-                size="xs"
-                class="text-error"
-                phx-click="delete_service"
-                phx-value-id={service.id}
-                phx-disable-with="..."
-                confirm="Are you sure you want to delete this service?"
-                title="Delete"
-                aria-label="Delete"
-              >
-                <.dm_mdi name="delete" class="w-4 h-4" />
-              </.dm_btn>
-            </div>
-          </:action>
-        </.table>
-      </.card>
-    <% end %>
-    <!-- Service Form Modal -->
+      </div>
+      <div class="flex items-center gap-2">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary gap-2"
+          phx-click="show_new_form"
+          disabled={!@commands_enabled?}
+        >
+          <.dm_mdi name="plus" class="h-5 w-5" /> Register Service
+        </button>
+      </div>
+    </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-services-offline">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+        Mutations are disabled.
+      </span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-services-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error.message}</span>
+    </div>
+
+    <div role="tablist" class="tabs tabs-boxed w-fit">
+      <button
+        :for={{filter, label} <- [{:all, "All"}, {:enabled, "Enabled"}, {:disabled, "Disabled"}]}
+        type="button"
+        role="tab"
+        phx-click="filter"
+        phx-value-filter={filter}
+        class={["tab", @filter == filter && "tab-active"]}
+      >
+        {label}
+      </button>
+    </div>
+
+    <.card>
+      <div
+        :if={filtered_services(@services, @filter) == []}
+        class="py-10 text-center text-on-surface-variant"
+      >
+        No registered services match this filter.
+      </div>
+      <div :if={filtered_services(@services, @filter) != []} class="overflow-x-auto">
+        <table class="table table-striped" id="mdns-services-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Type</th><th>Port</th><th>TXT</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={service <- filtered_services(@services, @filter)}>
+              <td class="font-medium">{service["name"]}</td>
+              <td class="font-mono text-sm">{service["service_type"]}</td>
+              <td>{service["service_port"]}</td>
+              <td>{length(service["txt"] || [])} records</td>
+              <td>
+                <.badge color={if service["enabled"], do: "success", else: "ghost"} size="sm">
+                  {if service["enabled"], do: "Enabled", else: "Disabled"}
+                </.badge>
+              </td>
+              <td>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-xs"
+                    phx-click="toggle_service"
+                    phx-value-id={service["service_id"]}
+                    disabled={!@commands_enabled?}
+                  >
+                    {if service["enabled"], do: "Disable", else: "Enable"}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-xs"
+                    phx-click="show_edit_form"
+                    phx-value-id={service["service_id"]}
+                    disabled={!@commands_enabled?}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-error btn-xs"
+                    phx-click="delete_service"
+                    phx-value-id={service["service_id"]}
+                    disabled={!@commands_enabled?}
+                    data-confirm="Delete this service?"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
+
     <dialog
       :if={@show_form}
       id="service-modal"
       class="dialog-backdrop dialog-backdrop-show"
+      open
       phx-window-keydown="hide_form"
       phx-key="Escape"
     >
       <div class="dialog dialog-md max-w-2xl">
-        <h3 class="font-bold text-2xl mb-4">
+        <h2 class="mb-4 text-2xl font-bold">
           {if @form_mode == :new, do: "Register New Service", else: "Edit Service"}
-        </h3>
+        </h2>
 
         <form
+          id="mdns-service-form"
           phx-submit="save_service"
           phx-change="validate_service"
-          phx-debounce="blur"
           class="space-y-4"
         >
-          <div class="form-group">
-            <label class="form-label font-semibold">Service Name</label>
+          <label class="form-control">
+            <span class="label-text">Service name</span>
             <input
               type="text"
               name="name"
-              value={@editing_service && @editing_service.name}
-              placeholder="My Service"
-              maxlength="255"
-              required
+              value={@editing_service && @editing_service["name"]}
               class={["input w-full", @form_errors[:name] && "input-error"]}
+              required
             />
-            <span :if={@form_errors[:name]} class="helper-text text-error">
-              {@form_errors[:name]}
-            </span>
-          </div>
+            <span :if={@form_errors[:name]} class="text-sm text-error">{@form_errors[:name]}</span>
+          </label>
 
-          <div class="form-group">
-            <label class="form-label font-semibold">Service Type</label>
+          <label class="form-control">
+            <span class="label-text">Service type</span>
             <input
               type="text"
               name="type"
-              value={@editing_service && @editing_service.type}
+              value={@editing_service && @editing_service["service_type"]}
               placeholder="_http._tcp"
-              maxlength="63"
-              required
               class={["input w-full", @form_errors[:type] && "input-error"]}
+              required
             />
-            <span :if={@form_errors[:type]} class="helper-text text-error">
-              {@form_errors[:type]}
-            </span>
-            <span :if={!@form_errors[:type]} class="helper-text">
-              Example: _http._tcp, _ssh._tcp, _printer._tcp
-            </span>
-          </div>
+            <span :if={@form_errors[:type]} class="text-sm text-error">{@form_errors[:type]}</span>
+          </label>
 
-          <div class="form-group">
-            <label class="form-label font-semibold">Port</label>
+          <label class="form-control">
+            <span class="label-text">Port</span>
             <input
               type="number"
               name="port"
-              value={@editing_service && @editing_service.port}
-              placeholder="8080"
-              required
+              value={@editing_service && @editing_service["service_port"]}
               min="1"
               max="65535"
               class={["input w-full", @form_errors[:port] && "input-error"]}
+              required
             />
-            <span :if={@form_errors[:port]} class="helper-text text-error">
-              {@form_errors[:port]}
-            </span>
-          </div>
+            <span :if={@form_errors[:port]} class="text-sm text-error">{@form_errors[:port]}</span>
+          </label>
 
-          <div class="form-group">
-            <label class="form-label font-semibold">TXT Records</label>
+          <label class="form-control">
+            <span class="label-text">TXT records</span>
             <textarea
               name="txt"
-              rows="3"
+              rows="4"
               placeholder="version=1.0&#10;path=/api"
-              class="textarea w-full"
-            ><%= if @editing_service && @editing_service.txt, do: format_txt_for_form(@editing_service.txt) %></textarea>
-            <span class="helper-text">Enter key=value pairs, one per line</span>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label font-semibold">IP Addresses</label>
-            <textarea
-              name="addresses"
-              rows="2"
-              placeholder="192.168.1.100&#10;192.168.1.101"
-              class={[
-                "textarea w-full",
-                @form_errors[:addresses] && "textarea-error"
-              ]}
-            ><%= if @editing_service && @editing_service.addresses, do: Enum.join(@editing_service.addresses, "\n") %></textarea>
-            <span :if={@form_errors[:addresses]} class="helper-text text-error">
-              {@form_errors[:addresses]}
+              class={["textarea w-full", @form_errors[:txt] && "textarea-error"]}
+            >{txt_for_form(@editing_service)}</textarea>
+            <span :if={@form_errors[:txt]} class="text-sm text-error">{@form_errors[:txt]}</span>
+            <span :if={!@form_errors[:txt]} class="text-sm text-on-surface-variant">
+              One key=value pair per line.
             </span>
-            <span :if={!@form_errors[:addresses]} class="helper-text">
-              Enter IP addresses, one per line
-            </span>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label cursor-pointer justify-start gap-3">
-              <input
-                type="checkbox"
-                name="enabled"
-                value="true"
-                checked={!@editing_service || @editing_service.enabled}
-                class="checkbox checkbox-primary"
-              /> Enable service
-            </label>
-          </div>
+          </label>
 
           <div class="dialog-actions">
-            <button type="button" phx-click="hide_form" class="btn btn-ghost">
-              Cancel
-            </button>
+            <button type="button" class="btn btn-ghost" phx-click="hide_form">Cancel</button>
             <button
               type="submit"
               class="btn btn-primary"
-              disabled={map_size(@form_errors) > 0}
+              disabled={!@commands_enabled? or map_size(@form_errors) > 0}
               phx-disable-with="Saving..."
             >
               {if @form_mode == :new, do: "Register", else: "Save Changes"}
@@ -270,9 +207,6 @@
           </div>
         </form>
       </div>
-      <form method="dialog" class="dialog-backdrop">
-        <button phx-click="hide_form">close</button>
-      </form>
     </dialog>
   </div>
 </Layouts.app>

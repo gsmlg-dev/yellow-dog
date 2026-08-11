@@ -1,79 +1,72 @@
 defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
-  @moduledoc """
-  LiveView for individual DHCPv6 pool details.
-
-  Shows pool configuration (prefix ranges, lifetimes, DNS servers),
-  utilization statistics, static DUID-to-address bindings, and all
-  IA bindings within the pool.
-  """
+  @moduledoc "Management-backed DHCPv6 pool details for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.FormatHelper
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.DhcpLive.ManagementComponents
+  alias YellowDog.Console.DhcpLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
+
+  @family :ipv6
 
   @impl true
   def mount(%{"pool_name" => pool_name}, _session, socket) do
     {:ok,
+     assign(socket,
+       page_title: "DHCPv6 Pool: #{pool_name}",
+       subscribed_server_id: nil,
+       family_label: ManagementSupport.family_label(@family),
+       pool_name: pool_name,
+       pools_path: nil,
+       pool: nil,
+       management_error: nil,
+       cached_observed_at: nil
+     )}
+  end
+
+  @impl true
+  def handle_params(%{"server_id" => server_id, "pool_name" => pool_name}, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(
+        pool_name: pool_name,
+        pools_path: ServicePaths.server_path(server_id, :dhcpv6_pools)
+      )
+
+    {:noreply, if(connected?(socket), do: load_pool(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
      socket
-     |> assign(:page_title, "DHCPv6 Pool: #{pool_name}")
-     |> assign(:pool_name, pool_name)
-     |> load_pool_data()}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_pool()}
   end
 
-  # Private Functions
+  def handle_info(_message, socket), do: {:noreply, socket}
 
-  defp load_pool_data(socket) do
-    pool_name = socket.assigns.pool_name
-    pool_stats = get_pool_stats(pool_name)
-    pool_config = get_pool_config(pool_name)
-    leases = get_pool_leases(pool_name)
+  @impl true
+  def render(assigns), do: ManagementComponents.pool(assigns)
 
-    socket
-    |> assign(:pool_stats, pool_stats)
-    |> assign(:pool_config, pool_config)
-    |> assign(:leases, leases)
-  end
+  defp load_pool(socket) do
+    server_id = socket.assigns.selected_server.id
+    payload = %{"family" => ManagementSupport.family_wire(@family)}
+    status = ServerManagement.dhcp_status_get(server_id, payload)
+    pools_result = ServerManagement.dhcp_pools_list(server_id, payload)
+    pools = pools_result |> ManagementSupport.items(@family) |> ManagementSupport.pool_views()
+    results = [status, pools_result]
 
-  defp get_pool_stats(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv6,
-      fn ->
-        stats = YellowDog.Dhcpv6.get_all_pool_stats()
-        Map.get(stats, pool_name)
-      end
+    assign(socket,
+      page_title:
+        "#{socket.assigns.selected_server.name || server_id} — #{socket.assigns.pool_name}",
+      pool: ManagementSupport.find_pool(pools, socket.assigns.pool_name),
+      management_error: ManagementSupport.first_error(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
     )
-  end
-
-  defp get_pool_config(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv6.LeaseManager,
-      fn ->
-        pools = YellowDog.Dhcpv6.LeaseManager.get_pools()
-        Enum.find(pools, fn p -> p.name == pool_name end)
-      end
-    )
-  end
-
-  defp get_pool_leases(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv6,
-      fn ->
-        YellowDog.Dhcpv6.list_leases()
-        |> Enum.filter(fn l -> l.pool_name == pool_name end)
-        |> Enum.sort_by(& &1.expires_at, :desc)
-      end,
-      []
-    )
-  end
-
-  defp format_duid_short(duid) when is_binary(duid) do
-    formatted = format_duid(duid)
-
-    if String.length(formatted) > 20 do
-      String.slice(formatted, 0, 17) <> "..."
-    else
-      formatted
-    end
   end
 end

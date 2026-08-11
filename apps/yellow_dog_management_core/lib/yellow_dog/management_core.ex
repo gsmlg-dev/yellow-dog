@@ -15,6 +15,7 @@ defmodule YellowDog.ManagementCore do
   alias YellowDog.Management.EventStore
   alias YellowDog.Management.Netmans
   alias YellowDog.Management.Profiles
+  alias YellowDog.Management.ServerConfigs
   alias YellowDog.Management.Servers
   alias YellowDog.Management.Snapshots
   alias YellowDog.Management.Storage.Path, as: StoragePath
@@ -61,6 +62,28 @@ defmodule YellowDog.ManagementCore do
   @doc "Lists management events in deterministic global order."
   def list_events, do: EventStore.list()
 
+  @doc "Lists sanitized durable configuration lifecycle summaries."
+  def list_config_versions do
+    with {:ok, server_versions} <- list_target_config_versions(:server, Servers.list()),
+         {:ok, netman_versions} <- list_target_config_versions(:netman, Netmans.list()) do
+      versions =
+        (server_versions ++ netman_versions)
+        |> Enum.map(&config_version_summary/1)
+        |> Enum.sort_by(fn version ->
+          {target_rank(version.target_type), version.target_id, -version.version}
+        end)
+
+      {:ok, versions}
+    end
+  end
+
+  @doc "Lists sanitized durable command outcomes in deterministic order."
+  def list_command_outcomes do
+    with {:ok, records} <- Commands.list() do
+      {:ok, Enum.map(records, &command_outcome_summary/1)}
+    end
+  end
+
   @doc "Opens a verified management-owned blob using the configured size limit."
   @spec open_blob(term()) :: Blobs.result(Blobs.handle())
   def open_blob(digest), do: Blobs.open(digest)
@@ -85,13 +108,66 @@ defmodule YellowDog.ManagementCore do
   @spec close_blob(Blobs.handle()) :: :ok
   def close_blob(handle), do: Blobs.close(handle)
 
-  @doc "Publishes an immutable desired configuration for a registered server."
-  def publish_server_config(server_id, attrs),
-    do: ConfigVersions.publish(:server, server_id, attrs)
+  @doc "Fetches the Management-owned aggregate configuration draft for a Server."
+  def get_server_config(server_id), do: ServerConfigs.get(server_id)
+
+  @doc "Replaces a Server's complete aggregate draft using draft-revision CAS."
+  def put_server_config(server_id, expected_draft_revision, document),
+    do: ServerConfigs.put(server_id, expected_draft_revision, document)
+
+  @doc "Publishes an aggregate draft revision or legacy immutable configuration attrs."
+  def publish_server_config(server_id, expected_draft_revision)
+      when is_integer(expected_draft_revision) do
+    case ServerConfigs.publish(server_id, expected_draft_revision) do
+      {:ok, version} ->
+        deliver_desired_config(version)
+        {:ok, version}
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
+
+  def publish_server_config(_server_id, %{operation: "server.config.replace"}),
+    do: invalid("aggregate server config must be published from its draft")
+
+  def publish_server_config(_server_id, %{"operation" => "server.config.replace"}),
+    do: invalid("aggregate server config must be published from its draft")
+
+  def publish_server_config(server_id, attrs) do
+    case ConfigVersions.publish(:server, server_id, attrs) do
+      {:ok, version} ->
+        deliver_desired_config(version)
+        {:ok, version}
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
+
+  @doc "Republishes a prior aggregate Server document as a new monotonic version."
+  def rollback_server_config(server_id, version, expected_draft_revision) do
+    case ServerConfigs.rollback(server_id, version, expected_draft_revision) do
+      {:ok, config_version} ->
+        deliver_desired_config(config_version)
+        {:ok, config_version}
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
 
   @doc "Publishes an immutable desired configuration for a registered Netman."
-  def publish_netman_config(netman_id, attrs),
-    do: ConfigVersions.publish(:netman, netman_id, attrs)
+  def publish_netman_config(netman_id, attrs) do
+    case ConfigVersions.publish_exclusive(:netman, netman_id, attrs) do
+      {:ok, version} ->
+        deliver_desired_config(version)
+        {:ok, version}
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
 
   @doc "Fetches a concrete server configuration version."
   def get_server_config_version(server_id, version),
@@ -110,16 +186,27 @@ defmodule YellowDog.ManagementCore do
     do: ConfigVersions.latest_desired(target_type, target_id)
 
   @doc "Accepts and durably receipts an exact canonical ConfigState publication."
-  @spec accept_config_state_publication(:server, String.t(), pos_integer(), binary()) ::
+  @spec accept_config_state_publication(
+          :server | :netman,
+          String.t(),
+          pos_integer(),
+          binary()
+        ) ::
           {:ok, map()} | {:error, Error.t()}
-  def accept_config_state_publication(:server, server_id, publication_sequence, encoded_message),
-    do:
-      ConfigVersions.accept_config_state_publication(
-        :server,
-        server_id,
+  def accept_config_state_publication(
+        target_type,
+        target_id,
         publication_sequence,
         encoded_message
       )
+      when target_type in [:server, :netman],
+      do:
+        ConfigVersions.accept_config_state_publication(
+          target_type,
+          target_id,
+          publication_sequence,
+          encoded_message
+        )
 
   def accept_config_state_publication(_target_type, _target_id, _sequence, _encoded_message),
     do: invalid("invalid ConfigState publication target")
@@ -208,6 +295,62 @@ defmodule YellowDog.ManagementCore do
       {:ok, result}
     end
   end
+
+  defp list_target_config_versions(target_type, records) do
+    Enum.reduce_while(records, {:ok, []}, fn record, {:ok, versions} ->
+      case ConfigVersions.list(target_type, record.id) do
+        {:ok, target_versions} -> {:cont, {:ok, versions ++ target_versions}}
+        {:error, %Error{}} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp config_version_summary(version) do
+    Map.take(version, [
+      :target_type,
+      :target_id,
+      :version,
+      :operation,
+      :profile,
+      :digest,
+      :state,
+      :state_revision,
+      :published_at,
+      :state_changed_at,
+      :delivered_at,
+      :applying_at,
+      :applied_at,
+      :applied_revision,
+      :failed_at,
+      :failure_phase,
+      :failure_reason,
+      :rollback,
+      :restored_version,
+      :restored_revision
+    ])
+  end
+
+  defp command_outcome_summary(record) do
+    %{
+      request_id: record.request_id,
+      target_type: record.envelope.target_type,
+      target_id: record.envelope.target_id,
+      operation: record.envelope.operation,
+      state: record.state,
+      error_code: error_field(record.error, :code),
+      error_message: error_field(record.error, :message),
+      unknown_reason: record.unknown_reason,
+      inserted_at: record.inserted_at,
+      updated_at: record.updated_at,
+      resolved_at: record.resolved_at
+    }
+  end
+
+  defp error_field(%Error{} = error, field), do: Map.fetch!(error, field)
+  defp error_field(nil, _field), do: nil
+
+  defp target_rank(:server), do: 0
+  defp target_rank(:netman), do: 1
 
   defp command(target_type, target_id, operation, payload, expected_revision, idempotency_key) do
     with {:ok, _target} <- registered_target(target_type, target_id),
@@ -341,6 +484,50 @@ defmodule YellowDog.ManagementCore do
          },
          {:ok, envelope} <- Operation.validate_envelope(envelope, kind) do
       {:ok, envelope}
+    end
+  end
+
+  defp deliver_desired_config(%{target_type: target_type} = version)
+       when target_type in [:server, :netman] do
+    case connected(version.target_type, version.target_id) do
+      :ok ->
+        with {:ok, envelope} <- config_envelope(version) do
+          deliver_config(envelope)
+        end
+
+      {:error, %Error{}} ->
+        :ok
+    end
+
+    :ok
+  end
+
+  defp config_envelope(version) do
+    envelope = %Envelope{
+      protocol_version: 1,
+      request_id: uuid(),
+      target_type: version.target_type,
+      target_id: version.target_id,
+      operation: version.operation,
+      idempotency_key: uuid(),
+      payload: version.payload,
+      payload_digest: version.digest,
+      expected_revision: version.expected_revision,
+      config_version: version.version,
+      sent_at: DateTime.utc_now()
+    }
+
+    Operation.validate_envelope(envelope, :config)
+  end
+
+  defp deliver_config(envelope) do
+    try do
+      _ = transport_module().deliver_config(envelope)
+      :ok
+    rescue
+      _exception -> :ok
+    catch
+      _kind, _reason -> :ok
     end
   end
 

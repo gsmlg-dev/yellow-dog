@@ -2,6 +2,7 @@ defmodule YellowDog.Server.Control.Runtime do
   @moduledoc false
 
   alias YellowDog.Server.ServiceRegistry
+  alias YellowDog.Server.Control.Revision
   alias YellowDog.ServiceManager
   alias YellowDog.Sync.Error
 
@@ -14,7 +15,16 @@ defmodule YellowDog.Server.Control.Runtime do
     do: {:ok, %{"capabilities" => @capabilities}}
 
   def dispatch("server.runtime.services.list", %{}) do
-    {:ok, %{"items" => service_items(), "next_cursor" => nil}}
+    items = service_items()
+
+    with {:ok, revision} <- Revision.calculate(items) do
+      {:ok,
+       %{
+         "items" => items,
+         "revision" => revision,
+         "observed_at" => DateTime.utc_now(:second) |> DateTime.to_iso8601()
+       }}
+    end
   end
 
   def dispatch("server.runtime.health.get", %{}) do

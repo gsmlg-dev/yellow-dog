@@ -1,686 +1,91 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-4">
-    <.service_alert :if={not @service_running} service="DNS" />
+  <div class="space-y-6" id="server-dns-acls">
+    <ManagementComponents.page_header
+      title="DNS ACLs"
+      server={@selected_server}
+      online?={@service_online?}
+      back={ServicePaths.server_path(@selected_server.id, :dns)}
+    />
 
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-4xl font-bold">DNS ACL</h1>
-        <p class="mt-2 text-on-surface-variant">
-          Access Control List management
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <.dm_btn
-          variant="outline"
-          size="sm"
-          phx-click="export_csv"
-          id="export-csv"
-          phx-hook="CsvDownload"
-          aria-label="Export CSV"
-        >
-          <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
-        </.dm_btn>
-        <.dm_btn
-          variant="ghost"
-          size="sm"
-          phx-click="refresh"
-          title="Refresh"
-          aria-label="Refresh"
-        >
-          <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
-        </.dm_btn>
-        <.dm_btn variant="primary" size="sm" phx-click="show_create_form">
-          <.dm_mdi name="plus" class="w-4 h-4" /> Add ACL
-        </.dm_btn>
-      </div>
-    </div>
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
 
-    <!-- ACL Info -->
-    <div class="alert alert-info">
-      <.dm_mdi name="information" class="w-6 h-6" />
-      <div>
-        <h3 class="font-bold">Access Control Lists</h3>
-        <div class="text-sm">
-          ACLs control which clients can access each DNS view. Built-in ACLs include:
-          <span class="badge badge-ghost badge-sm mx-1">any</span>
-          <span class="badge badge-ghost badge-sm mx-1">none</span>
-          <span class="badge badge-ghost badge-sm mx-1">localhost</span>
-          <span class="badge badge-ghost badge-sm mx-1">localnets</span>
-          <span class="badge badge-secondary badge-sm mx-1">geo</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Filter Bar -->
-    <div class="flex flex-wrap gap-4 items-center">
-      <div class="flex-1 min-w-[200px]">
-        <input
-          type="text"
-          placeholder="Search ACLs and views..."
-          aria-label="Search DNS ACLs"
-          value={@filter}
-          phx-keyup="filter"
-          phx-value-filter={@filter}
-          phx-debounce="300"
-          name="filter"
-          class="input input-sm w-full"
-        />
-      </div>
-      <select
-        name="type"
-        class="select select-sm"
-        phx-change="filter_type"
-        aria-label="Filter by ACL type"
+    <.card title="Access lists">
+      <p :if={@acls == []} class="text-sm text-on-surface-variant">No ACLs reported</p>
+      <div
+        :for={acl <- @acls}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
       >
-        <option value="all" selected={@type_filter == "all"}>All Types</option>
-        <%= for type <- unique_acl_types(@views) do %>
-          <option value={type} selected={@type_filter == type}>
-            {acl_type_label(type)}
-          </option>
-        <% end %>
-      </select>
-    </div>
-
-    <!-- Named ACLs Section -->
-    <.card title="Named ACLs">
-      <:actions>
-        <.dm_btn variant="outline" size="sm" phx-click="show_create_form">
-          <.dm_mdi name="plus" class="w-4 h-4" /> Add ACL
-        </.dm_btn>
-      </:actions>
-      <% filtered_acls = filtered_named_acls(@named_acls, @filter, @type_filter) %>
-      <%= if filtered_acls != [] do %>
-        <div class="overflow-x-auto">
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Description</th>
-                <th scope="col">Rules</th>
-                <th scope="col"><span class="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for acl <- filtered_acls do %>
-                <tr class="hover">
-                  <td class="font-mono font-semibold">{acl.name}</td>
-                  <td class="text-sm text-on-surface-variant">{acl.description || "---"}</td>
-                  <td>
-                    <%= if (acl.rules || []) != [] do %>
-                      <% first_rule = hd(acl.rules) %>
-                      <%= cond do %>
-                        <% Map.has_key?(first_rule, :geo_countries) -> %>
-                          <div class="flex flex-wrap gap-2">
-                            <.badge color="secondary" size="sm">geo</.badge>
-                            <%= for code <- Enum.take(first_rule.geo_countries, 3) do %>
-                              <span class="badge badge-ghost badge-xs">{code}</span>
-                            <% end %>
-                            <%= if length(first_rule.geo_countries) > 3 do %>
-                              <span class="badge badge-ghost badge-xs">
-                                +{length(first_rule.geo_countries) - 3}
-                              </span>
-                            <% end %>
-                          </div>
-                        <% Map.has_key?(first_rule, :network) -> %>
-                          <div class="text-sm">
-                            <span class="badge badge-primary badge-xs">{first_rule.action}</span>
-                            <span class="font-mono text-xs">{first_rule.network}</span>
-                            <%= if length(acl.rules) > 1 do %>
-                              <span class="text-on-surface-variant">
-                                +{length(acl.rules) - 1} more
-                              </span>
-                            <% end %>
-                          </div>
-                        <% true -> %>
-                          <span class="text-sm text-on-surface-variant">
-                            {length(acl.rules)} rule(s)
-                          </span>
-                      <% end %>
-                    <% else %>
-                      <span class="text-on-surface-variant">No rules</span>
-                    <% end %>
-                  </td>
-                  <td class="text-right">
-                    <div class="flex items-center justify-end gap-2">
-                      <.dm_btn
-                        variant="ghost"
-                        size="sm"
-                        phx-click="edit_named_acl"
-                        phx-value-name={acl.name}
-                        title="Edit"
-                        aria-label="Edit"
-                      >
-                        <.dm_mdi name="pencil" class="w-4 h-4" />
-                      </.dm_btn>
-                      <.dm_btn
-                        variant="ghost"
-                        size="sm"
-                        class="text-error"
-                        phx-click="confirm_delete_acl"
-                        phx-value-name={acl.name}
-                        title="Delete"
-                        aria-label="Delete"
-                      >
-                        <.dm_mdi name="delete" class="w-4 h-4" />
-                      </.dm_btn>
-                    </div>
-                  </td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
+        <div>
+          <div class="font-semibold">{acl["acl_id"]}</div>
+          <div class="font-mono text-xs text-on-surface-variant">
+            {Enum.join(acl["networks"], ", ")}
+          </div>
         </div>
-        <div class="text-xs text-on-surface-variant mt-2 px-1">
-          <%= if length(filtered_acls) < length(@named_acls) do %>
-            Showing {length(filtered_acls)} of {length(@named_acls)} ACL(s)
-          <% else %>
-            {length(@named_acls)} ACL(s)
-          <% end %>
+        <div class="flex items-center gap-2">
+          <.badge color={if acl["action"] == "allow", do: "success", else: "error"} size="sm">
+            {acl["action"]}
+          </.badge>
+          <button
+            phx-click="delete_acl"
+            phx-value-acl_id={acl["acl_id"]}
+            class="btn btn-error btn-xs"
+            disabled={not @commands_enabled?}
+          >Delete</button>
         </div>
-      <% else %>
-        <div class="text-center py-8">
-          <.dm_mdi name="shield-check" class="mx-auto h-12 w-12 text-on-surface-variant" />
-          <%= if @filter != "" do %>
-            <h3 class="mt-2 text-sm font-semibold">No matching ACLs</h3>
-            <p class="mt-1 text-sm text-on-surface-variant">
-              No ACLs match your search criteria.
-            </p>
-          <% else %>
-            <h3 class="mt-2 text-sm font-semibold">No custom ACLs</h3>
-            <p class="mt-1 text-sm text-on-surface-variant">
-              Create named ACLs to reuse across views.
-            </p>
-            <.dm_btn variant="outline" size="sm" class="mt-4" phx-click="show_create_form">
-              Create ACL
-            </.dm_btn>
-          <% end %>
-        </div>
-      <% end %>
+      </div>
     </.card>
 
-    <!-- Views ACL Table -->
-    <% filtered_view_acls = filtered_views_acl(@views, @filter, @type_filter) %>
-    <%= if filtered_view_acls != [] do %>
-      <.card title="View ACL Configuration" class="overflow-x-auto">
-        <table class="table table-striped">
-          <thead>
-            <tr>
-              <th scope="col">View Name</th>
-              <th scope="col">Priority</th>
-              <th scope="col">ACL Type</th>
-              <th scope="col">Rules</th>
-              <th scope="col"><span class="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for view <- filtered_view_acls do %>
-              <tr class="hover">
-                <td class="font-mono font-semibold">{view.name}</td>
-                <td>{view.priority}</td>
-                <td>
-                  <.badge color={acl_type_badge(view.acl_type)}>
-                    {acl_type_label(view.acl_type)}
-                  </.badge>
-                </td>
-                <td>
-                  <%= cond do %>
-                    <% view.acl_type == "geo" -> %>
-                      <% countries = extract_geo_countries(view.acl_rules) %>
-                      <%= if countries != [] do %>
-                        <div class="flex flex-wrap gap-2">
-                          <%= for code <- Enum.take(countries, 5) do %>
-                            <span class="badge badge-secondary badge-xs">{code}</span>
-                          <% end %>
-                          <%= if length(countries) > 5 do %>
-                            <span class="badge badge-ghost badge-xs">
-                              +{length(countries) - 5}
-                            </span>
-                          <% end %>
-                        </div>
-                      <% else %>
-                        <span class="text-on-surface-variant">No countries selected</span>
-                      <% end %>
-                    <% view.acl_type == "custom" and view.acl_rules != [] -> %>
-                      <div class="text-sm text-on-surface-variant">
-                        {length(view.acl_rules)} rule(s)
-                      </div>
-                    <% true -> %>
-                      <span class="text-on-surface-variant">---</span>
-                  <% end %>
-                </td>
-                <td>
-                  <.dm_btn
-                    variant="ghost"
-                    size="sm"
-                    phx-click="edit_acl"
-                    phx-value-view={view.name}
-                  >
-                    <.dm_mdi name="pencil" class="w-4 h-4" /> Edit
-                  </.dm_btn>
-                </td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
-        <div class="text-xs text-on-surface-variant mt-2 px-1">
-          <%= if length(filtered_view_acls) < length(@views) do %>
-            Showing {length(filtered_view_acls)} of {length(@views)} view(s)
-          <% else %>
-            {length(@views)} view(s)
-          <% end %>
-        </div>
-      </.card>
-    <% else %>
-      <div class="card bg-surface shadow-xl">
-        <div class="card-body text-center py-12">
-          <.dm_mdi name="shield-check" class="mx-auto h-16 w-16 text-on-surface-variant" />
-          <%= if @filter != "" or @type_filter != "all" do %>
-            <h3 class="mt-4 text-xl font-semibold">No matching views</h3>
-            <p class="mt-2 text-on-surface-variant">
-              No views match your filter criteria.
-            </p>
-          <% else %>
-            <h3 class="mt-4 text-xl font-semibold">No DNS Views</h3>
-            <p class="mt-2 text-on-surface-variant">
-              No views have been configured yet.
-            </p>
-          <% end %>
-        </div>
-      </div>
-    <% end %>
-
-    <!-- Built-in ACLs Reference -->
-    <.card title="Built-in ACL Reference">
-      <div class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Description</th>
-              <th scope="col">Matches</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code class="badge badge-success">any</code></td>
-              <td>Allow all clients</td>
-              <td class="text-sm text-on-surface-variant">All IP addresses</td>
-            </tr>
-            <tr>
-              <td><code class="badge badge-error">none</code></td>
-              <td>Deny all clients</td>
-              <td class="text-sm text-on-surface-variant">No IP addresses</td>
-            </tr>
-            <tr>
-              <td><code class="badge badge-warning">localhost</code></td>
-              <td>Local host only</td>
-              <td class="text-sm text-on-surface-variant">127.0.0.1, ::1</td>
-            </tr>
-            <tr>
-              <td><code class="badge badge-info">localnets</code></td>
-              <td>Private networks</td>
-              <td class="text-sm text-on-surface-variant">
-                10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-              </td>
-            </tr>
-            <tr>
-              <td><code class="badge badge-secondary">geo</code></td>
-              <td>Geographic regions</td>
-              <td class="text-sm text-on-surface-variant">
-                Match clients by country using IP geolocation
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </.card>
-  </div>
-
-  <!-- Edit View ACL Modal -->
-  <%= if @editing_view do %>
-    <.modal
-      id="acl-modal"
-      title={"Edit ACL: #{@editing_view.name}"}
-      show
-      on_cancel={JS.push("close_modal")}
-    >
-      <.form for={@acl_form} phx-submit="save_acl" class="space-y-4">
-        <div class="form-group">
-          <label class="form-label font-semibold">ACL Type</label>
-          <select
-            name="acl[acl_type]"
-            class="select w-full"
-            id="acl_type_select"
-            phx-change="acl_type_changed"
-          >
-            <option value="any" selected={@acl_form[:acl_type].value == "any"}>
-              Allow All (any)
-            </option>
-            <option value="none" selected={@acl_form[:acl_type].value == "none"}>
-              Deny All (none)
-            </option>
-            <option value="localhost" selected={@acl_form[:acl_type].value == "localhost"}>
-              Localhost Only
-            </option>
-            <option value="localnets" selected={@acl_form[:acl_type].value == "localnets"}>
-              Local Networks (RFC 1918)
-            </option>
-            <option value="geo" selected={@acl_form[:acl_type].value == "geo"}>
-              Geographic (by country)
-            </option>
-            <option value="custom" selected={@acl_form[:acl_type].value == "custom"}>
-              Custom Rules
-            </option>
-          </select>
-        </div>
-
-        <!-- Geo Country Picker -->
-        <%= if @acl_form[:acl_type].value == "geo" do %>
-          <div class="form-group">
-            <label class="form-label font-semibold">Allowed Countries</label>
-            <span class="helper-text">{length(@selected_countries)} selected</span>
-
-            <!-- Selected countries badges -->
-            <%= if @selected_countries != [] do %>
-              <div class="flex flex-wrap gap-2 mb-2">
-                <%= for code <- @selected_countries do %>
-                  <% country = Enum.find(@countries, fn c -> c.code == code end) %>
-                  <button
-                    type="button"
-                    class="badge badge-secondary gap-2"
-                    phx-click="toggle_country"
-                    phx-value-code={code}
-                  >
-                    {code}
-                    <%= if country do %>
-                      - {country.name}
-                    <% end %>
-                    <.dm_mdi name="close" class="w-3 h-3" />
-                  </button>
-                <% end %>
-              </div>
-            <% end %>
-
-            <!-- Search input -->
-            <div class="relative mb-2">
-              <input
-                type="text"
-                class="input input-sm w-full pr-8"
-                placeholder="Search countries..."
-                aria-label="Search countries"
-                value={@country_search}
-                phx-keyup="search_country"
-                phx-debounce="300"
-                phx-value-search={@country_search}
-                name="search"
-              />
-              <%= if @country_search != "" do %>
-                <button
-                  type="button"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
-                  phx-click="clear_country_search"
-                  aria-label="Clear search"
-                >
-                  <.dm_mdi name="close" class="w-4 h-4" />
-                </button>
-              <% end %>
-            </div>
-
-            <!-- Country grid -->
-            <div class="border border-outline rounded-lg p-2 max-h-48 overflow-y-auto">
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <%= for country <- filtered_countries(@countries, @country_search) do %>
-                  <label class="label cursor-pointer justify-start gap-2 p-1 hover:bg-surface-container rounded">
-                    <input
-                      type="checkbox"
-                      class="checkbox checkbox-xs checkbox-secondary"
-                      checked={country.code in @selected_countries}
-                      phx-click="toggle_country"
-                      phx-value-code={country.code}
-                    />
-                    <span class="text-sm">
-                      <span class="font-mono text-xs text-on-surface-variant">
-                        {country.code}
-                      </span>
-                      {country.name}
-                    </span>
-                  </label>
-                <% end %>
-              </div>
-            </div>
-            <span class="helper-text">
-              Clients from selected countries will be allowed
-            </span>
-          </div>
-        <% end %>
-
-        <!-- Custom Rules -->
-        <%= if @acl_form[:acl_type].value == "custom" do %>
-          <div class="form-group">
-            <label class="form-label font-semibold">Custom Rules</label>
-            <span class="helper-text">One rule per line</span>
-            <textarea
-              name="acl[rules]"
-              class="textarea h-32 font-mono text-sm"
-              placeholder="allow 10.0.0.0/8\nallow 192.168.0.0/16\ndeny any"
-            >{@acl_form[:rules].value}</textarea>
-            <span class="helper-text">
-              Format:
-              <code class="bg-surface-container-high px-1 rounded">allow|deny IP/prefix</code>
-            </span>
-          </div>
-        <% end %>
-
-        <div class="divider"></div>
-
-        <div class="flex justify-end gap-2">
-          <.dm_btn variant="ghost" type="button" phx-click="close_modal">Cancel</.dm_btn>
-          <.dm_btn variant="primary" type="submit" phx-disable-with="Saving...">
-            Save ACL
-          </.dm_btn>
-        </div>
-      </.form>
-    </.modal>
-  <% end %>
-
-  <!-- Create/Edit Named ACL Modal -->
-  <%= if @show_create_form do %>
-    <.modal
-      id="create-acl-modal"
-      title={if @editing_acl, do: "Edit ACL: #{@editing_acl}", else: "Create New ACL"}
-      show
-      on_cancel={JS.push("close_create_form")}
-    >
-      <.form
-        for={@create_form}
-        phx-submit="save_named_acl"
-        phx-change="validate_named_acl"
-        phx-debounce="blur"
-        class="space-y-4"
-      >
-        <div class="form-group">
-          <label class="form-label font-semibold">ACL Name</label>
-          <input
-            type="text"
-            name="acl[name]"
-            value={@create_form[:name].value}
-            maxlength="63"
-            class={"input w-full #{if @editing_acl, do: "bg-surface-container"} #{if @form_errors[:name], do: "input-error"}"}
-            placeholder="e.g., internal, external, partners"
-            disabled={@editing_acl != nil}
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <.card title="Create ACL">
+        <.form for={@acl_form} id="create-acl-form" phx-submit="create_acl" class="space-y-3">
+          <.input id="create-acl-id" field={@acl_form[:acl_id]} label="ACL ID" required />
+          <.input
+            id="create-acl-networks"
+            field={@acl_form[:networks]}
+            label="Networks (comma separated CIDRs)"
             required
           />
-          <%= if @form_errors[:name] do %>
-            <span class="helper-text text-error">{@form_errors[:name]}</span>
-          <% else %>
-            <span class="helper-text">Unique identifier for this ACL</span>
-          <% end %>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label font-semibold">Description</label>
-          <input
-            type="text"
-            name="acl[description]"
-            value={@create_form[:description].value}
-            maxlength="255"
-            class="input w-full"
-            placeholder="Optional description"
+          <.input
+            id="create-acl-action"
+            field={@acl_form[:action]}
+            type="select"
+            label="Action"
+            options={[{"Allow", "allow"}, {"Deny", "deny"}]}
           />
-        </div>
+          <button class="btn btn-primary" disabled={not @commands_enabled?}>Create</button>
+        </.form>
+      </.card>
 
-        <div class="form-group">
-          <label class="form-label font-semibold">ACL Type</label>
-          <select
-            name="acl[acl_type]"
-            class="select w-full"
-            phx-change="create_type_changed"
-          >
-            <option value="custom" selected={@create_form[:acl_type].value == "custom"}>
-              Custom Rules (IP/CIDR)
-            </option>
-            <option value="geo" selected={@create_form[:acl_type].value == "geo"}>
-              Geographic (by country)
-            </option>
-          </select>
-        </div>
-
-        <!-- Geo Country Picker for Create Form -->
-        <%= if @create_form[:acl_type].value == "geo" do %>
-          <div class="form-group">
-            <label class="form-label font-semibold">Allowed Countries</label>
-            <span class="helper-text">{length(@selected_countries)} selected</span>
-            <%= if @selected_countries != [] do %>
-              <div class="flex flex-wrap gap-2 mb-2">
-                <%= for code <- @selected_countries do %>
-                  <% country = Enum.find(@countries, fn c -> c.code == code end) %>
-                  <button
-                    type="button"
-                    class="badge badge-secondary gap-2"
-                    phx-click="toggle_country"
-                    phx-value-code={code}
-                  >
-                    {code}
-                    <%= if country do %>
-                      - {country.name}
-                    <% end %>
-                    <.dm_mdi name="close" class="w-3 h-3" />
-                  </button>
-                <% end %>
-              </div>
-            <% end %>
-            <div class="relative mb-2">
-              <input
-                type="text"
-                class="input input-sm w-full pr-8"
-                placeholder="Search countries..."
-                aria-label="Search countries"
-                value={@country_search}
-                phx-keyup="search_country"
-                phx-debounce="300"
-                phx-value-search={@country_search}
-                name="search"
-              />
-              <%= if @country_search != "" do %>
-                <button
-                  type="button"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
-                  phx-click="clear_country_search"
-                  aria-label="Clear search"
-                >
-                  <.dm_mdi name="close" class="w-4 h-4" />
-                </button>
-              <% end %>
-            </div>
-            <div class="border border-outline rounded-lg p-2 max-h-48 overflow-y-auto">
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <%= for country <- filtered_countries(@countries, @country_search) do %>
-                  <label class="label cursor-pointer justify-start gap-2 p-1 hover:bg-surface-container rounded">
-                    <input
-                      type="checkbox"
-                      class="checkbox checkbox-xs checkbox-secondary"
-                      checked={country.code in @selected_countries}
-                      phx-click="toggle_country"
-                      phx-value-code={country.code}
-                    />
-                    <span class="text-sm">
-                      <span class="font-mono text-xs text-on-surface-variant">
-                        {country.code}
-                      </span>
-                      {country.name}
-                    </span>
-                  </label>
-                <% end %>
-              </div>
-            </div>
-          </div>
-        <% end %>
-
-        <!-- Custom Rules for Create Form -->
-        <%= if @create_form[:acl_type].value == "custom" do %>
-          <div class="form-group">
-            <label class="form-label font-semibold">Rules</label>
-            <span class="helper-text">One rule per line</span>
-            <textarea
-              name="acl[rules]"
-              class={"textarea h-32 font-mono text-sm #{if @form_errors[:rules], do: "textarea-error"}"}
-              placeholder="allow 10.0.0.0/8\nallow 192.168.0.0/16\ndeny any"
-            >{@create_form[:rules].value}</textarea>
-            <%= if @form_errors[:rules] do %>
-              <span class="helper-text text-error">{@form_errors[:rules]}</span>
-            <% else %>
-              <span class="helper-text">
-                Format:
-                <code class="bg-surface-container-high px-1 rounded">allow|deny IP/prefix</code>
-                or
-                <code class="bg-surface-container-high px-1 rounded">allow|deny geo US, CA</code>
-              </span>
-            <% end %>
-          </div>
-        <% end %>
-
-        <div class="divider"></div>
-
-        <div class="flex justify-end gap-2">
-          <.dm_btn variant="ghost" type="button" phx-click="close_create_form">
-            Cancel
-          </.dm_btn>
-          <.dm_btn
-            variant="primary"
-            type="submit"
-            disabled={map_size(@form_errors) > 0}
-            phx-disable-with="Saving..."
-          >
-            {if @editing_acl, do: "Save Changes", else: "Create ACL"}
-          </.dm_btn>
-        </div>
-      </.form>
-    </.modal>
-  <% end %>
-
-  <!-- Delete Confirmation Modal -->
-  <%= if @delete_confirm do %>
-    <.modal id="delete-acl-modal" title="Delete ACL" show on_cancel={JS.push("cancel_delete")}>
-      <div class="py-4">
-        <p class="text-on-surface-variant">
-          Are you sure you want to delete the ACL <strong class="font-mono">{@delete_confirm}</strong>?
-        </p>
-        <p class="mt-2 text-sm text-warning">
-          This action cannot be undone. Views using this ACL may be affected.
-        </p>
-      </div>
-      <div class="flex justify-end gap-2 mt-4">
-        <.dm_btn variant="ghost" type="button" phx-click="cancel_delete">Cancel</.dm_btn>
-        <.dm_btn
-          variant="error"
-          type="button"
-          phx-click="delete_named_acl"
-          phx-disable-with="Deleting..."
-        >
-          Delete ACL
-        </.dm_btn>
-      </div>
-    </.modal>
-  <% end %>
+      <.card title="Update ACL">
+        <.form for={@acl_form} id="update-acl-form" phx-submit="update_acl" class="space-y-3">
+          <.input id="update-acl-id" field={@acl_form[:acl_id]} label="Existing ACL ID" required />
+          <.input
+            id="update-acl-networks"
+            field={@acl_form[:networks]}
+            label="Networks (comma separated CIDRs)"
+            required
+          />
+          <.input
+            id="update-acl-action"
+            field={@acl_form[:action]}
+            type="select"
+            label="Action"
+            options={[{"Allow", "allow"}, {"Deny", "deny"}]}
+          />
+          <button class="btn btn-secondary" disabled={not @commands_enabled?}>Update</button>
+        </.form>
+      </.card>
+    </div>
+  </div>
 </Layouts.app>

@@ -1,207 +1,62 @@
 defmodule YellowDog.Console.DnsLive.Index do
-  @moduledoc """
-  DNS Overview page showing service status, summary statistics, and cache metrics.
-  """
+  @moduledoc "Management-backed DNS overview for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
-
-  alias YellowDog.Dns.View
-  alias YellowDog.Store.Zone, as: StoreZone
-
-  @max_cache_entries 10_000
-
-  @view_stat_defaults %{
-    recursion_enabled: false,
-    zones: [],
-    query_count: 0,
-    hit_count: 0,
-    miss_count: 0,
-    cache_size: 0
-  }
+  alias YellowDog.Console.DnsLive.ManagementComponents
+  alias YellowDog.Console.DnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:views")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:zones")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:cache")
-    end
-
     {:ok,
      assign(socket,
        page_title: "DNS Overview",
-       status: get_dns_status(),
-       stats: get_dns_stats(),
-       cache_stats: get_cache_stats()
+       subscribed_server_id: nil,
+       views: [],
+       metrics: %{"queries" => 0, "failures" => 0},
+       management_error: nil,
+       cached_observed_at: nil
      )}
   end
 
   @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_overview(socket, server_id), else: socket)}
+  end
+
+  @impl true
   def handle_event("refresh", _params, socket) do
+    {:noreply, load_overview(socket, ManagementSupport.selected_id(socket))}
+  end
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:status, get_dns_status())
-     |> assign(:stats, get_dns_stats())
-     |> assign(:cache_stats, get_cache_stats())}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_overview(server_id)}
   end
 
-  @impl true
-  def handle_info({event, _name}, socket) when event in [:view_updated, :zone_updated] do
-    {:noreply, assign(socket, :stats, get_dns_stats())}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_info({:cache_updated, _entry}, socket) do
-    {:noreply, assign(socket, :cache_stats, get_cache_stats())}
-  end
+  defp load_overview(socket, server_id) do
+    views_result = ServerManagement.dns_views_list(server_id)
+    metrics_result = ServerManagement.dns_metrics_get(server_id)
+    results = [views_result, metrics_result]
 
-  @impl true
-  def handle_info(_msg, socket) do
-    {:noreply, socket}
-  end
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:views")
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:zones")
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:cache")
-    :ok
-  end
-
-  defp get_dns_status do
-    safe_call(YellowDog.Dns, fn -> YellowDog.Dns.status() end, %{
-      running: false,
-      info: "DNS service not running"
-    })
-  end
-
-  @default_dns_stats %{
-    total_zones: 0,
-    total_queries: 0,
-    total_hits: 0,
-    total_misses: 0,
-    total_cache: 0
-  }
-
-  defp get_dns_stats do
-    runtime_stats =
-      safe_call(
-        YellowDog.Dns,
-        fn ->
-          views = YellowDog.Dns.ViewManager.list_views()
-
-          view_stats =
-            Enum.map(views, fn {view_name, pid, priority} ->
-              stats = Map.merge(@view_stat_defaults, View.stats(pid))
-
-              %{
-                name: view_name,
-                priority: priority,
-                recursion_enabled: stats.recursion_enabled,
-                zone_count: length(stats.zones),
-                query_count: stats.query_count,
-                hit_count: stats.hit_count,
-                miss_count: stats.miss_count,
-                cache_size: stats.cache_size
-              }
-            end)
-
-          {queries, hits, misses, cache} =
-            Enum.reduce(view_stats, {0, 0, 0, 0}, fn s, {q, h, m, c} ->
-              {q + s.query_count, h + s.hit_count, m + s.miss_count, c + s.cache_size}
-            end)
-
-          %{
-            total_zones: 0,
-            total_queries: queries,
-            total_hits: hits,
-            total_misses: misses,
-            total_cache: cache
-          }
-        end,
-        @default_dns_stats
-      )
-
-    Map.put(runtime_stats, :total_zones, total_zone_count())
-  end
-
-  defp total_zone_count do
-    case StoreZone.list_zones() do
-      {:ok, zones} -> length(zones)
-      {:error, _reason} -> 0
-    end
-  catch
-    _, _ -> 0
-  end
-
-  @default_cache_stats %{
-    total_entries: 0,
-    hit_count: 0,
-    miss_count: 0,
-    insert_count: 0,
-    eviction_count: 0,
-    max_entries: @max_cache_entries
-  }
-
-  @cache_stat_defaults %{
-    current_size: 0,
-    hit_count: 0,
-    miss_count: 0,
-    insert_count: 0,
-    eviction_count: 0
-  }
-
-  defp get_cache_stats do
-    safe_call(
-      YellowDog.Dns,
-      fn ->
-        zones = YellowDog.Dns.ZoneController.list_zones()
-
-        cache_stats =
-          for({:cache, _name, pid} <- zones, do: YellowDog.Dns.Zone.Cache.stats(pid))
-          |> Enum.reduce(@cache_stat_defaults, fn stat, acc ->
-            stat = Map.merge(@cache_stat_defaults, stat)
-
-            %{
-              current_size: acc.current_size + stat.current_size,
-              hit_count: acc.hit_count + stat.hit_count,
-              miss_count: acc.miss_count + stat.miss_count,
-              insert_count: acc.insert_count + stat.insert_count,
-              eviction_count: acc.eviction_count + stat.eviction_count
-            }
-          end)
-
-        %{
-          total_entries: cache_stats.current_size,
-          hit_count: cache_stats.hit_count,
-          miss_count: cache_stats.miss_count,
-          insert_count: cache_stats.insert_count,
-          eviction_count: cache_stats.eviction_count,
-          max_entries: @max_cache_entries
-        }
-      end,
-      @default_cache_stats
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DNS",
+      views: ManagementSupport.items(views_result),
+      metrics: ManagementSupport.value(metrics_result, %{"queries" => 0, "failures" => 0}),
+      management_error: ManagementSupport.first_error(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(
+          results,
+          socket.assigns.selected_server.last_seen_at
+        )
     )
   end
-
-  defp calculate_hit_rate(hits, misses) do
-    total = hits + misses
-
-    if total > 0 do
-      round(hits / total * 100)
-    else
-      0
-    end
-  end
-
-  defp cache_hit_rate(%{hit_count: hits, miss_count: misses}) do
-    calculate_hit_rate(hits, misses)
-  end
-
-  defp cache_utilization(current, max) when max > 0 do
-    round(current / max * 100)
-  end
-
-  defp cache_utilization(_, _), do: 0
 end

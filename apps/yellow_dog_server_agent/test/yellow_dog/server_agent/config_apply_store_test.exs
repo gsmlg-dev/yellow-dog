@@ -549,7 +549,7 @@ defmodule YellowDog.ServerAgent.ConfigApplyStoreTest do
     assert length(failed.outbox) <= 3
   end
 
-  test "startup preserves pure checkpoints and converts every side-effect checkpoint to unknown",
+  test "startup preserves every checkpoint for deterministic applier recovery",
        %{
          data_dir: data_dir
        } do
@@ -568,14 +568,16 @@ defmodule YellowDog.ServerAgent.ConfigApplyStoreTest do
       restarted = start_apply_store(test_dir, config_store)
       assert {:ok, snapshot} = ConfigApplyStore.snapshot(restarted)
 
-      if checkpoint in [:staged, :before_validate] do
-        assert snapshot.attempt.checkpoint == checkpoint
-        refute snapshot.runtime_status == :unknown
-      else
-        assert snapshot.attempt.checkpoint == :unknown
-        assert snapshot.attempt.status == :applying
-        assert snapshot.runtime_status == :unknown
-      end
+      assert snapshot.attempt.checkpoint == checkpoint
+
+      assert snapshot.attempt.status ==
+               if(checkpoint in [:staged, :before_validate], do: :delivered, else: :applying)
+
+      assert snapshot.runtime_status ==
+               if(checkpoint in [:before_restore, :before_reactivate],
+                 do: :unknown,
+                 else: :unconfigured
+               )
     end
   end
 

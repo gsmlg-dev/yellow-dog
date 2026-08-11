@@ -121,6 +121,40 @@ defmodule YellowDog.Resolved.Cache do
     }
   end
 
+  @doc "Returns unexpired A and AAAA cache entries without exposing cached protocol structs."
+  @spec entries() :: [
+          %{domain: String.t(), address: :inet.ip_address(), expires_at: DateTime.t()}
+        ]
+  def entries do
+    monotonic_now = System.monotonic_time(:second)
+    utc_now = DateTime.utc_now()
+
+    @table
+    |> :ets.tab2list()
+    |> Enum.flat_map(&project_entry(&1, monotonic_now, utc_now))
+    |> Enum.sort_by(&{&1.domain, :inet.ntoa(&1.address)})
+  rescue
+    ArgumentError -> []
+  end
+
+  @doc false
+  @spec revision_material() :: [map()]
+  def revision_material do
+    @table
+    |> :ets.tab2list()
+    |> Enum.map(fn {{domain, type}, _response, expires_at, _last_access, stored_at} ->
+      %{
+        "domain" => domain,
+        "type" => to_string(type),
+        "expires_at" => expires_at,
+        "stored_at" => stored_at
+      }
+    end)
+    |> Enum.sort_by(&{&1["domain"], &1["type"], &1["expires_at"], &1["stored_at"]})
+  rescue
+    ArgumentError -> []
+  end
+
   # Server callbacks
 
   @impl true
@@ -262,6 +296,31 @@ defmodule YellowDog.Resolved.Cache do
   def handle_info(_msg, state), do: {:noreply, state}
 
   # Private
+
+  defp project_entry({{domain, _type}, response, expires_at, _last_access, _stored_at}, now, utc)
+       when expires_at > now do
+    response
+    |> response_addresses()
+    |> Enum.map(fn address ->
+      %{
+        domain: domain,
+        address: address,
+        expires_at: DateTime.add(utc, expires_at - now, :second)
+      }
+    end)
+  end
+
+  defp project_entry(_entry, _now, _utc), do: []
+
+  defp response_addresses(%DNS.Message{anlist: answers}) do
+    Enum.flat_map(answers, fn
+      %DNS.Message.Record{data: %DNS.Message.Record.Data.A{data: address}} -> [address]
+      %DNS.Message.Record{data: %DNS.Message.Record.Data.AAAA{data: address}} -> [address]
+      _record -> []
+    end)
+  end
+
+  defp response_addresses(_response), do: []
 
   defp cache_key(domain, type) do
     {String.downcase(String.trim_trailing(domain, ".")), type}

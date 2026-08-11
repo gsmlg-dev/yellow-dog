@@ -49,10 +49,10 @@ defmodule YellowDog.Server.Control.MdnsTest do
     ServerMdnsControlFake.configure(%{registry_snapshot: {:ok, services}})
 
     assert {:ok, result} = Mdns.dispatch("server.mdns.services.list", %{"limit" => 1})
-    assert result["items"] == [public_service("alpha")]
+    assert result["items"] == [service_item("alpha")]
     assert result["observed_at"] == @observed_at
 
-    assert {:ok, revision} = Revision.calculate([public_service("alpha"), public_service("beta")])
+    assert {:ok, revision} = Revision.calculate([service_item("alpha"), service_item("beta")])
     assert result["revision"] == revision
     assert_valid_result("server.mdns.services.list", result)
 
@@ -132,14 +132,68 @@ defmodule YellowDog.Server.Control.MdnsTest do
     end
   end
 
-  test "validates monitor payload then returns typed unsupported without owner calls" do
-    assert {:error, %Error{code: :unsupported}} = Mdns.dispatch("server.mdns.monitor.list", %{})
-    assert [] = ServerMdnsControlFake.take_calls()
+  test "projects the registered monitor query as a typed bounded query log" do
+    query = %{
+      domain: "printer.local",
+      record_type: :ptr,
+      source_ip: {192, 0, 2, 20},
+      source_port: 5353,
+      timestamp: 1_768_435_200,
+      answered: true,
+      message: self()
+    }
+
+    ServerMdnsControlFake.configure(%{monitor_queries: [query]})
+
+    assert {:ok, result} = Mdns.dispatch("server.mdns.monitor.list", %{})
+    assert [item] = result["items"]
+
+    assert item ==
+             monitor_item(%{
+               "query_name" => "printer.local",
+               "record_type" => "PTR",
+               "source_address" => "192.0.2.20",
+               "source_port" => 5353,
+               "answered" => true,
+               "occurred_at" => "2026-01-15T00:00:00Z"
+             })
+
+    assert {:ok, revision} = Revision.calculate([item])
+    assert result["revision"] == revision
+    assert result["observed_at"] == @observed_at
+    assert_valid_result("server.mdns.monitor.list", result)
+
+    assert [
+             {:monitor, :get_queries, [[limit: 1_000]]},
+             {:clock, :utc_now, []}
+           ] = ServerMdnsControlFake.take_calls()
 
     assert {:error, %Error{code: :invalid}} =
              Mdns.dispatch("server.mdns.monitor.list", %{"limit" => 0})
 
     assert [] = ServerMdnsControlFake.take_calls()
+  end
+
+  test "every existing mDNS service command hashes the exact approved list item for CAS" do
+    for enabled <- [true, false] do
+      service = service("printer", enabled: enabled)
+      ServerMdnsControlFake.configure(%{registry_snapshot: {:ok, [service]}})
+
+      assert {:ok, %{"items" => [list_item]}} =
+               Mdns.dispatch("server.mdns.services.list", %{})
+
+      assert list_item == service_item("printer", enabled: enabled)
+      assert {:ok, expected_revision} = Revision.calculate(list_item)
+
+      for {operation, payload} <- [
+            {"server.mdns.services.update", public_service("printer")},
+            {"server.mdns.services.delete", %{"service_id" => service.id}},
+            {"server.mdns.services.toggle", %{"service_id" => service.id, "enabled" => !enabled}}
+          ] do
+        assert {:ok, ^list_item} = Mdns.current(operation, payload)
+        assert {:ok, ^expected_revision} = Revision.calculate(list_item)
+      end
+    end
   end
 
   test "uses public resource plus enabled state for mutation revisions" do
@@ -152,7 +206,7 @@ defmodule YellowDog.Server.Control.MdnsTest do
     })
 
     payload = public_service("printer") |> Map.put("service_port", 9101)
-    current = %{"resource" => public_service("printer"), "enabled" => false}
+    current = service_item("printer", enabled: false)
     assert {:ok, expected_revision} = Revision.calculate(current)
 
     assert {:ok, result} =
@@ -162,10 +216,10 @@ defmodule YellowDog.Server.Control.MdnsTest do
                )
              )
 
-    assert result["resource"] == public_service("printer") |> Map.put("service_port", 9101)
+    assert result["resource"] ==
+             service_item("printer", port: 9101, enabled: true)
 
-    assert {:ok, result_revision} =
-             Revision.calculate(%{"resource" => result["resource"], "enabled" => true})
+    assert {:ok, result_revision} = Revision.calculate(result["resource"])
 
     assert result["revision"] == result_revision
 
@@ -234,10 +288,9 @@ defmodule YellowDog.Server.Control.MdnsTest do
     ServerMdnsControlFake.take_calls()
 
     assert {:ok, registered} = Mdns.dispatch("server.mdns.services.register", payload)
-    assert registered["resource"] == payload
+    assert registered["resource"] == service_item("printer")
 
-    assert {:ok, registered_revision} =
-             Revision.calculate(%{"resource" => payload, "enabled" => true})
+    assert {:ok, registered_revision} = Revision.calculate(service_item("printer"))
 
     assert registered["revision"] == registered_revision
 
@@ -245,21 +298,23 @@ defmodule YellowDog.Server.Control.MdnsTest do
     toggle_payload = %{"service_id" => payload["service_id"], "enabled" => false}
 
     assert {:ok, current} = Mdns.current("server.mdns.services.toggle", toggle_payload)
-    assert current == %{"resource" => payload, "enabled" => true}
+    assert current == service_item("printer")
 
     assert {:ok, toggled} = Mdns.dispatch("server.mdns.services.toggle", toggle_payload)
-    assert toggled["resource"] == payload
+    assert toggled["resource"] == service_item("printer", enabled: false)
 
     assert {:ok, toggled_revision} =
-             Revision.calculate(%{"resource" => payload, "enabled" => false})
+             Revision.calculate(service_item("printer", enabled: false))
 
     assert toggled["revision"] == toggled_revision
 
     ServerMdnsControlFake.configure(%{registry_snapshot: {:ok, [disabled]}})
     delete_payload = %{"service_id" => payload["service_id"]}
 
-    assert {:ok, %{"resource" => ^payload, "enabled" => false}} =
+    assert {:ok, current} =
              Mdns.current("server.mdns.services.delete", delete_payload)
+
+    assert current == service_item("printer", enabled: false)
 
     assert {:ok, deleted} = Mdns.dispatch("server.mdns.services.delete", delete_payload)
     assert deleted["resource_ref"] == delete_payload
@@ -380,6 +435,17 @@ defmodule YellowDog.Server.Control.MdnsTest do
         %{"key" => "room", "value" => "north"}
       ]
     }
+  end
+
+  defp service_item(name, overrides \\ []) do
+    public_service(name)
+    |> Map.put("service_port", Keyword.get(overrides, :port, 9100))
+    |> Map.put("enabled", Keyword.get(overrides, :enabled, true))
+  end
+
+  defp monitor_item(item) do
+    {:ok, revision} = Revision.calculate(item)
+    Map.put(item, "query_id", "query-" <> revision)
   end
 
   defp envelope(operation, payload, overrides \\ []) do

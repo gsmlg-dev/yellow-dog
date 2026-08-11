@@ -553,6 +553,16 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert {:ok, profile} = Profile.from_toml(toml)
       assert profile.ipv4.gateway == nil
     end
+
+    test "rejects a gateway from the wrong address family" do
+      toml = %{
+        "connection" => %{"id" => "gw-family", "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto", "gateway" => "2001:db8::1"}
+      }
+
+      assert {:error, message} = Profile.from_toml(toml)
+      assert message =~ "ipv4.gateway"
+    end
   end
 
   describe "DNS validation" do
@@ -584,6 +594,16 @@ defmodule YellowDog.Netman.Types.ProfileTest do
 
       assert {:ok, profile} = Profile.from_toml(toml)
       assert profile.ipv6.dns == ["2001:4860:4860::8888"]
+    end
+
+    test "rejects DNS servers from the wrong address family" do
+      toml = %{
+        "connection" => %{"id" => "dns-family", "type" => "ethernet"},
+        "ipv6" => %{"method" => "auto", "dns" => ["192.0.2.53"]}
+      }
+
+      assert {:error, message} = Profile.from_toml(toml)
+      assert message =~ "ipv6.dns"
     end
   end
 

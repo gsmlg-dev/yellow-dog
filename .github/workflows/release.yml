@@ -200,7 +200,7 @@ jobs:
           chmod 755 apps/yellow_dog_netman/priv/native/netlink_helper
 
       - name: Build console assets
-        if: matrix.mix_release == 'yellow_dog_management_core' || matrix.mix_release == 'yellow_dog_server'
+        if: matrix.mix_release == 'yellow_dog_management_core'
         working-directory: apps/yellow_dog_console
         run: |
           set -euo pipefail

@@ -51,7 +51,7 @@ defmodule YellowDog.Console.ServerChannelTest do
              subscribe_and_join(socket, ServerChannel, "server:control")
   end
 
-  test "activates only after canonical Hello then first matching Status" do
+  test "activates only after canonical Hello, matching Status, and Journal" do
     server_id = unique_id("handshake")
     socket = join_registered(server_id)
 
@@ -65,13 +65,17 @@ defmodule YellowDog.Console.ServerChannelTest do
 
     ref = push(socket, "sync", payload(status(server_id)))
     assert_reply ref, :ok, %{"accepted" => true}
+    refute ServerConnections.connected?(server_id)
+
+    ref = push(socket, "sync", payload(journal(server_id)))
+    assert_reply ref, :ok, %{"accepted" => true}
     assert ServerConnections.connected?(server_id)
 
     assert {:ok, %{identity: %{id: ^server_id}, status: %{target_id: ^server_id}}} =
              ServerConnections.get(server_id)
   end
 
-  test "rejects ConfigState before activation without side effects" do
+  test "rejects ConfigState before Journal activation without side effects" do
     server_id = unique_id("pre-active-config")
     register_server(server_id)
     assert {:ok, desired} = publish_config(server_id)
@@ -86,7 +90,7 @@ defmodule YellowDog.Console.ServerChannelTest do
     assert unchanged.state == :desired
   end
 
-  test "keeps the active channel until a replacement completes both handshake messages" do
+  test "keeps the active channel until a replacement submits a valid Journal" do
     trap_channel_exits()
     server_id = unique_id("channel-replacement")
     first = join_registered(server_id)
@@ -100,8 +104,17 @@ defmodule YellowDog.Console.ServerChannelTest do
     assert_reply ref, :ok, %{"accepted" => true}
     assert {:ok, %{channel_pid: ^first_pid}} = ServerConnections.get(server_id)
 
-    monitor = Process.monitor(first_pid)
     ref = push(second, "sync", payload(status(server_id, "replacement")))
+    assert_reply ref, :ok, %{"accepted" => true}
+    assert {:ok, %{channel_pid: ^first_pid}} = ServerConnections.get(server_id)
+
+    monitor = Process.monitor(first_pid)
+    invalid_ref = push(second, "sync", payload(conflicting_journal(server_id)))
+    assert_reply invalid_ref, :error, %{"error" => %{"code" => "invalid"}}
+    assert {:ok, %{channel_pid: ^first_pid}} = ServerConnections.get(server_id)
+    refute_receive {:DOWN, ^monitor, :process, ^first_pid, _reason}, 20
+
+    ref = push(second, "sync", payload(journal(server_id)))
     assert_reply ref, :ok, %{"accepted" => true}
     assert_receive {:DOWN, ^monitor, :process, ^first_pid, _reason}
     assert_receive {:EXIT, ^first_pid, {:shutdown, :replaced}}
@@ -197,15 +210,17 @@ defmodule YellowDog.Console.ServerChannelTest do
     assert {:ok, latest} = publish_config(server_id, "192.0.2.52")
     old = join(server_id)
     activate(old, server_id)
+    assert_push "sync", %{"message" => _initial_delivery, "publication_sequence" => nil}
     suspend_channel(old)
 
     old_ref = push(old, "sync", payload(journal(server_id)))
     replacement = join(server_id)
     activate(replacement, server_id)
+    assert_push "sync", %{"message" => _replacement_delivery, "publication_sequence" => nil}
     :ok = :sys.resume(old.channel_pid)
 
     assert_reply old_ref, :error, %{"error" => %{"code" => "not_connected"}}
-    assert {:ok, %{status: :registered}} = ManagementCore.get_server(server_id)
+    assert {:ok, %{status: :online}} = ManagementCore.get_server(server_id)
     assert {:ok, unchanged} = ManagementCore.get_server_config_version(server_id, latest.version)
     assert unchanged.state == :desired
     refute_push "sync", _, 50
@@ -237,9 +252,6 @@ defmodule YellowDog.Console.ServerChannelTest do
     assert {:ok, latest} = publish_config(server_id, "192.0.2.62")
     socket = join(server_id)
     activate(socket, server_id)
-
-    ref = push(socket, "sync", payload(journal(server_id)))
-    assert_reply ref, :ok, %{"accepted" => true}
 
     assert_push "sync", %{"message" => encoded, "publication_sequence" => nil}
     assert {:ok, %ConfigDelivery{envelope: envelope}} = Message.decode(encoded)
@@ -389,6 +401,9 @@ defmodule YellowDog.Console.ServerChannelTest do
 
     ref = push(socket, "sync", payload(status(server_id)))
     assert_reply ref, :ok, %{"accepted" => true}
+
+    ref = push(socket, "sync", payload(journal(server_id)))
+    assert_reply ref, :ok, %{"accepted" => true}
   end
 
   defp hello(server_id, name \\ "primary") do
@@ -420,6 +435,24 @@ defmodule YellowDog.Console.ServerChannelTest do
 
   defp journal(server_id) do
     %Journal{target_type: :server, target_id: server_id, entries: []}
+  end
+
+  defp conflicting_journal(server_id) do
+    entry = %{
+      "request_id" => @request_id,
+      "operation" => "server.runtime.services.start",
+      "status" => "unknown",
+      "result" => nil,
+      "error" => nil
+    }
+
+    completed = %{
+      entry
+      | "status" => "completed",
+        "result" => %{"service" => "dns", "state" => "running"}
+    }
+
+    %Journal{target_type: :server, target_id: server_id, entries: [entry, completed]}
   end
 
   defp event(server_id) do

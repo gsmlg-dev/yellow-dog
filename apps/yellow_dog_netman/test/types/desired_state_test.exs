@@ -16,9 +16,9 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    assert Map.has_key?(desired.connections, "test-eth")
+    assert Map.has_key?(desired.connections, {"test-eth", "eth0"})
 
-    conn = desired.connections["test-eth"]
+    conn = desired.connections[{"test-eth", "eth0"}]
     assert conn.profile_id == "test-eth"
     assert conn.interface == "eth0"
     assert conn.mtu == 1500
@@ -52,8 +52,8 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
 
     desired = DesiredState.from_profiles([{p1, "eth0"}, {p2, "eth1"}])
     assert map_size(desired.connections) == 2
-    assert desired.connections["eth0-profile"].priority == 100
-    assert desired.connections["eth1-profile"].priority == 50
+    assert desired.connections[{"eth0-profile", "eth0"}].priority == 100
+    assert desired.connections[{"eth1-profile", "eth1"}].priority == 50
   end
 
   test "from_profiles/1 concatenates DNS from both IPv4 and IPv6" do
@@ -67,7 +67,7 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["dual-dns"]
+    conn = desired.connections[{"dual-dns", "eth0"}]
     assert conn.dns == ["8.8.8.8", "8.8.4.4", "2001:4860:4860::8888"]
   end
 
@@ -82,7 +82,7 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["nil-dns"]
+    conn = desired.connections[{"nil-dns", "eth0"}]
     assert conn.dns == []
   end
 
@@ -97,12 +97,12 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["mixed-dns"]
+    conn = desired.connections[{"mixed-dns", "eth0"}]
     assert conn.dns == ["2001:4860:4860::8844"]
   end
 
-  test "from_profiles/1 with duplicate profile IDs, last one wins" do
-    p1 = %Profile{
+  test "from_profiles/1 preserves one connection per interface for a wildcard profile" do
+    profile = %Profile{
       id: "shared-id",
       type: :ethernet,
       autoconnect_priority: 100,
@@ -111,22 +111,12 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
       ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
     }
 
-    p2 = %Profile{
-      id: "shared-id",
-      type: :ethernet,
-      autoconnect_priority: 200,
-      ethernet: %{mtu: 9000},
-      ipv4: %{method: :auto, address: nil, gateway: nil, dns: ["1.1.1.1"]},
-      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
-    }
+    desired = DesiredState.from_profiles([{profile, "eth0"}, {profile, "eth1"}])
 
-    desired = DesiredState.from_profiles([{p1, "eth0"}, {p2, "eth1"}])
-    # Duplicate key: last entry wins in `for ... into: %{}`
-    assert map_size(desired.connections) == 1
-    conn = desired.connections["shared-id"]
-    assert conn.interface == "eth1"
-    assert conn.priority == 200
-    assert conn.mtu == 9000
+    assert %{
+             {"shared-id", "eth0"} => %{interface: "eth0", dns: ["8.8.8.8"], mtu: 1500},
+             {"shared-id", "eth1"} => %{interface: "eth1", dns: ["8.8.8.8"], mtu: 1500}
+           } = desired.connections
   end
 
   test "from_profiles/1 concatenates dns_search from both IPv4 and IPv6" do
@@ -140,7 +130,7 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["dual-search"]
+    conn = desired.connections[{"dual-search", "eth0"}]
     assert conn.dns_search == ["v4.example.com", "v6.example.com"]
   end
 
@@ -167,7 +157,7 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["dedup-search"]
+    conn = desired.connections[{"dedup-search", "eth0"}]
     assert conn.dns_search == ["example.com", "local", "v6.local"]
   end
 
@@ -182,7 +172,7 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["nil-search"]
+    conn = desired.connections[{"nil-search", "eth0"}]
     assert conn.dns_search == []
   end
 
@@ -197,7 +187,7 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     }
 
     desired = DesiredState.from_profiles([{profile, "eth0"}])
-    conn = desired.connections["dns-order"]
+    conn = desired.connections[{"dns-order", "eth0"}]
     assert conn.dns == ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"]
   end
 end

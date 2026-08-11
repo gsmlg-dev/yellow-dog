@@ -302,13 +302,28 @@ defmodule YellowDogIdentity.ControlFacadeTest do
       end
     end
 
-    test "approval and token owner surfaces are typed unsupported without an owner" do
-      stop_registry()
+    test "approval snapshots are deterministic projections of durable host state" do
+      pending = put_host!("pending-approval-host")
+      approved = put_host!("approved-approval-host")
 
-      assert {:error, :unsupported} = YellowDogIdentity.control_list_approvals()
-      assert {:error, :unsupported} = YellowDogIdentity.control_list_tokens()
-      assert {:error, :unsupported} = YellowDogIdentity.control_token("token-id")
-      assert {:error, :unsupported} = YellowDogIdentity.control_revoke_token("token-id")
+      assert {:ok, _prior, _resulting} =
+               YellowDogIdentity.control_approve_host(approved.id)
+
+      assert {:ok, approvals} = YellowDogIdentity.control_list_approvals()
+
+      assert Enum.map(approvals, & &1["host_id"]) |> Enum.sort() ==
+               Enum.sort([pending.id, approved.id])
+
+      assert Enum.all?(approvals, fn approval ->
+               Map.keys(approval) |> Enum.sort() == ~w(approval_id host_id state) and
+                 approval["approval_id"] =~ ~r/\Aapproval-[0-9a-f]{64}\z/
+             end)
+
+      assert %{"state" => "pending"} =
+               Enum.find(approvals, &(&1["host_id"] == pending.id))
+
+      assert %{"state" => "approved"} =
+               Enum.find(approvals, &(&1["host_id"] == approved.id))
     end
 
     test "unique audit snapshots are deterministic, bounded, and omit raw details" do
@@ -633,37 +648,163 @@ defmodule YellowDogIdentity.ControlFacadeTest do
     end
   end
 
-  describe "unsupported token control" do
-    test "never exposes or revokes an exhausted persisted token", %{tmp_dir: tmp_dir} do
-      {:ok, token, raw_token} =
-        YellowDogIdentity.create_token(%{
-          hostname_pattern: "*",
-          max_uses: 1,
-          created_by: "sensitive-actor"
+  describe "durable token control" do
+    test "create returns the secret once and every persisted/read snapshot is redacted",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      payload = %{"token_id" => "token-control-1", "label" => "bootstrap", "expires_at" => nil}
+
+      assert {:ok, public, raw_token, nil} = YellowDogIdentity.control_create_token(payload)
+
+      assert public == %{
+               "token_id" => "token-control-1",
+               "label" => "bootstrap",
+               "state" => "active"
+             }
+
+      token_path = Path.join([tmp_dir, "tokens", "token-control-1.toml"])
+      persisted = File.read!(token_path)
+      refute persisted =~ raw_token
+      refute inspect(public) =~ raw_token
+      refute inspect(public) =~ "token_hash"
+
+      assert {:ok, [^public]} = YellowDogIdentity.control_list_tokens()
+      assert {:ok, ^public} = YellowDogIdentity.control_token("token-control-1")
+
+      restart_registry!(tmp_dir, file_ops)
+
+      assert {:ok, [^public]} = YellowDogIdentity.control_list_tokens()
+      assert {:ok, ^public} = YellowDogIdentity.control_token("token-control-1")
+      refute File.read!(token_path) =~ raw_token
+    end
+
+    test "duplicate IDs conflict without replacing the original secret" do
+      payload = %{"token_id" => "token-duplicate", "label" => "original", "expires_at" => nil}
+      assert {:ok, original, raw_token, nil} = YellowDogIdentity.control_create_token(payload)
+
+      assert {:error, :conflict} =
+               YellowDogIdentity.control_create_token(%{payload | "label" => "replacement"})
+
+      assert {:ok, ^original} = YellowDogIdentity.control_token("token-duplicate")
+      assert {:ok, consumed} = Registry.consume_token(raw_token, "any-host")
+      assert consumed.id == "token-duplicate"
+    end
+
+    test "create preserves the validated expiry representation in its one-time result" do
+      expires_at = "2030-01-01T00:00:00+00:00"
+
+      assert {:ok, public, _raw_token, ^expires_at} =
+               YellowDogIdentity.control_create_token(%{
+                 "token_id" => "token-expiry-format",
+                 "label" => "formatted",
+                 "expires_at" => expires_at
+               })
+
+      assert public["state"] == "active"
+    end
+
+    test "an already-expired credential is created without leaving an unreported token" do
+      expires_at = "2000-01-01T00:00:00Z"
+
+      assert {:ok, expired, raw_token, ^expires_at} =
+               YellowDogIdentity.control_create_token(%{
+                 "token_id" => "token-created-expired",
+                 "label" => "expired",
+                 "expires_at" => expires_at
+               })
+
+      assert expired["state"] == "expired"
+      refute inspect(expired) =~ raw_token
+      assert {:ok, ^expired} = YellowDogIdentity.control_token("token-created-expired")
+    end
+
+    test "revoke persists a public revoked snapshot instead of deleting the credential",
+         %{tmp_dir: tmp_dir, file_ops: file_ops} do
+      payload = %{"token_id" => "token-revoke", "label" => "automation", "expires_at" => nil}
+      assert {:ok, active, raw_token, nil} = YellowDogIdentity.control_create_token(payload)
+
+      assert {:ok, ^active, revoked} =
+               YellowDogIdentity.control_revoke_token("token-revoke")
+
+      assert revoked == %{
+               "token_id" => "token-revoke",
+               "label" => "automation",
+               "state" => "revoked"
+             }
+
+      assert {:error, :token_revoked} = Registry.consume_token(raw_token, "any-host")
+
+      restart_registry!(tmp_dir, file_ops)
+      assert {:ok, ^revoked} = YellowDogIdentity.control_token("token-revoke")
+
+      assert {:error, :already_revoked} =
+               YellowDogIdentity.control_revoke_token("token-revoke")
+    end
+
+    test "exhausted and expired tokens are exposed only as expired" do
+      {:ok, exhausted, raw_token} = Token.create(%{id: "token-exhausted", label: "exhausted"})
+      :ok = Registry.put_token(exhausted)
+      assert {:ok, _used} = Registry.consume_token(raw_token, "host")
+
+      {:ok, expired, _raw_token} =
+        Token.create(%{
+          id: "token-expired",
+          label: "expired",
+          expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
         })
 
-      assert {:ok, exhausted} = Registry.consume_token(raw_token, "host")
-      assert exhausted.use_count == exhausted.max_uses
+      :ok = Registry.put_token(expired)
 
-      token_path = Path.join([tmp_dir, "tokens", "#{token.id}.toml"])
-      persisted = File.read!(token_path)
+      assert {:ok, snapshots} = YellowDogIdentity.control_list_tokens()
+      assert Enum.all?(snapshots, &(&1["state"] == "expired"))
+      refute inspect(snapshots) =~ "token_hash"
+    end
+
+    test "missing Registry failures are sanitized" do
+      stop_registry()
 
       results = [
+        YellowDogIdentity.control_list_approvals(),
         YellowDogIdentity.control_list_tokens(),
-        YellowDogIdentity.control_token(token.id),
-        YellowDogIdentity.control_revoke_token(token.id)
+        YellowDogIdentity.control_token("token-id"),
+        YellowDogIdentity.control_create_token(%{
+          "token_id" => "token-id",
+          "label" => "label",
+          "expires_at" => nil
+        }),
+        YellowDogIdentity.control_revoke_token("token-id"),
+        YellowDogIdentity.control_list_policies(),
+        YellowDogIdentity.control_update_policies([])
       ]
 
-      assert results == [
-               {:error, :unsupported},
-               {:error, :unsupported},
-               {:error, :unsupported}
-             ]
+      assert Enum.all?(results, &(&1 == {:error, :apply_failed}))
+    end
+  end
 
-      refute inspect(results) =~ raw_token
-      refute inspect(results) =~ token.token_hash
-      assert {:ok, ^exhausted} = Registry.get_token(token.id)
-      assert File.read!(token_path) == persisted
+  describe "durable policy control" do
+    test "updates replace the exact public set and survive restart", %{
+      tmp_dir: tmp_dir,
+      file_ops: file_ops
+    } do
+      assert {:ok, []} = YellowDogIdentity.control_list_policies()
+
+      policies = [
+        %{"policy_id" => "default", "action" => "require_approval", "enabled" => true}
+      ]
+
+      assert {:ok, [], ^policies} = YellowDogIdentity.control_update_policies(policies)
+      assert {:ok, ^policies} = YellowDogIdentity.control_list_policies()
+
+      restart_registry!(tmp_dir, file_ops)
+      assert {:ok, ^policies} = YellowDogIdentity.control_list_policies()
+    end
+
+    test "invalid policy documents do not change durable state" do
+      valid = [%{"policy_id" => "default", "action" => "allow", "enabled" => true}]
+      assert {:ok, [], ^valid} = YellowDogIdentity.control_update_policies(valid)
+
+      invalid = [%{"policy_id" => "default", "action" => "approve", "enabled" => true}]
+      assert {:error, :invalid} = YellowDogIdentity.control_update_policies(invalid)
+      assert {:ok, ^valid} = YellowDogIdentity.control_list_policies()
     end
   end
 

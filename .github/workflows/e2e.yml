@@ -158,3 +158,54 @@ jobs:
       - name: Build release and run E2E smoke checks
         run: scripts/e2e/release_smoke.sh ${{ matrix.release.name }}
         timeout-minutes: 10
+
+  management-release-e2e:
+    name: E2E Release (coordinated management control plane)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      SECRET_KEY_BASE: management-release-e2e-secret-key-base-management-release-e2e-secret-key-base
+      RELEASE_VERSION: ${{ inputs.release_version || '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        run: sudo apt-get update && sudo apt-get install -y inotify-tools openssl curl python3
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.hex
+            ~/.cache/rebar3
+            deps
+            _build
+            apps/abyss/native/dhcp_socket/target
+            apps/yellow_dog_netman/native/netlink_helper/target
+          key: ${{ runner.os }}-management-release-e2e-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-management-release-e2e-
+            ${{ runner.os }}-release-e2e-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Build and exercise all management releases
+        env:
+          MIX_ENV: test
+        run: mix test.e2e.management
+        timeout-minutes: 20

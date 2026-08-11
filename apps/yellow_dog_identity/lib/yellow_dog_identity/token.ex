@@ -11,12 +11,14 @@ defmodule YellowDogIdentity.Token do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          label: String.t(),
           token_hash: String.t(),
           hostname_pattern: String.t(),
           role: String.t() | nil,
           max_uses: pos_integer(),
           use_count: non_neg_integer(),
-          expires_at: DateTime.t(),
+          expires_at: DateTime.t() | nil,
+          revoked_at: DateTime.t() | nil,
           created_by: String.t(),
           created_at: DateTime.t()
         }
@@ -24,10 +26,12 @@ defmodule YellowDogIdentity.Token do
   @enforce_keys [:id, :token_hash, :hostname_pattern, :max_uses, :expires_at, :created_by]
   defstruct [
     :id,
+    :label,
     :token_hash,
     :hostname_pattern,
     :role,
     :expires_at,
+    :revoked_at,
     :created_by,
     max_uses: 1,
     use_count: 0,
@@ -43,34 +47,27 @@ defmodule YellowDogIdentity.Token do
   """
   @spec create(map()) :: {:ok, t(), raw_token :: String.t()} | {:error, term()}
   def create(params) when is_map(params) do
-    hostname_pattern = Map.get(params, :hostname_pattern, "*")
-    max_uses = Map.get(params, :max_uses, 1)
-    role = Map.get(params, :role)
-    created_by = Map.get(params, :created_by, "system")
-    ttl_seconds = Map.get(params, :ttl_seconds, 3600)
+    id = param(params, :id) || generate_uuid()
 
-    expires_at = DateTime.add(DateTime.utc_now(), ttl_seconds, :second)
+    with {:ok, expires_at} <- token_expiry(params) do
+      raw_token =
+        :crypto.strong_rand_bytes(@token_bytes)
+        |> Base.url_encode64(padding: false)
 
-    # Generate raw token
-    raw_token =
-      :crypto.strong_rand_bytes(@token_bytes)
-      |> Base.url_encode64(padding: false)
+      token = %__MODULE__{
+        id: id,
+        label: param(params, :label) || id,
+        token_hash: hash_token(raw_token),
+        hostname_pattern: param(params, :hostname_pattern) || "*",
+        role: param(params, :role),
+        max_uses: param(params, :max_uses) || 1,
+        expires_at: expires_at,
+        created_by: param(params, :created_by) || "system",
+        created_at: DateTime.utc_now()
+      }
 
-    # Hash with SHA-256 (bcrypt is too slow for token verification in hot path)
-    token_hash = hash_token(raw_token)
-
-    token = %__MODULE__{
-      id: generate_uuid(),
-      token_hash: token_hash,
-      hostname_pattern: hostname_pattern,
-      role: role,
-      max_uses: max_uses,
-      expires_at: expires_at,
-      created_by: created_by,
-      created_at: DateTime.utc_now()
-    }
-
-    {:ok, token, raw_token}
+      {:ok, token, raw_token}
+    end
   end
 
   @doc """
@@ -83,7 +80,10 @@ defmodule YellowDogIdentity.Token do
       not :crypto.hash_equals(hash_token(raw_token), token.token_hash) ->
         {:error, :invalid_token}
 
-      DateTime.compare(DateTime.utc_now(), token.expires_at) == :gt ->
+      not is_nil(token.revoked_at) ->
+        {:error, :token_revoked}
+
+      expired?(token) ->
         {:error, :token_expired}
 
       token.use_count >= token.max_uses ->
@@ -110,8 +110,7 @@ defmodule YellowDogIdentity.Token do
   """
   @spec valid?(t()) :: boolean()
   def valid?(%__MODULE__{} = token) do
-    DateTime.compare(DateTime.utc_now(), token.expires_at) != :gt and
-      token.use_count < token.max_uses
+    is_nil(token.revoked_at) and not expired?(token) and token.use_count < token.max_uses
   end
 
   @doc """
@@ -123,15 +122,17 @@ defmodule YellowDogIdentity.Token do
       "token" =>
         %{
           "id" => token.id,
+          "label" => token.label,
           "token_hash" => token.token_hash,
           "hostname_pattern" => token.hostname_pattern,
           "max_uses" => token.max_uses,
           "use_count" => token.use_count,
-          "expires_at" => DateTime.to_iso8601(token.expires_at),
+          "expires_at" => format_datetime(token.expires_at),
           "created_by" => token.created_by,
           "created_at" => DateTime.to_iso8601(token.created_at)
         }
         |> maybe_put("role", token.role)
+        |> maybe_put("revoked_at", format_optional_datetime(token.revoked_at))
     }
   end
 
@@ -143,14 +144,17 @@ defmodule YellowDogIdentity.Token do
     try do
       token = %__MODULE__{
         id: Map.fetch!(data, "id"),
+        label: Map.get(data, "label", Map.fetch!(data, "id")),
         token_hash: Map.fetch!(data, "token_hash"),
         hostname_pattern: Map.fetch!(data, "hostname_pattern"),
         role: Map.get(data, "role"),
         max_uses: Map.fetch!(data, "max_uses"),
         use_count: Map.get(data, "use_count", 0),
-        expires_at: parse_datetime!(Map.fetch!(data, "expires_at")),
+        expires_at: parse_optional_datetime!(Map.fetch!(data, "expires_at")),
+        revoked_at: parse_optional_datetime!(Map.get(data, "revoked_at")),
         created_by: Map.fetch!(data, "created_by"),
-        created_at: parse_datetime!(Map.get(data, "created_at", DateTime.to_iso8601(DateTime.utc_now())))
+        created_at:
+          parse_datetime!(Map.get(data, "created_at", DateTime.to_iso8601(DateTime.utc_now())))
       }
 
       {:ok, token}
@@ -166,6 +170,48 @@ defmodule YellowDogIdentity.Token do
   defp hash_token(raw_token) do
     :crypto.hash(:sha256, raw_token) |> Base.encode64(padding: false)
   end
+
+  defp param(params, key), do: Map.get(params, key) || Map.get(params, Atom.to_string(key))
+
+  defp token_expiry(params) do
+    case Map.fetch(params, :expires_at) do
+      {:ok, value} -> normalize_expiry(value)
+      :error -> token_expiry_from_string_key(params)
+    end
+  end
+
+  defp token_expiry_from_string_key(params) do
+    case Map.fetch(params, "expires_at") do
+      {:ok, value} ->
+        normalize_expiry(value)
+
+      :error ->
+        {:ok, DateTime.add(DateTime.utc_now(), param(params, :ttl_seconds) || 3600, :second)}
+    end
+  end
+
+  defp normalize_expiry(nil), do: {:ok, nil}
+  defp normalize_expiry(%DateTime{} = value), do: {:ok, value}
+
+  defp normalize_expiry(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, 0} -> {:ok, datetime}
+      _ -> {:error, :invalid_expiry}
+    end
+  end
+
+  defp normalize_expiry(_value), do: {:error, :invalid_expiry}
+
+  defp expired?(%__MODULE__{expires_at: nil}), do: false
+
+  defp expired?(%__MODULE__{expires_at: %DateTime{} = expires_at}),
+    do: DateTime.compare(DateTime.utc_now(), expires_at) == :gt
+
+  defp format_datetime(nil), do: ""
+  defp format_datetime(%DateTime{} = value), do: DateTime.to_iso8601(value)
+
+  defp format_optional_datetime(nil), do: nil
+  defp format_optional_datetime(%DateTime{} = value), do: DateTime.to_iso8601(value)
 
   @doc false
   def hostname_matches?(_hostname, "*"), do: true
@@ -201,4 +247,8 @@ defmodule YellowDogIdentity.Token do
       _ -> raise "Invalid datetime: #{str}"
     end
   end
+
+  defp parse_optional_datetime!(nil), do: nil
+  defp parse_optional_datetime!(""), do: nil
+  defp parse_optional_datetime!(value), do: parse_datetime!(value)
 end

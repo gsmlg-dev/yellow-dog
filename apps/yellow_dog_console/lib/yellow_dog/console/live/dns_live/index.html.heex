@@ -1,140 +1,77 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-4xl font-bold">DNS Service</h1>
-        <p class="mt-2 text-on-surface-variant">
-          Domain Name System management
-        </p>
-      </div>
-      <div class="flex items-center gap-3">
-        <.status_indicator
-          status={if @status.running, do: "running", else: "stopped"}
-          label={if @status.running, do: "Running", else: "Stopped"}
-          pulse
-        />
-        <.dm_btn
-          variant="ghost"
-          size="sm"
-          class="btn-circle"
-          phx-click="refresh"
-          title="Refresh"
-          aria-label="Refresh"
-        >
-          <.dm_mdi name="refresh" class="h-5 w-5" />
-        </.dm_btn>
-      </div>
+  <div class="space-y-6" id="server-dns-overview">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS"
+        subtitle="Management source of truth"
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dashboard)}
+      />
+      <button phx-click="refresh" class="btn btn-ghost btn-sm" aria-label="Refresh DNS">
+        <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
+      </button>
     </div>
 
-    <!-- Summary Stats -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm text-on-surface-variant">Total Zones</div>
-              <div class="text-2xl font-bold text-success">{@stats.total_zones}</div>
-              <div class="text-xs text-on-surface-variant">Configured zones</div>
-            </div>
-            <.dm_mdi name="folder-outline" class="w-8 h-8 text-success" />
-          </div>
-        </div>
-      </div>
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
 
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm text-on-surface-variant">Total Queries</div>
-              <div class="text-2xl font-bold text-secondary">{@stats.total_queries}</div>
-              <div class="text-xs text-on-surface-variant">All time</div>
-            </div>
-            <.dm_mdi name="help-circle-outline" class="w-8 h-8 text-secondary" />
-          </div>
-        </div>
-      </div>
-
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm text-on-surface-variant">Hit Rate</div>
-              <div class="text-2xl font-bold text-info">
-                {calculate_hit_rate(@stats.total_hits, @stats.total_misses)}%
-              </div>
-              <div class="text-xs text-on-surface-variant">
-                {@stats.total_cache} cached entries
-              </div>
-            </div>
-            <.dm_mdi name="flash" class="w-8 h-8 text-info" />
-          </div>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Views</div>
+        <div class="text-2xl font-bold text-primary">{length(@views)}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Queries</div>
+        <div class="text-2xl font-bold text-info">{@metrics["queries"]}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Failures</div>
+        <div class="text-2xl font-bold text-error">{@metrics["failures"]}</div>
+      </.card>
     </div>
 
-    <!-- Cache Statistics -->
-    <.card title="Cache Statistics">
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <!-- Cache Performance -->
-        <div class="space-y-4">
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm font-medium">Hit Rate</span>
-              <span class="text-sm font-semibold">{cache_hit_rate(@cache_stats)}%</span>
-            </div>
-            <.progress value={cache_hit_rate(@cache_stats)} color="success" />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm font-medium">Cache Utilization</span>
-              <span class="text-sm font-semibold">
-                {@cache_stats.total_entries} / {@cache_stats.max_entries}
-              </span>
-            </div>
-            <.progress
-              value={cache_utilization(@cache_stats.total_entries, @cache_stats.max_entries)}
-              color="primary"
-            />
-          </div>
-        </div>
-
-        <!-- Cache Stats Grid -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-surface-container rounded-lg p-4">
-            <div class="text-sm text-on-surface-variant text-xs">Cache Hits</div>
-            <div class="text-2xl font-bold text-success text-2xl">{@cache_stats.hit_count}</div>
-          </div>
-          <div class="bg-surface-container rounded-lg p-4">
-            <div class="text-sm text-on-surface-variant text-xs">Cache Misses</div>
-            <div class="text-2xl font-bold text-error text-2xl">{@cache_stats.miss_count}</div>
-          </div>
-          <div class="bg-surface-container rounded-lg p-4">
-            <div class="text-sm text-on-surface-variant text-xs">Insertions</div>
-            <div class="text-2xl font-bold text-info text-2xl">{@cache_stats.insert_count}</div>
-          </div>
-          <div class="bg-surface-container rounded-lg p-4">
-            <div class="text-sm text-on-surface-variant text-xs">Evictions</div>
-            <div class="text-2xl font-bold text-warning text-2xl">
-              {@cache_stats.eviction_count}
-            </div>
-          </div>
-        </div>
+    <.card title="DNS views">
+      <p :if={@views == []} class="text-sm text-on-surface-variant">No views reported</p>
+      <div :for={view <- @views} class="flex items-center justify-between py-2">
+        <span class="font-semibold">{view["view_name"]}</span>
+        <.badge color={if view["recursion"], do: "success", else: "ghost"} size="sm">
+          {if view["recursion"], do: "recursive", else: "authoritative only"}
+        </.badge>
       </div>
     </.card>
 
-    <!-- Quick Links -->
-    <.card title="Quick Actions">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <.link navigate={~p"/server/dns/zones"} class="btn btn-primary btn-lg gap-2">
-          <.dm_mdi name="folder-outline" class="w-5 h-5" /> Manage Zones
-        </.link>
-
-        <.link navigate={~p"/server/dns/acl"} class="btn btn-secondary btn-lg gap-2">
-          <.dm_mdi name="shield-check" class="w-5 h-5" /> Configure ACLs
-        </.link>
-      </div>
-    </.card>
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_views)}
+        class="btn btn-ghost"
+      >Views</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_zones)}
+        class="btn btn-ghost"
+      >Zones</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_acl)}
+        class="btn btn-ghost"
+      >ACL</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_logs)}
+        class="btn btn-ghost"
+      >Logs</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_metrics)}
+        class="btn btn-ghost"
+      >Metrics</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_providers)}
+        class="btn btn-ghost"
+      >Providers</.link>
+    </div>
   </div>
 </Layouts.app>

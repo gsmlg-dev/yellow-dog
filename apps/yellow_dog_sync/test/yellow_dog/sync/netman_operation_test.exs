@@ -21,7 +21,10 @@ defmodule YellowDog.Sync.NetmanOperationTest do
      true},
     {"netman.profiles.validate", :command, "profiles.validate", :profile_validate,
      :profile_validation, true},
-    {"netman.profiles.put", :command, "profiles.write", :profile_put, :revisioned_resource, true},
+    {"netman.profiles.put", :command, "profiles.write", :profile_put, :profile_write_result,
+     true},
+    {"netman.profiles.replace", :config, "profiles.write", :profile_set_replace, :config_state,
+     false},
     {"netman.profiles.delete", :command, "profiles.write", :profile_ref, :deleted_resource, true},
     {"netman.profiles.activate", :command, "profiles.activate", :profile_ref,
      :profile_activation_result, true},
@@ -35,7 +38,7 @@ defmodule YellowDog.Sync.NetmanOperationTest do
      :network_route_list, true},
     {"netman.network.connection_state.get", :query, "network.connections.read",
      :network_connection_query, :network_connection_state, true},
-    {"netman.profiles.patch", :command, "profiles.write", :profile_patch, :revisioned_resource,
+    {"netman.profiles.patch", :command, "profiles.write", :profile_patch, :profile_write_result,
      true},
     {"netman.connections.activate", :command, "network.connections.write", :connection_ref,
      :connection_activation_result, true},
@@ -45,6 +48,10 @@ defmodule YellowDog.Sync.NetmanOperationTest do
      :resolved_upstream_list, true},
     {"netman.resolved.search_domains.list", :query, "resolved.search_domains.read", :empty,
      :resolved_search_domain_list, true},
+    {"netman.resolved.link_dns.list", :query, "resolved.link_dns.read", :resolved_link_dns_query,
+     :resolved_link_dns_list, true},
+    {"netman.resolved.queries.list", :query, "resolved.queries.read", :resolved_queries_query,
+     :resolved_query_list, true},
     {"netman.resolved.cache.get", :query, "resolved.cache.read", :empty, :resolved_cache, true},
     {"netman.resolved.counters.get", :query, "resolved.counters.read", :empty, :resolved_counters,
      true},
@@ -54,8 +61,8 @@ defmodule YellowDog.Sync.NetmanOperationTest do
      :resolved_config_rollback, :config_state, false},
     {"netman.resolved.cache.flush", :command, "resolved.cache.write", :empty, :cache_clear_result,
      true},
-    {"netman.dhcp_client.fsm.get", :query, "dhcp_client.fsm.read", :empty, :dhcp_client_fsm,
-     true},
+    {"netman.dhcp_client.fsm.get", :query, "dhcp_client.fsm.read", :dhcp_client_connection_ref,
+     :dhcp_client_fsm, true},
     {"netman.dhcp_client.leases.list", :query, "dhcp_client.leases.read", :empty,
      :dhcp_client_lease_list, true},
     {"netman.dhcp_client.connections.release_lease", :command, "dhcp_client.leases.write",
@@ -64,7 +71,7 @@ defmodule YellowDog.Sync.NetmanOperationTest do
   ]
 
   test "catalog exposes every Netman operation with explicit metadata and validators" do
-    assert map_size(NetmanOperation.all()) == 29
+    assert map_size(NetmanOperation.all()) == 32
 
     for {name, kind, capability, payload_schema, result_schema, online?} <- @operations do
       assert {:ok,
@@ -134,10 +141,13 @@ defmodule YellowDog.Sync.NetmanOperationTest do
 
   test "profile patches enforce field-specific values" do
     valid_changes = [
-      %{"field" => "name", "value" => "Office"},
-      %{"field" => "method", "interface" => "eth0", "value" => "static"},
-      %{"field" => "addresses", "interface" => "eth0", "value" => ["192.0.2.10/24"]},
-      %{"field" => "gateway", "interface" => "eth0", "value" => "192.0.2.1"}
+      %{"field" => "interface", "value" => "eth1"},
+      %{"field" => "autoconnect", "value" => false},
+      %{"field" => "autoconnect_priority", "value" => 200},
+      %{"field" => "zone", "value" => "guest"},
+      %{"field" => "ethernet.mtu", "value" => 9_000},
+      %{"field" => "ipv4", "value" => runtime_profile()["ipv4"]},
+      %{"field" => "ipv6", "value" => runtime_profile()["ipv6"]}
     ]
 
     for change <- valid_changes do
@@ -149,20 +159,282 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     end
 
     for change <- [
-          %{"field" => "name", "value" => true},
-          %{"field" => "method", "interface" => "eth0", "value" => "Office"},
-          %{"field" => "addresses", "interface" => "eth0", "value" => "192.0.2.10/24"},
-          %{"field" => "gateway", "interface" => "eth0", "value" => ["192.0.2.1"]},
-          %{"field" => "method", "value" => "dhcp"},
-          %{"field" => "name", "interface" => "eth0", "value" => "Office"}
+          %{"field" => "name", "value" => "Office"},
+          %{"field" => "interface", "value" => String.duplicate("x", 16)},
+          %{"field" => "autoconnect", "value" => "true"},
+          %{"field" => "autoconnect_priority", "value" => 10_001},
+          %{"field" => "zone", "value" => true},
+          %{"field" => "ethernet.mtu", "value" => 67},
+          %{"field" => "ipv4", "value" => runtime_profile()["ipv6"]},
+          %{"field" => "ipv6", "value" => runtime_profile()["ipv4"]},
+          %{"profile_id" => "办公", "changes" => [%{"field" => "zone", "value" => "guest"}]},
+          %{"field" => "zone", "interface" => "eth0", "value" => "guest"}
         ] do
-      assert_invalid(
-        Operation.validate_schema(:profile_patch, %{
-          "profile_id" => "office",
-          "changes" => [change]
-        })
-      )
+      payload =
+        if Map.has_key?(change, "profile_id") do
+          change
+        else
+          %{"profile_id" => "office", "changes" => [change]}
+        end
+
+      assert_invalid(Operation.validate_schema(:profile_patch, payload))
     end
+  end
+
+  test "Netman profiles preserve the complete runtime profile model" do
+    profile = runtime_profile()
+
+    assert {:ok, ^profile} = Operation.validate_schema(:profile_put, profile)
+
+    assert_invalid(
+      Operation.validate_schema(:profile_put, %{
+        "profile_id" => "office",
+        "name" => "Office",
+        "interfaces" => []
+      })
+    )
+
+    for invalid <- [
+          put_in(profile, ["autoconnect_priority"], -1001),
+          put_in(profile, ["autoconnect_priority"], 10_001),
+          put_in(profile, ["ethernet", "mtu"], 67),
+          put_in(profile, ["ethernet", "mtu"], 65_536),
+          put_in(profile, ["ipv4", "address"], "2001:db8::10/64"),
+          put_in(profile, ["ipv4", "gateway"], "2001:db8::1"),
+          put_in(profile, ["ipv6", "dns"], ["192.0.2.53"]),
+          put_in(profile, ["ipv4", "dns_search"], ["_svc.example.test"]),
+          put_in(profile, ["ipv4", "method"], "link-local"),
+          put_in(profile, ["ipv4", "address"], nil)
+        ] do
+      assert_invalid(Operation.validate_schema(:profile_put, invalid))
+    end
+  end
+
+  test "connection operations use the profile and interface composite identity" do
+    connection = %{"profile_id" => "office", "interface" => "eth0"}
+
+    for schema <- [:network_connection_query, :connection_ref, :dhcp_client_connection_ref] do
+      assert {:ok, ^connection} = Operation.validate_schema(schema, connection)
+      assert_invalid(Operation.validate_schema(schema, %{"connection_id" => "uplink"}))
+    end
+
+    state = Map.put(connection, "state", "activated")
+    assert {:ok, ^state} = Operation.validate_schema(:network_connection_state, state)
+    assert {:ok, ^state} = Operation.validate_schema(:connection_activation_result, state)
+  end
+
+  test "authoritative profile replacement is an offline config operation" do
+    assert {:ok, %Operation{kind: :config, online?: false, payload_schema: :profile_set_replace}} =
+             NetmanOperation.fetch("netman.profiles.replace")
+
+    payload = %{"profiles" => [runtime_profile()]}
+    assert {:ok, ^payload} = Operation.validate_schema(:profile_set_replace, payload)
+
+    assert {:ok, %{"profiles" => []}} =
+             Operation.validate_schema(:profile_set_replace, %{"profiles" => []})
+
+    assert_invalid(
+      Operation.validate_schema(:profile_set_replace, %{
+        "profiles" => [runtime_profile(), runtime_profile()]
+      })
+    )
+  end
+
+  test "profile results distinguish desired and active durable revisions" do
+    revision_state = %{
+      "profile_id" => "office",
+      "desired_revision" => @revision,
+      "active_revision" => nil
+    }
+
+    assert {:ok, ^revision_state} = Operation.validate_schema(:profile_revision, revision_state)
+
+    active = %{
+      "profile_id" => "office",
+      "desired_revision" => @revision,
+      "active_revision" => @revision,
+      "state" => "activated",
+      "connections" => [
+        %{"profile_id" => "office", "interface" => "eth0", "state" => "activated"}
+      ]
+    }
+
+    assert {:ok, ^active} = Operation.validate_schema(:profile_activation_result, active)
+
+    history = %{
+      "profile_id" => "office",
+      "revision" => @revision,
+      "profile" => runtime_profile(),
+      "stored_at" => @observed_at,
+      "activated_at" => nil
+    }
+
+    assert {:ok, ^history} = Operation.validate_schema(:profile_history_item, history)
+
+    assert_invalid(
+      Operation.validate_schema(:profile_history_item, %{
+        history
+        | "profile" => %{runtime_profile() | "profile_id" => "other"}
+      })
+    )
+
+    assert_invalid(
+      Operation.validate_schema(:profile_revision, %{
+        "profile_id" => "office",
+        "revision" => @revision
+      })
+    )
+  end
+
+  test "network route results preserve on-link routes with an explicit null gateway" do
+    on_link_route = %{
+      "destination" => "192.0.2.0/24",
+      "gateway" => nil,
+      "link_id" => "eth0"
+    }
+
+    assert {:ok, _result} =
+             Operation.validate_schema(:network_route_list, list_result(on_link_route))
+
+    assert_invalid(
+      Operation.validate_schema(:network_route_list, %{
+        list_result(on_link_route)
+        | "items" => [Map.delete(on_link_route, "gateway")]
+      })
+    )
+  end
+
+  test "profile activation results preserve every selected interface" do
+    activation = %{
+      "profile_id" => "office",
+      "desired_revision" => @revision,
+      "active_revision" => @revision,
+      "state" => "activated",
+      "connections" => [
+        %{"profile_id" => "office", "interface" => "eth0", "state" => "activated"},
+        %{"profile_id" => "office", "interface" => "eth1", "state" => "activated"}
+      ]
+    }
+
+    assert {:ok, ^activation} =
+             Operation.validate_schema(:profile_activation_result, activation)
+
+    assert_invalid(
+      Operation.validate_schema(:profile_activation_result, Map.delete(activation, "connections"))
+    )
+
+    assert_invalid(
+      Operation.validate_schema(:profile_activation_result, %{activation | "connections" => []})
+    )
+
+    assert_invalid(
+      Operation.validate_schema(:profile_activation_result, %{
+        activation
+        | "connections" => [
+            %{"profile_id" => "other", "interface" => "eth0", "state" => "activated"}
+          ]
+      })
+    )
+
+    assert_invalid(
+      Operation.validate_schema(:profile_activation_result, %{
+        activation
+        | "connections" => [
+            %{"profile_id" => "office", "interface" => "eth0", "state" => "activated"},
+            %{"profile_id" => "office", "interface" => "eth0", "state" => "activated"}
+          ]
+      })
+    )
+  end
+
+  test "Resolved link DNS results preserve each link without invented provenance" do
+    link_dns = %{
+      "link_id" => "eth0",
+      "servers" => ["192.0.2.53"],
+      "search_domains" => ["example.test"],
+      "priority" => 100
+    }
+
+    assert {:ok, _result} =
+             Operation.validate_schema(:resolved_link_dns_list, list_result(link_dns))
+
+    assert_invalid(
+      Operation.validate_schema(:resolved_link_dns_list, %{
+        list_result(link_dns)
+        | "items" => [Map.put(link_dns, "source", "static")]
+      })
+    )
+  end
+
+  test "Resolved recent-query payloads and results are bounded" do
+    assert {:ok, %{"limit" => 100}} =
+             Operation.validate_schema(:resolved_queries_query, %{"limit" => 100})
+
+    assert_invalid(Operation.validate_schema(:resolved_queries_query, %{"limit" => 101}))
+
+    query = %{
+      "timestamp" => @observed_at,
+      "domain" => "example.test",
+      "type" => "A",
+      "source" => "cache",
+      "duration_us" => 25
+    }
+
+    assert {:ok, _result} =
+             Operation.validate_schema(:resolved_query_list, list_result(query))
+
+    assert_invalid(
+      Operation.validate_schema(:resolved_query_list, %{
+        list_result(query)
+        | "items" => [%{query | "source" => "filesystem"}]
+      })
+    )
+  end
+
+  test "Resolved mutation reads expose their exact owner revisions" do
+    upstreams =
+      resolved_upstream()
+      |> list_result()
+      |> Map.put("config_revision", @revision)
+
+    assert {:ok, ^upstreams} =
+             Operation.validate_schema(:resolved_upstream_list, upstreams)
+
+    assert_invalid(
+      Operation.validate_schema(
+        :resolved_upstream_list,
+        Map.delete(upstreams, "config_revision")
+      )
+    )
+
+    cache = resolved_cache()
+    assert {:ok, ^cache} = Operation.validate_schema(:resolved_cache, cache)
+
+    assert_invalid(Operation.validate_schema(:resolved_cache, Map.delete(cache, "revision")))
+  end
+
+  test "DHCP client lease items expose the exact release owner revision" do
+    lease = dhcp_client_lease()
+    result = list_result(lease)
+
+    assert {:ok, ^result} = Operation.validate_schema(:dhcp_client_lease_list, result)
+
+    assert_invalid(
+      Operation.validate_schema(:dhcp_client_lease_list, %{
+        result
+        | "items" => [Map.delete(lease, "revision")]
+      })
+    )
+  end
+
+  test "VPN results carry a canonical revision" do
+    result = %{"profile_id" => "vpn-default", "state" => "resolved", "revision" => @revision}
+
+    assert {:ok, ^result} = Operation.validate_schema(:vpn_resolved_profile, result)
+
+    assert_invalid(
+      Operation.validate_schema(:vpn_resolved_profile, Map.delete(result, "revision"))
+    )
   end
 
   test "config state enforces the full Netman lifecycle matrix" do
@@ -382,6 +654,9 @@ defmodule YellowDog.Sync.NetmanOperationTest do
       :profile_put ->
         profile()
 
+      :profile_set_replace ->
+        %{"profiles" => [profile()]}
+
       :profile_rollback ->
         %{"profile_id" => "office", "target_revision" => @revision}
 
@@ -395,13 +670,13 @@ defmodule YellowDog.Sync.NetmanOperationTest do
         %{}
 
       :network_connection_query ->
-        %{"connection_id" => "uplink"}
+        connection_ref()
 
       :profile_patch ->
         profile_patch()
 
       :connection_ref ->
-        %{"connection_id" => "uplink"}
+        connection_ref()
 
       :resolved_config_update ->
         resolved_config()
@@ -409,8 +684,14 @@ defmodule YellowDog.Sync.NetmanOperationTest do
       :resolved_config_rollback ->
         %{"target_revision" => @revision}
 
+      :resolved_link_dns_query ->
+        %{}
+
+      :resolved_queries_query ->
+        %{"limit" => 50}
+
       :dhcp_client_connection_ref ->
-        %{"connection_id" => "uplink"}
+        connection_ref()
 
       :runtime_capabilities ->
         %{"capabilities" => ["runtime.apply_mode"]}
@@ -422,10 +703,14 @@ defmodule YellowDog.Sync.NetmanOperationTest do
         %{"status" => "healthy", "pending_changes" => 0}
 
       :profile_list ->
-        list_result(profile())
+        list_result(profile_state())
 
       :profile_revision ->
-        %{"profile_id" => "office", "revision" => @revision}
+        %{
+          "profile_id" => "office",
+          "desired_revision" => @revision,
+          "active_revision" => @revision
+        }
 
       :profile_history ->
         list_result(profile_history())
@@ -452,10 +737,18 @@ defmodule YellowDog.Sync.NetmanOperationTest do
         connection_state()
 
       :resolved_upstream_list ->
-        list_result(resolved_upstream())
+        resolved_upstream()
+        |> list_result()
+        |> Map.put("config_revision", @revision)
 
       :resolved_search_domain_list ->
         list_result(resolved_search_domain())
+
+      :resolved_link_dns_list ->
+        list_result(resolved_link_dns())
+
+      :resolved_query_list ->
+        list_result(resolved_query())
 
       :resolved_cache ->
         resolved_cache()
@@ -470,7 +763,7 @@ defmodule YellowDog.Sync.NetmanOperationTest do
         %{"cleared_entries" => 4}
 
       :dhcp_client_fsm ->
-        %{"connection_id" => "uplink", "state" => "bound"}
+        Map.put(connection_ref(), "state", "bound")
 
       :dhcp_client_lease_list ->
         list_result(dhcp_client_lease())
@@ -479,9 +772,11 @@ defmodule YellowDog.Sync.NetmanOperationTest do
         lease_release_result()
 
       :vpn_resolved_profile ->
-        %{"profile_id" => "vpn-default", "state" => "resolved"}
+        %{"profile_id" => "vpn-default", "state" => "resolved", "revision" => @revision}
     end
   end
+
+  defp valid_result(_name, :profile_write_result), do: profile_state()
 
   defp valid_result(_name, :revisioned_resource) do
     %{
@@ -503,18 +798,31 @@ defmodule YellowDog.Sync.NetmanOperationTest do
 
   defp valid_result(_name, schema), do: valid(schema)
 
-  defp profile do
+  defp profile, do: runtime_profile()
+
+  defp runtime_profile do
     %{
       "profile_id" => "office",
-      "name" => "Office",
-      "interfaces" => [
-        %{
-          "name" => "eth0",
-          "method" => "static",
-          "addresses" => ["192.0.2.10/24"],
-          "gateway" => "192.0.2.1"
-        }
-      ]
+      "type" => "ethernet",
+      "interface" => "eth0",
+      "autoconnect" => true,
+      "autoconnect_priority" => 100,
+      "zone" => "trusted",
+      "ethernet" => %{"mtu" => 1_500},
+      "ipv4" => %{
+        "method" => "manual",
+        "address" => "192.0.2.10/24",
+        "gateway" => "192.0.2.1",
+        "dns" => ["192.0.2.53"],
+        "dns_search" => ["example.test"]
+      },
+      "ipv6" => %{
+        "method" => "manual",
+        "address" => "2001:db8::10/64",
+        "gateway" => "2001:db8::1",
+        "dns" => ["2001:db8::53"],
+        "dns_search" => ["example.test"]
+      }
     }
   end
 
@@ -522,7 +830,7 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     %{
       "profile_id" => "office",
       "changes" => [
-        %{"field" => "gateway", "interface" => "eth0", "value" => "192.0.2.1"}
+        %{"field" => "ethernet.mtu", "value" => 1_500}
       ]
     }
   end
@@ -531,10 +839,29 @@ defmodule YellowDog.Sync.NetmanOperationTest do
     do: %{"upstreams" => ["1.1.1.1"], "search_domains" => ["example.test"]}
 
   defp profile_history,
-    do: %{"profile_id" => "office", "revision" => @revision, "activated_at" => @observed_at}
+    do: %{
+      "profile_id" => "office",
+      "revision" => @revision,
+      "profile" => profile(),
+      "stored_at" => @observed_at,
+      "activated_at" => @observed_at
+    }
+
+  defp profile_state,
+    do: %{
+      "profile" => profile(),
+      "desired_revision" => @revision,
+      "active_revision" => @revision
+    }
 
   defp profile_activation,
-    do: %{"profile_id" => "office", "revision" => @revision, "state" => "activated"}
+    do: %{
+      "profile_id" => "office",
+      "desired_revision" => @revision,
+      "active_revision" => @revision,
+      "state" => "activated",
+      "connections" => [connection_state()]
+    }
 
   defp network_link, do: %{"link_id" => "eth0", "name" => "eth0", "state" => "up"}
 
@@ -544,12 +871,33 @@ defmodule YellowDog.Sync.NetmanOperationTest do
   defp network_route,
     do: %{"destination" => "0.0.0.0/0", "gateway" => "192.0.2.1", "link_id" => "eth0"}
 
-  defp connection_state, do: %{"connection_id" => "uplink", "state" => "activated"}
+  defp connection_ref, do: %{"profile_id" => "office", "interface" => "eth0"}
+  defp connection_state, do: Map.put(connection_ref(), "state", "activated")
   defp resolved_upstream, do: %{"address" => "1.1.1.1", "source" => "managed"}
   defp resolved_search_domain, do: %{"domain" => "example.test", "routing_only" => false}
 
+  defp resolved_link_dns do
+    %{
+      "link_id" => "eth0",
+      "servers" => ["192.0.2.53"],
+      "search_domains" => ["example.test"],
+      "priority" => 100
+    }
+  end
+
+  defp resolved_query do
+    %{
+      "timestamp" => @observed_at,
+      "domain" => "example.test",
+      "type" => "A",
+      "source" => "forward",
+      "duration_us" => 25
+    }
+  end
+
   defp resolved_cache do
     %{
+      "revision" => @revision,
       "entries" => [
         %{
           "domain" => "example.test",
@@ -561,7 +909,11 @@ defmodule YellowDog.Sync.NetmanOperationTest do
   end
 
   defp dhcp_client_lease do
-    %{"connection_id" => "uplink", "address" => "192.0.2.10", "expires_at" => @observed_at}
+    Map.merge(connection_ref(), %{
+      "address" => "192.0.2.10",
+      "expires_at" => @observed_at,
+      "revision" => @revision
+    })
   end
 
   defp lease_release_result do

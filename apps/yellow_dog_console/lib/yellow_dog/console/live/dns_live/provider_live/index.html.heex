@@ -1,236 +1,61 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-4xl font-bold">DNS Providers</h1>
-        <p class="mt-2 text-on-surface-variant">
-          External DNS zone synchronization
-        </p>
-      </div>
-      <div class="flex items-center gap-3">
-        <.link navigate={~p"/server/dns/providers/new"} class="btn btn-primary btn-sm gap-2">
-          <.dm_mdi name="plus" class="w-4 h-4" /> Add Provider
-        </.link>
-        <button
-          phx-click="refresh"
-          class="btn btn-ghost btn-circle btn-sm"
-          title="Refresh"
-          aria-label="Refresh"
-        >
-          <.dm_mdi name="refresh" class="h-5 w-5" />
-        </button>
-      </div>
+  <div class="space-y-6" id="server-dns-providers">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Providers"
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dns)}
+      />
     </div>
 
-    <!-- Add Provider Form -->
-    <%= if @show_form do %>
-      <.card title="New Provider">
-        <.form
-          for={@form}
-          phx-change="validate_form"
-          phx-submit="save_provider"
-          class="space-y-4"
-        >
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-group">
-              <label class="form-label font-semibold">Name</label>
-              <input
-                type="text"
-                name="provider[name]"
-                value={@form[:name].value}
-                class="input w-full"
-                placeholder="e.g., my-cloudflare"
-                required
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label font-semibold">Type</label>
-              <select name="provider[type]" class="select w-full">
-                <option value="iana_root" selected={@form[:type].value == "iana_root"}>
-                  IANA Root
-                </option>
-                <option value="aws" selected={@form[:type].value == "aws"}>AWS Route 53</option>
-                <option value="cloudflare" selected={@form[:type].value == "cloudflare"}>
-                  Cloudflare
-                </option>
-                <option value="gcp" selected={@form[:type].value == "gcp"}>
-                  Google Cloud DNS
-                </option>
-                <option value="vultr" selected={@form[:type].value == "vultr"}>Vultr DNS</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label font-semibold">Zones (comma-separated)</label>
-              <input
-                type="text"
-                name="provider[zones]"
-                value={@form[:zones].value}
-                class="input w-full"
-                placeholder="e.g., example.com, test.org"
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label font-semibold">Sync Interval (seconds)</label>
-              <input
-                type="number"
-                name="provider[sync_interval]"
-                value={@form[:sync_interval].value}
-                class="input w-full"
-                min="60"
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label font-semibold">Conflict Strategy</label>
-              <select name="provider[conflict_strategy]" class="select w-full">
-                <option
-                  value="local_wins"
-                  selected={@form[:conflict_strategy].value == "local_wins"}
-                >
-                  Local Wins
-                </option>
-                <option
-                  value="remote_wins"
-                  selected={@form[:conflict_strategy].value == "remote_wins"}
-                >
-                  Remote Wins
-                </option>
-                <option value="manual" selected={@form[:conflict_strategy].value == "manual"}>
-                  Manual Resolution
-                </option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label font-semibold">Credentials (key=value per line)</label>
-            <textarea
-              name="provider[credentials]"
-              class="textarea w-full font-mono"
-              rows="4"
-              placeholder="api_token=your_token\nzone_id=your_zone_id"
-            >{@form[:credentials].value}</textarea>
-          </div>
-          <div class="flex justify-end gap-3 pt-4">
-            <.link navigate={~p"/server/dns/providers"} class="btn btn-ghost">Cancel</.link>
-            <button type="submit" class="btn btn-primary">Create Provider</button>
-          </div>
-        </.form>
-      </.card>
-    <% end %>
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+    <div class="alert alert-warning" id="provider-create-unavailable">
+      <.dm_mdi name="lock-outline" class="h-5 w-5" />
+      <span>
+        Provider creation is unavailable until management credential references can be
+        materialized by the selected Server.
+      </span>
+    </div>
 
-    <!-- Provider Table -->
-    <%= if @providers != [] do %>
-      <.card title="Configured Providers">
-        <div class="overflow-x-auto">
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Type</th>
-                <th scope="col">Status</th>
-                <th scope="col">Last Sync</th>
-                <th scope="col">Syncs</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for provider <- @providers do %>
-                <tr class="hover">
-                  <td>
-                    <.link
-                      navigate={~p"/server/dns/providers/#{provider.name}"}
-                      class="font-mono font-semibold text-primary hover:underline"
-                    >
-                      {provider.name}
-                    </.link>
-                  </td>
-                  <td>{format_type(provider.type)}</td>
-                  <td>
-                    <%= if provider.enabled do %>
-                      <%= if provider.status == :running do %>
-                        <.badge color="success" size="sm">Running</.badge>
-                      <% else %>
-                        <.badge color="warning" size="sm">Stopped</.badge>
-                      <% end %>
-                    <% else %>
-                      <.badge color="ghost" size="sm">Disabled</.badge>
-                    <% end %>
-                    <%= if provider.last_error do %>
-                      <.badge color="error" size="sm">Error</.badge>
-                    <% end %>
-                  </td>
-                  <td class="text-sm text-on-surface-variant">
-                    {format_sync_time(provider.last_sync)}
-                  </td>
-                  <td class="font-mono">{provider.sync_count}</td>
-                  <td>
-                    <div class="flex items-center gap-1">
-                      <button
-                        phx-click="sync_now"
-                        phx-value-name={provider.name}
-                        class="btn btn-ghost btn-xs"
-                        title="Sync Now"
-                        disabled={!provider.enabled || provider.status != :running}
-                      >
-                        <.dm_mdi name="sync" class="w-4 h-4" />
-                      </button>
-                      <button
-                        phx-click="toggle_enabled"
-                        phx-value-name={provider.name}
-                        phx-value-enabled={to_string(provider.enabled)}
-                        class="btn btn-ghost btn-xs"
-                        title={if provider.enabled, do: "Disable", else: "Enable"}
-                      >
-                        <.dm_mdi
-                          name={if provider.enabled, do: "pause", else: "play"}
-                          class="w-4 h-4"
-                        />
-                      </button>
-                      <%= if @delete_confirm == provider.name do %>
-                        <button
-                          phx-click="delete"
-                          phx-value-name={provider.name}
-                          class="btn btn-error btn-xs"
-                        >
-                          Confirm
-                        </button>
-                        <button phx-click="cancel_delete" class="btn btn-ghost btn-xs">
-                          Cancel
-                        </button>
-                      <% else %>
-                        <button
-                          phx-click="confirm_delete"
-                          phx-value-name={provider.name}
-                          class="btn btn-ghost btn-xs text-error"
-                          title="Delete"
-                        >
-                          <.dm_mdi name="delete" class="w-4 h-4" />
-                        </button>
-                      <% end %>
-                    </div>
-                  </td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </div>
-      </.card>
-    <% else %>
-      <div class="card bg-surface shadow-xl">
-        <div class="card-body text-center py-12">
-          <.dm_mdi name="cloud-sync" class="mx-auto h-16 w-16 text-on-surface-variant" />
-          <h3 class="mt-4 text-xl font-semibold">No DNS Providers Configured</h3>
-          <p class="mt-2 text-on-surface-variant">
-            Add a provider to synchronize DNS zones with external services like
-            Cloudflare, AWS Route 53, or Google Cloud DNS.
-          </p>
-          <div class="mt-6">
-            <.link navigate={~p"/server/dns/providers/new"} class="btn btn-primary gap-2">
-              <.dm_mdi name="plus" class="w-5 h-5" /> Add Provider
-            </.link>
+    <.card title="Configured providers">
+      <p :if={@providers == []} class="text-sm text-on-surface-variant">No providers reported</p>
+      <div
+        :for={provider <- @providers}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+      >
+        <div>
+          <.link
+            navigate={
+              ServicePaths.server_path(
+                @selected_server.id,
+                {:dns_provider, provider["provider_id"]}
+              )
+            }
+            class="font-semibold text-primary"
+          >{provider["provider_id"]}</.link>
+          <div class="text-xs text-on-surface-variant">
+            {provider["provider_type"]} · {provider["credential_ref"]}
           </div>
         </div>
+        <button
+          phx-click="delete_provider"
+          phx-value-provider_id={provider["provider_id"]}
+          class="btn btn-error btn-xs"
+          disabled={not @commands_enabled?}
+        >Delete</button>
       </div>
-    <% end %>
+    </.card>
   </div>
 </Layouts.app>

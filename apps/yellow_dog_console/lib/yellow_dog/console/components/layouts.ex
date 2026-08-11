@@ -11,6 +11,7 @@ defmodule YellowDog.Console.Layouts do
 
   alias Phoenix.LiveView.JS
   alias YellowDog.Console.Components.Sidebar
+  alias YellowDog.Console.Hooks.CurrentPath
 
   embed_templates "layouts/*"
 
@@ -33,7 +34,10 @@ defmodule YellowDog.Console.Layouts do
         end
       end)
 
-    assigns = assign_new(assigns, :current_path, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:current_path, fn -> nil end)
+      |> assign(:navigation_scope, CurrentPath.selection_for_path(assigns[:current_path]))
 
     ~H"""
     <div id="yd-layout" class="yd-layout h-full">
@@ -41,7 +45,12 @@ defmodule YellowDog.Console.Layouts do
 
       <div class="yd-body">
         <%= if @current_path do %>
-          <.live_component module={Sidebar} id="app-sidebar" current_path={@current_path} />
+          <.live_component
+            module={Sidebar}
+            id="app-sidebar"
+            current_path={@current_path}
+            navigation_scope={@navigation_scope}
+          />
         <% end %>
 
         <div class="yd-main flex flex-col min-w-0">
@@ -63,7 +72,7 @@ defmodule YellowDog.Console.Layouts do
 
   @nav_sections [
     %{label: "Management", icon: "account-cog", path: "/management"},
-    %{label: "Servers", icon: "server-network", path: "/server/dashboard"},
+    %{label: "Servers", icon: "server-network", path: "/server"},
     %{label: "Netman", icon: "lan", path: "/netman"},
     %{label: "Tools", icon: "wrench", path: "/tool/geoip"},
     %{label: "System", icon: "cog", path: "/system/process-map"}
@@ -72,7 +81,7 @@ defmodule YellowDog.Console.Layouts do
   defp navbar(assigns) do
     nav_sections =
       if YellowDog.Console.Plugs.ManagementReleaseOnly.management_release_only?() do
-        Enum.take(@nav_sections, 1)
+        Enum.take(@nav_sections, 3)
       else
         @nav_sections
       end

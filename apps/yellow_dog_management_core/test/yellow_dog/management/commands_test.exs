@@ -190,6 +190,58 @@ defmodule YellowDog.Management.CommandsTest do
     )
   end
 
+  test "lists sanitized durable command outcomes in deterministic order after restart" do
+    register_server("server-outcomes")
+    :ok = FakeTransport.connect(:server, "server-outcomes")
+
+    :ok =
+      FakeTransport.script([
+        {:ok, service_result("dns", "running")},
+        {:error, Error.new(:conflict, "service revision changed", %{})}
+      ])
+
+    assert {:ok, _result} =
+             ManagementCore.command_server(
+               "server-outcomes",
+               "server.runtime.services.start",
+               %{"service" => "dns"},
+               @revision_a,
+               @key_a
+             )
+
+    assert_error(
+      ManagementCore.command_server(
+        "server-outcomes",
+        "server.runtime.services.stop",
+        %{"service" => "mdns"},
+        @revision_b,
+        @key_b
+      ),
+      :conflict
+    )
+
+    assert {:ok, outcomes} = ManagementCore.list_command_outcomes()
+
+    assert Enum.map(outcomes, &{&1.operation, &1.state}) == [
+             {"server.runtime.services.start", :completed},
+             {"server.runtime.services.stop", :failed}
+           ]
+
+    assert Enum.all?(outcomes, fn outcome ->
+             outcome.target_type == :server and outcome.target_id == "server-outcomes" and
+               is_binary(outcome.request_id) and is_struct(outcome.inserted_at, DateTime) and
+               is_struct(outcome.updated_at, DateTime)
+           end)
+
+    refute Enum.any?(outcomes, &Map.has_key?(&1, :path))
+    refute Enum.any?(outcomes, &Map.has_key?(&1, :payload))
+    refute Enum.any?(outcomes, &Map.has_key?(&1, :result))
+
+    restart_application()
+    assert {:ok, restarted} = ManagementCore.list_command_outcomes()
+    assert restarted == outcomes
+  end
+
   test "terminal idempotency replay survives a Commands restart without delivery" do
     register_server("server-replay-restart")
     :ok = FakeTransport.connect(:server, "server-replay-restart")

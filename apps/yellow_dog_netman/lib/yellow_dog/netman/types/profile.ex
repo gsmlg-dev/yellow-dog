@@ -175,7 +175,7 @@ defmodule YellowDog.Netman.Types.Profile do
         method == :manual and (address == nil or address == "") ->
           {:error, "ipv4.address is required when method is manual"}
 
-        method == :manual and not valid_cidr?(address) ->
+        method == :manual and not valid_cidr?(address, :ipv4) ->
           {:error, "ipv4.address must be valid CIDR (e.g. 192.168.1.1/24)"}
 
         true ->
@@ -215,7 +215,7 @@ defmodule YellowDog.Netman.Types.Profile do
         method == :manual and (address == nil or address == "") ->
           {:error, "ipv6.address is required when method is manual"}
 
-        method == :manual and not valid_cidr?(address) ->
+        method == :manual and not valid_cidr?(address, :ipv6) ->
           {:error, "ipv6.address must be valid CIDR (e.g. fd00::1/64)"}
 
         true ->
@@ -276,8 +276,10 @@ defmodule YellowDog.Netman.Types.Profile do
 
   defp validate_gateway(gw, section) when is_binary(gw) do
     case :inet.parse_address(String.to_charlist(gw)) do
-      {:ok, _} -> :ok
+      {:ok, address} when section == "ipv4" and tuple_size(address) == 4 -> :ok
+      {:ok, address} when section == "ipv6" and tuple_size(address) == 8 -> :ok
       {:error, _} -> {:error, "#{section}.gateway is not a valid IP address: #{gw}"}
+      {:ok, _wrong_family} -> {:error, "#{section}.gateway is not a valid IP address: #{gw}"}
     end
   end
 
@@ -289,7 +291,11 @@ defmodule YellowDog.Netman.Types.Profile do
     invalid =
       Enum.reject(list, fn
         s when is_binary(s) ->
-          match?({:ok, _}, :inet.parse_address(String.to_charlist(s)))
+          case :inet.parse_address(String.to_charlist(s)) do
+            {:ok, address} when section == "ipv4" -> tuple_size(address) == 4
+            {:ok, address} when section == "ipv6" -> tuple_size(address) == 8
+            _ -> false
+          end
 
         _ ->
           false
@@ -329,13 +335,19 @@ defmodule YellowDog.Netman.Types.Profile do
     {:error, "#{section}.dns_search must be a list, got: #{inspect(other)}"}
   end
 
-  defp valid_cidr?(cidr) when is_binary(cidr) do
+  defp valid_cidr?(cidr, family) when is_binary(cidr) do
     case String.split(cidr, "/") do
       [addr, prefix] ->
         case {Integer.parse(prefix), :inet.parse_address(String.to_charlist(addr))} do
-          {{n, ""}, {:ok, {_, _, _, _}}} when n >= 0 and n <= 32 -> true
-          {{n, ""}, {:ok, {_, _, _, _, _, _, _, _}}} when n >= 0 and n <= 128 -> true
-          _ -> false
+          {{n, ""}, {:ok, {_, _, _, _}}} when family == :ipv4 and n >= 0 and n <= 32 ->
+            true
+
+          {{n, ""}, {:ok, {_, _, _, _, _, _, _, _}}}
+          when family == :ipv6 and n >= 0 and n <= 128 ->
+            true
+
+          _ ->
+            false
         end
 
       _ ->
@@ -343,7 +355,7 @@ defmodule YellowDog.Netman.Types.Profile do
     end
   end
 
-  defp valid_cidr?(_), do: false
+  defp valid_cidr?(_cidr, _family), do: false
 
   @max_id_length 128
   @id_pattern ~r/^[a-zA-Z0-9_\-\.]+$/

@@ -36,16 +36,20 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
   @side_effect_checkpoints [
     :before_install,
     :before_activate,
+    :recovery_before_activate,
     :before_restore,
     :before_reactivate
   ]
+  @recovery_checkpoints @side_effect_checkpoints ++ [:unknown]
   @transition_contracts %{
     delivered: {:delivered, :staged, :stable},
     before_validate: {:delivered, :before_validate, :stable},
     validation_failed: {:failed, :complete, :stable},
     before_install: {:applying, :before_install, :stable},
     before_activate: {:applying, :before_activate, :stable},
+    recovery_before_activate: {:applying, :recovery_before_activate, :unknown},
     apply_failed: {:failed, :complete, :unknown},
+    recovery_before_restore: {:applying, :before_restore, :unknown},
     before_restore: {:applying, :before_restore, :unknown},
     before_reactivate: {:applying, :before_reactivate, :unknown},
     rollback_succeeded: {:failed, :complete, :known},
@@ -56,6 +60,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
   @init_applying_runtime %{
     before_install: :stable,
     before_activate: :stable,
+    recovery_before_activate: :unknown,
     before_restore: :unknown,
     before_reactivate: :unknown,
     unknown: :unknown
@@ -72,6 +77,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     rollback_failed: "rollback failed",
     internal: "internal error"
   }
+  @restart_failure_reason "runtime restarted during config activation"
 
   @type server :: GenServer.server()
   @type publication :: ConfigApplyStore.publication()
@@ -120,7 +126,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
       :ok ->
         config = Map.put(config, :ownership_key, ownership_key)
 
-        case recover_uncertain_side_effect(config) do
+        case recover_interrupted_apply(config) do
           :ok ->
             {:ok, config}
 
@@ -426,15 +432,47 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     end
   end
 
-  defp recover_uncertain_side_effect(config) do
+  defp recover_interrupted_apply(config) do
     case local_call(fn ->
            ConfigApplyStore.snapshot(config.config_apply_store)
          end) do
       {:ok, snapshot} ->
         case validate_init_snapshot(snapshot, config) do
-          {:ok, %{attempt: %{status: :applying, checkpoint: checkpoint, version: version}}}
-          when checkpoint in @side_effect_checkpoints ->
-            recover_uncertain_transition(version, config)
+          {:ok,
+           %{
+             attempt: %{
+               status: :applying,
+               checkpoint: checkpoint,
+               previous: previous
+             }
+           } = snapshot}
+          when checkpoint in @recovery_checkpoints and not is_nil(previous) ->
+            recover_known_good(snapshot, config)
+
+          {:ok,
+           %{
+             attempt: %{
+               status: :applying,
+               checkpoint: checkpoint,
+               previous: nil,
+               installed_revision: revision
+             }
+           } = snapshot}
+          when checkpoint in [:before_activate, :recovery_before_activate, :unknown] and
+                 is_binary(revision) ->
+            recover_first_activation(snapshot, config)
+
+          {:ok,
+           %{
+             attempt: %{
+               status: :applying,
+               checkpoint: checkpoint,
+               previous: nil,
+               installed_revision: nil
+             }
+           } = snapshot}
+          when checkpoint in [:before_install, :unknown] ->
+            recover_first_install(snapshot, config)
 
           {:ok, _snapshot} ->
             :ok
@@ -448,10 +486,119 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
     end
   end
 
-  defp recover_uncertain_transition(version, config) do
-    case transition(:uncertain_after_side_effect, %{version: version}, config) do
-      {:ok, %{runtime_status: :unknown, attempt: %{checkpoint: :unknown}}} -> :ok
-      _not_durable -> {:error, :persistence}
+  defp recover_known_good(snapshot, config) do
+    version = snapshot.attempt.version
+    previous = snapshot.attempt.previous
+
+    with true <- adapter_available?(config.runtime_adapter),
+         {:ok, _snapshot} <-
+           transition(
+             :recovery_before_restore,
+             %{version: version, trigger_reason: @restart_failure_reason},
+             config
+           ),
+         :ok <- callback(config.runtime_adapter, :restore_config, [previous.revision]),
+         {:ok, _snapshot} <- transition(:before_reactivate, %{version: version}, config),
+         :ok <- callback(config.runtime_adapter, :activate_config, [previous.revision]),
+         {:ok, _snapshot} <- transition(:rollback_succeeded, %{version: version}, config) do
+      :ok
+    else
+      _recovery_failed -> {:error, :runtime}
+    end
+  end
+
+  defp recover_first_install(snapshot, config) do
+    with true <- adapter_available?(config.runtime_adapter),
+         {:ok, candidate} <- recovery_candidate(snapshot, config),
+         {:ok, revision} <- recover_install(candidate, snapshot.attempt, config),
+         {:ok, _snapshot} <- recovery_before_activate(snapshot, revision, config),
+         :ok <- callback(config.runtime_adapter, :activate_config, [revision]),
+         {:ok, _snapshot} <-
+           transition(:applied, %{version: snapshot.attempt.version}, config) do
+      :ok
+    else
+      _recovery_failed -> {:error, :runtime}
+    end
+  end
+
+  defp recover_first_activation(snapshot, config) do
+    version = snapshot.attempt.version
+    revision = snapshot.attempt.installed_revision
+
+    with true <- adapter_available?(config.runtime_adapter),
+         {:ok, _snapshot} <- recovery_before_activate(snapshot, revision, config),
+         :ok <- callback(config.runtime_adapter, :activate_config, [revision]),
+         {:ok, _snapshot} <- transition(:applied, %{version: version}, config) do
+      :ok
+    else
+      _recovery_failed -> {:error, :runtime}
+    end
+  end
+
+  defp recovery_before_activate(
+         %{attempt: %{checkpoint: :unknown, version: version}},
+         revision,
+         config
+       ) do
+    transition(
+      :recovery_before_activate,
+      %{version: version, installed_revision: revision},
+      config
+    )
+  end
+
+  defp recovery_before_activate(
+         %{attempt: %{checkpoint: :before_install, version: version}},
+         revision,
+         config
+       ) do
+    transition(:before_activate, %{version: version, installed_revision: revision}, config)
+  end
+
+  defp recovery_before_activate(
+         %{attempt: %{checkpoint: checkpoint}} = snapshot,
+         _revision,
+         _config
+       )
+       when checkpoint in [:before_activate, :recovery_before_activate],
+       do: {:ok, snapshot}
+
+  defp recovery_candidate(%{attempt: attempt}, config) do
+    case local_call(fn -> ConfigStore.current(config.config_store) end) do
+      {:ok,
+       %{
+         "target_type" => "server",
+         "target_id" => server_id,
+         "version" => version,
+         "operation" => operation,
+         "profile" => profile,
+         "payload" => payload,
+         "digest" => digest,
+         "expected_revision" => expected_revision
+       } = candidate}
+      when server_id == config.server_id and version == attempt.version and
+             operation == attempt.operation and profile == config.profile and
+             digest == attempt.digest and expected_revision == attempt.expected_revision and
+             is_map(payload) ->
+        {:ok, candidate}
+
+      _invalid ->
+        {:error, :candidate}
+    end
+  end
+
+  defp recover_install(candidate, attempt, config) do
+    opts = [
+      version: attempt.version,
+      digest: attempt.digest,
+      expected_revision: attempt.expected_revision,
+      operation: attempt.operation,
+      profile: config.profile
+    ]
+
+    case callback(config.runtime_adapter, :install_config, [candidate["payload"], opts]) do
+      {:ok, revision} -> Digest.validate(revision)
+      _error_or_malformed -> {:error, :install}
     end
   end
 
@@ -480,8 +627,11 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
 
   defp init_applying_state?(checkpoint, snapshot) do
     case @init_applying_runtime[checkpoint] do
-      nil -> false
-      runtime -> runtime?(snapshot, runtime)
+      nil ->
+        false
+
+      runtime ->
+        runtime?(snapshot, runtime)
     end
   end
 
@@ -556,10 +706,11 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
        do: previous == known_good and known_good_or_nil?(previous)
 
   defp transition_fields?(
-         :before_activate,
+         event,
          %{installed_revision: revision},
          %{attempt: %{installed_revision: revision}}
-       ),
+       )
+       when event in [:before_activate, :recovery_before_activate],
        do: true
 
   defp transition_fields?(
@@ -576,7 +727,7 @@ defmodule YellowDog.ServerAgent.ConfigApplier do
            known_good == %{version: version, digest: digest, revision: revision}
 
   defp transition_fields?(event, _attrs, _snapshot)
-       when event in [:before_install, :before_activate, :applied],
+       when event in [:before_install, :before_activate, :recovery_before_activate, :applied],
        do: false
 
   defp transition_fields?(event, _attrs, _snapshot),

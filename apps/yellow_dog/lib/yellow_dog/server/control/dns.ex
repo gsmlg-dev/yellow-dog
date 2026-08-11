@@ -33,8 +33,11 @@ defmodule YellowDog.Server.Control.Dns do
     "server.dns.zones.sync",
     "server.dns.conflicts.resolve"
   ]
-  @unsupported_snapshot_operations [
-    "server.dns.zones.import"
+  # These catalogued commands remain unavailable until an approved query exposes the exact
+  # resource snapshot that Dispatcher must hash for their expected_revision.
+  @unavailable_cas_operations [
+    "server.dns.zones.import",
+    "server.dns.conflicts.resolve"
   ]
 
   @production_dependencies %{
@@ -42,6 +45,7 @@ defmodule YellowDog.Server.Control.Dns do
     zone_store: Module.concat(["YellowDog", "Store", "Zone"]),
     acl_registry: Module.concat(["YellowDog", "Dns", "AclRegistry"]),
     acl_codec: Module.concat(["YellowDog", "Dns", "View", "ACL"]),
+    config_persistence: Module.concat(["YellowDog", "Dns", "ConfigPersistence"]),
     provider_store: Module.concat(["YellowDog", "Store", "Provider"]),
     provider_facade: Module.concat(["YellowDog", "DnsProvider"]),
     tasks: Module.concat(["YellowDog", "Tasks"]),
@@ -100,6 +104,15 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
+  def dispatch("server.dns.views.create", payload) when is_map(payload),
+    do: mutate_view(:create, payload)
+
+  def dispatch("server.dns.views.update", payload) when is_map(payload),
+    do: mutate_view(:update, payload)
+
+  def dispatch("server.dns.views.delete", payload) when is_map(payload),
+    do: mutate_view(:delete, payload)
+
   def dispatch("server.dns.zones.create", payload) when is_map(payload),
     do: create_zone(payload)
 
@@ -121,6 +134,15 @@ defmodule YellowDog.Server.Control.Dns do
   def dispatch("server.dns.records.delete", payload) when is_map(payload),
     do: mutate_record(:delete, payload)
 
+  def dispatch("server.dns.acls.create", payload) when is_map(payload),
+    do: mutate_acl(:create, payload)
+
+  def dispatch("server.dns.acls.update", payload) when is_map(payload),
+    do: mutate_acl(:update, payload)
+
+  def dispatch("server.dns.acls.delete", payload) when is_map(payload),
+    do: mutate_acl(:delete, payload)
+
   def dispatch(
         "server.dns.providers.create",
         %{"provider_id" => _, "provider_type" => _, "endpoint" => _, "credential_ref" => _} =
@@ -138,8 +160,8 @@ defmodule YellowDog.Server.Control.Dns do
   def dispatch("server.dns.providers.delete", %{"provider_id" => _} = payload),
     do: delete_provider(payload)
 
-  def dispatch("server.dns.conflicts.resolve", payload) when is_map(payload),
-    do: resolve_provider_conflict(payload)
+  def dispatch(operation, payload) when operation in @unavailable_cas_operations,
+    do: unavailable_cas_operation(operation, payload)
 
   def dispatch(operation, _payload) when operation in @mutation_operations,
     do: unsupported_error()
@@ -179,14 +201,6 @@ defmodule YellowDog.Server.Control.Dns do
         Enum.find(zones, &(&1["zone_name"] == canonical_name(zone_name))),
         "server.dns.zones.list"
       )
-    end
-  end
-
-  def current("server.dns.conflicts.resolve", payload) when is_map(payload) do
-    with {:ok, payload} <- validate_operation_payload("server.dns.conflicts.resolve", payload),
-         {:ok, conflict} <- fetch_provider_conflict(payload["conflict_id"]),
-         {:ok, _resource, revision_state} <- conflict_zone_revision_state(conflict) do
-      {:ok, revision_state}
     end
   end
 
@@ -249,8 +263,8 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
-  def current(operation, _payload) when operation in @unsupported_snapshot_operations,
-    do: unsupported_error()
+  def current(operation, payload) when operation in @unavailable_cas_operations,
+    do: unavailable_cas_operation(operation, payload)
 
   def current(operation, _payload) when operation in @mutation_operations, do: invalid_error()
   def current(_operation, _payload), do: unsupported_error()
@@ -307,6 +321,115 @@ defmodule YellowDog.Server.Control.Dns do
   end
 
   defp project_view(_view), do: invalid_error()
+
+  defp mutate_view(action, payload) do
+    operation = "server.dns.views.#{action}"
+
+    with {:ok, payload} <- validate_operation_payload(operation, payload),
+         :ok <- validate_view_action(action, payload["view_name"]),
+         {:ok, resource} <- canonical_view_resource(action, payload),
+         {:ok, previous} <- collect_view_configs(),
+         {:ok, candidate} <- view_candidate(action, resource, previous),
+         :ok <- persist_and_apply_views(previous, candidate) do
+      view_mutation_result(action, operation, resource)
+    end
+  end
+
+  defp validate_view_action(:delete, "default"), do: conflict_error()
+  defp validate_view_action(_action, _view_name), do: :ok
+
+  defp canonical_view_resource(:delete, payload),
+    do: {:ok, %{"view_name" => payload["view_name"]}}
+
+  defp canonical_view_resource(_action, payload) do
+    with {:ok, match_clients} <- canonical_acl_networks(payload["match_clients"]) do
+      {:ok,
+       %{
+         "view_name" => payload["view_name"],
+         "match_clients" => match_clients,
+         "recursion" => payload["recursion"]
+       }}
+    end
+  end
+
+  defp collect_view_configs do
+    with {:ok, configs} <- dependency_call(:config_persistence, :collect_views, []),
+         true <- is_list(configs),
+         {:ok, configs} <- bounded_list(configs, @max_control_views) do
+      {:ok, configs}
+    else
+      {:error, %Error{}} = error -> error
+      {:error, :too_large} -> unsupported_error()
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp view_candidate(action, resource, previous) do
+    matches = Enum.filter(previous, &(field(&1, :name) == resource["view_name"]))
+
+    case {action, matches} do
+      {:create, []} ->
+        {:ok, previous ++ [view_owner_config(nil, resource)]}
+
+      {:create, [_existing]} ->
+        conflict_error()
+
+      {:update, [existing]} ->
+        {:ok, replace_owner_config(previous, existing, view_owner_config(existing, resource))}
+
+      {:delete, [_existing]} ->
+        {:ok, Enum.reject(previous, &(field(&1, :name) == resource["view_name"]))}
+
+      {action, []} when action in [:update, :delete] ->
+        not_found_error()
+
+      {_action, [_first | _rest]} ->
+        conflict_error()
+    end
+  end
+
+  defp view_owner_config(existing, resource) do
+    existing = existing || %{}
+    match_clients = resource["match_clients"]
+
+    existing
+    |> Map.put(:name, resource["view_name"])
+    |> Map.put(:priority, field(existing, :priority, 100))
+    |> Map.put(:match_clients, if(match_clients == [], do: "none", else: nil))
+    |> Map.put(:acl, Enum.map(match_clients, &%{action: "allow", network: &1}))
+    |> Map.put(:recursion, resource["recursion"])
+    |> Map.put(:recursion_enabled, resource["recursion"])
+  end
+
+  defp persist_and_apply_views(previous, candidate) do
+    with :ok <- persist_view_configs(candidate) do
+      case apply_view_configs(candidate) do
+        :ok -> :ok
+        {:error, %Error{}} -> rollback_views(previous)
+      end
+    end
+  end
+
+  defp rollback_views(previous) do
+    persisted = persist_view_configs(previous)
+    applied = apply_view_configs(previous)
+
+    if persisted == :ok and applied == :ok,
+      do: apply_failed_error(),
+      else: rollback_failed_error()
+  end
+
+  defp persist_view_configs(configs),
+    do: owner_ok(:config_persistence, :save_views, [configs])
+
+  defp apply_view_configs(configs),
+    do: owner_ok(:view_manager, :apply_control_views, [configs])
+
+  defp view_mutation_result(:delete, operation, resource),
+    do: deleted_result(operation, "dns_view", Map.take(resource, ["view_name"]))
+
+  defp view_mutation_result(_action, operation, resource),
+    do: revisioned_result(operation, "dns_view", resource)
 
   defp read_zones(view_name) do
     with {:ok, result} <- dependency_call(:zone_store, :list_zones_for_view, [view_name]),
@@ -370,19 +493,6 @@ defmodule YellowDog.Server.Control.Dns do
     with {:ok, payload} <- validate_operation_payload("server.dns.providers.delete", payload),
          :ok <- provider_owner_result(:remove_provider, [payload["provider_id"]]) do
       deleted_result("server.dns.providers.delete", "dns_provider", payload)
-    else
-      {:error, %Error{}} = error -> error
-      _failure -> apply_failed_error()
-    end
-  end
-
-  defp resolve_provider_conflict(payload) do
-    with {:ok, payload} <- validate_operation_payload("server.dns.conflicts.resolve", payload),
-         {:ok, resolution} <- conflict_resolution(payload["resolution"]),
-         {:ok, conflict} <- fetch_provider_conflict(payload["conflict_id"]),
-         :ok <- provider_owner_result(:resolve_conflict, [payload["conflict_id"], resolution]),
-         {:ok, resource, revision_state} <- conflict_zone_revision_state(conflict) do
-      conflict_revisioned_result(resource, revision_state)
     else
       {:error, %Error{}} = error -> error
       _failure -> apply_failed_error()
@@ -493,6 +603,142 @@ defmodule YellowDog.Server.Control.Dns do
     else
       {:error, %Error{}} = error -> error
       _invalid -> invalid_error()
+    end
+  end
+
+  defp mutate_acl(action, payload) do
+    operation = "server.dns.acls.#{action}"
+
+    with {:ok, payload} <- validate_operation_payload(operation, payload),
+         {:ok, resource} <- canonical_acl_resource(action, payload),
+         {:ok, previous} <- collect_acl_configs(),
+         {:ok, candidate, owner_config} <- acl_candidate(action, resource, previous),
+         :ok <-
+           persist_and_apply_acl(action, resource["acl_id"], owner_config, previous, candidate) do
+      acl_mutation_result(action, operation, resource)
+    end
+  end
+
+  defp canonical_acl_resource(:delete, payload),
+    do: {:ok, %{"acl_id" => payload["acl_id"]}}
+
+  defp canonical_acl_resource(_action, payload) do
+    with {:ok, networks} <- canonical_acl_networks(payload["networks"]) do
+      action = if networks == [], do: "deny", else: payload["action"]
+
+      {:ok,
+       %{
+         "acl_id" => payload["acl_id"],
+         "networks" => networks,
+         "action" => action
+       }}
+    end
+  end
+
+  defp collect_acl_configs do
+    with {:ok, configs} <- dependency_call(:acl_registry, :list_acls, []),
+         true <- is_list(configs),
+         {:ok, configs} <- bounded_list(configs, Bounds.max_list_entries()) do
+      {:ok, configs}
+    else
+      {:error, %Error{}} = error -> error
+      {:error, :too_large} -> unsupported_error()
+      _invalid -> apply_failed_error()
+    end
+  end
+
+  defp acl_candidate(action, resource, previous) do
+    matches = Enum.filter(previous, &(field(&1, :name) == resource["acl_id"]))
+
+    case {action, matches} do
+      {:create, []} ->
+        owner = acl_owner_config(nil, resource)
+        {:ok, previous ++ [owner], owner}
+
+      {:create, [_existing]} ->
+        conflict_error()
+
+      {:update, [existing]} ->
+        owner = acl_owner_config(existing, resource)
+        {:ok, replace_owner_config(previous, existing, owner), owner}
+
+      {:delete, [existing]} ->
+        candidate = Enum.reject(previous, &(field(&1, :name) == resource["acl_id"]))
+        {:ok, candidate, existing}
+
+      {action, []} when action in [:update, :delete] ->
+        not_found_error()
+
+      {_action, [_first | _rest]} ->
+        conflict_error()
+    end
+  end
+
+  defp acl_owner_config(existing, resource) do
+    existing = existing || %{}
+
+    existing
+    |> Map.put(:name, resource["acl_id"])
+    |> Map.put(:description, field(existing, :description, ""))
+    |> Map.put(
+      :rules,
+      Enum.map(resource["networks"], &%{action: resource["action"], network: &1})
+    )
+  end
+
+  defp replace_owner_config(configs, existing, replacement) do
+    Enum.map(configs, fn config -> if config == existing, do: replacement, else: config end)
+  end
+
+  defp persist_and_apply_acl(action, acl_id, owner_config, previous, candidate) do
+    with :ok <- persist_acl_configs(candidate) do
+      case apply_acl_config(action, acl_id, owner_config) do
+        :ok -> :ok
+        {:error, %Error{} = error} -> rollback_acl_persistence(previous, error)
+      end
+    end
+  end
+
+  defp persist_acl_configs(configs),
+    do: owner_ok(:config_persistence, :save_acls, [configs])
+
+  defp apply_acl_config(:create, _acl_id, owner_config),
+    do: acl_owner_ok(:create_acl, [owner_config])
+
+  defp apply_acl_config(:update, acl_id, owner_config),
+    do: acl_owner_ok(:update_acl, [acl_id, owner_config])
+
+  defp apply_acl_config(:delete, acl_id, _owner_config),
+    do: acl_owner_ok(:delete_acl, [acl_id])
+
+  defp rollback_acl_persistence(previous, error) do
+    case persist_acl_configs(previous) do
+      :ok -> {:error, error}
+      {:error, %Error{}} -> rollback_failed_error()
+    end
+  end
+
+  defp acl_owner_ok(function, arguments) do
+    case dependency_call(:acl_registry, function, arguments) do
+      {:ok, :ok} -> :ok
+      {:ok, {:error, :already_exists}} -> conflict_error()
+      {:ok, {:error, :not_found}} -> not_found_error()
+      {:error, %Error{}} = error -> error
+      _failure -> apply_failed_error()
+    end
+  end
+
+  defp acl_mutation_result(:delete, operation, resource),
+    do: deleted_result(operation, "dns_acl", Map.take(resource, ["acl_id"]))
+
+  defp acl_mutation_result(_action, operation, resource),
+    do: revisioned_result(operation, "dns_acl", resource)
+
+  defp owner_ok(dependency, function, arguments) do
+    case dependency_call(dependency, function, arguments) do
+      {:ok, :ok} -> :ok
+      {:error, %Error{}} = error -> error
+      _failure -> apply_failed_error()
     end
   end
 
@@ -743,52 +989,6 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
-  defp fetch_provider_conflict(conflict_id) do
-    with {:ok, result} <- dependency_call(:provider_facade, :fetch_conflict, [conflict_id]) do
-      case result do
-        {:ok, conflict} when is_map(conflict) -> {:ok, conflict}
-        {:error, :not_found} -> not_found_error()
-        {:error, :conflict} -> conflict_error()
-        {:error, :invalid} -> invalid_error()
-        {:error, :unsupported} -> unsupported_error()
-        _failure -> apply_failed_error()
-      end
-    end
-  end
-
-  defp conflict_zone_revision_state(conflict) do
-    with zone_name when is_binary(zone_name) <- field(conflict, :zone),
-         zone_name <- canonical_name(zone_name),
-         true <- zone_name != "",
-         {:ok, zone} <- authoritative_zone("default", zone_name),
-         [resource] <- project_zone(zone, "default"),
-         {:ok, resource} <- validate_current_resource("server.dns.zones.list", resource),
-         {:ok, soa_serial} <- authoritative_soa_serial(zone),
-         {:ok, rrsets} <- read_records("default", zone_name) do
-      {:ok, resource,
-       %{
-         "zone" => resource,
-         "soa_serial" => soa_serial,
-         "rrsets" => rrsets
-       }}
-    else
-      :missing -> not_found_error()
-      {:error, %Error{}} = error -> error
-      _invalid -> apply_failed_error()
-    end
-  end
-
-  defp authoritative_soa_serial(zone) do
-    case zone |> field(:soa, %{}) |> field(:serial) do
-      serial when is_integer(serial) and serial >= 0 -> {:ok, serial}
-      _invalid -> apply_failed_error()
-    end
-  end
-
-  defp conflict_resolution("use_local"), do: {:ok, :use_local}
-  defp conflict_resolution("use_cloud"), do: {:ok, :use_cloud}
-  defp conflict_resolution(_resolution), do: invalid_error()
-
   defp fetch_provider_resource(provider_id) do
     with {:ok, provider} <- fetch_provider(provider_id),
          [resource] <- project_provider(provider) do
@@ -954,6 +1154,12 @@ defmodule YellowDog.Server.Control.Dns do
     end
   end
 
+  defp unavailable_cas_operation(operation, payload) do
+    with {:ok, _payload} <- validate_operation_payload(operation, payload) do
+      unsupported_error()
+    end
+  end
+
   defp canonicalize_zone_payload(payload) do
     Map.update!(payload, "zone_name", &canonical_name/1)
   end
@@ -964,20 +1170,6 @@ defmodule YellowDog.Server.Control.Dns do
          {:ok, result} <-
            validate_operation_result(operation_name, %{
              "resource_type" => resource_type,
-             "resource_id" => resource_id,
-             "resource" => resource,
-             "revision" => revision
-           }) do
-      {:ok, result}
-    end
-  end
-
-  defp conflict_revisioned_result(resource, revision_state) do
-    with {:ok, revision} <- Revision.calculate(revision_state),
-         {:ok, resource_id} <- resource_identifier("dns_zone", resource),
-         {:ok, result} <-
-           validate_operation_result("server.dns.conflicts.resolve", %{
-             "resource_type" => "dns_zone",
              "resource_id" => resource_id,
              "resource" => resource,
              "revision" => revision
@@ -1002,6 +1194,8 @@ defmodule YellowDog.Server.Control.Dns do
 
   defp resource_identifier("dns_zone", resource), do: {:ok, resource["zone_name"]}
   defp resource_identifier("dns_record", resource), do: {:ok, resource["record_id"]}
+  defp resource_identifier("dns_view", resource), do: {:ok, resource["view_name"]}
+  defp resource_identifier("dns_acl", resource), do: {:ok, resource["acl_id"]}
   defp resource_identifier("dns_provider", resource), do: {:ok, resource["provider_id"]}
 
   defp zone_reference(payload),

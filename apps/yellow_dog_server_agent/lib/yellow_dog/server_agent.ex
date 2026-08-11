@@ -63,4 +63,7 @@ defmodule YellowDog.ServerAgent do
         :unavailable
     end
   end
+
+  @doc "Refreshes the running agent identity without reconnecting its control channel."
+  def refresh_identity(updates, client \\ Client), do: Client.refresh_identity(updates, client)
 end

@@ -20,7 +20,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     test "desired connection with no matching FSM produces activate diff" do
       desired = %DesiredState{
         connections: %{
-          "test" => %{
+          {"test", "recon_eth0"} => %{
             profile_id: "test",
             interface: "recon_eth0",
             ipv4: %{method: :auto},
@@ -74,7 +74,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
   describe "idempotency with live processes" do
     test "once a connection FSM is active, diff produces no new activation diffs" do
-      iface = "recon_idem_#{:rand.uniform(65535)}"
+      iface = "recon_idem"
       profile_id = "recon-idem-#{iface}"
 
       profile = %Profile{
@@ -144,7 +144,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
 
     test "activate with valid profile and matching interface starts FSM" do
-      iface = "recon_act_#{:rand.uniform(65535)}"
+      iface = "recon_act_api"
       profile_id = "recon-act-#{iface}"
 
       profile = %Profile{
@@ -176,7 +176,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
 
     test "activate with existing FSM triggers activation instead of no-op" do
-      iface = "recon_exist_#{:rand.uniform(65535)}"
+      iface = "recon_exist"
       profile_id = "recon-exist-#{iface}"
 
       profile = %Profile{
@@ -210,7 +210,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
   describe "observe/0" do
     test "observe returns current links, addresses, and routes" do
-      iface = "recon_obs_#{:rand.uniform(65535)}"
+      iface = "recon_obs"
       MockNetlink.link_up(iface)
       MockNetlink.address_added(iface, "10.50.0.1/24")
       Process.sleep(50)
@@ -319,7 +319,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
   describe "activate/1 edge cases" do
     test "activate with nil interface finds matching ethernet link via find_matching_interface" do
-      iface = "recon_find_#{:rand.uniform(65535)}"
+      iface = "recon_find"
       profile_id = "recon-find-#{iface}"
 
       profile = %Profile{
@@ -374,18 +374,24 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile_id, profile)
+      :sys.replace_state(ProfileStore, fn state ->
+        %{state | profiles: Map.put(state.profiles, profile_id, profile)}
+      end)
 
-      result = ReconciliationEngine.activate(profile_id)
-      assert result == {:error, :no_matching_interface}
-
-      ProfileStore.delete(profile_id)
+      try do
+        result = ReconciliationEngine.activate(profile_id)
+        assert result == {:error, :no_matching_interface}
+      after
+        :sys.replace_state(ProfileStore, fn state ->
+          %{state | profiles: Map.delete(state.profiles, profile_id)}
+        end)
+      end
     end
   end
 
   describe "deactivate/1 with active FSM" do
     test "deactivate stops a running connection FSM" do
-      iface = "recon_deact_#{:rand.uniform(65535)}"
+      iface = "recon_deact_api"
       profile_id = "recon-deact-#{iface}"
 
       profile = %Profile{
@@ -413,11 +419,110 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
       ProfileStore.delete(profile_id)
     end
+
+    @tag :capture_log
+    test "deactivate stops every interface using the same wildcard profile" do
+      suffix = :rand.uniform(65_535)
+      interfaces = ["rda0_#{suffix}", "rda1_#{suffix}"]
+      profile_id = "recon-deact-all-#{suffix}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+
+      on_exit(fn ->
+        Enum.each(interfaces, fn interface ->
+          Connection.Supervisor.stop_connection(interface)
+          MockNetlink.link_removed(interface)
+        end)
+
+        ProfileStore.delete(profile_id)
+      end)
+
+      pids =
+        Enum.map(interfaces, fn interface ->
+          MockNetlink.link_up(interface, carrier: true)
+          {:ok, pid} = Connection.Supervisor.start_connection(interface, profile)
+          Connection.FSM.activate(pid)
+          pid
+        end)
+
+      Process.sleep(150)
+
+      assert Enum.all?(pids, &match?({:ok, %{state: :activated}}, Connection.FSM.get_state(&1)))
+
+      assert :ok = ReconciliationEngine.deactivate(profile_id)
+      Process.sleep(150)
+
+      assert Enum.all?(
+               pids,
+               &match?({:ok, %{state: :disconnected}}, Connection.FSM.get_state(&1))
+             )
+    end
+  end
+
+  describe "profile updates for wildcard connections" do
+    test "updates every interface using the profile" do
+      suffix = :rand.uniform(65_535)
+      interfaces = ["rpu0_#{suffix}", "rpu1_#{suffix}"]
+      profile_id = "recon-profile-update-all-#{suffix}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: false,
+        autoconnect_priority: 10,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+
+      on_exit(fn ->
+        Enum.each(interfaces, fn interface ->
+          Connection.Supervisor.stop_connection(interface)
+          MockNetlink.link_removed(interface)
+        end)
+
+        ProfileStore.delete(profile_id)
+      end)
+
+      Process.sleep(150)
+
+      pids =
+        Enum.map(interfaces, fn interface ->
+          MockNetlink.link_up(interface, carrier: true)
+          {:ok, pid} = Connection.Supervisor.start_connection(interface, profile)
+          pid
+        end)
+
+      updated_profile = %{profile | autoconnect_priority: 321}
+      :ok = ProfileStore.put(profile_id, updated_profile)
+      Process.sleep(150)
+
+      assert Enum.all?(pids, fn pid ->
+               match?(
+                 {:ok, %{autoconnect_priority: 321}},
+                 Connection.FSM.get_state(pid)
+               )
+             end)
+    end
   end
 
   describe "compute_desired/0" do
     test "includes autoconnect profiles matching non-loopback ethernet links" do
-      iface = "recon_desired_#{:rand.uniform(65535)}"
+      iface = "recon_desired"
       profile_id = "recon-desired-#{iface}"
 
       profile = %Profile{
@@ -436,14 +541,14 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       Process.sleep(50)
 
       desired = ReconciliationEngine.compute_desired()
-      assert Map.has_key?(desired.connections, profile_id)
+      assert Map.has_key?(desired.connections, {profile_id, iface})
 
       Connection.Supervisor.stop_connection(iface)
       ProfileStore.delete(profile_id)
     end
 
     test "excludes non-autoconnect profiles" do
-      iface = "recon_noauto_#{:rand.uniform(65535)}"
+      iface = "recon_noauto"
       profile_id = "recon-noauto-#{iface}"
 
       profile = %Profile{
@@ -462,7 +567,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       Process.sleep(50)
 
       desired = ReconciliationEngine.compute_desired()
-      refute Map.has_key?(desired.connections, profile_id)
+      refute Map.has_key?(desired.connections, {profile_id, iface})
 
       ProfileStore.delete(profile_id)
     end
@@ -470,7 +575,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
   describe "default_route_change telemetry" do
     test "emits default_route_change on periodic reconcile with new active connection" do
-      iface = "recon_drc_#{:rand.uniform(65535)}"
+      iface = "recon_drc"
       profile_id = "recon-drc-#{iface}"
       test_pid = self()
       handler_id = {__MODULE__, :drc, :rand.uniform(1_000_000)}
@@ -591,7 +696,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
   describe "reconciliation error resilience" do
     @tag :capture_log
     test "reconciliation completes even when profile vanishes during apply" do
-      iface = "recon_vanish_#{:rand.uniform(65535)}"
+      iface = "recon_vanish"
       profile_id = "recon-vanish-#{iface}"
 
       profile = %Profile{
@@ -703,7 +808,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
     @tag :capture_log
     test "activate with valid profile starts connection" do
-      iface = "recon_act_#{:rand.uniform(65535)}"
+      iface = "recon_act_evt"
       profile_id = "recon-act-#{iface}"
 
       profile = %Profile{
@@ -768,7 +873,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     test "multiple concurrent activations for different interfaces do not crash" do
       interfaces =
         for i <- 1..5 do
-          iface = "recon_stress_#{i}_#{:rand.uniform(65535)}"
+          iface = "recon_stress_#{i}"
           profile_id = "stress-#{iface}"
 
           profile = %Profile{
@@ -819,7 +924,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
     @tag :capture_log
     test "activate then immediately deactivate same profile does not crash" do
-      iface = "recon_actdeact_#{:rand.uniform(65535)}"
+      iface = "recon_actdeact"
       profile_id = "actdeact-#{iface}"
 
       profile = %Profile{
@@ -858,7 +963,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     test "reconciliation handles multiple autoconnect profiles with priority ordering" do
       ifaces =
         for i <- 1..3 do
-          iface = "recon_multi_#{i}_#{:rand.uniform(65535)}"
+          iface = "recon_multi_#{i}"
           profile_id = "multi-#{iface}"
           priority = 100 * i
 
@@ -913,7 +1018,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       # PRD non-functional requirement: < 100ms for typical 2-interface setup
       ifaces =
         for i <- 1..2 do
-          iface = "recon_perf_#{i}_#{:rand.uniform(65535)}"
+          iface = "recon_perf_#{i}"
           profile_id = "perf-#{iface}"
 
           profile = %Profile{
@@ -998,9 +1103,49 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
   end
 
   describe "compute_deactivation_diffs" do
+    test "an exact desired profile-interface pair is not treated as orphaned" do
+      iface = "recon_exact"
+      profile_id = "recon-exact-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+
+      :sys.replace_state(ProfileStore, fn state ->
+        %{state | profiles: Map.delete(state.profiles, profile_id)}
+      end)
+
+      try do
+        desired = DesiredState.from_profiles([{profile, iface}])
+        diffs = ReconciliationEngine.diff(desired, %ObservedState{})
+
+        refute Enum.any?(
+                 diffs,
+                 &(&1.action == :deactivate_connection and &1.interface == iface)
+               )
+      after
+        :sys.replace_state(ProfileStore, fn state ->
+          %{state | profiles: Map.put(state.profiles, profile_id, profile)}
+        end)
+
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+      end
+    end
+
     @tag :capture_log
     test "deleted profile produces deactivation diff for active connection" do
-      iface = "recon_deact_auto_#{:rand.uniform(65535)}"
+      iface = "recon_deact"
       profile_id = "deact-auto-#{iface}"
 
       profile = %Profile{
@@ -1041,7 +1186,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
     @tag :capture_log
     test "manually activated connection with existing profile is NOT auto-deactivated" do
-      iface = "recon_manual_#{:rand.uniform(65535)}"
+      iface = "recon_manual"
       profile_id = "manual-#{iface}"
 
       profile = %Profile{
@@ -1081,7 +1226,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
     @tag :capture_log
     test "disconnected FSM with deleted profile IS deactivated (prevents interface blocking)" do
-      iface = "recon_disc_deact_#{:rand.uniform(65535)}"
+      iface = "recon_disc"
       profile_id = "disc-deact-#{iface}"
 
       profile = %Profile{
@@ -1123,7 +1268,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
     @tag :capture_log
     test "full cycle: delete profile triggers deactivation via reconciliation" do
-      iface = "recon_fullcyc_#{:rand.uniform(65535)}"
+      iface = "recon_fullcyc"
       profile_id = "fullcyc-#{iface}"
 
       profile = %Profile{
@@ -1166,7 +1311,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
   describe "failed FSM re-activation" do
     @tag :capture_log
     test "connection_active? returns false for failed FSMs, enabling re-activation" do
-      iface = "recon_fail_#{:rand.uniform(65535)}"
+      iface = "recon_fail"
       profile_id = "recon-fail-#{iface}"
 
       profile = %Profile{
@@ -1198,7 +1343,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       # connection_active? should return true for non-failed states
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled},
@@ -1231,7 +1376,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
   describe "compute_mtu_diffs" do
     test "MTU mismatch for active connection produces set_mtu diff" do
-      iface = "recon_mtu_#{:rand.uniform(65535)}"
+      iface = "recon_mtu"
       profile_id = "mtu-recon-#{iface}"
 
       profile = %Profile{
@@ -1267,7 +1412,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
 
     test "matching MTU produces no diff" do
-      iface = "recon_mtu_ok_#{:rand.uniform(65535)}"
+      iface = "recon_mtu_ok"
       profile_id = "mtu-ok-#{iface}"
 
       profile = %Profile{
@@ -1302,7 +1447,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
 
     test "nil MTU in profile produces no diff" do
-      iface = "recon_mtu_nil_#{:rand.uniform(65535)}"
+      iface = "recon_mtu_nil"
       profile_id = "mtu-nil-#{iface}"
 
       profile = %Profile{

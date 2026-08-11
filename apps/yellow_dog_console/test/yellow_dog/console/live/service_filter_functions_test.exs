@@ -6,60 +6,11 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
   alias YellowDog.Console.Dhcpv4Live.ActivityLive, as: Dhcpv4Activity
   alias YellowDog.Console.Dhcpv6Live.ActivityLive, as: Dhcpv6Activity
-  alias YellowDog.Console.MdnsLive.MonitorLive
   alias YellowDog.Console.FormatHelper
   alias YellowDog.Console.NetbootLive.DevicesLive, as: NetbootDevices
   alias YellowDog.Console.NetbootLive.ProfilesLive, as: NetbootProfiles
   alias YellowDog.Console.NetbootLive.TftpLive, as: NetbootTftp
   alias YellowDog.Console.NetbootLive.LogLive, as: NetbootLog
-  alias YellowDog.Console.FingerprintLive.FingerprintsLive
-  alias YellowDog.Console.FingerprintLive.DevicesLive, as: FingerprintDevices
-
-  # ============================================================================
-  # MonitorLive.filtered_queries/2
-  # ============================================================================
-
-  describe "MonitorLive.filtered_queries/2" do
-    @queries [
-      %{name: "_http._tcp.local", type: :ptr, source_ip: {192, 168, 1, 100}},
-      %{name: "_ssh._tcp.local", type: :ptr, source_ip: {10, 0, 0, 1}},
-      %{name: "_printer._tcp.local", type: :srv, source_ip: {192, 168, 1, 200}}
-    ]
-
-    test "returns all queries with empty search" do
-      assert length(MonitorLive.filtered_queries(@queries, "")) == 3
-    end
-
-    test "filters by name substring" do
-      result = MonitorLive.filtered_queries(@queries, "http")
-      assert length(result) == 1
-      assert hd(result).name == "_http._tcp.local"
-    end
-
-    test "filters by type" do
-      result = MonitorLive.filtered_queries(@queries, "srv")
-      assert length(result) == 1
-      assert hd(result).type == :srv
-    end
-
-    test "filters by source IP" do
-      result = MonitorLive.filtered_queries(@queries, "192.168")
-      assert length(result) == 2
-    end
-
-    test "case-insensitive filtering" do
-      result = MonitorLive.filtered_queries(@queries, "HTTP")
-      assert length(result) == 1
-    end
-
-    test "returns empty for non-matching search" do
-      assert MonitorLive.filtered_queries(@queries, "nonexistent") == []
-    end
-
-    test "handles empty queries list" do
-      assert MonitorLive.filtered_queries([], "test") == []
-    end
-  end
 
   # ============================================================================
   # FormatHelper.filtered_pools/2 (DHCPv4 pools)
@@ -362,143 +313,115 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
   describe "NetbootDevices.filter_by_search/2" do
     @nb_devices [
-      %{mac: "AA:BB:CC:DD:EE:01", hostname: "server-1", profile_id: "ubuntu-22", tags: ["prod"]},
-      %{mac: "AA:BB:CC:DD:EE:02", hostname: "desktop-2", profile_id: "centos-9", tags: ["dev"]},
-      %{mac: "AA:BB:CC:DD:EE:03", hostname: nil, profile_id: nil, tags: []}
+      %{
+        "device_id" => "server-1",
+        "mac" => "AA:BB:CC:DD:EE:01",
+        "profile_id" => "ubuntu-22"
+      },
+      %{
+        "device_id" => "desktop-2",
+        "mac" => "AA:BB:CC:DD:EE:02",
+        "profile_id" => "centos-9"
+      },
+      %{
+        "device_id" => "unassigned-3",
+        "mac" => "AA:BB:CC:DD:EE:03",
+        "profile_id" => ""
+      }
     ]
 
     test "returns all with empty search" do
-      assert length(NetbootDevices.filter_by_search(@nb_devices, "")) == 3
+      assert [_, _, _] = NetbootDevices.filter_by_search(@nb_devices, "")
     end
 
     test "filters by MAC" do
-      result = NetbootDevices.filter_by_search(@nb_devices, "EE:01")
-      assert length(result) == 1
+      assert [%{"device_id" => "server-1"}] =
+               NetbootDevices.filter_by_search(@nb_devices, "EE:01")
     end
 
-    test "filters by hostname" do
-      result = NetbootDevices.filter_by_search(@nb_devices, "server")
-      assert length(result) == 1
+    test "filters by device ID" do
+      assert [%{"device_id" => "server-1"}] =
+               NetbootDevices.filter_by_search(@nb_devices, "server")
     end
 
     test "filters by profile_id" do
-      result = NetbootDevices.filter_by_search(@nb_devices, "ubuntu")
-      assert length(result) == 1
-    end
-
-    test "filters by tag" do
-      result = NetbootDevices.filter_by_search(@nb_devices, "prod")
-      assert length(result) == 1
+      assert [%{"profile_id" => "ubuntu-22"}] =
+               NetbootDevices.filter_by_search(@nb_devices, "ubuntu")
     end
 
     test "case-insensitive search" do
-      result = NetbootDevices.filter_by_search(@nb_devices, "SERVER")
-      assert length(result) == 1
+      assert [%{"device_id" => "server-1"}] =
+               NetbootDevices.filter_by_search(@nb_devices, "SERVER")
     end
 
-    test "handles nil hostname and profile_id" do
-      result = NetbootDevices.filter_by_search(@nb_devices, "nonexistent")
-      assert result == []
-    end
-  end
-
-  describe "NetbootDevices.filter_by_state/2" do
-    @nb_state_devices [
-      %{mac: "a", state: :new},
-      %{mac: "b", state: :provisioned},
-      %{mac: "c", state: :new}
-    ]
-
-    test "returns all with 'all'" do
-      assert length(NetbootDevices.filter_by_state(@nb_state_devices, "all")) == 3
-    end
-
-    test "filters by state" do
-      result = NetbootDevices.filter_by_state(@nb_state_devices, "new")
-      assert length(result) == 2
+    test "returns no devices when the search does not match" do
+      assert NetbootDevices.filter_by_search(@nb_devices, "nonexistent") == []
     end
   end
 
   describe "NetbootDevices.filter_by_profile/2" do
     @nb_profile_devices [
-      %{mac: "a", profile_id: "ubuntu-22"},
-      %{mac: "b", profile_id: "centos-9"},
-      %{mac: "c", profile_id: nil}
+      %{"device_id" => "a", "mac" => "AA:AA:AA:AA:AA:AA", "profile_id" => "ubuntu-22"},
+      %{"device_id" => "b", "mac" => "BB:BB:BB:BB:BB:BB", "profile_id" => "centos-9"},
+      %{"device_id" => "c", "mac" => "CC:CC:CC:CC:CC:CC", "profile_id" => ""}
     ]
 
     test "returns all with 'all'" do
-      assert length(NetbootDevices.filter_by_profile(@nb_profile_devices, "all")) == 3
+      assert [_, _, _] = NetbootDevices.filter_by_profile(@nb_profile_devices, "all")
     end
 
     test "filters unassigned" do
-      result = NetbootDevices.filter_by_profile(@nb_profile_devices, "unassigned")
-      assert length(result) == 1
-      assert hd(result).profile_id == nil
+      assert [%{"device_id" => "c", "profile_id" => ""}] =
+               NetbootDevices.filter_by_profile(@nb_profile_devices, "unassigned")
     end
 
     test "filters by specific profile" do
-      result = NetbootDevices.filter_by_profile(@nb_profile_devices, "ubuntu-22")
-      assert length(result) == 1
+      assert [%{"device_id" => "a", "profile_id" => "ubuntu-22"}] =
+               NetbootDevices.filter_by_profile(@nb_profile_devices, "ubuntu-22")
     end
   end
 
   describe "NetbootDevices.sort_devices/3" do
     @sortable_devices [
       %{
-        mac: "CC:CC",
-        hostname: "bravo",
-        state: :new,
-        profile_id: nil,
-        install_attempts: 3,
-        last_seen: ~U[2025-01-02 00:00:00Z],
-        arch: :x86_64,
-        tags: []
+        "device_id" => "bravo",
+        "mac" => "CC:CC:CC:CC:CC:CC",
+        "profile_id" => ""
       },
       %{
-        mac: "AA:AA",
-        hostname: "alpha",
-        state: :provisioned,
-        profile_id: "ubuntu",
-        install_attempts: 1,
-        last_seen: ~U[2025-01-03 00:00:00Z],
-        arch: :aarch64,
-        tags: []
+        "device_id" => "charlie",
+        "mac" => "AA:AA:AA:AA:AA:AA",
+        "profile_id" => "ubuntu"
       },
       %{
-        mac: "BB:BB",
-        hostname: nil,
-        state: :new,
-        profile_id: nil,
-        install_attempts: 0,
-        last_seen: nil,
-        arch: nil,
-        tags: []
+        "device_id" => "alpha",
+        "mac" => "BB:BB:BB:BB:BB:BB",
+        "profile_id" => ""
       }
     ]
 
     test "sorts by mac ascending" do
-      result = NetbootDevices.sort_devices(@sortable_devices, "mac", "asc")
-      assert Enum.map(result, & &1.mac) == ["AA:AA", "BB:BB", "CC:CC"]
+      assert [
+               %{"mac" => "AA:AA:AA:AA:AA:AA"},
+               %{"mac" => "BB:BB:BB:BB:BB:BB"},
+               %{"mac" => "CC:CC:CC:CC:CC:CC"}
+             ] = NetbootDevices.sort_devices(@sortable_devices, "mac", "asc")
     end
 
     test "sorts by mac descending" do
-      result = NetbootDevices.sort_devices(@sortable_devices, "mac", "desc")
-      assert Enum.map(result, & &1.mac) == ["CC:CC", "BB:BB", "AA:AA"]
+      assert [
+               %{"mac" => "CC:CC:CC:CC:CC:CC"},
+               %{"mac" => "BB:BB:BB:BB:BB:BB"},
+               %{"mac" => "AA:AA:AA:AA:AA:AA"}
+             ] = NetbootDevices.sort_devices(@sortable_devices, "mac", "desc")
     end
 
-    test "sorts by hostname with nil handling" do
-      result = NetbootDevices.sort_devices(@sortable_devices, "hostname", "asc")
-      assert hd(result).hostname == nil || hd(result).hostname == ""
-    end
-
-    test "sorts by install_attempts" do
-      result = NetbootDevices.sort_devices(@sortable_devices, "install_attempts", "asc")
-      assert Enum.map(result, & &1.install_attempts) == [0, 1, 3]
-    end
-
-    test "sorts by unknown field falls back to mac" do
-      result = NetbootDevices.sort_devices(@sortable_devices, "unknown_field", "asc")
-      assert Enum.map(result, & &1.mac) == ["AA:AA", "BB:BB", "CC:CC"]
+    test "sorts by device ID" do
+      assert [
+               %{"device_id" => "alpha"},
+               %{"device_id" => "bravo"},
+               %{"device_id" => "charlie"}
+             ] = NetbootDevices.sort_devices(@sortable_devices, "device_id", "asc")
     end
   end
 
@@ -704,115 +627,6 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "handles empty entries" do
       assert NetbootLog.filtered_entries([], "test", "all", "all") == []
-    end
-  end
-
-  # ============================================================================
-  # FingerprintsLive.filter_by_search/2
-  # ============================================================================
-
-  describe "FingerprintsLive.filter_by_search/2" do
-    @fingerprints [
-      %{vendor_class: "MSFT 5.0", profile_id: "windows", parameter_list: [1, 3, 6]},
-      %{vendor_class: "dhcpcd-9.4.1", profile_id: "linux", parameter_list: [1, 28, 121]},
-      %{vendor_class: nil, profile_id: nil, parameter_list: nil}
-    ]
-
-    test "returns all with empty search" do
-      assert length(FingerprintsLive.filter_by_search(@fingerprints, "")) == 3
-    end
-
-    test "filters by vendor_class" do
-      result = FingerprintsLive.filter_by_search(@fingerprints, "MSFT")
-      assert length(result) == 1
-    end
-
-    test "filters by profile_id" do
-      result = FingerprintsLive.filter_by_search(@fingerprints, "linux")
-      assert length(result) == 1
-    end
-
-    test "filters by parameter_list" do
-      result = FingerprintsLive.filter_by_search(@fingerprints, "121")
-      assert length(result) == 1
-    end
-
-    test "handles nil fields" do
-      result = FingerprintsLive.filter_by_search(@fingerprints, "nonexistent")
-      assert result == []
-    end
-  end
-
-  # ============================================================================
-  # FingerprintDevices.filter_by_search/2 and filter_by_type/2
-  # ============================================================================
-
-  describe "FingerprintDevices.filter_by_search/2" do
-    @fp_devices [
-      %{
-        mac: "AA:BB:CC:DD:EE:01",
-        hostname: "office-pc",
-        oui_vendor: "Dell",
-        ipv4_addresses: ["192.168.1.10"],
-        ipv6_addresses: []
-      },
-      %{
-        mac: "AA:BB:CC:DD:EE:02",
-        hostname: nil,
-        oui_vendor: nil,
-        ipv4_addresses: [],
-        ipv6_addresses: ["2001:db8::1"]
-      }
-    ]
-
-    test "returns all with empty search" do
-      assert length(FingerprintDevices.filter_by_search(@fp_devices, "")) == 2
-    end
-
-    test "filters by MAC" do
-      result = FingerprintDevices.filter_by_search(@fp_devices, "EE:01")
-      assert length(result) == 1
-    end
-
-    test "filters by hostname" do
-      result = FingerprintDevices.filter_by_search(@fp_devices, "office")
-      assert length(result) == 1
-    end
-
-    test "filters by vendor" do
-      result = FingerprintDevices.filter_by_search(@fp_devices, "Dell")
-      assert length(result) == 1
-    end
-
-    test "filters by IPv4 address" do
-      result = FingerprintDevices.filter_by_search(@fp_devices, "192.168")
-      assert length(result) == 1
-    end
-
-    test "filters by IPv6 address" do
-      result = FingerprintDevices.filter_by_search(@fp_devices, "2001:db8")
-      assert length(result) == 1
-    end
-  end
-
-  describe "FingerprintDevices.filter_by_type/2" do
-    @typed_devices [
-      %{mac: "a", profile_id: "windows"},
-      %{mac: "b", profile_id: "linux"},
-      %{mac: "c", profile_id: "windows"}
-    ]
-
-    test "returns all with 'all'" do
-      assert length(FingerprintDevices.filter_by_type(@typed_devices, "all")) == 3
-    end
-
-    test "filters by profile type" do
-      result = FingerprintDevices.filter_by_type(@typed_devices, "windows")
-      assert length(result) == 2
-    end
-
-    test "returns empty for non-matching type" do
-      assert FingerprintDevices.filter_by_type(@typed_devices, "macos") == []
     end
   end
 end

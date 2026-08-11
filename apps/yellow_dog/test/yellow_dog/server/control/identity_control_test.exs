@@ -237,31 +237,177 @@ defmodule YellowDog.Server.Control.IdentityControlTest do
     end
   end
 
-  test "all unsupported reads and mutations validate then stay owner-free through Dispatcher" do
-    cases = [
-      {"server.identity.approvals.list", %{}, :query},
-      {"server.identity.tokens.list", %{}, :query},
-      {"server.identity.policies.get", %{}, :query},
-      {"server.identity.tokens.create",
-       %{"token_id" => "token-1", "label" => "bootstrap", "expires_at" => nil}, :mutation},
-      {"server.identity.tokens.revoke", %{"token_id" => "token-1"}, :mutation},
-      {"server.identity.policies.update",
-       %{
-         "policies" => [
-           %{"policy_id" => "policy-1", "action" => "deny", "enabled" => true}
-         ]
-       }, :mutation}
-    ]
+  test "approval and token lists are strict, sorted, bounded, and secret-free" do
+    approvals = [approval("approval-2", "host-2"), approval("approval-1", "host-1")]
+    tokens = [token("token-2", "second", "revoked"), token("token-1", "first", "active")]
 
-    for {operation, payload, kind} <- cases do
-      assert_error(:unsupported, Dispatcher.dispatch(envelope(operation, payload)))
-      assert_error(:unsupported, Identity.dispatch(operation, payload))
+    YellowDog.ServerIdentityControlFake.configure(%{
+      control_list_approvals: {:ok, approvals},
+      control_list_tokens: {:ok, tokens}
+    })
 
-      if kind == :mutation do
-        assert_error(:unsupported, Identity.current(operation, payload))
-      end
-    end
+    assert {:ok, approval_result} =
+             Dispatcher.dispatch(
+               envelope("server.identity.approvals.list", %{
+                 "cursor" => "approval-1",
+                 "limit" => 1
+               })
+             )
 
+    assert approval_result["items"] == [approval("approval-2", "host-2")]
+    assert approval_result["observed_at"] == @observed_at
+    assert_valid_result("server.identity.approvals.list", approval_result)
+
+    assert {:ok, token_result} =
+             Dispatcher.dispatch(
+               envelope("server.identity.tokens.list", %{
+                 "cursor" => "token-1",
+                 "limit" => 1
+               })
+             )
+
+    assert token_result["items"] == [token("token-2", "second", "revoked")]
+    assert token_result["observed_at"] == @observed_at
+    assert_valid_result("server.identity.tokens.list", token_result)
+    refute inspect(token_result) =~ "token_hash"
+    refute inspect(token_result) =~ "secret"
+
+    malformed = Map.put(token("token-1", "first", "active"), "token_hash", "stored-secret")
+    YellowDog.ServerIdentityControlFake.configure(%{control_list_tokens: {:ok, [malformed]}})
+
+    rejected = Identity.dispatch("server.identity.tokens.list", %{})
+    assert_error(:invalid, rejected)
+    refute inspect(rejected) =~ "stored-secret"
+  end
+
+  test "policy reads return the exact validated set used for mutation CAS" do
+    policies = [policy("z-policy", "deny"), policy("a-policy", "require_approval")]
+    YellowDog.ServerIdentityControlFake.configure(%{control_list_policies: {:ok, policies}})
+
+    assert {:ok, result} =
+             Dispatcher.dispatch(envelope("server.identity.policies.get", %{}))
+
+    assert result == %{"policies" => Enum.sort_by(policies, & &1["policy_id"])}
+    assert_valid_result("server.identity.policies.get", result)
+
+    assert {:ok, ^result} =
+             Identity.current("server.identity.policies.update", %{
+               "policies" => [policy("replacement", "allow")]
+             })
+  end
+
+  test "token create returns its secret once while reads and current stay redacted" do
+    payload = %{"token_id" => "token-1", "label" => "bootstrap", "expires_at" => nil}
+    resource = token("token-1", "bootstrap", "active")
+
+    YellowDog.ServerIdentityControlFake.configure(%{
+      control_token: {:error, :not_found},
+      control_create_token: {:ok, resource, "one-time-secret", nil}
+    })
+
+    assert {:ok, :missing} = Identity.current("server.identity.tokens.create", payload)
+    assert [{:control_token, ["token-1"]}] = YellowDog.ServerIdentityControlFake.take_calls()
+
+    assert {:ok, result} =
+             Dispatcher.dispatch(envelope("server.identity.tokens.create", payload))
+
+    assert result == %{
+             "token_id" => "token-1",
+             "secret" => "one-time-secret",
+             "expires_at" => nil
+           }
+
+    assert_valid_result("server.identity.tokens.create", result)
+
+    assert [{:control_token, ["token-1"]}, {:control_create_token, [^payload]}] =
+             YellowDog.ServerIdentityControlFake.take_calls()
+
+    YellowDog.ServerIdentityControlFake.configure(%{control_token: {:ok, resource}})
+    assert {:ok, ^resource} = Identity.current("server.identity.tokens.create", payload)
+    refute inspect(resource) =~ "one-time-secret"
+  end
+
+  test "token revoke uses the exact current token and returns the durable revoked resource" do
+    active = token("token-1", "bootstrap", "active")
+    revoked = token("token-1", "bootstrap", "revoked")
+
+    YellowDog.ServerIdentityControlFake.configure(%{
+      control_token: {:ok, active},
+      control_revoke_token: {:ok, active, revoked}
+    })
+
+    assert {:ok, result} =
+             Dispatcher.dispatch(
+               envelope(
+                 "server.identity.tokens.revoke",
+                 %{"token_id" => "token-1"},
+                 expected_revision: revision!(active)
+               )
+             )
+
+    assert result == revisioned_resource("identity_token", "token-1", revoked)
+    assert_valid_result("server.identity.tokens.revoke", result)
+
+    YellowDog.ServerIdentityControlFake.configure(%{
+      control_revoke_token: {:raise, "must not mutate a stale token"}
+    })
+
+    assert_error(
+      :conflict,
+      Dispatcher.dispatch(
+        envelope(
+          "server.identity.tokens.revoke",
+          %{"token_id" => "token-1"},
+          expected_revision: String.duplicate("a", 64)
+        )
+      )
+    )
+
+    assert [
+             {:control_token, ["token-1"]},
+             {:control_revoke_token, ["token-1"]},
+             {:control_token, ["token-1"]}
+           ] = YellowDog.ServerIdentityControlFake.take_calls()
+  end
+
+  test "a single policy update compares the full current set and returns the changed policy" do
+    prior = [policy("policy-1", "require_approval")]
+    resulting = [policy("policy-1", "deny")]
+    payload = %{"policies" => resulting}
+    current = %{"policies" => prior}
+
+    YellowDog.ServerIdentityControlFake.configure(%{
+      control_list_policies: {:ok, prior},
+      control_update_policies: {:ok, prior, resulting}
+    })
+
+    assert {:ok, result} =
+             Dispatcher.dispatch(
+               envelope(
+                 "server.identity.policies.update",
+                 payload,
+                 expected_revision: revision!(current)
+               )
+             )
+
+    assert result ==
+             revisioned_resource("identity_policy", "policy-1", hd(resulting))
+
+    assert_valid_result("server.identity.policies.update", result)
+
+    assert [
+             {:control_list_policies, []},
+             {:control_update_policies, [^resulting]}
+           ] = YellowDog.ServerIdentityControlFake.take_calls()
+  end
+
+  test "multi-policy updates fail before touching the owner because the result is one resource" do
+    payload = %{
+      "policies" => [policy("policy-1", "allow"), policy("policy-2", "deny")]
+    }
+
+    assert_error(:invalid, Identity.current("server.identity.policies.update", payload))
+    assert_error(:invalid, Identity.dispatch("server.identity.policies.update", payload))
     assert [] = YellowDog.ServerIdentityControlFake.take_calls()
   end
 
@@ -418,7 +564,7 @@ defmodule YellowDog.Server.Control.IdentityControlTest do
     assert_error(:apply_failed, Identity.dispatch("server.identity.hosts.list", %{}))
   end
 
-  test "token operations cannot call owners or disclose one-time token material" do
+  test "malformed token owner returns fail closed without disclosing secret material" do
     YellowDog.ServerIdentityControlFake.configure(%{
       control_list_tokens: {:ok, [%{"raw_token" => "one-time-secret"}]},
       control_token: {:ok, %{"raw_token" => "one-time-secret"}},
@@ -434,13 +580,11 @@ defmodule YellowDog.Server.Control.IdentityControlTest do
     ]
 
     for {operation, payload} <- operations do
-      result = Dispatcher.dispatch(envelope(operation, payload))
-      assert_error(:unsupported, result)
+      result = Identity.dispatch(operation, payload)
+      assert_error(:invalid, result)
       refute inspect(result) =~ "one-time-secret"
       refute inspect(result) =~ "stored-secret"
     end
-
-    assert [] = YellowDog.ServerIdentityControlFake.take_calls()
   end
 
   defp host(id, state) do
@@ -465,6 +609,18 @@ defmodule YellowDog.Server.Control.IdentityControlTest do
     }
   end
 
+  defp approval(approval_id, host_id) do
+    %{"approval_id" => approval_id, "host_id" => host_id, "state" => "pending"}
+  end
+
+  defp token(token_id, label, state) do
+    %{"token_id" => token_id, "label" => label, "state" => state}
+  end
+
+  defp policy(policy_id, action) do
+    %{"policy_id" => policy_id, "action" => action, "enabled" => true}
+  end
+
   defp revisioned_host(host) do
     %{
       "resource_type" => "identity_host",
@@ -472,6 +628,20 @@ defmodule YellowDog.Server.Control.IdentityControlTest do
       "revision" => host["revision"],
       "resource" => host
     }
+  end
+
+  defp revisioned_resource(resource_type, resource_id, resource) do
+    %{
+      "resource_type" => resource_type,
+      "resource_id" => resource_id,
+      "revision" => revision!(resource),
+      "resource" => resource
+    }
+  end
+
+  defp revision!(resource) do
+    {:ok, revision} = Revision.calculate(resource)
+    revision
   end
 
   defp envelope(operation, payload, overrides \\ []) do

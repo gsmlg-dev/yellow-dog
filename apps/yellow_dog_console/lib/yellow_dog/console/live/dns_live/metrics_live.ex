@@ -1,565 +1,109 @@
 defmodule YellowDog.Console.DnsLive.MetricsLive do
-  @moduledoc """
-  DNS Metrics dashboard page.
-
-  Shows query statistics, response time distribution, cache hit rates,
-  top queried domains, and top clients from the MetricsCollector.
-  """
+  @moduledoc "Management-backed DNS metrics for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_uptime: 1]
-  import YellowDog.Console.ServiceHelper
-
-  alias YellowDog.Console.Layouts
-  alias YellowDog.Dns.MetricsCollector
-
-  @refresh_interval 5_000
-  @million 1_000_000
-  @thousand 1_000
-
-  @rcode_colors %{
-    "noerror" => "bg-success",
-    "nxdomain" => "bg-warning",
-    "servfail" => "bg-error",
-    "refused" => "bg-error"
-  }
-
-  @type_colors %{
-    "a" => "bg-primary",
-    "aaaa" => "bg-secondary",
-    "mx" => "bg-accent",
-    "cname" => "bg-info",
-    "txt" => "bg-warning",
-    "ns" => "bg-success"
-  }
+  alias YellowDog.Console.DnsLive.ManagementComponents
+  alias YellowDog.Console.DnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Process.send_after(self(), :refresh, @refresh_interval)
-    end
-
     {:ok,
      assign(socket,
        page_title: "DNS Metrics",
-       connected: connected?(socket),
-       service_running: service_running?(YellowDog.Dns),
-       metrics: fetch_metrics(),
-       summary: fetch_summary(),
-       top_domains: fetch_top_domains(),
-       top_clients: fetch_top_clients(),
-       response_times: fetch_response_times()
+       subscribed_server_id: nil,
+       metrics: %{"queries" => 0, "failures" => 0},
+       management_error: nil,
+       cached_observed_at: nil
      )}
   end
 
   @impl true
-  def handle_event("reset", _params, socket) do
-    result =
-      safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, {:error, :service_unavailable})
-
-    socket =
-      case result do
-        :ok ->
-          socket
-          |> assign(:metrics, fetch_metrics())
-          |> assign(:summary, fetch_summary())
-          |> assign(:top_domains, fetch_top_domains())
-          |> assign(:top_clients, fetch_top_clients())
-          |> assign(:response_times, fetch_response_times())
-          |> put_flash(:info, "Metrics reset successfully")
-
-        {:error, _reason} ->
-          put_flash(socket, :error, "Failed to reset metrics")
-      end
-
-    {:noreply, socket}
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_metrics(socket, server_id), else: socket)}
   end
 
   @impl true
-  def handle_event("export_csv", _params, socket) do
-    csv = build_metrics_csv(socket.assigns)
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
-    filename = "dns_metrics_#{timestamp}.csv"
-
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  def handle_event("refresh", _params, socket) do
+    {:noreply, load_metrics(socket, ManagementSupport.selected_id(socket))}
   end
 
   @impl true
-  def handle_info(:refresh, socket) do
-    socket =
-      socket
-      |> assign(:metrics, fetch_metrics())
-      |> assign(:summary, fetch_summary())
-      |> assign(:top_domains, fetch_top_domains())
-      |> assign(:top_clients, fetch_top_clients())
-      |> assign(:response_times, fetch_response_times())
-
-    Process.send_after(self(), :refresh, @refresh_interval)
-    {:noreply, socket}
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_metrics(server_id)}
   end
 
-  @impl true
-  def handle_info(_msg, socket) do
-    {:noreply, socket}
-  end
-
-  defp fetch_metrics do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_metrics() end, default_metrics())
-  end
-
-  defp fetch_summary do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.summary() end, default_summary())
-  end
-
-  defp fetch_top_domains do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_top_domains(limit: 10) end, [])
-  end
-
-  defp fetch_top_clients do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_top_clients(limit: 10) end, [])
-  end
-
-  defp fetch_response_times do
-    data =
-      safe_call(
-        YellowDog.Dns,
-        fn -> MetricsCollector.get_response_times() end,
-        %{count: 0, sum: 0, min: 0, max: 0, buckets: []}
-      )
-
-    # Compute avg if not provided by MetricsCollector
-    Map.put_new_lazy(data, :avg, fn ->
-      if data.count > 0, do: data.sum / data.count, else: 0.0
-    end)
-  end
-
-  defp default_metrics do
-    %{
-      counters: %{
-        queries_total: 0,
-        cache_hits: 0,
-        cache_misses: 0,
-        rate_limit_rejected: 0,
-        fallbacks_total: 0
-      },
-      queries_by_protocol: [],
-      queries_by_type: [],
-      responses_by_code: [],
-      top_domains: [],
-      top_clients: [],
-      response_times: %{count: 0},
-      started_at: DateTime.utc_now()
-    }
-  end
-
-  defp default_summary do
-    %{
-      queries_total: 0,
-      cache_hit_rate: 0.0,
-      avg_response_time_us: 0.0,
-      uptime_seconds: 0
-    }
-  end
-
-  defp fmt_count(n) when is_integer(n) and n >= @million,
-    do: "#{Float.round(n / @million, 1)}M"
-
-  defp fmt_count(n) when is_integer(n) and n >= @thousand,
-    do: "#{Float.round(n / @thousand, 1)}k"
-
-  defp fmt_count(n) when is_integer(n), do: Integer.to_string(n)
-  defp fmt_count(n) when is_float(n), do: Float.to_string(Float.round(n, 1))
-  defp fmt_count(_), do: "0"
-
-  defp format_latency(us) when is_number(us) and us >= @thousand,
-    do: "#{Float.round(us / @thousand, 1)}ms"
-
-  defp format_latency(us) when is_float(us), do: "#{Float.round(us, 0)}us"
-  defp format_latency(us) when is_integer(us), do: "#{us}us"
-  defp format_latency(_), do: "0us"
-
-  defp bar_width(count, max) when max > 0, do: Float.round(count / max * 100, 0)
-  defp bar_width(_, _), do: 0
-
-  defp rcode_color(code), do: Map.get(@rcode_colors, code, "bg-surface-container-high")
-
-  defp type_color(type), do: Map.get(@type_colors, type, "bg-surface-container-high")
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <.service_alert :if={not @service_running} service="DNS" />
-
-        <%!-- Header --%>
-        <div class="flex flex-wrap justify-between items-center gap-4">
-          <h1 class="text-2xl font-bold">DNS Metrics</h1>
-          <div class="flex gap-2 items-center">
-            <span class="text-xs text-on-surface-variant">Auto-refresh: 5s</span>
-            <button
-              phx-click="export_csv"
-              id="export-csv"
-              phx-hook="CsvDownload"
-              class="btn btn-outline btn-sm"
-            >
-              <.dm_mdi name="download" class="h-4 w-4" /> Export CSV
-            </button>
-            <button phx-click="reset" class="btn btn-sm btn-ghost" data-confirm="Reset all metrics?">
-              Reset
-            </button>
-          </div>
+      <div class="space-y-6" id="server-dns-metrics">
+        <div class="flex items-center justify-between gap-4">
+          <ManagementComponents.page_header
+            title="DNS Metrics"
+            server={@selected_server}
+            online?={@service_online?}
+            back={ServicePaths.server_path(@selected_server.id, :dns)}
+          />
+          <button phx-click="refresh" class="btn btn-ghost btn-sm">Refresh</button>
         </div>
 
-        <%!-- Summary Stats --%>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Total Queries</div>
-              <div class="text-2xl font-bold">{fmt_count(@summary.queries_total)}</div>
-              <div class="text-xs text-on-surface-variant">Since start</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Avg Latency</div>
-              <div class="text-2xl font-bold text-primary">
-                {format_latency(@summary.avg_response_time_us)}
-              </div>
-              <div class="text-xs text-on-surface-variant">Response time</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Cache Hit Rate</div>
-              <div class="text-2xl font-bold text-success">
-                {Float.round(@summary.cache_hit_rate, 1)}%
-              </div>
-              <div class="text-xs text-on-surface-variant">
-                {Map.get(@metrics.counters, :cache_hits, 0)} hits / {Map.get(
-                  @metrics.counters,
-                  :cache_misses,
-                  0
-                )} misses
-              </div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Uptime</div>
-              <div class="text-2xl font-bold">{format_uptime(@summary.uptime_seconds)}</div>
-              <div class="text-xs text-on-surface-variant">Collector running</div>
-            </div>
-          </div>
-        </div>
+        <ManagementComponents.offline_snapshot
+          :if={not @service_online?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error
+          :if={ManagementSupport.error_result?(@management_error)}
+          result={@management_error}
+        />
 
-        <%!-- Response Codes & Query Types --%>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <%!-- Response Codes --%>
-          <div class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title text-base">Response Codes</h2>
-              <%= if Enum.empty?(@metrics.responses_by_code) do %>
-                <p class="text-on-surface-variant text-sm">No responses recorded yet</p>
-              <% else %>
-                <% max_rcode =
-                  Enum.reduce(@metrics.responses_by_code, 1, fn {_, c}, acc -> max(c, acc) end) %>
-                <div class="space-y-2">
-                  <%= for {code, count} <- Enum.sort_by(@metrics.responses_by_code, fn {_, c} -> c end, :desc) do %>
-                    <div class="flex items-center gap-2">
-                      <span class="w-24 text-sm font-mono">
-                        {code |> to_string() |> String.upcase()}
-                      </span>
-                      <div class="flex-1 bg-surface-container rounded-full h-4">
-                        <div
-                          class={"h-4 rounded-full " <> rcode_color(to_string(code))}
-                          style={"width: #{bar_width(count, max_rcode)}%"}
-                        >
-                        </div>
-                      </div>
-                      <span class="text-sm w-16 text-right">{fmt_count(count)}</span>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          </div>
-
-          <%!-- Query Types --%>
-          <div class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title text-base">Query Types</h2>
-              <%= if Enum.empty?(@metrics.queries_by_type) do %>
-                <p class="text-on-surface-variant text-sm">No queries recorded yet</p>
-              <% else %>
-                <% max_type =
-                  Enum.reduce(@metrics.queries_by_type, 1, fn {_, c}, acc -> max(c, acc) end) %>
-                <div class="space-y-2">
-                  <%= for {type, count} <- Enum.sort_by(@metrics.queries_by_type, fn {_, c} -> c end, :desc) do %>
-                    <div class="flex items-center gap-2">
-                      <span class="w-16 text-sm font-mono">
-                        {type |> to_string() |> String.upcase()}
-                      </span>
-                      <div class="flex-1 bg-surface-container rounded-full h-4">
-                        <div
-                          class={"h-4 rounded-full " <> type_color(to_string(type))}
-                          style={"width: #{bar_width(count, max_type)}%"}
-                        >
-                        </div>
-                      </div>
-                      <span class="text-sm w-16 text-right">{fmt_count(count)}</span>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Response Time Histogram --%>
-        <div class="card bg-surface shadow">
-          <div class="card-body">
-            <h2 class="card-title text-base">Response Time Distribution</h2>
-            <%= if @response_times.count == 0 do %>
-              <p class="text-on-surface-variant text-sm">No response times recorded yet</p>
-            <% else %>
-              <div class="grid grid-cols-3 gap-4 mb-4">
-                <div class="text-center">
-                  <div class="text-xs text-on-surface-variant">Min</div>
-                  <div class="font-mono">{format_latency(@response_times.min)}</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-xs text-on-surface-variant">Avg</div>
-                  <div class="font-mono">{format_latency(@response_times.avg)}</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-xs text-on-surface-variant">Max</div>
-                  <div class="font-mono">{format_latency(@response_times.max)}</div>
-                </div>
-              </div>
-              <% max_bucket =
-                Enum.reduce(@response_times.buckets, 1, fn {_, c}, acc -> max(c, acc) end) %>
-              <div class="flex items-end gap-1 h-32">
-                <%= for {label, count} <- @response_times.buckets do %>
-                  <div class="flex-1 flex flex-col items-center">
-                    <div
-                      class="bg-primary w-full rounded-t"
-                      style={"height: #{bar_width(count, max_bucket)}%"}
-                    >
-                    </div>
-                    <div class="text-xs text-on-surface-variant mt-1 truncate w-full text-center">
-                      {format_bucket_label(label)}
-                    </div>
-                    <div class="text-xs">{count}</div>
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
-          </div>
-        </div>
-
-        <%!-- Top Domains & Top Clients --%>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <%!-- Top Domains --%>
-          <div class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title text-base">Top Queried Domains</h2>
-              <%= if Enum.empty?(@top_domains) do %>
-                <p class="text-on-surface-variant text-sm">No domains queried yet</p>
-              <% else %>
-                <div class="overflow-x-auto">
-                  <table class="table table-sm">
-                    <thead>
-                      <tr>
-                        <th scope="col">#</th>
-                        <th scope="col">Domain</th>
-                        <th class="text-right">Queries</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <%= for {{domain, count}, idx} <- Enum.with_index(@top_domains, 1) do %>
-                        <tr class="hover">
-                          <td class="text-on-surface-variant">{idx}</td>
-                          <td class="font-mono text-sm">{domain}</td>
-                          <td class="text-right">{fmt_count(count)}</td>
-                        </tr>
-                      <% end %>
-                    </tbody>
-                  </table>
-                </div>
-              <% end %>
-            </div>
-          </div>
-
-          <%!-- Top Clients --%>
-          <div class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title text-base">Top Clients</h2>
-              <%= if Enum.empty?(@top_clients) do %>
-                <p class="text-on-surface-variant text-sm">No client activity yet</p>
-              <% else %>
-                <div class="overflow-x-auto">
-                  <table class="table table-sm">
-                    <thead>
-                      <tr>
-                        <th scope="col">#</th>
-                        <th scope="col">Client IP</th>
-                        <th class="text-right">Queries</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <%= for {{ip, count}, idx} <- Enum.with_index(@top_clients, 1) do %>
-                        <tr class="hover">
-                          <td class="text-on-surface-variant">{idx}</td>
-                          <td class="font-mono text-sm">{ip}</td>
-                          <td class="text-right">{fmt_count(count)}</td>
-                        </tr>
-                      <% end %>
-                    </tbody>
-                  </table>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Additional Counters --%>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Rate Limited</div>
-              <div class="text-2xl font-bold text-warning">
-                {Map.get(@metrics.counters, :rate_limit_rejected, 0)}
-              </div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Fallbacks Used</div>
-              <div class="text-2xl font-bold">{Map.get(@metrics.counters, :fallbacks_total, 0)}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Protocol Split</div>
-              <div class="text-2xl font-bold">
-                <% proto = Map.new(@metrics.queries_by_protocol) %>
-                <span class="text-info">{Map.get(proto, :udp, 0)} UDP</span>
-                <span class="text-xs text-on-surface-variant"> / </span>
-                <span class="text-primary">{Map.get(proto, :tcp, 0)} TCP</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Footer --%>
-        <div class="text-xs text-on-surface-variant flex justify-between">
-          <span>Data from MetricsCollector</span>
-          <span :if={@connected} class="flex items-center gap-1">
-            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected
-          </span>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Queries</div>
+            <div class="text-3xl font-bold text-primary">{@metrics["queries"]}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Failures</div>
+            <div class="text-3xl font-bold text-error">{@metrics["failures"]}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Success rate</div>
+            <div class="text-3xl font-bold text-success">{success_rate(@metrics)}%</div>
+          </.card>
         </div>
       </div>
     </Layouts.app>
     """
   end
 
-  defp build_metrics_csv(assigns) do
-    sections = [
-      build_summary_csv(assigns.summary),
-      build_counters_csv(assigns.metrics.counters),
-      build_response_codes_csv(assigns.metrics.responses_by_code),
-      build_query_types_csv(assigns.metrics.queries_by_type),
-      build_top_domains_csv(assigns.top_domains),
-      build_top_clients_csv(assigns.top_clients),
-      build_response_times_csv(assigns.response_times)
-    ]
+  defp load_metrics(socket, server_id) do
+    result = ServerManagement.dns_metrics_get(server_id)
 
-    Enum.join(sections, "\r\n\r\n")
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Metrics",
+      metrics: ManagementSupport.value(result, %{"queries" => 0, "failures" => 0}),
+      management_error: if(ManagementSupport.error_result?(result), do: result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(
+          [result],
+          socket.assigns.selected_server.last_seen_at
+        )
+    )
   end
 
-  defp build_summary_csv(summary) do
-    "Summary\r\n" <>
-      "Metric,Value\r\n" <>
-      "Total Queries,#{summary.queries_total}\r\n" <>
-      "Cache Hit Rate,#{Float.round(summary.cache_hit_rate, 1)}%\r\n" <>
-      "Avg Response Time,#{format_latency(summary.avg_response_time_us)}\r\n" <>
-      "Uptime,#{format_uptime(summary.uptime_seconds)}"
+  defp success_rate(%{"queries" => 0}), do: 100
+
+  defp success_rate(%{"queries" => queries, "failures" => failures}) do
+    max(0, round((queries - failures) * 100 / queries))
   end
 
-  defp build_counters_csv(counters) do
-    "Counters\r\n" <>
-      "Counter,Value\r\n" <>
-      Enum.map_join(counters, "\r\n", fn {key, value} ->
-        "#{key},#{value}"
-      end)
-  end
-
-  defp build_response_codes_csv(codes) do
-    "Response Codes\r\n" <>
-      "Code,Count\r\n" <>
-      Enum.map_join(Enum.sort_by(codes, fn {_, c} -> c end, :desc), "\r\n", fn {code, count} ->
-        "#{code |> to_string() |> String.upcase()},#{count}"
-      end)
-  end
-
-  defp build_query_types_csv(types) do
-    "Query Types\r\n" <>
-      "Type,Count\r\n" <>
-      Enum.map_join(Enum.sort_by(types, fn {_, c} -> c end, :desc), "\r\n", fn {type, count} ->
-        "#{type |> to_string() |> String.upcase()},#{count}"
-      end)
-  end
-
-  defp build_top_domains_csv(domains) do
-    "Top Queried Domains\r\n" <>
-      "Rank,Domain,Queries\r\n" <>
-      Enum.map_join(Enum.with_index(domains, 1), "\r\n", fn {{domain, count}, idx} ->
-        "#{idx},#{csv_escape(to_string(domain))},#{count}"
-      end)
-  end
-
-  defp build_top_clients_csv(clients) do
-    "Top Clients\r\n" <>
-      "Rank,Client IP,Queries\r\n" <>
-      Enum.map_join(Enum.with_index(clients, 1), "\r\n", fn {{ip, count}, idx} ->
-        "#{idx},#{csv_escape(to_string(ip))},#{count}"
-      end)
-  end
-
-  defp build_response_times_csv(response_times) do
-    header =
-      "Response Time Distribution\r\n" <>
-        "Metric,Value\r\n" <>
-        "Count,#{response_times.count}\r\n" <>
-        "Min,#{format_latency(response_times.min)}\r\n" <>
-        "Avg,#{format_latency(Map.get(response_times, :avg, 0))}\r\n" <>
-        "Max,#{format_latency(response_times.max)}"
-
-    buckets =
-      case response_times[:buckets] do
-        buckets when is_list(buckets) and buckets != [] ->
-          "\r\n\r\nResponse Time Buckets\r\n" <>
-            "Bucket,Count\r\n" <>
-            Enum.map_join(buckets, "\r\n", fn {label, count} ->
-              "#{format_bucket_label(label)},#{count}"
-            end)
-
-        _ ->
-          ""
-      end
-
-    header <> buckets
-  end
-
-  defp format_bucket_label(:inf), do: "+inf"
-
-  defp format_bucket_label(us) when is_integer(us) and us >= 1_000_000,
-    do: "#{div(us, 1_000_000)}s"
-
-  defp format_bucket_label(us) when is_integer(us) and us >= 1_000, do: "#{div(us, 1_000)}ms"
-  defp format_bucket_label(us) when is_integer(us), do: "#{us}us"
-  defp format_bucket_label(other), do: to_string(other)
+  defp success_rate(_metrics), do: 0
 end

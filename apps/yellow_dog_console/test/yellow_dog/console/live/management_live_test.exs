@@ -3,6 +3,9 @@ defmodule YellowDog.Console.ManagementLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias YellowDog.Console.TestManagementTransport
+  alias YellowDog.ManagementCore
+
   @pages [
     {"/management", "Management Overview"},
     {"/management/servers", "Management Servers"},
@@ -13,12 +16,37 @@ defmodule YellowDog.Console.ManagementLiveTest do
   ]
 
   setup do
+    previous_env =
+      Map.new([:data_dir, :transport_module, :request_timeout], fn key ->
+        {key, Application.fetch_env(:yellow_dog_management_core, key)}
+      end)
+
+    data_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "yellow-dog-management-live-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
+
+    Application.put_env(
+      :yellow_dog_management_core,
+      :transport_module,
+      TestManagementTransport
+    )
+
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 50)
+    restart_management_core()
+    start_supervised!(TestManagementTransport)
+
     YellowDog.Management.Servers.reset()
     YellowDog.Management.Netmans.reset()
 
     on_exit(fn ->
-      YellowDog.Management.Servers.reset()
-      YellowDog.Management.Netmans.reset()
+      Application.stop(:yellow_dog_management_core)
+      Enum.each(previous_env, fn {key, value} -> restore_env(key, value) end)
+      {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+      File.rm_rf(data_dir)
     end)
   end
 
@@ -61,8 +89,8 @@ defmodule YellowDog.Console.ManagementLiveTest do
       {"/management/netman", ["Profile", "Status", "Features", "Apply Mode", "Last Seen"]},
       {"/management/profiles", ["Server Profiles", "Netman Profiles"]},
       {"/management/config",
-       ["Published Versions", "Pending Changes", "Applied Status", "Drift"]},
-      {"/management/events", ["Server Events", "Netman Events", "Audit Logs"]}
+       ["Published Config Versions", "Version", "State", "Digest", "Failure Phase", "Rollback"]},
+      {"/management/events", ["Server Events", "Netman Events", "Command Outcomes"]}
     ]
 
     for {path, expected_strings} <- assertions do
@@ -113,4 +141,116 @@ defmodule YellowDog.Console.ManagementLiveTest do
     assert events_html =~ "Server registered"
     assert events_html =~ "Netman registered"
   end
+
+  test "service rows link directly to the selected Server and Netman", %{conn: conn} do
+    assert {:ok, _server} =
+             ManagementCore.register_server(%{id: "srv-direct", profile: :dns_only})
+
+    assert {:ok, _netman} = ManagementCore.register_netman(%{id: "netman-direct", profile: :vm})
+
+    {:ok, servers, _html} = live(conn, "/management/servers")
+    assert has_element?(servers, "a[href='/server/srv-direct/dashboard']", "srv-direct")
+
+    {:ok, netmans, _html} = live(conn, "/management/netman")
+    assert has_element?(netmans, "a[href='/netman/netman-direct']", "netman-direct")
+  end
+
+  test "config lifecycle and command outcomes remain visible after management restart", %{
+    conn: conn
+  } do
+    server_id = "srv-durable-ui"
+    netman_id = "netman-durable-ui"
+
+    assert {:ok, _server} = ManagementCore.register_server(%{id: server_id, profile: :dns_only})
+    assert {:ok, _netman} = ManagementCore.register_netman(%{id: netman_id, profile: :vm})
+
+    assert {:ok, server_version} =
+             ManagementCore.publish_server_config(server_id, %{
+               operation: "server.settings.update",
+               payload: %{
+                 "service" => "dns",
+                 "entries" => [
+                   %{
+                     "key" => "listen",
+                     "value" => %{"type" => "string", "value" => "192.0.2.53"}
+                   }
+                 ]
+               },
+               expected_revision: nil
+             })
+
+    assert {:ok, netman_version} =
+             ManagementCore.publish_netman_config(netman_id, %{
+               operation: "netman.resolved.config.update",
+               payload: %{
+                 "upstreams" => ["192.0.2.53"],
+                 "search_domains" => ["example.test"]
+               },
+               expected_revision: nil
+             })
+
+    :ok = TestManagementTransport.connect(:server, server_id)
+
+    :ok =
+      TestManagementTransport.script_request([{:ok, %{"service" => "dns", "state" => "running"}}])
+
+    assert {:ok, _result} =
+             ManagementCore.command_server(
+               server_id,
+               "server.runtime.services.start",
+               %{"service" => "dns"},
+               nil,
+               "11111111-1111-4111-8111-111111111111"
+             )
+
+    assert_management_state(
+      conn,
+      server_id,
+      netman_id,
+      server_version.digest,
+      netman_version.digest
+    )
+
+    restart_management_core()
+
+    assert_management_state(
+      conn,
+      server_id,
+      netman_id,
+      server_version.digest,
+      netman_version.digest
+    )
+  end
+
+  defp assert_management_state(conn, server_id, netman_id, server_digest, netman_digest) do
+    {:ok, config, config_html} = live(conn, "/management/config")
+
+    assert has_element?(config, "#management-config-versions")
+    assert config_html =~ server_id
+    assert config_html =~ netman_id
+    assert config_html =~ server_digest
+    assert config_html =~ netman_digest
+    assert config_html =~ "desired"
+    assert config_html =~ "Failure Phase"
+    assert config_html =~ "Rollback"
+
+    {:ok, events, events_html} = live(conn, "/management/events")
+
+    assert has_element?(events, "#management-command-outcomes")
+    assert events_html =~ server_id
+    assert events_html =~ "server.runtime.services.start"
+    assert events_html =~ "completed"
+    assert events_html =~ "Server registered"
+    assert events_html =~ "Netman registered"
+  end
+
+  defp restart_management_core do
+    Application.stop(:yellow_dog_management_core)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+  end
+
+  defp restore_env(key, {:ok, value}),
+    do: Application.put_env(:yellow_dog_management_core, key, value)
+
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
 end

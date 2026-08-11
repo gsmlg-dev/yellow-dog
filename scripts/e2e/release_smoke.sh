@@ -15,6 +15,8 @@ Supported releases:
 
 Environment:
   BUILD_RELEASE=0       Skip mix release and only run eval assertions.
+  RELEASE_SMOKE_BUILD_ONLY=1
+                        Build and validate the release binary, then stop.
   RELEASE_VERSION=x.y.z Optional version passed to mix release --version.
 EOF
 }
@@ -38,9 +40,16 @@ export MIX_ENV="${MIX_ENV:-prod}"
 export SECRET_KEY_BASE="${SECRET_KEY_BASE:-release-smoke-secret-key-base-release-smoke-secret-key-base}"
 export YELLOW_DOG_RELEASE_SMOKE_TARGET="${release}"
 
+console_lock_created=0
+native_helper_created=0
+
 build_console_assets() {
   case "${release}" in
-    yellow_dog_management_core | yellow_dog_server)
+    yellow_dog_management_core)
+      if [ ! -e apps/yellow_dog_console/npm.lock ]; then
+        console_lock_created=1
+      fi
+
       (
         cd apps/yellow_dog_console
         mix assets.setup
@@ -61,6 +70,11 @@ build_netman_native() {
   fi
 
   cargo build --release --manifest-path apps/yellow_dog_netman/native/netlink_helper/Cargo.toml
+
+  if [ ! -e apps/yellow_dog_netman/priv/native/netlink_helper ]; then
+    native_helper_created=1
+  fi
+
   mkdir -p apps/yellow_dog_netman/priv/native
   cp apps/yellow_dog_netman/native/netlink_helper/target/release/netlink_helper \
     apps/yellow_dog_netman/priv/native/
@@ -83,7 +97,25 @@ build_release() {
 
 smoke_dir="$(mktemp -d)"
 eval_file="${smoke_dir}/release_smoke.exs"
-trap 'rm -rf "${smoke_dir}"' EXIT
+
+cleanup() {
+  local status="$?"
+  trap - EXIT
+  rm -rf "${smoke_dir}"
+
+  if [ "${console_lock_created}" = "1" ]; then
+    rm -f apps/yellow_dog_console/npm.lock
+  fi
+
+  if [ "${native_helper_created}" = "1" ]; then
+    rm -f apps/yellow_dog_netman/priv/native/netlink_helper
+    rmdir apps/yellow_dog_netman/priv/native >/dev/null 2>&1 || true
+  fi
+
+  exit "${status}"
+}
+
+trap cleanup EXIT
 
 cat > "${eval_file}" <<'ELIXIR'
 assert! = fn condition, message ->
@@ -338,6 +370,45 @@ if [ ! -x "${release_bin}" ]; then
   exit 1
 fi
 
+if [ "${RELEASE_SMOKE_BUILD_ONLY:-0}" = "1" ]; then
+  echo "${release} release binary built"
+  exit 0
+fi
+
+expect_missing_secret_failure() {
+  local label="$1"
+  shift
+  local output
+
+  if output="$(env -u SECRET_KEY_BASE "$@" 2>&1)"; then
+    echo "${label} unexpectedly started without SECRET_KEY_BASE" >&2
+    return 1
+  fi
+
+  if ! grep -q "environment variable SECRET_KEY_BASE is missing" <<< "${output}"; then
+    echo "${label} failed without the expected SECRET_KEY_BASE error" >&2
+    echo "${output}" >&2
+    return 1
+  fi
+}
+
+case "${release}" in
+  yellow_dog_management_core)
+    expect_missing_secret_failure "${release}" "${release_bin}" eval ':ok'
+    expect_missing_secret_failure \
+      "yellow_dog all-in-one runtime" \
+      RELEASE_NAME=yellow_dog \
+      "${release_bin}" eval ':ok'
+    ;;
+
+  yellow_dog_server | yellow_dog_netman)
+    expect_missing_secret_failure \
+      "${release} with PHX_SERVER" \
+      PHX_SERVER=true \
+      "${release_bin}" eval ':ok'
+    ;;
+esac
+
 if [ "${release}" = "yellow_dog_server" ]; then
   enabled_config="${smoke_dir}/server-enabled.toml"
   disabled_config="${smoke_dir}/server-disabled.toml"
@@ -381,6 +452,7 @@ server_agent = false
 EOF
 
   env \
+    -u SECRET_KEY_BASE \
     -u YELLOW_DOG_SERVER_MANAGEMENT_URL \
     -u YELLOW_DOG_SERVER_MANAGEMENT_TOKEN \
     -u YELLOW_DOG_SERVER_ID \
@@ -392,6 +464,7 @@ EOF
     "${release_bin}" eval "$(cat "${eval_file}")"
 
   env \
+    -u SECRET_KEY_BASE \
     -u YELLOW_DOG_SERVER_MANAGEMENT_URL \
     -u YELLOW_DOG_SERVER_MANAGEMENT_TOKEN \
     -u YELLOW_DOG_SERVER_ID \
@@ -401,6 +474,8 @@ EOF
     YELLOW_DOG_CONFIG="${disabled_config}" \
     YELLOW_DOG_RELEASE_SMOKE_SERVER_MODE=disabled \
     "${release_bin}" eval "$(cat "${eval_file}")"
+elif [ "${release}" = "yellow_dog_netman" ]; then
+  env -u SECRET_KEY_BASE "${release_bin}" eval "$(cat "${eval_file}")"
 else
   "${release_bin}" eval "$(cat "${eval_file}")"
 fi

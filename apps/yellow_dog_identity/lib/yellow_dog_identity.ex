@@ -264,16 +264,46 @@ defmodule YellowDogIdentity do
   end
 
   @doc """
-  Approval control is unsupported because Identity has no durable approval ID.
+  Lists deterministic approval snapshots projected from durable hosts.
   """
-  @spec control_list_approvals() :: {:error, :unsupported}
-  def control_list_approvals, do: {:error, :unsupported}
+  @spec control_list_approvals() :: {:ok, [map()]} | {:error, term()}
+  def control_list_approvals do
+    control_boundary(fn ->
+      case Registry.control_list_hosts() do
+        {:ok, hosts} when is_list(hosts) ->
+          with {:ok, approvals} <- project_approvals(hosts) do
+            {:ok, sort_and_bound(approvals, "approval_id")}
+          end
+
+        {:error, reason} ->
+          control_owner_error(reason)
+
+        _unexpected ->
+          {:error, :apply_failed}
+      end
+    end)
+  end
 
   @doc """
-  Token control is unsupported because persisted tokens have no durable label.
+  Lists canonical public token snapshots without hashes or raw token values.
   """
-  @spec control_list_tokens() :: {:error, :unsupported}
-  def control_list_tokens, do: {:error, :unsupported}
+  @spec control_list_tokens() :: {:ok, [map()]} | {:error, term()}
+  def control_list_tokens do
+    control_boundary(fn ->
+      case Registry.control_list_tokens() do
+        {:ok, tokens} when is_list(tokens) ->
+          with {:ok, snapshots} <- project_tokens(tokens) do
+            {:ok, sort_and_bound(snapshots, "token_id")}
+          end
+
+        {:error, reason} ->
+          control_owner_error(reason)
+
+        _unexpected ->
+          {:error, :apply_failed}
+      end
+    end)
+  end
 
   @doc """
   Returns one canonical public host snapshot.
@@ -291,10 +321,56 @@ defmodule YellowDogIdentity do
   end
 
   @doc """
-  Token control is unsupported because persisted tokens have no durable label.
+  Returns one canonical public token snapshot without credential material.
   """
-  @spec control_token(String.t()) :: {:error, :unsupported}
-  def control_token(_id), do: {:error, :unsupported}
+  @spec control_token(String.t()) :: {:ok, map()} | {:error, term()}
+  def control_token(id) do
+    control_boundary(fn ->
+      case Registry.control_get_token(id) do
+        {:ok, %Token{} = token} -> public_token(token)
+        {:error, reason} -> control_owner_error(reason)
+        _unexpected -> {:error, :apply_failed}
+      end
+    end)
+  end
+
+  @doc """
+  Atomically creates a control token and returns its raw value exactly once.
+  """
+  @spec control_create_token(map()) ::
+          {:ok, map(), String.t(), String.t() | nil} | {:error, term()}
+  def control_create_token(%{
+        "token_id" => token_id,
+        "label" => label,
+        "expires_at" => expires_at
+      }) do
+    control_boundary(fn ->
+      with true <- valid_control_id?(token_id),
+           true <- valid_control_label?(label),
+           {:ok, normalized_expiry} <- normalize_control_expiry(expires_at),
+           {:ok, %Token{} = token, raw_token} <-
+             Registry.control_create_token(%{
+               id: token_id,
+               label: label,
+               expires_at: normalized_expiry,
+               hostname_pattern: "*",
+               max_uses: 1,
+               created_by: @control_actor
+             }),
+           {:ok, snapshot} <- public_token(token),
+           true <- snapshot["token_id"] == token_id,
+           true <- snapshot["label"] == label,
+           true <- snapshot["state"] in ["active", "expired"] do
+        {:ok, snapshot, raw_token, expires_at}
+      else
+        false -> {:error, :invalid}
+        {:error, reason} -> control_owner_error(reason)
+        _unexpected -> {:error, :apply_failed}
+      end
+    end)
+  end
+
+  def control_create_token(_payload), do: {:error, :invalid}
 
   @doc """
   Atomically approves a host using the fixed Server control actor.
@@ -401,10 +477,61 @@ defmodule YellowDogIdentity do
   end
 
   @doc """
-  Token control is unsupported because persisted tokens have no durable label.
+  Atomically revokes a token while preserving a public tombstone snapshot.
   """
-  @spec control_revoke_token(String.t()) :: {:error, :unsupported}
-  def control_revoke_token(_token_id), do: {:error, :unsupported}
+  @spec control_revoke_token(String.t()) :: {:ok, map(), map()} | {:error, term()}
+  def control_revoke_token(token_id) do
+    control_boundary(fn ->
+      case Registry.control_revoke_token(token_id) do
+        {:ok, %Token{} = prior, %Token{} = resulting} ->
+          with {:ok, prior_snapshot} <- public_token(prior),
+               {:ok, resulting_snapshot} <- public_token(resulting) do
+            {:ok, prior_snapshot, resulting_snapshot}
+          end
+
+        {:error, reason} ->
+          control_owner_error(reason)
+
+        _unexpected ->
+          {:error, :apply_failed}
+      end
+    end)
+  end
+
+  @doc """
+  Lists the durable public approval policy set.
+  """
+  @spec control_list_policies() :: {:ok, [map()]} | {:error, term()}
+  def control_list_policies do
+    control_boundary(fn ->
+      case Registry.control_list_policies() do
+        {:ok, policies} when is_list(policies) -> {:ok, policies}
+        {:error, reason} -> control_owner_error(reason)
+        _unexpected -> {:error, :apply_failed}
+      end
+    end)
+  end
+
+  @doc """
+  Atomically replaces the durable public approval policy set.
+  """
+  @spec control_update_policies([map()]) :: {:ok, [map()], [map()]} | {:error, term()}
+  def control_update_policies(policies) when is_list(policies) do
+    control_boundary(fn ->
+      case Registry.control_update_policies(policies) do
+        {:ok, prior, resulting} when is_list(prior) and is_list(resulting) ->
+          {:ok, prior, resulting}
+
+        {:error, reason} ->
+          control_owner_error(reason)
+
+        _unexpected ->
+          {:error, :apply_failed}
+      end
+    end)
+  end
+
+  def control_update_policies(_policies), do: {:error, :invalid}
 
   @doc """
   Exports approved recipients in YAML format.
@@ -514,6 +641,37 @@ defmodule YellowDogIdentity do
     end
   end
 
+  defp public_approval(%Host{} = host) do
+    with true <- valid_control_id?(host.id),
+         true <- host.status in [:pending, :approved, :revoked],
+         {:ok, digest} <- Revision.calculate(%{"host_id" => host.id}) do
+      {:ok,
+       %{
+         "approval_id" => "approval-" <> digest,
+         "host_id" => host.id,
+         "state" => Atom.to_string(host.status)
+       }}
+    else
+      _failure -> {:error, :apply_failed}
+    end
+  end
+
+  defp public_token(%Token{} = token) do
+    with true <- valid_control_id?(token.id),
+         true <- valid_control_label?(token.label),
+         state when state in ["active", "revoked", "expired"] <- token_state(token) do
+      {:ok, %{"token_id" => token.id, "label" => token.label, "state" => state}}
+    else
+      _failure -> {:error, :apply_failed}
+    end
+  end
+
+  defp token_state(%Token{revoked_at: %DateTime{}}), do: "revoked"
+
+  defp token_state(%Token{} = token) do
+    if Token.valid?(token), do: "active", else: "expired"
+  end
+
   defp public_audit(%{event: action, host_id: subject_id, timestamp: timestamp})
        when action in @supported_audit_actions do
     with true <- valid_control_id?(subject_id),
@@ -580,6 +738,27 @@ defmodule YellowDogIdentity do
     end
   end
 
+  defp project_approvals(hosts) do
+    project_control_items(hosts, &public_approval/1)
+  end
+
+  defp project_tokens(tokens) do
+    project_control_items(tokens, &public_token/1)
+  end
+
+  defp project_control_items(items, projector) do
+    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, snapshots} ->
+      case projector.(item) do
+        {:ok, snapshot} -> {:cont, {:ok, [snapshot | snapshots]}}
+        {:error, :apply_failed} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, snapshots} -> {:ok, Enum.reverse(snapshots)}
+      {:error, :apply_failed} = error -> error
+    end
+  end
+
   defp sort_and_bound(items, key) do
     items
     |> Enum.sort_by(&Map.fetch!(&1, key))
@@ -592,8 +771,27 @@ defmodule YellowDogIdentity do
 
   defp valid_control_id?(_value), do: false
 
+  defp valid_control_label?(value) when is_binary(value) do
+    value != "" and byte_size(value) <= 1_024 and String.valid?(value)
+  end
+
+  defp valid_control_label?(_value), do: false
+
+  defp normalize_control_expiry(nil), do: {:ok, nil}
+
+  defp normalize_control_expiry(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, 0} -> {:ok, datetime}
+      _failure -> {:error, :invalid}
+    end
+  end
+
+  defp normalize_control_expiry(_value), do: {:error, :invalid}
+
   defp control_owner_error(:not_found), do: {:error, :not_found}
+  defp control_owner_error(:conflict), do: {:error, :conflict}
   defp control_owner_error(:already_revoked), do: {:error, :already_revoked}
+  defp control_owner_error(:invalid), do: {:error, :invalid}
   defp control_owner_error(:persistence_failed), do: {:error, :persistence_failed}
 
   defp control_owner_error({:invalid_status, status})

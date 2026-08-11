@@ -9,11 +9,18 @@ defmodule YellowDog.ServerIdentityControlFake do
         %{
           responses: %{
             control_list_hosts: {:ok, []},
+            control_list_approvals: {:ok, []},
+            control_list_tokens: {:ok, []},
+            control_list_policies: {:ok, []},
             control_list_audit: {:ok, []},
             control_host: {:error, :not_found},
+            control_token: {:error, :not_found},
             control_approve_host: {:error, :not_found},
             control_revoke_host: {:error, :not_found},
             control_delete_host: {:error, :not_found},
+            control_create_token: {:error, :apply_failed},
+            control_revoke_token: {:error, :not_found},
+            control_update_policies: {:error, :apply_failed},
             clock: ~U[2026-07-17 00:00:00Z]
           },
           calls: []

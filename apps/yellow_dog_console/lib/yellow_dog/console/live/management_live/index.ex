@@ -7,6 +7,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
 
   alias YellowDog.Console.Layouts
   alias YellowDog.Console.ManagementLive.Data
+  alias YellowDog.Console.ServicePaths
 
   @tabs [
     {:overview, "Overview", "/management"},
@@ -27,7 +28,9 @@ defmodule YellowDog.Console.ManagementLive.Index do
        netmans: [],
        server_profiles: [],
        netman_profiles: [],
-       events: []
+       events: [],
+       config_versions: [],
+       command_outcomes: []
      )}
   end
 
@@ -40,7 +43,9 @@ defmodule YellowDog.Console.ManagementLive.Index do
        netmans: Data.list_netmans(),
        server_profiles: Data.list_server_profiles(),
        netman_profiles: Data.list_netman_profiles(),
-       events: Data.list_events()
+       events: Data.list_events(),
+       config_versions: Data.list_config_versions(),
+       command_outcomes: Data.list_command_outcomes()
      )}
   end
 
@@ -75,8 +80,12 @@ defmodule YellowDog.Console.ManagementLive.Index do
           server_profiles={@server_profiles}
           netman_profiles={@netman_profiles}
         />
-        <.config :if={@live_action == :config} />
-        <.events :if={@live_action == :events} events={@events} />
+        <.config :if={@live_action == :config} versions={@config_versions} />
+        <.events
+          :if={@live_action == :events}
+          events={@events}
+          command_outcomes={@command_outcomes}
+        />
       </div>
     </Layouts.app>
     """
@@ -147,7 +156,9 @@ defmodule YellowDog.Console.ManagementLive.Index do
     <.card title="Service Nodes">
       <.empty_state :if={@servers == []} text="No servers registered yet." />
       <.table id="management-servers" rows={@servers}>
-        <:col :let={server} label="ID">{field(server, :id)}</:col>
+        <:col :let={server} label="ID">
+          <.target_link target_type={:server} target_id={raw_field(server, :id)} />
+        </:col>
         <:col :let={server} label="Name">{field(server, :name)}</:col>
         <:col :let={server} label="Profile">{field(server, :profile)}</:col>
         <:col :let={server} label="Status"><.status value={raw_field(server, :status)} /></:col>
@@ -163,7 +174,9 @@ defmodule YellowDog.Console.ManagementLive.Index do
     <.card title="Netman Instances">
       <.empty_state :if={@netmans == []} text="No Netman instances registered yet." />
       <.table id="management-netmans" rows={@netmans}>
-        <:col :let={netman} label="ID">{field(netman, :id)}</:col>
+        <:col :let={netman} label="ID">
+          <.target_link target_type={:netman} target_id={raw_field(netman, :id)} />
+        </:col>
         <:col :let={netman} label="Name">{field(netman, :name)}</:col>
         <:col :let={netman} label="Profile">{field(netman, :profile)}</:col>
         <:col :let={netman} label="Status"><.status value={raw_field(netman, :status)} /></:col>
@@ -207,31 +220,29 @@ defmodule YellowDog.Console.ManagementLive.Index do
 
   defp config(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <.card title="Published Versions">
-        <p class="text-sm text-on-surface-variant">
-          Published server and Netman config versions will appear here.
-        </p>
-      </.card>
-
-      <.card title="Pending Changes">
-        <p class="text-sm text-on-surface-variant">
-          Draft profile and service configuration changes will appear here.
-        </p>
-      </.card>
-
-      <.card title="Applied Status">
-        <p class="text-sm text-on-surface-variant">
-          Applied version status and drift checks will appear here.
-        </p>
-      </.card>
-
-      <.card title="Drift">
-        <p class="text-sm text-on-surface-variant">
-          Server and Netman configuration drift checks will appear here.
-        </p>
-      </.card>
-    </div>
+    <.card title="Published Config Versions">
+      <.empty_state :if={@versions == []} text="No configuration versions published yet." />
+      <.table id="management-config-versions" rows={@versions}>
+        <:col :let={version} label="Target">
+          <.target_link
+            target_type={raw_field(version, :target_type)}
+            target_id={raw_field(version, :target_id)}
+          />
+        </:col>
+        <:col :let={version} label="Version">{field(version, :version)}</:col>
+        <:col :let={version} label="Operation">{field(version, :operation)}</:col>
+        <:col :let={version} label="State">
+          <.status value={raw_field(version, :state)} />
+        </:col>
+        <:col :let={version} label="Digest">
+          <code class="text-xs break-all">{field(version, :digest)}</code>
+        </:col>
+        <:col :let={version} label="Published">{field(version, :published_at)}</:col>
+        <:col :let={version} label="State Changed">{field(version, :state_changed_at)}</:col>
+        <:col :let={version} label="Failure Phase">{field(version, :failure_phase)}</:col>
+        <:col :let={version} label="Rollback">{rollback_field(version)}</:col>
+      </.table>
+    </.card>
     """
   end
 
@@ -254,10 +265,25 @@ defmodule YellowDog.Console.ManagementLive.Index do
         </.card>
       </div>
 
-      <.card title="Audit Logs">
-        <p class="text-sm text-on-surface-variant">
-          Management audit log entries will appear here.
-        </p>
+      <.card title="Command Outcomes">
+        <.empty_state
+          :if={@command_outcomes == []}
+          text="No management commands recorded yet."
+        />
+        <.table id="management-command-outcomes" rows={@command_outcomes}>
+          <:col :let={outcome} label="Target">
+            <.target_link
+              target_type={raw_field(outcome, :target_type)}
+              target_id={raw_field(outcome, :target_id)}
+            />
+          </:col>
+          <:col :let={outcome} label="Operation">{field(outcome, :operation)}</:col>
+          <:col :let={outcome} label="Outcome">
+            <.status value={raw_field(outcome, :state)} />
+          </:col>
+          <:col :let={outcome} label="Updated">{field(outcome, :updated_at)}</:col>
+          <:col :let={outcome} label="Detail">{command_detail(outcome)}</:col>
+        </.table>
       </.card>
     </div>
     """
@@ -278,7 +304,10 @@ defmodule YellowDog.Console.ManagementLive.Index do
           <span class="font-semibold">{field(event, :message)}</span>
         </div>
         <div class="text-xs text-on-surface-variant mt-1">
-          {field(event, :source)} · {field(event, :occurred_at)}
+          <.target_link
+            target_type={raw_field(event, :source)}
+            target_id={raw_field(event, :source_id)}
+          /> · {field(event, :occurred_at)}
         </div>
       </div>
     </div>
@@ -305,8 +334,25 @@ defmodule YellowDog.Console.ManagementLive.Index do
 
   defp status_color(value) when value in [:online, :running, "online", "running"], do: "success"
 
+  defp status_color(value)
+       when value in [:applied, :completed, "applied", "completed"],
+       do: "success"
+
   defp status_color(value) when value in [:degraded, :warning, "degraded", "warning"],
     do: "warning"
+
+  defp status_color(value)
+       when value in [
+              :desired,
+              :delivered,
+              :applying,
+              :pending,
+              "desired",
+              "delivered",
+              "applying",
+              "pending"
+            ],
+       do: "warning"
 
   defp status_color(value) when value in [:offline, :failed, "offline", "failed"], do: "error"
   defp status_color(_value), do: "ghost"
@@ -324,6 +370,56 @@ defmodule YellowDog.Console.ManagementLive.Index do
 
     format_list(defaults)
   end
+
+  defp target_link(assigns) do
+    assigns = assign(assigns, :path, direct_target_path(assigns.target_type, assigns.target_id))
+
+    ~H"""
+    <.link :if={@path} navigate={@path} class="link link-primary">{@target_id}</.link>
+    <span :if={is_nil(@path)}>{format_value(@target_id, "—")}</span>
+    """
+  end
+
+  defp direct_target_path(target_type, target_id) when target_type in [:server, "server"] do
+    if ServicePaths.valid_server_id?(target_id),
+      do: ServicePaths.server_path(target_id, :dashboard),
+      else: nil
+  end
+
+  defp direct_target_path(target_type, target_id) when target_type in [:netman, "netman"] do
+    if ServicePaths.valid_netman_id?(target_id),
+      do: ServicePaths.netman_path(target_id, :overview),
+      else: nil
+  end
+
+  defp direct_target_path(_target_type, _target_id), do: nil
+
+  defp rollback_field(version) do
+    case raw_field(version, :rollback) do
+      nil -> "—"
+      rollback when is_map(rollback) -> format_detail_map(rollback)
+      rollback -> format_value(rollback, "—")
+    end
+  end
+
+  defp command_detail(outcome) do
+    raw_field(outcome, :error_message) || raw_field(outcome, :unknown_reason) || "—"
+  end
+
+  defp format_detail_map(map) do
+    map
+    |> Enum.sort_by(fn {key, _value} -> to_string(key) end)
+    |> Enum.map_join(", ", fn {key, value} ->
+      "#{format_value(key, "")}=#{format_detail_value(value)}"
+    end)
+  end
+
+  defp format_detail_value(value) when is_map(value), do: format_detail_map(value)
+
+  defp format_detail_value(value) when is_list(value),
+    do: Enum.map_join(value, ",", &format_detail_value/1)
+
+  defp format_detail_value(value), do: format_value(value, "")
 
   defp raw_field(item, key) when is_map(item) do
     Map.get(item, key) || Map.get(item, to_string(key))

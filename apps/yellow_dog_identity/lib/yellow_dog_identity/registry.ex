@@ -61,13 +61,17 @@ defmodule YellowDogIdentity.Registry do
   @max_control_id_bytes 128
   @max_control_name_bytes 1_024
   @max_persisted_collection_size 1_000
+  @valid_control_policy_actions ~w(require_approval allow deny)
 
   @type state :: %{
           data_dir: String.t(),
           hosts: %{String.t() => Host.t()},
           tokens: %{String.t() => Token.t()},
+          policies: [map()],
           fingerprint_index: %{String.t() => String.t()},
           host_load_status: :ok | :persistence_failed,
+          token_load_status: :ok | :persistence_failed,
+          policy_load_status: :ok | :persistence_failed,
           file_ops: module() | {module(), term()}
         }
 
@@ -147,6 +151,36 @@ defmodule YellowDogIdentity.Registry do
   @spec list_tokens() :: [Token.t()]
   def list_tokens, do: GenServer.call(__MODULE__, :list_tokens)
 
+  @doc false
+  @spec control_list_tokens() :: {:ok, [Token.t()]} | {:error, :persistence_failed}
+  def control_list_tokens, do: GenServer.call(__MODULE__, :control_list_tokens)
+
+  @doc false
+  @spec control_get_token(String.t()) ::
+          {:ok, Token.t()} | {:error, :not_found | :persistence_failed}
+  def control_get_token(id), do: GenServer.call(__MODULE__, {:control_get_token, id})
+
+  @doc false
+  @spec control_create_token(map()) ::
+          {:ok, Token.t(), String.t()} | {:error, :conflict | :persistence_failed | term()}
+  def control_create_token(params),
+    do: GenServer.call(__MODULE__, {:control_create_token, params})
+
+  @doc false
+  @spec control_revoke_token(String.t()) ::
+          {:ok, Token.t(), Token.t()} | {:error, :already_revoked | :not_found | term()}
+  def control_revoke_token(id), do: GenServer.call(__MODULE__, {:control_revoke_token, id})
+
+  @doc false
+  @spec control_list_policies() :: {:ok, [map()]} | {:error, :persistence_failed}
+  def control_list_policies, do: GenServer.call(__MODULE__, :control_list_policies)
+
+  @doc false
+  @spec control_update_policies([map()]) ::
+          {:ok, [map()], [map()]} | {:error, :invalid | :persistence_failed}
+  def control_update_policies(policies),
+    do: GenServer.call(__MODULE__, {:control_update_policies, policies})
+
   @doc "Deletes a token."
   @spec delete_token(String.t()) :: :ok | {:error, term()}
   def delete_token(id), do: GenServer.call(__MODULE__, {:delete_token, id})
@@ -193,14 +227,18 @@ defmodule YellowDogIdentity.Registry do
          :ok <- file_call(file_ops, :mkdir_p, [tokens_dir]) do
       # Load existing data from disk
       {hosts, fingerprint_index, host_load_status} = load_hosts(hosts_dir, file_ops)
-      tokens = load_tokens(tokens_dir, file_ops)
+      {tokens, token_load_status} = load_tokens(tokens_dir, file_ops)
+      {policies, policy_load_status} = load_policies(data_dir, file_ops)
 
       state = %{
         data_dir: data_dir,
         hosts: hosts,
         tokens: tokens,
+        policies: policies,
         fingerprint_index: fingerprint_index,
         host_load_status: host_load_status,
+        token_load_status: token_load_status,
+        policy_load_status: policy_load_status,
         file_ops: file_ops
       }
 
@@ -381,6 +419,124 @@ defmodule YellowDogIdentity.Registry do
     {:reply, Map.values(state.tokens), state}
   end
 
+  def handle_call(
+        :control_list_tokens,
+        _from,
+        %{token_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call(:control_list_tokens, _from, state) do
+    {:reply, {:ok, Map.values(state.tokens)}, state}
+  end
+
+  def handle_call(
+        {:control_get_token, _id},
+        _from,
+        %{token_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call({:control_get_token, id}, _from, state) do
+    case Map.get(state.tokens, id) do
+      nil -> {:reply, {:error, :not_found}, state}
+      token -> {:reply, {:ok, token}, state}
+    end
+  end
+
+  def handle_call(
+        {:control_create_token, _params},
+        _from,
+        %{token_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call({:control_create_token, params}, _from, state) do
+    token_id = Map.get(params, :id) || Map.get(params, "id")
+
+    if Map.has_key?(state.tokens, token_id) do
+      {:reply, {:error, :conflict}, state}
+    else
+      case Token.create(params) do
+        {:ok, %Token{} = token, raw_token} ->
+          case persist_token(state, token, :control) do
+            :ok ->
+              tokens = Map.put(state.tokens, token.id, token)
+              {:reply, {:ok, token, raw_token}, %{state | tokens: tokens}}
+
+            {:error, :persistence_failed} = error ->
+              {:reply, error, state}
+          end
+
+        {:error, _reason} ->
+          {:reply, {:error, :invalid}, state}
+      end
+    end
+  end
+
+  def handle_call(
+        {:control_revoke_token, _id},
+        _from,
+        %{token_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call({:control_revoke_token, id}, _from, state) do
+    case Map.get(state.tokens, id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      %Token{revoked_at: %DateTime{}} ->
+        {:reply, {:error, :already_revoked}, state}
+
+      %Token{} = prior ->
+        resulting = %{prior | revoked_at: DateTime.utc_now()}
+
+        case persist_token(state, resulting, :control) do
+          :ok ->
+            tokens = Map.put(state.tokens, id, resulting)
+            {:reply, {:ok, prior, resulting}, %{state | tokens: tokens}}
+
+          {:error, :persistence_failed} = error ->
+            {:reply, error, state}
+        end
+    end
+  end
+
+  def handle_call(
+        :control_list_policies,
+        _from,
+        %{policy_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call(:control_list_policies, _from, state) do
+    {:reply, {:ok, state.policies}, state}
+  end
+
+  def handle_call(
+        {:control_update_policies, _policies},
+        _from,
+        %{policy_load_status: :persistence_failed} = state
+      ) do
+    {:reply, {:error, :persistence_failed}, state}
+  end
+
+  def handle_call({:control_update_policies, policies}, _from, state) do
+    with :ok <- validate_control_policies(policies),
+         :ok <- persist_policies(state, policies) do
+      resulting = Enum.sort_by(policies, & &1["policy_id"])
+      {:reply, {:ok, state.policies, resulting}, %{state | policies: resulting}}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
   def handle_call({:delete_token, id}, _from, state) do
     case legacy_delete_token_record(state, id) do
       {:ok, _token, state} -> {:reply, :ok, state}
@@ -439,6 +595,9 @@ defmodule YellowDogIdentity.Registry do
 
         {:error, :hostname_mismatch} ->
           {:cont, {:error, :hostname_mismatch}}
+
+        {:error, :token_revoked} = error ->
+          {:halt, error}
 
         {:error, _} ->
           {:cont, acc}
@@ -547,6 +706,11 @@ defmodule YellowDogIdentity.Registry do
     path = token_path(state.data_dir, token.id)
     toml_map = Token.to_toml_map(token)
     atomic_write_toml(path, toml_map, state.file_ops, mode)
+  end
+
+  defp persist_policies(state, policies) do
+    path = policies_path(state.data_dir)
+    atomic_write_toml(path, %{"policies" => policies}, state.file_ops, :control)
   end
 
   defp atomic_write_toml(path, map, file_ops, :legacy) do
@@ -877,15 +1041,22 @@ defmodule YellowDogIdentity.Registry do
   defp load_tokens(tokens_dir, file_ops) do
     case list_toml_paths(tokens_dir, file_ops) do
       {:ok, paths} ->
-        Enum.reduce(paths, %{}, fn path, tokens ->
-          case load_token_file(path, file_ops) do
-            {:ok, token} -> Map.put(tokens, token.id, token)
-            {:error, :persistence_failed} -> tokens
-          end
-        end)
+        load_results = Enum.map(paths, &load_token_file(&1, file_ops))
+
+        tokens =
+          Enum.reduce(load_results, %{}, fn
+            {:ok, token, _strict_status}, acc -> Map.put(acc, token.id, token)
+            {:error, :persistence_failed}, acc -> acc
+          end)
+
+        strict? =
+          Enum.all?(load_results, &match?({:ok, %Token{}, :ok}, &1)) and
+            map_size(tokens) == length(load_results)
+
+        {tokens, if(strict?, do: :ok, else: :persistence_failed)}
 
       {:error, :persistence_failed} ->
-        %{}
+        {%{}, :persistence_failed}
     end
   end
 
@@ -894,7 +1065,7 @@ defmodule YellowDogIdentity.Registry do
       with {:ok, content} <- file_call(file_ops, :read, [path]),
            {:ok, data} <- Toml.decode(content),
            {:ok, %Token{} = token} <- Token.from_toml_map(data) do
-        {:ok, token}
+        {:ok, token, strict_token_status(path, data, token)}
       else
         _failure -> {:error, :persistence_failed}
       end
@@ -902,6 +1073,129 @@ defmodule YellowDogIdentity.Registry do
       _exception -> {:error, :persistence_failed}
     catch
       _kind, _reason -> {:error, :persistence_failed}
+    end
+  end
+
+  defp strict_token_status(path, data, token) do
+    with :ok <- validate_persisted_token(data),
+         true <- Path.basename(path) == token_filename(token.id) do
+      :ok
+    else
+      _failure -> :persistence_failed
+    end
+  end
+
+  defp validate_persisted_token(%{"token" => data} = document)
+       when map_size(document) == 1 and is_map(data) do
+    required =
+      ~w(id token_hash hostname_pattern max_uses use_count expires_at created_by created_at)
+
+    optional = ~w(label role revoked_at)
+    keys = Map.keys(data)
+
+    with true <- Enum.all?(required, &Map.has_key?(data, &1)),
+         true <- Enum.all?(keys, &(&1 in (required ++ optional))),
+         :ok <- validate_nonempty_text(data["id"], @max_control_id_bytes),
+         :ok <-
+           validate_nonempty_text(Map.get(data, "label", data["id"]), @max_control_name_bytes),
+         :ok <- validate_nonempty_binary(data["token_hash"]),
+         :ok <- validate_nonempty_binary(data["hostname_pattern"]),
+         true <- is_integer(data["max_uses"]) and data["max_uses"] > 0,
+         true <- is_integer(data["use_count"]) and data["use_count"] >= 0,
+         :ok <- validate_nullable_datetime(data["expires_at"]),
+         :ok <- validate_nonempty_binary(data["created_by"]),
+         :ok <- validate_nullable_datetime(data["created_at"]),
+         :ok <- validate_optional_nullable_datetime(data, "revoked_at"),
+         :ok <- validate_optional_text(data, "role") do
+      :ok
+    else
+      _failure -> {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_persisted_token(_data), do: {:error, :persistence_failed}
+
+  defp load_policies(data_dir, file_ops) do
+    path = policies_path(data_dir)
+
+    case file_call(file_ops, :read, [path]) do
+      {:ok, content} ->
+        with {:ok, %{"policies" => policies} = document} <- Toml.decode(content),
+             true <- map_size(document) == 1,
+             :ok <- validate_control_policies(policies) do
+          {Enum.sort_by(policies, & &1["policy_id"]), :ok}
+        else
+          _failure -> {[], :persistence_failed}
+        end
+
+      {:error, :enoent} ->
+        {[], :ok}
+
+      {:error, :persistence_failed} ->
+        {[], :persistence_failed}
+    end
+  rescue
+    _exception -> {[], :persistence_failed}
+  catch
+    _kind, _reason -> {[], :persistence_failed}
+  end
+
+  defp validate_control_policies(policies)
+       when is_list(policies) and length(policies) <= @max_persisted_collection_size do
+    valid? =
+      Enum.all?(policies, fn
+        %{"policy_id" => policy_id, "action" => action, "enabled" => enabled} = policy
+        when map_size(policy) == 3 ->
+          valid_control_text?(policy_id, @max_control_id_bytes) and
+            action in @valid_control_policy_actions and is_boolean(enabled)
+
+        _policy ->
+          false
+      end)
+
+    unique? =
+      policies
+      |> Enum.map(&Map.get(&1, "policy_id"))
+      |> then(&(length(&1) == MapSet.size(MapSet.new(&1))))
+
+    if valid? and unique?, do: :ok, else: {:error, :invalid}
+  end
+
+  defp validate_control_policies(_policies), do: {:error, :invalid}
+
+  defp valid_control_text?(value, maximum) do
+    match?(:ok, validate_nonempty_text(value, maximum))
+  end
+
+  defp validate_nullable_datetime(nil), do: :ok
+  defp validate_nullable_datetime(""), do: :ok
+
+  defp validate_nullable_datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, _datetime, 0} -> :ok
+      _failure -> {:error, :persistence_failed}
+    end
+  end
+
+  defp validate_nullable_datetime(_value), do: {:error, :persistence_failed}
+
+  defp validate_optional_nullable_datetime(data, key) do
+    case Map.fetch(data, key) do
+      :error -> :ok
+      {:ok, value} -> validate_nullable_datetime(value)
+    end
+  end
+
+  defp validate_optional_text(data, key) do
+    case Map.fetch(data, key) do
+      :error ->
+        :ok
+
+      {:ok, value} when is_binary(value) ->
+        if String.valid?(value), do: :ok, else: {:error, :persistence_failed}
+
+      {:ok, _value} ->
+        {:error, :persistence_failed}
     end
   end
 
@@ -1045,7 +1339,9 @@ defmodule YellowDogIdentity.Registry do
 
   defp host_path(data_dir, id), do: Path.join([data_dir, "hosts", host_filename(id)])
   defp host_filename(id), do: "#{id}.toml"
-  defp token_path(data_dir, id), do: Path.join([data_dir, "tokens", "#{id}.toml"])
+  defp token_path(data_dir, id), do: Path.join([data_dir, "tokens", token_filename(id)])
+  defp token_filename(id), do: "#{id}.toml"
+  defp policies_path(data_dir), do: Path.join(data_dir, "policies.toml")
 
   defp default_data_dir do
     case Code.ensure_loaded(YellowDog.Config) do

@@ -5,6 +5,7 @@ defmodule YellowDog.Console.ManagementTransport do
 
   @behaviour YellowDog.Management.Transport
 
+  alias YellowDog.Console.NetmanConnections
   alias YellowDog.Console.ServerChannel.SyncCodec
   alias YellowDog.Console.ServerConnections
 
@@ -15,12 +16,16 @@ defmodule YellowDog.Console.ManagementTransport do
     ServerConnections.connected?(server_id)
   end
 
+  def connected?(:netman, netman_id) when is_binary(netman_id) and netman_id != "" do
+    NetmanConnections.connected?(netman_id)
+  end
+
   def connected?(_target_type, _target_id), do: false
 
   @impl true
   def request(envelope, timeout) when is_integer(timeout) and timeout > 0 do
     with {:ok, encoded, summary} <- SyncCodec.encode_request(envelope),
-         reply <- ServerConnections.request(summary, encoded, timeout) do
+         reply <- request_target(summary, encoded, timeout) do
       transport_reply(reply)
     else
       _invalid -> error(:invalid, "invalid management request")
@@ -32,7 +37,7 @@ defmodule YellowDog.Console.ManagementTransport do
   @impl true
   def deliver_config(envelope) do
     with {:ok, encoded, summary} <- SyncCodec.encode_config_delivery(envelope),
-         :ok <- ServerConnections.deliver(summary, encoded) do
+         :ok <- deliver_target(summary, encoded) do
       :ok
     else
       {:error, :not_connected} -> not_connected()
@@ -40,6 +45,22 @@ defmodule YellowDog.Console.ManagementTransport do
       _failure -> error(:internal, "config delivery failed")
     end
   end
+
+  defp request_target(%{target_type: :server} = summary, encoded, timeout),
+    do: ServerConnections.request(summary, encoded, timeout)
+
+  defp request_target(%{target_type: :netman} = summary, encoded, timeout),
+    do: NetmanConnections.request(summary, encoded, timeout)
+
+  defp request_target(_summary, _encoded, _timeout), do: {:error, :invalid}
+
+  defp deliver_target(%{target_type: :server} = summary, encoded),
+    do: ServerConnections.deliver(summary, encoded)
+
+  defp deliver_target(%{target_type: :netman} = summary, encoded),
+    do: NetmanConnections.deliver(summary, encoded)
+
+  defp deliver_target(_summary, _encoded), do: {:error, :invalid}
 
   defp transport_reply({:ok, value}) when is_map(value), do: {:ok, value}
 

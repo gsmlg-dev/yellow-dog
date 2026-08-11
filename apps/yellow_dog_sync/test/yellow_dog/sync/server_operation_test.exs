@@ -34,6 +34,8 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
     :network_route_list,
     :resolved_upstream_list,
     :resolved_search_domain_list,
+    :resolved_link_dns_list,
+    :resolved_query_list,
     :dhcp_client_lease_list
   ]
 
@@ -49,7 +51,15 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
   end
 
   def valid(schema) when schema in @list_schemas do
-    %{"items" => [list_item(schema)], "revision" => @revision, "observed_at" => @observed_at}
+    result = %{
+      "items" => [list_item(schema)],
+      "revision" => @revision,
+      "observed_at" => @observed_at
+    }
+
+    if schema == :resolved_upstream_list,
+      do: Map.put(result, "config_revision", @revision),
+      else: result
   end
 
   def valid(:empty), do: %{}
@@ -141,7 +151,13 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         %{}
 
       :network_connection_query ->
-        %{"connection_id" => "uplink"}
+        connection_ref()
+
+      :resolved_link_dns_query ->
+        %{}
+
+      :resolved_queries_query ->
+        %{}
 
       :service_ref ->
         %{"service" => "dns"}
@@ -201,10 +217,10 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         %{"profile_id" => "office", "target_revision" => @revision}
 
       :connection_ref ->
-        %{"connection_id" => "uplink"}
+        connection_ref()
 
       :dhcp_client_connection_ref ->
-        %{"connection_id" => "uplink"}
+        connection_ref()
 
       :resolved_config_rollback ->
         %{"target_revision" => @revision}
@@ -274,21 +290,23 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       :server_settings_config ->
         settings_config()
 
+      :server_managed_config ->
+        managed_server_config()
+
       :profile_validate ->
         netman_profile()
 
       :profile_put ->
         netman_profile()
 
+      :profile_set_replace ->
+        %{"profiles" => [netman_profile()]}
+
       :profile_patch ->
         %{
           "profile_id" => "office",
           "changes" => [
-            %{
-              "field" => "gateway",
-              "interface" => "eth0",
-              "value" => "192.0.2.1"
-            }
+            %{"field" => "ethernet.mtu", "value" => 1_500}
           ]
         }
 
@@ -348,13 +366,18 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         %{"status" => "healthy", "pending_changes" => 0}
 
       :profile_revision ->
-        %{"profile_id" => "office", "revision" => @revision}
+        %{
+          "profile_id" => "office",
+          "desired_revision" => @revision,
+          "active_revision" => @revision
+        }
 
       :network_connection_state ->
-        %{"connection_id" => "uplink", "state" => "activated"}
+        Map.put(connection_ref(), "state", "activated")
 
       :resolved_cache ->
         %{
+          "revision" => @revision,
           "entries" => [
             %{"domain" => "example.test", "address" => "192.0.2.10", "expires_at" => @observed_at}
           ]
@@ -364,10 +387,10 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         %{"hits" => 5, "misses" => 1}
 
       :dhcp_client_fsm ->
-        %{"connection_id" => "uplink", "state" => "bound"}
+        Map.put(connection_ref(), "state", "bound")
 
       :vpn_resolved_profile ->
-        %{"profile_id" => "vpn-default", "state" => "resolved"}
+        %{"profile_id" => "vpn-default", "state" => "resolved", "revision" => @revision}
 
       :service_command_result ->
         %{"service" => "dns", "state" => "running"}
@@ -378,6 +401,13 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
           "resource_id" => "default",
           "revision" => @revision,
           "resource" => dns_view()
+        }
+
+      :profile_write_result ->
+        %{
+          "profile" => netman_profile(),
+          "desired_revision" => @revision,
+          "active_revision" => @revision
         }
 
       :deleted_resource ->
@@ -412,10 +442,16 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         %{"profile_id" => "office", "valid" => true, "errors" => []}
 
       :profile_activation_result ->
-        %{"profile_id" => "office", "revision" => @revision, "state" => "activated"}
+        %{
+          "profile_id" => "office",
+          "desired_revision" => @revision,
+          "active_revision" => @revision,
+          "state" => "activated",
+          "connections" => [Map.put(connection_ref(), "state", "activated")]
+        }
 
       :connection_activation_result ->
-        %{"connection_id" => "uplink", "state" => "activated"}
+        Map.put(connection_ref(), "state", "activated")
 
       :config_state ->
         config_state()
@@ -474,7 +510,7 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       {"dns_acl", "trusted", dns_acl()},
       {"dns_provider", "route53", dns_provider()},
       {"dhcp_pool", "office", dhcp_pool()},
-      {"mdns_service", "printer", mdns_service()},
+      {"mdns_service", "printer", mdns_service_item()},
       {"netboot_profile", "linux", netboot_profile()},
       {"netboot_device", "device-1", netboot_device()},
       {"netboot_asset", "installer", netboot_asset()},
@@ -518,16 +554,19 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       "occurred_at" => @observed_at
     }
 
-  defp list_item(:mdns_service_list), do: mdns_service()
+  defp list_item(:mdns_service_list), do: mdns_service_item()
 
   defp list_item(:mdns_discovery_list),
     do: %{"name" => "printer.local", "service_type" => "_ipp._tcp", "address" => "192.0.2.20"}
 
   defp list_item(:mdns_monitor_list),
     do: %{
-      "event_id" => "event-1",
-      "name" => "printer.local",
-      "action" => "discovered",
+      "query_id" => "query-1",
+      "query_name" => "printer.local",
+      "record_type" => "PTR",
+      "source_address" => "192.0.2.20",
+      "source_port" => 5353,
+      "answered" => true,
       "occurred_at" => @observed_at
     }
 
@@ -568,10 +607,21 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       "occurred_at" => @observed_at
     }
 
-  defp list_item(:profile_list), do: netman_profile()
+  defp list_item(:profile_list),
+    do: %{
+      "profile" => netman_profile(),
+      "desired_revision" => @revision,
+      "active_revision" => @revision
+    }
 
   defp list_item(:profile_history),
-    do: %{"profile_id" => "office", "revision" => @revision, "activated_at" => @observed_at}
+    do: %{
+      "profile_id" => "office",
+      "revision" => @revision,
+      "profile" => netman_profile(),
+      "stored_at" => @observed_at,
+      "activated_at" => @observed_at
+    }
 
   defp list_item(:network_link_list),
     do: %{"link_id" => "eth0", "name" => "eth0", "state" => "up"}
@@ -587,8 +637,30 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
   defp list_item(:resolved_search_domain_list),
     do: %{"domain" => "example.test", "routing_only" => false}
 
+  defp list_item(:resolved_link_dns_list),
+    do: %{
+      "link_id" => "eth0",
+      "servers" => ["1.1.1.1"],
+      "search_domains" => ["example.test"],
+      "priority" => 100
+    }
+
+  defp list_item(:resolved_query_list),
+    do: %{
+      "timestamp" => @observed_at,
+      "domain" => "example.test",
+      "type" => "A",
+      "source" => "cache",
+      "duration_us" => 25
+    }
+
   defp list_item(:dhcp_client_lease_list),
-    do: %{"connection_id" => "uplink", "address" => "192.0.2.10", "expires_at" => @observed_at}
+    do:
+      Map.merge(connection_ref(), %{
+        "address" => "192.0.2.10",
+        "expires_at" => @observed_at,
+        "revision" => @revision
+      })
 
   defp dns_record_ref,
     do: %{"view_name" => "default", "zone_name" => "example.test", "record_id" => "www-a"}
@@ -642,6 +714,8 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       "txt" => [%{"key" => "note", "value" => "Office"}]
     }
 
+  defp mdns_service_item, do: Map.put(mdns_service(), "enabled", true)
+
   defp netboot_profile,
     do: %{
       "profile_id" => "linux",
@@ -667,21 +741,51 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
   defp netman_profile,
     do: %{
       "profile_id" => "office",
-      "name" => "Office",
-      "interfaces" => [
-        %{
-          "name" => "eth0",
-          "method" => "static",
-          "addresses" => ["192.0.2.10/24"],
-          "gateway" => "192.0.2.1"
-        }
-      ]
+      "type" => "ethernet",
+      "interface" => "eth0",
+      "autoconnect" => true,
+      "autoconnect_priority" => 100,
+      "zone" => "trusted",
+      "ethernet" => %{"mtu" => 1_500},
+      "ipv4" => %{
+        "method" => "manual",
+        "address" => "192.0.2.10/24",
+        "gateway" => "192.0.2.1",
+        "dns" => ["192.0.2.53"],
+        "dns_search" => ["example.test"]
+      },
+      "ipv6" => %{
+        "method" => "manual",
+        "address" => "2001:db8::10/64",
+        "gateway" => "2001:db8::1",
+        "dns" => ["2001:db8::53"],
+        "dns_search" => ["example.test"]
+      }
     }
+
+  defp connection_ref, do: %{"profile_id" => "office", "interface" => "eth0"}
 
   defp setting_entry,
     do: %{"key" => "listen", "value" => %{"type" => "string", "value" => "0.0.0.0"}}
 
   defp settings_config, do: %{"service" => "dns", "entries" => [setting_entry()]}
+
+  defp managed_server_config do
+    %{
+      "schema_version" => 1,
+      "profile" => "dns_only",
+      "entries" => [
+        %{
+          "setting" => "dns.tls_certificate_ref",
+          "value" => %{"type" => "string", "value" => "dns-certificate-1"}
+        },
+        %{
+          "setting" => "services.dns.enabled",
+          "value" => %{"type" => "boolean", "value" => true}
+        }
+      ]
+    }
+  end
 
   defp config_state do
     %{
@@ -717,7 +821,7 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
         {"dhcp_pool", "office", dhcp_pool()}
 
       String.contains?(name, ".mdns.services.") ->
-        {"mdns_service", "printer", mdns_service()}
+        {"mdns_service", "printer", mdns_service_item()}
 
       String.contains?(name, ".netboot.profiles.") ->
         {"netboot_profile", "linux", netboot_profile()}
@@ -917,6 +1021,8 @@ defmodule YellowDog.Sync.ServerOperationTest do
      :settings_validation, true},
     {"server.settings.update", :config, "settings.config.write", :server_settings_config,
      :config_state, false},
+    {"server.config.replace", :config, "config.write", :server_managed_config, :config_state,
+     false},
     {"server.settings.apply", :command, "settings.apply", :service_ref, :config_state, true},
     {"server.settings.reload", :command, "settings.reload", :service_ref, :service_command_result,
      true},
@@ -924,8 +1030,59 @@ defmodule YellowDog.Sync.ServerOperationTest do
      true}
   ]
 
+  @create_commands MapSet.new([
+                     "server.dhcp.pools.create",
+                     "server.dns.acls.create",
+                     "server.dns.providers.create",
+                     "server.dns.records.create",
+                     "server.dns.views.create",
+                     "server.dns.zones.create",
+                     "server.identity.tokens.create",
+                     "server.mdns.services.register",
+                     "server.netboot.assets.upload",
+                     "server.netboot.devices.put",
+                     "server.netboot.profiles.put"
+                   ])
+  @cas_query_contracts %{
+    "server.runtime.services.start" => {"server.runtime.services.list", :item_digest},
+    "server.runtime.services.stop" => {"server.runtime.services.list", :item_digest},
+    "server.runtime.services.restart" => {"server.runtime.services.list", :item_digest},
+    "server.dns.views.update" => {"server.dns.views.list", :item_digest},
+    "server.dns.views.delete" => {"server.dns.views.list", :item_digest},
+    "server.dns.zones.update" => {"server.dns.zones.list", :item_digest},
+    "server.dns.zones.delete" => {"server.dns.zones.list", :item_digest},
+    "server.dns.zones.sync" => {"server.dns.zones.list", :item_digest},
+    "server.dns.records.update" => {"server.dns.records.list", :item_digest},
+    "server.dns.records.delete" => {"server.dns.records.list", :item_digest},
+    "server.dns.acls.update" => {"server.dns.acls.list", :item_digest},
+    "server.dns.acls.delete" => {"server.dns.acls.list", :item_digest},
+    "server.dns.providers.update" => {"server.dns.providers.list", :item_digest},
+    "server.dns.providers.delete" => {"server.dns.providers.list", :item_digest},
+    "server.dhcp.pools.update" => {"server.dhcp.pools.list", :item_digest},
+    "server.dhcp.pools.delete" => {"server.dhcp.pools.list", :item_digest},
+    "server.dhcp.pools.force_delete" => {"server.dhcp.pools.list", :item_digest},
+    "server.dhcp.leases.release" => {"server.dhcp.leases.list", :item_digest},
+    "server.mdns.services.update" => {"server.mdns.services.list", :item_digest},
+    "server.mdns.services.delete" => {"server.mdns.services.list", :item_digest},
+    "server.mdns.services.toggle" => {"server.mdns.services.list", :item_digest},
+    "server.mdns.cache.clear" => {"server.mdns.cache.get", :result_digest},
+    "server.netboot.profiles.delete" => {"server.netboot.profiles.list", :item_digest},
+    "server.netboot.devices.delete" => {"server.netboot.devices.list", :item_digest},
+    "server.netboot.assets.delete" => {"server.netboot.assets.list", :item_digest},
+    "server.netboot.assets.rescan" => {"server.netboot.assets.list", :list_revision},
+    "server.identity.hosts.approve" => {"server.identity.hosts.list", :item_digest},
+    "server.identity.hosts.revoke" => {"server.identity.hosts.list", :item_digest},
+    "server.identity.hosts.delete" => {"server.identity.hosts.list", :item_digest},
+    "server.identity.tokens.revoke" => {"server.identity.tokens.list", :item_digest},
+    "server.identity.policies.update" => {"server.identity.policies.get", :result_digest}
+  }
+  @unavailable_cas_commands MapSet.new([
+                              "server.dns.zones.import",
+                              "server.dns.conflicts.resolve"
+                            ])
+
   test "catalog exposes every Server operation with explicit metadata and validators" do
-    assert map_size(ServerOperation.all()) == 81
+    assert map_size(ServerOperation.all()) == 82
 
     for {name, kind, capability, payload_schema, result_schema, online?} <- @operations do
       assert {:ok,
@@ -946,9 +1103,293 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
+  test "every non-create Server command has an approved CAS read or is explicitly unavailable" do
+    audited_commands =
+      ServerOperation.all()
+      |> Map.values()
+      |> Enum.filter(&(&1.kind == :command))
+      |> Enum.reject(&MapSet.member?(@create_commands, &1.name))
+      |> Enum.reject(&String.starts_with?(&1.name, "server.settings."))
+      |> Enum.map(& &1.name)
+      |> MapSet.new()
+
+    contracted_commands =
+      @cas_query_contracts
+      |> Map.keys()
+      |> MapSet.new()
+      |> MapSet.union(@unavailable_cas_commands)
+
+    assert audited_commands == contracted_commands
+
+    for {command_name, {query_name, source}} <- @cas_query_contracts do
+      assert source in [:item_digest, :result_digest, :list_revision]
+      assert {:ok, %Operation{kind: :command}} = ServerOperation.fetch(command_name)
+      assert {:ok, %Operation{kind: :query}} = ServerOperation.fetch(query_name)
+    end
+  end
+
+  test "mDNS reads expose runtime state while writes remain desired-service payloads" do
+    write = Fixtures.valid(:mdns_service_register)
+    list = Fixtures.valid(:mdns_service_list)
+    [item] = list["items"]
+
+    assert item["enabled"] == true
+    assert {:ok, ^write} = Operation.validate_schema(:mdns_service_register, write)
+
+    assert_invalid(
+      Operation.validate_schema(:mdns_service_register, Map.put(write, "enabled", true))
+    )
+
+    assert {:ok, ^list} = Operation.validate_schema(:mdns_service_list, list)
+
+    assert_invalid(
+      Operation.validate_schema(:mdns_service_list, %{
+        list
+        | "items" => [Map.delete(item, "enabled")]
+      })
+    )
+  end
+
+  test "mDNS monitor schema represents query-log entries rather than fabricated lifecycle events" do
+    result = Fixtures.valid(:mdns_monitor_list)
+    assert {:ok, ^result} = Operation.validate_schema(:mdns_monitor_list, result)
+
+    lifecycle_event = %{
+      "event_id" => "event-1",
+      "name" => "printer.local",
+      "action" => "discovered",
+      "occurred_at" => "2026-07-16T08:30:00Z"
+    }
+
+    assert_invalid(
+      Operation.validate_schema(:mdns_monitor_list, %{result | "items" => [lifecycle_event]})
+    )
+  end
+
   test "only config operations are offline queueable" do
     for {_name, operation} <- ServerOperation.all() do
       assert operation.online? == (operation.kind != :config)
+    end
+  end
+
+  test "managed Server config is one versioned canonical aggregate document" do
+    document = Fixtures.valid(:server_managed_config)
+
+    assert {:ok, ^document} =
+             Operation.validate_payload("server.config.replace", :server, :config, document)
+
+    for profile <- [
+          "cloud_dns",
+          "local_network",
+          "dns_only",
+          "dhcp_only",
+          "netboot_only",
+          "custom"
+        ] do
+      candidate = %{document | "profile" => profile}
+      assert {:ok, ^candidate} = Operation.validate_schema(:server_managed_config, candidate)
+    end
+
+    for invalid_version <- [0, 2, "1", nil] do
+      candidate = %{document | "schema_version" => invalid_version}
+      assert_invalid(Operation.validate_schema(:server_managed_config, candidate))
+    end
+
+    assert_invalid(
+      Operation.validate_schema(:server_managed_config, %{document | "profile" => "unknown"})
+    )
+  end
+
+  test "managed Server config requires sorted unique semantic settings" do
+    document = Fixtures.valid(:server_managed_config)
+    [certificate, dns_enabled] = document["entries"]
+
+    assert_invalid(
+      Operation.validate_schema(:server_managed_config, %{
+        document
+        | "entries" => [dns_enabled, certificate]
+      })
+    )
+
+    assert_invalid(
+      Operation.validate_schema(:server_managed_config, %{
+        document
+        | "entries" => [certificate, certificate]
+      })
+    )
+
+    empty = %{document | "entries" => []}
+    assert {:ok, ^empty} = Operation.validate_schema(:server_managed_config, empty)
+  end
+
+  test "managed Server config permits safe service settings and typed material references" do
+    document = Fixtures.valid(:server_managed_config)
+
+    service_flags = [
+      "services.dns.enabled",
+      "services.mdns.enabled",
+      "services.dhcpv4.enabled",
+      "services.dhcpv6.enabled",
+      "services.netboot.enabled",
+      "services.identity.enabled",
+      "services.fingerprint.enabled"
+    ]
+
+    for setting <- service_flags do
+      candidate = managed_config_with(document, setting, %{"type" => "boolean", "value" => true})
+      assert {:ok, ^candidate} = Operation.validate_schema(:server_managed_config, candidate)
+    end
+
+    ordinary_settings = [
+      {"dns.listen", %{"type" => "string", "value" => "0.0.0.0"}},
+      {"dns.port", %{"type" => "integer", "value" => 53}},
+      {"mdns.mode", %{"type" => "string", "value" => "reflector"}},
+      {"mdns.ttl", %{"type" => "integer", "value" => 120}},
+      {"dhcpv4.listen", %{"type" => "string", "value" => "192.0.2.1"}},
+      {"dhcpv4.default_lease_time", %{"type" => "integer", "value" => 3_600}},
+      {"dhcpv4.static_reservations",
+       %{
+         "type" => "object",
+         "entries" => [
+           %{
+             "key" => "printer",
+             "value" => %{"type" => "string", "value" => "192.0.2.42"}
+           }
+         ]
+       }},
+      {"netboot.default_profile", %{"type" => "string", "value" => "linux"}}
+    ]
+
+    for {setting, value} <- ordinary_settings do
+      candidate = managed_config_with(document, setting, value)
+      assert {:ok, ^candidate} = Operation.validate_schema(:server_managed_config, candidate)
+    end
+
+    cross_service = %{
+      document
+      | "profile" => "local_network",
+        "entries" => [
+          managed_entry("dhcpv4.default_lease_time", %{"type" => "integer", "value" => 3_600}),
+          managed_entry("dns.listen", %{"type" => "string", "value" => "0.0.0.0"}),
+          managed_entry("dns.port", %{"type" => "integer", "value" => 53}),
+          managed_entry("mdns.mode", %{"type" => "string", "value" => "reflector"}),
+          managed_entry("netboot.default_profile", %{"type" => "string", "value" => "linux"})
+        ]
+    }
+
+    assert {:ok, ^cross_service} =
+             Operation.validate_schema(:server_managed_config, cross_service)
+
+    references = [
+      {"dns.tls_certificate_ref", "dns-certificate-1"},
+      {"dns.api_key_ref", "dns-provider-key-1"},
+      {"dns.provider_credential_ref", "dns-provider-credential-1"},
+      {"identity.client_private_key_digest", digest()},
+      {"netboot.payload_uri", "https://assets.example.test/netboot/payload"}
+    ]
+
+    for {setting, value} <- references do
+      candidate = managed_config_with(document, setting, %{"type" => "string", "value" => value})
+      assert {:ok, ^candidate} = Operation.validate_schema(:server_managed_config, candidate)
+    end
+
+    invalid = [
+      {"services.server_agent.enabled", %{"type" => "boolean", "value" => true}},
+      {"services.dns.enabled", %{"type" => "string", "value" => "true"}},
+      {"dns.listen", %{"type" => "string", "value" => "/etc/yellow-dog/dns.toml"}},
+      {"dns.listen", %{"type" => "string", "value" => "C:\\YellowDog\\dns.toml"}},
+      {"dns.tls_certificate_ref", %{"type" => "boolean", "value" => true}},
+      {"dns.tls_certificate_ref", %{"type" => "string", "value" => "/etc/tls/dns.pem"}},
+      {"dns.tls_certificate_ref",
+       %{
+         "type" => "string",
+         "value" => "-----BEGIN CERTIFICATE----- raw -----END CERTIFICATE-----"
+       }},
+      {"identity.client_private_key_digest", %{"type" => "string", "value" => "not-a-digest"}},
+      {"netboot.payload_uri", %{"type" => "string", "value" => "file:///srv/netboot"}}
+    ]
+
+    for {setting, value} <- invalid do
+      candidate = managed_config_with(document, setting, value)
+      assert_invalid(Operation.validate_schema(:server_managed_config, candidate))
+    end
+  end
+
+  test "managed Server config treats top-level null as unset but rejects null list items" do
+    document = Fixtures.valid(:server_managed_config)
+
+    unset =
+      managed_config_with(document, "dns.optional_value", %{"type" => "null", "value" => nil})
+
+    assert {:ok, ^unset} = Operation.validate_schema(:server_managed_config, unset)
+
+    invalid_list =
+      managed_config_with(document, "dns.search_domains", %{
+        "type" => "list",
+        "items" => ["example.test", nil]
+      })
+
+    assert_invalid(Operation.validate_schema(:server_managed_config, invalid_list))
+  end
+
+  test "managed Server config rejects every typed value for non-reference sensitive material" do
+    document = Fixtures.valid(:server_managed_config)
+
+    values = [
+      %{"type" => "string", "value" => "inline-value"},
+      %{"type" => "integer", "value" => 1},
+      %{"type" => "boolean", "value" => true},
+      %{"type" => "null", "value" => nil},
+      %{"type" => "list", "items" => ["inline-value"]},
+      %{
+        "type" => "object",
+        "entries" => [
+          %{"key" => "ordinary", "value" => %{"type" => "string", "value" => "inline-value"}}
+        ]
+      }
+    ]
+
+    for setting <- ["dns.api_secret", "dns.payload", "identity.client_private_key"],
+        value <- values do
+      candidate = managed_config_with(document, setting, value)
+      assert_invalid(Operation.validate_schema(:server_managed_config, candidate))
+    end
+  end
+
+  test "managed Server config rejects bootstrap identity and management or local agent settings" do
+    document = Fixtures.valid(:server_managed_config)
+
+    for setting <- [
+          "server.id",
+          "server.name",
+          "server.management_url",
+          "server.management_token",
+          "server.management_credentials_ref",
+          "server_agent.data_dir",
+          "server_agent.management_url",
+          "unknown.listen",
+          "Dns.listen",
+          "dns.Listen",
+          "dns.listen-port",
+          "dns..listen",
+          "identity.bootstrap_token_ref",
+          "identity.bootstrap.server_id",
+          "dns.management.endpoint",
+          "dns.agent.reconnect_ms",
+          "dns.zone_file",
+          "dns.zone_path",
+          "dhcpv4.control_socket",
+          "mdns.cache_dir",
+          "netboot.tftp_root",
+          "fingerprint.database_filename",
+          "dns.tls_certificate",
+          "dns.provider_credential",
+          "dns.api_secret",
+          "dns.api_key",
+          "identity.client_private_key"
+        ] do
+      candidate = managed_config_with(document, setting, %{"type" => "string", "value" => "x"})
+      assert_invalid(Operation.validate_schema(:server_managed_config, candidate))
     end
   end
 
@@ -1156,7 +1597,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
   test "every catalog schema has a strict valid missing extraneous and malformed shape" do
     schemas = Fixtures.schemas()
-    assert length(schemas) == 136
+    assert length(schemas) == 143
 
     for schema <- schemas do
       valid = Fixtures.valid(schema)
@@ -1192,7 +1633,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
           "bytes",
           "data"
         ] do
-      nested = put_in(profile, ["interfaces", Access.at(0), forbidden], "forbidden")
+      nested = put_in(profile, ["ipv4", forbidden], "forbidden")
       assert_invalid(Operation.validate_schema(:profile_put, nested))
     end
 
@@ -1200,7 +1641,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
     try do
       for forbidden_value <- [self(), make_ref(), port] do
-        malformed = put_in(profile, ["interfaces", Access.at(0), "gateway"], forbidden_value)
+        malformed = put_in(profile, ["ipv4", "gateway"], forbidden_value)
         assert_invalid(Operation.validate_schema(:profile_put, malformed))
       end
     after
@@ -1282,7 +1723,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
   test "typed identifiers and provider metadata reject local paths" do
     probes = [
       {:service_ref, %{"service" => "/etc/shadow"}},
-      {:connection_ref, %{"connection_id" => "C:\\Windows\\System32"}},
+      {:connection_ref, %{"profile_id" => "office", "interface" => "C:\\Windows\\System32"}},
       {:dns_provider_write,
        %{
          "provider_id" => "route53",
@@ -2374,8 +2815,8 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
     for payload <- [
           Map.put(profile, "expected_revision", digest()),
-          put_in(profile, ["interfaces", Access.at(0), "path"], "/etc/network"),
-          put_in(profile, ["interfaces", Access.at(0), "blob"], "raw")
+          put_in(profile, ["ipv4", "path"], "/etc/network"),
+          put_in(profile, ["ipv4", "blob"], "raw")
         ] do
       assert_invalid(
         Operation.validate_payload("netman.profiles.put", :netman, :command, payload)
@@ -2395,11 +2836,11 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
   test "rejects oversized values and collections and cross-domain shapes" do
     profile = Fixtures.valid(:profile_put)
-    oversized_text = %{profile | "name" => String.duplicate("x", 1_025)}
+    oversized_text = %{profile | "zone" => String.duplicate("x", 65)}
 
     oversized_collection = %{
       profile
-      | "interfaces" => List.duplicate(hd(profile["interfaces"]), 1_001)
+      | "ipv4" => %{profile["ipv4"] | "dns" => List.duplicate("192.0.2.53", 101)}
     }
 
     assert_invalid(Operation.validate_schema(:profile_put, oversized_text))
@@ -2458,6 +2899,12 @@ defmodule YellowDog.Sync.ServerOperationTest do
   defp setting_payload(key, value) do
     %{"service" => "dns", "entries" => [%{"key" => key, "value" => value}]}
   end
+
+  defp managed_config_with(document, setting, value) do
+    %{document | "entries" => [managed_entry(setting, value)]}
+  end
+
+  defp managed_entry(setting, value), do: %{"setting" => setting, "value" => value}
 
   defp assert_invalid(result) do
     assert {:error, %Error{code: :invalid, message: "invalid value", details: %{}}} = result

@@ -152,6 +152,8 @@ defmodule YellowDog.Sync.ServerOperation do
      :settings_validation, true},
     {"server.settings.update", :config, "settings.config.write", :server_settings_config,
      :config_state, false},
+    {"server.config.replace", :config, "config.write", :server_managed_config, :config_state,
+     false},
     {"server.settings.apply", :command, "settings.apply", :service_ref, :config_state, true},
     {"server.settings.reload", :command, "settings.reload", :service_ref, :service_command_result,
      true},

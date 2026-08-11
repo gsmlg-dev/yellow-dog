@@ -1,318 +1,335 @@
 defmodule YellowDog.Console.MdnsLive.ServicesLive do
-  @moduledoc """
-  LiveView for managing registered mDNS services.
-  """
+  @moduledoc "Management-backed mDNS service registry for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.ServiceHelper
-
-  alias YellowDog.Console.StringHelper
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.MdnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Sync.Digest
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "mdns:services")
-    end
-
     {:ok,
      assign(socket,
-       page_title: "Registered Services",
-       service_running: service_running?(YellowDog.Mdns),
-       services: list_services(),
+       page_title: "Registered mDNS Services",
+       subscribed_server_id: nil,
+       services: [],
        filter: :all,
        show_form: false,
+       form_mode: :new,
+       editing_service: nil,
+       form_errors: %{},
+       management_error: nil,
+       cached_observed_at: nil,
+       commands_enabled?: false
+     )}
+  end
+
+  @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_services(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, load_services(socket)}
+
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    filter = if filter in ["enabled", "disabled"], do: String.to_existing_atom(filter), else: :all
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  def handle_event("show_new_form", _params, socket) do
+    {:noreply,
+     assign(socket,
+       show_form: true,
        form_mode: :new,
        editing_service: nil,
        form_errors: %{}
      )}
   end
 
-  @impl true
-  def handle_event("filter", %{"filter" => filter}, socket) do
-    filter_atom =
-      case filter do
-        "all" -> :all
-        "enabled" -> :enabled
-        "disabled" -> :disabled
-        _ -> :all
-      end
+  def handle_event("show_edit_form", %{"id" => service_id}, socket) do
+    case find_service(socket.assigns.services, service_id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Service not found")}
 
-    {:noreply,
-     socket
-     |> assign(:filter, filter_atom)
-     |> assign(:services, list_services(filter: filter_atom))}
-  end
-
-  @impl true
-  def handle_event("toggle_service", %{"id" => service_id}, socket) do
-    case safe_call(
-           YellowDog.Mdns,
-           fn -> YellowDog.Mdns.toggle_service(service_id) end,
-           {:error, :service_unavailable}
-         ) do
-      :ok ->
+      service ->
         {:noreply,
-         socket
-         |> assign(:services, list_services(filter: socket.assigns.filter))
-         |> put_flash(:info, "Service toggled successfully")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to toggle service: #{inspect(reason)}")}
+         assign(socket,
+           show_form: true,
+           form_mode: :edit,
+           editing_service: service,
+           form_errors: %{}
+         )}
     end
   end
 
-  @impl true
-  def handle_event("delete_service", %{"id" => service_id}, socket) do
-    case safe_call(
-           YellowDog.Mdns,
-           fn -> YellowDog.Mdns.unregister_service(service_id, persist: true) end,
-           {:error, :service_unavailable}
-         ) do
-      :ok ->
-        {:noreply,
-         socket
-         |> assign(:services, list_services(filter: socket.assigns.filter))
-         |> put_flash(:info, "Service deleted successfully")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete service: #{inspect(reason)}")}
-    end
+  def handle_event("hide_form", _params, socket) do
+    {:noreply, assign(socket, show_form: false, editing_service: nil, form_errors: %{})}
   end
 
-  @impl true
   def handle_event("validate_service", params, socket) do
     {:noreply, assign(socket, :form_errors, validate_service_params(params))}
   end
 
-  @impl true
-  def handle_event("show_new_form", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_form, true)
-     |> assign(:form_mode, :new)
-     |> assign(:editing_service, nil)
-     |> assign(:form_errors, %{})}
-  end
-
-  @impl true
-  def handle_event("show_edit_form", %{"id" => service_id}, socket) do
-    service =
-      safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.get_registered_service(service_id) end, nil)
-
-    {:noreply,
-     socket
-     |> assign(:show_form, true)
-     |> assign(:form_mode, :edit)
-     |> assign(:editing_service, service)
-     |> assign(:form_errors, %{})}
-  end
-
-  @impl true
-  def handle_event("hide_form", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_form, false)
-     |> assign(:editing_service, nil)}
-  end
-
-  @impl true
   def handle_event("save_service", params, socket) do
-    errors = validate_service_params(params)
-
-    if map_size(errors) > 0 do
-      {:noreply, assign(socket, :form_errors, errors)}
-    else
-      port = parse_port(params["port"])
-
-      service_def = %{
-        name: params["name"],
-        type: params["type"],
-        port: port,
-        txt: parse_txt_records(params["txt"]),
-        addresses: parse_addresses(params["addresses"]),
-        enabled: params["enabled"] == "true"
-      }
-
-      result =
-        case socket.assigns.form_mode do
-          :new ->
-            safe_call(
-              YellowDog.Mdns,
-              fn -> YellowDog.Mdns.register_service(service_def, persist: true) end,
-              {:error, :service_unavailable}
-            )
-
-          :edit ->
-            safe_call(
-              YellowDog.Mdns,
-              fn ->
-                YellowDog.Mdns.update_service(
-                  socket.assigns.editing_service.id,
-                  service_def,
-                  persist: true
-                )
-              end,
-              {:error, :service_unavailable}
-            )
-        end
+    with :ok <- mutable(socket),
+         errors when map_size(errors) == 0 <- validate_service_params(params),
+         {:ok, payload} <- service_payload(params, socket.assigns.editing_service) do
+      result = save_service(socket, payload)
 
       case result do
-        {:ok, _} ->
+        %ManagementResult{status: :ok, value: %{"resource" => service}} ->
+          message =
+            if socket.assigns.form_mode == :new, do: "Service registered", else: "Service updated"
+
           {:noreply,
            socket
-           |> assign(:show_form, false)
-           |> assign(:editing_service, nil)
-           |> assign(:services, list_services(filter: socket.assigns.filter))
-           |> put_flash(:info, "Service saved successfully")}
+           |> assign(
+             services: put_service(socket.assigns.services, service),
+             show_form: false,
+             editing_service: nil,
+             form_errors: %{}
+           )
+           |> put_flash(:info, message)}
 
-        :ok ->
-          {:noreply,
-           socket
-           |> assign(:show_form, false)
-           |> assign(:editing_service, nil)
-           |> assign(:services, list_services(filter: socket.assigns.filter))
-           |> put_flash(:info, "Service updated successfully")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Failed to save service: #{inspect(reason)}")}
+        %ManagementResult{status: :error, message: message} ->
+          {:noreply, put_flash(socket, :error, message)}
       end
+    else
+      {:error, message} when is_binary(message) ->
+        {:noreply, put_flash(socket, :error, message)}
+
+      errors when is_map(errors) ->
+        {:noreply, assign(socket, :form_errors, errors)}
     end
   end
 
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    services = socket.assigns.services
-    csv = build_csv(services)
-    filename = "mdns_services_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+  def handle_event("toggle_service", %{"id" => service_id}, socket) do
+    mutate_existing(socket, service_id, fn service, revision ->
+      enabled = not service["enabled"]
 
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+      result =
+        ServerManagement.mdns_services_toggle(
+          socket.assigns.selected_server.id,
+          %{"service_id" => service_id, "enabled" => enabled},
+          expected_revision: revision,
+          idempotency_key: Ecto.UUID.generate()
+        )
+
+      {result, if(enabled, do: "Service enabled", else: "Service disabled")}
+    end)
   end
 
-  @service_refresh_events ~w(service_registered service_unregistered service_updated service_toggled)a
+  def handle_event("delete_service", %{"id" => service_id}, socket) do
+    mutate_existing(socket, service_id, fn _service, revision ->
+      result =
+        ServerManagement.mdns_services_delete(
+          socket.assigns.selected_server.id,
+          %{"service_id" => service_id},
+          expected_revision: revision,
+          idempotency_key: Ecto.UUID.generate()
+        )
 
-  @impl true
-  def handle_info({event, _service_id}, socket) when event in @service_refresh_events do
-    {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
+      {result, "Service deleted"}
+    end)
   end
 
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:services")
-    :ok
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_services()}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @doc false
-  def validate_service_params(params) do
-    errors = %{}
-
-    errors =
-      case String.trim(params["name"] || "") do
-        "" -> Map.put(errors, :name, "Service name is required")
-        _ -> errors
-      end
-
-    errors =
-      case String.trim(params["type"] || "") do
-        "" ->
-          Map.put(errors, :type, "Service type is required")
-
-        type ->
-          if type =~ ~r/^_[a-zA-Z0-9\-]+\._(?:tcp|udp)$/ do
-            errors
-          else
-            Map.put(errors, :type, "Must be _service._tcp or _service._udp format")
-          end
-      end
-
-    errors =
-      case parse_port(params["port"]) do
-        nil -> Map.put(errors, :port, "Port must be a number between 1 and 65535")
-        _ -> errors
-      end
-
-    errors =
-      case String.trim(params["addresses"] || "") do
-        "" ->
-          errors
-
-        addresses_str ->
-          invalid =
-            addresses_str
-            |> StringHelper.split_and_trim("\n")
-            |> Enum.reject(fn addr ->
-              match?({:ok, _}, :inet.parse_address(String.to_charlist(addr)))
-            end)
-
-          if invalid == [] do
-            errors
-          else
-            Map.put(errors, :addresses, "Invalid IP address: #{hd(invalid)}")
-          end
-      end
-
-    errors
+  def validate_service_params(params) when is_map(params) do
+    %{}
+    |> require_value(:name, params["name"], "Service name is required")
+    |> validate_type(params["type"])
+    |> validate_port(params["port"])
+    |> validate_txt(params["txt"])
   end
 
-  defp parse_port(nil), do: nil
-  defp parse_port(""), do: nil
+  def validate_service_params(_params), do: %{form: "Invalid service data"}
 
-  defp parse_port(port_str) when is_binary(port_str) do
-    case Integer.parse(String.trim(port_str)) do
-      {port, ""} when port >= 1 and port <= 65535 -> port
-      _ -> nil
+  defp load_services(socket) do
+    result = ServerManagement.mdns_services_list(socket.assigns.selected_server.id)
+
+    case result do
+      %ManagementResult{status: :ok, value: %{"items" => services}} when is_list(services) ->
+        assign(socket,
+          services: services,
+          management_error: nil,
+          cached_observed_at: result.observed_at,
+          commands_enabled?: socket.assigns.service_online?
+        )
+
+      %ManagementResult{status: :error} ->
+        assign(socket,
+          services: [],
+          management_error: result,
+          cached_observed_at: result.observed_at,
+          commands_enabled?: false
+        )
     end
   end
 
-  defp list_services(opts \\ []) do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_registered_services(opts) end, [])
-  end
+  defp save_service(socket, payload) do
+    opts = [idempotency_key: Ecto.UUID.generate()]
 
-  defp parse_txt_records(txt_string) when is_binary(txt_string) do
-    for line <- StringHelper.split_and_trim(txt_string, "\n"),
-        [key, value] <- [String.split(line, "=", parts: 2)],
-        into: %{} do
-      {String.trim(key), String.trim(value)}
+    case socket.assigns.form_mode do
+      :new ->
+        ServerManagement.mdns_services_register(socket.assigns.selected_server.id, payload, opts)
+
+      :edit ->
+        opts = Keyword.put(opts, :expected_revision, revision(socket.assigns.editing_service))
+        ServerManagement.mdns_services_update(socket.assigns.selected_server.id, payload, opts)
     end
   end
 
-  defp parse_txt_records(_), do: %{}
+  defp mutate_existing(socket, service_id, callback) do
+    with :ok <- mutable(socket),
+         service when not is_nil(service) <- find_service(socket.assigns.services, service_id),
+         revision when is_binary(revision) <- revision(service) do
+      {result, message} = callback.(service, revision)
 
-  defp parse_addresses(addresses_string) when is_binary(addresses_string) do
-    addresses_string
-    |> StringHelper.split_and_trim("\n")
+      case result do
+        %ManagementResult{status: :ok, value: %{"resource" => updated}} ->
+          {:noreply,
+           socket
+           |> assign(:services, put_service(socket.assigns.services, updated))
+           |> put_flash(:info, message)}
+
+        %ManagementResult{status: :ok, value: %{"resource_ref" => %{"service_id" => deleted}}} ->
+          {:noreply,
+           socket
+           |> assign(
+             :services,
+             Enum.reject(socket.assigns.services, &(&1["service_id"] == deleted))
+           )
+           |> put_flash(:info, message)}
+
+        %ManagementResult{status: :error, message: error} ->
+          {:noreply, put_flash(socket, :error, error)}
+      end
+    else
+      {:error, message} ->
+        {:noreply, put_flash(socket, :error, message)}
+
+      nil ->
+        {:noreply, put_flash(socket, :error, "Service not found")}
+
+      _missing_revision ->
+        {:noreply, put_flash(socket, :error, "Service revision is unavailable")}
+    end
   end
 
-  defp parse_addresses(_), do: []
+  defp mutable(%{assigns: %{commands_enabled?: true}}), do: :ok
+  defp mutable(_socket), do: {:error, "The selected Server is offline; commands are disabled"}
 
-  defp format_txt_for_form(txt_map) when is_map(txt_map) do
-    Enum.map_join(txt_map, "\n", fn {k, v} -> "#{k}=#{v}" end)
+  defp service_payload(params, editing) do
+    name = String.trim(params["name"] || "")
+    type = String.trim(params["type"] || "")
+
+    service_id =
+      case editing do
+        %{"service_id" => service_id} -> service_id
+        _new -> "#{name}.#{type}.local"
+      end
+
+    {:ok,
+     %{
+       "service_id" => service_id,
+       "name" => name,
+       "service_type" => type,
+       "service_port" => String.to_integer(params["port"]),
+       "txt" => parse_txt(params["txt"] || "")
+     }}
+  rescue
+    _error -> {:error, "Invalid service data"}
   end
 
-  defp format_txt_for_form(_), do: ""
+  defp parse_txt(text) do
+    text
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn row ->
+      [key, value] = String.split(row, "=", parts: 2)
+      %{"key" => String.trim(key), "value" => String.trim(value)}
+    end)
+    |> Enum.sort_by(& &1["key"])
+  end
 
-  defp build_csv(services) do
-    header =
-      "Service Name,Type,Port,Domain,Enabled,Source,IP Addresses,TXT Records\r\n"
+  defp revision(service) do
+    case Digest.calculate(service) do
+      {:ok, revision} -> revision
+      {:error, _error} -> nil
+    end
+  end
 
-    rows =
-      Enum.map_join(services, "\r\n", fn service ->
-        [
-          csv_escape(service.name),
-          csv_escape(service.type),
-          csv_escape(to_string(service.port)),
-          csv_escape(service.domain || "local"),
-          csv_escape(to_string(service.enabled)),
-          csv_escape(to_string(service.source)),
-          csv_escape(format_addresses_for_csv(service.addresses)),
-          csv_escape(format_txt_for_csv(service.txt))
-        ]
-        |> Enum.join(",")
+  defp find_service(services, service_id),
+    do: Enum.find(services, &(&1["service_id"] == service_id))
+
+  defp put_service(services, service) do
+    services
+    |> Enum.reject(&(&1["service_id"] == service["service_id"]))
+    |> Kernel.++([service])
+    |> Enum.sort_by(& &1["service_id"])
+  end
+
+  defp filtered_services(services, :enabled), do: Enum.filter(services, & &1["enabled"])
+  defp filtered_services(services, :disabled), do: Enum.reject(services, & &1["enabled"])
+  defp filtered_services(services, _filter), do: services
+
+  defp require_value(errors, key, value, message) do
+    if is_binary(value) and String.trim(value) != "",
+      do: errors,
+      else: Map.put(errors, key, message)
+  end
+
+  defp validate_type(errors, value) do
+    if is_binary(value) and Regex.match?(~r/^_[a-zA-Z0-9-]+\._(?:tcp|udp)$/, value) do
+      errors
+    else
+      Map.put(errors, :type, "Must be _service._tcp or _service._udp format")
+    end
+  end
+
+  defp validate_port(errors, value) do
+    case Integer.parse(to_string(value || "")) do
+      {port, ""} when port in 1..65_535 -> errors
+      _invalid -> Map.put(errors, :port, "Port must be a number between 1 and 65535")
+    end
+  end
+
+  defp validate_txt(errors, value) do
+    valid? =
+      value
+      |> to_string()
+      |> String.split("\n", trim: true)
+      |> Enum.all?(fn row ->
+        case String.split(row, "=", parts: 2) do
+          [key, _value] -> String.trim(key) != ""
+          _invalid -> false
+        end
       end)
 
-    header <> rows
+    if valid?, do: errors, else: Map.put(errors, :txt, "TXT rows must use key=value")
+  end
+
+  defp txt_for_form(nil), do: ""
+
+  defp txt_for_form(service) do
+    service
+    |> Map.get("txt", [])
+    |> Enum.map_join("\n", &"#{&1["key"]}=#{&1["value"]}")
   end
 end

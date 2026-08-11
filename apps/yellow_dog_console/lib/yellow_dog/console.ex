@@ -64,6 +64,7 @@ defmodule YellowDog.Console do
       use Phoenix.LiveView
 
       on_mount YellowDog.Console.Hooks.CurrentPath
+      on_mount YellowDog.Console.Hooks.ServiceScope
 
       unquote(html_helpers())
     end
@@ -94,6 +95,7 @@ defmodule YellowDog.Console do
 
       # Layouts for easy access in templates
       alias YellowDog.Console.Layouts
+      alias YellowDog.Console.ServicePaths
 
       # Verified routes for ~p sigil
       unquote(verified_routes())

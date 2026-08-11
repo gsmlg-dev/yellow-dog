@@ -1,83 +1,22 @@
 defmodule YellowDog.Console.NetmanLive.ConfigLive do
   @moduledoc """
-  Netman configuration page — documents the TOML profile format and provides
-  an interactive form to generate profile configuration files.
+  Management-owned profile configuration for one selected Netman runtime.
   """
 
   use YellowDog.Console, :live_view
 
-  @file_layout_example """
-  # Profile directory (configurable in netman.toml)
-  /etc/yellowdog/netman/profiles/
-  ├── dhcp-ethernet.toml
-  ├── static-ethernet.toml
-  └── office-wifi.toml
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.NetmanManagement
+  alias YellowDog.ManagementCore
+  alias YellowDog.Sync.Digest
 
-  # Main netman config
-  /etc/yellowdog/netman/netman.toml\
-  """
-
-  @netman_toml_example """
-  [netman]
-  reconciliation_interval_ms = 30000
-  reconciliation_debounce_ms = 100
-  profile_dir = "/etc/yellowdog/netman/profiles"
-  socket_path = "/run/yellowdog/netman.sock"
-
-  [netman.logging]
-  level = "info"
-
-  [netman.kernel]
-  netlink_helper_path = "priv/native/netlink_helper"\
-  """
-
-  @dhcp_example """
-  [connection]
-  id = "dhcp-ethernet"
-  type = "ethernet"
-  interface = "eth0"
-  autoconnect = true
-  autoconnect_priority = 100
-
-  [ethernet]
-  mtu = 1500
-
-  [ipv4]
-  method = "auto"
-
-  [ipv6]
-  method = "auto"\
-  """
-
-  @static_example """
-  [connection]
-  id = "static-ethernet"
-  type = "ethernet"
-  interface = "eth1"
-  autoconnect = false
-  autoconnect_priority = 50
-
-  [ethernet]
-  mtu = 9000
-
-  [ipv4]
-  method = "manual"
-  address = "192.168.1.100/24"
-  gateway = "192.168.1.1"
-  dns = ["192.168.1.1", "8.8.8.8"]
-
-  [ipv6]
-  method = "disabled"\
-  """
-
-  @default_form %{
-    "id" => "",
-    "type" => "ethernet",
+  @default_profile_form %{
+    "profile_id" => "",
     "interface" => "",
     "autoconnect" => "true",
     "autoconnect_priority" => "0",
     "zone" => "default",
-    "mtu" => "",
+    "mtu" => "1500",
     "ipv4_method" => "auto",
     "ipv4_address" => "",
     "ipv4_gateway" => "",
@@ -94,744 +33,901 @@ defmodule YellowDog.Console.NetmanLive.ConfigLive do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       page_title: "Configuration",
-       form: to_form(@default_form, as: "profile"),
-       generated_toml: nil,
-       validation_errors: [],
-       show_reference: false,
-       file_layout_example: @file_layout_example,
-       netman_toml_example: @netman_toml_example,
-       dhcp_example: @dhcp_example,
-       static_example: @static_example
+       page_title: "Netman Configuration",
+       subscribed_netman_id: nil,
+       apply_mode: nil,
+       profiles: [],
+       profiles_revision: nil,
+       cached_observed_at: nil,
+       management_error: nil,
+       config_bootstrap?: false,
+       config_read_error?: false,
+       observed_profiles: [],
+       operation_result: nil,
+       profile_form: to_form(@default_profile_form, as: "profile"),
+       patch_form:
+         to_form(
+           %{"profile_id" => "", "field" => "zone", "value" => ""},
+           as: "patch"
+         ),
+       rollback_form: to_form(%{"profile_id" => "", "target_revision" => ""}, as: "rollback"),
+       history: nil,
+       active_revision: nil,
+       config_enabled?: false,
+       commands_enabled?: false
      )}
   end
+
+  @impl true
+  def handle_params(%{"netman_id" => netman_id}, _uri, socket) do
+    socket = subscribe(socket, netman_id)
+    {:noreply, if(connected?(socket), do: load_configuration(socket, netman_id), else: socket)}
+  end
+
+  @impl true
+  def handle_event("validate_profile", %{"profile" => params}, socket) do
+    with :ok <- mutable(socket),
+         {:ok, profile} <- profile_from_params(params) do
+      result =
+        NetmanManagement.profiles_validate(selected_id(socket), profile,
+          idempotency_key: Ecto.UUID.generate()
+        )
+
+      {:noreply, finish(socket, result, "Profile is valid")}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("put_profile", %{"profile" => %{"action" => "validate"} = params}, socket),
+    do: handle_event("validate_profile", %{"profile" => params}, socket)
+
+  def handle_event("put_profile", %{"profile" => params}, socket) do
+    with :ok <- configurable(socket),
+         {:ok, profile} <- profile_from_params(params) do
+      profiles = upsert_desired_profile(socket.assigns.profiles, profile)
+      publish_profiles(socket, profiles, "Profile saved")
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("patch_profile", %{"patch" => params}, socket) do
+    with :ok <- configurable(socket),
+         {:ok, change} <- profile_change(params),
+         {:ok, state} <- fetch_profile(socket, params["profile_id"]) do
+      profile = apply_profile_change(state["profile"], change)
+      profiles = upsert_desired_profile(socket.assigns.profiles, profile)
+      publish_profiles(socket, profiles, "Profile patched")
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("delete_profile", %{"profile_id" => profile_id}, socket) do
+    with :ok <- configurable(socket),
+         {:ok, _state} <- fetch_profile(socket, profile_id) do
+      profiles = Enum.reject(socket.assigns.profiles, &(profile_id(&1) == profile_id))
+      publish_profiles(socket, profiles, "Profile deleted")
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("activate_profile", %{"profile_id" => profile_id}, socket) do
+    with :ok <- mutable(socket),
+         {:ok, revision} <- profile_revision(socket, profile_id) do
+      result =
+        NetmanManagement.profiles_activate(
+          selected_id(socket),
+          %{"profile_id" => profile_id},
+          command_options(revision)
+        )
+
+      {:noreply, finish(socket, result, "Profile activated")}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("rollback_profile", %{"rollback" => params}, socket) do
+    with :ok <- mutable(socket),
+         {:ok, revision} <- profile_revision(socket, params["profile_id"]) do
+      payload = %{
+        "profile_id" => params["profile_id"],
+        "target_revision" => params["target_revision"]
+      }
+
+      result =
+        NetmanManagement.profiles_rollback(
+          selected_id(socket),
+          payload,
+          command_options(revision)
+        )
+
+      {:noreply, finish(socket, result, "Profile rolled back")}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("replace_profiles", _params, socket) do
+    with :ok <- configurable(socket) do
+      publish_profiles(socket, socket.assigns.profiles, "Desired profile set published")
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("load_history", %{"profile_id" => profile_id}, socket) do
+    with :ok <- online(socket) do
+      result =
+        NetmanManagement.profiles_history_list(selected_id(socket), %{"profile_id" => profile_id})
+
+      socket =
+        case result do
+          %ManagementResult{status: :ok, value: %{"items" => items}} ->
+            assign(socket,
+              history: %{profile_id: profile_id, items: items},
+              operation_result: result
+            )
+
+          _result ->
+            assign(socket, operation_result: result)
+        end
+
+      {:noreply, finish_error(socket, result)}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  def handle_event("load_active_revision", %{"profile_id" => profile_id}, socket) do
+    with :ok <- online(socket) do
+      result =
+        NetmanManagement.profiles_active_revision_get(
+          selected_id(socket),
+          %{"profile_id" => profile_id}
+        )
+
+      socket =
+        case result do
+          %ManagementResult{status: :ok, value: value} ->
+            assign(socket, active_revision: value, operation_result: result)
+
+          _result ->
+            assign(socket, operation_result: result)
+        end
+
+      {:noreply, finish_error(socket, result)}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  @impl true
+  def handle_info({:netman_connection, _state, %{netman_id: netman_id}}, socket)
+      when netman_id == socket.assigns.selected_netman.id do
+    {:noreply, socket |> refresh_selected_netman(netman_id) |> load_configuration(netman_id)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <!-- Header -->
-        <div class="flex items-center justify-between">
+      <div class="space-y-6" id="netman-configuration">
+        <div class="flex items-center justify-between gap-4">
           <div>
-            <h1 class="text-4xl font-bold">Netman Configuration</h1>
-            <p class="mt-2 text-on-surface-variant">
-              Generate TOML profile files for the Network Manager
+            <div class="flex items-center gap-2">
+              <.link
+                navigate={ServicePaths.netman_path(@selected_netman.id, :overview)}
+                class="btn btn-ghost btn-sm btn-circle"
+              >
+                <.dm_mdi name="arrow-left" class="h-5 w-5" />
+              </.link>
+              <h1 class="text-4xl font-bold">Netman Configuration</h1>
+              <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+                {if @service_online?, do: "Connected", else: "Offline"}
+              </.badge>
+            </div>
+            <p class="ml-10 mt-1 text-on-surface-variant">
+              {@selected_netman.name || @selected_netman.id} · Apply mode: {display(@apply_mode)}
             </p>
           </div>
           <button
-            phx-click="toggle_reference"
-            class={"btn btn-sm " <> if(@show_reference, do: "btn-primary", else: "btn-ghost")}
+            phx-click="replace_profiles"
+            class="btn btn-primary"
+            disabled={
+              not @config_enabled? or
+                (not @config_bootstrap? and not revision_available?(@profiles_revision))
+            }
           >
-            <.dm_mdi name="book-open-variant" class="h-4 w-4" />
-            <span>Reference</span>
+            Publish profile set
           </button>
         </div>
 
-        <!-- Reference Documentation -->
-        <%= if @show_reference do %>
-          <div class="card bg-surface shadow-xl">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <h2 class="card-title">Profile TOML Reference</h2>
-                <button phx-click="toggle_reference" class="btn btn-ghost btn-sm btn-circle">
-                  <.dm_mdi name="close" class="h-5 w-5" />
+        <.offline_snapshot :if={not @service_online?} observed_at={@cached_observed_at} />
+
+        <div :if={@apply_mode == "observe"} class="alert alert-warning">
+          <.dm_mdi name="eye-outline" class="h-5 w-5" />
+          <span>Observe mode is read-only. Profile and connection commands are disabled.</span>
+        </div>
+        <div :if={@apply_mode == "observe_first"} class="alert alert-info">
+          <.dm_mdi name="shield-check-outline" class="h-5 w-5" />
+          <span>Policy approval is required before observe-first changes are applied.</span>
+        </div>
+
+        <.operation_error :if={error_result?(@operation_result)} result={@operation_result} />
+        <.operation_error :if={@management_error} result={@management_error} />
+
+        <.card title="Managed profiles">
+          <div :if={@profiles == []} class="py-6 text-center text-on-surface-variant">
+            No Management-owned profiles.
+          </div>
+          <div :if={@profiles != []} class="overflow-x-auto">
+            <table class="table table-striped" id="managed-netman-profiles">
+              <thead>
+                <tr>
+                  <th>Profile</th>
+                  <th>Interface</th>
+                  <th>Zone</th>
+                  <th>Desired revision</th>
+                  <th>State</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={state <- @profiles} id={"profile-#{profile_id(state)}"}>
+                  <td class="font-semibold">{profile_id(state)}</td>
+                  <td class="font-mono text-sm">
+                    {get_in(state, ["profile", "interface"]) || "any"}
+                  </td>
+                  <td>{get_in(state, ["profile", "zone"])}</td>
+                  <td class="max-w-48 truncate font-mono text-xs">{state["desired_revision"]}</td>
+                  <td>
+                    <.badge
+                      color={if state["active_revision"], do: "success", else: "ghost"}
+                      size="sm"
+                    >
+                      {if state["active_revision"], do: "active", else: "desired"}
+                    </.badge>
+                  </td>
+                  <td>
+                    <div class="flex justify-end gap-1">
+                      <button
+                        phx-click="load_active_revision"
+                        phx-value-profile_id={profile_id(state)}
+                        class="btn btn-ghost btn-xs"
+                        disabled={not @service_online?}
+                      >
+                        Revision
+                      </button>
+                      <button
+                        phx-click="load_history"
+                        phx-value-profile_id={profile_id(state)}
+                        class="btn btn-ghost btn-xs"
+                        disabled={not @service_online?}
+                      >
+                        History
+                      </button>
+                      <button
+                        phx-click="activate_profile"
+                        phx-value-profile_id={profile_id(state)}
+                        class="btn btn-success btn-xs"
+                        disabled={
+                          not @commands_enabled? or
+                            not revision_available?(state["desired_revision"])
+                        }
+                      >
+                        Activate
+                      </button>
+                      <button
+                        phx-click="delete_profile"
+                        phx-value-profile_id={profile_id(state)}
+                        class="btn btn-error btn-xs"
+                        disabled={not @config_enabled? or not revision_available?(@profiles_revision)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+
+        <.card
+          :if={@config_bootstrap? and @observed_profiles != []}
+          title="Observed runtime profiles"
+        >
+          <div class="overflow-x-auto">
+            <table class="table table-striped" id="observed-netman-profiles">
+              <thead>
+                <tr>
+                  <th>Profile</th>
+                  <th>Interface</th>
+                  <th>Zone</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={state <- @observed_profiles}>
+                  <td class="font-semibold">{profile_id(state)}</td>
+                  <td class="font-mono text-sm">
+                    {get_in(state, ["profile", "interface"]) || "any"}
+                  </td>
+                  <td>{get_in(state, ["profile", "zone"])}</td>
+                  <td>
+                    <.badge color="ghost" size="sm">observed</.badge>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+
+        <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <.card title="Validate or save profile">
+            <.form
+              for={@profile_form}
+              id="netman-profile-form"
+              phx-submit="put_profile"
+              class="space-y-4"
+            >
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <.field field={@profile_form[:profile_id]} label="Profile ID" required />
+                <.field field={@profile_form[:interface]} label="Interface" />
+                <.field field={@profile_form[:zone]} label="Zone" />
+                <.field field={@profile_form[:autoconnect_priority]} label="Priority" type="number" />
+                <.field field={@profile_form[:mtu]} label="MTU" type="number" />
+              </div>
+              <label class="label cursor-pointer justify-start gap-3">
+                <input type="hidden" name="profile[autoconnect]" value="false" />
+                <input
+                  type="checkbox"
+                  name="profile[autoconnect]"
+                  value="true"
+                  checked={@profile_form[:autoconnect].value == "true"}
+                  class="checkbox checkbox-primary"
+                />
+                <span class="label-text">Autoconnect</span>
+              </label>
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <.ip_fields form={@profile_form} family="ipv4" />
+                <.ip_fields form={@profile_form} family="ipv6" />
+              </div>
+              <div class="card-actions justify-end">
+                <button
+                  type="submit"
+                  name="profile[action]"
+                  value="validate"
+                  class="btn btn-ghost"
+                  disabled={not @commands_enabled?}
+                >
+                  Validate
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn-primary"
+                  disabled={
+                    not @config_enabled? or
+                      (not @config_bootstrap? and not revision_available?(@profiles_revision))
+                  }
+                >
+                  Save profile
                 </button>
               </div>
+            </.form>
+          </.card>
 
-              <div class="space-y-4 mt-2">
-                <p class="text-on-surface-variant">
-                  Netman uses TOML files for connection profiles. Each file defines one network
-                  connection and is placed in the profile directory
-                  (default: <code class="text-primary">/etc/yellowdog/netman/profiles/</code>).
-                </p>
-
-                <div class="divider">File Location</div>
-                <div class="bg-surface-container rounded-lg p-4">
-                  <pre class="text-sm font-mono text-on-surface"><code>{@file_layout_example}</code></pre>
-                </div>
-
-                <div class="divider">netman.toml (Service Config)</div>
-                <div class="bg-surface-container rounded-lg p-4">
-                  <pre class="text-sm font-mono text-on-surface"><code>{@netman_toml_example}</code></pre>
-                </div>
-
-                <div class="divider">Profile TOML Schema</div>
-                <div class="overflow-x-auto">
-                  <table class="table table-sm">
-                    <thead>
-                      <tr>
-                        <th>Section</th>
-                        <th>Key</th>
-                        <th>Type</th>
-                        <th>Default</th>
-                        <th>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td rowspan="6" class="font-mono text-sm align-top">[connection]</td>
-                        <td class="font-mono text-sm">id</td>
-                        <td>string</td>
-                        <td>
-                          <.badge color="error" size="sm">Required</.badge>
-                        </td>
-                        <td>Unique profile identifier (alphanumeric, _, -, .)</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">type</td>
-                        <td>string</td>
-                        <td>
-                          <.badge color="error" size="sm">Required</.badge>
-                        </td>
-                        <td>"ethernet" (only supported type)</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">interface</td>
-                        <td>string</td>
-                        <td>nil</td>
-                        <td>Bind to specific interface (e.g. "eth0"), max 15 chars</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">autoconnect</td>
-                        <td>boolean</td>
-                        <td>true</td>
-                        <td>Automatically activate when carrier detected</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">autoconnect_priority</td>
-                        <td>integer</td>
-                        <td>0</td>
-                        <td>Priority for autoconnect (-1000 to 10000, higher wins)</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">zone</td>
-                        <td>string</td>
-                        <td>"default"</td>
-                        <td>Firewall zone assignment</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm align-top">[ethernet]</td>
-                        <td class="font-mono text-sm">mtu</td>
-                        <td>integer</td>
-                        <td>nil</td>
-                        <td>MTU size (68–65535)</td>
-                      </tr>
-                      <tr>
-                        <td rowspan="5" class="font-mono text-sm align-top">[ipv4]</td>
-                        <td class="font-mono text-sm">method</td>
-                        <td>string</td>
-                        <td>"auto"</td>
-                        <td>"auto" (DHCP), "manual" (static), or "disabled"</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">address</td>
-                        <td>string</td>
-                        <td>nil</td>
-                        <td>CIDR address (required if manual, e.g. "192.168.1.10/24")</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">gateway</td>
-                        <td>string</td>
-                        <td>nil</td>
-                        <td>Default gateway IP address</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">dns</td>
-                        <td>string[]</td>
-                        <td>[]</td>
-                        <td>DNS server addresses</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">dns_search</td>
-                        <td>string[]</td>
-                        <td>[]</td>
-                        <td>DNS search domains</td>
-                      </tr>
-                      <tr>
-                        <td rowspan="5" class="font-mono text-sm align-top">[ipv6]</td>
-                        <td class="font-mono text-sm">method</td>
-                        <td>string</td>
-                        <td>"auto"</td>
-                        <td>"auto" (SLAAC), "manual", "disabled", or "link-local"</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">address</td>
-                        <td>string</td>
-                        <td>nil</td>
-                        <td>CIDR address (required if manual, e.g. "fd00::1/64")</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">gateway</td>
-                        <td>string</td>
-                        <td>nil</td>
-                        <td>Default gateway IPv6 address</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">dns</td>
-                        <td>string[]</td>
-                        <td>[]</td>
-                        <td>DNS server addresses</td>
-                      </tr>
-                      <tr>
-                        <td class="font-mono text-sm">dns_search</td>
-                        <td>string[]</td>
-                        <td>[]</td>
-                        <td>DNS search domains</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div class="divider">Example: DHCP Ethernet</div>
-                <div class="bg-surface-container rounded-lg p-4">
-                  <pre class="text-sm font-mono text-on-surface"><code>{@dhcp_example}</code></pre>
-                </div>
-
-                <div class="divider">Example: Static Ethernet</div>
-                <div class="bg-surface-container rounded-lg p-4">
-                  <pre class="text-sm font-mono text-on-surface"><code>{@static_example}</code></pre>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <!-- Form -->
-          <div class="card bg-surface shadow-xl">
-            <div class="card-body">
-              <h2 class="card-title">Profile Generator</h2>
-
-              <%= if @validation_errors != [] do %>
-                <div class="alert alert-error text-sm">
-                  <.dm_mdi name="alert-circle" class="h-5 w-5" />
-                  <div>
-                    <ul class="list-disc list-inside">
-                      <%= for err <- @validation_errors do %>
-                        <li>{err}</li>
-                      <% end %>
-                    </ul>
-                  </div>
-                </div>
-              <% end %>
-
-              <.form for={@form} phx-change="validate" phx-submit="generate" class="space-y-4">
-                <!-- Connection Section -->
-                <div class="divider text-sm font-semibold">Connection</div>
-
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="form-control">
-                    <label class="label"><span class="label-text">Profile ID *</span></label>
-                    <input
-                      type="text"
-                      name="profile[id]"
-                      value={@form[:id].value}
-                      placeholder="my-ethernet"
-                      class="input input-bordered w-full"
-                      required
-                    />
-                  </div>
-                  <div class="form-control">
-                    <label class="label"><span class="label-text">Type</span></label>
-                    <select name="profile[type]" class="select select-bordered w-full">
-                      <option value="ethernet" selected={@form[:type].value == "ethernet"}>
-                        Ethernet
-                      </option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="form-control">
-                    <label class="label"><span class="label-text">Interface</span></label>
-                    <input
-                      type="text"
-                      name="profile[interface]"
-                      value={@form[:interface].value}
-                      placeholder="eth0 (optional)"
-                      class="input input-bordered w-full"
-                    />
-                  </div>
-                  <div class="form-control">
-                    <label class="label"><span class="label-text">Zone</span></label>
-                    <input
-                      type="text"
-                      name="profile[zone]"
-                      value={@form[:zone].value}
-                      placeholder="default"
-                      class="input input-bordered w-full"
-                    />
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="form-control">
-                    <label class="label cursor-pointer justify-start gap-2">
-                      <input
-                        type="hidden"
-                        name="profile[autoconnect]"
-                        value="false"
-                      />
-                      <input
-                        type="checkbox"
-                        name="profile[autoconnect]"
-                        value="true"
-                        checked={@form[:autoconnect].value == "true"}
-                        class="checkbox checkbox-primary"
-                      />
-                      <span class="label-text">Autoconnect</span>
-                    </label>
-                  </div>
-                  <div class="form-control">
-                    <label class="label"><span class="label-text">Priority</span></label>
-                    <input
-                      type="number"
-                      name="profile[autoconnect_priority]"
-                      value={@form[:autoconnect_priority].value}
-                      min="-1000"
-                      max="10000"
-                      class="input input-bordered w-full"
-                    />
-                  </div>
-                </div>
-
-                <!-- Ethernet Section -->
-                <div class="divider text-sm font-semibold">Ethernet</div>
-
-                <div class="form-control">
-                  <label class="label"><span class="label-text">MTU</span></label>
-                  <input
-                    type="number"
-                    name="profile[mtu]"
-                    value={@form[:mtu].value}
-                    placeholder="1500 (optional)"
-                    min="68"
-                    max="65535"
-                    class="input input-bordered w-full"
-                  />
-                </div>
-
-                <!-- IPv4 Section -->
-                <div class="divider text-sm font-semibold">IPv4</div>
-
-                <div class="form-control">
-                  <label class="label"><span class="label-text">Method</span></label>
-                  <select name="profile[ipv4_method]" class="select select-bordered w-full">
-                    <option value="auto" selected={@form[:ipv4_method].value == "auto"}>
-                      Auto (DHCP)
-                    </option>
-                    <option value="manual" selected={@form[:ipv4_method].value == "manual"}>
-                      Manual (Static)
-                    </option>
-                    <option value="disabled" selected={@form[:ipv4_method].value == "disabled"}>
-                      Disabled
-                    </option>
-                  </select>
-                </div>
-
-                <%= if @form[:ipv4_method].value == "manual" do %>
-                  <div class="grid grid-cols-2 gap-4">
-                    <div class="form-control">
-                      <label class="label"><span class="label-text">Address (CIDR) *</span></label>
-                      <input
-                        type="text"
-                        name="profile[ipv4_address]"
-                        value={@form[:ipv4_address].value}
-                        placeholder="192.168.1.100/24"
-                        class="input input-bordered w-full"
-                      />
-                    </div>
-                    <div class="form-control">
-                      <label class="label"><span class="label-text">Gateway</span></label>
-                      <input
-                        type="text"
-                        name="profile[ipv4_gateway]"
-                        value={@form[:ipv4_gateway].value}
-                        placeholder="192.168.1.1"
-                        class="input input-bordered w-full"
-                      />
-                    </div>
-                  </div>
-                <% end %>
-
-                <%= if @form[:ipv4_method].value != "disabled" do %>
-                  <div class="grid grid-cols-2 gap-4">
-                    <div class="form-control">
-                      <label class="label">
-                        <span class="label-text">DNS Servers</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="profile[ipv4_dns]"
-                        value={@form[:ipv4_dns].value}
-                        placeholder="8.8.8.8, 8.8.4.4"
-                        class="input input-bordered w-full"
-                      />
-                      <label class="label">
-                        <span class="label-text-alt text-on-surface-variant">
-                          Comma-separated
-                        </span>
-                      </label>
-                    </div>
-                    <div class="form-control">
-                      <label class="label">
-                        <span class="label-text">DNS Search Domains</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="profile[ipv4_dns_search]"
-                        value={@form[:ipv4_dns_search].value}
-                        placeholder="example.com, local"
-                        class="input input-bordered w-full"
-                      />
-                      <label class="label">
-                        <span class="label-text-alt text-on-surface-variant">
-                          Comma-separated
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                <% end %>
-
-                <!-- IPv6 Section -->
-                <div class="divider text-sm font-semibold">IPv6</div>
-
-                <div class="form-control">
-                  <label class="label"><span class="label-text">Method</span></label>
-                  <select name="profile[ipv6_method]" class="select select-bordered w-full">
-                    <option value="auto" selected={@form[:ipv6_method].value == "auto"}>
-                      Auto (SLAAC)
-                    </option>
-                    <option value="manual" selected={@form[:ipv6_method].value == "manual"}>
-                      Manual (Static)
-                    </option>
-                    <option value="link-local" selected={@form[:ipv6_method].value == "link-local"}>
-                      Link-Local Only
-                    </option>
-                    <option value="disabled" selected={@form[:ipv6_method].value == "disabled"}>
-                      Disabled
-                    </option>
-                  </select>
-                </div>
-
-                <%= if @form[:ipv6_method].value == "manual" do %>
-                  <div class="grid grid-cols-2 gap-4">
-                    <div class="form-control">
-                      <label class="label"><span class="label-text">Address (CIDR) *</span></label>
-                      <input
-                        type="text"
-                        name="profile[ipv6_address]"
-                        value={@form[:ipv6_address].value}
-                        placeholder="fd00::1/64"
-                        class="input input-bordered w-full"
-                      />
-                    </div>
-                    <div class="form-control">
-                      <label class="label"><span class="label-text">Gateway</span></label>
-                      <input
-                        type="text"
-                        name="profile[ipv6_gateway]"
-                        value={@form[:ipv6_gateway].value}
-                        placeholder="fd00::1"
-                        class="input input-bordered w-full"
-                      />
-                    </div>
-                  </div>
-                <% end %>
-
-                <%= if @form[:ipv6_method].value not in ["disabled", "link-local"] do %>
-                  <div class="grid grid-cols-2 gap-4">
-                    <div class="form-control">
-                      <label class="label">
-                        <span class="label-text">DNS Servers</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="profile[ipv6_dns]"
-                        value={@form[:ipv6_dns].value}
-                        placeholder="2001:4860:4860::8888"
-                        class="input input-bordered w-full"
-                      />
-                      <label class="label">
-                        <span class="label-text-alt text-on-surface-variant">
-                          Comma-separated
-                        </span>
-                      </label>
-                    </div>
-                    <div class="form-control">
-                      <label class="label">
-                        <span class="label-text">DNS Search Domains</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="profile[ipv6_dns_search]"
-                        value={@form[:ipv6_dns_search].value}
-                        placeholder="example.com"
-                        class="input input-bordered w-full"
-                      />
-                      <label class="label">
-                        <span class="label-text-alt text-on-surface-variant">
-                          Comma-separated
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                <% end %>
-
-                <div class="card-actions justify-end pt-4">
-                  <button type="button" phx-click="reset" class="btn btn-ghost">
-                    Reset
-                  </button>
-                  <button type="submit" class="btn btn-primary">
-                    <.dm_mdi name="file-document-outline" class="h-4 w-4" /> Generate TOML
-                  </button>
-                </div>
+          <div class="space-y-6">
+            <.card title="Patch profile">
+              <.form
+                for={@patch_form}
+                id="netman-profile-patch"
+                phx-submit="patch_profile"
+                class="space-y-3"
+              >
+                <.field field={@patch_form[:profile_id]} label="Profile ID" required />
+                <select name="patch[field]" class="select select-bordered w-full">
+                  <option value="zone">Zone</option>
+                  <option value="interface">Interface</option>
+                  <option value="autoconnect_priority">Priority</option>
+                  <option value="ethernet.mtu">MTU</option>
+                </select>
+                <.field field={@patch_form[:value]} label="Value" required />
+                <button
+                  class="btn btn-primary"
+                  disabled={not @config_enabled? or not revision_available?(@profiles_revision)}
+                >
+                  Apply patch
+                </button>
               </.form>
-            </div>
-          </div>
+            </.card>
 
-          <!-- Generated Output -->
-          <div class="card bg-surface shadow-xl">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <h2 class="card-title">Generated Profile</h2>
-                <%= if @generated_toml do %>
-                  <button
-                    phx-click="copy_toml"
-                    id="copy-toml"
-                    phx-hook="CopyToClipboard"
-                    data-content={@generated_toml}
-                    class="btn btn-ghost btn-sm"
-                  >
-                    <.dm_mdi name="content-copy" class="h-4 w-4" /> Copy
-                  </button>
-                <% end %>
-              </div>
-
-              <%= if @generated_toml do %>
-                <div class="bg-surface-container rounded-lg p-4 mt-2">
-                  <pre class="text-sm font-mono text-on-surface whitespace-pre"><code>{@generated_toml}</code></pre>
-                </div>
-
-                <div class="mt-4 text-sm text-on-surface-variant">
-                  <p>
-                    Save this file to your profile directory:
-                  </p>
-                  <div class="bg-surface-container rounded-lg p-3 mt-2 font-mono text-xs">
-                    <code>
-                      /etc/yellowdog/netman/profiles/{@form[:id].value}.toml
-                    </code>
-                  </div>
-                  <p class="mt-2">
-                    The profile will be automatically loaded by the ProfileStore file watcher.
-                    No restart required.
-                  </p>
-                </div>
-              <% else %>
-                <div class="text-center py-16 text-on-surface-variant">
-                  <.dm_mdi name="file-document-edit-outline" class="h-16 w-16 mx-auto mb-4" />
-                  <p class="text-lg">Fill in the form and click Generate</p>
-                  <p class="text-sm mt-2">
-                    The generated TOML profile will appear here
-                  </p>
-                </div>
-              <% end %>
-            </div>
+            <.card title="Rollback profile">
+              <.form
+                for={@rollback_form}
+                id="netman-profile-rollback"
+                phx-submit="rollback_profile"
+                class="space-y-3"
+              >
+                <.field field={@rollback_form[:profile_id]} label="Profile ID" required />
+                <.field field={@rollback_form[:target_revision]} label="Target revision" required />
+                <button class="btn btn-warning" disabled={not @commands_enabled?}>Rollback</button>
+              </.form>
+            </.card>
           </div>
         </div>
+
+        <.card :if={@active_revision} title="Active revision">
+          <dl class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div>
+              <dt class="text-xs text-on-surface-variant">Profile</dt><dd>
+                {@active_revision["profile_id"]}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-on-surface-variant">Desired</dt><dd class="font-mono text-xs">
+                {@active_revision["desired_revision"]}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-on-surface-variant">Active</dt><dd class="font-mono text-xs">
+                {@active_revision["active_revision"] || "not active"}
+              </dd>
+            </div>
+          </dl>
+        </.card>
+
+        <.card :if={@history} title="Revision history">
+          <div class="mb-2 font-semibold">{@history.profile_id}</div>
+          <div
+            :for={entry <- @history.items}
+            class="border-t border-outline-variant py-3 first:border-0"
+          >
+            <div class="font-mono text-xs">{entry["revision"]}</div>
+            <div class="text-sm text-on-surface-variant">Stored {entry["stored_at"]}</div>
+          </div>
+        </.card>
       </div>
     </Layouts.app>
     """
   end
 
-  @impl true
-  def handle_event("validate", %{"profile" => params}, socket) do
-    form = to_form(Map.merge(@default_form, params), as: "profile")
-    {:noreply, assign(socket, form: form, validation_errors: [])}
+  defp field(assigns) do
+    assigns = assign_new(assigns, :type, fn -> "text" end)
+    assigns = assign_new(assigns, :required, fn -> false end)
+
+    ~H"""
+    <label class="form-control">
+      <span class="label"><span class="label-text">{@label}</span></span>
+      <input
+        type={@type}
+        name={@field.name}
+        value={@field.value}
+        required={@required}
+        class="input input-bordered w-full"
+      />
+    </label>
+    """
   end
 
-  def handle_event("generate", %{"profile" => params}, socket) do
-    params = Map.merge(@default_form, params)
+  defp ip_fields(assigns) do
+    {method, address, gateway, dns, dns_search} = ip_field_atoms(assigns.family)
 
-    case validate_and_generate(params) do
-      {:ok, toml} ->
-        form = to_form(params, as: "profile")
-        {:noreply, assign(socket, form: form, generated_toml: toml, validation_errors: [])}
+    assigns =
+      assign(assigns,
+        method: method,
+        address: address,
+        gateway: gateway,
+        dns: dns,
+        dns_search: dns_search
+      )
 
-      {:error, errors} ->
-        form = to_form(params, as: "profile")
-        {:noreply, assign(socket, form: form, generated_toml: nil, validation_errors: errors)}
+    ~H"""
+    <div class="space-y-3">
+      <div class="font-semibold">{String.upcase(@family)}</div>
+      <select name={@form[@method].name} class="select select-bordered w-full">
+        <option :for={mode <- ip_modes(@family)} value={mode} selected={@form[@method].value == mode}>
+          {display(mode)}
+        </option>
+      </select>
+      <.field field={@form[@address]} label="Address" />
+      <.field field={@form[@gateway]} label="Gateway" />
+      <.field field={@form[@dns]} label="DNS servers (comma separated)" />
+      <.field field={@form[@dns_search]} label="Search domains (comma separated)" />
+    </div>
+    """
+  end
+
+  defp offline_snapshot(assigns) do
+    ~H"""
+    <div class="alert alert-warning" id="offline-snapshot">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <div>
+        <div class="font-semibold">Offline cached snapshot</div>
+        <div class="text-sm">Observed {format_observed_at(@observed_at)}</div>
+      </div>
+    </div>
+    """
+  end
+
+  defp operation_error(assigns) do
+    ~H"""
+    <div class="alert alert-error" id="management-operation-error">
+      <.dm_mdi name="alert-circle" class="h-5 w-5" />
+      <div>
+        <div>{@result.message}</div>
+        <dl :if={@result.code == :conflict} class="mt-2 text-sm">
+          <div :for={{key, value} <- Enum.sort(@result.details)}>
+            <dt class="inline font-semibold">{detail_label(key)}:</dt>
+            <dd class="inline font-mono">{value}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+    """
+  end
+
+  defp load_configuration(socket, netman_id) do
+    mode_result = NetmanManagement.runtime_apply_mode_get(netman_id)
+    profiles_result = NetmanManagement.profiles_list(netman_id)
+    profiles_config_result = NetmanManagement.profiles_config(netman_id)
+    results = [mode_result, profiles_result, profiles_config_result]
+    apply_mode = mode_result |> value(%{}) |> Map.get("mode")
+    profile_value = value(profiles_result, %{})
+    runtime_profiles = Map.get(profile_value, "items", [])
+    runtime_revision = Map.get(profile_value, "revision")
+
+    {profiles, profiles_revision, observed_profiles, config_bootstrap?, config_read_error?} =
+      editable_profile_configuration(profiles_config_result, runtime_profiles, runtime_revision)
+
+    service_online? = socket.assigns.service_online?
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_netman.name || netman_id} — Configuration",
+      apply_mode: apply_mode,
+      profiles: profiles,
+      profiles_revision: profiles_revision,
+      management_error: first_error(results),
+      config_bootstrap?: config_bootstrap?,
+      config_read_error?: config_read_error?,
+      observed_profiles: observed_profiles,
+      cached_observed_at:
+        cached_observed_at(results, socket.assigns.selected_netman.last_seen_at),
+      config_enabled?: not config_read_error? and apply_mode != "observe",
+      commands_enabled?: service_online? and apply_mode != "observe"
+    )
+  end
+
+  defp editable_profile_configuration(
+         %ManagementResult{status: :ok, value: nil},
+         runtime_profiles,
+         _runtime_revision
+       ),
+       do: {[], nil, runtime_profiles, true, false}
+
+  defp editable_profile_configuration(
+         %ManagementResult{status: :ok, value: managed_config},
+         runtime_profiles,
+         runtime_revision
+       ) do
+    {
+      editable_profiles(managed_config, runtime_profiles),
+      editable_profiles_revision(managed_config, runtime_revision),
+      runtime_profiles,
+      false,
+      false
+    }
+  end
+
+  defp editable_profile_configuration(
+         %ManagementResult{status: :error},
+         _runtime_profiles,
+         _runtime_revision
+       ),
+       do: {[], nil, [], false, true}
+
+  defp editable_profiles(%{payload: %{"profiles" => profiles}}, runtime_profiles)
+       when is_list(profiles) and is_list(runtime_profiles) do
+    Enum.map(profiles, fn profile ->
+      case Enum.find(
+             runtime_profiles,
+             &(get_in(&1, ["profile", "profile_id"]) == profile["profile_id"])
+           ) do
+        %{"profile" => ^profile} = state -> state
+        _stale_or_missing -> desired_profile_state(profile)
+      end
+    end)
+  end
+
+  defp editable_profiles(_managed_config, runtime_profiles) when is_list(runtime_profiles),
+    do: runtime_profiles
+
+  defp editable_profiles(_managed_config, _runtime_profiles), do: []
+
+  defp desired_profile_state(profile) do
+    %{"profile" => profile, "desired_revision" => nil, "active_revision" => nil}
+  end
+
+  defp editable_profiles_revision(%{applied_revision: revision}, _runtime_revision)
+       when is_binary(revision),
+       do: revision
+
+  defp editable_profiles_revision(%{expected_revision: revision}, _runtime_revision)
+       when is_binary(revision),
+       do: revision
+
+  defp editable_profiles_revision(_managed_config, runtime_revision), do: runtime_revision
+
+  defp configurable(%{assigns: %{config_read_error?: true}}),
+    do: {:error, "Management-owned profile configuration is unavailable"}
+
+  defp configurable(%{assigns: %{apply_mode: "observe"}}),
+    do: {:error, "Observe mode is read-only"}
+
+  defp configurable(_socket), do: :ok
+
+  defp online(%{assigns: %{service_online?: false}}),
+    do: {:error, "The selected Netman is offline; runtime queries are disabled"}
+
+  defp online(_socket), do: :ok
+
+  defp mutable(%{assigns: %{service_online?: false}}),
+    do: {:error, "The selected Netman is offline; commands are disabled"}
+
+  defp mutable(%{assigns: %{apply_mode: "observe"}}),
+    do: {:error, "Observe mode is read-only"}
+
+  defp mutable(_socket), do: :ok
+
+  defp profile_from_params(params) do
+    with {:ok, priority} <- integer(params["autoconnect_priority"], -1000, 10_000, "priority"),
+         {:ok, mtu} <- nullable_integer(params["mtu"], 68, 65_535, "MTU") do
+      {:ok,
+       %{
+         "profile_id" => params["profile_id"],
+         "type" => "ethernet",
+         "interface" => nullable_text(params["interface"]),
+         "autoconnect" => params["autoconnect"] == "true",
+         "autoconnect_priority" => priority,
+         "zone" => params["zone"],
+         "ethernet" => %{"mtu" => mtu},
+         "ipv4" => ip_payload(params, "ipv4"),
+         "ipv6" => ip_payload(params, "ipv6")
+       }}
     end
   end
 
-  def handle_event("reset", _params, socket) do
-    {:noreply,
-     assign(socket,
-       form: to_form(@default_form, as: "profile"),
-       generated_toml: nil,
-       validation_errors: []
-     )}
+  defp ip_payload(params, family) do
+    %{
+      "method" => params["#{family}_method"],
+      "address" => nullable_text(params["#{family}_address"]),
+      "gateway" => nullable_text(params["#{family}_gateway"]),
+      "dns" => csv(params["#{family}_dns"]),
+      "dns_search" => csv(params["#{family}_dns_search"])
+    }
   end
 
-  def handle_event("toggle_reference", _params, socket) do
-    {:noreply, assign(socket, :show_reference, !socket.assigns.show_reference)}
+  defp profile_change(%{"field" => field, "value" => value})
+       when field in ["zone", "interface"] do
+    {:ok,
+     %{
+       "field" => field,
+       "value" => if(field == "interface", do: nullable_text(value), else: value)
+     }}
   end
 
-  def handle_event("copy_toml", _params, socket) do
-    {:noreply, put_flash(socket, :info, "Copied to clipboard")}
-  end
-
-  # --- Validation & Generation ---
-
-  defp validate_and_generate(params) do
-    errors = []
-
-    id = String.trim(params["id"] || "")
-    errors = if id == "", do: ["Profile ID is required" | errors], else: errors
-
-    errors =
-      if id != "" and not Regex.match?(~r/^[a-zA-Z0-9_\-\.]+$/, id),
-        do: ["Profile ID may only contain alphanumeric characters, _, -, ." | errors],
-        else: errors
-
-    interface = String.trim(params["interface"] || "")
-
-    errors =
-      if interface != "" and byte_size(interface) > 15,
-        do: ["Interface name must be at most 15 characters" | errors],
-        else: errors
-
-    mtu_str = String.trim(params["mtu"] || "")
-
-    {mtu, errors} = parse_optional_int(mtu_str, "MTU", 68, 65535, errors)
-
-    priority_str = String.trim(params["autoconnect_priority"] || "0")
-
-    {priority, errors} = parse_required_int(priority_str, "Priority", -1000, 10_000, 0, errors)
-
-    ipv4_method = params["ipv4_method"] || "auto"
-
-    errors =
-      if ipv4_method == "manual" and String.trim(params["ipv4_address"] || "") == "",
-        do: ["IPv4 address is required when method is manual" | errors],
-        else: errors
-
-    ipv6_method = params["ipv6_method"] || "auto"
-
-    errors =
-      if ipv6_method == "manual" and String.trim(params["ipv6_address"] || "") == "",
-        do: ["IPv6 address is required when method is manual" | errors],
-        else: errors
-
-    if errors != [] do
-      {:error, Enum.reverse(errors)}
-    else
-      toml = build_toml(params, id, interface, mtu, priority, ipv4_method, ipv6_method)
-      {:ok, toml}
+  defp profile_change(%{"field" => "autoconnect_priority", "value" => value}) do
+    with {:ok, value} <- integer(value, -1000, 10_000, "priority") do
+      {:ok, %{"field" => "autoconnect_priority", "value" => value}}
     end
   end
 
-  defp build_toml(params, id, interface, mtu, priority, ipv4_method, ipv6_method) do
-    autoconnect = params["autoconnect"] == "true"
-
-    lines = [
-      "[connection]",
-      ~s(id = "#{id}"),
-      ~s(type = "ethernet")
-    ]
-
-    lines = if interface != "", do: lines ++ [~s(interface = "#{interface}")], else: lines
-    lines = lines ++ ["autoconnect = #{autoconnect}"]
-    lines = if priority != 0, do: lines ++ ["autoconnect_priority = #{priority}"], else: lines
-
-    zone = String.trim(params["zone"] || "default")
-    lines = if zone != "default" and zone != "", do: lines ++ [~s(zone = "#{zone}")], else: lines
-
-    # Ethernet
-    lines = if mtu, do: lines ++ ["", "[ethernet]", "mtu = #{mtu}"], else: lines
-
-    # IPv4
-    lines = lines ++ ["", "[ipv4]", ~s(method = "#{ipv4_method}")]
-
-    lines =
-      if ipv4_method == "manual" do
-        addr = String.trim(params["ipv4_address"] || "")
-        l = lines ++ [~s(address = "#{addr}")]
-        gw = String.trim(params["ipv4_gateway"] || "")
-        if gw != "", do: l ++ [~s(gateway = "#{gw}")], else: l
-      else
-        lines
-      end
-
-    lines =
-      if ipv4_method != "disabled" do
-        dns = parse_csv(params["ipv4_dns"])
-        dns_search = parse_csv(params["ipv4_dns_search"])
-        l = lines
-        l = if dns != [], do: l ++ ["dns = #{format_string_array(dns)}"], else: l
-        if dns_search != [], do: l ++ ["dns_search = #{format_string_array(dns_search)}"], else: l
-      else
-        lines
-      end
-
-    # IPv6
-    lines = lines ++ ["", "[ipv6]", ~s(method = "#{ipv6_method}")]
-
-    lines =
-      if ipv6_method == "manual" do
-        addr = String.trim(params["ipv6_address"] || "")
-        l = lines ++ [~s(address = "#{addr}")]
-        gw = String.trim(params["ipv6_gateway"] || "")
-        if gw != "", do: l ++ [~s(gateway = "#{gw}")], else: l
-      else
-        lines
-      end
-
-    lines =
-      if ipv6_method not in ["disabled", "link-local"] do
-        dns = parse_csv(params["ipv6_dns"])
-        dns_search = parse_csv(params["ipv6_dns_search"])
-        l = lines
-        l = if dns != [], do: l ++ ["dns = #{format_string_array(dns)}"], else: l
-        if dns_search != [], do: l ++ ["dns_search = #{format_string_array(dns_search)}"], else: l
-      else
-        lines
-      end
-
-    Enum.join(lines, "\n") <> "\n"
+  defp profile_change(%{"field" => "ethernet.mtu", "value" => value}) do
+    with {:ok, value} <- nullable_integer(value, 68, 65_535, "MTU") do
+      {:ok, %{"field" => "ethernet.mtu", "value" => value}}
+    end
   end
 
-  defp parse_csv(nil), do: []
-  defp parse_csv(""), do: []
+  defp profile_change(_params), do: {:error, "Unsupported profile patch"}
 
-  defp parse_csv(str) do
-    str
+  defp apply_profile_change(profile, %{"field" => "ethernet.mtu", "value" => value}),
+    do: put_in(profile, ["ethernet", "mtu"], value)
+
+  defp apply_profile_change(profile, %{"field" => field, "value" => value}),
+    do: Map.put(profile, field, value)
+
+  defp integer(value, minimum, maximum, label) do
+    case Integer.parse(to_string(value || "")) do
+      {integer, ""} when integer >= minimum and integer <= maximum -> {:ok, integer}
+      _invalid -> {:error, "Invalid #{label}"}
+    end
+  end
+
+  defp nullable_integer(value, _minimum, _maximum, _label) when value in [nil, ""], do: {:ok, nil}
+
+  defp nullable_integer(value, minimum, maximum, label),
+    do: integer(value, minimum, maximum, label)
+
+  defp nullable_text(value) when value in [nil, ""], do: nil
+  defp nullable_text(value), do: String.trim(value)
+
+  defp csv(value) when value in [nil, ""], do: []
+
+  defp csv(value) do
+    value
     |> String.split(",")
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
   end
 
-  defp format_string_array(list) do
-    items = Enum.map_join(list, ", ", &~s("#{&1}"))
-    "[#{items}]"
-  end
-
-  defp parse_optional_int("", _label, _min, _max, errors), do: {nil, errors}
-
-  defp parse_optional_int(str, label, min, max, errors) do
-    case Integer.parse(str) do
-      {val, ""} when val >= min and val <= max -> {val, errors}
-      {_, ""} -> {nil, ["#{label} must be between #{min} and #{max}" | errors]}
-      _ -> {nil, ["#{label} must be a valid integer" | errors]}
+  defp profile_revision(socket, profile_id) do
+    case find_profile(socket, profile_id) do
+      nil -> {:error, "The exact profile revision is unavailable"}
+      state -> exact_revision(state["desired_revision"], "profile")
     end
   end
 
-  defp parse_required_int(str, label, min, max, default, errors) do
-    case Integer.parse(str) do
-      {val, ""} when val >= min and val <= max -> {val, errors}
-      {_, ""} -> {default, ["#{label} must be between #{min} and #{max}" | errors]}
-      _ -> {default, ["#{label} must be a valid integer" | errors]}
+  defp fetch_profile(socket, profile_id) do
+    case find_profile(socket, profile_id) do
+      nil -> {:error, "The selected profile is unavailable"}
+      state -> {:ok, state}
     end
   end
+
+  defp find_profile(socket, profile_id) do
+    Enum.find(socket.assigns.profiles, &(profile_id(&1) == profile_id))
+  end
+
+  defp exact_revision(revision, owner) do
+    case Digest.validate(revision) do
+      {:ok, revision} -> {:ok, revision}
+      _error -> {:error, "The exact #{owner} revision is unavailable"}
+    end
+  end
+
+  defp revision_available?(revision), do: match?({:ok, _revision}, Digest.validate(revision))
+
+  defp command_options(revision) do
+    [
+      expected_revision: revision,
+      idempotency_key: Ecto.UUID.generate()
+    ]
+  end
+
+  defp publish_profiles(socket, profiles, success_message) do
+    with {:ok, revision} <- publish_revision(socket) do
+      payload = %{"profiles" => Enum.map(profiles, & &1["profile"])}
+
+      result =
+        NetmanManagement.profiles_replace(
+          selected_id(socket),
+          payload,
+          expected_revision: revision
+        )
+
+      socket =
+        case result do
+          %ManagementResult{status: :ok} -> assign(socket, :profiles, profiles)
+          _result -> socket
+        end
+
+      {:noreply, finish(socket, result, success_message)}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  defp publish_revision(%{assigns: %{config_bootstrap?: true}}), do: {:ok, nil}
+
+  defp publish_revision(socket),
+    do: exact_revision(socket.assigns.profiles_revision, "profiles collection")
+
+  defp upsert_desired_profile(profiles, profile) do
+    id = profile["profile_id"]
+
+    state =
+      case Enum.find(profiles, &(profile_id(&1) == id)) do
+        nil -> %{"active_revision" => nil}
+        state -> state
+      end
+      |> Map.put("profile", profile)
+      |> Map.put("desired_revision", nil)
+
+    [state | Enum.reject(profiles, &(profile_id(&1) == id))]
+    |> Enum.sort_by(&profile_id/1)
+  end
+
+  defp finish(socket, %ManagementResult{status: :ok} = result, message) do
+    socket
+    |> assign(operation_result: result)
+    |> put_flash(:info, message)
+  end
+
+  defp finish(socket, %ManagementResult{} = result, _message) do
+    socket
+    |> assign(operation_result: result)
+    |> finish_error(result)
+  end
+
+  defp finish_error(socket, %ManagementResult{status: :error, message: message}),
+    do: put_flash(socket, :error, message)
+
+  defp finish_error(socket, _result), do: socket
+
+  defp subscribe(socket, netman_id) do
+    if connected?(socket) and socket.assigns.subscribed_netman_id != netman_id do
+      if old_id = socket.assigns.subscribed_netman_id do
+        Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "management:netman:#{old_id}")
+      end
+
+      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "management:netman:#{netman_id}")
+    end
+
+    assign(socket, :subscribed_netman_id, netman_id)
+  end
+
+  defp refresh_selected_netman(socket, netman_id) do
+    case ManagementCore.get_netman(netman_id) do
+      {:ok, netman} ->
+        assign(socket,
+          selected_netman: netman,
+          service_online?: netman.status in [:online, "online"],
+          snapshot_observed_at: netman.last_seen_at
+        )
+
+      _error ->
+        socket
+    end
+  end
+
+  defp selected_id(socket), do: socket.assigns.selected_netman.id
+  defp profile_id(state), do: get_in(state, ["profile", "profile_id"])
+
+  defp value(%ManagementResult{status: :ok, value: value}, _default), do: value
+  defp value(_result, default), do: default
+
+  defp first_error(results) do
+    Enum.find_value(results, fn
+      %ManagementResult{status: :error} = result -> result
+      _result -> nil
+    end)
+  end
+
+  defp cached_observed_at(results, fallback) do
+    Enum.find_value(results, fallback, fn
+      %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+      _result -> nil
+    end)
+  end
+
+  defp error_result?(%ManagementResult{status: :error}), do: true
+  defp error_result?(_result), do: false
+
+  defp detail_label(key), do: key |> String.replace("_", " ") |> String.capitalize()
+
+  defp display(nil), do: "-"
+  defp display(value) when is_atom(value), do: value |> Atom.to_string() |> display()
+  defp display(value) when is_binary(value), do: String.replace(value, "_", " ")
+  defp display(value), do: to_string(value)
+
+  defp ip_modes("ipv4"), do: ["auto", "manual", "disabled"]
+  defp ip_modes("ipv6"), do: ["auto", "manual", "link-local", "disabled"]
+
+  defp ip_field_atoms("ipv4"),
+    do: {:ipv4_method, :ipv4_address, :ipv4_gateway, :ipv4_dns, :ipv4_dns_search}
+
+  defp ip_field_atoms("ipv6"),
+    do: {:ipv6_method, :ipv6_address, :ipv6_gateway, :ipv6_dns, :ipv6_dns_search}
+
+  defp format_observed_at(%DateTime{} = datetime),
+    do: Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S UTC")
+
+  defp format_observed_at(value) when is_binary(value), do: value
+  defp format_observed_at(_value), do: "unknown"
 end

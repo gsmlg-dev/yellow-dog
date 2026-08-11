@@ -1,495 +1,166 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-4">
-    <!-- Breadcrumb -->
-    <.dm_breadcrumb>
-      <:crumb to={~p"/server/dns"}>DNS</:crumb>
-      <:crumb>Zones</:crumb>
-    </.dm_breadcrumb>
-
-    <.service_alert :if={not @service_running} service="DNS" />
-
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold">DNS Zones</h1>
-        <p class="text-sm text-on-surface-variant">
-          Manage DNS zones and authoritative records.
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <button
-          phx-click="export_csv"
-          id="export-csv"
-          phx-hook="CsvDownload"
-          class="btn btn-ghost btn-sm"
-          title="Export CSV"
-          aria-label="Export CSV"
-        >
-          <.dm_mdi name="download" class="w-4 h-4" /> Export
-        </button>
-        <.dm_btn
-          variant="ghost"
-          size="sm"
-          phx-click="refresh"
-          title="Refresh"
-          aria-label="Refresh"
-        >
-          <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
-        </.dm_btn>
+  <div class="space-y-6" id="server-dns-zones">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Zones"
+        subtitle={"View #{@view_name}"}
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dns)}
+      />
+      <div :if={@live_action == :index} class="flex gap-2">
         <.link
-          patch={import_zone_path()}
-          class="btn btn-ghost btn-sm"
-          title="Import Zone"
-        >
-          <.dm_mdi name="upload" class="w-4 h-4" /> Import
-        </.link>
+          navigate={zone_path(@selected_server.id, :dns_zone_new, @view_name)}
+          class="btn btn-primary"
+        >New zone</.link>
         <.link
-          patch={new_zone_path()}
-          class="btn btn-primary btn-sm"
-        >
-          <.dm_mdi name="plus" class="w-4 h-4" /> Add Zone
-        </.link>
+          navigate={zone_path(@selected_server.id, :dns_zone_import, @view_name)}
+          class="btn btn-ghost"
+        >Import</.link>
       </div>
     </div>
 
-    <%= case @live_action do %>
-      <% :index -> %>
-        <!-- Zones Data Table -->
-        <div class="card bg-surface shadow">
-          <div class="card-body p-0">
-            <%= if @zones != [] do %>
-              <!-- Filter Bar -->
-              <div class="flex flex-wrap gap-2 p-4 border-b border-outline-variant">
-                <input
-                  type="text"
-                  placeholder="Filter by zone name..."
-                  aria-label="Filter DNS zones"
-                  class="input input-sm flex-1 min-w-48"
-                  phx-change="filter"
-                  phx-debounce="300"
-                  name="filter"
-                  value={@filter}
-                />
-                <select
-                  class="select select-sm"
-                  phx-change="filter_type"
-                  aria-label="Filter by zone type"
-                  name="type"
-                >
-                  <option value="all" selected={@type_filter == "all"}>All Types</option>
-                  <%= for type <- unique_zone_types(@zones) do %>
-                    <option value={type} selected={@type_filter == to_string(type)}>
-                      {zone_type_label(type)}
-                    </option>
-                  <% end %>
-                </select>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="table table-striped">
-                  <thead>
-                    <tr>
-                      <th scope="col">Zone Name</th>
-                      <th scope="col">Type</th>
-                      <th scope="col">Cloud</th>
-                      <th scope="col">Records</th>
-                      <th scope="col">Queries</th>
-                      <th class="text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <%= for zone <- filtered_zones(@zones, @filter, @type_filter) do %>
-                      <tr class="hover">
-                        <td>
-                          <%= if zone.type == :auth do %>
-                            <.link
-                              navigate={records_path(zone.id)}
-                              class="link link-hover font-mono font-semibold"
-                            >
-                              {zone.name}
-                            </.link>
-                          <% else %>
-                            <span class="font-mono font-semibold">{zone.name}</span>
-                          <% end %>
-                        </td>
-                        <td>
-                          <.badge color={zone_type_badge(zone.type)} size="sm">
-                            {zone_type_label(zone.type)}
-                          </.badge>
-                        </td>
-                        <td>
-                          <%= if cloud_mirror_enabled?(zone) do %>
-                            <span class="text-sm">
-                              {provider_label(cloud_mirror_provider(zone))}
-                            </span>
-                          <% else %>
-                            <span class="text-on-surface-variant">-</span>
-                          <% end %>
-                        </td>
-                        <td>
-                          <%= if zone.type == :auth do %>
-                            <.link
-                              navigate={records_path(zone.id)}
-                              class="link link-hover"
-                            >
-                              {zone.record_count} records
-                            </.link>
-                          <% else %>
-                            <span class="text-on-surface-variant">N/A</span>
-                          <% end %>
-                        </td>
-                        <td class="font-mono text-sm">{format_number(zone.query_count)}</td>
-                        <td class="text-right">
-                          <div class="flex items-center justify-end gap-1">
-                            <%= if zone.type == :auth do %>
-                              <.link
-                                navigate={records_path(zone.id)}
-                                class="btn btn-ghost btn-sm"
-                                title="View Records"
-                                aria-label="View Records"
-                              >
-                                <.dm_mdi name="arrow-right" class="w-4 h-4" />
-                              </.link>
-                            <% end %>
-                            <.link
-                              patch={edit_zone_path(zone.id)}
-                              class="btn btn-ghost btn-sm"
-                              title="Edit"
-                              aria-label="Edit"
-                            >
-                              <.dm_mdi name="pencil" class="w-4 h-4" />
-                            </.link>
-                            <.dm_btn
-                              variant="ghost"
-                              size="sm"
-                              class="text-error"
-                              phx-click="confirm_delete"
-                              phx-value-id={zone.id}
-                              title="Delete"
-                              aria-label="Delete"
-                            >
-                              <.dm_mdi name="delete" class="w-4 h-4" />
-                            </.dm_btn>
-                          </div>
-                        </td>
-                      </tr>
-                    <% end %>
-                  </tbody>
-                </table>
-              </div>
-              <div class="px-4 py-2 border-t border-outline-variant text-sm text-on-surface-variant">
-                <% filtered = filtered_zones(@zones, @filter, @type_filter) %>
-                <%= if length(filtered) == length(@zones) do %>
-                  {length(@zones)} zone(s)
-                <% else %>
-                  Showing {length(filtered)} of {length(@zones)} zone(s)
-                <% end %>
-              </div>
-            <% else %>
-              <div class="text-center py-12">
-                <div class="text-6xl mb-4">
-                  <.dm_mdi name="web" class="w-16 h-16 mx-auto text-on-surface-variant" />
-                </div>
-                <h3 class="text-lg font-semibold mb-2">No Zones</h3>
-                <p class="text-on-surface-variant mb-4">No DNS zones configured.</p>
-                <div class="flex justify-center gap-2">
-                  <.link
-                    patch={new_zone_path()}
-                    class="btn btn-outline"
-                  >
-                    Create Zone
-                  </.link>
-                  <.link
-                    patch={import_zone_path()}
-                    class="btn btn-ghost"
-                  >
-                    Import Zone
-                  </.link>
-                </div>
-              </div>
-            <% end %>
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+
+    <.form for={@selection_form} id="dns-zone-view" phx-change="select_view" class="max-w-md">
+      <.input field={@selection_form[:view_name]} label="View" phx-debounce="300" />
+    </.form>
+
+    <.card title="Managed zones">
+      <p :if={@zones == []} class="text-sm text-on-surface-variant">No zones reported</p>
+      <div
+        :for={zone <- @zones}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+      >
+        <div>
+          <div class="font-semibold">{zone["zone_name"]}</div>
+          <div class="text-xs text-on-surface-variant">
+            {zone["zone_type"]} · {zone["provider_id"] || "local"}
           </div>
         </div>
-      <% :new -> %>
-        <!-- New Zone Form -->
-        <.card title="Add Zone">
-          <.form
-            for={@zone_form}
-            phx-submit="save_zone"
-            phx-change="validate_zone"
-            phx-debounce="blur"
-            class="space-y-4"
-          >
-            <div class="form-group">
-              <label class="form-label font-semibold">Zone Name</label>
-              <input
-                type="text"
-                name="zone[name]"
-                value={@zone_form[:name].value}
-                maxlength="253"
-                class={"input w-full font-mono #{if @form_errors[:name], do: "input-error"}"}
-                placeholder="e.g., example.com"
-                required
-              />
-              <%= if @form_errors[:name] do %>
-                <span class="helper-text text-error">{@form_errors[:name]}</span>
-              <% else %>
-                <span class="helper-text">Fully qualified domain name</span>
-              <% end %>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label font-semibold">Zone Type</label>
-              <select
-                name="zone[type]"
-                aria-label="Zone type"
-                class="select w-full"
-              >
-                <option value="auth" selected={@zone_form[:type].value == "auth"}>
-                  Authoritative - Serve records from local data
-                </option>
-                <option value="forward" selected={@zone_form[:type].value == "forward"}>
-                  Forward - Forward queries to upstream servers
-                </option>
-                <option value="stub" selected={@zone_form[:type].value == "stub"}>
-                  Stub - Only NS records pointing to authoritative servers
-                </option>
-              </select>
-            </div>
-
-            <!-- Upstream Servers - shown for forward zones -->
-            <%= if @zone_form[:type].value == "forward" do %>
-              <div class="form-group">
-                <label class="form-label font-semibold">Upstream DNS Servers</label>
-                <textarea
-                  name="zone[upstreams]"
-                  class={"textarea h-24 font-mono text-sm #{if @form_errors[:upstreams], do: "textarea-error"}"}
-                  placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1"
-                >{@zone_form[:upstreams].value}</textarea>
-                <%= if @form_errors[:upstreams] do %>
-                  <span class="helper-text text-error">{@form_errors[:upstreams]}</span>
-                <% else %>
-                  <span class="helper-text">
-                    IP addresses of upstream DNS servers (one per line)
-                  </span>
-                <% end %>
-              </div>
-            <% end %>
-
-            <!-- NS Records - shown for stub zones -->
-            <%= if @zone_form[:type].value == "stub" do %>
-              <div class="form-group">
-                <label class="form-label font-semibold">NS Server Names</label>
-                <textarea
-                  name="zone[ns_records]"
-                  class={"textarea h-24 font-mono text-sm #{if @form_errors[:ns_records], do: "textarea-error"}"}
-                  placeholder="ns1.example.com&#10;ns2.example.com"
-                >{@zone_form[:ns_records].value}</textarea>
-                <%= if @form_errors[:ns_records] do %>
-                  <span class="helper-text text-error">{@form_errors[:ns_records]}</span>
-                <% else %>
-                  <span class="helper-text">
-                    Fully qualified names of authoritative NS servers (one per line)
-                  </span>
-                <% end %>
-              </div>
-            <% end %>
-
-            <!-- Info for auth zones -->
-            <%= if @zone_form[:type].value == "auth" do %>
-              <div class="alert alert-info">
-                <.dm_mdi name="information" class="w-6 h-6" />
-                <span>
-                  Authoritative zones serve records from local data.
-                  You can add records after creating the zone.
-                </span>
-              </div>
-              <.cloud_mirror_fields
-                zone_form={@zone_form}
-                form_errors={@form_errors}
-                cloud_dns_connectors={@cloud_dns_connectors}
-              />
-            <% end %>
-
-            <div class="divider"></div>
-
-            <div class="flex justify-end gap-2">
-              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                disabled={map_size(@form_errors) > 0}
-                phx-disable-with="Creating..."
-              >
-                Create Zone
-              </button>
-            </div>
-          </.form>
-        </.card>
-      <% :edit -> %>
-        <!-- Edit Zone Form -->
-        <.card title={"Edit Zone: #{@editing_zone.name}"}>
-          <.form
-            for={@zone_form}
-            phx-submit="save_zone"
-            phx-change="validate_zone"
-            phx-debounce="blur"
-            class="space-y-4"
-          >
-            <div class="form-group">
-              <label class="form-label font-semibold">Zone Name</label>
-              <input
-                type="text"
-                name="zone[name]"
-                value={@zone_form[:name].value}
-                class="input w-full font-mono bg-surface-container"
-                disabled
-              />
-              <span class="helper-text text-on-surface-variant">Name cannot be changed</span>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label font-semibold">Zone Type</label>
-              <div class="flex items-center gap-2">
-                <.badge color={zone_type_badge(@editing_zone.type)} size="md">
-                  {zone_type_label(@editing_zone.type)}
-                </.badge>
-                <span class="text-sm text-on-surface-variant">(cannot be changed)</span>
-              </div>
-              <input type="hidden" name="zone[type]" value={@editing_zone.type} />
-            </div>
-
-            <!-- Upstream Servers - shown for forward zones -->
-            <%= if @editing_zone.type == :forward do %>
-              <div class="form-group">
-                <label class="form-label font-semibold">Upstream DNS Servers</label>
-                <textarea
-                  name="zone[upstreams]"
-                  class="textarea h-24 font-mono text-sm"
-                  placeholder="8.8.8.8&#10;8.8.4.4"
-                >{@zone_form[:upstreams].value}</textarea>
-                <span class="helper-text">
-                  IP addresses of upstream DNS servers (one per line)
-                </span>
-              </div>
-            <% end %>
-
-            <!-- NS Records - shown for stub zones -->
-            <%= if @editing_zone.type == :stub do %>
-              <div class="form-group">
-                <label class="form-label font-semibold">NS Server Names</label>
-                <textarea
-                  name="zone[ns_records]"
-                  class="textarea h-24 font-mono text-sm"
-                  placeholder="ns1.example.com&#10;ns2.example.com"
-                >{@zone_form[:ns_records].value}</textarea>
-                <span class="helper-text">
-                  Fully qualified names of authoritative NS servers (one per line)
-                </span>
-              </div>
-            <% end %>
-
-            <!-- Info for auth zones -->
-            <%= if @editing_zone.type == :auth do %>
-              <div class="alert alert-info">
-                <.dm_mdi name="information" class="w-6 h-6" />
-                <span>
-                  Edit records for this zone from the records page.
-                </span>
-              </div>
-              <.cloud_mirror_fields
-                zone_form={@zone_form}
-                form_errors={@form_errors}
-                cloud_dns_connectors={@cloud_dns_connectors}
-              />
-            <% end %>
-
-            <div class="divider"></div>
-
-            <div class="flex justify-end gap-2">
-              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                disabled={map_size(@form_errors) > 0}
-                phx-disable-with="Saving..."
-              >
-                Save Changes
-              </button>
-            </div>
-          </.form>
-        </.card>
-      <% :import -> %>
-        <!-- Zone Import Form -->
-        <.card title="Import Zone Data">
-          <.form for={@import_form} phx-submit="import_zone" class="space-y-4">
-            <div class="form-group">
-              <label class="form-label font-semibold">Import Format</label>
-              <select
-                name="import[format]"
-                aria-label="Import format"
-                class="select w-full"
-              >
-                <option value="zone" selected={@import_form[:format].value == "zone"}>
-                  BIND Zone File Format
-                </option>
-                <option value="csv" selected={@import_form[:format].value == "csv"}>
-                  CSV (name,type,ttl,data)
-                </option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label font-semibold">Zone Data</label>
-              <textarea
-                name="import[zone_data]"
-                class="textarea h-64 font-mono text-sm"
-                placeholder="$ORIGIN example.com.\n$TTL 3600\n@       IN  SOA   ns1.example.com. admin.example.com. (\n                    2024010101 ; serial\n                    3600       ; refresh\n                    600        ; retry\n                    604800     ; expire\n                    86400 )    ; minimum\n@       IN  NS    ns1.example.com.\n@       IN  A     192.0.2.1\nwww     IN  A     192.0.2.2"
-              >{@import_form[:zone_data].value}</textarea>
-              <span class="helper-text">Paste zone file content or CSV data</span>
-            </div>
-
-            <div class="alert alert-info">
-              <.dm_mdi name="information" class="w-6 h-6" />
-              <span>
-                Zone import will create a new authoritative zone with the parsed records.
-              </span>
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="flex justify-end gap-2">
-              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Importing...">
-                Import Zone
-              </button>
-            </div>
-          </.form>
-        </.card>
-    <% end %>
-  </div>
-
-  <!-- Delete Confirmation Modal -->
-  <%= if @delete_confirm do %>
-    <.modal id="delete-modal" title="Delete Zone" show on_cancel={JS.push("close_modal")}>
-      <div class="py-4">
-        <p class="text-on-surface-variant">
-          Are you sure you want to delete the zone <strong class="font-mono">{@delete_confirm.name}</strong>?
-        </p>
-        <p class="mt-2 text-sm text-warning">
-          This action cannot be undone. All records in this zone will be deleted.
-        </p>
+        <div class="flex gap-2">
+          <.link
+            navigate={records_path(@selected_server.id, zone["zone_name"], zone["view_name"])}
+            class="btn btn-ghost btn-xs"
+          >Records</.link>
+          <.link
+            navigate={
+              zone_path(
+                @selected_server.id,
+                {:dns_zone_edit, zone["zone_name"]},
+                zone["view_name"]
+              )
+            }
+            class="btn btn-ghost btn-xs"
+          >Edit</.link>
+          <button
+            :if={zone["provider_id"]}
+            phx-click="sync_zone"
+            phx-value-view_name={zone["view_name"]}
+            phx-value-zone_name={zone["zone_name"]}
+            phx-value-provider_id={zone["provider_id"]}
+            class="btn btn-info btn-xs"
+            disabled={not @commands_enabled?}
+          >Sync</button>
+          <button
+            phx-click="delete_zone"
+            phx-value-view_name={zone["view_name"]}
+            phx-value-zone_name={zone["zone_name"]}
+            class="btn btn-error btn-xs"
+            disabled={not @commands_enabled?}
+          >Delete</button>
+        </div>
       </div>
-      <:actions>
-        <.dm_btn variant="ghost" type="button" phx-click="close_modal">Cancel</.dm_btn>
-        <.dm_btn
-          variant="error"
-          type="button"
-          phx-click="delete_zone"
-          phx-disable-with="Deleting..."
+    </.card>
+
+    <div :if={@live_action in [:new, :edit, :import]} class="grid grid-cols-1 gap-6">
+      <.card :if={@live_action == :new} title="Create zone">
+        <.form for={@zone_form} id="zone-form" phx-submit="create_zone" class="space-y-3">
+          <.input
+            id="create-zone-view"
+            field={@zone_form[:view_name]}
+            label="View"
+            required
+            readonly
+          />
+          <.input id="create-zone-name" field={@zone_form[:zone_name]} label="Zone name" required />
+          <.input
+            id="create-zone-type"
+            field={@zone_form[:zone_type]}
+            type="select"
+            label="Type"
+            options={[{"Authoritative", "authoritative"}, {"Forward", "forward"}]}
+          />
+          <.input
+            id="create-zone-provider"
+            field={@zone_form[:provider_id]}
+            label="Provider ID (optional)"
+          />
+          <button class="btn btn-primary" disabled={not @commands_enabled?}>Create</button>
+        </.form>
+      </.card>
+
+      <.card :if={@live_action == :edit} title="Update zone">
+        <.form for={@zone_form} id="zone-update-form" phx-submit="update_zone" class="mt-3">
+          <div class="space-y-3">
+            <.input
+              id="update-zone-view"
+              field={@zone_form[:view_name]}
+              label="View"
+              required
+              readonly
+            />
+            <.input
+              id="update-zone-name"
+              field={@zone_form[:zone_name]}
+              label="Zone name"
+              required
+              readonly
+            />
+            <.input
+              id="update-zone-type"
+              field={@zone_form[:zone_type]}
+              type="select"
+              label="Type"
+              options={[{"Authoritative", "authoritative"}, {"Forward", "forward"}]}
+            />
+            <.input
+              id="update-zone-provider"
+              field={@zone_form[:provider_id]}
+              label="Provider ID (optional)"
+            />
+          </div>
+          <button class="btn btn-secondary" disabled={not @commands_enabled?}>Update</button>
+        </.form>
+      </.card>
+
+      <.card :if={@live_action == :import} title="Zone import">
+        <div class="alert alert-warning">
+          Zone import is unavailable because its revision is not exposed by the management API.
+        </div>
+        <.form
+          for={@import_form}
+          id="zone-import-form"
+          phx-submit="import_zone"
+          class="mt-3 space-y-3"
         >
-          Delete Zone
-        </.dm_btn>
-      </:actions>
-    </.modal>
-  <% end %>
+          <.input field={@import_form[:view_name]} label="View" />
+          <.input field={@import_form[:zone_name]} label="Zone name" />
+          <.input field={@import_form[:source_id]} label="Provider or snapshot ID" />
+          <button class="btn btn-warning" disabled>Import unavailable</button>
+        </.form>
+      </.card>
+    </div>
+  </div>
 </Layouts.app>

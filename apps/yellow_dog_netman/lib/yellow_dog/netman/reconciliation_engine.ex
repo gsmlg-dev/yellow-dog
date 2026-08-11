@@ -21,6 +21,12 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   @default_interval 30_000
   @debounce_ms 100
+  @default_activation_timeout_ms 130_000
+  @max_activation_timeout_ms 300_000
+  @activation_poll_interval_ms 20
+  @default_deactivation_timeout_ms 31_000
+  @max_deactivation_timeout_ms 60_000
+  @deactivation_poll_interval_ms 20
 
   defstruct [:timer_ref, :debounce_ref, :last_default_route, :interval, reconciling: false]
 
@@ -43,10 +49,86 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     GenServer.call(__MODULE__, {:activate, profile_id})
   end
 
-  @doc "Deactivate a specific connection."
+  @doc "Activate every interface selected by a profile and wait for terminal convergence."
+  @spec activate_and_wait(String.t(), keyword()) ::
+          {:ok, [map()]} | {:error, term()}
+  def activate_and_wait(profile_id, opts \\ []) do
+    timeout =
+      Keyword.get_lazy(opts, :timeout, fn ->
+        Application.get_env(
+          :yellow_dog_netman,
+          :activation_timeout_ms,
+          @default_activation_timeout_ms
+        )
+      end)
+
+    if is_integer(timeout) and timeout > 0 and timeout <= @max_activation_timeout_ms do
+      case GenServer.call(__MODULE__, {:activate_selected, profile_id}) do
+        {:ok, connections} -> await_activation(profile_id, connections, timeout)
+        {:error, _reason} = error -> error
+      end
+    else
+      {:error, :invalid_timeout}
+    end
+  end
+
+  @doc "Activate one profile/interface connection and wait for terminal convergence."
+  @spec activate_connection_and_wait(String.t(), String.t(), keyword()) ::
+          {:ok, [map()]} | {:error, term()}
+  def activate_connection_and_wait(profile_id, interface, opts \\ []) do
+    timeout =
+      Keyword.get_lazy(opts, :timeout, fn ->
+        Application.get_env(
+          :yellow_dog_netman,
+          :activation_timeout_ms,
+          @default_activation_timeout_ms
+        )
+      end)
+
+    if is_integer(timeout) and timeout > 0 and timeout <= @max_activation_timeout_ms do
+      case GenServer.call(__MODULE__, {:activate_connection, profile_id, interface}) do
+        {:ok, connection} -> await_activation(profile_id, [connection], timeout)
+        {:error, _reason} = error -> error
+      end
+    else
+      {:error, :invalid_timeout}
+    end
+  end
+
+  @doc "Deactivate every connection using a profile."
   @spec deactivate(String.t()) :: :ok | {:error, term()}
   def deactivate(profile_id) do
     GenServer.call(__MODULE__, {:deactivate, profile_id})
+  end
+
+  @doc "Deactivate one profile/interface connection and wait for terminal cleanup."
+  @spec deactivate_connection_and_wait(String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def deactivate_connection_and_wait(profile_id, interface, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, @default_deactivation_timeout_ms)
+
+    if is_integer(timeout) and timeout > 0 and timeout <= @max_deactivation_timeout_ms do
+      case GenServer.call(__MODULE__, {:deactivate_connection, profile_id, interface}) do
+        {:ok, :deactivated} ->
+          {:ok, %{profile_id: profile_id, interface: interface, state: :deactivated}}
+
+        {:ok, connection} ->
+          await_deactivation(profile_id, connection, timeout)
+
+        {:error, _reason} = error ->
+          error
+      end
+    else
+      {:error, :invalid_timeout}
+    end
+  end
+
+  @doc "Returns a bounded reconciliation health snapshot."
+  @spec health() :: {:ok, map()} | {:error, term()}
+  def health do
+    GenServer.call(__MODULE__, :health)
+  catch
+    :exit, _reason -> {:error, :not_running}
   end
 
   ## Server callbacks
@@ -104,15 +186,49 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     {:reply, result, state}
   end
 
+  def handle_call({:activate_selected, profile_id}, _from, state) do
+    result = activate_selected_profile(profile_id)
+    {:reply, result, state}
+  end
+
+  def handle_call({:activate_connection, profile_id, interface}, _from, state) do
+    result = activate_selected_connection(profile_id, interface)
+    {:reply, result, state}
+  end
+
   def handle_call({:deactivate, profile_id}, _from, state) do
     result =
-      case Connection.Supervisor.find_connection_by_profile(profile_id) do
-        {:ok, pid} ->
-          Connection.FSM.deactivate(pid)
-          :ok
-
-        :error ->
+      case connection_pids_for_profile(profile_id) do
+        [] ->
           {:error, :not_found}
+
+        pids ->
+          Enum.each(pids, &Connection.FSM.deactivate/1)
+          :ok
+      end
+
+    {:reply, result, state}
+  end
+
+  def handle_call({:deactivate_connection, profile_id, interface}, _from, state) do
+    result = deactivate_selected_connection(profile_id, interface)
+    {:reply, result, state}
+  end
+
+  def handle_call(:health, _from, state) do
+    result =
+      try do
+        pending_changes =
+          LinkMonitor.list_links()
+          |> then(fn links -> diff(compute_desired(links), observe(links)) end)
+          |> length()
+
+        status = if state.reconciling or pending_changes > 0, do: :degraded, else: :healthy
+        {:ok, %{status: status, pending_changes: pending_changes}}
+      rescue
+        _exception -> {:error, :reconciliation_failed}
+      catch
+        _kind, _reason -> {:error, :reconciliation_failed}
       end
 
     {:reply, result, state}
@@ -344,7 +460,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     active_connections = Connection.Supervisor.list_connections()
 
     for conn <- active_connections,
-        not Map.has_key?(desired.connections, conn.profile_id),
+        not Map.has_key?(desired.connections, {conn.profile_id, conn.interface}),
         ProfileStore.get(conn.profile_id) == {:error, :not_found} do
       Diff.new(:deactivate_connection, conn.interface)
     end
@@ -576,13 +692,284 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     end
   end
 
-  defp push_profile_to_fsm(profile_id) do
+  defp activate_selected_profile(profile_id) do
     with {:ok, profile} <- ProfileStore.get(profile_id),
-         {:ok, pid} <- Connection.Supervisor.find_connection_by_profile(profile_id) do
-      Connection.FSM.update_profile(pid, profile)
+         [_ | _] = interfaces <- selected_interfaces(profile),
+         {:ok, connections} <- prepare_connections(profile, interfaces) do
+      Enum.each(connections, fn %{pid: pid} -> Connection.FSM.activate(pid) end)
+      {:ok, connections}
     else
-      _ -> :ok
+      [] -> {:error, :no_matching_interface}
+      {:error, _reason} = error -> error
     end
+  end
+
+  defp activate_selected_connection(profile_id, interface) do
+    with {:ok, profile} <- ProfileStore.get(profile_id),
+         {:ok, link} <- fetch_link(interface),
+         true <- matches_profile?(profile, link),
+         {:ok, pid} <- prepare_connection(profile, interface) do
+      Connection.FSM.activate(pid)
+      {:ok, %{interface: interface, pid: pid}}
+    else
+      false ->
+        {:error, :no_matching_interface}
+
+      {:error, reason} when reason in [:not_found, :no_matching_interface] ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error,
+         {:activation_failed,
+          %{
+            profile_id: profile_id,
+            interface: interface,
+            state: :prepare,
+            reason: reason
+          }}}
+    end
+  end
+
+  defp deactivate_selected_connection(profile_id, interface) do
+    case Connection.Supervisor.find_connection(interface) do
+      {:ok, pid} ->
+        deactivate_running_connection(profile_id, interface, pid)
+
+      :error ->
+        with {:ok, profile} <- ProfileStore.get(profile_id),
+             {:ok, link} <- fetch_link(interface),
+             true <- matches_profile?(profile, link) do
+          {:ok, :deactivated}
+        else
+          false -> {:error, :no_matching_interface}
+          {:error, _reason} = error -> error
+        end
+    end
+  end
+
+  defp deactivate_running_connection(profile_id, interface, pid) do
+    case Connection.FSM.get_state(pid) do
+      {:ok, %{profile_id: ^profile_id, state: state}}
+      when state in [:disconnected, :unavailable] ->
+        {:ok, :deactivated}
+
+      {:ok, %{profile_id: ^profile_id}} ->
+        Connection.FSM.deactivate(pid)
+        {:ok, %{interface: interface, pid: pid}}
+
+      {:ok, _other_connection} ->
+        {:error, :not_found}
+
+      {:error, reason} ->
+        {:error,
+         {:deactivation_failed,
+          %{
+            profile_id: profile_id,
+            interface: interface,
+            state: :not_running,
+            reason: reason
+          }}}
+    end
+  end
+
+  defp fetch_link(interface) do
+    case LinkMonitor.get_link(interface) do
+      nil -> {:error, :not_found}
+      link -> {:ok, link}
+    end
+  end
+
+  defp selected_interfaces(%{interface: interface}) when is_binary(interface), do: [interface]
+
+  defp selected_interfaces(profile) do
+    LinkMonitor.list_links()
+    |> Enum.filter(&matches_profile?(profile, &1))
+    |> Enum.map(& &1.interface)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp prepare_connections(profile, interfaces) do
+    Enum.reduce_while(interfaces, {:ok, []}, fn interface, {:ok, connections} ->
+      case prepare_connection(profile, interface) do
+        {:ok, pid} ->
+          {:cont, {:ok, [%{interface: interface, pid: pid} | connections]}}
+
+        {:error, reason} ->
+          {:halt,
+           {:error,
+            {:activation_failed,
+             %{
+               profile_id: profile.id,
+               interface: interface,
+               state: :prepare,
+               reason: reason
+             }}}}
+      end
+    end)
+    |> case do
+      {:ok, connections} -> {:ok, Enum.reverse(connections)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp prepare_connection(profile, interface) do
+    case Connection.Supervisor.find_connection(interface) do
+      {:ok, pid} ->
+        case Connection.FSM.get_state(pid) do
+          {:ok, %{profile_id: profile_id}} when profile_id != profile.id ->
+            {:error, {:interface_in_use, profile_id}}
+
+          {:ok, _connection} ->
+            Connection.FSM.update_profile(pid, profile)
+            {:ok, pid}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      :error ->
+        Connection.Supervisor.start_connection(interface, profile)
+    end
+  end
+
+  defp await_activation(profile_id, connections, timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_activation(profile_id, connections, deadline, timeout)
+  end
+
+  defp await_activation(profile_id, connections, deadline, timeout) do
+    observations = Enum.map(connections, &observe_connection/1)
+
+    case Enum.find(observations, &terminal_activation_failure?/1) do
+      nil ->
+        pending = Enum.reject(observations, &(&1.state == :activated))
+
+        if pending == [] do
+          {:ok,
+           Enum.map(observations, fn observation ->
+             %{
+               profile_id: profile_id,
+               interface: observation.interface,
+               state: :activated
+             }
+           end)}
+        else
+          await_pending_activation(profile_id, connections, pending, deadline, timeout)
+        end
+
+      failure ->
+        {:error,
+         {:activation_failed,
+          %{
+            profile_id: profile_id,
+            interface: failure.interface,
+            state: failure.state,
+            reason: failure.reason
+          }}}
+    end
+  end
+
+  defp await_pending_activation(profile_id, connections, pending, deadline, timeout) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining <= 0 do
+      {:error,
+       {:activation_timeout,
+        %{
+          profile_id: profile_id,
+          pending: Enum.map(pending, &Map.take(&1, [:interface, :state])),
+          timeout_ms: timeout
+        }}}
+    else
+      Process.sleep(min(@activation_poll_interval_ms, remaining))
+      await_activation(profile_id, connections, deadline, timeout)
+    end
+  end
+
+  defp await_deactivation(profile_id, connection, timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_deactivation(profile_id, connection, deadline, timeout)
+  end
+
+  defp await_deactivation(profile_id, connection, deadline, timeout) do
+    observation = observe_connection(connection)
+
+    cond do
+      observation.state in [:disconnected, :unavailable] ->
+        {:ok,
+         %{
+           profile_id: profile_id,
+           interface: observation.interface,
+           state: :deactivated
+         }}
+
+      observation.state == :not_running ->
+        {:error,
+         {:deactivation_failed,
+          %{
+            profile_id: profile_id,
+            interface: observation.interface,
+            state: observation.state,
+            reason: observation.reason
+          }}}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:error,
+         {:deactivation_timeout,
+          %{
+            profile_id: profile_id,
+            interface: observation.interface,
+            state: observation.state,
+            timeout_ms: timeout
+          }}}
+
+      true ->
+        Process.sleep(@deactivation_poll_interval_ms)
+        await_deactivation(profile_id, connection, deadline, timeout)
+    end
+  end
+
+  defp observe_connection(%{interface: interface, pid: pid}) do
+    case Connection.FSM.get_state(pid) do
+      {:ok, %{state: state} = connection} ->
+        %{interface: interface, state: state, reason: Map.get(connection, :error)}
+
+      {:error, reason} ->
+        %{interface: interface, state: :not_running, reason: reason}
+    end
+  end
+
+  defp terminal_activation_failure?(%{state: state}) when state in [:failed, :unavailable],
+    do: true
+
+  defp terminal_activation_failure?(%{state: :not_running}), do: true
+  defp terminal_activation_failure?(_observation), do: false
+
+  defp push_profile_to_fsm(profile_id) do
+    case ProfileStore.get(profile_id) do
+      {:ok, profile} ->
+        profile_id
+        |> connection_pids_for_profile()
+        |> Enum.each(&Connection.FSM.update_profile(&1, profile))
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  defp connection_pids_for_profile(profile_id) do
+    Connection.Supervisor.list_connections()
+    |> Enum.flat_map(fn
+      %{profile_id: ^profile_id, interface: interface} ->
+        case Connection.Supervisor.find_connection(interface) do
+          {:ok, pid} -> [pid]
+          :error -> []
+        end
+
+      _connection ->
+        []
+    end)
   end
 
   defp schedule_debounced_reconcile(state) do

@@ -1,186 +1,140 @@
 defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
-  @moduledoc """
-  LiveView for DHCPv4 lease management.
-
-  Displays all active and expired leases with filtering by MAC address,
-  state (bound/offered/expired), and pool. Supports real-time updates
-  via telemetry subscriptions and allows lease release operations.
-  """
+  @moduledoc "Management-backed DHCPv4 leases for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.DhcpLive.ManagementComponents
+  alias YellowDog.Console.DhcpLive.ManagementSupport
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
+
+  @family :ipv4
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      # Subscribe to lease events
-      :telemetry.attach(
-        "dhcpv4-leases-#{inspect(self())}",
-        [:yellow_dog, :dhcpv4, :lease_allocated],
-        &handle_telemetry_event/4,
-        %{pid: self()}
-      )
-    end
-
     {:ok,
-     socket
-     |> assign(
-       page_title: "DHCP Leases",
-       service_running: service_running?(YellowDog.Dhcpv4.LeaseManager),
+     assign(socket,
+       page_title: "DHCPv4 Leases",
+       subscribed_server_id: nil,
+       family_label: ManagementSupport.family_label(@family),
+       base_path: nil,
+       service_running: false,
+       all_leases: [],
+       leases: [],
        search_query: "",
        filter_state: "all",
-       filter_pool: "all"
-     )
-     |> load_leases()}
+       commands_enabled?: false,
+       management_error: nil,
+       cached_observed_at: nil
+     )}
+  end
+
+  @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(:base_path, ServicePaths.server_path(server_id, :dhcpv4))
+
+    {:noreply, if(connected?(socket), do: load_leases(socket), else: socket)}
   end
 
   @impl true
   def handle_event("search", %{"search" => query}, socket) do
-    {:noreply,
-     socket
-     |> assign(:search_query, query)
-     |> load_leases()}
+    {:noreply, socket |> assign(:search_query, query) |> filter_leases()}
   end
 
-  @impl true
   def handle_event("filter_state", %{"state" => state}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_state, state)
-     |> load_leases()}
+    state = if state in ["all", "active", "released", "expired"], do: state, else: "all"
+    {:noreply, socket |> assign(:filter_state, state) |> filter_leases()}
   end
 
-  @impl true
-  def handle_event("filter_pool", %{"pool" => pool}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_pool, pool)
-     |> load_leases()}
-  end
+  def handle_event("filter_pool", _params, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_event("release_lease", %{"mac" => mac}, socket) do
-    mac_binary = parse_mac_string(mac)
+  def handle_event("release_lease", %{"lease-id" => lease_id}, socket) do
+    with :ok <- ManagementSupport.mutable(socket),
+         lease when not is_nil(lease) <-
+           ManagementSupport.find_lease(socket.assigns.all_leases, lease_id),
+         opts when is_list(opts) <- ManagementSupport.command_options(lease.resource) do
+      result =
+        ServerManagement.dhcp_leases_release(
+          socket.assigns.selected_server.id,
+          %{"family" => ManagementSupport.family_wire(@family), "lease_id" => lease_id},
+          opts
+        )
 
-    case YellowDog.Dhcpv4.release_lease(mac_binary) do
-      :ok ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Lease released successfully")
-         |> load_leases()}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to release lease: #{inspect(reason)}")}
+      finish_release(socket, result, lease_id)
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+      nil -> {:noreply, put_flash(socket, :error, "Lease revision is unavailable")}
+      _invalid -> {:noreply, put_flash(socket, :error, "Lease revision is unavailable")}
     end
   end
 
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    leases = socket.assigns.filtered_leases
-    csv = build_csv(leases)
-    filename = "dhcpv4_leases_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+  def handle_event("refresh", _params, socket), do: {:noreply, load_leases(socket)}
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_leases()}
   end
 
-  @impl true
-  def handle_info({:telemetry_event, _event, _measurements, _metadata}, socket) do
-    {:noreply, load_leases(socket)}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, _socket) do
-    :telemetry.detach("dhcpv4-leases-#{inspect(self())}")
-    :ok
-  end
-
-  # Private Functions
+  def render(assigns), do: ManagementComponents.leases(assigns)
 
   defp load_leases(socket) do
-    all_leases = get_all_leases()
-    pools = get_unique_pools(all_leases)
-    filtered = filter_leases(all_leases, socket.assigns)
+    server_id = socket.assigns.selected_server.id
+    payload = %{"family" => ManagementSupport.family_wire(@family)}
+    status = ServerManagement.dhcp_status_get(server_id, payload)
+    leases_result = ServerManagement.dhcp_leases_list(server_id, payload)
+    results = [status, leases_result]
+    management_error = ManagementSupport.first_error(results)
 
     socket
-    |> assign(:all_leases, all_leases)
-    |> assign(:filtered_leases, filtered)
-    |> assign(:pools, pools)
+    |> assign(
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DHCPv4 Leases",
+      service_running: ManagementSupport.service_running?(status, @family),
+      all_leases:
+        leases_result
+        |> ManagementSupport.items(@family)
+        |> ManagementSupport.lease_views(),
+      commands_enabled?:
+        socket.assigns.service_online? and is_nil(management_error) and
+          not ManagementSupport.cached?(results),
+      management_error: management_error,
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
+    )
+    |> filter_leases()
   end
 
-  defp get_all_leases do
-    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.list_leases() end, [])
+  defp filter_leases(socket) do
+    assign(
+      socket,
+      :leases,
+      ManagementSupport.filter_leases(
+        socket.assigns.all_leases,
+        socket.assigns.search_query,
+        socket.assigns.filter_state
+      )
+    )
   end
 
-  defp get_unique_pools(leases) do
-    leases
-    |> Enum.map(& &1.pool_name)
-    |> Enum.uniq()
-    |> Enum.sort()
+  defp finish_release(socket, %ManagementResult{status: :ok}, lease_id) do
+    {:noreply,
+     socket
+     |> assign(:all_leases, ManagementSupport.release_lease(socket.assigns.all_leases, lease_id))
+     |> filter_leases()
+     |> put_flash(:info, "Lease released successfully")}
   end
 
-  defp filter_leases(leases, %{search_query: query, filter_state: state, filter_pool: pool}) do
-    leases
-    |> filter_by_search(query)
-    |> filter_by_state(state)
-    |> filter_by_pool(pool)
-    |> Enum.sort_by(& &1.updated_at, :desc)
-  end
-
-  defp filter_by_search(leases, ""), do: leases
-
-  defp filter_by_search(leases, query) do
-    query_lower = String.downcase(query)
-
-    Enum.filter(leases, fn lease ->
-      mac_match =
-        format_mac(lease.mac_address) |> String.downcase() |> String.contains?(query_lower)
-
-      ip_match = format_ip(lease.ip_address) |> String.contains?(query_lower)
-
-      hostname_match =
-        if lease.hostname,
-          do: String.downcase(lease.hostname) |> String.contains?(query_lower),
-          else: false
-
-      mac_match || ip_match || hostname_match
-    end)
-  end
-
-  defp count_by_state(leases, state) do
-    Enum.count(leases, &(&1.state == state))
-  end
-
-  defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
-    send(pid, {:telemetry_event, event, measurements, metadata})
-  end
-
-  defp build_csv(leases) do
-    header =
-      "MAC Address,IP Address,Hostname,State,Pool,Allocated At,Expires At,Time Remaining\r\n"
-
-    rows =
-      Enum.map_join(leases, "\r\n", fn lease ->
-        [
-          csv_escape(format_mac(lease.mac_address)),
-          csv_escape(format_ip(lease.ip_address)),
-          csv_escape(lease.hostname || ""),
-          csv_escape(to_string(lease.state)),
-          csv_escape(lease.pool_name || ""),
-          csv_escape(format_expiration(lease.allocated_at)),
-          csv_escape(format_expiration(lease.expires_at)),
-          csv_escape(format_time_remaining(lease.expires_at))
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
-  end
+  defp finish_release(socket, %ManagementResult{status: :error, message: message}, _lease_id),
+    do: {:noreply, put_flash(socket, :error, message)}
 end

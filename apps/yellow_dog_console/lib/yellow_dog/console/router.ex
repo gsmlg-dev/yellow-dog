@@ -46,6 +46,14 @@ defmodule YellowDog.Console.Router do
     plug YellowDog.Console.Plugs.ManagementReleaseOnly
   end
 
+  pipeline :server_scope do
+    plug YellowDog.Console.Hooks.ServiceScope, :server
+  end
+
+  pipeline :netman_scope do
+    plug YellowDog.Console.Hooks.ServiceScope, :netman
+  end
+
   scope "/", YellowDog.Console do
     pipe_through :browser
 
@@ -70,9 +78,21 @@ defmodule YellowDog.Console.Router do
     get "/blobs/:sha256", ManagementBlobController, :show
   end
 
-  # Server section — protocol services, identity, fingerprint
+  # Server selector — never chooses a default record
   scope "/server", YellowDog.Console do
     pipe_through :browser
+
+    live "/", ServerLive.SelectorLive
+    get "/settings/dns", ServiceRedirectController, :server
+    get "/settings/mdns", ServiceRedirectController, :server
+    get "/settings/dhcpv4", ServiceRedirectController, :server
+    get "/settings/dhcpv6", ServiceRedirectController, :server
+    get "/settings/netboot", ServiceRedirectController, :server
+  end
+
+  # Server section — protocol services, identity, fingerprint
+  scope "/server/:server_id", YellowDog.Console do
+    pipe_through [:browser, :server_scope]
 
     live "/dashboard", DashboardLive
 
@@ -140,6 +160,14 @@ defmodule YellowDog.Console.Router do
     live "/identity/policies", IdentityLive.PoliciesLive
     live "/identity/audit", IdentityLive.AuditLive
 
+    # Fingerprint (provider data)
+    live "/fingerprint/devices", FingerprintLive.DevicesLive
+    live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
+    live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive
+
+    # Legacy cloud-provider entry point backed by the selected Server gateway
+    live "/dns/cloud-provider", CloudDnsLive
+
     # Settings (service configuration)
     live "/settings", SettingsLive, :dns
     live "/settings/dns", SettingsLive, :dns
@@ -147,6 +175,19 @@ defmodule YellowDog.Console.Router do
     live "/settings/dhcpv4", SettingsLive, :dhcpv4
     live "/settings/dhcpv6", SettingsLive, :dhcpv6
     live "/settings/netboot", SettingsLive, :netboot
+  end
+
+  # Legacy Server service paths — redirect to selection without inferring an ID
+  scope "/server", YellowDog.Console do
+    pipe_through :browser
+
+    get "/*legacy_path", ServiceRedirectController, :server
+  end
+
+  scope "/service-not-found", YellowDog.Console do
+    pipe_through :browser
+
+    get "/:service", ServiceRedirectController, :not_found
   end
 
   # Tool section — network utilities
@@ -172,11 +213,11 @@ defmodule YellowDog.Console.Router do
     live "/logs", LogsLive, :index
     live "/logs/realtime", LogsLive, :realtime
     live "/logs/tasks", LogsLive, :tasks
-    live "/logs/dns-query", DnsLive.QueryLogsLive
-    live "/logs/dhcpv4-activity", Dhcpv4Live.ActivityLive
-    live "/logs/dhcpv6-activity", Dhcpv6Live.ActivityLive
-    live "/logs/netboot", NetbootLive.LogLive
-    live "/logs/identity-audit", IdentityLive.AuditLive
+    get "/logs/dns-query", ServiceRedirectController, :server
+    get "/logs/dhcpv4-activity", ServiceRedirectController, :server
+    get "/logs/dhcpv6-activity", ServiceRedirectController, :server
+    get "/logs/netboot", ServiceRedirectController, :server
+    get "/logs/identity-audit", ServiceRedirectController, :server
     live "/process-map", ProcessMapLive
     live "/backups", BackupsLive
     live "/backups/restore", BackupsLive, :restore
@@ -185,10 +226,10 @@ defmodule YellowDog.Console.Router do
     live "/tasks/:task", TasksLive.Show
 
     # Fingerprint (provider data)
-    live "/provider/cloud-dns", CloudDnsLive
-    live "/fingerprint/devices", FingerprintLive.DevicesLive
-    live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
-    live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive
+    get "/provider/cloud-dns", ServiceRedirectController, :server
+    get "/fingerprint/devices", ServiceRedirectController, :server
+    get "/fingerprint/devices/:mac", ServiceRedirectController, :server
+    get "/fingerprint/fingerprints", ServiceRedirectController, :server
 
     # IP Database management
     live "/ip-database", IpDatabaseLive
@@ -197,16 +238,23 @@ defmodule YellowDog.Console.Router do
     live "/mac-database", MacDatabaseLive
   end
 
-  # Netman section — central management of remote Netman instances
+  # Netman selector and legacy unscoped routes
   scope "/netman", YellowDog.Console do
     pipe_through :browser
 
     live "/", NetmanLive.DashboardLive
+    get "/config", ServiceRedirectController, :netman
+  end
+
+  # Netman section — all pages target one concrete management record
+  scope "/netman/:netman_id", YellowDog.Console do
+    pipe_through [:browser, :netman_scope]
+
+    live "/", NetmanLive.NodeLive
     live "/config", NetmanLive.ConfigLive
-    live "/:node_id", NetmanLive.NodeLive
-    live "/:node_id/interfaces", NetmanLive.InterfacesLive
-    live "/:node_id/resolved", NetmanLive.ResolvedLive
-    live "/:node_id/dhcp-client", NetmanLive.DhcpClientLive
+    live "/interfaces", NetmanLive.InterfacesLive
+    live "/resolved", NetmanLive.ResolvedLive
+    live "/dhcp-client", NetmanLive.DhcpClientLive
   end
 
   # HTTP boot endpoints — no CSRF, no session (called by iPXE/installer)

@@ -162,11 +162,44 @@ defmodule YellowDog.Netman.Integration.ProfileSelectionTest do
     desired = ReconciliationEngine.compute_desired()
 
     # Only autoconnect profile should appear in desired state
-    assert Map.has_key?(desired.connections, auto_profile.id)
-    refute Map.has_key?(desired.connections, manual_profile.id)
+    assert Map.has_key?(desired.connections, {auto_profile.id, iface})
+    refute Map.has_key?(desired.connections, {manual_profile.id, iface})
 
     ProfileStore.delete(auto_profile.id)
     ProfileStore.delete(manual_profile.id)
     MockNetlink.link_removed(iface)
+  end
+
+  test "compute_desired preserves a wildcard profile for every matching interface" do
+    suffix = :rand.uniform(65_535)
+    interfaces = ["psw0_#{suffix}", "psw1_#{suffix}"]
+
+    profile = %Profile{
+      id: "wildcard-multi-#{suffix}",
+      type: :ethernet,
+      interface: nil,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: 1400},
+      ipv4: %{method: :disabled, address: nil, gateway: nil, dns: ["1.1.1.1"]},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    ProfileStore.put(profile.id, profile)
+    Enum.each(interfaces, &MockNetlink.link_up(&1, carrier: true))
+    Process.sleep(50)
+
+    desired = ReconciliationEngine.compute_desired()
+
+    for interface <- interfaces do
+      assert %{
+               interface: ^interface,
+               mtu: 1400,
+               dns: ["1.1.1.1"]
+             } = desired.connections[{profile.id, interface}]
+    end
+
+    ProfileStore.delete(profile.id)
+    Enum.each(interfaces, &MockNetlink.link_removed/1)
   end
 end

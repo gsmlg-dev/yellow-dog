@@ -9,19 +9,6 @@ defmodule YellowDog.Server.Control.Identity do
 
   @validation_observed_at "1970-01-01T00:00:00Z"
   @validation_revision String.duplicate("0", 64)
-  @unsupported_operations [
-    "server.identity.approvals.list",
-    "server.identity.tokens.list",
-    "server.identity.policies.get",
-    "server.identity.tokens.create",
-    "server.identity.tokens.revoke",
-    "server.identity.policies.update"
-  ]
-  @unsupported_mutations [
-    "server.identity.tokens.create",
-    "server.identity.tokens.revoke",
-    "server.identity.policies.update"
-  ]
   @host_mutations [
     "server.identity.hosts.approve",
     "server.identity.hosts.revoke",
@@ -35,10 +22,10 @@ defmodule YellowDog.Server.Control.Identity do
 
   @spec dispatch(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def dispatch("server.identity.hosts.list", payload), do: list_hosts(payload)
+  def dispatch("server.identity.approvals.list", payload), do: list_approvals(payload)
+  def dispatch("server.identity.tokens.list", payload), do: list_tokens(payload)
+  def dispatch("server.identity.policies.get", payload), do: get_policies(payload)
   def dispatch("server.identity.audit.list", payload), do: list_audit(payload)
-
-  def dispatch(operation, payload) when operation in @unsupported_operations,
-    do: unsupported(operation, payload)
 
   def dispatch("server.identity.hosts.approve", payload),
     do: mutate_host(:approve, payload)
@@ -49,9 +36,13 @@ defmodule YellowDog.Server.Control.Identity do
   def dispatch("server.identity.hosts.delete", payload),
     do: delete_host(payload)
 
+  def dispatch("server.identity.tokens.create", payload), do: create_token(payload)
+  def dispatch("server.identity.tokens.revoke", payload), do: revoke_token(payload)
+  def dispatch("server.identity.policies.update", payload), do: update_policy(payload)
+
   def dispatch(_operation, _payload), do: unsupported_error()
 
-  @spec current(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
+  @spec current(String.t(), map()) :: {:ok, map() | :missing} | {:error, Error.t()}
   def current(operation, payload) when operation in @host_mutations do
     with {:ok, payload} <- validate_payload(operation, payload),
          {:ok, resource} <- owner_host(payload["host_id"]),
@@ -63,8 +54,37 @@ defmodule YellowDog.Server.Control.Identity do
     end
   end
 
-  def current(operation, payload) when operation in @unsupported_mutations,
-    do: unsupported(operation, payload)
+  def current("server.identity.tokens.create" = operation, payload) do
+    with {:ok, payload} <- validate_payload(operation, payload) do
+      case owner_token(payload["token_id"]) do
+        {:ok, resource} -> {:ok, resource}
+        {:error, %Error{code: :not_found}} -> {:ok, :missing}
+        {:error, %Error{}} = error -> error
+      end
+    end
+  end
+
+  def current("server.identity.tokens.revoke" = operation, payload) do
+    with {:ok, payload} <- validate_payload(operation, payload),
+         {:ok, resource} <- owner_token(payload["token_id"]),
+         true <- resource["token_id"] == payload["token_id"] do
+      {:ok, resource}
+    else
+      false -> invalid_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  def current("server.identity.policies.update" = operation, payload) do
+    with {:ok, %{"policies" => [_policy]}} <- validate_payload(operation, payload),
+         {:ok, policies} <- owner_list(:control_list_policies),
+         {:ok, result} <- policy_set(policies) do
+      {:ok, result}
+    else
+      {:ok, _payload} -> invalid_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
 
   def current(_operation, _payload), do: unsupported_error()
 
@@ -75,6 +95,37 @@ defmodule YellowDog.Server.Control.Identity do
          {:ok, hosts} <- owner_list(:control_list_hosts),
          {:ok, resources} <- validate_items(hosts, &validate_host/1) do
       list_result(operation, resources, payload, & &1["host_id"])
+    end
+  end
+
+  defp list_approvals(payload) do
+    operation = "server.identity.approvals.list"
+
+    with {:ok, payload} <- validate_payload(operation, payload),
+         {:ok, approvals} <- owner_list(:control_list_approvals),
+         {:ok, resources} <- validate_items(approvals, &validate_approval/1) do
+      list_result(operation, resources, payload, & &1["approval_id"])
+    end
+  end
+
+  defp list_tokens(payload) do
+    operation = "server.identity.tokens.list"
+
+    with {:ok, payload} <- validate_payload(operation, payload),
+         {:ok, tokens} <- owner_list(:control_list_tokens),
+         {:ok, resources} <- validate_items(tokens, &validate_token/1) do
+      list_result(operation, resources, payload, & &1["token_id"])
+    end
+  end
+
+  defp get_policies(payload) do
+    operation = "server.identity.policies.get"
+
+    with {:ok, _payload} <- validate_payload(operation, payload),
+         {:ok, policies} <- owner_list(:control_list_policies),
+         {:ok, result} <- policy_set(policies),
+         {:ok, result} <- validate_result(operation, result) do
+      {:ok, result}
     end
   end
 
@@ -116,9 +167,54 @@ defmodule YellowDog.Server.Control.Identity do
     end
   end
 
-  defp unsupported(operation, payload) do
-    with {:ok, _payload} <- validate_payload(operation, payload) do
-      unsupported_error()
+  defp create_token(payload) do
+    operation = "server.identity.tokens.create"
+
+    with {:ok, payload} <- validate_payload(operation, payload),
+         {:ok, result} <- dependency_call(:identity, :control_create_token, [payload]),
+         {:ok, resource, secret, expires_at} <- owner_created_token(result),
+         true <- resource["token_id"] == payload["token_id"],
+         true <- resource["label"] == payload["label"],
+         true <- resource["state"] in ["active", "expired"],
+         true <- expires_at == payload["expires_at"],
+         result = %{
+           "token_id" => resource["token_id"],
+           "secret" => secret,
+           "expires_at" => expires_at
+         },
+         {:ok, result} <- validate_result(operation, result) do
+      {:ok, result}
+    else
+      false -> invalid_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp revoke_token(payload) do
+    operation = "server.identity.tokens.revoke"
+
+    with {:ok, payload} <- validate_payload(operation, payload),
+         {:ok, result} <-
+           dependency_call(:identity, :control_revoke_token, [payload["token_id"]]),
+         {:ok, prior, resulting} <- owner_token_mutation(result),
+         :ok <- validate_token_transition(payload["token_id"], prior, resulting) do
+      revisioned_resource(operation, "identity_token", resulting, "token_id")
+    end
+  end
+
+  defp update_policy(payload) do
+    operation = "server.identity.policies.update"
+
+    with {:ok, %{"policies" => [policy]} = payload} <- validate_payload(operation, payload),
+         {:ok, result} <-
+           dependency_call(:identity, :control_update_policies, [payload["policies"]]),
+         {:ok, _prior, [resulting]} <- owner_policy_mutation(result),
+         true <- resulting == policy do
+      revisioned_resource(operation, "identity_policy", resulting, "policy_id")
+    else
+      {:ok, _payload} -> invalid_error()
+      false -> invalid_error()
+      {:error, %Error{}} = error -> error
     end
   end
 
@@ -139,6 +235,45 @@ defmodule YellowDog.Server.Control.Identity do
       {:error, %Error{}} = error -> error
     end
   end
+
+  defp owner_token(token_id) do
+    case dependency_call(:identity, :control_token, [token_id]) do
+      {:ok, {:ok, resource}} -> validate_token(resource)
+      {:ok, {:error, reason}} -> owner_error(reason)
+      {:ok, _result} -> apply_failed_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp owner_created_token({:ok, resource, secret, expires_at})
+       when is_binary(secret) and secret != "" do
+    with {:ok, resource} <- validate_token(resource) do
+      {:ok, resource, secret, expires_at}
+    end
+  end
+
+  defp owner_created_token({:error, reason}), do: owner_error(reason)
+  defp owner_created_token(_result), do: invalid_error()
+
+  defp owner_token_mutation({:ok, prior, resulting}) do
+    with {:ok, prior} <- validate_token(prior),
+         {:ok, resulting} <- validate_token(resulting) do
+      {:ok, prior, resulting}
+    end
+  end
+
+  defp owner_token_mutation({:error, reason}), do: owner_error(reason)
+  defp owner_token_mutation(_result), do: invalid_error()
+
+  defp owner_policy_mutation({:ok, prior, resulting}) do
+    with {:ok, %{"policies" => prior}} <- policy_set(prior),
+         {:ok, %{"policies" => resulting}} <- policy_set(resulting) do
+      {:ok, prior, resulting}
+    end
+  end
+
+  defp owner_policy_mutation({:error, reason}), do: owner_error(reason)
+  defp owner_policy_mutation(_result), do: invalid_error()
 
   defp owner_host_mutation({:ok, prior, resulting}) do
     with {:ok, prior} <- validate_host(prior),
@@ -166,6 +301,16 @@ defmodule YellowDog.Server.Control.Identity do
     if prior["host_id"] == host_id and resulting["host_id"] == host_id and
          prior["name"] == resulting["name"] and prior["state"] in prior_states and
          resulting["state"] == resulting_state do
+      :ok
+    else
+      invalid_error()
+    end
+  end
+
+  defp validate_token_transition(token_id, prior, resulting) do
+    if prior["token_id"] == token_id and resulting["token_id"] == token_id and
+         prior["label"] == resulting["label"] and prior["state"] in ["active", "expired"] and
+         resulting["state"] == "revoked" do
       :ok
     else
       invalid_error()
@@ -204,6 +349,32 @@ defmodule YellowDog.Server.Control.Identity do
     end
   end
 
+  defp validate_approval(resource) do
+    validation = %{
+      "items" => [resource],
+      "revision" => @validation_revision,
+      "observed_at" => @validation_observed_at
+    }
+
+    case validate_result("server.identity.approvals.list", validation) do
+      {:ok, %{"items" => [resource]}} -> {:ok, resource}
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_token(resource) do
+    validation = %{
+      "items" => [resource],
+      "revision" => @validation_revision,
+      "observed_at" => @validation_observed_at
+    }
+
+    case validate_result("server.identity.tokens.list", validation) do
+      {:ok, %{"items" => [resource]}} -> {:ok, resource}
+      _ -> invalid_error()
+    end
+  end
+
   defp validate_audit(resource) do
     validation = %{
       "items" => [resource],
@@ -216,6 +387,19 @@ defmodule YellowDog.Server.Control.Identity do
       _ -> invalid_error()
     end
   end
+
+  defp policy_set(policies) when is_list(policies) do
+    with {:ok, %{"policies" => policies}} <-
+           validate_result("server.identity.policies.get", %{"policies" => policies}),
+         :ok <- validate_unique_ids(policies, & &1["policy_id"]),
+         sorted <- Enum.sort_by(policies, & &1["policy_id"]),
+         result = %{"policies" => sorted},
+         {:ok, result} <- validate_result("server.identity.policies.get", result) do
+      {:ok, result}
+    end
+  end
+
+  defp policy_set(_policies), do: invalid_error()
 
   defp list_result(operation, items, payload, id_fun) do
     with :ok <- validate_unique_ids(items, id_fun),
@@ -258,6 +442,19 @@ defmodule YellowDog.Server.Control.Identity do
     }
 
     validate_result(operation, result)
+  end
+
+  defp revisioned_resource(operation, resource_type, resource, id_key) do
+    with {:ok, revision} <- Revision.calculate(resource),
+         result = %{
+           "resource_type" => resource_type,
+           "resource_id" => resource[id_key],
+           "revision" => revision,
+           "resource" => resource
+         },
+         {:ok, result} <- validate_result(operation, result) do
+      {:ok, result}
+    end
   end
 
   defp deleted_result(operation, prior) do

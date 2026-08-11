@@ -40,6 +40,11 @@ defmodule YellowDog.Console.Plugs.ManagementReleaseOnly do
 
   defp allowed_path?("/management"), do: true
   defp allowed_path?("/management/" <> _rest), do: true
+  defp allowed_path?("/server"), do: true
+  defp allowed_path?("/server/" <> _rest), do: true
+  defp allowed_path?("/netman"), do: true
+  defp allowed_path?("/netman/" <> _rest), do: true
+  defp allowed_path?("/service-not-found/" <> _rest), do: true
   defp allowed_path?("/live" <> _rest), do: true
   defp allowed_path?("/assets/" <> _rest), do: true
   defp allowed_path?("/favicon" <> _rest), do: true

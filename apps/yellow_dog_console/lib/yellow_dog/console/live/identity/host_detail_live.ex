@@ -1,330 +1,199 @@
 defmodule YellowDog.Console.IdentityLive.HostDetailLive do
+  @moduledoc "Management-backed Identity host detail for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  alias YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.IdentityLive.ManagementComponents
+  alias YellowDog.Console.IdentityLive.ManagementSupport
+  alias YellowDog.Console.Layouts
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "identity:hosts")
-    end
-
-    {:ok, socket |> assign(:host_id, id) |> load_host()}
+  def mount(%{"id" => host_id}, _session, socket) do
+    {:ok,
+     assign(socket,
+       page_title: "Identity Host",
+       subscribed_server_id: nil,
+       host_id: host_id,
+       host: nil,
+       management_error: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_info({:host_updated, host}, socket) do
-    if host.id == socket.assigns.host_id do
-      {:noreply, assign(socket, :host, host)}
-    else
-      {:noreply, socket}
-    end
-  end
+  def handle_params(%{"server_id" => server_id, "id" => host_id}, _uri, socket) do
+    socket =
+      socket
+      |> assign(:host_id, host_id)
+      |> ManagementSupport.subscribe(server_id)
 
-  def handle_info(_msg, socket), do: {:noreply, socket}
+    {:noreply, if(connected?(socket), do: load_host(socket, server_id), else: socket)}
+  end
 
   @impl true
-  def handle_event("approve", _params, socket) do
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.approve(socket.assigns.host_id) end,
-        {:error, :unavailable}
-      )
+  def handle_event("approve", _params, socket), do: {:noreply, mutate_host(socket, :approve)}
+  def handle_event("revoke", _params, socket), do: {:noreply, mutate_host(socket, :revoke)}
+  def handle_event("delete", _params, socket), do: {:noreply, mutate_host(socket, :delete)}
 
-    case result do
-      {:ok, host} -> {:noreply, assign(socket, :host, host)}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to approve host")}
-    end
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_host(server_id)}
   end
 
-  def handle_event("revoke", _params, socket) do
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke(socket.assigns.host_id, "console-operator") end,
-        {:error, :unavailable}
-      )
-
-    case result do
-      {:ok, host} -> {:noreply, assign(socket, :host, host)}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to revoke host")}
-    end
-  end
-
-  def handle_event("delete", _params, socket) do
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.delete_host(socket.assigns.host_id) end,
-        {:error, :unavailable}
-      )
-
-    case result do
-      :ok ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Host deleted")
-         |> push_navigate(to: ~p"/server/identity/hosts")}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete host")}
-    end
-  end
-
-  defp load_host(socket) do
-    host_id = socket.assigns.host_id
-
-    host =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn ->
-          case YellowDogIdentity.get_host(host_id) do
-            {:ok, host} -> host
-            _ -> nil
-          end
-        end,
-        nil
-      )
-
-    audit_entries =
-      if host do
-        ServiceHelper.safe_call(
-          YellowDogIdentity,
-          fn -> YellowDogIdentity.audit_log(host_id: host_id, limit: 20) end,
-          []
-        )
-      else
-        []
-      end
-
-    socket
-    |> assign(:host, host)
-    |> assign(:audit_entries, audit_entries)
-    |> assign(:page_title, if(host, do: "Host: #{host.hostname}", else: "Host Not Found"))
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="flex items-center gap-2">
-          <.link navigate={~p"/server/identity/hosts"} class="btn btn-sm btn-ghost">
-            ← Back
-          </.link>
-          <h1 class="text-2xl font-bold">{@page_title}</h1>
-        </div>
+      <div id="identity-host-detail" class="space-y-6">
+        <ManagementComponents.page_header
+          title="Identity Host"
+          subtitle={@host_id}
+          server={@selected_server}
+          online?={@service_online?}
+          back={ServicePaths.server_path(@selected_server.id, :identity_hosts)}
+        />
 
-        <div :if={@host == nil} class="alert alert-error">
-          Host not found.
-        </div>
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
 
-        <div :if={@host} class="space-y-6">
-          <div class="flex gap-2">
+        <.card :if={@host}>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="card-title">{@host["name"] || @host["host_id"]}</h2>
+              <p class="mt-1 font-mono text-sm text-on-surface-variant">{@host["host_id"]}</p>
+            </div>
+            <.badge color={state_color(@host["state"])}>{@host["state"]}</.badge>
+          </div>
+
+          <dl class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <dt class="text-sm text-on-surface-variant">Management revision</dt>
+              <dd class="break-all font-mono text-sm">{@host["revision"]}</dd>
+            </div>
+          </dl>
+
+          <div class="mt-6 flex gap-2">
             <button
-              :if={@host.status == :pending}
-              class="btn btn-sm btn-success"
+              :if={@host["state"] == "pending"}
               phx-click="approve"
-              data-confirm="Approve this host?"
+              disabled={not @service_online?}
+              data-management-command="true"
+              class="btn btn-success btn-sm"
             >
               Approve
             </button>
             <button
-              :if={@host.status in [:pending, :approved]}
-              class="btn btn-sm btn-error"
+              :if={@host["state"] in ["pending", "approved"]}
               phx-click="revoke"
-              data-confirm="Revoke this host?"
+              disabled={not @service_online?}
+              data-management-command="true"
+              class="btn btn-warning btn-sm"
             >
               Revoke
             </button>
             <button
-              :if={@host.status == :revoked}
-              class="btn btn-sm btn-error btn-outline"
+              :if={@host["state"] == "revoked"}
               phx-click="delete"
-              data-confirm="Permanently delete this host? This cannot be undone."
+              disabled={not @service_online?}
+              data-management-command="true"
+              class="btn btn-error btn-sm"
             >
               Delete
             </button>
           </div>
+        </.card>
 
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div class="card bg-surface shadow">
-              <div class="card-body">
-                <h2 class="card-title">Identity</h2>
-                <dl class="space-y-2">
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">ID</dt>
-                    <dd class="font-mono text-sm">{@host.id}</dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Hostname</dt>
-                    <dd class="font-bold">{@host.hostname}</dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Machine ID</dt>
-                    <dd class="font-mono text-sm">{@host.machine_id || "-"}</dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Key Fingerprint</dt>
-                    <dd class="font-mono text-xs">{@host.key_fingerprint}</dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Age Recipient</dt>
-                    <dd class="font-mono text-xs max-w-[300px] truncate">{@host.age_recipient}</dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
-
-            <div class="card bg-surface shadow">
-              <div class="card-body">
-                <h2 class="card-title">Status & Trust</h2>
-                <dl class="space-y-2">
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Status</dt>
-                    <dd>
-                      <span class={status_badge_class(@host.status)}>
-                        {@host.status}
-                      </span>
-                    </dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Trust Level</dt>
-                    <dd><span class="badge badge-outline">{@host.trust_level}</span></dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Trust Provider</dt>
-                    <dd>{@host.trust_provider}</dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Role</dt>
-                    <dd>{@host.role || "-"}</dd>
-                  </div>
-                  <div class="flex justify-between">
-                    <dt class="text-on-surface-variant">Datacenter</dt>
-                    <dd>{@host.datacenter || "-"}</dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
-          </div>
-
-          <div :if={@host.trust_evidence != %{}} class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title">Trust Evidence</h2>
-              <div class="overflow-x-auto">
-                <table class="table table-sm">
-                  <tbody>
-                    <tr :for={{key, value} <- @host.trust_evidence}>
-                      <td class="font-mono text-sm text-on-surface-variant">{key}</td>
-                      <td class="font-mono text-sm">{format_evidence_value(value)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div :if={@host.previous_keys != []} class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title">Previous Keys</h2>
-              <div :for={pk <- @host.previous_keys} class="p-2 bg-surface-container rounded mb-2">
-                <p class="font-mono text-xs">Fingerprint: {Map.get(pk, "key_fingerprint", "-")}</p>
-                <p class="text-xs text-on-surface-variant">
-                  Replaced: {Map.get(pk, "replaced_at", "-")}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div :if={@audit_entries != []} class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title">Audit Trail</h2>
-              <div class="overflow-x-auto">
-                <table class="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Event</th>
-                      <th>Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr :for={entry <- @audit_entries}>
-                      <td class="font-mono text-xs whitespace-nowrap">{entry.timestamp}</td>
-                      <td><span class={audit_badge(entry.event)}>{entry.event}</span></td>
-                      <td class="font-mono text-xs">{entry.details}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-surface shadow">
-            <div class="card-body">
-              <h2 class="card-title">Timeline</h2>
-              <dl class="space-y-1">
-                <div class="flex justify-between">
-                  <dt class="text-on-surface-variant">Created</dt>
-                  <dd>{format_time(@host.created_at)}</dd>
-                </div>
-                <div :if={@host.approved_at} class="flex justify-between">
-                  <dt class="text-on-surface-variant">Approved</dt>
-                  <dd>{format_time(@host.approved_at)} by {@host.approved_by}</dd>
-                </div>
-                <div :if={@host.revoked_at} class="flex justify-between">
-                  <dt class="text-on-surface-variant">Revoked</dt>
-                  <dd>{format_time(@host.revoked_at)} by {@host.revoked_by}</dd>
-                </div>
-                <div :if={@host.revoke_reason} class="flex justify-between">
-                  <dt class="text-on-surface-variant">Reason</dt>
-                  <dd>{@host.revoke_reason}</dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-        </div>
+        <.card :if={is_nil(@host) and is_nil(@management_error)}>
+          <div class="text-on-surface-variant">The selected host was not found.</div>
+        </.card>
       </div>
     </Layouts.app>
     """
   end
 
-  defp audit_badge("host.registered"), do: "badge badge-info badge-sm"
-  defp audit_badge("host.approved"), do: "badge badge-success badge-sm"
-  defp audit_badge("host.revoked"), do: "badge badge-error badge-sm"
-  defp audit_badge("host.key_rotated"), do: "badge badge-warning badge-sm"
-  defp audit_badge("host.deleted"), do: "badge badge-error badge-outline badge-sm"
-  defp audit_badge(_), do: "badge badge-sm"
+  defp load_host(socket, server_id) do
+    result = ServerManagement.identity_hosts_list(server_id)
+    host = Enum.find(ManagementSupport.items(result), &(&1["host_id"] == socket.assigns.host_id))
 
-  defp status_badge_class(:pending), do: "badge badge-warning"
-  defp status_badge_class(:approved), do: "badge badge-success"
-  defp status_badge_class(:revoked), do: "badge badge-error"
-  defp status_badge_class(_), do: "badge"
-
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-  defp format_time(_), do: "-"
-
-  defp format_evidence_value(value) when is_tuple(value) and tuple_size(value) == 4 do
-    # IPv4 tuple
-    :inet.ntoa(value) |> to_string()
-  rescue
-    _ -> inspect(value)
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Identity Host",
+      host: host,
+      management_error: ManagementSupport.error(result),
+      cached_snapshot?: ManagementSupport.cached?(result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(result, socket.assigns.selected_server.last_seen_at)
+    )
   end
 
-  defp format_evidence_value(value) when is_tuple(value) and tuple_size(value) == 8 do
-    # IPv6 tuple
-    :inet.ntoa(value) |> to_string()
-  rescue
-    _ -> inspect(value)
+  defp mutate_host(socket, action) do
+    with :ok <- ManagementSupport.mutable(socket),
+         %{} = host <- socket.assigns.host,
+         revision when is_binary(revision) and revision != "" <- host["revision"] do
+      server_id = ManagementSupport.selected_id(socket)
+      payload = %{"host_id" => host["host_id"]}
+      opts = ManagementSupport.command_options(revision)
+
+      result =
+        case action do
+          :approve -> ServerManagement.identity_hosts_approve(server_id, payload, opts)
+          :revoke -> ServerManagement.identity_hosts_revoke(server_id, payload, opts)
+          :delete -> ServerManagement.identity_hosts_delete(server_id, payload, opts)
+        end
+
+      apply_mutation_result(socket, action, result)
+    else
+      {:error, message} ->
+        put_flash(socket, :error, message)
+
+      nil ->
+        put_flash(socket, :error, "The selected host was not found")
+
+      _missing_revision ->
+        put_flash(socket, :error, "The selected host has no management revision")
+    end
   end
 
-  defp format_evidence_value(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-  defp format_evidence_value(value) when is_atom(value), do: to_string(value)
-  defp format_evidence_value(value) when is_binary(value), do: value
-  defp format_evidence_value(value) when is_integer(value), do: Integer.to_string(value)
-  defp format_evidence_value(value) when is_number(value), do: to_string(value)
-  defp format_evidence_value(value), do: inspect(value)
+  defp apply_mutation_result(socket, :delete, %ManagementResult{status: :ok} = result) do
+    socket
+    |> ManagementSupport.finish(result, "Host deleted")
+    |> push_navigate(
+      to: ServicePaths.server_path(socket.assigns.selected_server.id, :identity_hosts)
+    )
+  end
+
+  defp apply_mutation_result(
+         socket,
+         action,
+         %ManagementResult{status: :ok, value: value} = result
+       ) do
+    host = if is_map(value["resource"]), do: value["resource"], else: socket.assigns.host
+
+    socket
+    |> assign(host: host, management_error: nil)
+    |> ManagementSupport.finish(result, success_message(action))
+  end
+
+  defp apply_mutation_result(socket, action, %ManagementResult{} = result),
+    do: ManagementSupport.finish(socket, result, success_message(action))
+
+  defp success_message(:approve), do: "Host approved"
+  defp success_message(:revoke), do: "Host revoked"
+
+  defp state_color("approved"), do: "success"
+  defp state_color("pending"), do: "warning"
+  defp state_color("revoked"), do: "error"
+  defp state_color(_state), do: "ghost"
 end

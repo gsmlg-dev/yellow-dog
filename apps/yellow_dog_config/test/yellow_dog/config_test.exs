@@ -656,4 +656,77 @@ defmodule YellowDog.ConfigTest do
       assert dns_config[:port] == 8080
     end
   end
+
+  describe "replace/1" do
+    test "starts with separate immutable bootstrap and managed effective configs" do
+      bootstrap = %{"dns" => %{"port" => 53}, "data_dir" => "/srv/bootstrap"}
+      managed = %{"dns" => %{"port" => 5353}, "data_dir" => "/srv/bootstrap"}
+
+      assert {:ok, _pid} =
+               YellowDog.Config.start_link(bootstrap: bootstrap, effective: managed)
+
+      assert YellowDog.Config.bootstrap() == bootstrap
+      assert YellowDog.Config.get_all() == managed
+
+      assert :saved =
+               YellowDog.Config.get_and_update_effective(fn config ->
+                 {:saved, put_in(config, ["dns", "port"], 5354)}
+               end)
+
+      assert YellowDog.Config.get(:dns, :port) == 5354
+      assert YellowDog.Config.bootstrap() == bootstrap
+    end
+
+    @tag timeout: 10_000
+    test "supports an infinite timeout for slow atomic effective-config commits" do
+      original = %{"dns" => %{"port" => 53}}
+      {:ok, _pid} = YellowDog.Config.start_link(original)
+
+      task =
+        Task.async(fn ->
+          YellowDog.Config.get_and_update_effective(
+            fn config ->
+              Process.sleep(5_100)
+              {:committed, put_in(config, ["dns", "port"], 5353)}
+            end,
+            :infinity
+          )
+        end)
+
+      assert :committed = Task.await(task, 7_000)
+      assert YellowDog.Config.get(:dns, :port) == 5353
+    end
+
+    test "rejects malformed dual-config startup options" do
+      assert {:error, :invalid_config} =
+               YellowDog.Config.start_link(bootstrap: %{}, effective: :invalid)
+
+      assert {:error, :invalid_config} = YellowDog.Config.start_link(bootstrap: %{})
+    end
+
+    test "atomically replaces the entire running configuration" do
+      original = %{"dns" => %{"port" => 53}, "data_dir" => "/srv/original"}
+      replacement = %{"mdns" => %{"port" => 5353}, "data_dir" => "/srv/replacement"}
+      {:ok, _pid} = YellowDog.Config.start_link(original)
+
+      assert YellowDog.Config.bootstrap() == original
+      assert :ok = YellowDog.Config.replace(replacement)
+      assert YellowDog.Config.get_all() == replacement
+      assert YellowDog.Config.bootstrap() == original
+
+      assert :ok = YellowDog.Config.update(:dns, %{"port" => 5354})
+      assert YellowDog.Config.bootstrap() == original
+    end
+
+    test "rejects invalid state and an unavailable agent without raising" do
+      original = %{"dns" => %{"port" => 53}}
+      {:ok, _pid} = YellowDog.Config.start_link(original)
+
+      assert {:error, :invalid} = YellowDog.Config.replace(:invalid)
+      assert YellowDog.Config.get_all() == original
+
+      Agent.stop(YellowDog.Config)
+      assert {:error, :not_started} = YellowDog.Config.replace(%{})
+    end
+  end
 end

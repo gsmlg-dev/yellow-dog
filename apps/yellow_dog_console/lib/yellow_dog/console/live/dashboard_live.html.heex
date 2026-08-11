@@ -1,257 +1,119 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
+  <div id="server-dashboard" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-bold">Service Dashboard</h1>
-        <p class="mt-2 text-on-surface-variant">Monitor and manage your Yellow Dog services</p>
+        <h1 class="text-4xl font-bold">Server Dashboard</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
+        </p>
       </div>
-      <button
-        type="button"
-        class="btn btn-ghost btn-circle"
-        phx-click="refresh"
-        aria-label="Refresh"
-      >
-        <.dm_mdi name="refresh" class="h-6 w-6" />
-      </button>
-    </div>
-    <!-- Service Stats Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-      <div
-        :for={service <- @services}
-        class="p-4 bg-surface-container rounded-lg flex flex-col gap-1"
-      >
-        <div class="flex justify-between items-center">
-          <span class="text-sm text-on-surface-variant">{service.description}</span>
-          <.status_indicator
-            status={
-              cond do
-                service.status == "Running" -> "running"
-                service.status == "Error" -> "error"
-                true -> "stopped"
-              end
-            }
-            pulse
-          />
-        </div>
-        <div class="text-2xl font-bold text-on-surface">
-          <span class={
-            cond do
-              service.status == "Running" -> "text-success"
-              service.status == "Error" -> "text-error"
-              true -> "text-on-surface-variant"
-            end
-          }>
-            {service.name}
-          </span>
-        </div>
-        <div class="text-xs text-on-surface-variant">
-          Port {service.port} · {service.status}
-        </div>
+      <div class="flex items-center gap-3">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
       </div>
     </div>
-    <!-- Main Content Grid -->
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <!-- Service Cards -->
-      <div class="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        <.card :for={service <- @services} class="hover:shadow-2xl transition-shadow">
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <h3 class="card-title text-lg mb-2">
-                {service.name}
-                <.badge
-                  color={
-                    cond do
-                      service.status == "Running" -> "success"
-                      service.status == "Error" -> "error"
-                      true -> "neutral"
-                    end
-                  }
-                  size="sm"
-                >
-                  {service.status}
-                </.badge>
-              </h3>
-              <p class="text-sm text-on-surface-variant mb-4">
-                {service.description}
-              </p>
-              <%= if service.error do %>
-                <div class="alert alert-error text-sm py-2 px-3">
-                  <.dm_mdi name="close-circle-outline" class="stroke-current shrink-0 h-4 w-4" />
-                  <span>{service.error}</span>
-                </div>
-              <% end %>
-            </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="server-offline-snapshot">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Showing the latest management snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+        Runtime actions are disabled.
+      </span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="server-management-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error}</span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <.card :for={service <- @services}>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">{service.name}</h2>
+            <p class="text-sm text-on-surface-variant">{service.description}</p>
           </div>
+          <.badge color={service_state_color(service.state)} size="sm">
+            {service_state_label(service.state)}
+          </.badge>
+        </div>
 
-          <div class="divider my-2"></div>
+        <:actions>
+          <button
+            :if={service.running}
+            type="button"
+            class="btn btn-error btn-sm gap-2"
+            phx-click="stop_service"
+            phx-value-service={service.key}
+            phx-disable-with="Stopping..."
+            disabled={!@commands_enabled?}
+          >
+            <.dm_mdi name="stop-circle-outline" class="h-4 w-4" /> Stop
+          </button>
+          <button
+            :if={not service.running}
+            type="button"
+            class="btn btn-success btn-sm gap-2"
+            phx-click="start_service"
+            phx-value-service={service.key}
+            phx-disable-with="Starting..."
+            disabled={!@commands_enabled?}
+          >
+            <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
+          </button>
+          <.link
+            navigate={server_service_path(@selected_server.id, service.key)}
+            class="btn btn-sm btn-ghost gap-2"
+          >
+            <.dm_mdi name="arrow-right" class="h-4 w-4" /> Details
+          </.link>
+        </:actions>
+      </.card>
+    </div>
 
-          <div class="space-y-2">
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-on-surface-variant">Port</span>
-              <span class="font-mono font-semibold">{service.port}</span>
-            </div>
-
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-on-surface-variant">Status</span>
-              <.status_indicator
-                status={
-                  cond do
-                    service.status == "Running" -> "running"
-                    service.status == "Error" -> "error"
-                    true -> "stopped"
-                  end
-                }
-                label={service.status}
-              />
-            </div>
-
-            <%= if service.status == "Running" do %>
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-on-surface-variant">Supervisor PID</span>
-                <span class="font-mono font-semibold text-xs">{service.pid}</span>
-              </div>
-
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-on-surface-variant">Memory</span>
-                <span class="font-mono font-semibold">{service.memory}</span>
-              </div>
-
-              <%= if service.uptime do %>
-                <div class="flex items-center justify-between text-sm">
-                  <span class="text-on-surface-variant">Uptime</span>
-                  <span class="font-mono font-semibold">{service.uptime}</span>
-                </div>
-              <% end %>
-            <% end %>
-
-            <.progress
-              value={if service.status == "Running", do: 100, else: 0}
-              color={
-                cond do
-                  service.status == "Running" -> "success"
-                  service.status == "Error" -> "error"
-                  true -> "neutral"
-                end
-              }
-              class="mt-2"
-            />
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <.card title="Runtime Health">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-on-surface-variant">Overall status</span>
+          <.badge color={health_color(@health["status"])} size="sm">
+            {service_state_label(@health["status"] || "unknown")}
+          </.badge>
+        </div>
+        <div class="divide-y divide-outline-variant">
+          <div :for={check <- @health["checks"] || []} class="flex justify-between py-2 text-sm">
+            <span>{check["name"]}</span>
+            <span>{service_state_label(check["status"] || "unknown")}</span>
           </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4 mt-4">
+          <.stat title="Requests" value={to_string(@stats["requests"] || 0)} />
+          <.stat title="Errors" value={to_string(@stats["errors"] || 0)} />
+        </div>
+      </.card>
 
-          <:actions>
-            <%= if service.running do %>
-              <button
-                type="button"
-                class="btn btn-error btn-sm gap-2"
-                phx-click="stop_service"
-                phx-value-service={service.key}
-                phx-disable-with="Stopping..."
-              >
-                <.dm_mdi name="stop-circle-outline" class="h-4 w-4" /> Stop
-              </button>
-            <% else %>
-              <button
-                type="button"
-                class="btn btn-success btn-sm gap-2"
-                phx-click="start_service"
-                phx-value-service={service.key}
-                phx-disable-with="Starting..."
-              >
-                <.dm_mdi name="play-circle-outline" class="h-4 w-4" /> Start
-              </button>
-            <% end %>
-            <.link navigate={service_link(service.key)} class="btn btn-sm btn-ghost gap-2">
-              <.dm_mdi name="arrow-right" class="h-4 w-4" /> Details
-            </.link>
-          </:actions>
-        </.card>
-      </div>
-      <!-- Sidebar - Quick Actions & Activity -->
-      <div class="space-y-6">
-        <!-- Quick Actions Card -->
-        <.card title="Quick Actions">
-          <div class="space-y-2">
-            <.link navigate={~p"/server/dns"} class="btn btn-outline w-full justify-start gap-2">
-              <.dm_mdi name="web" class="h-5 w-5" /> DNS Management
-            </.link>
-
-            <.link
-              navigate={~p"/server/dhcpv4"}
-              class="btn btn-outline w-full justify-start gap-2"
-            >
-              <.dm_mdi name="server-network" class="h-5 w-5" /> DHCPv4 Server
-            </.link>
-
-            <.link navigate={~p"/server/mdns"} class="btn btn-outline w-full justify-start gap-2">
-              <.dm_mdi name="wifi" class="h-5 w-5" /> mDNS Discovery
-            </.link>
-
-            <.link
-              navigate={~p"/server/netboot"}
-              class="btn btn-outline w-full justify-start gap-2"
-            >
-              <.dm_mdi name="flash" class="h-5 w-5" /> Netboot
-            </.link>
-
-            <.link
-              navigate={~p"/server/identity"}
-              class="btn btn-outline w-full justify-start gap-2"
-            >
-              <.dm_mdi name="key-variant" class="h-5 w-5" /> Identity
-            </.link>
-
-            <.link
-              navigate={~p"/server/settings"}
-              class="btn btn-outline w-full justify-start gap-2"
-            >
-              <.dm_mdi name="cog" class="h-5 w-5" /> Configuration
-            </.link>
-          </div>
-        </.card>
-        <!-- System Health Card -->
-        <.card title="BEAM VM Health">
-          <div class="space-y-4">
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-sm">Process Memory</span>
-                <span class="text-sm font-semibold">{@system_health.memory_pct}%</span>
-              </div>
-              <.progress
-                value={@system_health.memory_pct}
-                color={
-                  if @system_health.memory_pct > 80,
-                    do: "error",
-                    else: if(@system_health.memory_pct > 60, do: "warning", else: "info")
-                }
-              />
-              <div class="text-xs text-on-surface-variant mt-1">
-                {@system_health.memory_processes} of {@system_health.memory_total}
-              </div>
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-sm">Processes</span>
-                <span class="text-sm font-semibold">{@system_health.process_pct}%</span>
-              </div>
-              <.progress
-                value={@system_health.process_pct}
-                color={if @system_health.process_pct > 80, do: "error", else: "success"}
-              />
-              <div class="text-xs text-on-surface-variant mt-1">
-                {@system_health.process_count} / {@system_health.process_limit}
-              </div>
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-sm">VM Uptime</span>
-                <span class="text-sm font-semibold">{@system_health.uptime}</span>
-              </div>
-            </div>
-          </div>
-        </.card>
-      </div>
+      <.card title="Quick Actions">
+        <div class="space-y-2">
+          <.link
+            :for={{label, path} <- server_quick_actions(@selected_server.id)}
+            navigate={path}
+            class="btn btn-outline w-full justify-start gap-2"
+          >
+            <.dm_mdi name="arrow-right" class="h-5 w-5" /> {label}
+          </.link>
+        </div>
+      </.card>
     </div>
   </div>
 </Layouts.app>

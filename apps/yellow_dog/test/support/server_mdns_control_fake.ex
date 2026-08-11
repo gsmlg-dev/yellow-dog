@@ -11,6 +11,7 @@ defmodule YellowDog.ServerMdnsControlFake do
             registry_snapshot: {:ok, []},
             cache_snapshot: {:ok, []},
             discovery_list: [],
+            monitor_queries: [],
             clock: ~U[2026-07-17 00:00:00Z]
           },
           calls: []
@@ -51,6 +52,7 @@ defmodule YellowDog.ServerMdnsControlFake do
   defp response_key(:cache, :control_snapshot), do: :cache_snapshot
   defp response_key(:cache, :control_clear), do: :cache_clear
   defp response_key(:monitor, :list_discovered_services), do: :discovery_list
+  defp response_key(:monitor, :get_queries), do: :monitor_queries
   defp response_key(:clock, :utc_now), do: :clock
 
   defp run({:raise, reason}), do: raise(reason)
@@ -99,6 +101,9 @@ defmodule YellowDog.ServerMdnsControlFake.Monitor do
 
   def list_discovered_services,
     do: YellowDog.ServerMdnsControlFake.call(:monitor, :list_discovered_services, [])
+
+  def get_queries(opts),
+    do: YellowDog.ServerMdnsControlFake.call(:monitor, :get_queries, [opts])
 end
 
 defmodule YellowDog.ServerMdnsControlFake.Clock do

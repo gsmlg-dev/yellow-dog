@@ -1,184 +1,198 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="max-w-7xl">
-    <!-- Page Header -->
-    <div class="flex justify-between items-center mb-6">
+  <div id="server-settings" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Service Settings</h1>
-        <p class="text-sm text-on-surface-variant mt-1">
-          Configure YellowDog network services
+        <h1 class="text-4xl font-bold">Service Settings</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
         </p>
       </div>
-
-      <div class="flex gap-2 items-center">
-        <!-- Version Info -->
-        <div class="text-xs text-on-surface-variant">
-          <span>Config Version: {@version_info.version}</span>
-        </div>
-        <!-- Reload Button -->
-        <.dm_btn
-          variant="ghost"
-          size="sm"
-          phx-click="reload_config"
-          title="Reload configuration from disk"
-          aria-label="Reload configuration from disk"
+      <div class="flex items-center gap-3">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh Management draft"
         >
-          <.dm_mdi name="refresh" class="h-5 w-5" /> Reload
-        </.dm_btn>
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
       </div>
     </div>
-    <!-- Tab Navigation -->
-    <div class="tabs bg-surface-container mb-6">
-      <.link
-        patch={~p"/server/settings/dns"}
-        class={["tab", @active_tab == :dns && "tab-active"]}
-      >
-        <.dm_mdi name="web" class="h-4 w-4 mr-2" /> DNS
-      </.link>
 
+    <div role="tablist" class="tabs tabs-boxed w-fit">
       <.link
-        patch={~p"/server/settings/mdns"}
-        class={["tab", @active_tab == :mdns && "tab-active"]}
+        :for={{service, label, path} <- settings_tabs(@selected_server.id)}
+        navigate={path}
+        role="tab"
+        class={["tab", service == @selected_service && "tab-active"]}
       >
-        <.dm_mdi name="wifi" class="h-4 w-4 mr-2" /> mDNS
-      </.link>
-
-      <.link
-        patch={~p"/server/settings/dhcpv4"}
-        class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
-      >
-        <.dm_mdi name="chip" class="h-4 w-4 mr-2" /> DHCPv4
-      </.link>
-
-      <.link
-        patch={~p"/server/settings/dhcpv6"}
-        class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
-      >
-        <.dm_mdi name="chip" class="h-4 w-4 mr-2" /> DHCPv6
-      </.link>
-
-      <.link
-        patch={~p"/server/settings/netboot"}
-        class={["tab", @active_tab == :netboot && "tab-active"]}
-      >
-        <.dm_mdi name="server-network" class="h-4 w-4 mr-2" /> Netboot
+        {label}
       </.link>
     </div>
-    <!-- Tab Content -->
-    <div class="mt-4">
-      <%= case @active_tab do %>
-        <% :dns -> %>
-          <YellowDog.Console.SettingsLive.DnsTab.dns_tab
-            changeset={@dns_changeset}
-            pending_changes={@pending_changes}
-          />
-        <% :mdns -> %>
-          <YellowDog.Console.SettingsLive.MdnsTab.mdns_tab
-            changeset={@mdns_changeset}
-            pending_changes={Map.has_key?(@pending_changes, :mdns)}
-          />
-        <% :dhcpv4 -> %>
-          <YellowDog.Console.SettingsLive.Dhcpv4Tab.dhcpv4_tab
-            changeset={@dhcpv4_changeset}
-            pending_changes={Map.has_key?(@pending_changes, :dhcpv4)}
-          />
-        <% :dhcpv6 -> %>
-          <YellowDog.Console.SettingsLive.Dhcpv6Tab.dhcpv6_tab
-            changeset={@dhcpv6_changeset}
-            pending_changes={Map.has_key?(@pending_changes, :dhcpv6)}
-          />
-        <% :netboot -> %>
-          <YellowDog.Console.SettingsLive.NetbootTab.netboot_tab
-            changeset={@netboot_changeset}
-            pending_changes={Map.has_key?(@pending_changes, :netboot)}
-            profiles={@netboot_profiles}
-          />
-      <% end %>
-    </div>
-    <!-- Conflict Resolution Modal -->
-    <%= if @show_conflict_modal do %>
-      <.modal
-        id="conflict-modal"
-        title="Configuration Conflict Detected"
-        show={true}
-        on_cancel={JS.push("close_conflict_modal")}
-      >
-        <div class="space-y-4">
-          <div class="alert alert-warning">
-            <.dm_mdi name="alert" class="shrink-0 h-6 w-6" />
-            <span>
-              The configuration has been modified by another user or process. Your changes cannot be saved.
-            </span>
-          </div>
 
-          <p class="text-sm text-on-surface-variant">
-            Click "Reload Configuration" to get the latest version and try again.
-          </p>
+    <div :if={not @service_online?} class="alert alert-warning" id="settings-offline-draft">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline changes remain in Management and will be delivered when this Server reconnects.
+      </span>
+    </div>
+
+    <div :if={@in_flight?} class="alert alert-info" id="settings-deployment-pending">
+      <.dm_mdi name="progress-clock" class="h-5 w-5" />
+      <span>Waiting for Server acknowledgement.</span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="settings-management-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error}</span>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Management draft</div>
+        <div class="mt-1 text-lg font-semibold">Revision {@draft_revision}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Desired deployment</div>
+        <div class="mt-1 text-lg font-semibold">{deployment_label(@latest_deployment)}</div>
+        <div :if={@latest_deployment} class="mt-1 truncate font-mono text-xs">
+          {@latest_deployment.digest}
         </div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Applied revision</div>
+        <div class="mt-1 truncate font-mono text-xs">
+          {@applied_revision || "Not acknowledged"}
+        </div>
+      </.card>
+    </div>
 
-        <:actions>
-          <.dm_btn variant="ghost" phx-click="close_conflict_modal">
-            Cancel
-          </.dm_btn>
-          <.dm_btn
-            variant="primary"
-            phx-click="reload_config"
-            phx-click-away="close_conflict_modal"
+    <.card title={"#{service_label(@selected_service)} Management draft"}>
+      <.form
+        for={@settings_form}
+        id="settings-draft-form"
+        phx-submit="save"
+        class="space-y-4"
+      >
+        <label class="form-control">
+          <span class="label-text mb-1">Server profile</span>
+          <select
+            id="settings-profile"
+            name={@settings_form[:profile].name}
+            class="select select-bordered w-full"
           >
-            Reload Configuration
-          </.dm_btn>
-        </:actions>
-      </.modal>
-    <% end %>
-    <!-- Recovery Modal (for backup restoration) -->
-    <%= if @show_recovery_modal do %>
-      <.modal
-        id="recovery-modal"
-        title="Configuration Recovery"
-        show={true}
-        on_cancel={JS.push("close_recovery_modal")}
-      >
-        <div class="space-y-4">
-          <p class="text-sm">
-            Select a backup to restore:
-          </p>
+            <option
+              :for={{label, value} <- profile_options()}
+              value={value}
+              selected={@settings_form[:profile].value == value}
+            >
+              {label}
+            </option>
+          </select>
+        </label>
 
-          <div class="space-y-2">
-            <%= for backup <- list_backups(@config_path) do %>
-              <.dm_btn
-                variant="outline"
-                class="w-full justify-start"
-                phx-click="restore_backup"
-                phx-value-backup_path={backup.path}
-              >
-                <.dm_mdi name="folder" class="h-5 w-5 mr-2" />
-                <span class="flex-1 text-left">
-                  {backup.timestamp}
-                </span>
-                <span class="text-xs text-on-surface-variant">
-                  {backup.size}
-                </span>
-              </.dm_btn>
-            <% end %>
-          </div>
+        <label class="form-control">
+          <span class="label-text mb-1">Service state</span>
+          <select
+            id="settings-enabled"
+            name="settings[enabled]"
+            class="select select-bordered w-full"
+          >
+            <option value="inherit" selected={@settings_form.params["enabled"] == "inherit"}>
+              Inherit from server profile
+            </option>
+            <option value="true" selected={@settings_form.params["enabled"] == "true"}>
+              Enabled
+            </option>
+            <option value="false" selected={@settings_form.params["enabled"] == "false"}>
+              Disabled
+            </option>
+          </select>
+        </label>
+
+        <label :for={field <- service_fields(@selected_service)} class="form-control">
+          <span class="label-text mb-1">{field.label}</span>
+          <input
+            id={"settings-#{field.key}"}
+            type={if field.type == :integer, do: "number", else: "text"}
+            name={"settings[#{field.key}]"}
+            value={@settings_form.params[field.key]}
+            placeholder={field.placeholder}
+            min={field.type == :integer && "1"}
+            max={field.type == :integer && "65535"}
+            class="input input-bordered w-full"
+          />
+          <span class="label-text-alt mt-1 text-on-surface-variant">
+            Leave blank to inherit the schema default.
+          </span>
+        </label>
+
+        <div class="alert alert-info">
+          <.dm_mdi name="shield-check-outline" class="h-5 w-5" />
+          <span>
+            Management owns these typed overrides. Credentials, agent settings, and machine paths stay local.
+          </span>
         </div>
 
-        <:actions>
-          <.dm_btn variant="ghost" phx-click="close_recovery_modal">
-            Close
-          </.dm_btn>
-        </:actions>
-      </.modal>
-    <% end %>
-    <!-- Pool Form Modal -->
-    <%= if @show_pool_form do %>
-      <.live_component
-        module={YellowDog.Console.SettingsLive.PoolFormComponent}
-        id="pool-form"
-        pool={@editing_pool}
-        mode={@pool_form_mode}
-        service_type={@pool_form_service}
-        protocol={@pool_form_protocol}
-      />
-    <% end %>
+        <div class="card-actions justify-end">
+          <button type="submit" class="btn btn-primary" disabled={@management_error != nil}>
+            Save draft
+          </button>
+        </div>
+      </.form>
+    </.card>
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <button
+        id="settings-apply"
+        type="button"
+        class="btn btn-primary"
+        phx-click="apply"
+        disabled={@in_flight? or @management_error != nil}
+      >
+        Apply draft
+      </button>
+    </div>
+
+    <.card title="Configuration history">
+      <div :if={@config_versions == []} class="py-8 text-center text-on-surface-variant">
+        No aggregate configuration has been published.
+      </div>
+      <div :if={@config_versions != []} class="overflow-x-auto">
+        <table class="table table-striped" id="settings-config-versions">
+          <thead>
+            <tr>
+              <th>Version</th><th>State</th><th>Published</th><th>Applied revision</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={version <- @config_versions}>
+              <td class="font-mono">{version.version}</td>
+              <td>
+                <.badge color="ghost" size="sm">{state_label(version.state)}</.badge>
+              </td>
+              <td>{version_time(version.published_at)}</td>
+              <td class="max-w-64 truncate font-mono text-xs">
+                {version.applied_revision || "—"}
+              </td>
+              <td class="text-right">
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  phx-click="rollback"
+                  phx-value-version={version.version}
+                  disabled={@in_flight?}
+                >
+                  Roll back
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
   </div>
 </Layouts.app>

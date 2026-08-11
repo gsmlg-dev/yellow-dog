@@ -5,6 +5,7 @@ defmodule YellowDog.ServerDnsControlFake do
 
   @defaults %{
     views: [],
+    view_configs: [],
     view_stats: %{views: %{}},
     zones: {:ok, []},
     records: %{},
@@ -13,6 +14,7 @@ defmodule YellowDog.ServerDnsControlFake do
     serial_advances: 0,
     responses: %{},
     acls: [],
+    persisted_acls: [],
     providers: {:ok, []},
     conflicts: %{},
     logs: [],
@@ -336,6 +338,54 @@ defmodule YellowDog.ServerDnsControlFake.AclRegistry do
 
   def list_acls,
     do: YellowDog.ServerDnsControlFake.fetch(:acls, {:acl_registry, :list_acls, []})
+
+  def create_acl(acl) do
+    YellowDog.ServerDnsControlFake.operation(
+      :create_acl,
+      {:acl_registry, :create_acl, [acl]},
+      fn state ->
+        if Enum.any?(state.acls, &((&1[:name] || &1["name"]) == acl.name)) do
+          {{:error, :already_exists}, state}
+        else
+          {:ok, %{state | acls: [acl | state.acls]}}
+        end
+      end
+    )
+  end
+
+  def update_acl(acl_id, acl) do
+    YellowDog.ServerDnsControlFake.operation(
+      :update_acl,
+      {:acl_registry, :update_acl, [acl_id, acl]},
+      fn state ->
+        if Enum.any?(state.acls, &((&1[:name] || &1["name"]) == acl_id)) do
+          updated =
+            Enum.map(state.acls, fn stored ->
+              if (stored[:name] || stored["name"]) == acl_id, do: acl, else: stored
+            end)
+
+          {:ok, %{state | acls: updated}}
+        else
+          {{:error, :not_found}, state}
+        end
+      end
+    )
+  end
+
+  def delete_acl(acl_id) do
+    YellowDog.ServerDnsControlFake.operation(
+      :delete_acl,
+      {:acl_registry, :delete_acl, [acl_id]},
+      fn state ->
+        if Enum.any?(state.acls, &((&1[:name] || &1["name"]) == acl_id)) do
+          updated = Enum.reject(state.acls, &((&1[:name] || &1["name"]) == acl_id))
+          {:ok, %{state | acls: updated}}
+        else
+          {{:error, :not_found}, state}
+        end
+      end
+    )
+  end
 end
 
 defmodule YellowDog.ServerDnsControlFake.AclCodec do
@@ -345,10 +395,12 @@ defmodule YellowDog.ServerDnsControlFake.AclCodec do
     "10.0.0.0/8" => "10.0.0.0/8",
     "10.1.0.0/16" => "10.1.0.0/16",
     "10.1.2.3/8" => "10.0.0.0/8",
+    "192.0.2.0/24" => "192.0.2.0/24",
     "192.0.2.99/24" => "192.0.2.0/24",
     "203.0.113.0/24" => "203.0.113.0/24",
     "2001:0db8:0000:0000:0000:0000:0000:0001/48" => "2001:db8::/48",
-    "2001:0db8:0000:0000:0000:0000:0000:1234/32" => "2001:db8::/32"
+    "2001:0db8:0000:0000:0000:0000:0000:1234/32" => "2001:db8::/32",
+    "2001:db8::/32" => "2001:db8::/32"
   }
 
   def canonical_cidr(cidr) do
@@ -538,6 +590,41 @@ defmodule YellowDog.ServerDnsControlFake.ViewManager do
 
   def list_control_views do
     YellowDog.ServerDnsControlFake.control_views()
+  end
+
+  def apply_control_views(view_configs) do
+    YellowDog.ServerDnsControlFake.operation(
+      :update_views,
+      {:view_manager, :apply_control_views, [view_configs]},
+      fn state -> {:ok, %{state | view_configs: view_configs}} end
+    )
+  end
+end
+
+defmodule YellowDog.ServerDnsControlFake.ConfigPersistence do
+  @moduledoc false
+
+  def collect_views do
+    YellowDog.ServerDnsControlFake.fetch(
+      :view_configs,
+      {:config_persistence, :collect_views, []}
+    )
+  end
+
+  def save_views(view_configs) do
+    YellowDog.ServerDnsControlFake.operation(
+      :save_views,
+      {:config_persistence, :save_views, [view_configs]},
+      fn state -> {:ok, %{state | view_configs: view_configs}} end
+    )
+  end
+
+  def save_acls(acls) do
+    YellowDog.ServerDnsControlFake.operation(
+      :save_acls,
+      {:config_persistence, :save_acls, [acls]},
+      fn state -> {:ok, %{state | persisted_acls: acls}} end
+    )
   end
 end
 

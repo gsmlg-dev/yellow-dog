@@ -9,6 +9,7 @@ defmodule YellowDog.ServerAgent.Supervisor do
   alias YellowDog.ServerAgent.ConfigApplyStore
   alias YellowDog.ServerAgent.ConfigStore
   alias YellowDog.ServerAgent.Dispatcher
+  alias YellowDog.ServerAgent.QueryDispatcher
   alias YellowDog.ServerAgent.Heartbeat
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Digest
@@ -51,6 +52,8 @@ defmodule YellowDog.ServerAgent.Supervisor do
   @client_options [
     :dispatcher,
     :dispatcher_runtime_adapter,
+    :query_dispatcher,
+    :query_runtime_adapter,
     :socket,
     :timer,
     :monotonic_clock,
@@ -65,6 +68,8 @@ defmodule YellowDog.ServerAgent.Supervisor do
   @default_client_options [
     dispatcher: Dispatcher,
     dispatcher_runtime_adapter: :"Elixir.YellowDog.Server.Control",
+    query_dispatcher: QueryDispatcher,
+    query_runtime_adapter: :"Elixir.YellowDog.Server.Control",
     timer: Client.Timer,
     monotonic_clock: Client.MonotonicClock,
     wall_clock: Client.WallClock,

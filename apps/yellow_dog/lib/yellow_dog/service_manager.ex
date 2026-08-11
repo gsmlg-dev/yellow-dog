@@ -323,7 +323,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   defp set_service_enabled(service, enabled) do
-    Agent.get_and_update(YellowDog.Config, fn config ->
+    YellowDog.Config.get_and_update_effective(fn config ->
       {snapshot, updated_config} = put_service_enabled(config, service, enabled)
       {snapshot, updated_config}
     end)
@@ -377,7 +377,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   defp restore_service_flag({:server, server_key, section_snapshot}) do
-    Agent.update(YellowDog.Config, fn config ->
+    YellowDog.Config.update_effective(fn config ->
       case Map.fetch(config, server_key) do
         {:ok, server_config} when is_map(server_config) ->
           Map.put(config, server_key, restore_section_flag(server_config, section_snapshot))
@@ -389,7 +389,7 @@ defmodule YellowDog.ServiceManager do
   end
 
   defp restore_service_flag({:legacy, section_snapshot}) do
-    Agent.update(YellowDog.Config, &restore_section_flag(&1, section_snapshot))
+    YellowDog.Config.update_effective(&restore_section_flag(&1, section_snapshot))
   end
 
   defp restore_section_flag(container, {:section, section_key, flag_snapshot}) do

@@ -15,23 +15,106 @@ defmodule YellowDog.Config do
   @type zone_name :: String.t()
   @type zone_type :: :authoritative | :stub | :forward | :cache
 
+  @state_tag :yellow_dog_config_state
+
   # Default configuration fallback (now defined in application)
   @default_config %{}
 
   @doc """
   Starts the configuration agent with the given config.
   """
-  @spec start_link(config_map()) :: Agent.on_start()
-  def start_link(config) do
-    Agent.start_link(fn -> config end, name: __MODULE__)
+  @spec start_link(config_map() | keyword()) :: Agent.on_start() | {:error, :invalid_config}
+  def start_link(config) when is_map(config) do
+    Agent.start_link(fn -> {@state_tag, config, config} end, name: __MODULE__)
   end
+
+  def start_link(opts) when is_list(opts) do
+    with true <- Keyword.keyword?(opts),
+         [:bootstrap, :effective] <- opts |> Keyword.keys() |> Enum.sort(),
+         bootstrap when is_map(bootstrap) <- Keyword.get(opts, :bootstrap),
+         effective when is_map(effective) <- Keyword.get(opts, :effective) do
+      Agent.start_link(fn -> {@state_tag, bootstrap, effective} end, name: __MODULE__)
+    else
+      _invalid -> {:error, :invalid_config}
+    end
+  end
+
+  def start_link(_config), do: {:error, :invalid_config}
 
   @doc """
   Gets all configuration as a map.
   """
   @spec get_all() :: config_map()
   def get_all do
-    Agent.get(__MODULE__, fn state -> state end)
+    Agent.get(__MODULE__, &effective_config/1)
+  end
+
+  @doc """
+  Gets the immutable local/bootstrap configuration captured at startup.
+
+  Managed activation replaces only the effective configuration returned by
+  `get_all/0`; the bootstrap baseline remains available for later activation
+  and boot materialization.
+  """
+  @spec bootstrap() :: config_map()
+  def bootstrap do
+    Agent.get(__MODULE__, &bootstrap_config/1)
+  end
+
+  @doc """
+  Atomically replaces the complete in-memory configuration.
+
+  Returns a typed error instead of exiting when the configuration agent is not
+  running. This is the activation primitive used by managed configuration.
+  """
+  @spec replace(config_map()) :: :ok | {:error, :invalid | :not_started}
+  def replace(config) when is_map(config) do
+    if Process.whereis(__MODULE__) do
+      try do
+        Agent.update(__MODULE__, &put_effective_config(&1, config))
+      catch
+        :exit, _reason -> {:error, :not_started}
+      end
+    else
+      {:error, :not_started}
+    end
+  end
+
+  def replace(_config), do: {:error, :invalid}
+
+  @doc false
+  @spec get_and_update_effective((config_map() -> {term(), config_map()})) :: term()
+  def get_and_update_effective(function) when is_function(function, 1) do
+    get_and_update_effective(function, 5_000)
+  end
+
+  @doc false
+  @spec get_and_update_effective(
+          (config_map() -> {term(), config_map()}),
+          timeout()
+        ) :: term()
+  def get_and_update_effective(function, timeout)
+      when is_function(function, 1) and
+             (timeout == :infinity or (is_integer(timeout) and timeout >= 0)) do
+    Agent.get_and_update(
+      __MODULE__,
+      fn state ->
+        {reply, config} = function.(effective_config(state))
+        {reply, put_effective_config(state, config)}
+      end,
+      timeout
+    )
+  end
+
+  @doc false
+  @spec update_effective((config_map() -> config_map())) :: :ok
+  def update_effective(function) when is_function(function, 1) do
+    Agent.update(__MODULE__, fn state ->
+      state
+      |> effective_config()
+      |> function.()
+      |> then(&put_effective_config(state, &1))
+    end)
   end
 
   @doc """
@@ -39,7 +122,7 @@ defmodule YellowDog.Config do
   """
   @spec get(config_key()) :: config_value()
   def get(name) do
-    Agent.get(__MODULE__, fn state -> Map.get(state, name) end)
+    Agent.get(__MODULE__, fn state -> state |> effective_config() |> Map.get(name) end)
   end
 
   @doc """
@@ -78,9 +161,10 @@ defmodule YellowDog.Config do
   @spec set_service_enabled(service_name(), boolean()) :: :ok
   def set_service_enabled(service, enabled) do
     Agent.update(__MODULE__, fn state ->
-      core_config = Map.get(state, "core", %{})
-      new_core = Map.put(core_config, to_string(service), enabled)
-      Map.put(state, "core", new_core)
+      config = effective_config(state)
+      core_config = Map.get(config, "core", %{})
+      new_config = Map.put(config, "core", Map.put(core_config, to_string(service), enabled))
+      put_effective_config(state, new_config)
     end)
   end
 
@@ -204,6 +288,17 @@ defmodule YellowDog.Config do
   end
 
   # Private helper functions
+
+  defp effective_config({@state_tag, _bootstrap, effective}), do: effective
+  defp effective_config(config), do: config
+
+  defp bootstrap_config({@state_tag, bootstrap, _effective}), do: bootstrap
+  defp bootstrap_config(config), do: config
+
+  defp put_effective_config({@state_tag, bootstrap, _effective}, config),
+    do: {@state_tag, bootstrap, config}
+
+  defp put_effective_config(previous, config), do: {@state_tag, previous, config}
 
   defp default_service_enabled?(:netboot), do: false
   defp default_service_enabled?(_service), do: true
@@ -366,8 +461,9 @@ defmodule YellowDog.Config do
   @spec update(service_name(), map()) :: :ok
   def update(service, new_config) do
     Agent.update(__MODULE__, fn state ->
-      key = if Map.has_key?(state, service), do: service, else: to_string(service)
-      Map.put(state, key, new_config)
+      config = effective_config(state)
+      key = if Map.has_key?(config, service), do: service, else: to_string(service)
+      put_effective_config(state, Map.put(config, key, new_config))
     end)
   end
 
@@ -398,15 +494,16 @@ defmodule YellowDog.Config do
           :ok | {:error, :version_mismatch}
   def compare_and_swap(service, new_config, expected_version) do
     Agent.get_and_update(__MODULE__, fn state ->
-      current_version = Map.get(state, :_version, 0)
+      config = effective_config(state)
+      current_version = Map.get(config, :_version, 0)
 
       if current_version == expected_version do
         new_state =
-          state
+          config
           |> put_in([to_string(service)], new_config)
           |> Map.put(:_version, current_version + 1)
 
-        {:ok, new_state}
+        {:ok, put_effective_config(state, new_state)}
       else
         {{:error, :version_mismatch}, state}
       end
@@ -425,7 +522,7 @@ defmodule YellowDog.Config do
   """
   @spec get_version() :: non_neg_integer()
   def get_version do
-    Agent.get(__MODULE__, fn state -> Map.get(state, :_version, 0) end)
+    Agent.get(__MODULE__, fn state -> state |> effective_config() |> Map.get(:_version, 0) end)
   end
 
   @doc """

@@ -38,6 +38,8 @@ defmodule YellowDog.ServerAgent.Client do
     :identity,
     :dispatcher,
     :dispatcher_runtime_adapter,
+    :query_dispatcher,
+    :query_runtime_adapter,
     :command_journal,
     :config_applier,
     :config_apply_store,
@@ -154,6 +156,24 @@ defmodule YellowDog.ServerAgent.Client do
     :exit, _reason -> :unavailable
   end
 
+  @doc "Updates Management-visible runtime identity without replacing the control channel."
+  @spec refresh_identity(map(), GenServer.server()) ::
+          :ok | {:error, :invalid_identity | :unavailable}
+  def refresh_identity(updates, server \\ __MODULE__) do
+    with {:ok, updates} <- identity_updates(updates),
+         pid when is_pid(pid) <- GenServer.whereis(server) do
+      GenServer.cast(pid, {:refresh_identity, updates})
+      :ok
+    else
+      nil -> {:error, :unavailable}
+      _invalid -> {:error, :invalid_identity}
+    end
+  rescue
+    _exception -> {:error, :unavailable}
+  catch
+    :exit, _reason -> {:error, :unavailable}
+  end
+
   @impl true
   def init(%{enabled: false}) do
     {:ok, %{enabled: false, status: :disabled}}
@@ -200,6 +220,33 @@ defmodule YellowDog.ServerAgent.Client do
   def handle_call(:connection_state, _from, state) do
     {:reply, Map.fetch!(state, :status), state}
   end
+
+  @impl true
+  def handle_cast({:refresh_identity, updates}, %{enabled: true} = state) do
+    identity = struct!(state.config.identity, updates)
+
+    case identity(identity) do
+      {:ok, identity} ->
+        state = put_in(state, [:config, :identity], identity)
+
+        state =
+          if state.status == :active do
+            case push_message(status_message(state), nil, state) do
+              :ok -> state
+              :error -> schedule_rejoin(state)
+            end
+          else
+            state
+          end
+
+        {:noreply, state}
+
+      :error ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_cast({:refresh_identity, _updates}, state), do: {:noreply, state}
 
   @impl true
   def handle_info({:check_socket, connection_id}, %{connection_id: connection_id} = state) do
@@ -482,7 +529,7 @@ defmodule YellowDog.ServerAgent.Client do
     do: dispatch_inbound(envelope, state)
 
   defp route_inbound(%Query{envelope: envelope}, state),
-    do: dispatch_inbound(envelope, state)
+    do: dispatch_query_inbound(envelope, state)
 
   defp route_inbound(%ConfigDelivery{envelope: envelope}, state) do
     _result = local_call(fn -> ConfigApplier.apply(envelope, state.config.config_applier) end)
@@ -509,6 +556,28 @@ defmodule YellowDog.ServerAgent.Client do
       capabilities: state.config.identity.capabilities,
       command_journal: state.config.command_journal,
       runtime_adapter: state.config.dispatcher_runtime_adapter
+    ]
+  end
+
+  defp dispatch_query_inbound(envelope, state) do
+    result =
+      local_call(fn ->
+        state.config.query_dispatcher.dispatch(envelope, query_dispatcher_options(state))
+      end)
+
+    message = result_message(envelope, result)
+
+    case push_message(message, nil, state) do
+      :ok -> state
+      :error -> schedule_rejoin(state)
+    end
+  end
+
+  defp query_dispatcher_options(state) do
+    [
+      server_id: state.config.identity.id,
+      capabilities: state.config.identity.capabilities,
+      runtime_adapter: state.config.query_runtime_adapter
     ]
   end
 
@@ -886,6 +955,10 @@ defmodule YellowDog.ServerAgent.Client do
            callback_module(Keyword.get(opts, :dispatcher), dispatch: 2),
          {:ok, dispatcher_runtime_adapter} <-
            module(Keyword.get(opts, :dispatcher_runtime_adapter)),
+         {:ok, query_dispatcher} <-
+           callback_module(Keyword.get(opts, :query_dispatcher), dispatch: 2),
+         {:ok, query_runtime_adapter} <-
+           module(Keyword.get(opts, :query_runtime_adapter)),
          {:ok, command_journal} <-
            server_ref_validator.(Keyword.get(opts, :command_journal)),
          {:ok, config_applier} <-
@@ -906,6 +979,8 @@ defmodule YellowDog.ServerAgent.Client do
           identity: identity,
           dispatcher: dispatcher,
           dispatcher_runtime_adapter: dispatcher_runtime_adapter,
+          query_dispatcher: query_dispatcher,
+          query_runtime_adapter: query_runtime_adapter,
           command_journal: command_journal,
           config_applier: config_applier,
           config_apply_store: config_apply_store,
@@ -1040,6 +1115,37 @@ defmodule YellowDog.ServerAgent.Client do
   end
 
   defp identity(_value), do: :error
+
+  defp identity_updates(%{
+         profile: profile,
+         capabilities: capabilities,
+         config_revision: config_revision
+       } = updates)
+       when map_size(updates) == 3 do
+    candidate = %Server{
+      id: "validation",
+      name: "validation",
+      version: "validation",
+      profile: profile,
+      capabilities: capabilities,
+      config_revision: config_revision
+    }
+
+    case identity(candidate) do
+      {:ok, _candidate} ->
+        {:ok,
+         %{
+           profile: profile,
+           capabilities: capabilities,
+           config_revision: config_revision
+         }}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp identity_updates(_updates), do: :error
 
   defp module(value) when is_atom(value) and not is_nil(value), do: {:ok, value}
   defp module(_value), do: :error
@@ -1375,6 +1481,11 @@ defmodule YellowDog.ServerAgent.Client do
         {:EXIT, _pid, _reason} ->
           loop(state)
 
+        {:yellow_dog_socket_message, channel, _event, _payload} = message
+        when is_pid(channel) and channel == state.channel ->
+          forward_socket_message(message, state)
+          loop(state)
+
         %Phoenix.SocketClient.Message{} = message ->
           forward_socket_message(message, state)
           loop(state)
@@ -1570,6 +1681,14 @@ defmodule YellowDog.ServerAgent.Client do
       send(client, %{message | channel_pid: channel})
     end
 
+    defp forward_socket_message(
+           {:yellow_dog_socket_message, channel, _event, _payload} = message,
+           %{client: client, channel: channel}
+         )
+         when is_pid(client) and is_pid(channel) do
+      send(client, message)
+    end
+
     defp forward_socket_message(_message, _state), do: :ok
 
     defp invoke(module, function, arguments) do
@@ -1586,13 +1705,27 @@ defmodule YellowDog.ServerAgent.Client do
       do: send(caller, {__MODULE__, capability, ref, value})
   end
 
+  defmodule SocketChannel do
+    @moduledoc false
+
+    use Phoenix.SocketClient.Channel
+
+    @impl true
+    def handle_message(event, payload, state) do
+      send(state.caller, {:yellow_dog_socket_message, self(), event, payload})
+      {:noreply, state}
+    end
+  end
+
   defmodule Socket do
     @moduledoc false
 
     def start_link(opts) do
+      # TODO(upstream): gsmlg-dev/phoenix_socket_client#103
       Phoenix.SocketClient.start_link(
         url: Keyword.fetch!(opts, :url),
         params: Keyword.fetch!(opts, :params),
+        default_channel_module: YellowDog.ServerAgent.Client.SocketChannel,
         reconnect?: false,
         auto_connect: true
       )

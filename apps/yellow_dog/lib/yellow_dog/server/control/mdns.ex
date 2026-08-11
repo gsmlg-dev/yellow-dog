@@ -27,7 +27,7 @@ defmodule YellowDog.Server.Control.Mdns do
   @spec dispatch(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def dispatch("server.mdns.services.list", payload), do: list_services(payload)
   def dispatch("server.mdns.discovery.list", payload), do: list_discovery(payload)
-  def dispatch("server.mdns.monitor.list", payload), do: unsupported_monitor(payload)
+  def dispatch("server.mdns.monitor.list", payload), do: list_monitor(payload)
   def dispatch("server.mdns.cache.get", payload), do: get_cache(payload)
   def dispatch("server.mdns.services.register", payload), do: mutate_service(:register, payload)
   def dispatch("server.mdns.services.update", payload), do: mutate_service(:update, payload)
@@ -43,7 +43,7 @@ defmodule YellowDog.Server.Control.Mdns do
          {:ok, services} <- registry_resources() do
       case find_service(services, payload["service_id"]) do
         nil -> {:ok, :missing}
-        service -> {:ok, revision_source(service)}
+        service -> {:ok, service}
       end
     end
   end
@@ -53,7 +53,7 @@ defmodule YellowDog.Server.Control.Mdns do
          :ok <- validate_service_mutation_payload(operation, payload),
          {:ok, services} <- registry_resources(),
          service when not is_nil(service) <- find_service(services, payload["service_id"]) do
-      {:ok, revision_source(service)}
+      {:ok, service}
     else
       nil -> not_found_error()
       {:error, %Error{}} = error -> error
@@ -73,7 +73,7 @@ defmodule YellowDog.Server.Control.Mdns do
   defp list_services(payload) do
     with {:ok, payload} <- validate_payload("server.mdns.services.list", payload),
          {:ok, services} <- registry_resources() do
-      list_result("server.mdns.services.list", services, payload, & &1.resource["service_id"])
+      list_result("server.mdns.services.list", services, payload, & &1["service_id"])
     end
   end
 
@@ -85,9 +85,11 @@ defmodule YellowDog.Server.Control.Mdns do
     end
   end
 
-  defp unsupported_monitor(payload) do
-    with {:ok, _payload} <- validate_payload("server.mdns.monitor.list", payload) do
-      unsupported_error()
+  defp list_monitor(payload) do
+    with {:ok, payload} <- validate_payload("server.mdns.monitor.list", payload),
+         {:ok, queries} <- monitor_queries(),
+         {:ok, items} <- project_monitor_queries(queries) do
+      list_result("server.mdns.monitor.list", items, payload, & &1["query_id"])
     end
   end
 
@@ -209,14 +211,13 @@ defmodule YellowDog.Server.Control.Mdns do
       "name" => field(service, :name),
       "service_type" => field(service, :type),
       "service_port" => field(service, :port),
-      "txt" => service_txt(field(service, :txt_records))
+      "txt" => service_txt(field(service, :txt_records)),
+      "enabled" => field(service, :enabled)
     }
 
-    with true <- is_boolean(field(service, :enabled)),
-         {:ok, resource} <- validate_service_resource(resource) do
-      {:ok, %{resource: resource, enabled: field(service, :enabled)}}
+    with {:ok, resource} <- validate_service_resource(resource) do
+      {:ok, resource}
     else
-      false -> invalid_error()
       {:error, %Error{}} = error -> error
     end
   end
@@ -249,6 +250,88 @@ defmodule YellowDog.Server.Control.Mdns do
       {:ok, services} when is_list(services) -> {:ok, services}
       {:ok, {:error, reason}} -> owner_error(reason)
       {:ok, _services} -> apply_failed_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp monitor_queries do
+    case dependency_call(:monitor, :get_queries, [[limit: Bounds.max_list_entries()]]) do
+      {:ok, queries} when is_list(queries) -> {:ok, queries}
+      {:ok, {:error, reason}} -> owner_error(reason)
+      {:ok, _queries} -> apply_failed_error()
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp project_monitor_queries(queries) do
+    Enum.reduce_while(queries, {:ok, []}, fn query, {:ok, items} ->
+      case project_monitor_query(query) do
+        {:ok, item} -> {:cont, {:ok, [item | items]}}
+        {:error, %Error{}} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Enum.reverse(items)}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp project_monitor_query(query) when is_map(query) do
+    with query_name when is_binary(query_name) <- field(query, :domain),
+         {:ok, record_type} <- record_type(field(query, :record_type)),
+         {:ok, source_address} <- canonical_ip(field(query, :source_ip)),
+         source_port when is_integer(source_port) and source_port in 0..65_535 <-
+           field(query, :source_port),
+         answered when is_boolean(answered) <- field(query, :answered),
+         {:ok, occurred_at} <- query_time(field(query, :timestamp)) do
+      source = %{
+        "query_name" => query_name,
+        "record_type" => record_type,
+        "source_address" => source_address,
+        "source_port" => source_port,
+        "answered" => answered,
+        "occurred_at" => occurred_at
+      }
+
+      with {:ok, digest} <- Revision.calculate(source),
+           item = Map.put(source, "query_id", "query-" <> digest),
+           {:ok, item} <- validate_monitor_item(item) do
+        {:ok, item}
+      end
+    else
+      {:error, %Error{}} = error -> error
+      _invalid -> invalid_error()
+    end
+  end
+
+  defp project_monitor_query(_query), do: invalid_error()
+
+  defp record_type(value) when is_atom(value), do: value |> Atom.to_string() |> record_type()
+
+  defp record_type(value) when is_binary(value) and value != "",
+    do: {:ok, String.upcase(value)}
+
+  defp record_type(_value), do: invalid_error()
+
+  defp query_time(value) when is_integer(value) and value >= 0 do
+    case DateTime.from_unix(value, :second) do
+      {:ok, datetime} -> format_datetime(datetime)
+      {:error, _reason} -> invalid_error()
+    end
+  end
+
+  defp query_time(%DateTime{} = value), do: format_datetime(value)
+  defp query_time(_value), do: invalid_error()
+
+  defp validate_monitor_item(item) do
+    validation = %{
+      "items" => [item],
+      "revision" => @validation_revision,
+      "observed_at" => @validation_observed_at
+    }
+
+    case validate_result("server.mdns.monitor.list", validation) do
+      {:ok, _validation} -> {:ok, item}
       {:error, %Error{}} = error -> error
     end
   end
@@ -382,14 +465,13 @@ defmodule YellowDog.Server.Control.Mdns do
   defp service_mutation_result(action, service_id, services)
        when action in [:register, :update, :toggle] do
     with service when not is_nil(service) <- find_service(services, service_id),
-         source <- revision_source(service),
-         {:ok, revision} <- Revision.calculate(source),
+         {:ok, revision} <- Revision.calculate(service),
          {:ok, result} <-
            validate_result(service_operation(action), %{
              "resource_type" => "mdns_service",
              "resource_id" => service_id,
              "revision" => revision,
-             "resource" => service.resource
+             "resource" => service
            }) do
       {:ok, result}
     else
@@ -418,33 +500,23 @@ defmodule YellowDog.Server.Control.Mdns do
   end
 
   defp find_service(services, service_id) do
-    Enum.find(services, &(&1.resource["service_id"] == service_id))
+    Enum.find(services, &(&1["service_id"] == service_id))
   end
-
-  defp revision_source(service),
-    do: %{"resource" => service.resource, "enabled" => service.enabled}
 
   defp list_result(operation, items, payload, key_fun) do
     bounded = sort_and_bound(items, key_fun)
 
-    with {:ok, revision} <- Revision.calculate(list_resources(bounded)),
+    with {:ok, revision} <- Revision.calculate(bounded),
          {:ok, page} <- paginate(bounded, payload, key_fun),
          {:ok, observed_at} <- observation_time(),
          {:ok, result} <-
            validate_result(operation, %{
-             "items" => list_resources(bounded),
+             "items" => bounded,
              "revision" => revision,
              "observed_at" => observed_at
            }) do
-      validate_result(operation, %{result | "items" => list_resources(page)})
+      validate_result(operation, %{result | "items" => page})
     end
-  end
-
-  defp list_resources(items) do
-    Enum.map(items, fn
-      %{resource: resource} -> resource
-      item -> item
-    end)
   end
 
   defp sort_and_bound(items, key_fun) do

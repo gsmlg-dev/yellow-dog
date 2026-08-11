@@ -464,7 +464,7 @@ defmodule YellowDog.Console.CoreComponents do
   Renders a service status alert banner.
   """
   attr :service, :string, required: true
-  attr :navigate, :string, default: "/server/dashboard"
+  attr :navigate, :string, default: "/server"
 
   def service_alert(assigns) do
     ~H"""

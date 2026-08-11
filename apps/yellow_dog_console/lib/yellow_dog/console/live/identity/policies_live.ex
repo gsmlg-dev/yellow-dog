@@ -1,102 +1,96 @@
 defmodule YellowDog.Console.IdentityLive.PoliciesLive do
+  @moduledoc "Read-only management view of Identity policies for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  alias YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.IdentityLive.ManagementComponents
+  alias YellowDog.Console.IdentityLive.ManagementSupport
+  alias YellowDog.Console.Layouts
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(:page_title, "Approval Policies") |> load_policies()}
+    {:ok,
+     assign(socket,
+       page_title: "Identity Policies",
+       subscribed_server_id: nil,
+       policies: [],
+       management_error: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_event("refresh", _params, socket) do
-    {:noreply, load_policies(socket)}
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_policies(socket, server_id), else: socket)}
   end
 
-  defp load_policies(socket) do
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.list_policies() end,
-        %{policies: [], default_action: :pending}
-      )
-
-    socket
-    |> assign(:policies, result.policies)
-    |> assign(:default_action, result.default_action)
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_policies(server_id)}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h1 class="text-2xl font-bold">Approval Policies</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
-            ↻
-          </button>
-        </div>
+      <div id="identity-policies" class="space-y-6">
+        <ManagementComponents.page_header
+          title="Identity Policies"
+          subtitle="Read-only management owner"
+          server={@selected_server}
+          online?={@service_online?}
+          back={ServicePaths.server_path(@selected_server.id, :identity)}
+        />
 
-        <div class="alert alert-info">
-          <div>
-            <p>
-              Policies are evaluated in order — first match wins. Configure in
-              <code class="font-mono text-sm">config.toml</code>
-              under <code class="font-mono text-sm">[identity.approval]</code>.
-            </p>
-            <p class="mt-1">
-              Default action: <span class="badge badge-outline">{@default_action}</span>
-            </p>
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
+
+        <.card>
+          <div :if={@policies == [] and is_nil(@management_error)} class="text-on-surface-variant">
+            No policies in this Server snapshot
           </div>
-        </div>
-
-        <div :if={@policies == []} class="text-center py-12 text-on-surface-variant">
-          No policies configured. All registrations will use the default action.
-        </div>
-
-        <div class="space-y-4">
-          <div :for={{policy, idx} <- Enum.with_index(@policies, 1)} class="card bg-surface shadow">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <span class="badge badge-neutral badge-lg font-mono">{idx}</span>
-                  <div>
-                    <h3 class="font-bold text-lg">{policy.name}</h3>
-                    <p :if={policy.description} class="text-sm text-on-surface-variant">
-                      {policy.description}
-                    </p>
-                  </div>
-                </div>
-                <span class={action_badge_class(policy.action)}>
-                  {policy.action}
-                </span>
-              </div>
-
-              <div :if={policy.match != %{}} class="mt-3">
-                <h4 class="text-sm font-semibold text-on-surface-variant mb-2">Match Criteria</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  <div
-                    :for={{field, value} <- policy.match}
-                    class="flex items-center gap-2 text-sm"
-                  >
-                    <span class="font-mono text-on-surface-variant">{field}:</span>
-                    <span class="font-mono">{format_match_value(value)}</span>
-                  </div>
-                </div>
-              </div>
+          <div
+            :for={policy <- @policies}
+            class="flex items-center justify-between border-b border-outline-variant py-3 last:border-0"
+          >
+            <div>
+              <div class="font-mono">{policy["policy_id"]}</div>
+              <div class="text-sm text-on-surface-variant">{policy["action"]}</div>
             </div>
+            <.badge color={if policy["enabled"], do: "success", else: "ghost"}>
+              {if policy["enabled"], do: "Enabled", else: "Disabled"}
+            </.badge>
           </div>
-        </div>
+        </.card>
       </div>
     </Layouts.app>
     """
   end
 
-  defp action_badge_class(:approve), do: "badge badge-success badge-lg"
-  defp action_badge_class(:reject), do: "badge badge-error badge-lg"
-  defp action_badge_class(_), do: "badge badge-warning badge-lg"
+  defp load_policies(socket, server_id) do
+    result = ServerManagement.identity_policies_get(server_id)
+    value = ManagementSupport.value(result, %{})
 
-  defp format_match_value(value) when is_list(value), do: Enum.join(value, ", ")
-  defp format_match_value(value), do: to_string(value)
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Identity Policies",
+      policies: Map.get(value, "policies", []),
+      management_error: ManagementSupport.error(result),
+      cached_snapshot?: ManagementSupport.cached?(result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(result, socket.assigns.selected_server.last_seen_at)
+    )
+  end
 end

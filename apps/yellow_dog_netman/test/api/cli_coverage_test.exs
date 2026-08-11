@@ -200,7 +200,7 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
       result =
         CLI.handle_command(%{
           "method" => "device.show",
-          "params" => %{"interface" => "nosuchiface_cov_#{:rand.uniform(65535)}"}
+          "params" => %{"interface" => "nosuchif_cov"}
         })
 
       assert %{"error" => _} = result
@@ -286,7 +286,7 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
 
   describe "status command with active connection" do
     test "status returns default_route as profile_id string when connection exists" do
-      iface = "cli_cov_stat_#{:rand.uniform(65535)}"
+      iface = "cli_cov_stat"
       profile_id = "cli-cov-stat-#{iface}"
 
       profile = %Profile{

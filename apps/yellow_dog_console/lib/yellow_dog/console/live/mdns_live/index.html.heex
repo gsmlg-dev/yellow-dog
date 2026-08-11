@@ -1,195 +1,90 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-6">
-    <.service_alert :if={not @service_running} service="mDNS" navigate="/server/settings" />
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+  <div id="mdns-overview" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-4xl font-bold">mDNS Service</h1>
-        <p class="mt-2 text-on-surface-variant">Multicast DNS service discovery and monitoring</p>
+        <h1 class="text-4xl font-bold">mDNS</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
+        </p>
       </div>
       <div class="flex items-center gap-3">
-        <.status_indicator
-          status={if @status.running, do: "running", else: "stopped"}
-          label={if @status.running, do: "Running", else: "Stopped"}
-          pulse
-        />
-        <.dm_btn
-          variant="ghost"
-          size="sm"
-          class="btn-circle"
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
           phx-click="refresh"
           aria-label="Refresh"
         >
-          <.dm_mdi name="refresh" class="h-5 w-5" />
-        </.dm_btn>
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
       </div>
     </div>
-    <!-- Status Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Mode Stat -->
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Mode</h2>
-          <div class="flex items-center justify-between">
-            <div class="text-2xl font-bold text-info">
-              {String.capitalize(to_string(@status.mode))}
-            </div>
-            <.dm_mdi name="content-copy" class="w-8 h-8 text-info" />
-          </div>
-        </div>
-      </div>
-      <!-- Registered Services Stat -->
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Registered Services</h2>
-          <div class="text-2xl font-bold text-success">{@status.registered_services}</div>
-          <div class="mt-2">
-            <.link navigate={~p"/server/mdns/services"} class="btn btn-sm btn-success">
-              Manage
-            </.link>
-          </div>
-        </div>
-      </div>
-      <!-- Discovered Services Stat -->
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Discovered Services</h2>
-          <div class="text-2xl font-bold text-secondary">{@status.discovered_services}</div>
-          <div class="mt-2">
-            <.link navigate={~p"/server/mdns/discovery"} class="btn btn-sm btn-secondary">
-              Browse
-            </.link>
-          </div>
-        </div>
-      </div>
-      <!-- Network Hosts Stat -->
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Network Hosts</h2>
-          <div class="text-2xl font-bold text-accent">{@network_stats.unique_hosts}</div>
-          <div class="mt-2">
-            <.link navigate={~p"/server/mdns/monitor"} class="btn btn-sm btn-accent">
-              Activity
-            </.link>
-          </div>
-        </div>
-      </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-offline-snapshot">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+      </span>
     </div>
-    <!-- Statistics Grid -->
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <!-- Registry Statistics -->
-      <.card title="Registry Statistics" class="xl:col-span-1">
-        <div class="space-y-3">
-          <div class="flex items-center justify-between p-3 rounded-lg bg-surface-container">
-            <span class="text-sm font-medium">Total Services</span>
-            <.badge size="lg">{@stats.registry_stats.total}</.badge>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-lg bg-surface-container">
-            <span class="text-sm font-medium">Enabled</span>
-            <.badge color="success" size="lg">{@stats.registry_stats.enabled}</.badge>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-lg bg-surface-container">
-            <span class="text-sm font-medium">Disabled</span>
-            <.badge color="ghost" size="lg">{@stats.registry_stats.disabled}</.badge>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-lg bg-surface-container">
-            <span class="text-sm font-medium">Registered (API)</span>
-            <.badge color="info" size="lg">{@stats.registry_stats.registered}</.badge>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-lg bg-surface-container">
-            <span class="text-sm font-medium">From File</span>
-            <.badge color="secondary" size="lg">{@stats.registry_stats.from_file}</.badge>
-          </div>
-        </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-management-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error}</span>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Registered services</div>
+        <div class="mt-1 text-3xl font-semibold">{@registered_count}</div>
+        <div class="mt-1 text-sm text-on-surface-variant">{@registered_count} registered</div>
+        <:actions>
+          <.link
+            navigate={
+              YellowDog.Console.ServicePaths.server_path(@selected_server.id, :mdns_services)
+            }
+            class="btn btn-primary btn-sm"
+          >
+            Manage
+          </.link>
+        </:actions>
       </.card>
-      <!-- Network Activity -->
-      <.card title="Network Activity" class="xl:col-span-2">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <h2 class="card-title">Total Responses</h2>
-              <div class="text-3xl font-bold text-primary">
-                {@network_stats.total_responses}
-              </div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <h2 class="card-title">Total Queries</h2>
-              <div class="text-3xl font-bold text-secondary">
-                {@network_stats.total_queries}
-              </div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <h2 class="card-title">Active Services</h2>
-              <div class="text-3xl font-bold text-success">
-                {@network_stats.active_services}
-              </div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <h2 class="card-title">Queries/Minute</h2>
-              <div class="text-3xl font-bold text-accent">
-                {Float.round(@network_stats.queries_per_minute, 1)}
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div class="divider">Activity Trends</div>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Discovered services</div>
+        <div class="mt-1 text-3xl font-semibold">{@discovered_count}</div>
+        <div class="mt-1 text-sm text-on-surface-variant">{@discovered_count} discovered</div>
+        <:actions>
+          <.link
+            navigate={
+              YellowDog.Console.ServicePaths.server_path(@selected_server.id, :mdns_discovery)
+            }
+            class="btn btn-secondary btn-sm"
+          >
+            Browse
+          </.link>
+        </:actions>
+      </.card>
 
-        <div class="space-y-3">
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm">Response Rate</span>
-              <span class="text-sm font-semibold">
-                {if @network_stats.total_queries > 0,
-                  do: round(@network_stats.total_responses / @network_stats.total_queries * 100),
-                  else: 0}%
-              </span>
-            </div>
-            <.progress
-              value={
-                if @network_stats.total_queries > 0,
-                  do: round(@network_stats.total_responses / @network_stats.total_queries * 100),
-                  else: 0
-              }
-              color="success"
-            />
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm">Network Utilization</span>
-              <span class="text-sm font-semibold">
-                {min(round(@network_stats.queries_per_minute * 2), 100)}%
-              </span>
-            </div>
-            <.progress
-              value={min(round(@network_stats.queries_per_minute * 2), 100)}
-              color="info"
-            />
-          </div>
-        </div>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Cached records</div>
+        <div class="mt-1 text-3xl font-semibold">{@cache_count}</div>
+        <div class="mt-1 text-sm text-on-surface-variant">{@cache_count} cached</div>
+        <:actions>
+          <.link
+            navigate={
+              YellowDog.Console.ServicePaths.server_path(@selected_server.id, :mdns_monitor)
+            }
+            class="btn btn-accent btn-sm"
+          >
+            Monitor
+          </.link>
+        </:actions>
       </.card>
     </div>
-    <!-- Quick Actions -->
-    <.card title="Quick Actions">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <.link navigate={~p"/server/mdns/services"} class="btn btn-primary btn-lg gap-2">
-          <.dm_mdi name="plus" class="w-5 h-5" /> Register Service
-        </.link>
-
-        <.link navigate={~p"/server/mdns/discovery"} class="btn btn-secondary btn-lg gap-2">
-          <.dm_mdi name="magnify" class="w-5 h-5" /> Discover Services
-        </.link>
-
-        <.link navigate={~p"/server/mdns/monitor"} class="btn btn-accent btn-lg gap-2">
-          <.dm_mdi name="chart-bar" class="w-5 h-5" /> Monitor Network
-        </.link>
-      </div>
-    </.card>
   </div>
 </Layouts.app>

@@ -226,20 +226,21 @@ defmodule YellowDog.Dns.ConfigPersistence do
     |> Enum.map(fn {name, pid, priority} ->
       try do
         stats = View.stats(pid)
+        control_snapshot = View.control_snapshot(pid)
 
         %{
           name: name,
           priority: priority,
-          match_clients: stats[:match_clients],
           recursion: stats[:recursion_enabled] || false,
+          recursion_enabled: stats[:recursion_enabled] || false,
           ecs_enabled: stats[:ecs_enabled] || false,
           zones: stats[:zones] || [],
-          acl: stats[:acl],
           enabled: Map.get(stats, :enabled, true),
           fallback_forwarders: Map.get(stats, :fallback_forwarders, []),
           fallback_timeout: Map.get(stats, :fallback_timeout, 2000),
           fallback_retries: Map.get(stats, :fallback_retries, 1)
         }
+        |> put_control_acl(control_snapshot)
       rescue
         _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError, KeyError] ->
           %{
@@ -251,6 +252,25 @@ defmodule YellowDog.Dns.ConfigPersistence do
           }
       end
     end)
+  end
+
+  defp put_control_acl(config, {:ok, %{match_clients: []}}) do
+    config
+    |> Map.put(:match_clients, "none")
+    |> Map.put(:acl, [])
+  end
+
+  defp put_control_acl(config, {:ok, %{match_clients: match_clients}})
+       when is_list(match_clients) do
+    config
+    |> Map.put(:match_clients, nil)
+    |> Map.put(:acl, Enum.map(match_clients, &%{action: "allow", network: &1}))
+  end
+
+  defp put_control_acl(config, _unsupported) do
+    config
+    |> Map.put(:match_clients, nil)
+    |> Map.put(:acl, nil)
   end
 
   @doc """

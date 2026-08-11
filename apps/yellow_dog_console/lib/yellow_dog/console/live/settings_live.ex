@@ -1,784 +1,393 @@
 defmodule YellowDog.Console.SettingsLive do
   @moduledoc """
-  LiveView for YellowDog service settings management.
+  Management-owned aggregate configuration editor for one selected Server.
 
-  Provides a tabbed interface for configuring DNS, mDNS, DHCPv4, and DHCPv6 services
-  with real-time validation, optimistic locking, and atomic persistence.
-
-  ## Features
-    - Service-specific configuration tabs
-    - Real-time form validation with Ecto changesets
-    - Optimistic locking to prevent concurrent update conflicts
-    - Atomic TOML file updates with backup/restore
-    - Service restart coordination
-    - Comprehensive error handling and user feedback
+  The page edits the durable Management draft while the Server is online or
+  offline. Applying and rolling back publish immutable aggregate configuration
+  versions for delivery through the Server agent.
   """
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.FormatHelper, only: [format_bytes: 1]
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
+  alias YellowDog.Sync.Operation
+  alias YellowDog.Sync.ServerOperation
 
-  alias YellowDog.Console.ConfigManager
-  alias YellowDog.Console.ServiceManager
-  alias YellowDog.Console.Settings.{ConfigurationVersion, ServiceConfiguration}
+  @services [:dns, :mdns, :dhcpv4, :dhcpv6, :netboot]
+  @profiles ~w(cloud_dns local_network dns_only dhcp_only netboot_only custom)
+  @in_flight_states [:desired, :delivered, :applying]
+  @deployment_in_flight "configuration deployment is already in flight"
+  @service_fields %{
+    dns: [
+      %{key: "hostname", label: "Hostname", type: :string, placeholder: "dns.example.test"},
+      %{key: "listen", label: "Listen address", type: :string, placeholder: "0.0.0.0"},
+      %{key: "port", label: "Port", type: :integer, placeholder: "53"}
+    ],
+    mdns: [
+      %{key: "hostname", label: "Hostname", type: :string, placeholder: "host.local"},
+      %{key: "listen", label: "Listen address", type: :string, placeholder: "0.0.0.0"},
+      %{key: "port", label: "Port", type: :integer, placeholder: "5353"},
+      %{key: "mode", label: "Mode", type: :string, placeholder: "responder"}
+    ],
+    dhcpv4: [
+      %{key: "listen", label: "Listen address", type: :string, placeholder: "0.0.0.0"},
+      %{key: "port", label: "Port", type: :integer, placeholder: "67"}
+    ],
+    dhcpv6: [
+      %{key: "listen", label: "Listen address", type: :string, placeholder: "::"},
+      %{key: "port", label: "Port", type: :integer, placeholder: "547"}
+    ],
+    netboot: [
+      %{key: "tftp_port", label: "TFTP port", type: :integer, placeholder: "69"},
+      %{
+        key: "default_profile",
+        label: "Default boot profile",
+        type: :string,
+        placeholder: "default"
+      }
+    ]
+  }
 
   @impl true
   def mount(_params, _session, socket) do
-    config_path = get_config_path()
+    document = default_document(nil)
 
-    with {:ok, config} <- ConfigManager.load_config(config_path),
-         version_info <- ConfigurationVersion.get_version(config_path) do
-      socket =
-        socket
-        |> assign(
-          page_title: "Settings",
-          config_path: config_path,
-          config: config,
-          version_info: version_info,
-          show_conflict_modal: false,
-          show_recovery_modal: false,
-          changeset: nil,
-          pending_changes: %{},
-          show_pool_form: false,
-          pool_form_mode: nil,
-          pool_form_service: nil,
-          editing_pool: nil
-        )
-        |> load_service_forms()
+    {:ok,
+     assign(socket,
+       page_title: "Server Settings",
+       selected_service: :dns,
+       draft_revision: 0,
+       config_document: document,
+       settings_form: settings_form(document, :dns),
+       config_versions: [],
+       latest_deployment: nil,
+       applied_revision: nil,
+       in_flight?: false,
+       management_error: nil
+     )}
+  end
 
-      {:ok, socket}
+  @impl true
+  def handle_params(%{"server_id" => _server_id}, _uri, socket) do
+    socket = assign(socket, :selected_service, selected_service(socket.assigns.live_action))
+    {:noreply, if(connected?(socket), do: load_settings(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, load_settings(socket)}
+
+  def handle_event("save", %{"settings" => params}, socket) do
+    with {:ok, entries} <- typed_service_entries(params, socket.assigns.selected_service),
+         document <- merge_service_entries(socket, params["profile"], entries),
+         :ok <- validate_document(document),
+         %ManagementResult{status: :ok} <-
+           ServerManagement.put_config_draft(
+             socket.assigns.selected_server.id,
+             socket.assigns.draft_revision,
+             document
+           ) do
+      {:noreply,
+       socket
+       |> load_settings()
+       |> put_flash(:info, "Draft saved")}
     else
-      {:error, reason} ->
-        :telemetry.execute(
-          [:yellow_dog, :console, :settings, :config_load_error],
-          %{count: 1},
-          %{source: __MODULE__, reason: inspect(reason), severity: :error}
-        )
+      %ManagementResult{status: :error, message: message} ->
+        {:noreply, put_flash(socket, :error, message)}
 
-        socket =
-          socket
-          |> assign(
-            page_title: "Settings",
-            config_path: config_path,
-            config: %{},
-            version_info: %{version: 0, timestamp: 0, file_path: config_path},
-            show_conflict_modal: false,
-            show_recovery_modal: false,
-            changeset: nil,
-            pending_changes: %{},
-            show_pool_form: false,
-            pool_form_mode: nil,
-            pool_form_service: nil,
-            editing_pool: nil
-          )
-          |> put_flash(:error, "Failed to load configuration: #{inspect(reason)}")
-          |> load_service_forms()
-
-        {:ok, socket}
-    end
-  end
-
-  @impl true
-  def handle_params(_params, _url, socket) do
-    # live_action comes from the router (e.g., :dns, :mdns, :dhcpv4, :dhcpv6)
-    {:noreply, assign(socket, :active_tab, socket.assigns.live_action)}
-  end
-
-  @valid_settings_services ~w(dns mdns dhcpv4 dhcpv6 netboot)
-
-  @impl true
-  def handle_event("validate_" <> service, %{"service_configuration" => params}, socket)
-      when service in @valid_settings_services do
-    service_atom = String.to_existing_atom(service)
-    changeset = validate_service_config(service_atom, params)
-
-    socket =
-      socket
-      |> assign(:"#{service}_changeset", changeset)
-      |> maybe_update_pending_changes(service_atom, changeset)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("save_" <> service, %{"service_configuration" => params}, socket)
-      when service in @valid_settings_services do
-    service_atom = String.to_existing_atom(service)
-
-    # Get existing changeset to preserve pools
-    existing_changeset = Map.get(socket.assigns, :"#{service}_changeset")
-    existing_pools = Ecto.Changeset.get_field(existing_changeset, :pools) || []
-
-    # Convert pool structs to maps for changeset
-    pool_maps =
-      Enum.map(existing_pools, fn pool ->
-        Map.from_struct(pool)
-        |> Map.drop([:__meta__])
-      end)
-
-    # Add pools to params
-    params_with_pools = Map.put(params, "pools", pool_maps)
-
-    # Create new changeset from params with pools
-    changeset = validate_service_config(service_atom, params_with_pools)
-
-    if changeset.valid? do
-      handle_save(socket, service_atom, changeset)
-    else
-      socket =
-        socket
-        |> assign(:"#{service}_changeset", changeset)
-        |> put_flash(:error, "Please fix validation errors before saving")
-
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("apply_changes_" <> service, _params, socket)
-      when service in @valid_settings_services do
-    service_atom = String.to_existing_atom(service)
-    handle_apply_changes(socket, service_atom)
-  end
-
-  @impl true
-  def handle_event("dns_reload_all", _params, socket) do
-    case dns_reload(:all) do
-      :ok ->
-        {:noreply, put_flash(socket, :info, "DNS configuration reloaded successfully")}
-
-      {:error, reason} ->
+      {:error, message} ->
         {:noreply,
-         put_flash(socket, :error, "Failed to reload DNS configuration: #{inspect(reason)}")}
+         socket
+         |> assign(:settings_form, to_form(params, as: "settings"))
+         |> put_flash(:error, message)}
     end
   end
 
-  @impl true
-  def handle_event("dns_reload_views", _params, socket) do
-    case dns_reload(:views) do
-      :ok ->
-        {:noreply, put_flash(socket, :info, "DNS views reloaded successfully")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to reload DNS views: #{inspect(reason)}")}
-    end
+  def handle_event("save", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Invalid configuration draft")}
   end
 
-  @impl true
-  def handle_event("dns_reload_acls", _params, socket) do
-    case dns_reload(:acls) do
-      :ok ->
-        {:noreply, put_flash(socket, :info, "DNS ACLs reloaded successfully")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to reload DNS ACLs: #{inspect(reason)}")}
-    end
+  def handle_event("apply", _params, %{assigns: %{in_flight?: true}} = socket) do
+    {:noreply, put_flash(socket, :error, @deployment_in_flight)}
   end
 
-  @impl true
-  def handle_event("reload_config", _params, socket) do
-    config_path = socket.assigns.config_path
+  def handle_event("apply", _params, socket) do
+    result =
+      ServerManagement.publish_config_draft(
+        socket.assigns.selected_server.id,
+        socket.assigns.draft_revision
+      )
 
-    case ConfigManager.load_config(config_path) do
-      {:ok, config} ->
-        version_info = ConfigurationVersion.get_version(config_path)
-
-        socket =
-          socket
-          |> assign(:config, config)
-          |> assign(:version_info, version_info)
-          |> assign(:pending_changes, %{})
-          |> load_service_forms()
-          |> put_flash(:info, "Configuration reloaded from disk")
-
-        {:noreply, socket}
-
-      {:error, reason} ->
+    case result do
+      %ManagementResult{status: :ok} ->
         {:noreply,
-         put_flash(socket, :error, "Failed to reload configuration: #{inspect(reason)}")}
+         socket
+         |> load_settings()
+         |> put_flash(:info, "Waiting for Server acknowledgement")}
+
+      %ManagementResult{status: :error, message: message} ->
+        {:noreply, put_flash(socket, :error, message)}
     end
   end
 
-  @impl true
-  def handle_event("close_conflict_modal", _params, socket) do
-    {:noreply, assign(socket, :show_conflict_modal, false)}
-  end
-
-  @impl true
-  def handle_event("close_recovery_modal", _params, socket) do
-    {:noreply, assign(socket, :show_recovery_modal, false)}
-  end
-
-  @impl true
-  def handle_event("restore_backup", %{"backup_path" => backup_path}, socket) do
-    case ConfigManager.restore_backup(backup_path, socket.assigns.config_path) do
-      :ok ->
-        # Reload configuration after restore
-        handle_event("reload_config", %{}, socket)
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to restore backup: #{inspect(reason)}")}
-    end
-  end
-
-  @valid_pool_events ~w(dhcpv4_pool dhcpv6_pool)
-
-  # Pool management events
-  @impl true
-  def handle_event("add_" <> service_and_pool, _params, socket)
-      when service_and_pool in @valid_pool_events do
-    # Parse service type from event name (e.g., "dhcpv4_pool" -> :dhcpv4)
-    service =
-      service_and_pool
-      |> String.replace_suffix("_pool", "")
-      |> String.to_existing_atom()
-
-    protocol = if service == :dhcpv4, do: :ipv4, else: :ipv6
-
-    socket =
-      socket
-      |> assign(:show_pool_form, true)
-      |> assign(:pool_form_mode, :create)
-      |> assign(:pool_form_service, service)
-      |> assign(:pool_form_protocol, protocol)
-      |> assign(:editing_pool, nil)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("edit_" <> service_and_pool, %{"pool-id" => pool_id}, socket)
-      when service_and_pool in @valid_pool_events do
-    # Parse service type from event name
-    service =
-      service_and_pool
-      |> String.replace_suffix("_pool", "")
-      |> String.to_existing_atom()
-
-    protocol = if service == :dhcpv4, do: :ipv4, else: :ipv6
-    changeset = Map.get(socket.assigns, :"#{service}_changeset")
-    pools = Ecto.Changeset.get_field(changeset, :pools) || []
-    pool = Enum.find(pools, &(&1.id == pool_id))
-
-    if pool do
-      socket =
-        socket
-        |> assign(:show_pool_form, true)
-        |> assign(:pool_form_mode, :edit)
-        |> assign(:pool_form_service, service)
-        |> assign(:pool_form_protocol, protocol)
-        |> assign(:editing_pool, pool)
-
-      {:noreply, socket}
+  def handle_event("rollback", %{"version" => version}, %{assigns: %{in_flight?: false}} = socket) do
+    with {:ok, version} <- parse_version(version),
+         %ManagementResult{status: :ok} <-
+           ServerManagement.rollback_config(
+             socket.assigns.selected_server.id,
+             version,
+             socket.assigns.draft_revision
+           ) do
+      {:noreply,
+       socket
+       |> load_settings()
+       |> put_flash(:info, "Rollback published; waiting for Server acknowledgement")}
     else
-      {:noreply, put_flash(socket, :error, "Pool not found")}
+      %ManagementResult{status: :error, message: message} ->
+        {:noreply, put_flash(socket, :error, message)}
+
+      {:error, message} ->
+        {:noreply, put_flash(socket, :error, message)}
     end
   end
 
-  @impl true
-  def handle_event("delete_" <> service_and_pool, %{"pool-id" => pool_id}, socket)
-      when service_and_pool in @valid_pool_events do
-    # Parse service type from event name
-    service =
-      service_and_pool
-      |> String.replace_suffix("_pool", "")
-      |> String.to_existing_atom()
-
-    changeset = Map.get(socket.assigns, :"#{service}_changeset")
-    pools = Ecto.Changeset.get_field(changeset, :pools) || []
-    updated_pools = Enum.reject(pools, &(&1.id == pool_id))
-
-    # Update changeset by putting the new pools list directly
-    updated_changeset = Ecto.Changeset.put_embed(changeset, :pools, updated_pools)
-
-    socket =
-      socket
-      |> assign(:"#{service}_changeset", updated_changeset)
-      |> maybe_update_pending_changes(service, updated_changeset)
-      |> put_flash(:info, "Pool deleted successfully")
-
-    {:noreply, socket}
+  def handle_event("rollback", _params, socket) do
+    {:noreply, put_flash(socket, :error, @deployment_in_flight)}
   end
 
-  @impl true
-  def handle_event("close_pool_form", _params, socket) do
-    socket =
-      socket
-      |> assign(:show_pool_form, false)
-      |> assign(:pool_form_mode, nil)
-      |> assign(:pool_form_service, nil)
-      |> assign(:pool_form_protocol, nil)
-      |> assign(:editing_pool, nil)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(:close_pool_form, socket) do
-    handle_event("close_pool_form", %{}, socket)
-  end
-
-  @impl true
-  def handle_info({:pool_saved, service, pool, mode}, socket) do
-    changeset = Map.get(socket.assigns, :"#{service}_changeset")
-    pools = Ecto.Changeset.get_field(changeset, :pools) || []
-
-    updated_pools =
-      case mode do
-        :create ->
-          # Add new pool to the list
-          pools ++ [pool]
-
-        :edit ->
-          # Replace existing pool with updated one
-          Enum.map(pools, fn p ->
-            if p.id == pool.id, do: pool, else: p
-          end)
-      end
-
-    # Update changeset by putting the new pools list directly
-    updated_changeset = Ecto.Changeset.put_embed(changeset, :pools, updated_pools)
-
-    flash_message =
-      case mode do
-        :create -> "Pool added successfully"
-        :edit -> "Pool updated successfully"
-      end
-
-    socket =
-      socket
-      |> assign(:"#{service}_changeset", updated_changeset)
-      |> maybe_update_pending_changes(service, updated_changeset)
-      |> assign(:show_pool_form, false)
-      |> assign(:pool_form_mode, nil)
-      |> assign(:pool_form_service, nil)
-      |> assign(:pool_form_protocol, nil)
-      |> assign(:editing_pool, nil)
-      |> put_flash(:info, flash_message)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  # Private Functions
-
-  defp get_config_path do
-    Application.get_env(:yellow_dog_console, :config_path, "/etc/yellowdog/config.toml")
-  end
-
-  defp load_service_forms(socket) do
-    config = socket.assigns.config
-
-    socket
-    |> assign(:dns_changeset, build_changeset(:dns, config))
-    |> assign(:mdns_changeset, build_changeset(:mdns, config))
-    |> assign(:dhcpv4_changeset, build_changeset(:dhcpv4, config))
-    |> assign(:dhcpv6_changeset, build_changeset(:dhcpv6, config))
-    |> assign(:netboot_changeset, build_changeset(:netboot, config))
-    |> assign(:netboot_profiles, list_boot_profiles())
-  end
-
-  defp build_changeset(service, config) do
-    service_config = Map.get(config, to_string(service), %{})
-    core_config = Map.get(config, "core", %{})
-    enabled = Map.get(core_config, to_string(service), false)
-
-    # Merge with defaults for this service
-    defaults = get_service_defaults(service)
-
-    attrs =
-      defaults
-      |> Map.merge(normalize_config_keys(service, service_config))
-      |> Map.put("enabled", enabled)
-      |> Map.put("service_type", service)
-      |> maybe_add_pools(service, service_config)
-
-    ServiceConfiguration.changeset(%ServiceConfiguration{}, attrs)
-  end
-
-  # Netboot uses tftp_port in TOML but we map it to generic port field
-  defp normalize_config_keys(:netboot, config) do
-    config
-    |> Map.put("port", Map.get(config, "tftp_port", Map.get(config, "port", 69)))
-  end
-
-  defp normalize_config_keys(_service, config), do: config
-
-  defp get_service_defaults(:dns) do
-    %{
-      "listen" => "0.0.0.0",
-      "port" => 53
-    }
-  end
-
-  defp get_service_defaults(:mdns) do
-    %{
-      "listen" => "0.0.0.0",
-      "port" => 5353,
-      "mode" => "responder"
-    }
-  end
-
-  defp get_service_defaults(:dhcpv4) do
-    %{
-      "listen" => "0.0.0.0",
-      "port" => 67,
-      "gateway" => "192.168.1.1",
-      "domain" => "local",
-      "dns_servers" => ["8.8.8.8", "8.8.4.4"]
-    }
-  end
-
-  defp get_service_defaults(:dhcpv6) do
-    %{
-      "listen" => "::",
-      "port" => 547,
-      "domain" => "local",
-      "dns_servers" => ["2001:4860:4860::8888", "2001:4860:4860::8844"]
-    }
-  end
-
-  defp get_service_defaults(:netboot) do
-    %{
-      "listen" => "0.0.0.0",
-      "port" => 69,
-      "tftp_root" => "data/netboot/tftp",
-      "default_profile" => ""
-    }
-  end
-
-  defp maybe_add_pools(attrs, service, service_config)
-       when service in [:dhcpv4, :dhcpv6] do
-    pools = Map.get(service_config, "pools", [])
-
-    # Convert pools to proper format with protocol field
-    protocol = if service == :dhcpv4, do: :ipv4, else: :ipv6
-
-    formatted_pools =
-      Enum.map(pools, fn pool ->
-        pool
-        |> Map.put("protocol", protocol)
-        |> ensure_pool_id()
-      end)
-
-    Map.put(attrs, "pools", formatted_pools)
-  end
-
-  defp maybe_add_pools(attrs, _service, _service_config), do: attrs
-
-  defp ensure_pool_id(pool) do
-    if Map.has_key?(pool, "id") do
-      pool
-    else
-      Map.put(pool, "id", Ecto.UUID.generate())
-    end
-  end
-
-  defp validate_service_config(service, params) do
-    attrs = Map.put(params, "service_type", service)
-    ServiceConfiguration.changeset(%ServiceConfiguration{}, attrs)
-  end
-
-  defp maybe_update_pending_changes(socket, service, changeset) do
-    if changeset.valid? do
-      changes = Ecto.Changeset.apply_changes(changeset)
-      pending = Map.put(socket.assigns.pending_changes, service, changes)
-      assign(socket, :pending_changes, pending)
-    else
-      socket
-    end
-  end
-
-  defp handle_save(socket, service, changeset) do
-    config_path = socket.assigns.config_path
-    version_info = socket.assigns.version_info
-    changes = Ecto.Changeset.apply_changes(changeset)
-
-    # Build TOML updates from changeset
-    updates = build_toml_updates(service, changes)
-
-    # Attempt save with optimistic locking
-    with :ok <-
-           ConfigurationVersion.compare_and_swap(
-             config_path,
-             version_info.version,
-             version_info.timestamp
-           ),
-         {:ok, _backup_path} <- ConfigManager.create_backup(config_path),
-         :ok <- ConfigManager.update_config(config_path, updates) do
-      # Success - reload configuration and update version
-      new_version_info = ConfigurationVersion.get_version(config_path)
-
-      case ConfigManager.load_config(config_path) do
-        {:ok, new_config} ->
-          socket =
-            socket
-            |> assign(:config, new_config)
-            |> assign(:version_info, new_version_info)
-            |> assign(:"#{service}_changeset", build_changeset(service, new_config))
-            |> update_pending_changes_after_save(service)
-            |> put_flash(:info, "Configuration saved successfully")
-
-          emit_telemetry(:config_saved, %{service: service})
-          {:noreply, socket}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Saved but failed to reload: #{inspect(reason)}")}
-      end
-    else
-      {:error, :version_mismatch} ->
-        socket =
-          socket
-          |> assign(:show_conflict_modal, true)
-          |> assign(:conflict_service, service)
-          |> put_flash(:error, "Configuration was modified by another user. Please reload.")
-
-        {:noreply, socket}
-
-      {:error, :file_modified} ->
-        socket =
-          socket
-          |> assign(:show_conflict_modal, true)
-          |> assign(:conflict_service, service)
-          |> put_flash(
-            :error,
-            "Configuration file was modified externally. Please reload."
-          )
-
-        {:noreply, socket}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to save configuration: #{inspect(reason)}")}
-    end
-  end
-
-  defp handle_apply_changes(socket, service) do
-    pending = Map.get(socket.assigns.pending_changes, service)
-
-    if pending do
-      # Extract new configuration for service
-      new_config = extract_service_config(pending)
-
-      case ServiceManager.apply_and_restart(service, new_config) do
-        :ok ->
-          socket =
-            socket
-            |> remove_pending_change(service)
-            |> put_flash(:info, "Service #{service} restarted successfully")
-
-          emit_telemetry(:service_applied, %{service: service})
-          {:noreply, socket}
-
-        {:error, reason} ->
-          socket =
-            put_flash(
-              socket,
-              :error,
-              "Failed to restart service #{service}: #{inspect(reason)}"
-            )
-
-          emit_telemetry(:service_apply_failed, %{service: service, reason: reason})
-          {:noreply, socket}
-      end
-    else
-      {:noreply, put_flash(socket, :info, "No pending changes to apply")}
-    end
-  end
-
-  defp build_toml_updates(:netboot, changes) do
-    base = %{
-      "core.netboot" => changes.enabled,
-      "netboot.tftp_port" => changes.port,
-      "netboot.tftp_root" => changes.tftp_root
-    }
-
-    if changes.default_profile && changes.default_profile != "" do
-      Map.put(base, "netboot.default_profile", changes.default_profile)
-    else
-      base
-    end
-  end
-
-  defp build_toml_updates(service, changes) do
-    service_key = to_string(service)
-
-    base_updates = %{
-      "core.#{service_key}" => changes.enabled,
-      "#{service_key}.listen" => changes.listen,
-      "#{service_key}.port" => changes.port
-    }
-
-    # Add service-specific fields
-    service_specific =
-      case service do
-        :mdns ->
-          if changes.mode, do: %{"#{service_key}.mode" => to_string(changes.mode)}, else: %{}
-
-        :dhcpv4 ->
-          dhcp_updates(service_key, changes)
-
-        :dhcpv6 ->
-          dhcp_updates(service_key, changes)
-
-        _ ->
-          %{}
-      end
-
-    Map.merge(base_updates, service_specific)
-  end
-
-  defp dhcp_updates(service_key, changes) do
-    updates =
-      [
-        {changes.gateway, "#{service_key}.gateway"},
-        {changes.domain, "#{service_key}.domain"}
-      ]
-      |> Enum.reject(fn {val, _key} -> is_nil(val) end)
-      |> Map.new(fn {val, key} -> {key, val} end)
-
-    updates =
-      if changes.dns_servers && changes.dns_servers != [],
-        do: Map.put(updates, "#{service_key}.dns_servers", changes.dns_servers),
-        else: updates
-
-    # Handle pools for DHCP services
-    pools = changes.pools || []
-    formatted_pools = Enum.map(pools, &format_pool_for_toml/1)
-    Map.put(updates, "#{service_key}.pools", formatted_pools)
-  end
-
-  defp list_boot_profiles do
-    try do
-      YellowDog.Netboot.Manifest.Store.list_profiles()
-    catch
-      _, _ -> []
-    end
-  end
-
-  defp format_pool_for_toml(pool) do
-    base = %{
-      "name" => pool.name,
-      "range_start" => pool.range_start,
-      "range_end" => pool.range_end
-    }
-
-    optional =
-      [
-        {"lease_time", pool.lease_time},
-        {"gateway", pool.gateway},
-        {"preferred_lifetime", pool.preferred_lifetime},
-        {"valid_lifetime", pool.valid_lifetime}
-      ]
-      |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-      |> Map.new()
-
-    optional =
-      if pool.dns_servers && pool.dns_servers != [],
-        do: Map.put(optional, "dns_servers", pool.dns_servers),
-        else: optional
-
-    Map.merge(base, optional)
-  end
-
-  defp extract_service_config(pending_changes) do
-    %{
-      "enabled" => pending_changes.enabled,
-      "listen" => pending_changes.listen,
-      "port" => pending_changes.port
-    }
-  end
-
-  defp update_pending_changes_after_save(socket, service) do
-    # After saving to file, store the configuration (needs service restart to apply)
-    changeset = Map.get(socket.assigns, :"#{service}_changeset")
-    config = Ecto.Changeset.apply_changes(changeset)
-    pending = Map.put(socket.assigns.pending_changes, service, config)
-    assign(socket, :pending_changes, pending)
-  end
-
-  defp remove_pending_change(socket, service) do
-    pending = Map.delete(socket.assigns.pending_changes, service)
-    assign(socket, :pending_changes, pending)
-  end
-
-  defp emit_telemetry(event, metadata) do
-    :telemetry.execute(
-      [:yellow_dog, :console, :settings, event],
-      %{timestamp: System.monotonic_time()},
-      metadata
+  defp load_settings(socket) do
+    server_id = socket.assigns.selected_server.id
+    draft_result = ServerManagement.get_config_draft(server_id)
+    versions_result = ServerManagement.config_versions(server_id)
+    draft = result_value(draft_result, %{draft_revision: 0, document: nil})
+    document = draft.document || default_document(socket.assigns.selected_server)
+    versions = result_value(versions_result, [])
+    latest = List.first(versions)
+    latest_applied = Enum.find(versions, &(&1.state == :applied))
+
+    assign(socket,
+      page_title:
+        "#{socket.assigns.selected_server.name || server_id} — #{service_label(socket.assigns.selected_service)} Settings",
+      draft_revision: draft.draft_revision,
+      config_document: document,
+      settings_form: settings_form(document, socket.assigns.selected_service),
+      config_versions: versions,
+      latest_deployment: latest,
+      applied_revision: latest_applied && latest_applied.applied_revision,
+      in_flight?: latest != nil and latest.state in @in_flight_states,
+      management_error: first_error([draft_result, versions_result])
     )
   end
 
-  defp list_backups(config_path) do
-    backup_dir = Path.dirname(config_path)
-    base_name = Path.basename(config_path)
+  defp default_document(nil) do
+    %{"schema_version" => 1, "profile" => "custom", "entries" => []}
+  end
 
-    case File.ls(backup_dir) do
-      {:ok, files} ->
-        files
-        |> Enum.filter(&String.starts_with?(&1, "#{base_name}.backup."))
-        |> Enum.map(fn filename ->
-          path = Path.join(backup_dir, filename)
+  defp default_document(server) do
+    profile = server.profile |> profile_name() |> ensure_profile()
+    %{"schema_version" => 1, "profile" => profile, "entries" => []}
+  end
 
-          # Extract timestamp from filename (format: config.toml.backup.20250118T123045Z)
-          timestamp_str =
-            filename
-            |> String.replace_prefix("#{base_name}.backup.", "")
+  defp profile_name(profile) when is_atom(profile), do: Atom.to_string(profile)
+  defp profile_name(profile) when is_binary(profile), do: profile
+  defp profile_name(_profile), do: "custom"
 
-          # Format timestamp for display
-          timestamp_display =
-            case parse_backup_timestamp(timestamp_str) do
-              {:ok, dt} -> Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-              _ -> timestamp_str
-            end
+  defp ensure_profile(profile) when profile in @profiles, do: profile
+  defp ensure_profile(_profile), do: "custom"
 
-          # Get file size
-          size =
-            case File.stat(path) do
-              {:ok, %{size: bytes}} -> format_bytes(bytes)
-              _ -> "unknown"
-            end
+  defp settings_form(document, service) do
+    values = service_entry_values(document, service)
 
-          %{
-            path: path,
-            timestamp: timestamp_display,
-            size: size
-          }
+    to_form(
+      Map.merge(
+        %{
+          "profile" => document["profile"],
+          "enabled" => enabled_override(values, service)
+        },
+        Map.new(service_fields(service), fn field ->
+          {field.key, field_value(values, Atom.to_string(service), field)}
         end)
-        |> Enum.sort_by(& &1.timestamp, :desc)
-
-      {:error, _} ->
-        []
-    end
+      ),
+      as: "settings"
+    )
   end
 
-  defp parse_backup_timestamp(timestamp_str) do
-    # Parse ISO 8601 basic format: 20250118T123045Z
-    case Regex.run(~r/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, timestamp_str) do
-      [_, year, month, day, hour, minute, second] ->
-        DateTime.new(
-          Date.new!(String.to_integer(year), String.to_integer(month), String.to_integer(day)),
-          Time.new!(String.to_integer(hour), String.to_integer(minute), String.to_integer(second))
-        )
-
-      _ ->
-        {:error, :invalid_format}
-    end
-  end
-
-  defp dns_reload(scope) do
-    try do
-      case scope do
-        :all -> YellowDog.Dns.ConfigWatcher.reload()
-        :views -> YellowDog.Dns.ConfigWatcher.reload_views()
-        :acls -> YellowDog.Dns.ConfigWatcher.reload_acls()
+  defp typed_service_entries(params, service) when is_map(params) do
+    with {:ok, enabled} <- enabled_entry(params["enabled"], service) do
+      service_fields(service)
+      |> Enum.reduce_while({:ok, enabled}, fn field, {:ok, entries} ->
+        case typed_field_entry(params[field.key], service, field) do
+          {:ok, nil} -> {:cont, {:ok, entries}}
+          {:ok, entry} -> {:cont, {:ok, [entry | entries]}}
+          {:error, _message} = error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, entries} -> {:ok, Enum.reverse(entries)}
+        {:error, _message} = error -> error
       end
-    rescue
-      e -> {:error, Exception.message(e)}
-    catch
-      :exit, reason -> {:error, reason}
     end
   end
+
+  defp typed_service_entries(_params, _service), do: {:error, "Invalid settings form"}
+
+  defp enabled_entry("inherit", _service), do: {:ok, []}
+
+  defp enabled_entry(value, service) when value in ["true", "false"] do
+    {:ok,
+     [
+       managed_entry(
+         "services.#{service}.enabled",
+         "boolean",
+         value == "true"
+       )
+     ]}
+  end
+
+  defp enabled_entry(_value, _service), do: {:error, "Invalid service state"}
+
+  defp typed_field_entry(value, _service, _field) when value in [nil, ""], do: {:ok, nil}
+
+  defp typed_field_entry(value, service, %{key: key, type: :string}) when is_binary(value) do
+    {:ok, managed_entry("#{service}.#{key}", "string", value)}
+  end
+
+  defp typed_field_entry(value, service, %{key: key, type: :integer}) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer >= 1 and integer <= 65_535 ->
+        {:ok, managed_entry("#{service}.#{key}", "integer", integer)}
+
+      _invalid ->
+        {:error, "#{String.replace(key, "_", " ")} must be between 1 and 65535"}
+    end
+  end
+
+  defp typed_field_entry(_value, _service, field),
+    do: {:error, "Invalid #{String.replace(field.key, "_", " ")}"}
+
+  defp managed_entry(setting, type, value) do
+    %{"setting" => setting, "value" => %{"type" => type, "value" => value}}
+  end
+
+  defp validate_document(document) do
+    with {:ok, operation} <- ServerOperation.fetch("server.config.replace"),
+         {:ok, _document} <- Operation.validate_payload(operation, document) do
+      :ok
+    else
+      _invalid -> {:error, "Configuration contains an invalid managed setting"}
+    end
+  end
+
+  defp merge_service_entries(socket, profile, entries) do
+    retained =
+      socket.assigns.config_document["entries"]
+      |> Enum.reject(&form_owned_entry?(&1, socket.assigns.selected_service))
+
+    socket.assigns.config_document
+    |> Map.put("profile", profile)
+    |> Map.put("entries", Enum.sort_by(retained ++ entries, & &1["setting"]))
+  end
+
+  defp service_entries(document, service) do
+    document
+    |> Map.get("entries", [])
+    |> Enum.filter(&service_entry?(&1, service))
+  end
+
+  defp service_entry?(%{"setting" => setting}, service) when is_binary(setting) do
+    service = Atom.to_string(service)
+
+    String.starts_with?(setting, "#{service}.") or
+      String.starts_with?(setting, "services.#{service}.")
+  end
+
+  defp service_entry?(_entry, _service), do: false
+
+  defp form_owned_entry?(%{"setting" => setting}, service) do
+    setting == "services.#{service}.enabled" or
+      Enum.any?(
+        service_fields(service),
+        &(&1.key == String.replace_prefix(setting, "#{service}.", ""))
+      )
+  end
+
+  defp form_owned_entry?(_entry, _service), do: false
+
+  defp service_entry_values(document, service) do
+    document
+    |> service_entries(service)
+    |> Map.new(fn entry -> {entry["setting"], entry["value"]} end)
+  end
+
+  defp enabled_override(values, service) do
+    case values["services.#{service}.enabled"] do
+      %{"type" => "boolean", "value" => true} -> "true"
+      %{"type" => "boolean", "value" => false} -> "false"
+      _inherited -> "inherit"
+    end
+  end
+
+  defp field_value(values, service, field) do
+    case values["#{service}.#{field.key}"] do
+      %{"type" => "string", "value" => value} when field.type == :string -> value
+      %{"type" => "integer", "value" => value} when field.type == :integer -> to_string(value)
+      _unset -> ""
+    end
+  end
+
+  defp parse_version(version) when is_binary(version) do
+    case Integer.parse(version) do
+      {version, ""} when version > 0 -> {:ok, version}
+      _invalid -> {:error, "Invalid configuration version"}
+    end
+  end
+
+  defp parse_version(_version), do: {:error, "Invalid configuration version"}
+
+  defp selected_service(service) when service in @services, do: service
+  defp selected_service(_service), do: :dns
+
+  defp result_value(%ManagementResult{status: :ok, value: value}, _fallback), do: value
+  defp result_value(_result, fallback), do: fallback
+
+  defp first_error(results) do
+    Enum.find_value(results, fn
+      %ManagementResult{status: :error, message: message} -> message
+      _result -> nil
+    end)
+  end
+
+  defp settings_tabs(server_id) do
+    [
+      {:dns, "DNS", ServicePaths.server_path(server_id, :settings_dns)},
+      {:mdns, "mDNS", ServicePaths.server_path(server_id, :settings_mdns)},
+      {:dhcpv4, "DHCPv4", ServicePaths.server_path(server_id, :settings_dhcpv4)},
+      {:dhcpv6, "DHCPv6", ServicePaths.server_path(server_id, :settings_dhcpv6)},
+      {:netboot, "Netboot", ServicePaths.server_path(server_id, :settings_netboot)}
+    ]
+  end
+
+  defp profile_options do
+    Enum.map(@profiles, &{String.replace(&1, "_", " ") |> String.capitalize(), &1})
+  end
+
+  defp service_fields(service), do: Map.fetch!(@service_fields, service)
+
+  defp service_label(:dns), do: "DNS"
+  defp service_label(:mdns), do: "mDNS"
+  defp service_label(:dhcpv4), do: "DHCPv4"
+  defp service_label(:dhcpv6), do: "DHCPv6"
+  defp service_label(:netboot), do: "Netboot"
+
+  defp deployment_label(nil), do: "Not published"
+  defp deployment_label(version), do: "Version #{version.version} · #{state_label(version.state)}"
+
+  defp state_label(state) when is_atom(state),
+    do: state |> Atom.to_string() |> String.capitalize()
+
+  defp state_label(state) when is_binary(state), do: String.capitalize(state)
+
+  defp version_time(%DateTime{} = time), do: Calendar.strftime(time, "%Y-%m-%d %H:%M:%S UTC")
+  defp version_time(_time), do: "Unavailable"
 end

@@ -137,6 +137,18 @@ defmodule YellowDog.DhcpClientTest do
       assert entry.state == :init
       assert entry.lease == nil
     end
+
+    test "connection/1 returns one coherent public FSM and lease snapshot", %{iface: iface} do
+      assert {:ok, %{interface: ^iface, state: :init, lease: nil}} =
+               DhcpClient.connection(iface)
+    end
+  end
+
+  describe "connection/1" do
+    test "returns not_found when the owning interface FSM is absent" do
+      assert {:error, :not_found} =
+               DhcpClient.connection("nonexistent_connection_snapshot_iface")
+    end
   end
 
   describe "list_interfaces/0" do

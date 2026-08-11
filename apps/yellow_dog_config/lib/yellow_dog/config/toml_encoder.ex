@@ -87,7 +87,11 @@ defmodule YellowDog.Config.TomlEncoder do
   defp add_scalars(parts, []), do: parts
 
   defp add_scalars(parts, scalars) do
-    lines = Enum.map(scalars, fn {key, value} -> "#{key} = #{encode_value(value)}" end)
+    lines =
+      Enum.map(scalars, fn {key, value} ->
+        "#{encode_key(key)} = #{encode_value(value)}"
+      end)
+
     parts ++ lines
   end
 
@@ -96,12 +100,12 @@ defmodule YellowDog.Config.TomlEncoder do
   defp add_tables(parts, tables, prefix) do
     Enum.reduce(tables, parts, fn {key, map}, acc ->
       full_key = prefix ++ [key]
-      header = "[#{Enum.join(full_key, ".")}]"
+      header = "[#{Enum.map_join(full_key, ".", &encode_key/1)}]"
 
       {scalars, nested_tables, nested_array_tables} = partition_map(map)
 
       scalar_lines =
-        Enum.map(scalars, fn {k, v} -> "#{k} = #{encode_value(v)}" end)
+        Enum.map(scalars, fn {k, v} -> "#{encode_key(k)} = #{encode_value(v)}" end)
 
       section = [header] ++ scalar_lines
 
@@ -125,13 +129,13 @@ defmodule YellowDog.Config.TomlEncoder do
   defp add_array_tables(parts, array_tables, prefix) do
     Enum.reduce(array_tables, parts, fn {key, items}, acc ->
       full_key = prefix ++ [key]
-      header = "[[#{Enum.join(full_key, ".")}]]"
+      header = "[[#{Enum.map_join(full_key, ".", &encode_key/1)}]]"
 
       Enum.reduce(items, acc, fn item, inner_acc ->
         {scalars, _nested_tables, _nested_array_tables} = partition_map(item)
 
         item_lines =
-          Enum.map(scalars, fn {k, v} -> "#{k} = #{encode_value(v)}" end)
+          Enum.map(scalars, fn {k, v} -> "#{encode_key(k)} = #{encode_value(v)}" end)
 
         section = ["", header] ++ item_lines
         inner_acc ++ section
@@ -151,7 +155,7 @@ defmodule YellowDog.Config.TomlEncoder do
     inner =
       value
       |> sort_keys()
-      |> Enum.map_join(", ", fn {k, v} -> "#{k} = #{encode_value(v)}" end)
+      |> Enum.map_join(", ", fn {k, v} -> "#{encode_key(k)} = #{encode_value(v)}" end)
 
     "{#{inner}}"
   end
@@ -171,4 +175,10 @@ defmodule YellowDog.Config.TomlEncoder do
   defp encode_array(list) do
     "[#{Enum.map_join(list, ", ", &encode_value/1)}]"
   end
+
+  defp encode_key(key) when is_binary(key) do
+    if Regex.match?(~r/\A[A-Za-z0-9_-]+\z/, key), do: key, else: encode_string(key)
+  end
+
+  defp encode_key(key), do: key |> to_string() |> encode_key()
 end

@@ -1,148 +1,101 @@
 defmodule YellowDog.Console.IdentityLive.AuditLive do
+  @moduledoc "Management-backed Identity audit for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  alias YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.IdentityLive.ManagementComponents
+  alias YellowDog.Console.IdentityLive.ManagementSupport
+  alias YellowDog.Console.Layouts
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     socket
-     |> assign(:page_title, "Identity Audit Log")
-     |> assign(:filter_event, nil)
-     |> assign(:filter_host, "")
-     |> load_entries()}
+     assign(socket,
+       page_title: "Identity Audit",
+       subscribed_server_id: nil,
+       audit_entries: [],
+       management_error: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_event("filter", %{"event" => event, "host" => host}, socket) do
-    event_filter = if event == "", do: nil, else: event
-    host_filter = String.trim(host)
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_audit(socket, server_id), else: socket)}
+  end
 
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:filter_event, event_filter)
-     |> assign(:filter_host, host_filter)
-     |> load_entries()}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_audit(server_id)}
   end
 
-  def handle_event("refresh", _params, socket) do
-    {:noreply, load_entries(socket)}
-  end
-
-  defp load_entries(socket) do
-    opts = [limit: 200]
-
-    opts =
-      case socket.assigns[:filter_event] do
-        nil -> opts
-        event -> Keyword.put(opts, :event, event)
-      end
-
-    opts =
-      case socket.assigns[:filter_host] do
-        "" -> opts
-        nil -> opts
-        host_id -> Keyword.put(opts, :host_id, host_id)
-      end
-
-    entries =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.audit_log(opts) end,
-        []
-      )
-
-    assign(socket, :entries, entries)
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h1 class="text-2xl font-bold">Audit Log</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
-            ↻
-          </button>
-        </div>
+      <div id="identity-audit" class="space-y-6">
+        <ManagementComponents.page_header
+          title="Identity Audit"
+          subtitle="Runtime audit snapshot"
+          server={@selected_server}
+          online?={@service_online?}
+          back={ServicePaths.server_path(@selected_server.id, :identity)}
+        />
 
-        <form phx-change="filter" class="flex gap-2 items-end">
-          <div class="form-group">
-            <label class="form-label">Event Type</label>
-            <select name="event" class="select select-sm">
-              <option value="">All Events</option>
-              <option value="host.registered" selected={@filter_event == "host.registered"}>
-                host.registered
-              </option>
-              <option value="host.approved" selected={@filter_event == "host.approved"}>
-                host.approved
-              </option>
-              <option value="host.revoked" selected={@filter_event == "host.revoked"}>
-                host.revoked
-              </option>
-              <option value="host.key_rotated" selected={@filter_event == "host.key_rotated"}>
-                host.key_rotated
-              </option>
-              <option value="host.deleted" selected={@filter_event == "host.deleted"}>
-                host.deleted
-              </option>
-            </select>
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
+
+        <.card>
+          <div
+            :if={@audit_entries == [] and is_nil(@management_error)}
+            class="text-on-surface-variant"
+          >
+            No audit entries in this Server snapshot
           </div>
-          <div class="form-group">
-            <label class="form-label">Host ID</label>
-            <input
-              type="text"
-              name="host"
-              value={@filter_host}
-              placeholder="Filter by host ID..."
-              class="input input-sm w-64"
-            />
+          <div
+            :for={entry <- @audit_entries}
+            class="grid grid-cols-1 gap-2 border-b border-outline-variant py-3 last:border-0 sm:grid-cols-3"
+          >
+            <div class="font-semibold">{entry["action"]}</div>
+            <.link
+              navigate={
+                ServicePaths.server_path(@selected_server.id, {:identity_host, entry["subject_id"]})
+              }
+              class="link link-primary font-mono text-sm"
+            >
+              {entry["subject_id"]}
+            </.link>
+            <time class="text-sm text-on-surface-variant">{entry["occurred_at"]}</time>
           </div>
-        </form>
-
-        <div :if={@entries == []} class="text-center py-12 text-on-surface-variant">
-          No audit entries found
-        </div>
-
-        <div :if={@entries != []} class="overflow-x-auto">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Event</th>
-                <th>Host ID</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={entry <- @entries}>
-                <td class="font-mono text-xs whitespace-nowrap">{entry.timestamp}</td>
-                <td>
-                  <span class={event_badge_class(entry.event)}>{entry.event}</span>
-                </td>
-                <td>
-                  <.link
-                    navigate={~p"/server/identity/hosts/#{entry.host_id}"}
-                    class="link link-primary font-mono text-xs"
-                  >
-                    {String.slice(entry.host_id, 0, 8)}...
-                  </.link>
-                </td>
-                <td class="font-mono text-xs max-w-[400px] truncate">{entry.details}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        </.card>
       </div>
     </Layouts.app>
     """
   end
 
-  defp event_badge_class("host.registered"), do: "badge badge-info badge-sm"
-  defp event_badge_class("host.approved"), do: "badge badge-success badge-sm"
-  defp event_badge_class("host.revoked"), do: "badge badge-error badge-sm"
-  defp event_badge_class("host.key_rotated"), do: "badge badge-warning badge-sm"
-  defp event_badge_class("host.deleted"), do: "badge badge-error badge-outline badge-sm"
-  defp event_badge_class(_), do: "badge badge-sm"
+  defp load_audit(socket, server_id) do
+    result = ServerManagement.identity_audit_list(server_id)
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Identity Audit",
+      audit_entries: ManagementSupport.items(result),
+      management_error: ManagementSupport.error(result),
+      cached_snapshot?: ManagementSupport.cached?(result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(result, socket.assigns.selected_server.last_seen_at)
+    )
+  end
 end

@@ -36,7 +36,6 @@ defmodule YellowDog.Netman.Supervisor do
       ]
       |> maybe_add_reconciliation_engine(apply_mode)
       |> Kernel.++([{YellowDog.Netman.API.Supervisor, []}])
-      |> Kernel.++(console_client_child())
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
@@ -47,15 +46,5 @@ defmodule YellowDog.Netman.Supervisor do
 
   defp maybe_add_reconciliation_engine(children, _apply_mode) do
     children ++ [{YellowDog.Netman.ReconciliationEngine, []}]
-  end
-
-  defp console_client_child do
-    config = Application.get_env(:yellow_dog_netman, :console, [])
-
-    if Keyword.get(config, :enabled, false) do
-      [{YellowDog.Netman.Console.Client, []}]
-    else
-      []
-    end
   end
 end

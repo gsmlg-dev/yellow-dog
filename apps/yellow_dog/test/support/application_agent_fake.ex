@@ -26,4 +26,17 @@ defmodule YellowDog.ApplicationAgentFake do
 
   @impl GenServer
   def init(opts), do: {:ok, opts}
+
+  def refresh_identity(updates) do
+    owner = Application.fetch_env!(:yellow_dog, :application_test_owner)
+
+    case Application.get_env(:yellow_dog, :application_test_agent_result, :ok) do
+      :ok ->
+        send(owner, {:server_agent_identity_refreshed, updates})
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 end

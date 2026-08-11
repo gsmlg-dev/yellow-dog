@@ -1,373 +1,44 @@
 defmodule YellowDog.Console.NetbootLive.DevicesLive do
-  @moduledoc """
-  Netboot device management page listing all discovered PXE boot devices.
+  @moduledoc "Management-backed Netboot devices for one selected Server."
 
-  Displays device hardware (MAC address, IP, architecture, manufacturer), current
-  state (discovered, booting, installing, installed, failed, etc.), and assigned
-  boot profile. Supports assigning profiles to devices, requesting reinstallation,
-  enabling rescue mode, device filtering and search, and bulk operations.
-  """
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.NetbootComponents
-  import YellowDog.Console.ServiceHelper
-
   alias YellowDog.Console.Layouts
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.NetbootLive.ManagementComponents
+  alias YellowDog.Console.NetbootLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:devices")
-    end
-
     {:ok,
-     socket
-     |> assign(
+     assign(socket,
        page_title: "Netboot Devices",
+       subscribed_server_id: nil,
+       devices: [],
+       profiles: [],
+       filtered_devices: [],
        search_query: "",
-       filter_state: "all",
-       filter_profile: "all",
-       selected_devices: MapSet.new(),
-       bulk_profile: nil,
-       sort_field: "last_seen",
-       sort_dir: "desc",
-       connected: connected?(socket),
-       service_running: service_running?(YellowDog.Netboot.Device.Registry)
-     )
-     |> load_devices()
-     |> load_profiles()}
+       profile_filter: "all",
+       sort_field: "mac",
+       sort_dir: "asc",
+       management_error: nil,
+       operation_result: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil,
+       commands_enabled?: false
+     )}
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    state = Map.get(params, "state", socket.assigns.filter_state)
-    profile = Map.get(params, "profile", socket.assigns.filter_profile)
-    {:noreply, socket |> assign(filter_state: state, filter_profile: profile) |> apply_filters()}
-  end
+  def handle_params(%{"server_id" => server_id} = params, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(:profile_filter, params["profile"] || socket.assigns.profile_filter)
 
-  @impl true
-  def render(assigns) do
-    ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="breadcrumbs text-sm">
-          <ul>
-            <li><.link navigate="/server/netboot">Netboot</.link></li>
-            <li>Devices</li>
-          </ul>
-        </div>
-
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/server/settings" />
-
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-4xl font-bold">Netboot Devices</h1>
-            <p class="mt-2 text-on-surface-variant">
-              PXE boot devices discovered via DHCP and TFTP
-            </p>
-          </div>
-          <button
-            phx-click="export_csv"
-            id="export-csv"
-            phx-hook="CsvDownload"
-            class="btn btn-outline btn-sm"
-          >
-            Export CSV
-          </button>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <.card>
-            <div class="text-sm text-on-surface-variant">Total Devices</div>
-            <div class="text-2xl font-bold text-primary">{length(@all_devices)}</div>
-          </.card>
-          <.card>
-            <div class="text-sm text-on-surface-variant">Installed</div>
-            <div class="text-2xl font-bold text-success">{@installed_count}</div>
-          </.card>
-          <.card>
-            <div class="text-sm text-on-surface-variant">Failed</div>
-            <div class="text-2xl font-bold text-error">{@failed_count}</div>
-          </.card>
-          <.card>
-            <div class="text-sm text-on-surface-variant">Showing</div>
-            <div class="text-2xl font-bold">
-              {length(@filtered_devices)}<span class="text-on-surface-variant font-normal text-sm">/{length(
-                @all_devices
-              )}</span>
-            </div>
-          </.card>
-        </div>
-
-        <.card>
-          <div class="flex flex-col md:flex-row gap-4">
-            <div class="flex-1">
-              <label class="input flex items-center gap-2">
-                <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
-                <input
-                  type="text"
-                  class="grow"
-                  placeholder="Search by MAC, hostname, profile, or tag..."
-                  value={@search_query}
-                  phx-change="search"
-                  phx-debounce="300"
-                  name="search"
-                />
-              </label>
-            </div>
-            <select
-              class="select"
-              phx-change="filter_state"
-              name="state"
-              value={@filter_state}
-            >
-              <option value="all">All States</option>
-              <option :for={s <- @available_states} value={s}>{s}</option>
-            </select>
-            <select
-              class="select"
-              phx-change="filter_profile"
-              name="profile"
-              value={@filter_profile}
-            >
-              <option value="all">All Profiles</option>
-              <option value="unassigned">Unassigned</option>
-              <option :for={p <- @profiles} value={p.id}>{p.id}</option>
-            </select>
-          </div>
-        </.card>
-
-        <div
-          :if={MapSet.size(@selected_devices) > 0}
-          class="flex items-center gap-3 p-3 bg-primary/10 rounded-lg"
-        >
-          <span class="text-sm font-medium">
-            {MapSet.size(@selected_devices)} device(s) selected
-          </span>
-          <select
-            class="select select-sm"
-            phx-change="bulk_select_profile"
-            name="profile"
-          >
-            <option value="">Assign Profile...</option>
-            <option :for={p <- @profiles} value={p.id}>{p.id}</option>
-          </select>
-          <button
-            :if={@bulk_profile}
-            phx-click="bulk_assign_profile"
-            phx-disable-with="Applying..."
-            class="btn btn-primary btn-sm"
-          >
-            Apply to {MapSet.size(@selected_devices)} device(s)
-          </button>
-          <div class="divider divider-horizontal"></div>
-          <form phx-submit="bulk_add_tag" class="flex items-center gap-2">
-            <input
-              type="text"
-              name="tag"
-              placeholder="Add tag..."
-              class="input input-sm w-32"
-              value=""
-            />
-            <button type="submit" class="btn btn-outline btn-sm" phx-disable-with="Tagging...">
-              Tag
-            </button>
-          </form>
-          <button
-            phx-click="bulk_delete"
-            phx-disable-with="Deleting..."
-            class="btn btn-error btn-sm"
-            data-confirm={"Delete #{MapSet.size(@selected_devices)} device(s)?"}
-          >
-            Delete
-          </button>
-          <button phx-click="bulk_clear" class="btn btn-ghost btn-sm">
-            Clear Selection
-          </button>
-        </div>
-
-        <.card>
-          <div class="overflow-x-auto">
-            <table class="table table-striped">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      class="checkbox checkbox-sm"
-                      phx-click="toggle_select_all"
-                      checked={
-                        @filtered_devices != [] && all_selected?(@filtered_devices, @selected_devices)
-                      }
-                    />
-                  </th>
-                  <.sort_header
-                    field="mac"
-                    label="MAC Address"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <.sort_header
-                    field="hostname"
-                    label="Hostname"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <.sort_header
-                    field="arch"
-                    label="Arch"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <.sort_header
-                    field="profile_id"
-                    label="Profile"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <.sort_header
-                    field="state"
-                    label="State"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <.sort_header
-                    field="install_attempts"
-                    label="Install Attempts"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <th>Tags</th>
-                  <.sort_header
-                    field="last_seen"
-                    label="Last Seen"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr :if={@filtered_devices == []}>
-                  <td colspan="10" class="text-center text-on-surface-variant py-8">
-                    No devices found
-                  </td>
-                </tr>
-                <tr :for={device <- @filtered_devices}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      class="checkbox checkbox-sm"
-                      phx-click="toggle_select"
-                      phx-value-mac={device.mac}
-                      checked={MapSet.member?(@selected_devices, device.mac)}
-                    />
-                  </td>
-                  <td class="font-mono text-sm">
-                    <.link
-                      navigate={"/server/netboot/devices/#{device.mac}"}
-                      class="link link-primary"
-                    >
-                      {device.mac}
-                    </.link>
-                  </td>
-                  <td>{device.hostname || "-"}</td>
-                  <td>
-                    <.badge :if={device.arch} color="info" size="sm">{to_string(device.arch)}</.badge>
-                    <span :if={!device.arch}>-</span>
-                  </td>
-                  <td>
-                    <.link
-                      :if={device.profile_id}
-                      navigate={"/server/netboot/profiles/#{device.profile_id}/edit"}
-                      class="link link-primary"
-                    >
-                      {device.profile_id}
-                    </.link>
-                    <span :if={!device.profile_id}>-</span>
-                  </td>
-                  <td><.state_badge state={device.state} /></td>
-                  <td>{device.install_attempts}</td>
-                  <td>
-                    <div class="flex flex-wrap gap-0.5">
-                      <.badge :for={tag <- Enum.take(device.tags, 3)} color="ghost" size="sm">
-                        {tag}
-                      </.badge>
-                      <span :if={length(device.tags) > 3} class="text-xs text-on-surface-variant">
-                        +{length(device.tags) - 3}
-                      </span>
-                    </div>
-                  </td>
-                  <td class="text-sm" title={format_datetime_full(device.last_seen)}>
-                    {format_time_ago(device.last_seen)}
-                  </td>
-                  <td>
-                    <div class="flex gap-1">
-                      <button
-                        :if={device.state in [:installed, :failed]}
-                        phx-click="quick_reinstall"
-                        phx-value-mac={device.mac}
-                        class="btn btn-ghost btn-xs"
-                        title="Request reinstall"
-                        aria-label="Request reinstall"
-                        data-confirm={"Request reinstall for #{device.mac}?"}
-                      >
-                        ↻
-                      </button>
-                      <button
-                        phx-click="quick_rescue"
-                        phx-value-mac={device.mac}
-                        class={[
-                          "btn btn-ghost btn-xs",
-                          if(device.rescue_mode, do: "text-warning", else: "text-on-surface-variant")
-                        ]}
-                        title={
-                          if device.rescue_mode,
-                            do: "Disable rescue mode",
-                            else: "Enable rescue mode"
-                        }
-                        aria-label={
-                          if device.rescue_mode,
-                            do: "Disable rescue mode",
-                            else: "Enable rescue mode"
-                        }
-                      >
-                        ⛑
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </.card>
-
-        <div class="text-xs text-on-surface-variant flex justify-end">
-          <span :if={@connected} class="flex items-center gap-1">
-            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
-          </span>
-        </div>
-      </div>
-    </Layouts.app>
-    """
-  end
-
-  defp sort_header(assigns) do
-    ~H"""
-    <th
-      phx-click="sort"
-      phx-value-field={@field}
-      class="cursor-pointer select-none hover:bg-surface-container"
-    >
-      <div class="flex items-center gap-1">
-        {@label}
-        <span :if={@sort_field == @field} class="text-xs">
-          {if @sort_dir == "asc", do: "\u25B2", else: "\u25BC"}
-        </span>
-      </div>
-    </th>
-    """
+    {:noreply, if(connected?(socket), do: load_devices(socket, server_id), else: socket)}
   end
 
   @impl true
@@ -375,358 +46,337 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
   end
 
-  @impl true
-  def handle_event("filter_state", %{"state" => state}, socket) do
-    {:noreply, socket |> assign(:filter_state, state) |> apply_filters()}
+  def handle_event("filter_profile", params, socket) do
+    profile = params["profile"] || params["value"] || "all"
+    {:noreply, socket |> assign(:profile_filter, profile) |> apply_filters()}
   end
 
-  @impl true
-  def handle_event("filter_profile", %{"profile" => profile}, socket) do
-    {:noreply, socket |> assign(:filter_profile, profile) |> apply_filters()}
-  end
+  def handle_event("filter_state", _params, socket), do: {:noreply, socket}
 
-  @impl true
   def handle_event("sort", %{"field" => field}, socket) do
     dir =
-      if socket.assigns.sort_field == field,
-        do: toggle_dir(socket.assigns.sort_dir),
-        else: "asc"
+      if socket.assigns.sort_field == field, do: toggle_dir(socket.assigns.sort_dir), else: "asc"
 
     {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
   end
 
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    csv = build_csv(socket.assigns.filtered_devices)
-    filename = "netboot_devices_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
-  end
+  def handle_event("export_csv", _params, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_event("toggle_select", %{"mac" => mac}, socket) do
-    selected = socket.assigns.selected_devices
+  def handle_event("assign_profile", params, socket) do
+    device_id = params["device_id"]
+    profile_id = params["profile_id"] || params["profile"]
 
-    selected =
-      if MapSet.member?(selected, mac),
-        do: MapSet.delete(selected, mac),
-        else: MapSet.put(selected, mac)
+    with :ok <- ManagementSupport.mutable(socket),
+         %{} = device <- Enum.find(socket.assigns.devices, &(&1["device_id"] == device_id)),
+         {:ok, revision} <- device_revision(socket.assigns.devices, device_id) do
+      payload = %{
+        "device_id" => device["device_id"],
+        "profile_id" => profile_id,
+        "mac" => device["mac"]
+      }
 
-    {:noreply, assign(socket, :selected_devices, selected)}
-  end
-
-  @impl true
-  def handle_event("toggle_select_all", _params, socket) do
-    macs = Enum.map(socket.assigns.filtered_devices, & &1.mac)
-
-    selected =
-      if all_selected?(socket.assigns.filtered_devices, socket.assigns.selected_devices) do
-        MapSet.new()
-      else
-        MapSet.new(macs)
-      end
-
-    {:noreply, assign(socket, :selected_devices, selected)}
-  end
-
-  @impl true
-  def handle_event("bulk_select_profile", %{"profile" => ""}, socket) do
-    {:noreply, assign(socket, :bulk_profile, nil)}
-  end
-
-  @impl true
-  def handle_event("bulk_select_profile", %{"profile" => profile_id}, socket) do
-    {:noreply, assign(socket, :bulk_profile, profile_id)}
-  end
-
-  @impl true
-  def handle_event("bulk_assign_profile", _params, socket) do
-    profile_id = socket.assigns.bulk_profile
-    macs = MapSet.to_list(socket.assigns.selected_devices)
-
-    results =
-      Enum.map(macs, fn mac ->
-        safe_call(
-          YellowDog.Netboot.Device.Registry,
-          fn -> YellowDog.Netboot.Device.Registry.assign_profile(mac, profile_id) end,
-          {:error, :service_unavailable}
+      result =
+        ServerManagement.netboot_devices_put(
+          ManagementSupport.selected_id(socket),
+          payload,
+          ManagementSupport.command_options(revision)
         )
-      end)
-
-    ok_count = Enum.count(results, &match?({:ok, _}, &1))
-    err_count = length(results) - ok_count
-
-    socket =
-      socket
-      |> assign(:selected_devices, MapSet.new())
-      |> assign(:bulk_profile, nil)
-      |> load_devices()
-
-    socket =
-      cond do
-        err_count > 0 && ok_count > 0 ->
-          put_flash(
-            socket,
-            :info,
-            "Assigned profile to #{ok_count} device(s), #{err_count} failed"
-          )
-
-        err_count > 0 ->
-          put_flash(socket, :error, "Failed to assign profile to #{err_count} device(s)")
-
-        true ->
-          put_flash(socket, :info, "Assigned \"#{profile_id}\" to #{ok_count} device(s)")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("bulk_add_tag", %{"tag" => tag}, socket) do
-    tag = String.trim(tag)
-
-    if tag == "" do
-      {:noreply, socket}
-    else
-      macs = MapSet.to_list(socket.assigns.selected_devices)
-
-      results =
-        Enum.map(macs, fn mac ->
-          with {:ok, device} <-
-                 safe_call(
-                   YellowDog.Netboot.Device.Registry,
-                   fn -> YellowDog.Netboot.Device.Registry.get(mac) end,
-                   {:error, :unavailable}
-                 ) do
-            new_tags = Enum.uniq(device.tags ++ [tag])
-
-            safe_call(
-              YellowDog.Netboot.Device.Registry,
-              fn -> YellowDog.Netboot.Device.Registry.update_tags(mac, new_tags) end,
-              {:error, :unavailable}
-            )
-          end
-        end)
-
-      ok_count = Enum.count(results, &(&1 == :ok))
-
-      socket =
-        if ok_count == length(macs) do
-          put_flash(socket, :info, "Added tag \"#{tag}\" to #{ok_count} device(s)")
-        else
-          put_flash(socket, :warning, "Added tag to #{ok_count} of #{length(macs)} device(s)")
-        end
 
       {:noreply,
        socket
-       |> assign(:selected_devices, MapSet.new())
-       |> load_devices()}
+       |> put_device(result)
+       |> ManagementSupport.finish(result, "Device profile updated")}
+    else
+      nil -> {:noreply, put_flash(socket, :error, "Device is not present in this snapshot")}
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
     end
   end
 
-  @impl true
-  def handle_event("bulk_delete", _params, socket) do
-    macs = MapSet.to_list(socket.assigns.selected_devices)
+  def handle_event("delete_device", params, socket) do
+    device_id = params["device_id"] || params["id"]
 
-    results =
-      Enum.map(macs, fn mac ->
-        safe_call(
-          YellowDog.Netboot.Device.Registry,
-          fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
-          {:error, :service_unavailable}
+    with :ok <- ManagementSupport.mutable(socket),
+         {:ok, revision} <- device_revision(socket.assigns.devices, device_id) do
+      result =
+        ServerManagement.netboot_devices_delete(
+          ManagementSupport.selected_id(socket),
+          %{"device_id" => device_id},
+          ManagementSupport.command_options(revision)
         )
-      end)
 
-    ok_count = Enum.count(results, &(&1 == :ok))
+      socket =
+        if result.status == :ok do
+          devices = Enum.reject(socket.assigns.devices, &(&1["device_id"] == device_id))
+          socket |> assign(:devices, devices) |> apply_filters()
+        else
+          socket
+        end
 
-    socket =
-      if ok_count == length(macs) do
-        put_flash(socket, :info, "Deleted #{ok_count} device(s) successfully")
-      else
-        put_flash(socket, :warning, "Deleted #{ok_count} of #{length(macs)} device(s)")
-      end
+      {:noreply, ManagementSupport.finish(socket, result, "Device deleted")}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
 
+  def handle_event(event, _params, socket)
+      when event in [
+             "quick_reinstall",
+             "quick_rescue",
+             "bulk_assign_profile",
+             "bulk_add_tag",
+             "bulk_delete"
+           ] do
+    {:noreply,
+     ManagementSupport.unavailable(socket, "This action is unavailable through Server management")}
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:selected_devices, MapSet.new())
-     |> load_devices()}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_devices(server_id)}
   end
 
-  @impl true
-  def handle_event("quick_reinstall", %{"mac" => mac}, socket) do
-    result =
-      safe_call(
-        YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.request_reinstall(mac) end,
-        {:error, :unavailable}
-      )
-
-    socket =
-      case result do
-        {:ok, _} -> put_flash(socket, :info, "Reinstall requested for #{mac}")
-        _ -> put_flash(socket, :error, "Failed to request reinstall")
-      end
-
-    {:noreply, load_devices(socket)}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("quick_rescue", %{"mac" => mac}, socket) do
-    device = Enum.find(socket.assigns.all_devices, &(&1.mac == mac))
-    enabled = !(device && device.rescue_mode)
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <div id="server-netboot-devices" class="space-y-6">
+        <div class="flex items-center justify-between gap-4">
+          <ManagementComponents.page_header
+            title="Netboot Devices"
+            subtitle="Assignments from Management"
+            server={@selected_server}
+            online?={@service_online?}
+            back={ServicePaths.server_path(@selected_server.id, :netboot)}
+          />
+          <button id="export-csv" phx-click="export_csv" class="btn btn-outline btn-sm">Export CSV</button>
+        </div>
 
-    result =
-      safe_call(
-        YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.set_rescue_mode(mac, enabled) end,
-        {:error, :unavailable}
-      )
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
 
-    socket =
-      case result do
-        {:ok, _} ->
-          msg = if enabled, do: "Rescue mode enabled", else: "Rescue mode disabled"
-          put_flash(socket, :info, "#{msg} for #{mac}")
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Total devices</div><div class="text-2xl font-bold">
+              {length(@devices)}
+            </div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Assigned</div><div class="text-2xl font-bold">
+              {Enum.count(@devices, &(&1["profile_id"] not in [nil, ""]))}
+            </div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Unassigned</div><div class="text-2xl font-bold">
+              {Enum.count(@devices, &(&1["profile_id"] in [nil, ""]))}
+            </div>
+          </.card>
+        </div>
 
-        _ ->
-          put_flash(socket, :error, "Failed to toggle rescue mode")
-      end
+        <.card>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label class="input flex items-center gap-2">
+              <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
+              <input
+                name="search"
+                value={@search_query}
+                phx-change="search"
+                phx-debounce="300"
+                placeholder="Search by device ID or MAC"
+              />
+            </label>
+            <select name="profile" phx-change="filter_profile" class="select select-bordered w-full">
+              <option value="all" selected={@profile_filter == "all"}>All profiles</option>
+              <option value="unassigned" selected={@profile_filter == "unassigned"}>
+                Unassigned
+              </option>
+              <option
+                :for={profile <- @profiles}
+                value={profile["profile_id"]}
+                selected={@profile_filter == profile["profile_id"]}
+              >
+                {profile["name"]}
+              </option>
+            </select>
+          </div>
+        </.card>
 
-    {:noreply, load_devices(socket)}
-  end
-
-  @impl true
-  def handle_event("bulk_clear", _params, socket) do
-    {:noreply, assign(socket, selected_devices: MapSet.new(), bulk_profile: nil)}
-  end
-
-  @impl true
-  def handle_info({:device_state_changed, _}, socket), do: {:noreply, load_devices(socket)}
-  @impl true
-  def handle_info({:device_registered, _}, socket), do: {:noreply, load_devices(socket)}
-  @impl true
-  def handle_info({:device_deleted, _}, socket), do: {:noreply, load_devices(socket)}
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:devices")
-    :ok
-  end
-
-  defp load_profiles(socket) do
-    profiles =
-      safe_call(
-        YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.list_profiles() end,
-        []
-      )
-
-    assign(socket, :profiles, profiles)
-  end
-
-  defp all_selected?([], _selected), do: false
-
-  defp all_selected?(filtered, selected) do
-    Enum.all?(filtered, &MapSet.member?(selected, &1.mac))
-  end
-
-  defp load_devices(socket) do
-    all =
-      safe_call(
-        YellowDog.Netboot.Device.Registry,
-        fn ->
-          YellowDog.Netboot.Device.Registry.list()
-        end,
-        []
-      )
-
-    states =
-      all
-      |> Enum.map(&to_string(&1.state))
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    socket
-    |> assign(:all_devices, all)
-    |> assign(:installed_count, Enum.count(all, &(&1.state == :installed)))
-    |> assign(:failed_count, Enum.count(all, &(&1.state == :failed)))
-    |> assign(:available_states, states)
-    |> apply_filters()
-  end
-
-  defp apply_filters(socket) do
-    devices =
-      socket.assigns.all_devices
-      |> filter_by_search(socket.assigns.search_query)
-      |> filter_by_state(socket.assigns.filter_state)
-      |> filter_by_profile(socket.assigns.filter_profile)
-      |> sort_devices(socket.assigns.sort_field, socket.assigns.sort_dir)
-
-    assign(socket, :filtered_devices, devices)
+        <.card>
+          <div class="overflow-x-auto">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th phx-click="sort" phx-value-field="mac" class="cursor-pointer">MAC</th>
+                  <th phx-click="sort" phx-value-field="device_id" class="cursor-pointer">
+                    Device ID
+                  </th>
+                  <th>Profile</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :if={@filtered_devices == []}>
+                  <td colspan="4" class="py-8 text-center text-on-surface-variant">
+                    No devices in this Server snapshot
+                  </td>
+                </tr>
+                <tr :for={device <- @filtered_devices}>
+                  <td>
+                    <.link
+                      navigate={
+                        ServicePaths.server_path(
+                          @selected_server.id,
+                          {:netboot_device, device["mac"]}
+                        )
+                      }
+                      class="link link-primary font-mono"
+                    >{device["mac"]}</.link>
+                  </td>
+                  <td>{device["device_id"]}</td>
+                  <td>
+                    <form phx-change="assign_profile" id={"assign-profile-#{device["device_id"]}"}>
+                      <input type="hidden" name="device_id" value={device["device_id"]} />
+                      <select
+                        name="profile_id"
+                        disabled={!@commands_enabled?}
+                        class="select select-bordered select-sm"
+                      >
+                        <option value="">Unassigned</option>
+                        <option
+                          :for={profile <- @profiles}
+                          value={profile["profile_id"]}
+                          selected={profile["profile_id"] == device["profile_id"]}
+                        >
+                          {profile["name"]}
+                        </option>
+                      </select>
+                    </form>
+                  </td>
+                  <td>
+                    <div class="flex gap-1">
+                      <.link
+                        navigate={
+                          ServicePaths.server_path(
+                            @selected_server.id,
+                            {:netboot_device, device["mac"]}
+                          )
+                        }
+                        class="btn btn-ghost btn-xs"
+                      >Details</.link>
+                      <button
+                        phx-click="delete_device"
+                        phx-value-device_id={device["device_id"]}
+                        disabled={!@commands_enabled?}
+                        class="btn btn-ghost btn-xs text-error"
+                      >Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+      </div>
+    </Layouts.app>
+    """
   end
 
   def filter_by_search(devices, ""), do: devices
 
   def filter_by_search(devices, query) do
-    q = String.downcase(query)
+    query = String.downcase(query)
 
-    Enum.filter(devices, fn d ->
-      String.contains?(String.downcase(d.mac), q) ||
-        (d.hostname && String.contains?(String.downcase(d.hostname), q)) ||
-        (d.profile_id && String.contains?(String.downcase(d.profile_id), q)) ||
-        Enum.any?(d.tags, &String.contains?(String.downcase(&1), q))
+    Enum.filter(devices, fn device ->
+      Enum.any?(
+        [
+          device_value(device, "device_id"),
+          device_value(device, "mac"),
+          device_value(device, "profile_id")
+        ],
+        fn value ->
+          String.contains?(String.downcase(value), query)
+        end
+      )
     end)
   end
 
-  def filter_by_state(devices, "all"), do: devices
-  def filter_by_state(devices, state), do: Enum.filter(devices, &(to_string(&1.state) == state))
-
   def filter_by_profile(devices, "all"), do: devices
-  def filter_by_profile(devices, "unassigned"), do: Enum.filter(devices, &is_nil(&1.profile_id))
-  def filter_by_profile(devices, pid), do: Enum.filter(devices, &(&1.profile_id == pid))
+
+  def filter_by_profile(devices, "unassigned"),
+    do: Enum.filter(devices, &(device_value(&1, "profile_id") == ""))
+
+  def filter_by_profile(devices, profile_id),
+    do: Enum.filter(devices, &(device_value(&1, "profile_id") == profile_id))
 
   def sort_devices(devices, field, dir) do
-    sorter = sort_key_fn(field)
-    sorted = Enum.sort_by(devices, sorter, &compare_values/2)
+    sorted = Enum.sort_by(devices, &(device_value(&1, field) |> String.downcase()))
     if dir == "desc", do: Enum.reverse(sorted), else: sorted
   end
 
-  defp sort_key_fn("mac"), do: & &1.mac
-  defp sort_key_fn("hostname"), do: &(&1.hostname || "")
-  defp sort_key_fn("arch"), do: &if(&1.arch, do: to_string(&1.arch), else: "")
-  defp sort_key_fn("profile_id"), do: &(&1.profile_id || "")
-  defp sort_key_fn("state"), do: &to_string(&1.state)
-  defp sort_key_fn("install_attempts"), do: & &1.install_attempts
-  defp sort_key_fn("last_seen"), do: & &1.last_seen
-  defp sort_key_fn(_), do: & &1.mac
+  defp load_devices(socket, server_id) do
+    devices_result = ServerManagement.netboot_devices_list(server_id)
+    profiles_result = ServerManagement.netboot_profiles_list(server_id)
+    results = [devices_result, profiles_result]
 
-  defp compare_values(nil, _), do: true
-  defp compare_values(_, nil), do: false
-  defp compare_values(%DateTime{} = a, %DateTime{} = b), do: DateTime.compare(a, b) != :gt
-  defp compare_values(a, b), do: a <= b
+    socket
+    |> assign(
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Netboot Devices",
+      devices: ManagementSupport.items(devices_result),
+      profiles: ManagementSupport.items(profiles_result),
+      management_error: ManagementSupport.first_error(results),
+      cached_snapshot?: ManagementSupport.cached?(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at),
+      commands_enabled?: socket.assigns.service_online?
+    )
+    |> apply_filters()
+  end
+
+  defp apply_filters(socket) do
+    devices =
+      socket.assigns.devices
+      |> filter_by_search(socket.assigns.search_query)
+      |> filter_by_profile(socket.assigns.profile_filter)
+      |> sort_devices(socket.assigns.sort_field, socket.assigns.sort_dir)
+
+    assign(socket, :filtered_devices, devices)
+  end
+
+  defp device_revision(devices, device_id) do
+    ManagementSupport.exact_revision(devices, &(&1["device_id"] == device_id), "Device")
+  end
+
+  defp put_device(socket, %ManagementResult{status: :ok, value: %{"resource" => device}}) do
+    devices = [
+      device | Enum.reject(socket.assigns.devices, &(&1["device_id"] == device["device_id"]))
+    ]
+
+    socket |> assign(:devices, devices) |> apply_filters()
+  end
+
+  defp put_device(socket, _result), do: socket
+
+  defp device_value(device, key) when is_map(device) do
+    value = Map.get(device, key, device_atom_value(device, key))
+    if is_binary(value), do: value, else: to_string(value || "")
+  end
+
+  defp device_atom_value(device, "device_id"), do: Map.get(device, :device_id, "")
+  defp device_atom_value(device, "mac"), do: Map.get(device, :mac, "")
+  defp device_atom_value(device, "profile_id"), do: Map.get(device, :profile_id, "")
+  defp device_atom_value(device, "hostname"), do: Map.get(device, :hostname, "")
+  defp device_atom_value(device, "state"), do: Map.get(device, :state, "")
+  defp device_atom_value(_device, _key), do: ""
 
   defp toggle_dir("asc"), do: "desc"
-  defp toggle_dir(_), do: "asc"
-
-  defp build_csv(devices) do
-    header = "MAC,Hostname,Arch,Profile,State,Install Attempts,Tags,Last Seen\r\n"
-
-    rows =
-      Enum.map_join(devices, "\r\n", fn d ->
-        [
-          csv_escape(d.mac),
-          csv_escape(d.hostname || ""),
-          csv_escape(if(d.arch, do: to_string(d.arch), else: "")),
-          csv_escape(d.profile_id || ""),
-          csv_escape(to_string(d.state)),
-          csv_escape(to_string(d.install_attempts)),
-          csv_escape(Enum.join(d.tags, "; ")),
-          csv_escape(format_datetime_full(d.last_seen))
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
-  end
+  defp toggle_dir(_dir), do: "asc"
 end

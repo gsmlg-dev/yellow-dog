@@ -99,6 +99,9 @@ defmodule YellowDog.Management.Commands do
     do: call({:unresolved_ids, target_type, target_id})
 
   @doc false
+  def list, do: call(:list)
+
+  @doc false
   def unknown_error(%Error{} = error, request_id, reason)
       when is_binary(request_id) and reason in @unknown_reasons do
     error = safe_unknown_base(error)
@@ -225,6 +228,17 @@ defmodule YellowDog.Management.Commands do
       :ok -> {{:ok, unresolved(state.records, target_type, target_id)}, state}
       {:error, %Error{}} = error -> {error, state}
     end
+  end
+
+  defp handle_request(:list, _deadline, state) do
+    records =
+      state.records
+      |> Map.values()
+      |> Enum.sort_by(fn record ->
+        {DateTime.to_unix(record.inserted_at, :microsecond), record.request_id}
+      end)
+
+    {{:ok, records}, state}
   end
 
   defp replay(envelope, state) do

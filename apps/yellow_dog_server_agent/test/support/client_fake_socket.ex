@@ -111,6 +111,17 @@ defmodule YellowDog.ServerAgent.ClientFakeSocket do
     })
   end
 
+  def socket_channel_message(channel, payload) do
+    Agent.get(channel, fn %{caller: caller} ->
+      state = %Phoenix.SocketClient.Channel.State{
+        caller: caller,
+        topic: "server:control:server-east-1"
+      }
+
+      YellowDog.ServerAgent.Client.SocketChannel.handle_message("sync", payload, state)
+    end)
+  end
+
   defp pop(key, default) do
     Agent.get_and_update(state_pid(), fn state ->
       case Map.fetch!(state, key) do

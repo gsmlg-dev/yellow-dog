@@ -398,7 +398,7 @@ defmodule YellowDog.ApplicationTest do
     refute String.contains?(opts[:data_dir], "/server/server")
   end
 
-  test "capabilities exclude settings unsupported by the production runtime adapter" do
+  test "capabilities advertise aggregate config but exclude legacy per-service settings" do
     start_config!(server_config(id: "server-1"))
 
     runtime_adapter = :"Elixir.YellowDog.Server.Control"
@@ -412,7 +412,7 @@ defmodule YellowDog.ApplicationTest do
       restore_config: 1
     ]
 
-    refute Enum.all?(required_callbacks, fn {callback, arity} ->
+    assert Enum.all?(required_callbacks, fn {callback, arity} ->
              function_exported?(runtime_adapter, callback, arity)
            end)
 
@@ -420,6 +420,7 @@ defmodule YellowDog.ApplicationTest do
     assert_receive {:server_agent_started, ^pid, opts, nil}
 
     assert "runtime.capabilities" in opts[:capabilities]
+    assert "config.write" in opts[:capabilities]
 
     refute Enum.any?(opts[:capabilities], fn capability ->
              capability in [
@@ -432,9 +433,44 @@ defmodule YellowDog.ApplicationTest do
            end)
   end
 
-  test "successful public service changes rebuild and then restore agent identity", %{
+  test "managed reconciliation keeps the control agent alive and refreshes identity in place", %{
     tmp_dir: tmp_dir
   } do
+    config_path = write_server_config(tmp_dir)
+    Application.put_env(:yellow_dog, :config_file_path, config_path)
+
+    Application.put_env(:yellow_dog, :service_module_overrides, %{
+      identity: ApplicationServiceFake
+    })
+
+    Application.put_env(:yellow_dog_server_agent, :runtime, server_id: "managed-server")
+
+    assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
+    assert_receive {:server_agent_started, agent_pid, _opts, supervisor}, 2_000
+    assert supervisor == Process.whereis(YellowDog.Supervisor)
+
+    previous = YellowDog.Config.get_all()
+    next = put_in(previous, ["yellow_dog_server", "services", "identity"], true)
+    assert :ok = YellowDog.Config.replace(next)
+
+    assert :ok = YellowDog.Application.reconcile_config(previous, next)
+    assert_receive {:application_service_started, identity_pid, _service_opts}, 2_000
+    assert Process.alive?(identity_pid)
+    assert Process.alive?(agent_pid)
+    refute_receive {:server_agent_started, _new_pid, _opts, ^supervisor}, 100
+
+    assert_receive {:server_agent_identity_refreshed, updates}, 1_000
+    assert updates.profile == "custom"
+    assert "config.write" in updates.capabilities
+    assert Enum.any?(updates.capabilities, &String.starts_with?(&1, "identity."))
+    assert {:ok, expected_revision} = Digest.calculate(next)
+    assert updates.config_revision == expected_revision
+  end
+
+  test "successful public service changes preserve the control agent and refresh identity in place",
+       %{
+         tmp_dir: tmp_dir
+       } do
     config_path = write_server_config(tmp_dir)
     Application.put_env(:yellow_dog, :config_file_path, config_path)
 
@@ -457,21 +493,21 @@ defmodule YellowDog.ApplicationTest do
 
     assert :ok = YellowDog.ServiceManager.start_service(:identity)
     assert_receive {:application_service_started, service_pid, _service_opts}, 2_000
-    assert_receive {:server_agent_started, started_pid, started_opts, ^supervisor}, 2_000
-
-    assert started_pid != initial_pid
+    assert_receive {:server_agent_identity_refreshed, started_identity}, 2_000
     assert Process.alive?(service_pid)
-    assert started_opts[:config_revision] != initial_opts[:config_revision]
-    assert Enum.any?(started_opts[:capabilities], &String.starts_with?(&1, "identity."))
+    assert Process.alive?(initial_pid)
+    refute_receive {:server_agent_started, _replacement_pid, _opts, ^supervisor}, 100
+    assert started_identity.config_revision != initial_opts[:config_revision]
+    assert Enum.any?(started_identity.capabilities, &String.starts_with?(&1, "identity."))
     assert service_flag(:identity) == true
 
     assert :ok = YellowDog.ServiceManager.stop_service(:identity)
-    assert_receive {:server_agent_started, stopped_pid, stopped_opts, ^supervisor}, 2_000
-
-    assert stopped_pid != started_pid
+    assert_receive {:server_agent_identity_refreshed, stopped_identity}, 2_000
     refute Process.alive?(service_pid)
-    assert stopped_opts[:config_revision] == initial_opts[:config_revision]
-    assert stopped_opts[:capabilities] == initial_opts[:capabilities]
+    assert Process.alive?(initial_pid)
+    refute_receive {:server_agent_started, _replacement_pid, _opts, ^supervisor}, 100
+    assert stopped_identity.config_revision == initial_opts[:config_revision]
+    assert stopped_identity.capabilities == initial_opts[:capabilities]
     assert service_flag(:identity) == false
   end
 
@@ -486,7 +522,7 @@ defmodule YellowDog.ApplicationTest do
     })
 
     assert {:ok, _apps} = Application.ensure_all_started(:yellow_dog)
-    assert_receive {:server_agent_started, _pid, _opts, supervisor}, 2_000
+    assert_receive {:server_agent_started, agent_pid, _opts, supervisor}, 2_000
     assert supervisor == Process.whereis(YellowDog.Supervisor)
 
     Application.put_env(
@@ -513,10 +549,12 @@ defmodule YellowDog.ApplicationTest do
 
     assert :ok = YellowDog.ServiceManager.start_service(:identity)
     assert_receive {:application_service_started, service_pid, _service_opts}, 2_000
-    assert_receive {:server_agent_failed, _failed_opts, ^supervisor}, 2_000
     assert_receive {:identity_refresh_error, metadata}, 2_000
 
     assert Process.alive?(service_pid)
+    assert Process.alive?(agent_pid)
+    refute_receive {:server_agent_started, _replacement_pid, _opts, ^supervisor}, 100
+    refute_receive {:server_agent_failed, _failed_opts, ^supervisor}, 100
     assert service_flag(:identity) == true
     assert metadata.service == :server_agent
     assert metadata.trigger_service == :identity
@@ -825,7 +863,7 @@ defmodule YellowDog.ApplicationTest do
       end)
       |> Enum.map(&elem(&1, 1))
       |> MapSet.new()
-      |> MapSet.union(MapSet.new(["runtime"]))
+      |> MapSet.union(MapSet.new(["config", "runtime"]))
 
     ServerOperation.all()
     |> Map.values()

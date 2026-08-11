@@ -18,13 +18,16 @@ defmodule YellowDog.NetmanAgent.MixProject do
 
   def application do
     [
-      mod: {YellowDog.NetmanAgent.Application, []},
+      mod: {YellowDog.NetmanAgent.Application, [enabled: false]},
       extra_applications: [:logger]
     ]
   end
 
   defp deps do
     [
+      {:yellow_dog_sync, in_umbrella: true},
+      {:jason, "~> 1.4"},
+      {:phoenix_socket_client, "~> 0.8.2"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

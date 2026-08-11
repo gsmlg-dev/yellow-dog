@@ -8,33 +8,100 @@ defmodule YellowDog.Console.Components.Sidebar do
   """
   use YellowDog.Console, :live_component
 
+  alias YellowDog.Console.ManagementLive.Data
+  alias YellowDog.Console.ServicePaths
+
   @section_prefixes %{
     "Management" => ["/management"],
-    "Servers" => ["/server/"],
+    "Servers" => ["/server"],
     "Tools" => ["/tool/"],
     "System" => ["/system/"],
     "Netman" => ["/netman"],
     nil => ["/"]
   }
 
+  @server_navigation [
+    {"Dashboard",
+     [
+       %{label: "Services", icon: "view-dashboard", destination: :dashboard, exact: true},
+       %{label: "Settings", icon: "cog", destination: :settings}
+     ]},
+    {"DNS",
+     [
+       %{label: "Overview", icon: "web", destination: :dns, exact: true},
+       %{label: "Zones", icon: "folder-outline", destination: :dns_zones},
+       %{label: "Views", icon: "eye", destination: :dns_views},
+       %{label: "ACL", icon: "shield-lock", destination: :dns_acl},
+       %{label: "Metrics", icon: "chart-line", destination: :dns_metrics},
+       %{label: "Providers", icon: "cloud-sync", destination: :dns_providers}
+     ]},
+    {"DHCPv4",
+     [
+       %{label: "Overview", icon: "server-network", destination: :dhcpv4, exact: true},
+       %{label: "Leases", icon: "file-document", destination: :dhcpv4_leases},
+       %{label: "Pools", icon: "lan", destination: :dhcpv4_pools}
+     ]},
+    {"DHCPv6",
+     [
+       %{label: "Overview", icon: "server-network", destination: :dhcpv6, exact: true},
+       %{label: "Leases", icon: "file-document", destination: :dhcpv6_leases},
+       %{label: "Pools", icon: "lan", destination: :dhcpv6_pools}
+     ]},
+    {"mDNS",
+     [
+       %{label: "Overview", icon: "wifi", destination: :mdns, exact: true},
+       %{label: "Services", icon: "room-service", destination: :mdns_services},
+       %{label: "Discovery", icon: "radar", destination: :mdns_discovery},
+       %{label: "Monitor", icon: "monitor-eye", destination: :mdns_monitor}
+     ]},
+    {"Netboot",
+     [
+       %{label: "Dashboard", icon: "flash", destination: :netboot, exact: true},
+       %{label: "Devices", icon: "devices", destination: :netboot_devices},
+       %{label: "Boot Profiles", icon: "playlist-check", destination: :netboot_profiles},
+       %{label: "TFTP Server", icon: "folder-network", destination: :netboot_tftp}
+     ]},
+    {"Identity",
+     [
+       %{label: "Overview", icon: "key-variant", destination: :identity, exact: true},
+       %{label: "All Hosts", icon: "desktop-classic", destination: :identity_hosts},
+       %{label: "Pending Approvals", icon: "check-decagram", destination: :identity_approvals},
+       %{label: "Tokens", icon: "ticket-account", destination: :identity_tokens},
+       %{label: "Policies", icon: "shield-check", destination: :identity_policies}
+     ]}
+  ]
+
+  @netman_navigation [
+    %{label: "Overview", icon: "view-dashboard", destination: :overview, exact: true},
+    %{label: "Configuration", icon: "cog", destination: :config},
+    %{label: "Interfaces", icon: "ethernet", destination: :interfaces},
+    %{label: "Resolved", icon: "dns", destination: :resolved},
+    %{label: "DHCP Client", icon: "chip", destination: :dhcp_client}
+  ]
+
   @impl true
   def update(assigns, socket) do
     current_path = Map.get(assigns, :current_path)
     section = section_for_path(current_path)
 
-    clients =
-      if section == "Netman" do
-        YellowDog.Console.NetmanRegistry.list()
-      else
-        []
-      end
+    {records, selected_record} = navigation_records(section, Map.get(assigns, :navigation_scope))
 
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:section, section)
      |> assign(:scroll_key, scroll_key(section))
-     |> assign(:clients, clients)}
+     |> assign(:records, records)
+     |> assign(:selected_record, selected_record)}
+  end
+
+  @impl true
+  def handle_event("select_server", %{"selection" => %{"id" => id}}, socket) do
+    navigate_to_selection(socket, :server, id)
+  end
+
+  def handle_event("select_netman", %{"selection" => %{"id" => id}}, socket) do
+    navigate_to_selection(socket, :netman, id)
   end
 
   def section_for_path(nil), do: nil
@@ -71,13 +138,21 @@ defmodule YellowDog.Console.Components.Sidebar do
       <div class="yd-sidebar-panel w-80">
         <ul class="nested-menu nested-menu-bordered p-4">
           <.sidebar_management :if={@section == "Management"} current_path={@current_path} />
-          <.sidebar_servers :if={@section == "Servers"} current_path={@current_path} />
+          <.sidebar_servers
+            :if={@section == "Servers"}
+            current_path={@current_path}
+            myself={@myself}
+            records={@records}
+            selected_record={@selected_record}
+          />
           <.sidebar_tools :if={@section == "Tools"} current_path={@current_path} />
           <.sidebar_system :if={@section == "System"} current_path={@current_path} />
           <.sidebar_netman
             :if={@section == "Netman"}
             current_path={@current_path}
-            clients={@clients}
+            myself={@myself}
+            records={@records}
+            selected_record={@selected_record}
           />
         </ul>
       </div>
@@ -128,225 +203,28 @@ defmodule YellowDog.Console.Components.Sidebar do
   end
 
   defp sidebar_servers(assigns) do
+    assigns = assign(assigns, :navigation, @server_navigation)
+
     ~H"""
-    <!-- Dashboard -->
-    <li class="nested-menu-title">Dashboard</li>
-    <li>
-      <.link navigate="/server/dashboard" class={active?(@current_path, "/server/dashboard")}>
-        <.dm_mdi name="view-dashboard" class="w-5 h-5" />
-        <span>Services</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/settings" class={active?(@current_path, "/server/settings")}>
-        <.dm_mdi name="cog" class="w-5 h-5" />
-        <span>Settings</span>
-      </.link>
-    </li>
-    <!-- DNS -->
-    <li class="nested-menu-title mt-4">DNS</li>
-    <li>
-      <.link navigate="/server/dns" class={active?(@current_path, "/server/dns", :exact)}>
-        <.dm_mdi name="web" class="w-5 h-5" />
-        <span>Overview</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/dns/zones" class={active?(@current_path, "/server/dns/zones")}>
-        <.dm_mdi name="folder-outline" class="w-5 h-5" />
-        <span>Zones</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/dns/views" class={active?(@current_path, "/server/dns/views")}>
-        <.dm_mdi name="eye" class="w-5 h-5" />
-        <span>Views</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/dns/acl" class={active?(@current_path, "/server/dns/acl")}>
-        <.dm_mdi name="shield-lock" class="w-5 h-5" />
-        <span>ACL</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/dns/metrics" class={active?(@current_path, "/server/dns/metrics")}>
-        <.dm_mdi name="chart-line" class="w-5 h-5" />
-        <span>Metrics</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/dns/providers"
-        class={active?(@current_path, "/server/dns/providers")}
-      >
-        <.dm_mdi name="cloud-sync" class="w-5 h-5" />
-        <span>Providers</span>
-      </.link>
-    </li>
-    <!-- DHCPv4 -->
-    <li class="nested-menu-title mt-4">DHCPv4</li>
-    <li>
-      <.link navigate="/server/dhcpv4" class={active?(@current_path, "/server/dhcpv4", :exact)}>
-        <.dm_mdi name="server-network" class="w-5 h-5" />
-        <span>Overview</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/dhcpv4/leases"
-        class={active?(@current_path, "/server/dhcpv4/leases")}
-      >
-        <.dm_mdi name="file-document" class="w-5 h-5" />
-        <span>Leases</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/dhcpv4/pools" class={active?(@current_path, "/server/dhcpv4/pools")}>
-        <.dm_mdi name="lan" class="w-5 h-5" />
-        <span>Pools</span>
-      </.link>
-    </li>
-    <!-- DHCPv6 -->
-    <li class="nested-menu-title mt-4">DHCPv6</li>
-    <li>
-      <.link navigate="/server/dhcpv6" class={active?(@current_path, "/server/dhcpv6", :exact)}>
-        <.dm_mdi name="server-network" class="w-5 h-5" />
-        <span>Overview</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/dhcpv6/leases"
-        class={active?(@current_path, "/server/dhcpv6/leases")}
-      >
-        <.dm_mdi name="file-document" class="w-5 h-5" />
-        <span>Leases</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/server/dhcpv6/pools" class={active?(@current_path, "/server/dhcpv6/pools")}>
-        <.dm_mdi name="lan" class="w-5 h-5" />
-        <span>Pools</span>
-      </.link>
-    </li>
-    <!-- mDNS -->
-    <li class="nested-menu-title mt-4">mDNS</li>
-    <li>
-      <.link navigate="/server/mdns" class={active?(@current_path, "/server/mdns", :exact)}>
-        <.dm_mdi name="wifi" class="w-5 h-5" />
-        <span>Overview</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/mdns/services"
-        class={active?(@current_path, "/server/mdns/services")}
-      >
-        <.dm_mdi name="room-service" class="w-5 h-5" />
-        <span>Services</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/mdns/discovery"
-        class={active?(@current_path, "/server/mdns/discovery")}
-      >
-        <.dm_mdi name="radar" class="w-5 h-5" />
-        <span>Discovery</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/mdns/monitor"
-        class={active?(@current_path, "/server/mdns/monitor")}
-      >
-        <.dm_mdi name="monitor-eye" class="w-5 h-5" />
-        <span>Monitor</span>
-      </.link>
-    </li>
-    <!-- Netboot -->
-    <li class="nested-menu-title mt-4">Netboot</li>
-    <li>
-      <.link navigate="/server/netboot" class={active?(@current_path, "/server/netboot", :exact)}>
-        <.dm_mdi name="flash" class="w-5 h-5" />
-        <span>Dashboard</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/netboot/devices"
-        class={active?(@current_path, "/server/netboot/devices")}
-      >
-        <.dm_mdi name="devices" class="w-5 h-5" />
-        <span>Devices</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/netboot/profiles"
-        class={active?(@current_path, "/server/netboot/profiles")}
-      >
-        <.dm_mdi name="playlist-check" class="w-5 h-5" />
-        <span>Boot Profiles</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/netboot/tftp"
-        class={active?(@current_path, "/server/netboot/tftp")}
-      >
-        <.dm_mdi name="folder-network" class="w-5 h-5" />
-        <span>TFTP Server</span>
-      </.link>
-    </li>
-    <!-- Identity -->
-    <li class="nested-menu-title mt-4">Identity</li>
-    <li>
-      <.link
-        navigate="/server/identity"
-        class={active?(@current_path, "/server/identity", :exact)}
-      >
-        <.dm_mdi name="key-variant" class="w-5 h-5" />
-        <span>Overview</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/identity/hosts"
-        class={active?(@current_path, "/server/identity/hosts")}
-      >
-        <.dm_mdi name="desktop-classic" class="w-5 h-5" />
-        <span>All Hosts</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/identity/approvals"
-        class={active?(@current_path, "/server/identity/approvals")}
-      >
-        <.dm_mdi name="check-decagram" class="w-5 h-5" />
-        <span>Pending Approvals</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/identity/tokens"
-        class={active?(@current_path, "/server/identity/tokens")}
-      >
-        <.dm_mdi name="ticket-account" class="w-5 h-5" />
-        <span>Tokens</span>
-      </.link>
-    </li>
-    <li>
-      <.link
-        navigate="/server/identity/policies"
-        class={active?(@current_path, "/server/identity/policies")}
-      >
-        <.dm_mdi name="shield-check" class="w-5 h-5" />
-        <span>Policies</span>
-      </.link>
-    </li>
+    <.selection_control
+      id="server-selection-form"
+      event="select_server"
+      label="Server"
+      myself={@myself}
+      records={@records}
+      selected_record={@selected_record}
+    />
+
+    <%= for {{title, items}, section_index} <- Enum.with_index(@navigation) do %>
+      <li class={["nested-menu-title", section_index > 0 && "mt-4"]}>{title}</li>
+      <.service_navigation_item
+        :for={item <- items}
+        target_type={:server}
+        item={item}
+        selected_record={@selected_record}
+        current_path={@current_path}
+      />
+    <% end %>
     """
   end
 
@@ -557,96 +435,174 @@ defmodule YellowDog.Console.Components.Sidebar do
   end
 
   defp sidebar_netman(assigns) do
+    assigns = assign(assigns, :navigation, @netman_navigation)
+
     ~H"""
-    <li class="nested-menu-title">Network Manager</li>
-    <li>
-      <.link navigate="/netman" class={active?(@current_path, "/netman", :exact)}>
-        <.dm_mdi name="view-dashboard" class="w-5 h-5" />
-        <span>Dashboard</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/netman/config" class={active?(@current_path, "/netman/config")}>
-        <.dm_mdi name="cog" class="w-5 h-5" />
-        <span>Configuration</span>
-      </.link>
-    </li>
-    <!-- Connected Netman Instances -->
-    <%= for client <- @clients do %>
-      <li class="nested-menu-title mt-4">
-        <.dm_mdi name="circle" class="w-2 h-2 text-success inline-block" />
-        {client.hostname}
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}"}
-          class={active?(@current_path, "/netman/#{client.node_id}", :exact)}
-        >
-          <.dm_mdi name="server-network" class="w-5 h-5" />
-          <span>Overview</span>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/interfaces"}
-          class={active?(@current_path, "/netman/#{client.node_id}/interfaces")}
-        >
-          <.dm_mdi name="ethernet" class="w-5 h-5" />
-          <span>Interfaces</span>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/resolved"}
-          class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
-        >
-          <.dm_mdi name="dns" class="w-5 h-5" />
-          <span>Resolved</span>
-          <%= if resolved = client[:resolved] do %>
-            <span class="ml-auto text-xs font-mono text-on-surface-variant">
-              {resolved["counters"]["total"] || 0}q
-            </span>
-          <% end %>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/dhcp-client"}
-          class={active?(@current_path, "/netman/#{client.node_id}/dhcp-client")}
-        >
-          <.dm_mdi name="chip" class="w-5 h-5" />
-          <span>DHCP Client</span>
-        </.link>
-      </li>
-      <%= for conn <- client.connections, conn["lease"] != nil do %>
-        <li class="pl-4">
-          <div class="flex flex-col py-1 text-xs text-on-surface-variant">
-            <span class="font-mono font-semibold text-on-surface">{conn["lease"]["ip"]}</span>
-            <span>
-              {conn["interface"]} · {format_remaining(conn["lease"]["time_remaining"])}
-            </span>
-          </div>
-        </li>
-      <% end %>
-    <% end %>
+    <.selection_control
+      id="netman-selection-form"
+      event="select_netman"
+      label="Netman"
+      myself={@myself}
+      records={@records}
+      selected_record={@selected_record}
+    />
+
+    <li class="nested-menu-title mt-4">Network Manager</li>
+    <.service_navigation_item
+      :for={item <- @navigation}
+      target_type={:netman}
+      item={item}
+      selected_record={@selected_record}
+      current_path={@current_path}
+    />
     """
   end
 
-  defp format_remaining(nil), do: "—"
-  defp format_remaining(seconds) when is_number(seconds) and seconds <= 0, do: "expired"
+  attr :id, :string, required: true
+  attr :event, :string, required: true
+  attr :label, :string, required: true
+  attr :myself, :any, required: true
+  attr :records, :list, required: true
+  attr :selected_record, :any, default: nil
 
-  defp format_remaining(seconds) when is_number(seconds) do
-    hours = div(seconds, 3600)
-    mins = div(rem(seconds, 3600), 60)
+  defp selection_control(assigns) do
+    ~H"""
+    <li class="nested-menu-title">Selected {@label}</li>
+    <li>
+      <form id={@id} phx-change={@event} phx-target={@myself}>
+        <label for={"#{@id}-select"} class="sr-only">Select {@label}</label>
+        <select
+          id={"#{@id}-select"}
+          name="selection[id]"
+          class="select select-sm w-full"
+          aria-label={"Select #{@label}"}
+        >
+          <option value="" selected={is_nil(@selected_record)}>Select {@label}</option>
+          <option
+            :for={record <- @records}
+            value={record.id}
+            selected={selected_record?(@selected_record, record)}
+          >
+            {record_label(record)}
+          </option>
+        </select>
+      </form>
+    </li>
+    """
+  end
 
-    cond do
-      hours > 24 -> "#{div(hours, 24)}d #{rem(hours, 24)}h"
-      hours > 0 -> "#{hours}h #{mins}m"
-      true -> "#{mins}m"
+  attr :target_type, :atom, required: true
+  attr :item, :map, required: true
+  attr :selected_record, :any, default: nil
+  attr :current_path, :string, default: nil
+
+  defp service_navigation_item(assigns) do
+    path =
+      case assigns.selected_record do
+        %{id: id} -> service_path(assigns.target_type, id, assigns.item.destination)
+        nil -> nil
+      end
+
+    assigns =
+      assigns
+      |> assign(:path, path)
+      |> assign(:active_class, navigation_active?(assigns.current_path, path, assigns.item))
+
+    ~H"""
+    <li>
+      <.link
+        :if={@path}
+        navigate={@path}
+        class={@active_class}
+        data-service-navigation
+        data-service-target={@target_type}
+      >
+        <.dm_mdi name={@item.icon} class="w-5 h-5" />
+        <span>{@item.label}</span>
+      </.link>
+      <button
+        :if={is_nil(@path)}
+        type="button"
+        disabled
+        aria-disabled="true"
+        data-service-navigation
+        data-service-target={@target_type}
+      >
+        <.dm_mdi name={@item.icon} class="w-5 h-5" />
+        <span>{@item.label}</span>
+      </button>
+    </li>
+    """
+  end
+
+  defp navigation_records("Servers", {:server, selected_id}) do
+    records = valid_records(Data.list_servers(), :server)
+    {records, Enum.find(records, &(&1.id == selected_id))}
+  end
+
+  defp navigation_records("Servers", _scope),
+    do: {valid_records(Data.list_servers(), :server), nil}
+
+  defp navigation_records("Netman", {:netman, selected_id}) do
+    records = valid_records(Data.list_netmans(), :netman)
+    {records, Enum.find(records, &(&1.id == selected_id))}
+  end
+
+  defp navigation_records("Netman", _scope),
+    do: {valid_records(Data.list_netmans(), :netman), nil}
+
+  defp navigation_records(_section, _scope), do: {[], nil}
+
+  defp valid_records(records, :server),
+    do: Enum.filter(records, &ServicePaths.valid_server_id?(&1.id))
+
+  defp valid_records(records, :netman),
+    do: Enum.filter(records, &ServicePaths.valid_netman_id?(&1.id))
+
+  defp navigate_to_selection(socket, target_type, "") do
+    {:noreply, Phoenix.LiveView.push_navigate(socket, to: selector_path(target_type))}
+  end
+
+  defp navigate_to_selection(socket, target_type, id) do
+    if Enum.any?(socket.assigns.records, &(&1.id == id)) do
+      {:noreply,
+       Phoenix.LiveView.push_navigate(
+         socket,
+         to: service_path(target_type, id, selection_destination(target_type))
+       )}
+    else
+      {:noreply, socket}
     end
   end
 
-  defp format_remaining(_), do: "—"
+  defp service_path(:server, id, destination),
+    do: ServicePaths.server_path(id, destination)
+
+  defp service_path(:netman, id, destination),
+    do: ServicePaths.netman_path(id, destination)
+
+  defp selector_path(:server), do: "/server"
+  defp selector_path(:netman), do: "/netman"
+
+  defp selection_destination(:server), do: :dashboard
+  defp selection_destination(:netman), do: :overview
+
+  defp selected_record?(%{id: selected_id}, %{id: id}), do: selected_id == id
+  defp selected_record?(_selected_record, _record), do: false
+
+  defp record_label(record) do
+    name = Map.get(record, :name) || record.id
+    status = Map.get(record, :status, :unknown)
+    "#{name} (#{status})"
+  end
+
+  defp navigation_active?(_current_path, nil, _item), do: nil
+
+  defp navigation_active?(current_path, path, %{exact: true}),
+    do: active?(current_path, path, :exact)
+
+  defp navigation_active?(current_path, path, _item),
+    do: active?(current_path, path)
 
   # Returns "active" class when current_path matches the target path.
   # :exact mode requires exact match (for overview pages that share a prefix).

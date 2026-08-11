@@ -146,6 +146,17 @@ defmodule YellowDog.DhcpClient do
     end
   end
 
+  @doc "Returns one public FSM and lease snapshot for a running interface."
+  @spec connection(String.t()) ::
+          {:ok, %{interface: String.t(), state: atom(), lease: Lease.t() | nil}}
+          | {:error, :not_found}
+  def connection(interface) when is_binary(interface) do
+    case status(interface) do
+      {:error, :not_found} -> {:error, :not_found}
+      state -> {:ok, %{interface: interface, state: state, lease: lease(interface)}}
+    end
+  end
+
   @doc """
   Reads the MAC address of the given network interface.
 

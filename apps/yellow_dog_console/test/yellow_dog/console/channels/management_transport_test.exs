@@ -18,6 +18,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
     Command,
     ConfigDelivery,
     Hello,
+    Journal,
     Query,
     Result,
     Status
@@ -43,6 +44,35 @@ defmodule YellowDog.Console.ManagementTransportTest do
 
     activate(socket, server_id)
     assert ManagementTransport.connected?(:server, server_id)
+  end
+
+  test "accepts the first request immediately after Journal publishes online" do
+    server_id = unique_id("first-request")
+    socket = join_registered(server_id)
+
+    :ok =
+      Phoenix.PubSub.subscribe(
+        YellowDog.Console.PubSub,
+        "management:server:#{server_id}"
+      )
+
+    hello_ref = push(socket, "sync", payload(hello(server_id)))
+    assert_reply hello_ref, :ok, %{"accepted" => true}
+    status_ref = push(socket, "sync", payload(status(server_id)))
+    assert_reply status_ref, :ok, %{"accepted" => true}
+    refute ManagementTransport.connected?(:server, server_id)
+
+    journal_ref = push(socket, "sync", payload(journal(server_id)))
+    assert_reply journal_ref, :ok, %{"accepted" => true}
+    assert_receive {:server_connection, :online, %{server_id: ^server_id}}
+
+    envelope = query_envelope(server_id)
+    task = Task.async(fn -> ManagementTransport.request(envelope, 1_000) end)
+    assert_push "sync", %{"message" => _encoded, "publication_sequence" => nil}
+
+    result_ref = push(socket, "sync", payload(result(envelope, result_value(envelope))))
+    assert_reply result_ref, :ok, %{"accepted" => true}
+    assert {:ok, result_value(envelope)} == Task.await(task)
   end
 
   test "request pushes exact canonical Query and Command wrappers on only sync" do
@@ -100,7 +130,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
     }
 
     wrong_target_ref = push(socket, "sync", payload(wrong_target))
-    assert_reply wrong_target_ref, :ok, %{"accepted" => true}
+    assert_reply wrong_target_ref, :error, %{"error" => %{"code" => "invalid"}}
     refute Task.yield(first_task, 20)
 
     second_ref = push(socket, "sync", payload(result(second, result_value(second))))
@@ -283,6 +313,12 @@ defmodule YellowDog.Console.ManagementTransportTest do
     assert_reply hello_ref, :ok, %{"accepted" => true}
     status_ref = push(socket, "sync", payload(status(server_id)))
     assert_reply status_ref, :ok, %{"accepted" => true}
+    journal_ref = push(socket, "sync", payload(journal(server_id)))
+    assert_reply journal_ref, :ok, %{"accepted" => true}
+  end
+
+  defp journal(server_id) do
+    %Journal{target_type: :server, target_id: server_id, entries: []}
   end
 
   defp hello(server_id) do

@@ -39,6 +39,7 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
   @side_effect_checkpoints [
     :before_install,
     :before_activate,
+    :recovery_before_activate,
     :before_restore,
     :before_reactivate
   ]
@@ -48,7 +49,9 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
     validation_failed: [:reason, :version],
     before_install: [:version],
     before_activate: [:installed_revision, :version],
+    recovery_before_activate: [:installed_revision, :version],
     apply_failed: [:reason, :version],
+    recovery_before_restore: [:trigger_reason, :version],
     before_restore: [:trigger_reason, :version],
     before_reactivate: [:version],
     rollback_succeeded: [:version],
@@ -63,6 +66,7 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
     :before_validate,
     :before_install,
     :before_activate,
+    :recovery_before_activate,
     :before_restore,
     :before_reactivate,
     :complete,
@@ -103,6 +107,28 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
   @spec snapshot(server()) :: {:ok, snapshot()} | {:error, Error.t()}
   def snapshot(server \\ __MODULE__), do: GenServer.call(server, :snapshot)
 
+  @doc "Reads the durable boot evidence without starting the apply store."
+  @spec read_boot_state(Path.t(), term()) ::
+          {:ok, %{known_good: map() | nil, runtime_status: atom()}}
+          | {:error, :missing | :corrupt | :invalid_options}
+  def read_boot_state(data_dir, server_id) do
+    with {:ok, data_dir} <- absolute_data_dir(data_dir),
+         {:ok, server_id} <- server_id(server_id),
+         config = %{data_dir: data_dir, server_id: server_id, storage_opts: []},
+         {:ok, document} <- strict_existing_read(config),
+         {:ok, snapshot} <- decode_boot_snapshot(document, config) do
+      {:ok, Map.take(snapshot, [:known_good, :runtime_status])}
+    else
+      {:error, :invalid} -> {:error, :invalid_options}
+      {:error, :missing} -> {:error, :missing}
+      _invalid -> {:error, :corrupt}
+    end
+  rescue
+    _exception -> {:error, :corrupt}
+  catch
+    _kind, _reason -> {:error, :corrupt}
+  end
+
   @spec preflight(Envelope.t(), server()) ::
           {:admit, :new}
           | {:resume, :staged | :before_validate}
@@ -128,8 +154,7 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
   def init(config) do
     with :ok <- ensure_owned_path(config),
          {:ok, snapshot, persisted?} <- load_snapshot(config),
-         :ok <- cross_check_staging(snapshot, config),
-         {:ok, snapshot, persisted?} <- recover_side_effect(snapshot, persisted?, config) do
+         :ok <- cross_check_staging(snapshot, config) do
       {:ok, %{config: config, snapshot: snapshot, persisted?: persisted?}}
     else
       {:error, :path} -> {:stop, {:config_apply_recovery_failed, :path}}
@@ -333,6 +358,37 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
     end
   end
 
+  defp do_transition(
+         :recovery_before_activate,
+         %{version: version, installed_revision: revision},
+         snapshot,
+         config
+       ) do
+    with {:ok, revision} <- Digest.validate(revision) do
+      cond do
+        match_attempt?(snapshot, version, :applying, :recovery_before_activate) and
+          snapshot.runtime_status == :unknown and
+          snapshot.attempt.previous == nil and
+            snapshot.attempt.installed_revision == revision ->
+          {:idempotent, snapshot}
+
+        match_attempt?(snapshot, version, :applying, :unknown) and
+          snapshot.runtime_status == :unknown and
+          snapshot.known_good == nil and
+          snapshot.attempt.previous == nil and
+            snapshot.attempt.installed_revision in [nil, revision] ->
+          update_attempt_and_runtime(snapshot, config, :unknown, fn attempt ->
+            %{attempt | checkpoint: :recovery_before_activate, installed_revision: revision}
+          end)
+
+        true ->
+          conflict()
+      end
+    else
+      _invalid -> invalid()
+    end
+  end
+
   defp do_transition(:apply_failed, %{version: version, reason: reason}, snapshot, config) do
     with {:ok, reason} <- reason(reason) do
       cond do
@@ -353,6 +409,37 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
               | runtime_status: :unknown,
                 attempt: attempt,
                 observed_at: now
+            }
+          end)
+
+        true ->
+          conflict()
+      end
+    end
+  end
+
+  defp do_transition(
+         :recovery_before_restore,
+         %{version: version, trigger_reason: trigger_reason},
+         snapshot,
+         config
+       ) do
+    with {:ok, trigger_reason} <- reason(trigger_reason) do
+      cond do
+        match_attempt?(snapshot, version, :applying, :before_restore) and
+          snapshot.attempt.failure == %{phase: :apply, reason: trigger_reason} and
+            snapshot.attempt.rollback == recovery_rollback(trigger_reason) ->
+          {:idempotent, snapshot}
+
+        applying_recovery_checkpoint?(snapshot, version) and
+          not is_nil(snapshot.attempt.previous) and
+            snapshot.attempt.previous == snapshot.known_good ->
+          update_attempt_and_runtime(snapshot, config, :unknown, fn attempt ->
+            %{
+              attempt
+              | checkpoint: :before_restore,
+                failure: %{phase: :apply, reason: trigger_reason},
+                rollback: recovery_rollback(trigger_reason)
             }
           end)
 
@@ -490,7 +577,8 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
       applied_terminal?(snapshot, version) ->
         {:idempotent, snapshot}
 
-      match_attempt?(snapshot, version, :applying, :before_activate) ->
+      match_attempt?(snapshot, version, :applying, :before_activate) or
+          match_attempt?(snapshot, version, :applying, :recovery_before_activate) ->
         publish_update(config, :applied, fn now ->
           known_good = %{
             version: snapshot.attempt.version,
@@ -682,28 +770,6 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
 
   defp acknowledge(_sequence, _snapshot), do: conflict()
 
-  defp recover_side_effect(
-         %{attempt: %{status: :applying, checkpoint: checkpoint}} = snapshot,
-         persisted?,
-         config
-       )
-       when checkpoint in @side_effect_checkpoints do
-    intended = %{
-      snapshot
-      | runtime_status: :unknown,
-        attempt: %{snapshot.attempt | checkpoint: :unknown}
-    }
-
-    case persist_snapshot(snapshot, intended, persisted?, :startup_recovery, config) do
-      {:ok, intended} -> {:ok, intended, true}
-      {:error, %Error{} = error} -> {:error, error}
-      {:stop, reason} -> {:stop, reason}
-    end
-  end
-
-  defp recover_side_effect(snapshot, persisted?, _config),
-    do: {:ok, snapshot, persisted?}
-
   defp persist_snapshot(prior, intended, persisted?, phase, config) do
     path = apply_state_path(config)
     intended_document = encode_snapshot(intended)
@@ -778,15 +844,19 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
     end
   end
 
-  defp strict_read(config) do
+  defp strict_read(config), do: strict_read(config, &ensure_owned_path/1)
+  defp strict_existing_read(config), do: strict_read(config, &ensure_existing_owned_path/1)
+
+  defp strict_read(config, path_check) do
     path = apply_state_path(config)
 
-    with :ok <- ensure_owned_path(config),
+    with :ok <- path_check.(config),
          {:ok, identity} <- regular_file_identity(path),
          {:ok, document} <- Storage.read(path, config.storage_opts),
          {:ok, ^identity} <- regular_file_identity(path) do
       {:ok, document}
     else
+      {:error, :missing} -> {:error, :missing}
       {:error, %Error{code: :not_found}} -> {:error, :missing}
       _unsafe_or_changed -> {:error, :corrupt}
     end
@@ -944,6 +1014,23 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
     end)
   end
 
+  defp applying_recovery_checkpoint?(snapshot, version) do
+    Enum.any?(@side_effect_checkpoints ++ [:unknown], fn checkpoint ->
+      match_attempt?(snapshot, version, :applying, checkpoint)
+    end)
+  end
+
+  defp recovery_rollback(trigger_reason) do
+    %{
+      trigger_reason: trigger_reason,
+      status: :before_restore,
+      succeeded: nil,
+      restored_version: nil,
+      restored_revision: nil,
+      reason: nil
+    }
+  end
+
   defp rollback_checkpoint?(snapshot, version) do
     Enum.any?([:before_restore, :before_reactivate], fn checkpoint ->
       match_attempt?(snapshot, version, :applying, checkpoint)
@@ -1009,6 +1096,32 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
   end
 
   defp decode_snapshot(_document, _config), do: {:error, :corrupt}
+
+  defp decode_boot_snapshot(document, config) when is_map(document) do
+    with true <- exact_keys?(document, @top_keys),
+         @schema_version <- document["schema_version"],
+         "server" <- document["target_type"],
+         true <- document["target_id"] == config.server_id,
+         {:ok, profile} <- boot_profile(document["attempt"]),
+         {:ok, snapshot} <- decode_snapshot(document, Map.put(config, :profile, profile)) do
+      {:ok, snapshot}
+    else
+      _invalid -> {:error, :corrupt}
+    end
+  end
+
+  defp decode_boot_snapshot(_document, _config), do: {:error, :corrupt}
+
+  defp boot_profile(nil), do: {:ok, nil}
+
+  defp boot_profile(%{"profile" => profile}) do
+    case profile(profile) do
+      {:ok, profile} -> {:ok, profile}
+      _invalid -> {:error, :corrupt}
+    end
+  end
+
+  defp boot_profile(_attempt), do: {:error, :corrupt}
 
   defp decode_known_good(nil), do: {:ok, nil}
 
@@ -1228,6 +1341,20 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
          snapshot
        ),
        do: pre_side_effect_matches_known_good(snapshot)
+
+  defp coherent_attempt_state(
+         %{
+           status: :applying,
+           checkpoint: :recovery_before_activate,
+           previous: nil,
+           installed_revision: revision,
+           failure: nil,
+           rollback: nil
+         },
+         %{runtime_status: :unknown, known_good: nil}
+       )
+       when is_binary(revision),
+       do: :ok
 
   defp coherent_attempt_state(
          %{
@@ -1844,6 +1971,21 @@ defmodule YellowDog.ServerAgent.ConfigApplyStore do
         _unsafe -> {:halt, {:error, :path}}
       end
     end)
+  end
+
+  defp ensure_existing_owned_path(config) do
+    [config.data_dir, server_directory(config)]
+    |> Enum.reduce_while(:ok, fn path, :ok ->
+      case File.lstat(path) do
+        {:ok, %File.Stat{type: :directory}} -> {:cont, :ok}
+        {:error, :enoent} -> {:halt, {:error, :missing}}
+        _unsafe -> {:halt, {:error, :path}}
+      end
+    end)
+  rescue
+    _exception -> {:error, :path}
+  catch
+    _kind, _reason -> {:error, :path}
   end
 
   defp ensure_owned_directory(path) do

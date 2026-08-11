@@ -1,94 +1,154 @@
 defmodule YellowDog.Console.NetbootLive.ProfilesLive do
-  @moduledoc """
-  Boot profile management page for listing and managing all boot profiles.
+  @moduledoc "Management-backed Netboot profiles for one selected Server."
 
-  Displays all available boot profiles with their architecture support, script
-  preview, and usage counts. Supports creating new profiles, editing existing ones,
-  cloning profiles, deleting profiles, and searching/filtering the profile list.
-  """
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.ServiceHelper
-
   alias YellowDog.Console.Layouts
+  alias YellowDog.Console.NetbootLive.ManagementComponents
+  alias YellowDog.Console.NetbootLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     socket
-     |> assign(
+     assign(socket,
        page_title: "Boot Profiles",
+       subscribed_server_id: nil,
+       profiles: [],
+       devices: [],
+       filtered_profiles: [],
+       profile_usage: %{},
        search_query: "",
-       sort_field: "id",
+       sort_field: "profile_id",
        sort_dir: "asc",
-       service_running: service_running?(YellowDog.Netboot.Manifest.Store)
-     )
-     |> load_profiles()}
+       management_error: nil,
+       operation_result: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil,
+       commands_enabled?: false
+     )}
   end
+
+  @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_profiles(socket, server_id), else: socket)}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => query}, socket) do
+    {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
+  end
+
+  def handle_event("sort", %{"field" => field}, socket) do
+    dir =
+      if socket.assigns.sort_field == field, do: toggle_dir(socket.assigns.sort_dir), else: "asc"
+
+    {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
+  end
+
+  def handle_event("export_csv", _params, socket), do: {:noreply, socket}
+
+  def handle_event("set_default", _params, socket) do
+    {:noreply,
+     ManagementSupport.unavailable(
+       socket,
+       "Setting a default profile is unavailable through Server management"
+     )}
+  end
+
+  def handle_event("delete_profile", params, socket) do
+    profile_id = params["profile_id"] || params["id"]
+
+    with :ok <- ManagementSupport.mutable(socket),
+         {:ok, revision} <- profile_revision(socket.assigns.profiles, profile_id) do
+      result =
+        ServerManagement.netboot_profiles_delete(
+          ManagementSupport.selected_id(socket),
+          %{"profile_id" => profile_id},
+          ManagementSupport.command_options(revision)
+        )
+
+      socket =
+        if result.status == :ok do
+          profiles = Enum.reject(socket.assigns.profiles, &(&1["profile_id"] == profile_id))
+          socket |> assign(:profiles, profiles) |> apply_filters()
+        else
+          socket
+        end
+
+      {:noreply, ManagementSupport.finish(socket, result, "Profile deleted")}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_profiles(server_id)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="breadcrumbs text-sm">
-          <ul>
-            <li><.link navigate="/server/netboot">Netboot</.link></li>
-            <li>Profiles</li>
-          </ul>
-        </div>
-
-        <.service_alert :if={not @service_running} service="Netboot" navigate="/server/settings" />
-
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-4xl font-bold">Boot Profiles</h1>
-            <p class="mt-2 text-on-surface-variant">
-              Configured netboot profiles for PXE provisioning
-            </p>
-          </div>
+      <div id="server-netboot-profiles" class="space-y-6">
+        <div class="flex items-center justify-between gap-4">
+          <ManagementComponents.page_header
+            title="Boot Profiles"
+            subtitle="Configuration from Management"
+            server={@selected_server}
+            online?={@service_online?}
+            back={ServicePaths.server_path(@selected_server.id, :netboot)}
+          />
           <div class="flex gap-2">
-            <.link navigate="/server/netboot/profiles/new" class="btn btn-primary btn-sm">
+            <.link
+              navigate={ServicePaths.server_path(@selected_server.id, :netboot_profile_new)}
+              class={"btn btn-primary btn-sm #{if !@commands_enabled?, do: "btn-disabled"}"}
+            >
               New Profile
             </.link>
-            <button
-              phx-click="export_csv"
-              id="export-csv"
-              phx-hook="CsvDownload"
-              class="btn btn-outline btn-sm"
-            >
-              Export CSV
-            </button>
+            <button id="export-csv" phx-click="export_csv" class="btn btn-outline btn-sm">Export CSV</button>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <.card>
-            <div class="text-sm text-on-surface-variant">Total Profiles</div>
-            <div class="text-2xl font-bold text-primary">{length(@all_profiles)}</div>
+            <div class="text-sm text-on-surface-variant">Total Profiles</div><div class="text-2xl font-bold">
+              {length(@profiles)}
+            </div>
           </.card>
           <.card>
-            <div class="text-sm text-on-surface-variant">Default Profile</div>
-            <div class="text-2xl font-bold">{@default_profile || "None"}</div>
+            <div class="text-sm text-on-surface-variant">Assigned Devices</div><div class="text-2xl font-bold">
+              {Enum.count(@devices, &(&1["profile_id"] not in [nil, ""]))}
+            </div>
           </.card>
         </div>
 
         <.card>
-          <div class="flex-1">
-            <label class="input flex items-center gap-2">
-              <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
-              <input
-                type="text"
-                class="grow"
-                placeholder="Search by ID, description, kernel, or initrd..."
-                value={@search_query}
-                phx-change="search"
-                phx-debounce="300"
-                name="search"
-              />
-            </label>
-          </div>
+          <label class="input flex items-center gap-2">
+            <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
+            <input
+              name="search"
+              value={@search_query}
+              phx-change="search"
+              phx-debounce="300"
+              placeholder="Search profiles"
+            />
+          </label>
         </.card>
 
         <.card>
@@ -96,99 +156,58 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
             <table class="table table-striped">
               <thead>
                 <tr>
-                  <.sort_header
-                    field="id"
-                    label="ID"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <.sort_header
-                    field="description"
-                    label="Description"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <th>Kernel</th>
-                  <th>Initrd</th>
-                  <th>Architectures</th>
-                  <.sort_header
-                    field="devices"
-                    label="Devices"
-                    sort_field={@sort_field}
-                    sort_dir={@sort_dir}
-                  />
-                  <th>Actions</th>
+                  <th phx-click="sort" phx-value-field="profile_id" class="cursor-pointer">
+                    Profile ID
+                  </th>
+                  <th phx-click="sort" phx-value-field="name" class="cursor-pointer">Name</th>
+                  <th>Boot asset</th><th>Arguments</th><th>Devices</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr :if={@filtered_profiles == []}>
-                  <td colspan="7" class="text-center text-on-surface-variant py-8">
-                    No boot profiles configured —
-                    <.link navigate="/server/netboot/profiles/new" class="link link-primary">
-                      create one
-                    </.link>
+                  <td colspan="6" class="py-8 text-center text-on-surface-variant">
+                    No boot profiles in this Server snapshot
                   </td>
                 </tr>
-                <tr :for={p <- @filtered_profiles}>
-                  <td class="font-mono font-medium">
+                <tr :for={profile <- @filtered_profiles}>
+                  <td>
                     <.link
-                      navigate={"/server/netboot/profiles/#{p.id}/edit"}
-                      class="link link-primary"
+                      navigate={
+                        ServicePaths.server_path(
+                          @selected_server.id,
+                          {:netboot_profile_edit, profile["profile_id"]}
+                        )
+                      }
+                      class="link link-primary font-mono"
                     >
-                      {p.id}
+                      {profile["profile_id"]}
                     </.link>
-                    <.badge :if={p.id == @default_profile} color="primary" size="sm" class="ml-1">
-                      default
-                    </.badge>
                   </td>
-                  <td class="max-w-xs truncate" title={p.description || ""}>
-                    {p.description || "-"}
-                  </td>
-                  <td class="text-sm font-mono">{p.kernel}</td>
-                  <td class="text-sm font-mono">{p.initrd}</td>
-                  <td>
-                    <.badge :for={arch <- p.arch} color="info" size="sm" class="mr-1">
-                      {to_string(arch)}
-                    </.badge>
-                    <span :if={p.arch == []}>Any</span>
-                  </td>
-                  <td>
-                    <.badge color="ghost" size="sm">
-                      {Map.get(@profile_usage, p.id, 0)}
-                    </.badge>
-                  </td>
+                  <td>{profile["name"]}</td>
+                  <td class="font-mono">{profile["boot_asset_id"]}</td>
+                  <td>{Enum.join(profile["arguments"] || [], " ")}</td>
+                  <td>{Map.get(@profile_usage, profile["profile_id"], 0)}</td>
                   <td>
                     <div class="flex gap-1">
                       <.link
-                        navigate={"/server/netboot/profiles/#{p.id}/edit"}
+                        navigate={
+                          ServicePaths.server_path(
+                            @selected_server.id,
+                            {:netboot_profile_edit, profile["profile_id"]}
+                          )
+                        }
                         class="btn btn-ghost btn-xs"
-                      >
-                        Edit
-                      </.link>
+                      >Edit</.link>
                       <.link
-                        navigate={"/server/netboot/profiles/new?clone=#{p.id}"}
+                        navigate={clone_path(@selected_server.id, profile["profile_id"])}
                         class="btn btn-ghost btn-xs"
-                      >
-                        Clone
-                      </.link>
-                      <button
-                        :if={p.id != @default_profile}
-                        phx-click="set_default"
-                        phx-value-id={p.id}
-                        phx-disable-with="Setting..."
-                        class="btn btn-ghost btn-xs"
-                      >
-                        Set Default
-                      </button>
+                      >Clone</.link>
                       <button
                         phx-click="delete_profile"
-                        phx-value-id={p.id}
-                        phx-disable-with="Deleting..."
-                        data-confirm={"Delete profile \"#{p.id}\"?"}
+                        phx-value-profile_id={profile["profile_id"]}
+                        disabled={!@commands_enabled?}
                         class="btn btn-ghost btn-xs text-error"
-                      >
-                        Delete
-                      </button>
+                      >Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -201,118 +220,64 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     """
   end
 
-  @impl true
-  def handle_event("search", %{"search" => query}, socket) do
-    {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
+  def filter_by_search(profiles, ""), do: profiles
+
+  def filter_by_search(profiles, query) do
+    query = String.downcase(query)
+
+    Enum.filter(profiles, fn profile ->
+      Enum.any?(
+        [
+          profile_value(profile, "profile_id"),
+          profile_value(profile, "name"),
+          profile_value(profile, "boot_asset_id")
+        ],
+        fn value ->
+          String.contains?(String.downcase(value), query)
+        end
+      )
+    end)
   end
 
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    csv = build_csv(socket.assigns.filtered_profiles, socket.assigns.profile_usage)
-    filename = "boot_profiles_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  def sort_profiles(profiles, field, dir, usage) do
+    sorted =
+      Enum.sort_by(profiles, fn profile ->
+        if field == "devices" do
+          Map.get(usage, profile_value(profile, "profile_id"), 0)
+        else
+          profile |> profile_value(field) |> String.downcase()
+        end
+      end)
+
+    if dir == "desc", do: Enum.reverse(sorted), else: sorted
   end
 
-  @impl true
-  def handle_event("sort", %{"field" => field}, socket) do
-    dir =
-      if socket.assigns.sort_field == field,
-        do: toggle_dir(socket.assigns.sort_dir),
-        else: "asc"
-
-    {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
-  end
-
-  @impl true
-  def handle_event("set_default", %{"id" => id}, socket) do
-    result =
-      safe_call(
-        YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.set_default_profile(id) end,
-        {:error, :service_unavailable}
-      )
-
-    socket =
-      case result do
-        :ok ->
-          socket
-          |> put_flash(:info, "Default profile set to '#{id}'")
-          |> load_profiles()
-
-        {:error, _reason} ->
-          put_flash(socket, :error, "Failed to set default profile")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("delete_profile", %{"id" => id}, socket) do
-    result =
-      safe_call(
-        YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
-        {:error, :service_unavailable}
-      )
-
-    socket =
-      case result do
-        :ok ->
-          socket
-          |> put_flash(:info, "Profile '#{id}' deleted successfully")
-          |> load_profiles()
-
-        {:error, _reason} ->
-          put_flash(socket, :error, "Failed to delete profile '#{id}'")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  defp load_profiles(socket) do
-    profiles =
-      safe_call(
-        YellowDog.Netboot.Manifest.Store,
-        fn ->
-          YellowDog.Netboot.Manifest.Store.list_profiles()
-        end,
-        []
-      )
-
-    default =
-      safe_call(
-        YellowDog.Netboot.Manifest.Store,
-        fn ->
-          YellowDog.Netboot.Manifest.Store.default_profile_id()
-        end,
-        nil
-      )
-
-    devices =
-      safe_call(
-        YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.list() end,
-        []
-      )
-
-    profile_usage =
-      devices
-      |> Enum.filter(& &1.profile_id)
-      |> Enum.frequencies_by(& &1.profile_id)
+  defp load_profiles(socket, server_id) do
+    profiles_result = ServerManagement.netboot_profiles_list(server_id)
+    devices_result = ServerManagement.netboot_devices_list(server_id)
+    results = [profiles_result, devices_result]
+    profiles = ManagementSupport.items(profiles_result)
+    devices = ManagementSupport.items(devices_result)
+    usage = Enum.frequencies_by(devices, & &1["profile_id"])
 
     socket
-    |> assign(:all_profiles, profiles)
-    |> assign(:default_profile, default)
-    |> assign(:profile_usage, profile_usage)
+    |> assign(
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Boot Profiles",
+      profiles: profiles,
+      devices: devices,
+      profile_usage: usage,
+      management_error: ManagementSupport.first_error(results),
+      cached_snapshot?: ManagementSupport.cached?(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at),
+      commands_enabled?: socket.assigns.service_online?
+    )
     |> apply_filters()
   end
 
   defp apply_filters(socket) do
-    filtered =
-      socket.assigns.all_profiles
+    profiles =
+      socket.assigns.profiles
       |> filter_by_search(socket.assigns.search_query)
       |> sort_profiles(
         socket.assigns.sort_field,
@@ -320,70 +285,41 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
         socket.assigns.profile_usage
       )
 
-    assign(socket, :filtered_profiles, filtered)
+    assign(socket, :filtered_profiles, profiles)
   end
 
-  def filter_by_search(profiles, ""), do: profiles
-
-  def filter_by_search(profiles, query) do
-    q = String.downcase(query)
-
-    Enum.filter(profiles, fn p ->
-      String.contains?(String.downcase(p.id), q) ||
-        (p.description && String.contains?(String.downcase(p.description), q)) ||
-        (Map.get(p, :kernel) && String.contains?(String.downcase(p.kernel), q)) ||
-        (Map.get(p, :initrd) && String.contains?(String.downcase(p.initrd), q))
-    end)
+  defp profile_revision(profiles, profile_id) do
+    ManagementSupport.exact_revision(
+      profiles,
+      &(&1["profile_id"] == profile_id),
+      "Profile"
+    )
   end
 
-  defp sort_header(assigns) do
-    ~H"""
-    <th
-      phx-click="sort"
-      phx-value-field={@field}
-      class="cursor-pointer select-none hover:bg-surface-container"
-    >
-      <div class="flex items-center gap-1">
-        {@label}
-        <span :if={@sort_field == @field} class="text-xs">
-          {if @sort_dir == "asc", do: "\u25B2", else: "\u25BC"}
-        </span>
-      </div>
-    </th>
-    """
+  defp profile_value(profile, key) when is_map(profile) do
+    value = Map.get(profile, key, profile_atom_value(profile, key))
+    if is_binary(value), do: value, else: to_string(value || "")
   end
 
-  def sort_profiles(profiles, field, dir, usage) do
-    sorter = sort_key_fn(field, usage)
-    sorted = Enum.sort_by(profiles, sorter)
-    if dir == "desc", do: Enum.reverse(sorted), else: sorted
-  end
+  defp profile_atom_value(profile, "profile_id"),
+    do: Map.get(profile, :profile_id, Map.get(profile, :id, ""))
 
-  defp sort_key_fn("id", _usage), do: &String.downcase(&1.id)
-  defp sort_key_fn("description", _usage), do: &String.downcase(&1.description || "")
-  defp sort_key_fn("devices", usage), do: &Map.get(usage, &1.id, 0)
-  defp sort_key_fn(_, _usage), do: &String.downcase(&1.id)
+  defp profile_atom_value(profile, "name"),
+    do: Map.get(profile, :name, Map.get(profile, :description, ""))
+
+  defp profile_atom_value(profile, "boot_asset_id"),
+    do: Map.get(profile, :boot_asset_id, Map.get(profile, :kernel, ""))
+
+  defp profile_atom_value(profile, "description"), do: Map.get(profile, :description, "")
+  defp profile_atom_value(profile, "kernel"), do: Map.get(profile, :kernel, "")
+  defp profile_atom_value(profile, "initrd"), do: Map.get(profile, :initrd, "")
+  defp profile_atom_value(_profile, _key), do: ""
+
+  defp clone_path(server_id, profile_id) do
+    ServicePaths.server_path(server_id, :netboot_profile_new) <>
+      "?" <> URI.encode_query(%{"clone" => profile_id})
+  end
 
   defp toggle_dir("asc"), do: "desc"
-  defp toggle_dir(_), do: "asc"
-
-  defp build_csv(profiles, usage) do
-    header = "ID,Description,Kernel,Initrd,Kernel Args,Architectures,Devices\r\n"
-
-    rows =
-      Enum.map_join(profiles, "\r\n", fn p ->
-        [
-          csv_escape(p.id),
-          csv_escape(p.description || ""),
-          csv_escape(p.kernel),
-          csv_escape(p.initrd),
-          csv_escape(p.kernel_args || ""),
-          csv_escape(Enum.map_join(p.arch, "; ", &to_string/1)),
-          csv_escape(to_string(Map.get(usage, p.id, 0)))
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
-  end
+  defp toggle_dir(_dir), do: "asc"
 end

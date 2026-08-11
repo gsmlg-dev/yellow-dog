@@ -91,6 +91,26 @@ defmodule YellowDog.Sync.Operation do
   @material_reference_suffixes ~w(digest hash uri url ref id)
   @glued_reference_suffixes ~w(reference digest hash uri url ref id)
   @canonical_setting_key ~r/\A[a-z][a-z0-9]*(?:_[a-z0-9]+)*\z/
+  @server_profiles ~w(cloud_dns local_network dns_only dhcp_only netboot_only custom)
+  @managed_service_settings MapSet.new(~w(
+                              services.dns.enabled
+                              services.mdns.enabled
+                              services.dhcpv4.enabled
+                              services.dhcpv6.enabled
+                              services.netboot.enabled
+                              services.identity.enabled
+                              services.fingerprint.enabled
+                            ))
+  @managed_service_namespaces MapSet.new(~w(dns mdns dhcpv4 dhcpv6 netboot identity fingerprint))
+  @managed_forbidden_setting_tokens MapSet.new(~w(
+                                       path file filename filepath directory dir root chroot socket
+                                       pid ets table handle bootstrap management agent server_agent
+                                     ))
+  @managed_sensitive_setting_tokens MapSet.new(~w(
+                                       secret secrets credential credentials password passwords
+                                       token tokens
+                                     ))
+  @managed_setting_key ~r/\A[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+\z/
 
   @spec lookup(term()) :: {:ok, t()} | {:error, Error.t()}
   def lookup("server." <> _rest = name), do: ServerOperation.fetch(name)
@@ -197,7 +217,11 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:network_links_query), do: query(%{})
   defp schema_spec(:network_addresses_query), do: query(%{})
   defp schema_spec(:network_routes_query), do: query(%{})
-  defp schema_spec(:network_connection_query), do: query(%{"connection_id" => :id})
+  defp schema_spec(:network_connection_query), do: query(connection_ref_fields())
+  defp schema_spec(:resolved_link_dns_query), do: query(%{})
+
+  defp schema_spec(:resolved_queries_query),
+    do: object(%{}, %{"limit" => {:integer, 1, @max_collection_size}})
 
   defp schema_spec(:service_ref), do: object(%{"service" => :id})
   defp schema_spec(:dns_view_ref), do: object(%{"view_name" => :id})
@@ -225,13 +249,13 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:settings_rollback),
     do: object(%{"service" => :id, "target_revision" => :digest})
 
-  defp schema_spec(:profile_ref), do: object(%{"profile_id" => :id})
+  defp schema_spec(:profile_ref), do: object(%{"profile_id" => :netman_profile_id})
 
   defp schema_spec(:profile_rollback),
-    do: object(%{"profile_id" => :id, "target_revision" => :digest})
+    do: object(%{"profile_id" => :netman_profile_id, "target_revision" => :digest})
 
-  defp schema_spec(:connection_ref), do: object(%{"connection_id" => :id})
-  defp schema_spec(:dhcp_client_connection_ref), do: object(%{"connection_id" => :id})
+  defp schema_spec(:connection_ref), do: object(connection_ref_fields())
+  defp schema_spec(:dhcp_client_connection_ref), do: object(connection_ref_fields())
   defp schema_spec(:resolved_config_rollback), do: object(%{"target_revision" => :digest})
 
   defp schema_spec(:dns_view_write), do: dns_view()
@@ -279,13 +303,16 @@ defmodule YellowDog.Sync.Operation do
     do: object(%{"policies" => list(identity_policy())})
 
   defp schema_spec(:server_settings_config), do: settings_document()
+  defp schema_spec(:server_managed_config), do: :server_managed_config
   defp schema_spec(:profile_validate), do: netman_profile()
   defp schema_spec(:profile_put), do: netman_profile()
+
+  defp schema_spec(:profile_set_replace), do: :profile_set_replace
 
   defp schema_spec(:profile_patch),
     do:
       object(%{
-        "profile_id" => :id,
+        "profile_id" => :netman_profile_id,
         "changes" => list(:profile_change)
       })
 
@@ -302,7 +329,7 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:dhcp_pool_list), do: list_result(dhcp_pool())
   defp schema_spec(:dhcp_lease_list), do: list_result(dhcp_lease_item())
   defp schema_spec(:dhcp_activity_list), do: list_result(dhcp_activity_item())
-  defp schema_spec(:mdns_service_list), do: list_result(mdns_service())
+  defp schema_spec(:mdns_service_list), do: list_result(mdns_service_item())
   defp schema_spec(:mdns_discovery_list), do: list_result(mdns_discovery_item())
   defp schema_spec(:mdns_monitor_list), do: list_result(mdns_monitor_item())
   defp schema_spec(:netboot_profile_list), do: list_result(netboot_profile())
@@ -314,12 +341,24 @@ defmodule YellowDog.Sync.Operation do
   defp schema_spec(:identity_approval_list), do: list_result(identity_approval_item())
   defp schema_spec(:identity_token_list), do: list_result(identity_token_item())
   defp schema_spec(:identity_audit_list), do: list_result(identity_audit_item())
-  defp schema_spec(:profile_list), do: list_result(netman_profile())
+  defp schema_spec(:profile_list), do: list_result(profile_state_item())
   defp schema_spec(:profile_history), do: list_result(profile_history_item())
+  defp schema_spec(:profile_history_item), do: profile_history_item()
   defp schema_spec(:network_link_list), do: list_result(network_link_item())
   defp schema_spec(:network_address_list), do: list_result(network_address_item())
   defp schema_spec(:network_route_list), do: list_result(network_route_item())
-  defp schema_spec(:resolved_upstream_list), do: list_result(resolved_upstream_item())
+
+  defp schema_spec(:resolved_upstream_list) do
+    object(%{
+      "items" => list(resolved_upstream_item()),
+      "revision" => :digest,
+      "observed_at" => :utc_datetime,
+      "config_revision" => :digest
+    })
+  end
+
+  defp schema_spec(:resolved_link_dns_list), do: list_result(resolved_link_dns_item())
+  defp schema_spec(:resolved_query_list), do: list_result(resolved_query_item())
 
   defp schema_spec(:resolved_search_domain_list),
     do: list_result(resolved_search_domain_item())
@@ -362,31 +401,45 @@ defmodule YellowDog.Sync.Operation do
     do: object(%{"status" => health(), "pending_changes" => nonnegative_integer()})
 
   defp schema_spec(:profile_revision),
-    do: object(%{"profile_id" => :id, "revision" => :digest})
+    do:
+      object(%{
+        "profile_id" => :netman_profile_id,
+        "desired_revision" => :digest,
+        "active_revision" => nullable(:digest)
+      })
 
   defp schema_spec(:network_connection_state),
-    do: object(%{"connection_id" => :id, "state" => connection_state()})
+    do: object(Map.put(connection_ref_fields(), "state", connection_state()))
 
   defp schema_spec(:resolved_cache),
-    do: object(%{"entries" => list(resolved_cache_item())})
+    do: object(%{"entries" => list(resolved_cache_item()), "revision" => :digest})
 
   defp schema_spec(:resolved_counters),
     do: object(%{"hits" => nonnegative_integer(), "misses" => nonnegative_integer()})
 
   defp schema_spec(:dhcp_client_fsm),
     do:
-      object(%{
-        "connection_id" => :id,
-        "state" => enum(["init", "selecting", "requesting", "bound", "renewing", "rebinding"])
-      })
+      object(
+        Map.put(
+          connection_ref_fields(),
+          "state",
+          enum(["init", "selecting", "requesting", "bound", "renewing", "rebinding"])
+        )
+      )
 
   defp schema_spec(:vpn_resolved_profile),
-    do: object(%{"profile_id" => :id, "state" => enum(["resolved", "unavailable"])})
+    do:
+      object(%{
+        "profile_id" => :id,
+        "state" => enum(["resolved", "unavailable"]),
+        "revision" => :digest
+      })
 
   defp schema_spec(:service_command_result),
     do: object(%{"service" => :id, "state" => service_state()})
 
   defp schema_spec(:revisioned_resource), do: :revisioned_resource
+  defp schema_spec(:profile_write_result), do: profile_state_item()
   defp schema_spec(:deleted_resource), do: :deleted_resource
 
   defp schema_spec(:dns_import_result),
@@ -427,13 +480,17 @@ defmodule YellowDog.Sync.Operation do
       })
 
   defp schema_spec(:profile_validation),
-    do: object(%{"profile_id" => :id, "valid" => :boolean, "errors" => list(validation_error())})
+    do:
+      object(%{
+        "profile_id" => :netman_profile_id,
+        "valid" => :boolean,
+        "errors" => list(validation_error())
+      })
 
-  defp schema_spec(:profile_activation_result),
-    do: object(%{"profile_id" => :id, "revision" => :digest, "state" => connection_state()})
+  defp schema_spec(:profile_activation_result), do: :profile_activation_result
 
   defp schema_spec(:connection_activation_result),
-    do: object(%{"connection_id" => :id, "state" => connection_state()})
+    do: connection_activation_item()
 
   defp schema_spec(:config_state), do: :config_state
   defp schema_spec(_schema), do: nil
@@ -544,6 +601,17 @@ defmodule YellowDog.Sync.Operation do
     })
   end
 
+  defp mdns_service_item do
+    object(%{
+      "service_id" => :id,
+      "name" => :nonempty_text,
+      "service_type" => :service_type,
+      "service_port" => {:integer, 1, 65_535},
+      "txt" => list(object(%{"key" => :id, "value" => :text})),
+      "enabled" => :boolean
+    })
+  end
+
   defp netboot_profile do
     object(%{
       "profile_id" => :id,
@@ -580,22 +648,47 @@ defmodule YellowDog.Sync.Operation do
 
   defp setting_entry, do: :setting_entry
 
-  defp netman_profile do
+  defp server_managed_config_shape do
     object(%{
-      "profile_id" => :id,
-      "name" => :nonempty_text,
-      "interfaces" => list(interface_profile())
+      "schema_version" => {:literal, 1},
+      "profile" => enum(@server_profiles),
+      "entries" => list(:server_managed_setting_entry)
     })
   end
 
-  defp interface_profile do
+  defp netman_profile, do: :netman_profile
+
+  defp netman_profile_shape do
     object(%{
-      "name" => :id,
-      "method" => enum(["dhcp", "static", "disabled"]),
-      "addresses" => list(:cidr),
-      "gateway" => nullable(:ip)
+      "profile_id" => :netman_profile_id,
+      "type" => {:literal, "ethernet"},
+      "interface" => nullable(:netman_interface),
+      "autoconnect" => :boolean,
+      "autoconnect_priority" => {:integer, -1000, 10_000},
+      "zone" => :netman_zone,
+      "ethernet" => object(%{"mtu" => nullable({:integer, 68, 65_535})}),
+      "ipv4" => :netman_ipv4,
+      "ipv6" => :netman_ipv6
     })
   end
+
+  defp netman_ip_shape(family) do
+    methods =
+      if family == :ipv4,
+        do: ["auto", "manual", "disabled"],
+        else: ["auto", "manual", "disabled", "link-local"]
+
+    object(%{
+      "method" => enum(methods),
+      "address" => nullable(:cidr),
+      "gateway" => nullable(:ip),
+      "dns" => list(:ip),
+      "dns_search" => list(:netman_search_domain)
+    })
+  end
+
+  defp connection_ref_fields,
+    do: %{"profile_id" => :netman_profile_id, "interface" => :netman_interface}
 
   defp service_item, do: object(%{"service" => :id, "state" => service_state()})
 
@@ -634,9 +727,12 @@ defmodule YellowDog.Sync.Operation do
 
   defp mdns_monitor_item do
     object(%{
-      "event_id" => :id,
-      "name" => :domain,
-      "action" => enum(["discovered", "updated", "expired"]),
+      "query_id" => :id,
+      "query_name" => :domain,
+      "record_type" => :id,
+      "source_address" => :ip,
+      "source_port" => {:integer, 0, 65_535},
+      "answered" => :boolean,
       "occurred_at" => :utc_datetime
     })
   end
@@ -701,8 +797,26 @@ defmodule YellowDog.Sync.Operation do
     })
   end
 
+  defp profile_state_item do
+    object(%{
+      "profile" => netman_profile(),
+      "desired_revision" => :digest,
+      "active_revision" => nullable(:digest)
+    })
+  end
+
   defp profile_history_item do
-    object(%{"profile_id" => :id, "revision" => :digest, "activated_at" => :utc_datetime})
+    :profile_history_item
+  end
+
+  defp profile_history_item_shape do
+    object(%{
+      "profile_id" => :netman_profile_id,
+      "revision" => :digest,
+      "profile" => netman_profile(),
+      "stored_at" => :utc_datetime,
+      "activated_at" => nullable(:utc_datetime)
+    })
   end
 
   defp network_link_item do
@@ -714,7 +828,7 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp network_route_item do
-    object(%{"destination" => :cidr, "gateway" => :ip, "link_id" => :id})
+    object(%{"destination" => :cidr, "gateway" => nullable(:ip), "link_id" => :id})
   end
 
   defp resolved_upstream_item do
@@ -725,12 +839,51 @@ defmodule YellowDog.Sync.Operation do
     object(%{"domain" => :domain, "routing_only" => :boolean})
   end
 
+  defp resolved_link_dns_item do
+    object(%{
+      "link_id" => :netman_interface,
+      "servers" => list(:ip),
+      "search_domains" => list(:netman_search_domain),
+      "priority" => {:integer, -1000, 10_000}
+    })
+  end
+
+  defp resolved_query_item do
+    object(%{
+      "timestamp" => :utc_datetime,
+      "domain" => :domain,
+      "type" => :id,
+      "source" => enum(["intercept", "cache", "forward", "error"]),
+      "duration_us" => nonnegative_integer()
+    })
+  end
+
+  defp connection_activation_item do
+    object(Map.put(connection_ref_fields(), "state", connection_state()))
+  end
+
+  defp profile_activation_result_shape do
+    object(%{
+      "profile_id" => :netman_profile_id,
+      "desired_revision" => :digest,
+      "active_revision" => :digest,
+      "state" => connection_state(),
+      "connections" => list(connection_activation_item())
+    })
+  end
+
   defp resolved_cache_item do
     object(%{"domain" => :domain, "address" => :ip, "expires_at" => :utc_datetime})
   end
 
   defp dhcp_client_lease_item do
-    object(%{"connection_id" => :id, "address" => :ip, "expires_at" => :utc_datetime})
+    object(
+      Map.merge(connection_ref_fields(), %{
+        "address" => :ip,
+        "expires_at" => :utc_datetime,
+        "revision" => :digest
+      })
+    )
   end
 
   defp health_check, do: object(%{"name" => :id, "status" => health()})
@@ -889,7 +1042,7 @@ defmodule YellowDog.Sync.Operation do
     do: validate_type(value, :text, depth)
 
   defp validate_type(value, :setting_scalar, _depth)
-       when is_nil(value) or is_boolean(value) or is_float(value),
+       when is_boolean(value) or is_float(value),
        do: :ok
 
   defp validate_type(value, :setting_scalar, _depth)
@@ -960,6 +1113,95 @@ defmodule YellowDog.Sync.Operation do
 
   defp validate_type(value, :ip, _depth), do: validate_ip(value)
   defp validate_type(value, :cidr, _depth), do: validate_cidr(value)
+
+  defp validate_type(value, :netman_profile_id, depth) do
+    with :ok <- validate_type(value, :id, depth),
+         true <- value not in [".", ".."],
+         true <- Regex.match?(~r/\A[a-zA-Z0-9_.-]+\z/, value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :netman_interface, depth) do
+    with :ok <- validate_type(value, :nonempty_text, depth),
+         true <- byte_size(value) <= 15,
+         false <- String.contains?(value, [" ", "/", ":", "\t", "\n"]) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :netman_zone, depth) do
+    with :ok <- validate_type(value, :nonempty_text, depth),
+         true <- byte_size(value) <= 64,
+         true <- Regex.match?(~r/\A[a-zA-Z0-9_.-]+\z/, value) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :netman_search_domain, depth) do
+    with :ok <- validate_type(value, :nonempty_text, depth),
+         true <- byte_size(value) <= 253,
+         true <-
+           Regex.match?(
+             ~r/\A[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.?\z/,
+             value
+           ) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :netman_profile, depth) do
+    with :ok <- validate_type(value, netman_profile_shape(), depth) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :profile_set_replace, depth) do
+    with :ok <- validate_type(value, object(%{"profiles" => list(netman_profile())}), depth),
+         profile_ids = Enum.map(value["profiles"], & &1["profile_id"]),
+         true <- length(profile_ids) == length(Enum.uniq(profile_ids)) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :profile_history_item, depth) do
+    with :ok <- validate_type(value, profile_history_item_shape(), depth),
+         true <- value["profile_id"] == value["profile"]["profile_id"] do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :profile_activation_result, depth) do
+    with :ok <- validate_type(value, profile_activation_result_shape(), depth),
+         [_ | _] = connections <- value["connections"],
+         true <- Enum.all?(connections, &(&1["profile_id"] == value["profile_id"])),
+         interfaces = Enum.map(connections, & &1["interface"]),
+         true <- length(interfaces) == length(Enum.uniq(interfaces)) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :netman_ipv4, depth),
+    do: validate_netman_ip_config(value, :ipv4, depth)
+
+  defp validate_type(value, :netman_ipv6, depth),
+    do: validate_netman_ip_config(value, :ipv6, depth)
 
   defp validate_type(value, :mac, _depth) do
     with :ok <- validate_type(value, :nonempty_text, 0),
@@ -1055,6 +1297,29 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
+  defp validate_type(value, :server_managed_config, depth) do
+    with :ok <- validate_type(value, server_managed_config_shape(), depth),
+         true <- canonical_managed_entries?(value["entries"]) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp validate_type(value, :server_managed_setting_entry, depth) do
+    with :ok <-
+           validate_type(
+             value,
+             object(%{"setting" => :nonempty_text, "value" => :setting_value}),
+             depth
+           ),
+         true <- safe_managed_setting_value?(value["setting"], value["value"]) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
   defp validate_type(value, :setting_value, depth) when depth > 0 do
     case value do
       %{"type" => "string", "value" => _value} ->
@@ -1133,46 +1398,64 @@ defmodule YellowDog.Sync.Operation do
     end
   end
 
-  defp validate_type(%{"field" => "name"} = value, :profile_change, depth) do
+  defp validate_type(%{"field" => "interface"} = value, :profile_change, depth) do
     validate_type(
       value,
-      object(%{"field" => {:literal, "name"}, "value" => :nonempty_text}),
+      object(%{"field" => {:literal, "interface"}, "value" => nullable(:netman_interface)}),
       depth
     )
   end
 
-  defp validate_type(%{"field" => "method"} = value, :profile_change, depth) do
+  defp validate_type(%{"field" => "autoconnect"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{"field" => {:literal, "autoconnect"}, "value" => :boolean}),
+      depth
+    )
+  end
+
+  defp validate_type(%{"field" => "autoconnect_priority"} = value, :profile_change, depth) do
     validate_type(
       value,
       object(%{
-        "field" => {:literal, "method"},
-        "interface" => :id,
-        "value" => enum(["dhcp", "static", "disabled"])
+        "field" => {:literal, "autoconnect_priority"},
+        "value" => {:integer, -1000, 10_000}
       }),
       depth
     )
   end
 
-  defp validate_type(%{"field" => "addresses"} = value, :profile_change, depth) do
+  defp validate_type(%{"field" => "zone"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{"field" => {:literal, "zone"}, "value" => :netman_zone}),
+      depth
+    )
+  end
+
+  defp validate_type(%{"field" => "ethernet.mtu"} = value, :profile_change, depth) do
     validate_type(
       value,
       object(%{
-        "field" => {:literal, "addresses"},
-        "interface" => :id,
-        "value" => list(:cidr)
+        "field" => {:literal, "ethernet.mtu"},
+        "value" => nullable({:integer, 68, 65_535})
       }),
       depth
     )
   end
 
-  defp validate_type(%{"field" => "gateway"} = value, :profile_change, depth) do
+  defp validate_type(%{"field" => "ipv4"} = value, :profile_change, depth) do
     validate_type(
       value,
-      object(%{
-        "field" => {:literal, "gateway"},
-        "interface" => :id,
-        "value" => nullable(:ip)
-      }),
+      object(%{"field" => {:literal, "ipv4"}, "value" => :netman_ipv4}),
+      depth
+    )
+  end
+
+  defp validate_type(%{"field" => "ipv6"} = value, :profile_change, depth) do
+    validate_type(
+      value,
+      object(%{"field" => {:literal, "ipv6"}, "value" => :netman_ipv6}),
       depth
     )
   end
@@ -1229,7 +1512,7 @@ defmodule YellowDog.Sync.Operation do
   defp resource_spec("dns_acl"), do: dns_acl()
   defp resource_spec("dns_provider"), do: dns_provider()
   defp resource_spec("dhcp_pool"), do: dhcp_pool()
-  defp resource_spec("mdns_service"), do: mdns_service()
+  defp resource_spec("mdns_service"), do: mdns_service_item()
   defp resource_spec("netboot_profile"), do: netboot_profile()
   defp resource_spec("netboot_device"), do: netboot_device()
   defp resource_spec("netboot_asset"), do: netboot_asset()
@@ -1255,7 +1538,10 @@ defmodule YellowDog.Sync.Operation do
   defp resource_ref_spec("identity_host"), do: object(%{"host_id" => :id})
   defp resource_ref_spec("identity_token"), do: object(%{"token_id" => :id})
   defp resource_ref_spec("identity_policy"), do: object(%{"policy_id" => :id})
-  defp resource_ref_spec("netman_profile"), do: object(%{"profile_id" => :id})
+
+  defp resource_ref_spec("netman_profile"),
+    do: object(%{"profile_id" => :netman_profile_id})
+
   defp resource_ref_spec(_resource_type), do: nil
 
   defp resource_identifier("dns_view", resource), do: Map.fetch(resource, "view_name")
@@ -1365,6 +1651,72 @@ defmodule YellowDog.Sync.Operation do
     else
       _ -> false
     end
+  end
+
+  defp canonical_managed_entries?(entries) do
+    settings = Enum.map(entries, & &1["setting"])
+    settings == Enum.sort(settings) and length(settings) == length(Enum.uniq(settings))
+  end
+
+  defp safe_managed_setting_value?(setting, value) do
+    with true <- is_binary(setting),
+         true <- Regex.match?(@managed_setting_key, setting) do
+      if MapSet.member?(@managed_service_settings, setting) do
+        match?(%{"type" => "boolean", "value" => enabled} when is_boolean(enabled), value)
+      else
+        safe_managed_service_setting?(setting, value)
+      end
+    else
+      _ -> false
+    end
+  end
+
+  defp safe_managed_service_setting?(setting, value) do
+    with [namespace | setting_segments] <- String.split(setting, "."),
+         [_ | _] <- setting_segments,
+         true <- MapSet.member?(@managed_service_namespaces, namespace),
+         tokens = managed_setting_tokens(setting_segments),
+         false <- Enum.any?(tokens, &MapSet.member?(@managed_forbidden_setting_tokens, &1)),
+         name = Enum.join(setting_segments, "_") do
+      case parsed_setting_name(name) do
+        {:ok, parsed} -> safe_managed_parsed_setting?(parsed, value)
+        :error -> false
+      end
+    else
+      _ -> false
+    end
+  end
+
+  defp safe_managed_parsed_setting?(parsed, value) do
+    if managed_sensitive_setting?(parsed) do
+      not is_nil(parsed.reference_form) and
+        safe_material_setting_value?(parsed.reference_form, value)
+    else
+      true
+    end
+  end
+
+  defp managed_sensitive_setting?(parsed) do
+    material_setting?(parsed) or
+      Enum.any?(parsed.tokens, &MapSet.member?(@managed_sensitive_setting_tokens, &1)) or
+      managed_sensitive_token_sequence?(parsed.tokens)
+  end
+
+  defp managed_sensitive_token_sequence?(tokens) do
+    tokens
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(&sensitive_token_pair?/1)
+  end
+
+  defp sensitive_token_pair?([prefix, "key"])
+       when prefix in ["api", "access", "auth", "authentication", "encryption"],
+       do: true
+
+  defp sensitive_token_pair?(["private", "material"]), do: true
+  defp sensitive_token_pair?(_pair), do: false
+
+  defp managed_setting_tokens(setting_segments) do
+    Enum.flat_map(setting_segments, &String.split(&1, "_"))
   end
 
   defp safe_material_setting_value?(nil, %{"type" => type})
@@ -1624,6 +1976,30 @@ defmodule YellowDog.Sync.Operation do
   end
 
   defp coherent_family_address?(_value), do: false
+
+  defp validate_netman_ip_config(value, family, depth) do
+    with :ok <- validate_type(value, netman_ip_shape(family), depth),
+         true <- value["method"] != "manual" or not is_nil(value["address"]),
+         true <- netman_cidr_family?(value["address"], family),
+         true <- netman_ip_family?(value["gateway"], family),
+         true <- Enum.all?(value["dns"], &netman_ip_family?(&1, family)) do
+      :ok
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp netman_cidr_family?(nil, _family), do: true
+
+  defp netman_cidr_family?(value, family) do
+    cidr_family(value) == {:ok, family}
+  end
+
+  defp netman_ip_family?(nil, _family), do: true
+
+  defp netman_ip_family?(value, family) do
+    ip_family(value) == {:ok, family}
+  end
 
   defp coherent_pool_range?(%{
          "subnet" => subnet,

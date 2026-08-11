@@ -433,6 +433,43 @@ defmodule YellowDog.Dns.ViewManagerTest do
     end
   end
 
+  describe "apply_control_views/2" do
+    @tag :capture_log
+    test "applies and verifies the complete active view set", %{supervisor: supervisor} do
+      view_name = "managed_#{:rand.uniform(1_000_000)}"
+
+      assert :ok =
+               ViewManager.apply_control_views(supervisor, [
+                 %{
+                   name: view_name,
+                   priority: 10,
+                   acl: [{:allow, {10, 0, 0, 0}, 8}],
+                   recursion_enabled: true
+                 }
+               ])
+
+      assert [{^view_name, _pid, 10}] = ViewManager.list_views(supervisor)
+    end
+
+    @tag :capture_log
+    test "rejects duplicate or invalid owner identities before mutation", %{
+      supervisor: supervisor
+    } do
+      duplicate = "duplicate_#{:rand.uniform(1_000_000)}"
+
+      assert {:error, :invalid_view_configs} =
+               ViewManager.apply_control_views(supervisor, [
+                 %{name: duplicate, priority: 10, acl: :any},
+                 %{name: duplicate, priority: 20, acl: :any}
+               ])
+
+      assert {:error, :invalid_view_configs} =
+               ViewManager.apply_control_views(supervisor, [%{name: nil, acl: :any}])
+
+      assert [] = ViewManager.list_views(supervisor)
+    end
+  end
+
   describe "priority-based ordering" do
     @tag :capture_log
     test "views are ordered by priority ascending", %{supervisor: supervisor} do

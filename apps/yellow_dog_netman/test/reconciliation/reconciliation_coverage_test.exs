@@ -87,7 +87,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
   describe "apply_diff via activate_connection existing FSM path" do
     test "apply_diff reactivates existing failed FSM" do
-      iface = "recon_react_#{:rand.uniform(65535)}"
+      iface = "recon_react"
       profile_id = "recon-react-#{iface}"
 
       profile = %Profile{
@@ -161,7 +161,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
   describe "activate with profile having explicit interface on linked iface" do
     test "activate starts connection when link exists for the profile interface" do
-      iface = "recon_exp_#{:rand.uniform(65535)}"
+      iface = "recon_exp"
       profile_id = "recon-exp-#{iface}"
 
       profile = %Profile{
@@ -253,7 +253,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       # ProfileStore.list() returns the profile struct (using profile.id as profile_id in diff),
       # but ProfileStore.get(profile.id) returns :not_found because the map key differs.
       # This triggers apply_diff → {:error, :not_found} → Logger.warning at L199-200.
-      iface = "recon_mismatch_#{:rand.uniform(65535)}"
+      iface = "recon_mismatch"
       profile_key = "recon-key-#{iface}"
       profile_real_id = "recon-real-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
@@ -296,7 +296,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       # the request; the plain process receives it and exits, causing the call to
       # detect the monitor DOWN and raise. FSM.get_state catches the exit →
       # {:error, :not_running} → connection_active? returns false (L390).
-      iface = "recon_dead_#{:rand.uniform(65535)}"
+      iface = "recon_dead"
       profile_id = "recon-dead-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
 
@@ -430,7 +430,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
   describe "connection_active? with failed FSM (lines 374, 302)" do
     test "reconcile generates activate diff for failed connection and reactivates FSM" do
-      iface = "recfail_#{:rand.uniform(65535)}"
+      iface = "recfail"
       profile_id = "recfail-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
 
@@ -499,7 +499,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
   describe "reconciliation with diffs logs completion (line 207)" do
     test "do_reconcile logs completion when diffs are applied" do
-      iface = "recon_log_#{:rand.uniform(65535)}"
+      iface = "recon_log"
       profile_id = "recon-log-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
 
@@ -550,7 +550,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "diff generates :add_address when static IP is missing from observed addresses" do
-      iface = "drift_add_#{:rand.uniform(65535)}"
+      iface = "drift_add"
       profile_id = "drift-add-#{iface}"
 
       profile = %Profile{
@@ -581,7 +581,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       # Build desired state with the static IP profile
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.99.0.1/24", gateway: "10.99.0.254", dns: []},
@@ -625,7 +625,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff does NOT generate :add_address when address already present in observed" do
-      iface = "drift_ok_#{:rand.uniform(65535)}"
+      iface = "drift_ok"
       profile_id = "drift-ok-#{iface}"
 
       profile = %Profile{
@@ -653,7 +653,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.88.0.5/24", gateway: "10.88.0.1", dns: []},
@@ -703,7 +703,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :add_address for DHCP (auto) connections" do
-      iface = "drift_dhcp_#{:rand.uniform(65535)}"
+      iface = "drift_dhcp"
       profile_id = "drift-dhcp-#{iface}"
 
       profile = %Profile{
@@ -731,7 +731,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
@@ -769,13 +769,13 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :add_address for inactive (not yet activated) connections" do
-      iface = "drift_inact_#{:rand.uniform(65535)}"
+      iface = "drift_inact"
       profile_id = "drift-inact-#{iface}"
 
       # No FSM started — connection_active? returns false, so no address diff
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.77.0.1/24", gateway: nil, dns: []},
@@ -814,7 +814,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "full reconciliation cycle detects and applies address drift" do
-      iface = "drift_full_#{:rand.uniform(65535)}"
+      iface = "drift_full"
       profile_id = "drift-full-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
       test_pid = self()
@@ -883,7 +883,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "diff generates :set_mtu when desired MTU differs from observed" do
-      iface = "mtu_drift_#{:rand.uniform(65535)}"
+      iface = "mtu_drift"
       profile_id = "mtu-drift-#{iface}"
 
       profile = %Profile{
@@ -906,7 +906,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -949,7 +949,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff does NOT generate :set_mtu when MTU already matches" do
-      iface = "mtu_ok_#{:rand.uniform(65535)}"
+      iface = "mtu_ok"
       profile_id = "mtu-ok-#{iface}"
 
       profile = %Profile{
@@ -972,7 +972,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -1010,7 +1010,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :set_mtu when desired MTU is nil" do
-      iface = "mtu_nil_#{:rand.uniform(65535)}"
+      iface = "mtu_nil"
       profile_id = "mtu-nil-#{iface}"
 
       profile = %Profile{
@@ -1033,7 +1033,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -1071,7 +1071,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "full reconciliation cycle detects and applies MTU drift" do
-      iface = "mtu_full_#{:rand.uniform(65535)}"
+      iface = "mtu_full"
       profile_id = "mtu-full-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
       test_pid = self()
@@ -1131,7 +1131,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "diff does NOT generate :update_dns (DNS is FSM-only)" do
-      iface = "dns_drift_#{:rand.uniform(65535)}"
+      iface = "dns_drift"
       profile_id = "dns-drift-#{iface}"
 
       profile = %Profile{
@@ -1164,7 +1164,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{
@@ -1231,7 +1231,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff does NOT generate :update_dns when DNS list is empty" do
-      iface = "dns_empty_#{:rand.uniform(65535)}"
+      iface = "dns_empty"
       profile_id = "dns-empty-#{iface}"
 
       profile = %Profile{
@@ -1259,7 +1259,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.41.0.1/24", gateway: nil, dns: []},
@@ -1297,13 +1297,13 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :update_dns for inactive connections" do
-      iface = "dns_inact_#{:rand.uniform(65535)}"
+      iface = "dns_inact"
       profile_id = "dns-inact-#{iface}"
 
       # No FSM started — connection_active? returns false
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.42.0.1/24", gateway: nil, dns: ["8.8.8.8"]},
@@ -1337,7 +1337,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff filters out invalid DNS strings (parse_dns_servers error branch)" do
-      iface = "dns_bad_#{:rand.uniform(65535)}"
+      iface = "dns_bad"
       profile_id = "dns-bad-#{iface}"
 
       profile = %Profile{
@@ -1365,7 +1365,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.46.0.1/24", gateway: nil, dns: ["not-an-ip"]},
@@ -1409,7 +1409,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "address without slash defaults to /32 prefix (L333)" do
-      iface = "cidr_noslash_#{:rand.uniform(65535)}"
+      iface = "cidr_noslash"
       profile_id = "cidr-noslash-#{iface}"
 
       MockNetlink.link_up(iface, carrier: true)
@@ -1425,20 +1425,21 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile_id, profile)
+      stored_profile = %{
+        profile
+        | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, stored_profile)
       Process.sleep(50)
 
-      {:ok, _pid} =
-        Connection.Supervisor.start_connection(iface, %{
-          profile
-          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
-        })
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, stored_profile)
 
       Process.sleep(100)
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.47.0.1", gateway: nil, dns: []},
@@ -1477,7 +1478,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "address with invalid prefix defaults to /32 (L330)" do
-      iface = "cidr_bad_#{:rand.uniform(65535)}"
+      iface = "cidr_bad"
       profile_id = "cidr-bad-#{iface}"
 
       MockNetlink.link_up(iface, carrier: true)
@@ -1493,20 +1494,21 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile_id, profile)
+      stored_profile = %{
+        profile
+        | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, stored_profile)
       Process.sleep(50)
 
-      {:ok, _pid} =
-        Connection.Supervisor.start_connection(iface, %{
-          profile
-          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
-        })
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, stored_profile)
 
       Process.sleep(100)
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.48.0.1/abc", gateway: nil, dns: []},
@@ -1545,7 +1547,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "IPv6 address without slash defaults to /128 prefix (not /32)" do
-      iface = "cidr_v6_#{:rand.uniform(65535)}"
+      iface = "cidr_v6"
       profile_id = "cidr-v6-#{iface}"
 
       MockNetlink.link_up(iface, carrier: true)
@@ -1561,20 +1563,21 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
         ipv6: %{method: :manual, address: "2001:db8::1", gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile_id, profile)
+      stored_profile = %{
+        profile
+        | ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, stored_profile)
       Process.sleep(50)
 
-      {:ok, _pid} =
-        Connection.Supervisor.start_connection(iface, %{
-          profile
-          | ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
-        })
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, stored_profile)
 
       Process.sleep(100)
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -1614,7 +1617,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "IPv6 address with invalid prefix defaults to /128 (not /32)" do
-      iface = "cidr_v6bad_#{:rand.uniform(65535)}"
+      iface = "cidr_v6bad"
       profile_id = "cidr-v6bad-#{iface}"
 
       MockNetlink.link_up(iface, carrier: true)
@@ -1630,20 +1633,21 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
         ipv6: %{method: :manual, address: "fd00::1/xyz", gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile_id, profile)
+      stored_profile = %{
+        profile
+        | ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, stored_profile)
       Process.sleep(50)
 
-      {:ok, _pid} =
-        Connection.Supervisor.start_connection(iface, %{
-          profile
-          | ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
-        })
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, stored_profile)
 
       Process.sleep(100)
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -1687,7 +1691,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "diff generates :add_route when static IP gateway route is missing" do
-      iface = "route_drift_#{:rand.uniform(65535)}"
+      iface = "route_drift"
       profile_id = "route-drift-#{iface}"
 
       profile = %Profile{
@@ -1715,7 +1719,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.55.0.1/24", gateway: "10.55.0.254", dns: []},
@@ -1770,7 +1774,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff does NOT generate :add_route when gateway route already exists" do
-      iface = "route_ok_#{:rand.uniform(65535)}"
+      iface = "route_ok"
       profile_id = "route-ok-#{iface}"
 
       profile = %Profile{
@@ -1798,7 +1802,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.44.0.1/24", gateway: "10.44.0.254", dns: []},
@@ -1857,7 +1861,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :add_route for DHCP connections" do
-      iface = "route_dhcp_#{:rand.uniform(65535)}"
+      iface = "route_dhcp"
       profile_id = "route-dhcp-#{iface}"
 
       profile = %Profile{
@@ -1885,7 +1889,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
@@ -1923,7 +1927,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :add_route when static IP has no gateway" do
-      iface = "route_nogw_#{:rand.uniform(65535)}"
+      iface = "route_nogw"
       profile_id = "route-nogw-#{iface}"
 
       profile = %Profile{
@@ -1951,7 +1955,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :manual, address: "10.33.0.1/24", gateway: nil, dns: []},
@@ -1999,8 +2003,8 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff generates :add_route per-interface even with same gateway" do
-      iface1 = "route_if1_#{:rand.uniform(65535)}"
-      iface2 = "route_if2_#{:rand.uniform(65535)}"
+      iface1 = "route_if1"
+      iface2 = "route_if2"
       pid1 = "route-if1-#{iface1}"
       pid2 = "route-if2-#{iface2}"
 
@@ -2031,7 +2035,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          pid1 => %{
+          {pid1, iface1} => %{
             profile_id: pid1,
             interface: iface1,
             ipv4: %{method: :manual, address: "10.55.1.1/24", gateway: "10.55.0.1", dns: []},
@@ -2040,7 +2044,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
             priority: 100,
             dns: []
           },
-          pid2 => %{
+          {pid2, iface2} => %{
             profile_id: pid2,
             interface: iface2,
             ipv4: %{method: :manual, address: "10.55.2.1/24", gateway: "10.55.0.1", dns: []},
@@ -2107,7 +2111,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "diff generates :set_link_up when active connection link is down" do
-      iface = "link_drift_#{:rand.uniform(65535)}"
+      iface = "link_drift"
       profile_id = "link-drift-#{iface}"
 
       profile = %Profile{
@@ -2130,7 +2134,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -2172,7 +2176,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff does NOT generate :set_link_up when link is already up" do
-      iface = "link_ok_#{:rand.uniform(65535)}"
+      iface = "link_ok"
       profile_id = "link-ok-#{iface}"
 
       profile = %Profile{
@@ -2195,7 +2199,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -2233,13 +2237,13 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "diff skips :set_link_up for inactive connections" do
-      iface = "link_inact_#{:rand.uniform(65535)}"
+      iface = "link_inact"
       profile_id = "link-inact-#{iface}"
 
       # No FSM started
       desired = %DesiredState{
         connections: %{
-          profile_id => %{
+          {profile_id, iface} => %{
             profile_id: profile_id,
             interface: iface,
             ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
@@ -2273,7 +2277,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
 
     test "full reconciliation cycle detects and applies link state drift" do
-      iface = "link_full_#{:rand.uniform(65535)}"
+      iface = "link_full"
       profile_id = "link-full-#{iface}"
       recon_pid = Process.whereis(ReconciliationEngine)
       test_pid = self()
@@ -2340,7 +2344,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
     test "deactivate_connection apply_diff via stop_connection (L429)" do
-      iface = "deact_#{:rand.uniform(65535)}"
+      iface = "deact"
       profile_id = "deact-#{iface}"
 
       profile = %Profile{
@@ -2374,7 +2378,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     test "remove_address apply_diff delegates to AddressManager (L437)" do
       # Directly verify that remove_address works on AddressManager
       # since the apply_diff clause just delegates
-      iface = "rmaddr_#{:rand.uniform(65535)}"
+      iface = "rmaddr"
 
       # AddressManager.remove_address returns :ok for any interface
       # (the Netlink command just gets queued)

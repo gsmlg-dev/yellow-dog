@@ -1,478 +1,148 @@
 defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
-  @moduledoc """
-  DHCPv4 activity log page — shows DHCP message flow in real time.
-
-  Subscribes to DHCPv4 telemetry events and displays them in a
-  circular buffer with filtering by message type, client MAC, and search.
-  """
+  @moduledoc "Management-backed DHCPv4 activity for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.DhcpLive.ManagementComponents
+  alias YellowDog.Console.DhcpLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
-  alias YellowDog.Console.Layouts
-
-  @max_entries 500
-  @refresh_interval 2_000
-
-  @type_badges %{
-    "discover" => "badge-info",
-    "offer" => "badge-success",
-    "request" => "badge-warning",
-    "ack" => "badge-success",
-    "nak" => "badge-error",
-    "decline" => "badge-error",
-    "release" => "badge-ghost",
-    "inform" => "badge-ghost"
-  }
-
-  @telemetry_events [
-    [:yellow_dog, :dhcpv4, :discover_handled],
-    [:yellow_dog, :dhcpv4, :lease, :requested],
-    [:yellow_dog, :dhcpv4, :lease, :granted],
-    [:yellow_dog, :dhcpv4, :lease, :rejected],
-    [:yellow_dog, :dhcpv4, :lease, :released],
-    [:yellow_dog, :dhcpv4, :lease, :declined],
-    [:yellow_dog, :dhcpv4, :offer, :failed],
-    [:yellow_dog, :dhcpv4, :acl, :denied],
-    [:yellow_dog, :dhcpv4, :inform, :handled],
-    [:yellow_dog, :dhcpv4, :pool, :exhausted],
-    [:yellow_dog, :dhcpv4, :message, :rate_limited]
-  ]
+  @family :ipv4
+  @error_types ~w(nak decline pool_exhausted acl_denied rate_limited error)
 
   @impl true
   def mount(_params, _session, socket) do
-    socket =
-      if connected?(socket) do
-        handler_id = "dhcpv4_activity_#{inspect(self())}"
-
-        :telemetry.attach_many(
-          handler_id,
-          @telemetry_events,
-          &__MODULE__.handle_telemetry_event/4,
-          %{pid: self()}
-        )
-
-        Process.send_after(self(), :refresh_stats, @refresh_interval)
-        Process.flag(:trap_exit, true)
-        assign(socket, :handler_id, handler_id)
-      else
-        socket
-      end
-
     {:ok,
      assign(socket,
        page_title: "DHCPv4 Activity",
-       service_running: service_running?(YellowDog.Dhcpv4),
+       subscribed_server_id: nil,
+       family_label: ManagementSupport.family_label(@family),
+       base_path: nil,
+       all_entries: [],
        entries: [],
-       total_count: 0,
-       max_entries: @max_entries,
        search_query: "",
        filter_type: "all",
-       paused: false,
-       stats: %{discover: 0, offer: 0, request: 0, ack: 0, nak: 0, release: 0, decline: 0}
+       management_error: nil,
+       cached_observed_at: nil
      )}
   end
 
-  @doc false
-  def handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
-    entry = build_entry_from_telemetry(event, measurements, metadata)
-    send(pid, {:dhcpv4_activity, entry})
-  end
-
   @impl true
-  def render(assigns) do
-    ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-4">
-        <.service_alert :if={not @service_running} service="DHCPv4" />
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(:base_path, ServicePaths.server_path(server_id, :dhcpv4))
 
-        <div class="flex flex-wrap justify-between items-center gap-4">
-          <h1 class="text-2xl font-bold">DHCPv4 Activity Log</h1>
-          <div class="flex">
-            <button
-              phx-click="toggle_pause"
-              class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
-            >
-              {if @paused, do: "▶ Resume", else: "⏸ Pause"}
-            </button>
-            <button phx-click="clear" class="btn btn-sm btn-ghost">Clear</button>
-            <button
-              phx-click="export_csv"
-              class="btn btn-sm btn-ghost"
-              id="csv-export"
-              phx-hook="CsvDownload"
-            >
-              Export CSV
-            </button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Total Events</div>
-              <div class="text-lg font-bold">{@total_count}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">DISCOVER</div>
-              <div class="text-lg font-bold text-info">{@stats.discover}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">REQUEST</div>
-              <div class="text-lg font-bold text-warning">{@stats.request}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">ACK</div>
-              <div class="text-lg font-bold text-success">{@stats.ack}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">NAK/Decline</div>
-              <div class="text-lg font-bold text-error">{@stats.nak + @stats.decline}</div>
-            </div>
-          </div>
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <div class="text-sm text-on-surface-variant">Displayed</div>
-              <div class="text-lg font-bold">
-                {length(filtered_entries(@entries, @search_query, @filter_type))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bg-surface-container">
-          <div class="card-body py-3 px-4">
-            <div class="flex flex-wrap gap-4 items-center">
-              <div class="form-group">
-                <input
-                  type="text"
-                  placeholder="Search MAC, IP, or details..."
-                  aria-label="Search activity log"
-                  class="input input-sm w-48"
-                  phx-change="search"
-                  phx-debounce="300"
-                  name="search"
-                  value={@search_query}
-                />
-              </div>
-              <div class="form-group">
-                <select
-                  class="select select-sm"
-                  phx-change="filter_type"
-                  aria-label="Filter by message type"
-                  name="type"
-                >
-                  <option value="all" selected={@filter_type == "all"}>All Types</option>
-                  <option value="discover" selected={@filter_type == "discover"}>DISCOVER</option>
-                  <option value="offer" selected={@filter_type == "offer"}>OFFER</option>
-                  <option value="request" selected={@filter_type == "request"}>REQUEST</option>
-                  <option value="ack" selected={@filter_type == "ack"}>ACK</option>
-                  <option value="nak" selected={@filter_type == "nak"}>NAK</option>
-                  <option value="decline" selected={@filter_type == "decline"}>DECLINE</option>
-                  <option value="release" selected={@filter_type == "release"}>RELEASE</option>
-                  <option value="inform" selected={@filter_type == "inform"}>INFORM</option>
-                  <option value="error" selected={@filter_type == "error"}>Errors</option>
-                </select>
-              </div>
-              <span :if={@paused} class="badge badge-warning badge-sm">Paused</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bg-surface shadow">
-          <div class="card-body p-0">
-            <div class="overflow-x-auto">
-              <table class="table table-striped table-sm">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Type</th>
-                    <th>Client MAC</th>
-                    <th>Client IP</th>
-                    <th>Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <% displayed = filtered_entries(@entries, @search_query, @filter_type) %>
-                  <tr :if={displayed == []}>
-                    <td colspan="5" class="text-center text-on-surface-variant py-8">
-                      No DHCPv4 activity recorded yet
-                    </td>
-                  </tr>
-                  <tr :for={entry <- displayed} class="hover">
-                    <td class="font-mono text-xs whitespace-nowrap">
-                      {format_time_ms(entry.timestamp)}
-                    </td>
-                    <td>
-                      <span class={"badge badge-xs " <> type_badge(entry.type)}>
-                        {entry.type |> to_string() |> String.upcase()}
-                      </span>
-                    </td>
-                    <td class="font-mono text-xs">{entry.client_mac || "-"}</td>
-                    <td class="font-mono text-xs">{entry.client_ip || "-"}</td>
-                    <td class="text-xs max-w-xs truncate" title={entry.details}>
-                      {entry.details || "-"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="text-xs text-on-surface-variant flex justify-between">
-          <span>
-            Showing {length(filtered_entries(@entries, @search_query, @filter_type))} of {@total_count} events (buffer: {@max_entries})
-          </span>
-          <span :if={not @paused} class="flex items-center gap-1">
-            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
-          </span>
-        </div>
-      </div>
-    </Layouts.app>
-    """
+    {:noreply, if(connected?(socket), do: load_activity(socket), else: socket)}
   end
 
   @impl true
   def handle_event("search", %{"search" => query}, socket) do
-    {:noreply, assign(socket, :search_query, query)}
+    {:noreply, socket |> assign(:search_query, query) |> filter_activity()}
   end
 
-  @impl true
   def handle_event("filter_type", %{"type" => type}, socket) do
-    {:noreply, assign(socket, :filter_type, type)}
+    {:noreply, socket |> assign(:filter_type, type) |> filter_activity()}
   end
 
-  @impl true
-  def handle_event("toggle_pause", _params, socket) do
-    {:noreply, assign(socket, :paused, !socket.assigns.paused)}
-  end
+  def handle_event("refresh", _params, socket), do: {:noreply, load_activity(socket)}
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("clear", _params, socket) do
-    {:noreply,
-     assign(socket,
-       entries: [],
-       total_count: 0,
-       stats: %{discover: 0, offer: 0, request: 0, ack: 0, nak: 0, release: 0, decline: 0}
-     )}
-  end
-
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    csv = build_csv(socket.assigns.entries)
-    filename = "dhcpv4_activity_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
-  end
-
-  @impl true
-  def handle_info({:dhcpv4_activity, entry}, %{assigns: %{paused: true}} = socket) do
-    # Still count even when paused
-    {:noreply, update_stats(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:dhcpv4_activity, entry}, socket) do
-    entries = [entry | socket.assigns.entries] |> Enum.take(@max_entries)
-
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:entries, entries)
-     |> update_stats(entry)}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_activity()}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info(:refresh_stats, socket) do
-    socket = assign(socket, :service_running, service_running?(YellowDog.Dhcpv4))
-    Process.send_after(self(), :refresh_stats, @refresh_interval)
-    {:noreply, socket}
-  end
+  def render(assigns), do: ManagementComponents.activity(assigns)
 
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, socket) do
-    if handler_id = socket.assigns[:handler_id] do
-      :telemetry.detach(handler_id)
-    end
-
-    :ok
-  end
-
-  # --- Private ---
-
-  defp update_stats(socket, entry) do
-    total = socket.assigns.total_count + 1
-    stats = socket.assigns.stats
-
-    stats =
-      case entry.type do
-        :discover -> %{stats | discover: stats.discover + 1}
-        :offer -> %{stats | discover: stats.discover}
-        :request -> %{stats | request: stats.request + 1}
-        :ack -> %{stats | ack: stats.ack + 1}
-        :nak -> %{stats | nak: stats.nak + 1}
-        :release -> %{stats | release: stats.release + 1}
-        :decline -> %{stats | decline: stats.decline + 1}
-        _ -> stats
-      end
-
-    assign(socket, total_count: total, stats: stats)
-  end
-
+  @doc false
   def filtered_entries(entries, search, type_filter) do
     entries
     |> filter_by_type(type_filter)
     |> filter_by_search(search)
   end
 
+  defp load_activity(socket) do
+    server_id = socket.assigns.selected_server.id
+    payload = %{"family" => ManagementSupport.family_wire(@family)}
+    status = ServerManagement.dhcp_status_get(server_id, payload)
+    activity_result = ServerManagement.dhcp_activity_list(server_id, payload)
+    results = [status, activity_result]
+
+    socket
+    |> assign(
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DHCPv4 Activity",
+      all_entries:
+        activity_result
+        |> ManagementSupport.items(@family)
+        |> ManagementSupport.activity_views(),
+      management_error: ManagementSupport.first_error(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
+    )
+    |> filter_activity()
+  end
+
+  defp filter_activity(socket) do
+    assign(
+      socket,
+      :entries,
+      filtered_entries(
+        socket.assigns.all_entries,
+        socket.assigns.search_query,
+        socket.assigns.filter_type
+      )
+    )
+  end
+
   defp filter_by_type(entries, "all"), do: entries
 
   defp filter_by_type(entries, "error") do
-    Enum.filter(entries, fn e ->
-      e.type in [:nak, :decline, :pool_exhausted, :acl_denied, :rate_limited, :error]
-    end)
+    Enum.filter(entries, &(entry_type(&1) in @error_types))
   end
 
   defp filter_by_type(entries, type) do
-    type_atom = String.to_existing_atom(type)
-    Enum.filter(entries, fn e -> e.type == type_atom end)
-  rescue
-    ArgumentError -> entries
+    if known_type?(entries, type) do
+      Enum.filter(entries, &(entry_type(&1) == type))
+    else
+      entries
+    end
   end
 
   defp filter_by_search(entries, ""), do: entries
 
   defp filter_by_search(entries, query) do
-    q = String.downcase(query)
+    query = String.downcase(query)
 
-    Enum.filter(entries, fn e ->
-      (e.client_mac && String.contains?(String.downcase(e.client_mac), q)) ||
-        (e.client_ip && String.contains?(e.client_ip, q)) ||
-        (e.details && String.contains?(String.downcase(e.details), q))
+    Enum.filter(entries, fn entry ->
+      [:client_mac, :client_ip, :details, :activity_id, :action]
+      |> Enum.map(&Map.get(entry, &1))
+      |> Enum.any?(&contains?(&1, query))
     end)
   end
 
-  defp type_badge(type), do: Map.get(@type_badges, to_string(type), "badge-ghost")
-
-  defp build_entry_from_telemetry(event, measurements, metadata) do
-    {type, details} = classify_event(event, measurements, metadata)
-    client_mac = format_mac(metadata[:client_mac] || metadata[:chaddr])
-    client_ip = format_client_ip(metadata[:client_ip])
-
-    %{
-      timestamp: DateTime.utc_now(),
-      type: type,
-      client_mac: client_mac,
-      client_ip: client_ip,
-      details: details,
-      duration_us: measurements[:duration]
-    }
+  defp known_type?(entries, type) do
+    type in ~w(discover offer request ack nak decline release inform lease_granted lease_renewed lease_released lease_expired) or
+      Enum.any?(entries, &(entry_type(&1) == type))
   end
 
-  defp classify_event([:yellow_dog, :dhcpv4, :discover_handled], m, _meta) do
-    duration = if m[:duration], do: " (#{div(m[:duration], 1000)}ms)", else: ""
-    {:discover, "DISCOVER handled#{duration}"}
+  defp entry_type(entry) do
+    entry
+    |> Map.get(:type, Map.get(entry, :action))
+    |> to_string()
   end
 
-  defp classify_event([:yellow_dog, :dhcpv4, :lease, :requested], _m, meta) do
-    type = meta[:message_type] || :request
-    state = if meta[:state], do: " [#{meta[:state]}]", else: ""
-    {type, "#{type |> to_string() |> String.upcase()}#{state}"}
-  end
+  defp contains?(nil, _query), do: false
 
-  defp classify_event([:yellow_dog, :dhcpv4, :lease, :granted], m, meta) do
-    duration = if m[:duration], do: " (#{div(m[:duration], 1000)}ms)", else: ""
-    state = if meta[:state], do: " [#{meta[:state]}]", else: ""
-    {:ack, "ACK — lease granted#{state}#{duration}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :lease, :rejected], _m, meta) do
-    reason = meta[:reason] || "unknown"
-    {:nak, "NAK — #{reason}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :lease, :released], m, _meta) do
-    duration = if m[:duration], do: " (#{div(m[:duration], 1000)}ms)", else: ""
-    {:release, "RELEASE#{duration}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :lease, :declined], _m, meta) do
-    ip = meta[:declined_ip] || "?"
-    {:decline, "DECLINE for #{format_client_ip(ip)}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :offer, :failed], _m, meta) do
-    reason = meta[:reason] || "unknown"
-    {:error, "OFFER failed: #{reason}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :acl, :denied], _m, meta) do
-    reason = meta[:reason] || "ACL denied"
-    {:acl_denied, "ACL denied: #{reason}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :inform, :handled], m, _meta) do
-    duration = if m[:duration], do: " (#{div(m[:duration], 1000)}ms)", else: ""
-    {:inform, "INFORM handled#{duration}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :pool, :exhausted], _m, meta) do
-    op = meta[:operation] || "allocation"
-    {:pool_exhausted, "Pool exhausted during #{op}"}
-  end
-
-  defp classify_event([:yellow_dog, :dhcpv4, :message, :rate_limited], _m, _meta) do
-    {:rate_limited, "Rate limited"}
-  end
-
-  defp classify_event(event, _m, _meta) do
-    {:unknown, Enum.join(event, ".")}
-  end
-
-  defp format_mac(nil), do: nil
-  defp format_mac(mac) when is_binary(mac), do: mac
-
-  defp format_mac(mac) when is_list(mac) do
-    mac
-    |> Enum.map_join(":", &(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-    |> String.downcase()
-  end
-
-  defp format_mac(mac), do: inspect(mac)
-
-  defp format_client_ip(nil), do: nil
-  defp format_client_ip(ip) when is_binary(ip), do: ip
-  defp format_client_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_client_ip(ip), do: inspect(ip)
-
-  defp build_csv(entries) do
-    header = "Timestamp,Type,Client MAC,Client IP,Details\r\n"
-
-    rows =
-      Enum.map_join(entries, "\r\n", fn e ->
-        [
-          csv_escape(format_time_ms(e.timestamp)),
-          csv_escape(to_string(e.type)),
-          csv_escape(e.client_mac || ""),
-          csv_escape(e.client_ip || ""),
-          csv_escape(e.details || "")
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
-  end
+  defp contains?(value, query),
+    do: value |> to_string() |> String.downcase() |> String.contains?(query)
 end

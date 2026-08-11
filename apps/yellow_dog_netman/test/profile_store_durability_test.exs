@@ -52,13 +52,37 @@ defmodule YellowDog.Netman.ProfileStoreDurabilityTest.FileOps do
 
     send(owner, {:profile_store_file_op, operation, details})
 
-    case fail_at do
-      ^operation -> {:error, :injected_failure}
-      {:raise, ^operation} -> raise "injected failure"
-      {:exit, ^operation} -> exit(:injected_failure)
-      _other -> callback.()
+    cond do
+      fail_once_exit?(fail_at, operation, details) ->
+        configure(owner)
+        exit(:injected_failure)
+
+      fail_once?(fail_at, operation, details) ->
+        configure(owner)
+        {:error, :injected_failure}
+
+      fail_at == operation ->
+        {:error, :injected_failure}
+
+      fail_at == {:raise, operation} ->
+        raise "injected failure"
+
+      fail_at == {:exit, operation} ->
+        exit(:injected_failure)
+
+      true ->
+        callback.()
     end
   end
+
+  defp fail_once?({:once, :rename_target, target}, :rename, [_source, target]), do: true
+  defp fail_once?({:once, :rm_path, path}, :rm, [path]), do: true
+  defp fail_once?(_fail_at, _operation, _details), do: false
+
+  defp fail_once_exit?({:once_exit, :rename_target, target}, :rename, [_source, target]),
+    do: true
+
+  defp fail_once_exit?(_fail_at, _operation, _details), do: false
 end
 
 defmodule YellowDog.Netman.ProfileStoreDurabilityTest do
@@ -111,7 +135,10 @@ defmodule YellowDog.Netman.ProfileStoreDurabilityTest do
     assert_ordered(operations, [:mkdir_p, :open, :write, :sync, :close, :rename, :sync_dir])
 
     assert {:rename, [temporary_path, ^path]} =
-             Enum.find(operations, fn {operation, _details} -> operation == :rename end)
+             Enum.find(operations, fn
+               {:rename, [_temporary_path, target_path]} -> target_path == path
+               _operation -> false
+             end)
 
     assert Path.dirname(temporary_path) == profile_dir
 
@@ -142,8 +169,13 @@ defmodule YellowDog.Netman.ProfileStoreDurabilityTest do
 
     operations = drain_file_operations()
 
+    expected_path = profile_path(profile_dir, replacement.id)
+
     assert {:rename, [temporary_path, target_path]} =
-             Enum.find(operations, fn {operation, _details} -> operation == :rename end)
+             Enum.find(operations, fn
+               {:rename, [_temporary_path, ^expected_path]} -> true
+               _operation -> false
+             end)
 
     assert Path.dirname(temporary_path) == Path.dirname(target_path)
     assert target_path == profile_path(profile_dir, replacement.id)
@@ -340,6 +372,120 @@ defmodule YellowDog.Netman.ProfileStoreDurabilityTest do
     assert {:ok, ^profile} = get(store, profile.id)
     assert {:ok, ^current_revision} = revision(store, profile.id)
     refute_receive {:netman_event, "netman:profile:changed", _}, 100
+  end
+
+  test "replace restores the complete namespace when a later profile write fails", %{
+    profile_dir: profile_dir
+  } do
+    {:ok, store} = start_store(profile_dir)
+    original_a = profile("txn-write-a", priority: 10)
+    original_b = profile("txn-write-b", priority: 20)
+    replacement_a = profile("txn-write-a", priority: 99)
+    added = profile("txn-write-c", priority: 30)
+
+    assert :ok = put(store, original_a.id, original_a)
+    assert :ok = put(store, original_b.id, original_b)
+    assert {:ok, original_namespace_revision} = namespace_revision(store)
+
+    FileOps.configure(
+      self(),
+      {:once, :rename_target, profile_path(profile_dir, added.id)}
+    )
+
+    assert {:error, {:write_failed, :injected_failure}} =
+             replace(store, [replacement_a, added],
+               expected_revision: original_namespace_revision
+             )
+
+    assert {:ok, ^original_a} = get(store, original_a.id)
+    assert {:ok, ^original_b} = get(store, original_b.id)
+    assert {:error, :not_found} = get(store, added.id)
+    assert {:ok, ^original_namespace_revision} = namespace_revision(store)
+
+    GenServer.stop(store)
+    FileOps.configure(self())
+    {:ok, restarted} = start_store(profile_dir)
+
+    assert {:ok, ^original_a} = get(restarted, original_a.id)
+    assert {:ok, ^original_b} = get(restarted, original_b.id)
+    assert {:error, :not_found} = get(restarted, added.id)
+    assert {:ok, ^original_namespace_revision} = namespace_revision(restarted)
+  end
+
+  test "replace restores updated and deleted profiles when a later delete fails", %{
+    profile_dir: profile_dir
+  } do
+    {:ok, store} = start_store(profile_dir)
+    retained = profile("txn-delete-a", priority: 10)
+    omitted_b = profile("txn-delete-b", priority: 20)
+    omitted_c = profile("txn-delete-c", priority: 30)
+    replacement = profile("txn-delete-a", priority: 99)
+
+    assert :ok = put(store, retained.id, retained)
+    assert :ok = put(store, omitted_b.id, omitted_b)
+    assert :ok = put(store, omitted_c.id, omitted_c)
+    assert {:ok, original_namespace_revision} = namespace_revision(store)
+
+    FileOps.configure(
+      self(),
+      {:once, :rm_path, profile_path(profile_dir, omitted_c.id)}
+    )
+
+    assert {:error, {:delete_failed, :injected_failure}} =
+             replace(store, [replacement], expected_revision: original_namespace_revision)
+
+    assert {:ok, ^retained} = get(store, retained.id)
+    assert {:ok, ^omitted_b} = get(store, omitted_b.id)
+    assert {:ok, ^omitted_c} = get(store, omitted_c.id)
+    assert {:ok, ^original_namespace_revision} = namespace_revision(store)
+
+    GenServer.stop(store)
+    FileOps.configure(self())
+    {:ok, restarted} = start_store(profile_dir)
+
+    assert {:ok, ^retained} = get(restarted, retained.id)
+    assert {:ok, ^omitted_b} = get(restarted, omitted_b.id)
+    assert {:ok, ^omitted_c} = get(restarted, omitted_c.id)
+    assert {:ok, ^original_namespace_revision} = namespace_revision(restarted)
+  end
+
+  test "startup recovers a replacement interrupted after its rollback journal commits", %{
+    profile_dir: profile_dir
+  } do
+    {:ok, store} = start_store(profile_dir)
+    original_a = profile("txn-crash-a", priority: 10)
+    original_b = profile("txn-crash-b", priority: 20)
+    replacement_a = profile("txn-crash-a", priority: 99)
+    added = profile("txn-crash-c", priority: 30)
+
+    assert :ok = put(store, original_a.id, original_a)
+    assert :ok = put(store, original_b.id, original_b)
+    assert {:ok, original_namespace_revision} = namespace_revision(store)
+
+    Process.unlink(store)
+
+    FileOps.configure(
+      self(),
+      {:once_exit, :rename_target, profile_path(profile_dir, added.id)}
+    )
+
+    assert catch_exit(
+             replace(store, [replacement_a, added],
+               expected_revision: original_namespace_revision
+             )
+           )
+
+    refute Process.alive?(store)
+    assert File.regular?(Path.join(profile_dir, ".replace-rollback.json"))
+
+    FileOps.configure(self())
+    {:ok, restarted} = start_store(profile_dir)
+
+    assert {:ok, ^original_a} = get(restarted, original_a.id)
+    assert {:ok, ^original_b} = get(restarted, original_b.id)
+    assert {:error, :not_found} = get(restarted, added.id)
+    assert {:ok, ^original_namespace_revision} = namespace_revision(restarted)
+    refute File.exists?(Path.join(profile_dir, ".replace-rollback.json"))
   end
 
   test "delete removes the file before cache and delayed self-events cannot resurrect it", %{
@@ -590,7 +736,11 @@ defmodule YellowDog.Netman.ProfileStoreDurabilityTest do
   defp get(store, id), do: GenServer.call(store, {:get, id})
   defp import_file(store, path), do: GenServer.call(store, {:import_file, path})
   defp revision(store, id), do: GenServer.call(store, {:revision, id})
+  defp namespace_revision(store), do: GenServer.call(store, :namespace_revision)
   defp delete(store, id, opts), do: GenServer.call(store, {:delete, id, opts})
+
+  defp replace(store, profiles, opts),
+    do: GenServer.call(store, {:replace, profiles, opts}, 30_000)
 
   defp profile(id, opts \\ []) do
     %Profile{

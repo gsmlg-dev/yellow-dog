@@ -1,99 +1,87 @@
 defmodule YellowDog.Console.MdnsLive.Index do
-  @moduledoc """
-  mDNS overview page showing status, statistics, and quick actions.
-  """
+  @moduledoc "Management-backed mDNS overview for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.MdnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      # Subscribe to service updates
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "mdns:services")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "mdns:monitor")
-    end
-
     {:ok,
      assign(socket,
-       page_title: "mDNS Service",
-       service_running: service_running?(YellowDog.Mdns),
-       status: get_mdns_status(),
-       stats: get_mdns_stats(),
-       network_stats: get_network_stats()
+       page_title: "mDNS",
+       subscribed_server_id: nil,
+       registered_count: 0,
+       discovered_count: 0,
+       cache_count: 0,
+       management_error: nil,
+       cached_observed_at: nil
      )}
   end
 
   @impl true
-  def handle_info({:service_registered, _service_id}, socket) do
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_overview(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, load_overview(socket)}
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:stats, get_mdns_stats())
-     |> put_flash(:info, "Service registered successfully")}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_overview()}
   end
 
-  @impl true
-  def handle_info({:service_unregistered, _service_id}, socket) do
-    {:noreply,
-     socket
-     |> assign(:stats, get_mdns_stats())
-     |> put_flash(:info, "Service unregistered")}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_info({:service_updated, _service_id}, socket) do
-    {:noreply, assign(socket, :stats, get_mdns_stats())}
-  end
+  defp load_overview(socket) do
+    server_id = socket.assigns.selected_server.id
+    services = ServerManagement.mdns_services_list(server_id)
+    discovery = ServerManagement.mdns_discovery_list(server_id)
+    cache = ServerManagement.mdns_cache_get(server_id)
+    results = [services, discovery, cache]
 
-  @impl true
-  def handle_info(:network_update, socket) do
-    {:noreply, assign(socket, :network_stats, get_network_stats())}
-  end
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:services")
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:monitor")
-    :ok
-  end
-
-  @impl true
-  def handle_event("refresh", _params, socket) do
-    {:noreply,
-     assign(socket,
-       status: get_mdns_status(),
-       stats: get_mdns_stats(),
-       network_stats: get_network_stats()
-     )}
-  end
-
-  defp get_mdns_status do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.status() end, %{
-      running: false,
-      mode: :unknown,
-      registered_services: 0,
-      discovered_services: 0
-    })
-  end
-
-  defp get_mdns_stats do
-    safe_call(
-      YellowDog.Mdns.ServiceRegistry,
-      fn -> %{registry_stats: YellowDog.Mdns.ServiceRegistry.stats()} end,
-      %{registry_stats: %{total: 0, enabled: 0, disabled: 0, registered: 0, from_file: 0}}
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — mDNS",
+      registered_count: length(items(services)),
+      discovered_count: length(items(discovery)),
+      cache_count: length(cache_entries(cache)),
+      management_error: first_error(results),
+      cached_observed_at: latest_observed_at(results)
     )
   end
 
-  defp get_network_stats do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.network_stats() end, %{
-      total_responses: 0,
-      total_queries: 0,
-      active_services: 0,
-      unique_hosts: 0,
-      queries_per_minute: 0.0
-    })
+  defp items(%ManagementResult{status: :ok, value: %{"items" => items}}) when is_list(items),
+    do: items
+
+  defp items(_result), do: []
+
+  defp cache_entries(%ManagementResult{status: :ok, value: %{"entries" => entries}})
+       when is_list(entries),
+       do: entries
+
+  defp cache_entries(_result), do: []
+
+  defp first_error(results) do
+    Enum.find_value(results, fn
+      %ManagementResult{status: :error, message: message} -> message
+      _result -> nil
+    end)
+  end
+
+  defp latest_observed_at(results) do
+    results
+    |> Enum.flat_map(fn
+      %ManagementResult{observed_at: %DateTime{} = observed_at} -> [observed_at]
+      _result -> []
+    end)
+    |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)
   end
 end

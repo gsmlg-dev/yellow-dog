@@ -948,35 +948,37 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
                     {:config_applier_inconsistent_persistence, :uncertain_after_side_effect}}
   end
 
-  test "init converts an exposed side-effect checkpoint before serving", %{data_dir: data_dir} do
+  test "init fails closed when interrupted first install lost its staged candidate", %{
+    data_dir: data_dir
+  } do
     {config_store, _real_apply_store} = start_stores(data_dir)
     snapshot = side_effect_snapshot()
     {:ok, apply_store} = ConfigApplierTestApplyStore.start_link(snapshot)
-    applier = start_applier(config_store, apply_store)
 
-    assert {:ok, recovered} = ConfigApplyStore.snapshot(apply_store)
-    assert recovered.attempt.checkpoint == :unknown
-    assert recovered.runtime_status == :unknown
-
-    assert {:ok, %{status: :replay, publications: []}} =
-             ConfigApplier.apply(envelope(1), applier)
+    assert {:error, {:config_applier_recovery_failed, :runtime}} =
+             ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: nil))
 
     refute_receive {:adapter_call, _, _}
   end
 
-  test "init fails when an exposed side-effect checkpoint cannot become unknown", %{
+  test "init fails when interrupted install recovery cannot persist its next checkpoint", %{
     data_dir: data_dir
   } do
     {config_store, _real_apply_store} = start_stores(data_dir)
-    {:ok, apply_store} = ConfigApplierTestApplyStore.start_link(side_effect_snapshot(), :error)
+    assert {:ok, _candidate} = ConfigStore.stage(envelope(1), config_store)
+    {:ok, apply_store} = ConfigApplierTestApplyStore.start_link(side_effect_snapshot())
 
-    assert {:error, {:config_applier_recovery_failed, :persistence}} =
+    assert {:error, {:config_applier_recovery_failed, :runtime}} =
              ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: nil))
+
+    assert_receive {:adapter_call, :install_config, [_, _]}
+    refute_receive {:adapter_call, :activate_config, _}
   end
 
-  test "restart from a real side-effect checkpoint replays unknown without callbacks", %{
-    data_dir: data_dir
-  } do
+  test "restart from a first-install checkpoint resumes the durable candidate and terminalizes it",
+       %{
+         data_dir: data_dir
+       } do
     {config_store, apply_store} = start_stores(data_dir)
     delivery = envelope(1)
     assert {:ok, candidate} = ConfigStore.stage(delivery, config_store)
@@ -991,11 +993,381 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
     apply_store = restart_apply_store(data_dir, config_store)
     applier = start_applier(config_store, apply_store)
 
+    assert_receive {:adapter_call, :install_config, [payload, opts]}
+    assert payload == delivery.payload
+    assert opts[:version] == 1
+    assert opts[:digest] == delivery.payload_digest
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
+    refute_receive {:adapter_call, _, _}
+
     assert {:ok, %{status: :replay, publications: publications}} =
              ConfigApplier.apply(delivery, applier)
 
-    assert Enum.map(publications, & &1.message.state) == [:delivered, :applying]
+    assert Enum.map(publications, & &1.message.state) == [:delivered, :applying, :applied]
+
+    assert {:ok,
+            %{
+              runtime_status: :known,
+              known_good: %{version: 1, revision: @revision_a},
+              attempt: %{status: :applied, checkpoint: :complete}
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    drain(apply_store)
+
+    assert {:admit, :new} =
+             ConfigApplyStore.preflight(envelope(2, expected_revision: @revision_a), apply_store)
+  end
+
+  test "restart from a first-activation checkpoint completes the exact installed candidate", %{
+    data_dir: data_dir
+  } do
+    {config_store, apply_store} = start_stores(data_dir)
+    delivery = envelope(1)
+    assert {:ok, candidate} = ConfigStore.stage(delivery, config_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(:delivered, %{candidate: candidate}, apply_store)
+
+    assert {:ok, _} = ConfigApplyStore.transition(:before_validate, %{version: 1}, apply_store)
+    assert {:ok, _} = ConfigApplyStore.transition(:before_install, %{version: 1}, apply_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(
+               :before_activate,
+               %{version: 1, installed_revision: @revision_a},
+               apply_store
+             )
+
+    stop(apply_store)
+    apply_store = restart_apply_store(data_dir, config_store)
+    applier = start_applier(config_store, apply_store)
+
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
     refute_receive {:adapter_call, _, _}
+
+    assert {:ok,
+            %{
+              runtime_status: :known,
+              known_good: %{version: 1, revision: @revision_a},
+              attempt: %{status: :applied, checkpoint: :complete}
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    assert {:ok, %{status: :replay}} = ConfigApplier.apply(delivery, applier)
+    drain(apply_store)
+
+    assert {:admit, :new} =
+             ConfigApplyStore.preflight(envelope(2, expected_revision: @revision_a), apply_store)
+  end
+
+  test "restart from legacy unknown before first install repeats the exact durable candidate", %{
+    data_dir: data_dir
+  } do
+    {config_store, apply_store} = start_stores(data_dir)
+    delivery = envelope(1)
+    assert {:ok, candidate} = ConfigStore.stage(delivery, config_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(:delivered, %{candidate: candidate}, apply_store)
+
+    assert {:ok, _} = ConfigApplyStore.transition(:before_validate, %{version: 1}, apply_store)
+    assert {:ok, _} = ConfigApplyStore.transition(:before_install, %{version: 1}, apply_store)
+
+    assert {:ok, %{runtime_status: :unknown, attempt: %{checkpoint: :unknown}}} =
+             ConfigApplyStore.transition(
+               :uncertain_after_side_effect,
+               %{version: 1},
+               apply_store
+             )
+
+    stop(apply_store)
+    apply_store = restart_apply_store(data_dir, config_store)
+    applier = start_applier(config_store, apply_store)
+
+    assert_receive {:adapter_call, :install_config, [payload, opts]}
+    assert payload == delivery.payload
+    assert opts[:version] == 1
+    assert opts[:digest] == delivery.payload_digest
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
+    refute_receive {:adapter_call, _, _}
+
+    assert {:ok,
+            %{
+              runtime_status: :known,
+              known_good: %{version: 1, revision: @revision_a},
+              attempt: %{status: :applied, checkpoint: :complete}
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    assert {:ok, %{status: :replay}} = ConfigApplier.apply(delivery, applier)
+    drain(apply_store)
+
+    assert {:admit, :new} =
+             ConfigApplyStore.preflight(envelope(2, expected_revision: @revision_a), apply_store)
+  end
+
+  test "restart from legacy unknown after first install activates the exact revision", %{
+    data_dir: data_dir
+  } do
+    {config_store, apply_store} = start_stores(data_dir)
+    delivery = envelope(1)
+    assert {:ok, candidate} = ConfigStore.stage(delivery, config_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(:delivered, %{candidate: candidate}, apply_store)
+
+    assert {:ok, _} = ConfigApplyStore.transition(:before_validate, %{version: 1}, apply_store)
+    assert {:ok, _} = ConfigApplyStore.transition(:before_install, %{version: 1}, apply_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(
+               :before_activate,
+               %{version: 1, installed_revision: @revision_a},
+               apply_store
+             )
+
+    assert {:ok, %{runtime_status: :unknown, attempt: %{checkpoint: :unknown}}} =
+             ConfigApplyStore.transition(
+               :uncertain_after_side_effect,
+               %{version: 1},
+               apply_store
+             )
+
+    stop(apply_store)
+    apply_store = restart_apply_store(data_dir, config_store)
+
+    ConfigApplierTestAdapter.clear()
+    ConfigApplierTestAdapter.configure(self(), %{activate_config: [{:error, :unavailable}]})
+
+    assert {:error, {:config_applier_recovery_failed, :runtime}} =
+             ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: nil))
+
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
+    refute_receive {:adapter_call, _, _}
+
+    assert {:ok,
+            %{
+              runtime_status: :unknown,
+              known_good: nil,
+              attempt: %{
+                status: :applying,
+                checkpoint: :recovery_before_activate,
+                installed_revision: @revision_a
+              }
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    stop(apply_store)
+    apply_store = restart_apply_store(data_dir, config_store)
+
+    ConfigApplierTestAdapter.clear()
+    ConfigApplierTestAdapter.configure(self())
+    applier = start_applier(config_store, apply_store)
+
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
+    refute_receive {:adapter_call, _, _}
+
+    assert {:ok,
+            %{
+              runtime_status: :known,
+              known_good: %{version: 1, revision: @revision_a},
+              attempt: %{status: :applied, checkpoint: :complete}
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    assert {:ok, %{status: :replay}} = ConfigApplier.apply(delivery, applier)
+    drain(apply_store)
+
+    assert {:admit, :new} =
+             ConfigApplyStore.preflight(envelope(2, expected_revision: @revision_a), apply_store)
+  end
+
+  test "restart from every applying checkpoint restores known-good and unblocks the stream", %{
+    data_dir: data_dir
+  } do
+    for checkpoint <- [
+          :before_install,
+          :before_activate,
+          :before_restore,
+          :before_reactivate,
+          :unknown
+        ] do
+      test_dir = Path.join(data_dir, Atom.to_string(checkpoint))
+      {config_store, apply_store} = start_stores(test_dir)
+      first_applier = start_applier(config_store, apply_store)
+
+      assert {:ok, %{status: :applied}} = ConfigApplier.apply(envelope(1), first_applier)
+      drain(apply_store)
+      stop(first_applier)
+      flush_adapter_calls()
+
+      delivery = envelope(2, expected_revision: @revision_a)
+      assert {:ok, candidate} = ConfigStore.stage(delivery, config_store)
+
+      assert {:ok, _} =
+               ConfigApplyStore.transition(:delivered, %{candidate: candidate}, apply_store)
+
+      assert {:ok, _} = ConfigApplyStore.transition(:before_validate, %{version: 2}, apply_store)
+      assert {:ok, _} = ConfigApplyStore.transition(:before_install, %{version: 2}, apply_store)
+
+      if checkpoint in [:before_activate, :before_restore, :before_reactivate, :unknown] do
+        assert {:ok, _} =
+                 ConfigApplyStore.transition(
+                   :before_activate,
+                   %{version: 2, installed_revision: @revision_b},
+                   apply_store
+                 )
+      end
+
+      if checkpoint in [:before_restore, :before_reactivate] do
+        assert {:ok, _} =
+                 ConfigApplyStore.transition(
+                   :before_restore,
+                   %{version: 2, trigger_reason: "candidate failed"},
+                   apply_store
+                 )
+      end
+
+      if checkpoint == :before_reactivate do
+        assert {:ok, _} =
+                 ConfigApplyStore.transition(:before_reactivate, %{version: 2}, apply_store)
+      end
+
+      if checkpoint == :unknown do
+        assert {:ok, _} =
+                 ConfigApplyStore.transition(
+                   :uncertain_after_side_effect,
+                   %{version: 2},
+                   apply_store
+                 )
+      end
+
+      stop(apply_store)
+      apply_store = restart_apply_store(test_dir, config_store)
+      recovered_applier = start_applier(config_store, apply_store)
+
+      assert_receive {:adapter_call, :restore_config, [@revision_a]}
+      assert_receive {:adapter_call, :activate_config, [@revision_a]}
+      refute_receive {:adapter_call, _, _}
+
+      assert {:ok,
+              %{
+                runtime_status: :known,
+                known_good: %{version: 1, revision: @revision_a},
+                attempt: %{
+                  status: :failed,
+                  checkpoint: :complete,
+                  failure: %{
+                    phase: :apply,
+                    reason: "runtime restarted during config activation"
+                  },
+                  rollback: %{succeeded: true, restored_revision: @revision_a}
+                }
+              }} = ConfigApplyStore.snapshot(apply_store)
+
+      assert {:ok, publications} = ConfigApplyStore.pending_publications(apply_store)
+      assert [:delivered, :applying, :failed] == Enum.map(publications, & &1.message.state)
+
+      assert %{
+               failure: %{
+                 "phase" => "apply",
+                 "reason" => "runtime restarted during config activation"
+               },
+               rollback: %{
+                 "succeeded" => true,
+                 "restored_version" => 1,
+                 "restored_revision" => @revision_a,
+                 "reason" => nil
+               }
+             } = List.last(publications).message
+
+      assert {:ok, %{status: :replay}} = ConfigApplier.apply(delivery, recovered_applier)
+      refute_receive {:adapter_call, _, _}
+
+      drain(apply_store)
+
+      assert {:admit, :new} =
+               ConfigApplyStore.preflight(
+                 envelope(3, expected_revision: @revision_a),
+                 apply_store
+               )
+
+      stop(recovered_applier)
+      stop(apply_store)
+      stop(config_store)
+    end
+  end
+
+  test "failed known-good recovery remains retryable at the exact restore checkpoint", %{
+    data_dir: data_dir
+  } do
+    {config_store, apply_store} = start_stores(data_dir)
+    first_applier = start_applier(config_store, apply_store)
+
+    assert {:ok, %{status: :applied}} = ConfigApplier.apply(envelope(1), first_applier)
+    drain(apply_store)
+    stop(first_applier)
+    flush_adapter_calls()
+
+    delivery = envelope(2, expected_revision: @revision_a)
+    assert {:ok, candidate} = ConfigStore.stage(delivery, config_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(:delivered, %{candidate: candidate}, apply_store)
+
+    assert {:ok, _} = ConfigApplyStore.transition(:before_validate, %{version: 2}, apply_store)
+    assert {:ok, _} = ConfigApplyStore.transition(:before_install, %{version: 2}, apply_store)
+
+    assert {:ok, _} =
+             ConfigApplyStore.transition(
+               :before_activate,
+               %{version: 2, installed_revision: @revision_b},
+               apply_store
+             )
+
+    stop(apply_store)
+    apply_store = restart_apply_store(data_dir, config_store)
+
+    ConfigApplierTestAdapter.clear()
+    ConfigApplierTestAdapter.configure(self(), %{restore_config: [{:error, :unavailable}]})
+
+    assert {:error, {:config_applier_recovery_failed, :runtime}} =
+             ConfigApplier.start_link(base_applier_opts(config_store, apply_store, name: nil))
+
+    assert_receive {:adapter_call, :restore_config, [@revision_a]}
+    refute_receive {:adapter_call, :activate_config, _}
+
+    assert {:ok,
+            %{
+              runtime_status: :unknown,
+              known_good: %{version: 1, revision: @revision_a},
+              attempt: %{
+                status: :applying,
+                checkpoint: :before_restore,
+                failure: %{
+                  phase: :apply,
+                  reason: "runtime restarted during config activation"
+                },
+                rollback: %{status: :before_restore, succeeded: nil}
+              }
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    ConfigApplierTestAdapter.clear()
+    ConfigApplierTestAdapter.configure(self())
+    recovered_applier = start_applier(config_store, apply_store)
+
+    assert_receive {:adapter_call, :restore_config, [@revision_a]}
+    assert_receive {:adapter_call, :activate_config, [@revision_a]}
+    refute_receive {:adapter_call, _, _}
+
+    assert {:ok,
+            %{
+              runtime_status: :known,
+              known_good: %{version: 1, revision: @revision_a},
+              attempt: %{
+                status: :failed,
+                checkpoint: :complete,
+                rollback: %{succeeded: true, restored_revision: @revision_a}
+              }
+            }} = ConfigApplyStore.snapshot(apply_store)
+
+    stop(recovered_applier)
   end
 
   test "concurrent apply calls cannot interleave runtime callbacks", %{data_dir: data_dir} do
@@ -1010,7 +1382,7 @@ defmodule YellowDog.ServerAgent.ConfigApplierTest do
     applier = start_applier(config_store, apply_store)
     delivery = envelope(1)
     first = Task.async(fn -> ConfigApplier.apply(delivery, applier) end)
-    assert_receive {:adapter_call, :validate_config, [_]}
+    assert_receive {:adapter_call, :validate_config, [_]}, 1_000
     assert_receive {:adapter_blocked, ^ref}
     second = Task.async(fn -> ConfigApplier.apply(delivery, applier) end)
     refute_receive {:adapter_call, :validate_config, _}, 50

@@ -1,269 +1,132 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
-  <div class="space-y-6">
-    <.service_alert :if={not @service_running} service="mDNS" />
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+  <div id="mdns-discovery" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Network Discovery</h1>
+        <h1 class="text-4xl font-bold">mDNS Discovery</h1>
         <p class="mt-2 text-on-surface-variant">
-          Browse mDNS services discovered on your local network
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
         </p>
       </div>
-      <.dm_btn
-        variant="outline"
-        size="sm"
-        phx-click="export_csv"
-        id="export-csv"
-        phx-hook="CsvDownload"
-        aria-label="Export CSV"
-      >
-        <.dm_mdi name="download" class="h-5 w-5" /> Export CSV
-      </.dm_btn>
-    </div>
-    <!-- Search and Filter -->
-    <div class="flex items-center gap-4">
-      <div class="flex-1">
-        <input
-          type="text"
-          phx-change="search"
-          phx-debounce="300"
-          name="search"
-          value={@search}
-          placeholder="Search services by name or type..."
-          aria-label="Search discovered services"
-          class="input w-full"
-        />
+      <div class="flex items-center gap-3">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
       </div>
+    </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-discovery-offline">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+      </span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-discovery-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error.message}</span>
+    </div>
+
+    <div class="flex flex-col gap-3 sm:flex-row">
+      <input
+        type="search"
+        name="search"
+        value={@search}
+        placeholder="Search by name or address"
+        aria-label="Search discovered services"
+        class="input w-full"
+        phx-change="search"
+        phx-debounce="300"
+      />
       <select
-        phx-change="filter_by_type"
-        aria-label="Filter by service type"
         name="type"
         class="select"
+        aria-label="Filter by service type"
+        phx-change="filter_by_type"
       >
-        <option value="all">All Types</option>
-        <option :for={type <- get_service_types(@services)} value={type}>
+        <option value="all" selected={@type_filter == "all"}>All types</option>
+        <option
+          :for={type <- service_types(@services)}
+          value={type}
+          selected={@type_filter == type}
+        >
           {type}
         </option>
       </select>
     </div>
-    <!-- Statistics Bar -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Total Services</h2>
-          <div class="text-2xl font-semibold">{length(@services)}</div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Service Types</h2>
-          <div class="text-2xl font-semibold">
-            {length(get_service_types(@services))}
-          </div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Active Hosts</h2>
-          <div class="text-2xl font-semibold">{count_unique_hosts(@services)}</div>
-        </div>
-      </div>
-      <div class="card card-bordered bg-surface">
-        <div class="card-body">
-          <h2 class="card-title">Last Updated</h2>
-          <div class="text-sm font-semibold">
-            {format_expiration(get_most_recent_update(@services))}
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- Services Grid -->
-    <%= if Enum.empty?(@services) do %>
-      <div class="card bg-surface shadow-sm p-12 text-center">
-        <.dm_mdi name="magnify" class="mx-auto h-12 w-12 text-on-surface-variant" />
-        <h3 class="mt-2 text-sm font-medium">No services discovered</h3>
-        <p class="mt-1 text-sm text-on-surface-variant">
-          Waiting for mDNS services to appear on your local network...
-        </p>
-      </div>
-    <% else %>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div
-          :for={service <- @services}
-          class="card bg-surface shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-          phx-click="view_details"
-          phx-keydown="view_details"
-          phx-key="Enter"
-          phx-value-id={service.id}
-          role="button"
-          tabindex="0"
-          aria-label={"View details for #{service.name}"}
-        >
-          <div class="card-body p-6">
-            <div class="flex items-start justify-between">
-              <div class="flex-1">
-                <h3 class="text-lg font-medium truncate">{service.name}</h3>
-                <p class="mt-1 text-sm text-on-surface-variant">{service.type}</p>
-              </div>
-              <div class="ml-2 flex-shrink-0">
-                <span class="badge badge-success badge-sm">Active</span>
-              </div>
-            </div>
 
-            <div class="mt-4 space-y-2">
-              <%= if service.host do %>
-                <div class="flex items-center text-sm">
-                  <.dm_mdi name="server-network" class="w-4 h-4 mr-2 text-on-surface-variant" />
-                  <span class="text-on-surface-variant truncate">{service.host}</span>
-                </div>
-              <% end %>
-
-              <%= if service.port do %>
-                <div class="flex items-center text-sm">
-                  <.dm_mdi name="flash" class="w-4 h-4 mr-2 text-on-surface-variant" />
-                  <span class="text-on-surface-variant">Port {service.port}</span>
-                </div>
-              <% end %>
-
-              <%= if service.addresses && service.addresses != [] do %>
-                <div class="flex items-center text-sm">
-                  <.dm_mdi name="web" class="w-4 h-4 mr-2 text-on-surface-variant" />
-                  <span class="text-on-surface-variant truncate">{hd(service.addresses)}</span>
-                </div>
-              <% end %>
-            </div>
-
-            <%= if service.txt && map_size(service.txt) > 0 do %>
-              <div class="mt-4">
-                <div class="flex flex-wrap gap-1">
-                  <span
-                    :for={{_key, _value} <- Enum.take(service.txt, 3)}
-                    class="badge badge-ghost badge-sm"
-                  >
-                    TXT
-                  </span>
-                  <%= if map_size(service.txt) > 3 do %>
-                    <span class="badge badge-ghost badge-sm">
-                      +{map_size(service.txt) - 3}
-                    </span>
-                  <% end %>
-                </div>
-              </div>
-            <% end %>
-
-            <div class="mt-4 text-xs text-on-surface-variant">
-              Last seen {format_time_ago(service.last_seen)}
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-    <!-- Service Details Modal -->
-    <%= if @selected_service do %>
+    <.card>
       <div
-        class="dialog-backdrop dialog-backdrop-show"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Service details"
-        phx-window-keydown="close_details"
-        phx-key="Escape"
+        :if={filtered_services(@services, @search, @type_filter) == []}
+        class="py-10 text-center text-on-surface-variant"
       >
-        <div
-          class="dialog-backdrop"
-          phx-click="close_details"
-          aria-hidden="true"
-        >
-        </div>
-        <div class="dialog dialog-md max-w-3xl">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold">{@selected_service.name}</h3>
-            <.dm_btn
-              variant="ghost"
-              size="sm"
-              class="btn-circle"
-              type="button"
-              phx-click="close_details"
-              aria-label="Close"
-            >
-              <.dm_mdi name="close" class="h-5 w-5" />
-            </.dm_btn>
-          </div>
+        No discovered services match this filter.
+      </div>
+      <div
+        :if={filtered_services(@services, @search, @type_filter) != []}
+        class="overflow-x-auto"
+      >
+        <table class="table table-striped" id="mdns-discovery-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Type</th><th>Address</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={service <- filtered_services(@services, @search, @type_filter)}>
+              <td class="font-medium">{service["name"]}</td>
+              <td class="font-mono text-sm">{service["service_type"]}</td>
+              <td class="font-mono text-sm">{service["address"] || "Unavailable"}</td>
+              <td>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  phx-click="view_details"
+                  phx-value-name={service["name"]}
+                >
+                  Details
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
 
-          <div class="space-y-6">
-            <!-- Basic Information -->
-            <div>
-              <h4 class="text-sm font-medium mb-4">Basic Information</h4>
-              <dl class="grid grid-cols-2 gap-4">
-                <div>
-                  <dt class="text-sm text-on-surface-variant">Service Type</dt>
-                  <dd class="mt-1 text-sm font-medium">
-                    {@selected_service.type}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-sm text-on-surface-variant">Port</dt>
-                  <dd class="mt-1 text-sm font-medium">
-                    {@selected_service.port}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-sm text-on-surface-variant">Hostname</dt>
-                  <dd class="mt-1 text-sm font-medium">
-                    {@selected_service.host}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-sm text-on-surface-variant">Last Seen</dt>
-                  <dd class="mt-1 text-sm font-medium">
-                    {format_expiration(@selected_service.last_seen)}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-            <!-- IP Addresses -->
-            <%= if @selected_service.addresses && @selected_service.addresses != [] do %>
-              <div>
-                <h4 class="text-sm font-medium mb-4">IP Addresses</h4>
-                <div class="flex flex-wrap gap-2">
-                  <span
-                    :for={addr <- @selected_service.addresses}
-                    class="badge badge-info badge-lg"
-                  >
-                    {addr}
-                  </span>
-                </div>
-              </div>
-            <% end %>
-            <!-- TXT Records -->
-            <%= if @selected_service.txt && map_size(@selected_service.txt) > 0 do %>
-              <div>
-                <h4 class="text-sm font-medium mb-4">TXT Records</h4>
-                <div class="bg-surface-container rounded-lg p-4">
-                  <dl class="space-y-2">
-                    <div
-                      :for={{key, value} <- @selected_service.txt}
-                      class="flex justify-between"
-                    >
-                      <dt class="text-sm font-medium text-on-surface-variant">{key}</dt>
-                      <dd class="text-sm">{value}</dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-            <% end %>
+    <dialog
+      :if={@selected_service}
+      id="mdns-discovery-details"
+      class="dialog-backdrop dialog-backdrop-show"
+      open
+      phx-window-keydown="close_details"
+      phx-key="Escape"
+    >
+      <div class="dialog dialog-md">
+        <h2 class="mb-4 text-2xl font-bold">{@selected_service["name"]}</h2>
+        <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <dt class="text-sm text-on-surface-variant">Service type</dt>
+            <dd class="font-mono">{@selected_service["service_type"]}</dd>
           </div>
-
-          <div class="dialog-actions">
-            <.dm_btn
-              variant="ghost"
-              type="button"
-              phx-click="close_details"
-            >
-              Close
-            </.dm_btn>
+          <div>
+            <dt class="text-sm text-on-surface-variant">Address</dt>
+            <dd class="font-mono">{@selected_service["address"] || "Unavailable"}</dd>
           </div>
+        </dl>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" phx-click="close_details">Close</button>
         </div>
       </div>
-    <% end %>
+    </dialog>
   </div>
 </Layouts.app>

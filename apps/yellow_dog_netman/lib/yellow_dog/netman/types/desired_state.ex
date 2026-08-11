@@ -17,7 +17,7 @@ defmodule YellowDog.Netman.Types.DesiredState do
         }
 
   @type t :: %__MODULE__{
-          connections: %{String.t() => connection()}
+          connections: %{{String.t(), String.t()} => connection()}
         }
 
   defstruct connections: %{}
@@ -45,7 +45,7 @@ defmodule YellowDog.Netman.Types.DesiredState do
           dns_search: dns_search
         }
 
-        {profile.id, connection}
+        {{profile.id, interface}, connection}
       end
 
     %__MODULE__{connections: connections}

@@ -1,394 +1,493 @@
 defmodule YellowDog.Console.MdnsServicesLiveTest do
-  @moduledoc """
-  LiveView tests for mDNS Services page: mounting, form validation,
-  event handlers, and accessibility.
-  """
-  use YellowDog.Console.ConnCase, async: true
+  use YellowDog.Console.ConnCase, async: false
+
   import Phoenix.LiveViewTest
 
   alias YellowDog.Console.MdnsLive.ServicesLive
+  alias YellowDog.Console.TestManagementTransport
+  alias YellowDog.ManagementCore
+  alias YellowDog.Sync.Digest
 
-  # ============================================================================
-  # Mounting & Template
-  # ============================================================================
+  @revision String.duplicate("a", 64)
+  @observed_at "2026-08-10T01:02:03Z"
 
-  describe "mDNS Services /mdns/services mounting" do
-    test "mounts successfully", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/mdns/services")
-      assert html =~ "Registered Services"
-    end
+  setup do
+    previous =
+      Map.new([:data_dir, :transport_module, :request_timeout], fn key ->
+        {key, Application.fetch_env(:yellow_dog_management_core, key)}
+      end)
 
-    test "shows filter tabs", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/mdns/services")
-      assert html =~ "All Services"
-      assert html =~ "Enabled"
-      assert html =~ "Disabled"
-    end
+    data_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "yellow-dog-server-mdns-#{System.unique_integer([:positive, :monotonic])}"
+      )
 
-    test "shows register service button", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/mdns/services")
-      assert html =~ "Register Service"
-    end
+    Application.stop(:yellow_dog_management_core)
+    Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
+    Application.put_env(:yellow_dog_management_core, :transport_module, TestManagementTransport)
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 50)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+    start_supervised!(TestManagementTransport)
 
-    test "shows export CSV button with hook", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/mdns/services")
-      assert html =~ ~s(phx-hook="CsvDownload")
-      assert html =~ ~s(id="export-csv")
-    end
+    register_server("server-a", "Alpha Server", :online)
+    register_server("server-b", "Beta Server", :online)
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    :ok = TestManagementTransport.connect(:server, "server-b")
 
-    test "shows empty state when no services", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/server/mdns/services")
-      assert html =~ "No services found"
-    end
+    on_exit(fn ->
+      Application.stop(:yellow_dog_management_core)
+      Enum.each(previous, fn {key, value} -> restore_env(key, value) end)
+      {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+      File.rm_rf(data_dir)
+    end)
+
+    :ok
   end
 
-  # ============================================================================
-  # Form Display
-  # ============================================================================
+  test "services page is selected-Server scoped and mutations use the exact item revision", %{
+    conn: conn
+  } do
+    service = service("alpha-printer", true)
+    :ok = TestManagementTransport.script_request([list_result([service])])
 
-  describe "mDNS Services /mdns/services form" do
-    test "show_new_form opens modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "show_new_form")
-      assert html =~ "Register New Service"
-      assert html =~ "Service Name"
-      assert html =~ "Service Type"
-      assert html =~ "Port"
-      assert html =~ "TXT Records"
-      assert html =~ "IP Addresses"
-    end
+    {:ok, view, html} = live(conn, "/server/server-a/mdns/services")
 
-    test "hide_form closes modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-      html = render_click(view, "hide_form")
-      refute html =~ "Register New Service"
-    end
+    assert html =~ "Alpha Server"
+    assert html =~ "alpha-printer"
+    refute has_element?(view, "#mdns-services", "Beta Server")
+    assert [{"server-a", "server.mdns.services.list"}] = target_operations()
 
-    test "form has phx-change for validation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "show_new_form")
-      assert html =~ ~s(phx-change="validate_service")
-    end
+    disabled = %{service | "enabled" => false}
 
-    test "port field has min/max attributes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "show_new_form")
-      assert html =~ ~s(min="1")
-      assert html =~ ~s(max="65535")
-    end
+    :ok =
+      TestManagementTransport.script_request([
+        {:ok,
+         %{
+           "resource_type" => "mdns_service",
+           "resource_id" => service["service_id"],
+           "revision" => @revision,
+           "resource" => disabled
+         }}
+      ])
+
+    html = render_click(view, "toggle_service", %{"id" => service["service_id"]})
+    assert html =~ "Service disabled"
+
+    command = List.last(request_envelopes())
+    assert command.target_id == "server-a"
+    assert command.operation == "server.mdns.services.toggle"
+    assert command.payload == %{"service_id" => service["service_id"], "enabled" => false}
+    assert {:ok, expected_revision} = Digest.calculate(service)
+    assert command.expected_revision == expected_revision
+    assert is_binary(command.idempotency_key)
   end
 
-  # ============================================================================
-  # Form Validation (phx-change)
-  # ============================================================================
+  test "service registration validates locally then sends one typed command", %{conn: conn} do
+    :ok = TestManagementTransport.script_request([list_result([])])
+    {:ok, view, _html} = live(conn, "/server/server-a/mdns/services")
 
-  describe "mDNS Services /mdns/services validation" do
-    test "validates empty service name", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
+    assert render_click(view, "show_new_form") =~ "Register New Service"
 
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "",
-          "type" => "_http._tcp",
-          "port" => "8080",
-          "addresses" => "",
-          "txt" => ""
-        })
+    assert render_change(view, "validate_service", %{
+             "name" => "",
+             "type" => "bad",
+             "port" => "70000",
+             "txt" => ""
+           }) =~ "Service name is required"
 
-      assert html =~ "Service name is required"
-    end
+    resource = service("office-printer", true)
 
-    test "validates empty service type", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
+    :ok =
+      TestManagementTransport.script_request([
+        {:ok,
+         %{
+           "resource_type" => "mdns_service",
+           "resource_id" => resource["service_id"],
+           "revision" => @revision,
+           "resource" => resource
+         }}
+      ])
 
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "",
-          "port" => "8080",
-          "addresses" => "",
-          "txt" => ""
-        })
+    html =
+      render_submit(view, "save_service", %{
+        "name" => "office-printer",
+        "type" => "_ipp._tcp",
+        "port" => "631",
+        "txt" => "note=office\nroom=north"
+      })
 
-      assert html =~ "Service type is required"
-    end
-
-    test "validates invalid service type format", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "http",
-          "port" => "8080",
-          "addresses" => "",
-          "txt" => ""
-        })
-
-      assert html =~ "_service._tcp"
-    end
-
-    test "validates invalid port", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "_http._tcp",
-          "port" => "99999",
-          "addresses" => "",
-          "txt" => ""
-        })
-
-      assert html =~ "Port must be a number between 1 and 65535"
-    end
-
-    test "validates empty port", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "_http._tcp",
-          "port" => "",
-          "addresses" => "",
-          "txt" => ""
-        })
-
-      assert html =~ "Port must be a number between 1 and 65535"
-    end
-
-    test "validates invalid IP address", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "_http._tcp",
-          "port" => "8080",
-          "addresses" => "not-an-ip",
-          "txt" => ""
-        })
-
-      assert html =~ "Invalid IP address"
-    end
-
-    test "accepts valid form data without errors", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "_http._tcp",
-          "port" => "8080",
-          "addresses" => "192.168.1.100",
-          "txt" => "version=1.0"
-        })
-
-      refute html =~ "text-error"
-    end
-
-    test "accepts valid IPv6 addresses", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_change(view, "validate_service", %{
-          "name" => "My Service",
-          "type" => "_http._tcp",
-          "port" => "8080",
-          "addresses" => "::1",
-          "txt" => ""
-        })
-
-      refute html =~ "Invalid IP address"
-    end
+    assert html =~ "Service registered"
+    command = List.last(request_envelopes())
+    assert command.operation == "server.mdns.services.register"
+    assert command.expected_revision == nil
+    assert command.payload == Map.delete(resource, "enabled")
   end
 
-  # ============================================================================
-  # Unit Tests for validate_service_params/1
-  # ============================================================================
+  test "service update and delete keep exact per-item CAS", %{conn: conn} do
+    service = service("alpha-printer", true)
+    :ok = TestManagementTransport.script_request([list_result([service])])
+    {:ok, view, _html} = live(conn, "/server/server-a/mdns/services")
+
+    assert render_click(view, "show_edit_form", %{"id" => service["service_id"]}) =~
+             "Edit Service"
+
+    updated = %{service | "service_port" => 9_100}
+    assert {:ok, updated_revision} = Digest.calculate(updated)
+
+    :ok =
+      TestManagementTransport.script_request([
+        {:ok,
+         %{
+           "resource_type" => "mdns_service",
+           "resource_id" => service["service_id"],
+           "revision" => updated_revision,
+           "resource" => updated
+         }}
+      ])
+
+    assert render_submit(view, "save_service", %{
+             "name" => "alpha-printer",
+             "type" => "_ipp._tcp",
+             "port" => "9100",
+             "txt" => "note=office\nroom=north"
+           }) =~ "Service updated"
+
+    update = List.last(request_envelopes())
+    assert update.operation == "server.mdns.services.update"
+    assert {:ok, initial_revision} = Digest.calculate(service)
+    assert update.expected_revision == initial_revision
+    assert update.payload == Map.delete(updated, "enabled")
+    assert is_binary(update.idempotency_key)
+
+    :ok =
+      TestManagementTransport.script_request([
+        {:ok,
+         %{
+           "resource_type" => "mdns_service",
+           "resource_id" => service["service_id"],
+           "revision" => updated_revision,
+           "resource_ref" => %{"service_id" => service["service_id"]}
+         }}
+      ])
+
+    assert render_click(view, "delete_service", %{"id" => service["service_id"]}) =~
+             "Service deleted"
+
+    delete = List.last(request_envelopes())
+    assert delete.operation == "server.mdns.services.delete"
+    assert delete.expected_revision == updated_revision
+    assert delete.payload == %{"service_id" => service["service_id"]}
+    assert is_binary(delete.idempotency_key)
+  end
+
+  test "overview and discovery query only the selected Server and keep links scoped", %{
+    conn: conn
+  } do
+    :ok =
+      TestManagementTransport.script_request([
+        list_result([service("alpha-printer", true)]),
+        list_result([discovery("alpha-printer")]),
+        {:ok, %{"entries" => [cache_entry("alpha-printer.local")]}}
+      ])
+
+    {:ok, overview, html} = live(conn, "/server/server-a/mdns")
+    assert html =~ "Alpha Server"
+    assert html =~ "1 registered"
+
+    for path <- ~w(services discovery monitor) do
+      assert has_element?(overview, "a[href='/server/server-a/mdns/#{path}']")
+    end
+
+    :ok = TestManagementTransport.script_request([list_result([discovery("alpha-printer")])])
+    {:ok, discovery_view, html} = live(conn, "/server/server-a/mdns/discovery")
+    assert html =~ "alpha-printer"
+    assert html =~ "192.0.2.10"
+    assert has_element?(discovery_view, "#mdns-discovery")
+    assert Enum.all?(request_envelopes(), &(&1.target_id == "server-a"))
+  end
+
+  test "monitor uses the typed query log and cache clear hashes the exact cache object", %{
+    conn: conn
+  } do
+    cache = [cache_entry("printer.local")]
+
+    :ok =
+      TestManagementTransport.script_request([
+        list_result([
+          %{
+            "query_id" => "query-1",
+            "query_name" => "printer.local",
+            "record_type" => "PTR",
+            "source_address" => "192.0.2.44",
+            "source_port" => 5353,
+            "answered" => true,
+            "occurred_at" => @observed_at
+          }
+        ]),
+        {:ok, %{"entries" => cache}}
+      ])
+
+    {:ok, view, html} = live(conn, "/server/server-a/mdns/monitor")
+    assert html =~ "printer.local"
+    assert html =~ "192.0.2.44"
+
+    :ok = TestManagementTransport.script_request([{:ok, %{"cleared_entries" => 1}}])
+    html = render_click(view, "clear_cache")
+    assert html =~ "Cache cleared"
+
+    command = List.last(request_envelopes())
+    assert command.operation == "server.mdns.cache.clear"
+    assert command.payload == %{}
+    assert {:ok, expected_revision} = Digest.calculate(%{"entries" => cache})
+    assert command.expected_revision == expected_revision
+  end
+
+  test "offline snapshots render observation time and never dispatch mDNS commands", %{conn: conn} do
+    service = service("cached-printer", true)
+    :ok = TestManagementTransport.script_request([list_result([service])])
+    {:ok, _online, _html} = live(conn, "/server/server-a/mdns/services")
+    request_count = length(request_envelopes())
+
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
+
+    {:ok, offline, html} = live(conn, "/server/server-a/mdns/services")
+    assert html =~ "Offline cached snapshot"
+    assert html =~ "cached-printer"
+    assert has_element?(offline, "#mdns-services button[disabled]")
+    assert length(request_envelopes()) == request_count
+
+    html = render_click(offline, "toggle_service", %{"id" => service["service_id"]})
+    assert html =~ "selected Server is offline"
+    assert length(request_envelopes()) == request_count
+  end
+
+  test "overview follows selected Server connection broadcasts only", %{conn: conn} do
+    :ok = TestManagementTransport.script_request(overview_responses("alpha-printer"))
+    {:ok, view, _html} = live(conn, "/server/server-a/mdns")
+    request_count = length(request_envelopes())
+
+    broadcast_server("server-b", :offline)
+    assert render(view) =~ "1 registered"
+    assert length(request_envelopes()) == request_count
+
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
+    broadcast_server("server-a", :offline)
+    assert render(view) =~ "Offline cached snapshot"
+
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :online)
+
+    :ok =
+      TestManagementTransport.script_request([
+        list_result([service("one", true), service("two", true)]),
+        list_result([discovery("one"), discovery("two")]),
+        {:ok, %{"entries" => [cache_entry("one.local"), cache_entry("two.local")]}}
+      ])
+
+    broadcast_server("server-a", :online)
+    html = render(view)
+    assert html =~ "2 registered"
+    assert html =~ "2 discovered"
+    assert html =~ "2 cached"
+    refute html =~ "Offline cached snapshot"
+  end
+
+  test "discovery follows selected Server connection broadcasts only", %{conn: conn} do
+    :ok = TestManagementTransport.script_request([list_result([discovery("alpha-printer")])])
+    {:ok, view, _html} = live(conn, "/server/server-a/mdns/discovery")
+    request_count = length(request_envelopes())
+
+    broadcast_server("server-b", :offline)
+    assert render(view) =~ "alpha-printer"
+    assert length(request_envelopes()) == request_count
+
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
+    broadcast_server("server-a", :offline)
+    assert render(view) =~ "Offline cached snapshot"
+
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :online)
+    :ok = TestManagementTransport.script_request([list_result([discovery("reconnected")])])
+    broadcast_server("server-a", :online)
+
+    html = render(view)
+    assert html =~ "reconnected"
+    refute html =~ "alpha-printer"
+    refute html =~ "Offline cached snapshot"
+  end
+
+  test "services follow selected Server broadcasts and toggle controls with connectivity", %{
+    conn: conn
+  } do
+    :ok = TestManagementTransport.script_request([list_result([service("alpha-printer", true)])])
+    {:ok, view, _html} = live(conn, "/server/server-a/mdns/services")
+    request_count = length(request_envelopes())
+
+    refute has_element?(view, "button[phx-click='toggle_service'][disabled]")
+    broadcast_server("server-b", :offline)
+    assert render(view) =~ "alpha-printer"
+    assert length(request_envelopes()) == request_count
+
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
+    broadcast_server("server-a", :offline)
+    assert has_element?(view, "button[phx-click='toggle_service'][disabled]")
+
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :online)
+    :ok = TestManagementTransport.script_request([list_result([service("reconnected", true)])])
+    broadcast_server("server-a", :online)
+
+    html = render(view)
+    assert html =~ "reconnected"
+    refute html =~ "alpha-printer"
+    refute has_element?(view, "button[phx-click='toggle_service'][disabled]")
+  end
+
+  test "monitor follows selected Server broadcasts and toggles cache controls with connectivity",
+       %{
+         conn: conn
+       } do
+    :ok =
+      TestManagementTransport.script_request([
+        list_result([monitor_query("alpha.local")]),
+        {:ok, %{"entries" => [cache_entry("alpha.local")]}}
+      ])
+
+    {:ok, view, _html} = live(conn, "/server/server-a/mdns/monitor")
+    request_count = length(request_envelopes())
+
+    refute has_element?(view, "button[phx-click='clear_cache'][disabled]")
+    broadcast_server("server-b", :offline)
+    assert render(view) =~ "alpha.local"
+    assert length(request_envelopes()) == request_count
+
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
+    broadcast_server("server-a", :offline)
+    assert has_element?(view, "button[phx-click='clear_cache'][disabled]")
+
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :online)
+
+    :ok =
+      TestManagementTransport.script_request([
+        list_result([monitor_query("reconnected.local")]),
+        {:ok, %{"entries" => [cache_entry("reconnected.local")]}}
+      ])
+
+    broadcast_server("server-a", :online)
+
+    html = render(view)
+    assert html =~ "reconnected.local"
+    refute html =~ "alpha.local"
+    refute has_element?(view, "button[phx-click='clear_cache'][disabled]")
+  end
 
   describe "validate_service_params/1" do
-    test "returns empty map for valid params" do
-      params = %{
-        "name" => "Test",
-        "type" => "_http._tcp",
-        "port" => "8080",
-        "addresses" => ""
-      }
-
-      assert ServicesLive.validate_service_params(params) == %{}
+    test "accepts canonical service data" do
+      assert ServicesLive.validate_service_params(%{
+               "name" => "printer",
+               "type" => "_ipp._tcp",
+               "port" => "631",
+               "txt" => "note=office"
+             }) == %{}
     end
 
-    test "returns error for missing name" do
-      params = %{"name" => "", "type" => "_http._tcp", "port" => "80", "addresses" => ""}
-      errors = ServicesLive.validate_service_params(params)
-      assert errors[:name] == "Service name is required"
-    end
-
-    test "returns error for invalid type format" do
-      params = %{"name" => "Svc", "type" => "bad-type", "port" => "80", "addresses" => ""}
-      errors = ServicesLive.validate_service_params(params)
-      assert errors[:type] =~ "_service._tcp"
-    end
-
-    test "accepts _udp service types" do
-      params = %{"name" => "Svc", "type" => "_dns._udp", "port" => "53", "addresses" => ""}
-      assert ServicesLive.validate_service_params(params) == %{}
-    end
-
-    test "returns error for port 0" do
-      params = %{"name" => "Svc", "type" => "_http._tcp", "port" => "0", "addresses" => ""}
-      errors = ServicesLive.validate_service_params(params)
-      assert errors[:port] =~ "Port must be"
-    end
-
-    test "returns error for port 70000" do
-      params = %{"name" => "Svc", "type" => "_http._tcp", "port" => "70000", "addresses" => ""}
-      errors = ServicesLive.validate_service_params(params)
-      assert errors[:port] =~ "Port must be"
-    end
-
-    test "returns error for non-numeric port" do
-      params = %{"name" => "Svc", "type" => "_http._tcp", "port" => "abc", "addresses" => ""}
-      errors = ServicesLive.validate_service_params(params)
-      assert errors[:port] =~ "Port must be"
-    end
-
-    test "returns error for invalid IP in addresses" do
-      params = %{
-        "name" => "Svc",
-        "type" => "_http._tcp",
-        "port" => "80",
-        "addresses" => "192.168.1.1\nnot-valid"
-      }
-
-      errors = ServicesLive.validate_service_params(params)
-      assert errors[:addresses] =~ "Invalid IP address: not-valid"
-    end
-
-    test "accepts empty addresses" do
-      params = %{"name" => "Svc", "type" => "_http._tcp", "port" => "80", "addresses" => ""}
-      assert ServicesLive.validate_service_params(params) == %{}
-    end
-
-    test "accepts valid mixed IPv4 and IPv6" do
-      params = %{
-        "name" => "Svc",
-        "type" => "_http._tcp",
-        "port" => "80",
-        "addresses" => "192.168.1.1\n::1\nfe80::1"
-      }
-
-      assert ServicesLive.validate_service_params(params) == %{}
-    end
-  end
-
-  # ============================================================================
-  # Filter Events
-  # ============================================================================
-
-  describe "mDNS Services /mdns/services filter events" do
-    test "filter all shows all services tab active", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "filter", %{"filter" => "all"})
-      assert html =~ "Registered Services"
-    end
-
-    test "filter enabled shows enabled tab", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "filter", %{"filter" => "enabled"})
-      assert html =~ "Registered Services"
-    end
-
-    test "filter with invalid value defaults to all", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "filter", %{"filter" => "evil"})
-      assert html =~ "Registered Services"
-    end
-  end
-
-  # ============================================================================
-  # Service CRUD Event Handlers
-  # ============================================================================
-
-  describe "mDNS Services /mdns/services CRUD events" do
-    test "toggle_service handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "toggle_service", %{"id" => "nonexistent-service"})
-      # Should show error flash since mDNS is not running
-      assert html =~ "Failed to toggle service" or html =~ "Registered Services"
-    end
-
-    test "delete_service handles error gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "delete_service", %{"id" => "nonexistent-service"})
-      # Should show error flash since mDNS is not running
-      assert html =~ "Failed to delete service" or html =~ "Registered Services"
-    end
-
-    test "show_edit_form opens form in edit mode", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      html = render_click(view, "show_edit_form", %{"id" => "test-service"})
-      # Form should be visible (edit mode, service may be nil since mDNS not running)
-      assert html =~ "Edit Service" or html =~ "Service Name"
-    end
-
-    test "save_service with validation errors shows errors", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_submit(view, "save_service", %{
+    test "rejects missing names, invalid types, ports, and TXT rows" do
+      errors =
+        ServicesLive.validate_service_params(%{
           "name" => "",
-          "type" => "",
-          "port" => "",
-          "addresses" => "",
-          "txt" => "",
-          "enabled" => "true"
+          "type" => "ipp",
+          "port" => "70000",
+          "txt" => "missing-separator"
         })
 
-      assert html =~ "Service name is required"
-      assert html =~ "Service type is required"
-    end
-
-    test "save_service with valid params handles service unavailable", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "show_new_form")
-
-      html =
-        render_submit(view, "save_service", %{
-          "name" => "Test Service",
-          "type" => "_http._tcp",
-          "port" => "8080",
-          "addresses" => "",
-          "txt" => "",
-          "enabled" => "true"
-        })
-
-      # mDNS is not running so register_service will fail
-      assert html =~ "Failed to save service" or html =~ "Registered Services"
+      assert errors.name == "Service name is required"
+      assert errors.type =~ "_service._tcp"
+      assert errors.port =~ "between 1 and 65535"
+      assert errors.txt =~ "key=value"
     end
   end
 
-  # ============================================================================
-  # Export CSV
-  # ============================================================================
-
-  describe "mDNS Services /mdns/services CSV export" do
-    test "export_csv event does not crash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/server/mdns/services")
-      render_click(view, "export_csv")
-      assert render(view) =~ "Registered Services"
-    end
+  defp service(name, enabled) do
+    %{
+      "service_id" => "#{name}._ipp._tcp.local",
+      "name" => name,
+      "service_type" => "_ipp._tcp",
+      "service_port" => 631,
+      "txt" => [
+        %{"key" => "note", "value" => "office"},
+        %{"key" => "room", "value" => "north"}
+      ],
+      "enabled" => enabled
+    }
   end
+
+  defp discovery(name) do
+    %{
+      "name" => "#{name}._ipp._tcp.local",
+      "service_type" => "_ipp._tcp",
+      "address" => "192.0.2.10"
+    }
+  end
+
+  defp cache_entry(name), do: %{"name" => name, "type" => "A", "values" => ["192.0.2.10"]}
+
+  defp monitor_query(name) do
+    %{
+      "query_id" => name,
+      "query_name" => name,
+      "record_type" => "A",
+      "source_address" => "192.0.2.44",
+      "source_port" => 5353,
+      "answered" => true,
+      "occurred_at" => @observed_at
+    }
+  end
+
+  defp overview_responses(name) do
+    [
+      list_result([service(name, true)]),
+      list_result([discovery(name)]),
+      {:ok, %{"entries" => [cache_entry("#{name}.local")]}}
+    ]
+  end
+
+  defp list_result(items) do
+    {:ok, %{"items" => items, "revision" => @revision, "observed_at" => @observed_at}}
+  end
+
+  defp target_operations, do: Enum.map(request_envelopes(), &{&1.target_id, &1.operation})
+
+  defp request_envelopes do
+    for {:request, envelope, _timeout} <- TestManagementTransport.recorded(), do: envelope
+  end
+
+  defp broadcast_server(server_id, state) do
+    Phoenix.PubSub.broadcast(
+      YellowDog.Console.PubSub,
+      "management:server:#{server_id}",
+      {:server_connection, state, %{server_id: server_id}}
+    )
+  end
+
+  defp register_server(id, name, status) do
+    assert {:ok, _server} =
+             ManagementCore.register_server(%{
+               id: id,
+               name: name,
+               profile: :full,
+               status: status
+             })
+  end
+
+  defp restore_env(key, {:ok, value}),
+    do: Application.put_env(:yellow_dog_management_core, key, value)
+
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
 end

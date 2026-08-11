@@ -1,234 +1,98 @@
 defmodule YellowDog.Console.IdentityLive.TokensLive do
+  @moduledoc "Read-only management view of Identity tokens for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  alias YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.IdentityLive.ManagementComponents
+  alias YellowDog.Console.IdentityLive.ManagementSupport
+  alias YellowDog.Console.Layouts
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     socket
-     |> assign(:page_title, "Provisioning Tokens")
-     |> assign(:show_create, false)
-     |> assign(:new_token_raw, nil)
-     |> assign(
-       :form,
-       to_form(%{"hostname_pattern" => "*", "max_uses" => "1", "ttl_hours" => "24", "role" => ""})
-     )
-     |> load_tokens()}
+     assign(socket,
+       page_title: "Identity Tokens",
+       subscribed_server_id: nil,
+       tokens: [],
+       management_error: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_event("toggle_create", _params, socket) do
-    {:noreply, assign(socket, :show_create, !socket.assigns.show_create)}
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_tokens(socket, server_id), else: socket)}
   end
 
-  def handle_event(
-        "create_token",
-        %{
-          "hostname_pattern" => pattern,
-          "max_uses" => max_uses,
-          "ttl_hours" => ttl_hours,
-          "role" => role
-        },
-        socket
-      ) do
-    params = %{
-      hostname_pattern: pattern,
-      max_uses: String.to_integer(max_uses),
-      ttl_seconds: String.to_integer(ttl_hours) * 3600,
-      role: if(role == "", do: nil, else: role),
-      created_by: "console-operator"
-    }
-
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.create_token(params) end,
-        {:error, :unavailable}
-      )
-
-    case result do
-      {:ok, _token, raw_token} ->
-        {:noreply,
-         socket
-         |> assign(:new_token_raw, raw_token)
-         |> load_tokens()
-         |> put_flash(:info, "Token created successfully")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to create token: #{inspect(reason)}")}
-    end
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_tokens(server_id)}
   end
 
-  def handle_event("revoke_token", %{"id" => id}, socket) do
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke_token(id) end,
-        {:error, :unavailable}
-      )
-
-    case result do
-      :ok -> {:noreply, load_tokens(socket) |> put_flash(:info, "Token revoked")}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to revoke token")}
-    end
-  end
-
-  def handle_event("dismiss_token", _params, socket) do
-    {:noreply, assign(socket, :new_token_raw, nil)}
-  end
-
-  def handle_event("refresh", _params, socket) do
-    {:noreply, load_tokens(socket)}
-  end
-
-  defp load_tokens(socket) do
-    tokens =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn ->
-          YellowDogIdentity.list_tokens()
-        end,
-        []
-      )
-
-    assign(socket, :tokens, tokens)
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h1 class="text-2xl font-bold">Provisioning Tokens</h1>
-          <div class="flex gap-2">
-            <button class="btn btn-sm btn-primary" phx-click="toggle_create">
-              + New Token
-            </button>
-            <button class="btn btn-sm btn-ghost" phx-click="refresh">
-              ↻
-            </button>
-          </div>
-        </div>
+      <div id="identity-tokens" class="space-y-6">
+        <ManagementComponents.page_header
+          title="Identity Tokens"
+          subtitle="Read-only management owner"
+          server={@selected_server}
+          online?={@service_online?}
+          back={ServicePaths.server_path(@selected_server.id, :identity)}
+        />
 
-        <div :if={@new_token_raw} class="alert alert-success">
-          <div>
-            <p class="font-bold">Token created! Copy it now — it won't be shown again.</p>
-            <code class="block mt-2 p-2 bg-surface-container-high rounded text-sm break-all">
-              {@new_token_raw}
-            </code>
-          </div>
-          <button class="btn btn-sm btn-ghost" phx-click="dismiss_token">Dismiss</button>
-        </div>
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
 
-        <div :if={@show_create} class="card bg-surface shadow">
-          <div class="card-body">
-            <h2 class="card-title">Create Provisioning Token</h2>
-            <form phx-submit="create_token" class="space-y-4">
-              <div class="form-group">
-                <label class="form-label">Hostname Pattern</label>
-                <input
-                  type="text"
-                  name="hostname_pattern"
-                  value={@form["hostname_pattern"].value}
-                  class="input"
-                  placeholder="node-*"
-                />
-              </div>
-              <div class="grid grid-cols-2 gap-4">
-                <div class="form-group">
-                  <label class="form-label">Max Uses</label>
-                  <input
-                    type="number"
-                    name="max_uses"
-                    value={@form["max_uses"].value}
-                    min="1"
-                    class="input"
-                  />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">TTL (hours)</label>
-                  <input
-                    type="number"
-                    name="ttl_hours"
-                    value={@form["ttl_hours"].value}
-                    min="1"
-                    class="input"
-                  />
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Role (optional)</label>
-                <input
-                  type="text"
-                  name="role"
-                  value={@form["role"].value}
-                  class="input"
-                  placeholder="worker"
-                />
-              </div>
-              <button type="submit" class="btn btn-primary">Create Token</button>
-            </form>
+        <.card>
+          <div :if={@tokens == [] and is_nil(@management_error)} class="text-on-surface-variant">
+            No tokens in this Server snapshot
           </div>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="table table-striped w-full">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Pattern</th>
-                <th>Role</th>
-                <th>Uses</th>
-                <th>Expires</th>
-                <th>Created</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={token <- @tokens} class="hover">
-                <td class="font-mono text-xs">{String.slice(token.id, 0, 8)}</td>
-                <td class="font-mono">{token.hostname_pattern}</td>
-                <td>{token.role || "-"}</td>
-                <td>{token.use_count}/{token.max_uses}</td>
-                <td>{format_time(token.expires_at)}</td>
-                <td class="text-sm">{format_time(token.created_at)}</td>
-                <td>
-                  <span class={
-                    if(YellowDogIdentity.Token.valid?(token),
-                      do: "badge badge-success",
-                      else: "badge badge-error"
-                    )
-                  }>
-                    {if YellowDogIdentity.Token.valid?(token), do: "Active", else: "Expired"}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    class="btn btn-xs btn-error btn-outline"
-                    phx-click="revoke_token"
-                    phx-value-id={token.id}
-                  >
-                    Revoke
-                  </button>
-                </td>
-              </tr>
-              <tr :if={@tokens == []}>
-                <td colspan="8" class="text-center text-on-surface-variant py-8">
-                  No provisioning tokens
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <div
+            :for={token <- @tokens}
+            class="flex items-center justify-between border-b border-outline-variant py-3 last:border-0"
+          >
+            <div>
+              <div class="font-semibold">{token["label"]}</div>
+              <div class="font-mono text-sm text-on-surface-variant">{token["token_id"]}</div>
+            </div>
+            <.badge color={state_color(token["state"])}>{token["state"]}</.badge>
+          </div>
+        </.card>
       </div>
     </Layouts.app>
     """
   end
 
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  defp format_time(_), do: "-"
+  defp load_tokens(socket, server_id) do
+    result = ServerManagement.identity_tokens_list(server_id)
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Identity Tokens",
+      tokens: ManagementSupport.items(result),
+      management_error: ManagementSupport.error(result),
+      cached_snapshot?: ManagementSupport.cached?(result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(result, socket.assigns.selected_server.last_seen_at)
+    )
+  end
+
+  defp state_color("active"), do: "success"
+  defp state_color("revoked"), do: "error"
+  defp state_color("expired"), do: "warning"
+  defp state_color(_state), do: "ghost"
 end

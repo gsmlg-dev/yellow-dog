@@ -1,159 +1,99 @@
 defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
-  @moduledoc """
-  LiveView for browsing discovered services on the local network.
-  """
+  @moduledoc "Management-backed mDNS discovery for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_expiration: 1, format_time_ago: 1]
-  import YellowDog.Console.ServiceHelper
-  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
+  alias YellowDog.Console.ManagementResult
+  alias YellowDog.Console.MdnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "mdns:monitor")
-      # Refresh discovered services every 10 seconds
-      :timer.send_interval(10_000, self(), :refresh)
-    end
-
     {:ok,
      assign(socket,
-       page_title: "Network Discovery",
-       service_running: service_running?(YellowDog.Mdns),
-       services: list_discovered_services(),
+       page_title: "mDNS Discovery",
+       subscribed_server_id: nil,
+       services: [],
        search: "",
        type_filter: "all",
-       selected_service: nil
+       selected_service: nil,
+       management_error: nil,
+       cached_observed_at: nil
      )}
   end
 
   @impl true
-  def handle_event("search", %{"search" => search}, socket) do
-    {:noreply,
-     socket
-     |> assign(:search, search)
-     |> assign(:services, filter_services(search, socket.assigns.type_filter))}
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_discovery(socket), else: socket)}
   end
 
   @impl true
-  def handle_event("filter_by_type", %{"type" => type}, socket) do
-    {:noreply,
-     socket
-     |> assign(:type_filter, type)
-     |> assign(:services, filter_services(socket.assigns.search, type))}
-  end
+  def handle_event("refresh", _params, socket), do: {:noreply, load_discovery(socket)}
 
-  @impl true
-  def handle_event("view_details", %{"id" => service_id}, socket) do
-    service =
-      safe_call(
-        YellowDog.Mdns,
-        fn -> YellowDog.Mdns.get_discovered_service(service_id) end,
-        nil
-      )
+  def handle_event("search", %{"search" => search}, socket),
+    do: {:noreply, assign(socket, :search, search)}
 
+  def handle_event("filter_by_type", %{"type" => type}, socket),
+    do: {:noreply, assign(socket, :type_filter, type)}
+
+  def handle_event("view_details", %{"name" => name}, socket) do
+    service = Enum.find(socket.assigns.services, &(&1["name"] == name))
     {:noreply, assign(socket, :selected_service, service)}
   end
 
-  @impl true
-  def handle_event("close_details", _params, socket) do
-    {:noreply, assign(socket, :selected_service, nil)}
-  end
+  def handle_event("close_details", _params, socket),
+    do: {:noreply, assign(socket, :selected_service, nil)}
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("export_csv", _params, socket) do
-    services = socket.assigns.services
-    csv = build_csv(services)
-    filename = "mdns_discovery_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
-
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
-  end
-
-  @impl true
-  def handle_info(:refresh, socket) do
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
-     assign(socket, :services, filter_services(socket.assigns.search, socket.assigns.type_filter))}
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_discovery()}
   end
 
-  @impl true
-  def handle_info(:network_update, socket) do
-    {:noreply,
-     assign(socket, :services, filter_services(socket.assigns.search, socket.assigns.type_filter))}
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp load_discovery(socket) do
+    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)
+
+    case result do
+      %ManagementResult{status: :ok, value: %{"items" => services}} when is_list(services) ->
+        assign(socket,
+          page_title:
+            "#{socket.assigns.selected_server.name || socket.assigns.selected_server.id} — mDNS Discovery",
+          services: services,
+          management_error: nil,
+          cached_observed_at: result.observed_at
+        )
+
+      %ManagementResult{status: :error} ->
+        assign(socket, services: [], management_error: result)
+    end
   end
 
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:monitor")
-    :ok
-  end
-
-  defp list_discovered_services do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_discovered_services() end, [])
-  end
-
-  defp filter_services(search, type_filter) do
-    services = list_discovered_services()
-
-    services
-    |> filter_by_search(search)
-    |> filter_by_type(type_filter)
-  end
-
-  defp filter_by_search(services, ""), do: services
-
-  defp filter_by_search(services, search) do
-    search_lower = String.downcase(search)
+  defp filtered_services(services, search, type_filter) do
+    term = String.downcase(search)
 
     Enum.filter(services, fn service ->
-      downcase_contains?(service.name, search_lower) ||
-        downcase_contains?(service.type, search_lower)
+      matches_search =
+        term == "" or String.contains?(String.downcase(service["name"] || ""), term) or
+          String.contains?(String.downcase(service["address"] || ""), term)
+
+      matches_type = type_filter == "all" or service["service_type"] == type_filter
+      matches_search and matches_type
     end)
   end
 
-  defp filter_by_type(services, "all"), do: services
-
-  defp filter_by_type(services, type) do
-    Enum.filter(services, fn service -> service.type == type end)
-  end
-
-  defp get_service_types(services) do
+  defp service_types(services) do
     services
-    |> Enum.map(& &1.type)
+    |> Enum.map(& &1["service_type"])
+    |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
     |> Enum.sort()
-  end
-
-  defp count_unique_hosts(services) do
-    for(s <- services, s.host != nil, into: MapSet.new(), do: s.host)
-    |> MapSet.size()
-  end
-
-  defp get_most_recent_update(services) do
-    Enum.reduce(services, 0, fn s, acc -> max(s.last_seen, acc) end)
-  end
-
-  defp build_csv(services) do
-    header =
-      "Service Name,Type,Host,Port,IP Addresses,TXT Records,Last Seen\r\n"
-
-    rows =
-      Enum.map_join(services, "\r\n", fn service ->
-        [
-          csv_escape(service.name),
-          csv_escape(service.type),
-          csv_escape(service.host || ""),
-          csv_escape(to_string(service.port || "")),
-          csv_escape(format_addresses_for_csv(service.addresses)),
-          csv_escape(format_txt_for_csv(service.txt)),
-          csv_escape(format_expiration(service.last_seen))
-        ]
-        |> Enum.join(",")
-      end)
-
-    header <> rows
   end
 end

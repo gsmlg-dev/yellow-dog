@@ -8,6 +8,8 @@ defmodule YellowDog.Console.ManagementLive.Data do
   def list_server_profiles, do: facade_list(:list_server_profiles)
   def list_netman_profiles, do: facade_list(:list_netman_profiles)
   def list_events, do: facade_list(:list_events)
+  def list_config_versions, do: facade_list(:list_config_versions)
+  def list_command_outcomes, do: facade_list(:list_command_outcomes)
 
   defp facade_list(function) do
     if Code.ensure_loaded?(@facade) and function_exported?(@facade, function, 0) do

@@ -80,7 +80,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       desired = %DesiredState{connections: connections}
@@ -116,7 +116,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
                   dns: []
                 }
 
-                Map.put(acc, profile_id, conn)
+                Map.put(acc, {profile_id, iface}, conn)
               end)
 
             %DesiredState{connections: connections}
@@ -149,7 +149,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       desired = %DesiredState{connections: connections}
@@ -214,7 +214,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       desired = %DesiredState{connections: connections}
@@ -266,7 +266,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: dns
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       links =
@@ -308,7 +308,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       profile_id = "profile-#{iface}"
 
       connections = %{
-        profile_id => %{
+        {profile_id, iface} => %{
           profile_id: profile_id,
           interface: iface,
           ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
@@ -376,7 +376,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: dns_mode
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       links =
@@ -425,7 +425,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       desired = %DesiredState{connections: connections}
@@ -463,7 +463,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       links =
@@ -559,14 +559,14 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       desired = %DesiredState{connections: connections}
       diffs = ReconciliationEngine.diff(desired, observed)
 
       for diff <- diffs, diff.action == :activate_connection do
-        assert Map.has_key?(desired.connections, diff.params.profile_id),
+        assert Map.has_key?(desired.connections, {diff.params.profile_id, diff.interface}),
                "Diff profile_id #{diff.params.profile_id} not in desired connections"
       end
     end
@@ -655,7 +655,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
             dns: []
           }
 
-          Map.put(acc, profile_id, conn)
+          Map.put(acc, {profile_id, iface}, conn)
         end)
 
       desired = %DesiredState{connections: connections}

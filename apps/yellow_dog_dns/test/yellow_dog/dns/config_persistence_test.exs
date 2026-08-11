@@ -552,6 +552,32 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
 
       DynamicSupervisor.stop(vm)
     end
+
+    test "preserves control-representable ACLs in the durable owner snapshot" do
+      ensure_registry(YellowDog.Dns.ViewRegistry)
+
+      vm_name = :"test_vm_acl_#{:erlang.unique_integer([:positive])}"
+      {:ok, vm} = YellowDog.Dns.ViewManager.start_link(name: vm_name)
+      view_name = "collect_acl_#{:erlang.unique_integer([:positive])}"
+
+      {:ok, _pid} =
+        YellowDog.Dns.ViewManager.start_view(vm, %{
+          name: view_name,
+          priority: 12,
+          acl: [{:allow, {10, 1, 2, 3}, 8}],
+          zones: [],
+          recursion_enabled: true
+        })
+
+      assert [config] = ConfigPersistence.collect_views(vm)
+      assert config.name == view_name
+      assert config.match_clients == nil
+      assert config.recursion == true
+      assert config.recursion_enabled == true
+      assert config.acl == [%{action: "allow", network: "10.0.0.0/8"}]
+
+      DynamicSupervisor.stop(vm)
+    end
   end
 
   describe "collect_zones/1" do

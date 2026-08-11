@@ -24,7 +24,11 @@ if management_token = System.get_env("YELLOW_DOG_MANAGEMENT_TOKEN") do
   config :yellow_dog_console, :management_token, management_token
 end
 
-if config_env() == :prod do
+console_runtime? =
+  not is_nil(System.get_env("PHX_SERVER")) or
+    System.get_env("RELEASE_NAME") not in ["yellow_dog_server", "yellow_dog_netman"]
+
+if config_env() == :prod and console_runtime? do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want
@@ -190,6 +194,16 @@ config :yellow_dog_server_agent,
     reconnect_max_ms: reconnect_env.("YELLOW_DOG_SERVER_RECONNECT_MAX_MS")
   ]
 
+config :yellow_dog_netman_agent,
+  runtime: [
+    management_url: trimmed_env.("YELLOW_DOG_NETMAN_MANAGEMENT_URL"),
+    management_token: trimmed_env.("YELLOW_DOG_NETMAN_MANAGEMENT_TOKEN"),
+    netman_id: trimmed_env.("YELLOW_DOG_NETMAN_ID"),
+    data_dir: trimmed_env.("YELLOW_DOG_NETMAN_AGENT_DATA_DIR"),
+    reconnect_initial_ms: reconnect_env.("YELLOW_DOG_NETMAN_RECONNECT_INITIAL_MS"),
+    reconnect_max_ms: reconnect_env.("YELLOW_DOG_NETMAN_RECONNECT_MAX_MS")
+  ]
+
 normalize_cluster_env = fn
   nil -> nil
   value -> value |> String.trim() |> String.downcase()
@@ -220,6 +234,14 @@ cluster_nodes =
   |> Enum.reject(&(&1 == ""))
 
 cluster_enabled_env = System.get_env("CONCORD_CLUSTERING")
+
+if concord_data_dir = trimmed_env.("CONCORD_DATA_DIR") do
+  ra_data_dir = Path.join(concord_data_dir, "ra")
+  File.mkdir_p!(ra_data_dir)
+
+  config :concord, data_dir: concord_data_dir
+  config :ra, data_dir: String.to_charlist(ra_data_dir)
+end
 
 configured_topologies =
   Application.get_env(:concord, :topologies) ||
@@ -277,24 +299,4 @@ end
 
 if socket_path = System.get_env("YELLOW_DOG_NETMAN_SOCKET") do
   config :yellow_dog_netman, :socket_path, socket_path
-end
-
-# Netman console WebSocket client
-if console_url = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_URL") do
-  console_config =
-    Application.get_env(:yellow_dog_netman, :console, [])
-    |> Keyword.merge(
-      enabled: true,
-      url: console_url,
-      token: System.get_env("YELLOW_DOG_NETMAN_CONSOLE_TOKEN", ""),
-      node_id: System.get_env("YELLOW_DOG_NETMAN_NODE_ID"),
-      hostname: System.get_env("YELLOW_DOG_NETMAN_HOSTNAME")
-    )
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-
-  config :yellow_dog_netman, :console, console_config
-end
-
-if netman_console_token = System.get_env("YELLOW_DOG_NETMAN_CONSOLE_TOKEN") do
-  config :yellow_dog_console, :netman_socket_token, netman_console_token
 end

@@ -3,835 +3,288 @@ defmodule YellowDog.Console.SettingsLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias YellowDog.Console.ConfigManager
-  alias YellowDog.Console.Settings.ConfigurationVersion
+  alias YellowDog.Console.TestManagementTransport
+  alias YellowDog.ManagementCore
 
   setup do
-    # Create temporary config file for testing
-    config_dir = System.tmp_dir!()
-    config_path = Path.join(config_dir, "test_config_#{:rand.uniform(100_000)}.toml")
+    previous =
+      Map.new([:data_dir, :transport_module, :request_timeout], fn key ->
+        {key, Application.fetch_env(:yellow_dog_management_core, key)}
+      end)
 
-    # Write default test configuration
-    default_config = """
-    [core]
-    dns = true
-    mdns = true
-    dhcpv4 = false
-    dhcpv6 = false
-    netboot = false
+    data_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "yellow-dog-server-settings-#{System.unique_integer([:positive, :monotonic])}"
+      )
 
-    [dns]
-    listen = "0.0.0.0"
-    port = 5353
+    Application.stop(:yellow_dog_management_core)
+    Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
+    Application.put_env(:yellow_dog_management_core, :transport_module, TestManagementTransport)
+    Application.put_env(:yellow_dog_management_core, :request_timeout, 50)
+    {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+    start_supervised!(TestManagementTransport)
 
-    [mdns]
-    listen = "0.0.0.0"
-    port = 5353
-    mode = "responder"
+    register_server("server-a", "Alpha Server", :online)
+    register_server("server-b", "Beta Server", :online)
+    :ok = TestManagementTransport.connect(:server, "server-a")
+    :ok = TestManagementTransport.connect(:server, "server-b")
 
-    [dhcpv4]
-    listen = "0.0.0.0"
-    port = 6767
+    assert {:ok, %{draft_revision: 1}} =
+             ManagementCore.put_server_config("server-a", 0, server_document("alpha.example"))
 
-    [dhcpv6]
-    listen = "::"
-    port = 5667
-
-    [netboot]
-    tftp_root = "/srv/netboot/tftp"
-    tftp_port = 69
-    default_profile = ""
-    """
-
-    File.write!(config_path, default_config)
-
-    # Configure test environment
-    Application.put_env(:yellow_dog_console, :config_path, config_path)
-
-    # Start ConfigurationVersion Agent if not already started
-    case Process.whereis(ConfigurationVersion) do
-      nil -> start_supervised!(ConfigurationVersion)
-      _pid -> :ok
-    end
+    assert {:ok, %{draft_revision: 1}} =
+             ManagementCore.put_server_config("server-b", 0, server_document("beta.example"))
 
     on_exit(fn ->
-      stop_service_if_running(:dns, YellowDog.Dns)
-
-      # Clean up config file and backups
-      File.rm_rf(config_dir)
+      Application.stop(:yellow_dog_management_core)
+      Enum.each(previous, fn {key, value} -> restore_env(key, value) end)
+      {:ok, _apps} = Application.ensure_all_started(:yellow_dog_management_core)
+      File.rm_rf(data_dir)
     end)
 
-    %{config_path: config_path}
+    :ok
   end
 
-  describe "SettingsLive mount" do
-    test "successfully mounts with valid configuration", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/server/settings")
+  test "reads the Management-owned draft for only the selected Server and scopes every tab", %{
+    conn: conn
+  } do
+    {:ok, view, html} = live(conn, "/server/server-a/settings/dns")
 
-      assert html =~ "Service Settings"
-      assert html =~ "Configure YellowDog network services"
-      assert has_element?(view, "a[href='/server/settings/dns']")
-      assert has_element?(view, "a[href='/server/settings/mdns']")
-      assert has_element?(view, "a[href='/server/settings/dhcpv4']")
-      assert has_element?(view, "a[href='/server/settings/dhcpv6']")
-      assert has_element?(view, "a[href='/server/settings/netboot']")
+    assert html =~ "Alpha Server"
+    assert html =~ "alpha.example"
+    refute has_element?(view, "#server-settings", "Beta Server")
+    assert html =~ "Management draft"
+    assert has_element?(view, "#settings-draft-form")
+    assert has_element?(view, "#settings-enabled")
+    assert has_element?(view, "#settings-hostname[value='alpha.example']")
+    refute has_element?(view, "#settings-entries-json")
+    refute html =~ "Managed configuration mutations are not enabled"
+
+    for service <- ~w(dns mdns dhcpv4 dhcpv6 netboot) do
+      assert has_element?(view, "a[href='/server/server-a/settings/#{service}']")
     end
 
-    test "displays current configuration version", %{conn: conn, config_path: config_path} do
-      version_info = ConfigurationVersion.get_version(config_path)
-      {:ok, _view, html} = live(conn, ~p"/server/settings")
-
-      assert html =~ "Config Version: #{version_info.version}"
-    end
-
-    test "loads DNS service configuration correctly", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Check DNS tab is active by default
-      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
-
-      # Verify DNS form fields are populated
-      assert has_element?(view, "input[name='service_configuration[listen]'][value='0.0.0.0']")
-      assert has_element?(view, "input[name='service_configuration[port]'][value='5353']")
-      assert has_element?(view, "input[name='service_configuration[enabled]'][checked]")
-    end
-
-    test "loads default config when file does not exist", %{conn: conn} do
-      # Set non-existent config path
-      Application.put_env(:yellow_dog_console, :config_path, "/nonexistent/config.toml")
-
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Page should load with default configuration values
-      rendered = render(view)
-      assert rendered =~ "Service Settings"
-      # Should show form with default values pre-populated
-      assert has_element?(view, "form")
-    end
+    assert TestManagementTransport.recorded() == []
   end
 
-  describe "SettingsLive tab navigation" do
-    test "switches between tabs via navigation", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
+  test "two selected Servers render distinct Settings state", %{conn: conn} do
+    {:ok, alpha, _html} = live(conn, "/server/server-a/settings/dns")
+    alpha_html = alpha |> element("#server-settings") |> render()
 
-      # Initially on DNS tab
-      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
+    {:ok, beta, _html} = live(conn, "/server/server-b/settings/dns")
+    beta_html = beta |> element("#server-settings") |> render()
 
-      # Navigate to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      assert has_element?(view, "a.tab.tab-active[href='/server/settings/mdns']")
-      refute has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
-
-      # Navigate to DHCPv4 tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/dhcpv4")
-
-      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dhcpv4']")
-
-      # Navigate back to DNS
-      {:ok, view, _html} = live(conn, ~p"/server/settings/dns")
-
-      assert has_element?(view, "a.tab.tab-active[href='/server/settings/dns']")
-    end
-
-    @tag :skip
-    test "preserves form state when switching tabs", %{conn: conn} do
-      # NOTE: This test is skipped because with URL-based navigation,
-      # each tab creates a new LiveView instance and form state is not preserved.
-      # Form state preservation would require saving to the server before switching tabs.
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Modify DNS configuration
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5454})
-      |> render_change()
-
-      # Navigate to mDNS tab
-      {:ok, _mdns_view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Navigate back to DNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/dns")
-
-      # Verify DNS form still has modified values
-      assert has_element?(view, "input[name='service_configuration[listen]'][value='127.0.0.1']")
-      assert has_element?(view, "input[name='service_configuration[port]'][value='5454']")
-    end
+    assert alpha_html =~ "alpha.example"
+    refute alpha_html =~ "beta.example"
+    assert beta_html =~ "beta.example"
+    refute beta_html =~ "alpha.example"
+    assert TestManagementTransport.recorded() == []
   end
 
-  describe "SettingsLive DNS configuration validation" do
-    test "validates listen address format", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Enter invalid IP address
-      html =
-        view
-        |> form("form", service_configuration: %{listen: "999.999.999.999", port: 53})
-        |> render_change()
-
-      assert html =~ "must be a valid IP address"
-      assert has_element?(view, "input.input-error[name='service_configuration[listen]']")
-    end
-
-    test "validates port range", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Enter port below range
-      html =
-        view
-        |> form("form", service_configuration: %{listen: "0.0.0.0", port: 0})
-        |> render_change()
-
-      assert html =~ "must be greater than 0"
-
-      # Enter port above range
-      html =
-        view
-        |> form("form", service_configuration: %{listen: "0.0.0.0", port: 99_999})
-        |> render_change()
-
-      assert html =~ "must be less than or equal to 65535"
-    end
-
-    test "disables save button when validation fails", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Enter invalid data
-      view
-      |> form("form", service_configuration: %{listen: "invalid", port: 53})
-      |> render_change()
-
-      # Save button should be disabled
-      assert has_element?(view, "button[type='submit'][disabled]")
-    end
-
-    test "enables save button when all fields are valid", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Enter valid data
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5353, enabled: true})
-      |> render_change()
-
-      # Save button should be enabled
-      refute has_element?(view, "button[type='submit'].btn-disabled")
-    end
-  end
-
-  describe "SettingsLive DNS configuration save" do
-    test "successfully saves valid DNS configuration", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Modify and save DNS configuration
-      html =
-        view
-        |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true})
-        |> render_submit()
-
-      # Verify flash message
-      assert html =~ "Configuration saved successfully"
-
-      # Verify configuration was persisted to file
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["dns"]["listen"] == "127.0.0.1"
-      assert config["dns"]["port"] == 5454
-      assert config["core"]["dns"] == true
-    end
-
-    test "creates backup before saving", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Save configuration
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5353, enabled: true})
-      |> render_submit()
-
-      # Verify backup was created
-      backup_dir = Path.dirname(config_path)
-      base_name = Path.basename(config_path)
-
-      {:ok, files} = File.ls(backup_dir)
-      backup_files = Enum.filter(files, &String.starts_with?(&1, "#{base_name}.backup."))
-
-      assert length(backup_files) > 0
-    end
-
-    test "increments version after successful save", %{conn: conn, config_path: config_path} do
-      initial_version = ConfigurationVersion.get_version(config_path).version
-
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Save configuration
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5353, enabled: true})
-      |> render_submit()
-
-      # Verify version was incremented
-      new_version = ConfigurationVersion.get_version(config_path).version
-      assert new_version == initial_version + 1
-    end
-
-    test "prevents save when validation errors exist", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Attempt to save invalid configuration
-      html =
-        view
-        |> form("form", service_configuration: %{listen: "invalid", port: 99_999, enabled: true})
-        |> render_submit()
-
-      # Verify error message
-      assert html =~ "Please fix validation errors before saving"
-    end
-  end
-
-  describe "SettingsLive apply changes" do
-    test "shows apply button when pending changes exist", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Save configuration (creates pending changes)
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true})
-      |> render_submit()
-
-      # Verify apply button appears with pending badge
-      assert has_element?(view, "[phx-click='apply_changes_dns']")
-      assert has_element?(view, ".badge", "Pending Changes")
-    end
-
-    test "hides apply button when no pending changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # No changes made
-      refute has_element?(view, "[phx-click='apply_changes_dns']")
-      assert has_element?(view, ".badge", "Saved")
-    end
-
-    test "applies changes and restarts service", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Save configuration
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true})
-      |> render_submit()
-
-      # Click apply changes
-      view
-      |> element("[phx-click='apply_changes_dns']")
-      |> render_click()
-
-      # Note: ServiceManager.apply_and_restart will fail in test environment
-      # because services aren't actually running. We're testing the UI flow.
-      # In real implementation, this would trigger service restart.
-
-      # Verify UI shows some feedback (either success or failure)
-      rendered = render(view)
-      # The message will be either success or failure depending on service state
-      assert rendered =~ "DNS" or rendered =~ "restart" or rendered =~ "service" or
-               rendered =~ "Configuration"
-    end
-  end
-
-  describe "SettingsLive optimistic locking conflict" do
-    test "detects concurrent modification and shows conflict modal", %{
-      conn: conn,
-      config_path: config_path
-    } do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Simulate external modification (another user/process)
-      {:ok, _config} = ConfigManager.load_config(config_path)
-
-      # Use the correct update format for ConfigManager
-      updates = %{"dns.port" => 9999}
-      ConfigManager.save_config(config_path, updates)
-      ConfigurationVersion.increment_version()
-
-      # Attempt to save from LiveView (should detect conflict)
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true})
-      |> render_submit()
-
-      # Verify conflict modal is shown
-      html = render(view)
-      assert html =~ "Configuration Conflict Detected"
-      assert html =~ "modified by another user"
-    end
-
-    test "reload button in conflict modal refreshes configuration", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Trigger conflict (simplified - in real test would need concurrent modification)
-      # For now, just test the reload functionality
-
-      html =
-        view
-        |> element("[phx-click='reload_config']")
-        |> render_click()
-
-      assert html =~ "Configuration reloaded from disk"
-    end
-  end
-
-  describe "SettingsLive configuration reload" do
-    test "reloads configuration from disk", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Externally modify configuration file
-      ConfigManager.save_config(config_path, %{"dns.port" => 7777})
-
-      # Reload configuration in LiveView
-      html =
-        view
-        |> element("[phx-click='reload_config']")
-        |> render_click()
-
-      # Verify new configuration is loaded
-      assert has_element?(view, "input[name='service_configuration[port]'][value='7777']")
-      assert html =~ "Configuration reloaded from disk"
-    end
-
-    test "clears pending changes on reload", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Make changes
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true})
-      |> render_submit()
-
-      # Verify pending changes badge
-      assert has_element?(view, ".badge", "Pending Changes")
-
-      # Reload configuration
-      view
-      |> element("[phx-click='reload_config']")
-      |> render_click()
-
-      # Verify pending changes cleared
-      assert has_element?(view, ".badge", "Saved")
-      refute has_element?(view, "[phx-click='apply_changes_dns']")
-    end
-  end
-
-  describe "SettingsLive DNS reload and modal events" do
-    test "dns_reload_all shows success or error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-      html = render_click(view, "dns_reload_all")
-      # DNS service isn't running, so we get an error
-      assert html =~ "DNS configuration reloaded" or html =~ "Failed to reload DNS"
-    end
-
-    test "dns_reload_views shows success or error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-      html = render_click(view, "dns_reload_views")
-      assert html =~ "DNS views reloaded" or html =~ "Failed to reload DNS views"
-    end
-
-    test "dns_reload_acls shows success or error flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-      html = render_click(view, "dns_reload_acls")
-      assert html =~ "DNS ACLs reloaded" or html =~ "Failed to reload DNS ACLs"
-    end
-
-    test "close_conflict_modal hides the modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-      html = render_click(view, "close_conflict_modal")
-      # Should not crash, page still renders
-      assert html =~ "Settings" or html =~ "Configuration"
-    end
-
-    test "close_recovery_modal hides the modal", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-      html = render_click(view, "close_recovery_modal")
-      assert html =~ "Settings" or html =~ "Configuration"
-    end
-
-    test "restore_backup handles missing backup file gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-      html = render_click(view, "restore_backup", %{"backup_path" => "/nonexistent/backup.toml"})
-      assert html =~ "Failed to restore backup" or html =~ "Configuration"
-    end
-  end
-
-  describe "SettingsLive configuration persistence" do
-    test "persists enabled/disabled toggle", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Disable DNS service
-      view
-      |> form("form", service_configuration: %{listen: "0.0.0.0", port: 5353, enabled: false})
-      |> render_submit()
-
-      # Verify persisted to file
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["core"]["dns"] == false
-    end
-
-    test "saves config changes even when source file has comments", %{
-      conn: conn,
-      config_path: config_path
-    } do
-      # Source file with section comments (comments are not preserved on save — the
-      # config writer regenerates the file from the parsed map structure)
-      config_with_comments = """
-      # Core service configuration
-      [core]
-      dns = true
-      mdns = true
-      dhcpv4 = false
-      dhcpv6 = false
-
-      # DNS configuration
-      [dns]
-      listen = "0.0.0.0"
-      port = 5353
-
-      # mDNS configuration
-      [mdns]
-      listen = "0.0.0.0"
-      port = 5353
-      mode = "responder"
-
-      [dhcpv4]
-      listen = "0.0.0.0"
-      port = 6767
-
-      [dhcpv6]
-      listen = "::"
-      port = 5667
-      """
-
-      File.write!(config_path, config_with_comments)
-
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # Modify DNS port
-      view
-      |> form("form", service_configuration: %{listen: "0.0.0.0", port: 5454, enabled: true})
-      |> render_submit()
-
-      # Verify the config value was saved — comment preservation is not guaranteed
-      content = File.read!(config_path)
-      assert content =~ "port = 5454"
-    end
-
-    test "handles multiple sequential saves correctly", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings")
-
-      # First save
-      view
-      |> form("form", service_configuration: %{listen: "127.0.0.1", port: 5353, enabled: true})
-      |> render_submit()
-
-      # Second save
-      view
-      |> form("form", service_configuration: %{listen: "0.0.0.0", port: 5454, enabled: false})
-      |> render_submit()
-
-      # Third save
-      view
-      |> form("form", service_configuration: %{listen: "192.168.1.1", port: 5555, enabled: true})
-      |> render_submit()
-
-      # Verify final state
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["dns"]["listen"] == "192.168.1.1"
-      assert config["dns"]["port"] == 5555
-      assert config["core"]["dns"] == true
-    end
-  end
-
-  describe "SettingsLive mDNS configuration" do
-    test "loads mDNS configuration correctly", %{conn: conn} do
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Verify mDNS form fields are populated from config
-      assert has_element?(view, "input[name='service_configuration[listen]'][value='0.0.0.0']")
-      assert has_element?(view, "input[name='service_configuration[port]'][value='5353']")
-      assert has_element?(view, "input[name='service_configuration[enabled]'][checked]")
-      assert has_element?(view, "select[name='service_configuration[mode]']")
-    end
-
-    test "validates mDNS mode field is required", %{conn: conn} do
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Try to save without mode (by clearing it)
-      html =
-        view
-        |> form("form",
-          service_configuration: %{listen: "0.0.0.0", port: 5353, enabled: true, mode: ""}
-        )
-        |> render_submit()
-
-      assert html =~ "can&#39;t be blank" or html =~ "is invalid"
-    end
-
-    test "successfully saves valid mDNS configuration", %{conn: conn, config_path: config_path} do
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Modify and save mDNS configuration
-      html =
-        view
-        |> form("form",
-          service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true, mode: "hybrid"}
-        )
-        |> render_submit()
-
-      # Verify flash message
-      assert html =~ "Configuration saved successfully"
-
-      # Verify configuration was persisted to file
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["mdns"]["listen"] == "127.0.0.1"
-      assert config["mdns"]["port"] == 5454
-      assert config["mdns"]["mode"] == "hybrid"
-      assert config["core"]["mdns"] == true
-    end
-
-    test "toggles mDNS service enabled status", %{conn: conn, config_path: config_path} do
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Disable mDNS service
-      view
-      |> form("form",
-        service_configuration: %{listen: "0.0.0.0", port: 5353, enabled: false, mode: "responder"}
-      )
-      |> render_submit()
-
-      # Verify persisted to file
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["core"]["mdns"] == false
-    end
-
-    test "validates mode must be responder or hybrid", %{conn: conn} do
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # The select dropdown should only show valid options
-      # This test verifies the component structure
-      assert has_element?(
-               view,
-               "select[name='service_configuration[mode]'] option[value='responder']"
-             )
-
-      assert has_element?(
-               view,
-               "select[name='service_configuration[mode]'] option[value='hybrid']"
-             )
-    end
-
-    @tag :skip
-    test "preserves mDNS changes when switching tabs", %{conn: conn} do
-      # NOTE: This test is skipped because with URL-based navigation,
-      # each tab creates a new LiveView instance and form state is not preserved.
-      # Form state preservation would require saving to the server before switching tabs.
-
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Modify mDNS configuration
-      view
-      |> form("form",
-        service_configuration: %{listen: "192.168.1.1", port: 5454, enabled: true, mode: "hybrid"}
-      )
-      |> render_change()
-
-      # Navigate to DNS tab
-      {:ok, _dns_view, _html} = live(conn, ~p"/server/settings/dns")
-
-      # Navigate back to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Verify mDNS form still has modified values
-      assert has_element?(
-               view,
-               "input[name='service_configuration[listen]'][value='192.168.1.1']"
-             )
-
-      assert has_element?(view, "input[name='service_configuration[port]'][value='5454']")
-
-      assert has_element?(
-               view,
-               "select[name='service_configuration[mode]'] option[value='hybrid'][selected]"
-             )
-    end
-
-    test "shows apply button when mDNS has pending changes", %{conn: conn} do
-      # Navigate directly to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/server/settings/mdns")
-
-      # Save configuration (creates pending changes)
-      view
-      |> form("form",
-        service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true, mode: "hybrid"}
-      )
-      |> render_submit()
-
-      # Verify apply button appears
-      assert has_element?(view, "[phx-click='apply_changes_mdns']")
-      assert has_element?(view, ".badge", "Pending Changes")
-    end
-  end
-
-  describe "SettingsLive DHCPv4 pool navigation" do
-    test "DHCPv4 tab shows link to dedicated pools page", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/dhcpv4")
-
-      # Pool management has been moved to the dedicated /dhcpv4/pools page
-      # Settings page should show a link to navigate there
-      assert has_element?(view, "a[href='/server/dhcpv4/pools']")
-      html = render(view)
-      assert html =~ "Manage Pools"
-    end
-  end
-
-  describe "SettingsLive DHCPv6 pool navigation" do
-    test "DHCPv6 tab shows link to dedicated pools page", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/dhcpv6")
-
-      # Pool management has been moved to the dedicated /dhcpv6/pools page
-      # Settings page should show a link to navigate there
-      assert has_element?(view, "a[href='/server/dhcpv6/pools']")
-      html = render(view)
-      assert html =~ "Manage Pools"
-    end
-  end
-
-  # ============================================================================
-  # Atom Safety Guards
-  # ============================================================================
-
-  describe "SettingsLive atom safety guards" do
-    test "validate_ event with valid service works correctly", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/dns")
-
-      html =
-        render_change(view, "validate_dns", %{
-          "service_configuration" => %{"port" => "5353", "listen" => "0.0.0.0"}
-        })
-
-      assert html =~ "Settings"
-    end
-
-    test "valid service tabs all mount correctly", %{conn: conn} do
-      for service <- ~w(dns mdns dhcpv4 dhcpv6 netboot) do
-        {:ok, _view, html} = live(conn, "/server/settings/#{service}")
-        assert html =~ "Settings"
-      end
-    end
-  end
-
-  describe "SettingsLive netboot configuration" do
-    test "loads netboot tab with default values", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
-
-      assert has_element?(view, "a.tab.tab-active[href='/server/settings/netboot']")
-      assert has_element?(view, "input[name='service_configuration[tftp_root]']")
-      assert has_element?(view, "input[name='service_configuration[port]']")
-      assert has_element?(view, "select[name='service_configuration[default_profile]']")
-    end
-
-    test "displays netboot configuration title", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/server/settings/netboot")
-
-      assert html =~ "Netboot Service Configuration"
-      assert html =~ "TFTP Root Directory"
-      assert html =~ "TFTP Port"
-      assert html =~ "Default Boot Profile"
-    end
-
-    test "validates tftp_root is required", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
-
-      html =
-        view
-        |> form("form",
-          service_configuration: %{tftp_root: "", port: 69, enabled: true}
-        )
-        |> render_change()
-
-      assert html =~ "can&#39;t be blank"
-    end
-
-    test "validates port range for netboot", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
-
-      html =
-        view
-        |> form("form",
-          service_configuration: %{tftp_root: "/srv/netboot/tftp", port: 0, enabled: true}
-        )
-        |> render_change()
-
-      assert html =~ "must be greater than 0"
-    end
-
-    test "saves netboot configuration to TOML", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
-
-      html =
-        view
-        |> form("form",
-          service_configuration: %{
-            tftp_root: "/data/netboot",
-            port: 6969,
-            enabled: true,
-            default_profile: ""
-          }
-        )
-        |> render_submit()
-
-      assert html =~ "Configuration saved successfully"
-
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["netboot"]["tftp_root"] == "/data/netboot"
-      assert config["netboot"]["tftp_port"] == 6969
-      assert config["core"]["netboot"] == true
-    end
-
-    test "shows apply button after saving netboot changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
-
-      view
-      |> form("form",
-        service_configuration: %{
-          tftp_root: "/srv/netboot/tftp",
-          port: 69,
-          enabled: true,
-          default_profile: ""
+  test "offline Settings save a full draft patch and preserve every other service", %{
+    conn: conn
+  } do
+    :ok = TestManagementTransport.disconnect(:server, "server-a")
+    assert {:ok, _server} = ManagementCore.update_server_status("server-a", :offline)
+
+    {:ok, offline, html} = live(conn, "/server/server-a/settings/dns")
+
+    assert html =~ "Offline changes remain in Management"
+    assert has_element?(offline, "#settings-draft-form")
+
+    rendered =
+      offline
+      |> form("#settings-draft-form",
+        settings: %{
+          "profile" => "dns_only",
+          "enabled" => "inherit",
+          "hostname" => "changed.example",
+          "listen" => "",
+          "port" => ""
         }
       )
       |> render_submit()
 
-      assert has_element?(view, "[phx-click='apply_changes_netboot']")
-      assert has_element?(view, ".badge", "Pending Changes")
-    end
+    assert rendered =~ "Draft saved"
 
-    test "toggles netboot enabled status", %{conn: conn, config_path: config_path} do
-      {:ok, view, _html} = live(conn, ~p"/server/settings/netboot")
+    assert {:ok, %{draft_revision: 2, document: document}} =
+             ManagementCore.get_server_config("server-a")
 
+    assert document["entries"] == [
+             managed_entry("dns.hostname", "changed.example"),
+             managed_entry("mdns.hostname", "mdns-alpha.example")
+           ]
+
+    assert TestManagementTransport.recorded() == []
+
+    applied_html = render_click(offline, "apply")
+    assert applied_html =~ "Waiting for Server acknowledgement"
+
+    assert {:ok, %{version: 1, state: :desired}} =
+             ManagementCore.get_server_config_version("server-a", 1)
+
+    assert TestManagementTransport.recorded() == []
+  end
+
+  test "stale draft CAS is visible and never overwrites the newer Management document", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, "/server/server-a/settings/dns")
+
+    newer = server_document("newer.example")
+
+    assert {:ok, %{draft_revision: 2}} =
+             ManagementCore.put_server_config("server-a", 1, newer)
+
+    html =
       view
-      |> form("form",
-        service_configuration: %{
-          tftp_root: "/srv/netboot/tftp",
-          port: 69,
-          enabled: false,
-          default_profile: ""
+      |> form("#settings-draft-form",
+        settings: %{
+          "profile" => "dns_only",
+          "enabled" => "inherit",
+          "hostname" => "stale.example",
+          "listen" => "",
+          "port" => ""
         }
       )
       |> render_submit()
 
-      {:ok, config} = ConfigManager.load_config(config_path)
-      assert config["core"]["netboot"] == false
-    end
+    assert html =~ "server config draft changed"
+
+    assert {:ok, %{draft_revision: 2, document: ^newer}} =
+             ManagementCore.get_server_config("server-a")
   end
 
-  defp stop_service_if_running(service, process_name) do
-    if Process.whereis(process_name) do
-      _ = YellowDog.stop_service(service)
-    end
+  test "publishing disables a second Apply while the deployment is in flight", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/server/server-a/settings/dns")
+
+    html = render_click(view, "apply")
+
+    assert html =~ "Waiting for Server acknowledgement"
+    assert has_element?(view, "#settings-apply[disabled]")
+    assert [{:config, envelope}] = TestManagementTransport.recorded()
+    assert envelope.target_id == "server-a"
+    assert envelope.operation == "server.config.replace"
+
+    html = render_click(view, "apply")
+    assert html =~ "configuration deployment is already in flight"
+    assert [_one_delivery] = TestManagementTransport.recorded()
   end
+
+  test "refresh reloads the same selected Management draft and service", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/server/server-a/settings/mdns")
+
+    assert {:ok, %{draft_revision: 2}} =
+             ManagementCore.put_server_config(
+               "server-a",
+               1,
+               server_document("alpha.example", "second-mdns.example")
+             )
+
+    html = render_click(view, "refresh")
+
+    assert html =~ "second-mdns.example"
+    assert TestManagementTransport.recorded() == []
+  end
+
+  test "typed Settings validation rejects invalid ports without changing the draft", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/server/server-a/settings/dns")
+
+    html =
+      view
+      |> form("#settings-draft-form",
+        settings: %{
+          "profile" => "dns_only",
+          "enabled" => "true",
+          "hostname" => "alpha.example",
+          "listen" => "0.0.0.0",
+          "port" => "70000"
+        }
+      )
+      |> render_submit()
+
+    assert html =~ "port must be between 1 and 65535"
+
+    assert {:ok, %{draft_revision: 1, document: document}} =
+             ManagementCore.get_server_config("server-a")
+
+    assert document == server_document("alpha.example")
+  end
+
+  test "typed Settings save preserves managed entries outside the visible form", %{conn: conn} do
+    document =
+      server_document("alpha.example")
+      |> Map.update!("entries", fn entries ->
+        Enum.sort_by(
+          [
+            %{
+              "setting" => "dns.cache_size",
+              "value" => %{"type" => "integer", "value" => 512}
+            }
+            | entries
+          ],
+          & &1["setting"]
+        )
+      end)
+
+    assert {:ok, %{draft_revision: 2}} =
+             ManagementCore.put_server_config("server-a", 1, document)
+
+    {:ok, view, _html} = live(conn, "/server/server-a/settings/dns")
+
+    view
+    |> form("#settings-draft-form",
+      settings: %{
+        "profile" => "dns_only",
+        "enabled" => "inherit",
+        "hostname" => "changed.example",
+        "listen" => "",
+        "port" => ""
+      }
+    )
+    |> render_submit()
+
+    assert {:ok, %{draft_revision: 3, document: saved}} =
+             ManagementCore.get_server_config("server-a")
+
+    assert Enum.any?(saved["entries"], fn entry ->
+             entry["setting"] == "dns.cache_size" and entry["value"]["value"] == 512
+           end)
+  end
+
+  defp server_document(dns_hostname, mdns_hostname \\ nil) do
+    mdns_hostname = mdns_hostname || "mdns-#{dns_hostname}"
+
+    %{
+      "schema_version" => 1,
+      "profile" => "dns_only",
+      "entries" => [
+        managed_entry("dns.hostname", dns_hostname),
+        managed_entry("mdns.hostname", mdns_hostname)
+      ]
+    }
+  end
+
+  defp managed_entry(setting, value) do
+    %{
+      "setting" => setting,
+      "value" => %{"type" => "string", "value" => value}
+    }
+  end
+
+  defp register_server(id, name, status) do
+    assert {:ok, _server} =
+             ManagementCore.register_server(%{
+               id: id,
+               name: name,
+               profile: :dns_only,
+               status: status
+             })
+  end
+
+  defp restore_env(key, {:ok, value}),
+    do: Application.put_env(:yellow_dog_management_core, key, value)
+
+  defp restore_env(key, :error), do: Application.delete_env(:yellow_dog_management_core, key)
 end

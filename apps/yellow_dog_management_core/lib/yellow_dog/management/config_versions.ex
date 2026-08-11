@@ -31,6 +31,8 @@ defmodule YellowDog.Management.ConfigVersions do
   )
   @version_filename ~r/\A([1-9][0-9]*)-([0-9a-f]{64})\.json\z/
 
+  @type config_version :: ConfigVersion.t()
+
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, :ok, name: name)
@@ -48,8 +50,20 @@ defmodule YellowDog.Management.ConfigVersions do
     do: call({:publish, target_type, target_id, attrs})
 
   @doc false
+  def publish_exclusive(target_type, target_id, operation, payload),
+    do: call({:publish_exclusive, target_type, target_id, operation, payload})
+
+  @doc false
+  def publish_exclusive(target_type, target_id, attrs),
+    do: call({:publish_exclusive, target_type, target_id, attrs})
+
+  @doc false
   def get(target_type, target_id, version),
     do: call({:get, target_type, target_id, version})
+
+  @doc false
+  def list(target_type, target_id),
+    do: call({:list, target_type, target_id})
 
   @doc false
   def transition(target_type, target_id, version, state, details),
@@ -75,8 +89,29 @@ defmodule YellowDog.Management.ConfigVersions do
     {:reply, do_publish(target_type, target_id, attrs, deadline, config), state}
   end
 
+  def handle_call(
+        {{:publish_exclusive, target_type, target_id, operation, payload}, deadline, config},
+        _from,
+        state
+      ) do
+    attrs = %{operation: operation, payload: payload, expected_revision: nil}
+    {:reply, do_publish(target_type, target_id, attrs, deadline, config, :exclusive), state}
+  end
+
+  def handle_call(
+        {{:publish_exclusive, target_type, target_id, attrs}, deadline, config},
+        _from,
+        state
+      ) do
+    {:reply, do_publish(target_type, target_id, attrs, deadline, config, :exclusive), state}
+  end
+
   def handle_call({{:get, target_type, target_id, version}, deadline, config}, _from, state) do
     {:reply, do_get(target_type, target_id, version, deadline, config), state}
+  end
+
+  def handle_call({{:list, target_type, target_id}, deadline, config}, _from, state) do
+    {:reply, do_list(target_type, target_id, deadline, config), state}
   end
 
   def handle_call(
@@ -109,25 +144,31 @@ defmodule YellowDog.Management.ConfigVersions do
      ), state}
   end
 
-  defp do_publish(target_type, target_id, attrs, deadline, config) do
+  defp do_publish(target_type, target_id, attrs, deadline, config),
+    do: do_publish(target_type, target_id, attrs, deadline, config, :legacy)
+
+  defp do_publish(target_type, target_id, attrs, deadline, config, mode) do
     with :ok <- ensure_before_deadline(deadline),
          {:ok, target_type} <- target_type(target_type),
          {:ok, record} <- registered_target(target_type, target_id),
          {:ok, attrs} <- attrs(attrs),
          {:ok, target} <- load_target(target_type, target_id, deadline, config),
+         :ok <- publication_available(target, mode),
          :ok <- ensure_before_deadline(deadline),
          {:ok, next_version} <- next_version(target, deadline, config),
          :ok <- ensure_before_deadline(deadline),
          {:ok, previous} <- applied_pair(target),
+         expected_revision <- publication_expected_revision(attrs, previous, mode),
+         published_profile <- publication_profile(record, attrs, mode),
          {:ok, version} <-
            ConfigVersion.new(
              target_type,
              target_id,
              next_version,
              attrs.operation,
-             profile(record),
+             published_profile,
              attrs.payload,
-             attrs.expected_revision,
+             expected_revision,
              DateTime.utc_now(:second),
              previous
            ),
@@ -152,6 +193,18 @@ defmodule YellowDog.Management.ConfigVersions do
          {:ok, target} <- load_target(target_type, target_id, deadline, config),
          {:ok, config_version} <- fetch_version(target, version) do
       {:ok, config_version}
+    end
+  end
+
+  defp do_list(target_type, target_id, deadline, config) do
+    with :ok <- ensure_before_deadline(deadline),
+         {:ok, target_type} <- target_type(target_type),
+         {:ok, _record} <- registered_target(target_type, target_id),
+         {:ok, target} <- load_target(target_type, target_id, deadline, config) do
+      {:ok,
+       target.versions
+       |> Map.values()
+       |> Enum.sort_by(& &1.version, :desc)}
     end
   end
 
@@ -201,14 +254,14 @@ defmodule YellowDog.Management.ConfigVersions do
          config
        ) do
     with :ok <- ensure_before_deadline(deadline),
-         {:ok, :server} <- publication_target_type(target_type),
-         {:ok, _record} <- registered_target(:server, target_id),
+         {:ok, target_type} <- publication_target_type(target_type),
+         {:ok, _record} <- registered_target(target_type, target_id),
          :ok <- validate_version(sequence),
          true <- is_binary(encoded_message),
          {:ok, %ConfigState{} = message} <- Message.decode(encoded_message),
          {:ok, ^encoded_message} <- Message.encode(message),
-         :ok <- publication_identity(message, target_id),
-         {:ok, target} <- load_target(:server, target_id, deadline, config),
+         :ok <- publication_identity(message, target_type, target_id),
+         {:ok, target} <- load_target(target_type, target_id, deadline, config),
          {:new, lifecycle} <-
            publication_disposition(target, sequence, encoded_message, message),
          :ok <- current_desired_version(lifecycle, message.version),
@@ -499,12 +552,19 @@ defmodule YellowDog.Management.ConfigVersions do
            "publication_receipts" => receipts
          },
          versions,
-         :server,
+         target_type,
          target_id
-       ) do
+       )
+       when target_type in [:server, :netman] do
     with true <- map_size(receipts) == high_water,
          {:ok, _ledger} <-
-           validate_ordered_publication_receipts(receipts, high_water, versions, target_id) do
+           validate_ordered_publication_receipts(
+             receipts,
+             high_water,
+             versions,
+             target_type,
+             target_id
+           ) do
       :ok
     else
       _invalid -> invalid()
@@ -519,7 +579,13 @@ defmodule YellowDog.Management.ConfigVersions do
        ),
        do: invalid()
 
-  defp validate_ordered_publication_receipts(receipts, high_water, versions, target_id) do
+  defp validate_ordered_publication_receipts(
+         receipts,
+         high_water,
+         versions,
+         target_type,
+         target_id
+       ) do
     initial = %{subjects: MapSet.new(), position: nil}
 
     Enum.reduce_while(1..high_water, {:ok, initial}, fn sequence, {:ok, ledger} ->
@@ -532,7 +598,7 @@ defmodule YellowDog.Management.ConfigVersions do
                receipt,
                high_water,
                versions,
-               :server,
+               target_type,
                target_id,
                ledger
              ) do
@@ -811,6 +877,31 @@ defmodule YellowDog.Management.ConfigVersions do
       _invalid -> invalid()
     end
   end
+
+  defp publication_available(_target, :legacy), do: :ok
+
+  defp publication_available(%{lifecycle: %{"desired_version" => nil}}, :exclusive), do: :ok
+
+  defp publication_available(%{lifecycle: lifecycle, versions: versions}, :exclusive) do
+    case Map.fetch(versions, lifecycle["desired_version"]) do
+      {:ok, %ConfigVersion{state: state}} when state in [:applied, :failed] -> :ok
+      {:ok, %ConfigVersion{}} -> conflict("config deployment already in flight")
+      :error -> invalid()
+    end
+  end
+
+  defp publication_expected_revision(attrs, _previous, :legacy), do: attrs.expected_revision
+  defp publication_expected_revision(_attrs, nil, :exclusive), do: nil
+
+  defp publication_expected_revision(_attrs, {_version, revision}, :exclusive),
+    do: revision
+
+  defp publication_profile(record, _attrs, :legacy), do: profile(record)
+
+  defp publication_profile(record, %{payload: payload}, :exclusive) when is_map(payload),
+    do: Map.get(payload, "profile", profile(record))
+
+  defp publication_profile(_record, _attrs, :exclusive), do: nil
 
   defp attrs(attrs) when is_list(attrs), do: attrs(Map.new(attrs))
 
@@ -1164,13 +1255,19 @@ defmodule YellowDog.Management.ConfigVersions do
     }
   end
 
-  defp publication_identity(%ConfigState{target_type: :server, target_id: target_id}, target_id),
-    do: :ok
+  defp publication_identity(
+         %ConfigState{target_type: target_type, target_id: target_id},
+         target_type,
+         target_id
+       )
+       when target_type in [:server, :netman],
+       do: :ok
 
-  defp publication_identity(_message, _target_id),
+  defp publication_identity(_message, _target_type, _target_id),
     do: conflict("config publication identity mismatch")
 
   defp publication_target_type(:server), do: {:ok, :server}
+  defp publication_target_type(:netman), do: {:ok, :netman}
   defp publication_target_type(_target_type), do: invalid()
 
   defp expected_state_revision(version, expected) do

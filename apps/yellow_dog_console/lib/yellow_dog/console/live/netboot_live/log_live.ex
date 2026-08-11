@@ -1,189 +1,155 @@
 defmodule YellowDog.Console.NetbootLive.LogLive do
-  @moduledoc """
-  Real-time activity log showing chronological stream of all netboot events.
+  @moduledoc "Management-backed Netboot event log for one selected Server."
 
-  Displays device discovery, state transitions, profile assignments, TFTP requests,
-  and system events in real-time. Supports pause/resume, filtering by event type
-  and device, clearing log buffer, and CSV export of logged events.
-  """
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_bytes: 1]
-
   alias YellowDog.Console.Layouts
-
-  @max_log_entries 500
+  alias YellowDog.Console.NetbootLive.ManagementComponents
+  alias YellowDog.Console.NetbootLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:devices")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:tftp")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:log")
-    end
-
     {:ok,
-     socket
-     |> assign(
-       page_title: "Boot Log",
-       connected: connected?(socket),
-       log_entries: [],
+     assign(socket,
+       page_title: "Netboot Log",
+       subscribed_server_id: nil,
+       entries: [],
        search_query: "",
-       filter_type: "all",
-       filter_level: "all",
-       paused: false,
-       max_entries: @max_log_entries
+       type_filter: "all",
+       level_filter: "all",
+       paused?: false,
+       management_error: nil,
+       cached_snapshot?: false,
+       cached_observed_at: nil
      )}
   end
+
+  @impl true
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_logs(socket, server_id), else: socket)}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => query}, socket),
+    do: {:noreply, assign(socket, :search_query, query)}
+
+  def handle_event("filter_type", params, socket),
+    do: {:noreply, assign(socket, :type_filter, params["type"] || "all")}
+
+  def handle_event("filter_level", params, socket),
+    do: {:noreply, assign(socket, :level_filter, params["level"] || "all")}
+
+  def handle_event("toggle_pause", _params, socket),
+    do: {:noreply, update(socket, :paused?, &(!&1))}
+
+  def handle_event("clear_log", _params, socket) do
+    {:noreply,
+     ManagementSupport.unavailable(
+       socket,
+       "Clearing the log is unavailable through Server management"
+     )}
+  end
+
+  def handle_event("export_csv", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_logs(server_id)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
-      <div class="space-y-6">
-        <div class="breadcrumbs text-sm">
-          <ul>
-            <li><.link navigate="/server/netboot">Netboot</.link></li>
-            <li>Boot Log</li>
-          </ul>
-        </div>
-
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-4xl font-bold">Boot Log</h1>
-            <p class="mt-2 text-on-surface-variant">
-              Real-time netboot activity stream
-            </p>
-          </div>
+      <div id="server-netboot-log" class="space-y-6">
+        <div class="flex items-center justify-between gap-4">
+          <ManagementComponents.page_header
+            title="Netboot Log"
+            subtitle="Events reported by the selected Server"
+            server={@selected_server}
+            online?={@service_online?}
+            back={ServicePaths.server_path(@selected_server.id, :netboot)}
+          />
           <div class="flex gap-2">
-            <button
-              phx-click="toggle_pause"
-              class={["btn btn-sm", if(@paused, do: "btn-warning", else: "btn-ghost")]}
-            >
-              {if @paused, do: "Resume", else: "Pause"}
-            </button>
-            <button phx-click="clear_log" class="btn btn-ghost btn-sm">Clear</button>
-            <button
-              phx-click="export_csv"
-              id="export-csv"
-              phx-hook="CsvDownload"
-              class="btn btn-outline btn-sm"
-            >
-              Export CSV
-            </button>
+            <button phx-click="toggle_pause" class="btn btn-outline btn-sm">{if @paused?,
+              do: "Resume",
+              else: "Pause"}</button>
+            <button phx-click="clear_log" disabled class="btn btn-outline btn-sm">Clear unavailable</button>
+            <button id="export-csv" phx-click="export_csv" class="btn btn-outline btn-sm">Export CSV</button>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <ManagementComponents.offline_snapshot
+          :if={@cached_snapshot?}
+          observed_at={@cached_observed_at}
+        />
+        <ManagementComponents.operation_error :if={@management_error} result={@management_error} />
+        <div :if={@paused?} class="alert alert-info">Log display paused</div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <.card>
-            <div class="text-sm text-on-surface-variant">Total Entries</div>
-            <div class="text-2xl font-bold text-primary">{length(@log_entries)}</div>
-          </.card>
-          <.card>
-            <div class="text-sm text-on-surface-variant">Errors</div>
-            <div class="text-2xl font-bold text-error">{count_by_level(@log_entries, "error")}</div>
-          </.card>
-          <.card>
-            <div class="text-sm text-on-surface-variant">Warnings</div>
-            <div class="text-2xl font-bold text-warning">
-              {count_by_level(@log_entries, "warning")}
+            <div class="text-sm text-on-surface-variant">Entries</div><div class="text-2xl font-bold">
+              {length(@entries)}
             </div>
           </.card>
           <.card>
-            <div class="text-sm text-on-surface-variant">Buffer</div>
-            <div class="text-2xl font-bold">
-              {length(@log_entries)}<span class="text-on-surface-variant font-normal text-sm">/{@max_entries}</span>
+            <div class="text-sm text-on-surface-variant">Devices</div><div class="text-2xl font-bold">
+              {@entries |> Enum.map(& &1["device_id"]) |> Enum.uniq() |> length()}
+            </div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Source</div><div class="text-lg font-bold">
+              Management
             </div>
           </.card>
         </div>
 
         <.card>
-          <div class="flex flex-col md:flex-row gap-4">
-            <div class="flex-1">
-              <label class="input flex items-center gap-2">
-                <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
-                <input
-                  type="text"
-                  class="grow"
-                  placeholder="Filter log entries..."
-                  value={@search_query}
-                  phx-change="search"
-                  phx-debounce="300"
-                  name="search"
-                />
-              </label>
-            </div>
-            <select
-              class="select"
-              phx-change="filter_type"
-              name="type"
-              value={@filter_type}
-            >
-              <option value="all">All Events</option>
-              <option value="device">Device Events</option>
-              <option value="tftp">TFTP Events</option>
-            </select>
-            <select
-              class="select"
-              phx-change="filter_level"
-              name="level"
-              value={@filter_level}
-            >
-              <option value="all">All Levels</option>
-              <option value="error">Errors Only</option>
-              <option value="warning">Warnings+</option>
-              <option value="info">Info+</option>
-            </select>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label class="input flex items-center gap-2"><.dm_mdi
+              name="magnify"
+              class="h-4 w-4 opacity-70"
+            /><input name="search" value={@search_query} phx-change="search" placeholder="Search log" /></label>
+            <select name="type" phx-change="filter_type" class="select select-bordered"><option value="all">
+              All event types
+            </option></select>
+            <select name="level" phx-change="filter_level" class="select select-bordered"><option value="all">
+              All levels
+            </option><option value="info">Info</option><option value="warning">Warning</option><option value="error">
+              Error
+            </option></select>
           </div>
         </.card>
 
         <.card>
-          <div class="flex justify-between items-center mb-2">
-            <span :if={@log_entries != []} class="text-sm text-on-surface-variant">
-              {length(filtered_entries(@log_entries, @search_query, @filter_type, @filter_level))} of {length(
-                @log_entries
-              )} entries
-            </span>
-            <span :if={@log_entries == []} class="text-sm text-on-surface-variant"></span>
-            <span :if={@connected} class="flex items-center gap-1 text-xs text-on-surface-variant">
-              <span :if={@paused} class="flex items-center gap-1">
-                <span class="w-2 h-2 bg-warning rounded-full"></span> Paused
-              </span>
-              <span :if={!@paused} class="flex items-center gap-1">
-                <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
-              </span>
-            </span>
-          </div>
-          <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-            <table class="table table-striped table-sm">
-              <thead class="sticky top-0 bg-surface-container z-10">
+          <div class="overflow-x-auto">
+            <table class="table table-striped">
+              <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>Type</th>
-                  <th>Level</th>
-                  <th>Details</th>
+                  <th>Time</th><th>Log ID</th><th>Device</th><th>Level</th><th>Message</th>
                 </tr>
               </thead>
               <tbody>
-                <tr :if={
-                  filtered_entries(@log_entries, @search_query, @filter_type, @filter_level) == []
-                }>
-                  <td colspan="4" class="text-center text-on-surface-variant py-8">
-                    No log entries yet — activity will appear in real-time
+                <tr :if={displayed_entries(assigns) == []}>
+                  <td colspan="5" class="py-8 text-center text-on-surface-variant">
+                    No Netboot log entries in this Server snapshot
                   </td>
                 </tr>
-                <tr :for={
-                  entry <- filtered_entries(@log_entries, @search_query, @filter_type, @filter_level)
-                }>
-                  <td class="text-sm font-mono whitespace-nowrap">{format_log_time(entry.time)}</td>
-                  <td>
-                    <.badge color={type_color(entry.type)} size="sm">{entry.type}</.badge>
-                  </td>
-                  <td>
-                    <.badge color={level_color(entry.level)} size="sm">{entry.level}</.badge>
-                  </td>
-                  <td class="text-sm">{entry.message}</td>
+                <tr :for={entry <- displayed_entries(assigns)}>
+                  <td>{entry_value(entry, "occurred_at")}</td><td>{entry_value(entry, "log_id")}</td><td>
+                    {entry_value(entry, "device_id")}
+                  </td><td>
+                    <.badge color="info" size="sm">{entry_value(entry, "level", "info")}</.badge>
+                  </td><td>{entry_value(entry, "message")}</td>
                 </tr>
               </tbody>
             </table>
@@ -194,190 +160,79 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     """
   end
 
-  @impl true
-  def handle_event("search", %{"search" => query}, socket) do
-    {:noreply, assign(socket, :search_query, query)}
+  def filtered_entries(entries, query, type_filter, level_filter) do
+    entries
+    |> filter_by_search(query)
+    |> filter_by_type(type_filter)
+    |> filter_by_level(level_filter)
   end
 
-  @impl true
-  def handle_event("filter_type", %{"type" => type}, socket) do
-    {:noreply, assign(socket, :filter_type, type)}
+  def filter_by_level(entries, "all"), do: entries
+  def filter_by_level(entries, "info"), do: entries
+
+  def filter_by_level(entries, "warning") do
+    Enum.filter(entries, &(entry_value(&1, "level", "info") in ["warning", "error"]))
   end
 
-  @impl true
-  def handle_event("filter_level", %{"level" => level}, socket) do
-    {:noreply, assign(socket, :filter_level, level)}
+  def filter_by_level(entries, level),
+    do: Enum.filter(entries, &(entry_value(&1, "level", "info") == level))
+
+  defp load_logs(socket, server_id) do
+    result = ServerManagement.netboot_logs_list(server_id)
+    results = [result]
+
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — Netboot Log",
+      entries: ManagementSupport.items(result),
+      management_error: if(ManagementSupport.error_result?(result), do: result),
+      cached_snapshot?: ManagementSupport.cached?(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
+    )
   end
 
-  @impl true
-  def handle_event("toggle_pause", _params, socket) do
-    {:noreply, assign(socket, :paused, !socket.assigns.paused)}
-  end
-
-  @impl true
-  def handle_event("clear_log", _params, socket) do
-    {:noreply, assign(socket, :log_entries, [])}
-  end
-
-  @impl true
-  def handle_event("export_csv", _params, socket) do
-    entries =
-      filtered_entries(
-        socket.assigns.log_entries,
-        socket.assigns.search_query,
-        socket.assigns.filter_type,
-        socket.assigns.filter_level
-      )
-
-    csv = build_csv(entries)
-    filename = "boot_log_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
-  end
-
-  @impl true
-  def handle_info(msg, %{assigns: %{paused: true}} = socket) when not is_tuple(msg) do
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:device_state_changed, device}, socket) do
-    level = if device.state == :failed, do: "warning", else: "info"
-    entry = log_entry("device", level, "Device #{device.mac} → #{device.state}")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:device_registered, device}, socket) do
-    entry = log_entry("device", "info", "Device #{device.mac} registered")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:device_deleted, mac}, socket) do
-    entry = log_entry("device", "info", "Device #{mac} deleted")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:tftp_transfer_started, metadata}, socket) do
-    file = Map.get(metadata, :file_path, "unknown")
-    size = Map.get(metadata, :total_size, 0)
-    entry = log_entry("tftp", "info", "Transfer started: #{file} (#{format_bytes(size)})")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:tftp_transfer_complete, metadata}, socket) do
-    file = Map.get(metadata, :file_path, "unknown")
-    duration = Map.get(metadata, :duration, 0)
-    entry = log_entry("tftp", "info", "Transfer complete: #{file} (#{duration}ms)")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:tftp_request_accepted, metadata}, socket) do
-    file = Map.get(metadata, :file, "unknown")
-    entry = log_entry("tftp", "info", "Request accepted: #{file}")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:tftp_request_rejected, metadata}, socket) do
-    file = Map.get(metadata, :file, "unknown")
-    reason = Map.get(metadata, :reason, "unknown")
-    entry = log_entry("tftp", "error", "Request rejected: #{file} (#{reason})")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info({:tftp_transfer_failed, metadata}, socket) do
-    file = Map.get(metadata, :file_path, "unknown")
-    entry = log_entry("tftp", "error", "Transfer failed: #{file}")
-    {:noreply, add_entry(socket, entry)}
-  end
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:devices")
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:tftp")
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:log")
-    :ok
-  end
-
-  defp add_entry(socket, entry) do
-    if socket.assigns.paused do
-      socket
+  defp displayed_entries(assigns) do
+    if assigns.paused? do
+      []
     else
-      entries = [entry | socket.assigns.log_entries] |> Enum.take(@max_log_entries)
-      assign(socket, :log_entries, entries)
+      filtered_entries(
+        assigns.entries,
+        assigns.search_query,
+        assigns.type_filter,
+        assigns.level_filter
+      )
     end
   end
 
-  defp log_entry(type, level, message) do
-    %{
-      time: DateTime.utc_now(),
-      type: type,
-      level: level,
-      message: message
-    }
-  end
+  defp filter_by_search(entries, ""), do: entries
 
-  defp format_log_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
-  defp format_log_time(time) when is_binary(time), do: time
+  defp filter_by_search(entries, query) do
+    query = String.downcase(query)
 
-  def filtered_entries(entries, search, type_filter, level_filter) do
-    entries
-    |> filter_by_type(type_filter)
-    |> filter_by_level(level_filter)
-    |> filter_by_search(search)
-  end
-
-  def filter_by_search(entries, ""), do: entries
-
-  def filter_by_search(entries, query) do
-    q = String.downcase(query)
-    Enum.filter(entries, &String.contains?(String.downcase(&1.message), q))
-  end
-
-  def filter_by_type(entries, "all"), do: entries
-  def filter_by_type(entries, type), do: Enum.filter(entries, &(&1.type == type))
-
-  def filter_by_level(entries, "all"), do: entries
-  def filter_by_level(entries, "error"), do: Enum.filter(entries, &(&1.level == "error"))
-
-  def filter_by_level(entries, "warning"),
-    do: Enum.filter(entries, &(&1.level in ["warning", "error"]))
-
-  def filter_by_level(entries, _), do: entries
-
-  defp count_by_level(entries, level), do: Enum.count(entries, &(&1.level == level))
-
-  defp type_color("device"), do: "info"
-  defp type_color("tftp"), do: "warning"
-  defp type_color(_), do: "neutral"
-
-  defp level_color("error"), do: "error"
-  defp level_color("warning"), do: "warning"
-  defp level_color("info"), do: "ghost"
-  defp level_color(_), do: "neutral"
-
-  defp build_csv(entries) do
-    header = "Time,Type,Level,Message\r\n"
-
-    rows =
-      Enum.map_join(entries, "\r\n", fn e ->
-        [
-          csv_escape(format_log_time(e.time)),
-          csv_escape(e.type),
-          csv_escape(e.level),
-          csv_escape(e.message)
-        ]
-        |> Enum.join(",")
+    Enum.filter(entries, fn entry ->
+      Enum.any?(~w(log_id device_id message), fn key ->
+        entry |> entry_value(key) |> String.downcase() |> String.contains?(query)
       end)
-
-    header <> rows
+    end)
   end
+
+  defp filter_by_type(entries, "all"), do: entries
+  defp filter_by_type(entries, type), do: Enum.filter(entries, &(entry_value(&1, "type") == type))
+
+  defp entry_value(entry, key, default \\ "") do
+    atom_key = known_atom_key(key)
+
+    value =
+      Map.get(entry, key, if(atom_key, do: Map.get(entry, atom_key, default), else: default))
+
+    to_string(value || default)
+  end
+
+  defp known_atom_key("log_id"), do: :log_id
+  defp known_atom_key("device_id"), do: :device_id
+  defp known_atom_key("message"), do: :message
+  defp known_atom_key("occurred_at"), do: :occurred_at
+  defp known_atom_key("level"), do: :level
+  defp known_atom_key("type"), do: :type
+  defp known_atom_key(_key), do: nil
 end

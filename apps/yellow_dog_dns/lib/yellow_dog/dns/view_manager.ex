@@ -400,6 +400,41 @@ defmodule YellowDog.Dns.ViewManager do
     :ok
   end
 
+  @doc """
+  Applies a complete view snapshot for the Server control plane and verifies that
+  every requested owner identity became active.
+
+  Unlike `update_views/2`, this boundary rejects duplicate or invalid names and
+  reports a failed child transition instead of allowing the caller to treat a
+  partial reconciliation as successful.
+  """
+  @spec apply_control_views([map() | keyword()]) :: :ok | {:error, term()}
+  def apply_control_views(view_configs) do
+    apply_control_views(__MODULE__, view_configs)
+  end
+
+  @spec apply_control_views(Supervisor.supervisor(), [map() | keyword()]) ::
+          :ok | {:error, term()}
+  def apply_control_views(supervisor, view_configs) when is_list(view_configs) do
+    names = Enum.map(view_configs, &get_view_name/1)
+
+    if valid_control_view_names?(names) do
+      default_active? = Enum.any?(list_views(supervisor), &match?({"default", _, _}, &1))
+
+      with :ok <- update_views(supervisor, view_configs),
+           true <- active_view_names(supervisor) == expected_view_names(names, default_active?) do
+        :ok
+      else
+        false -> {:error, :view_activation_failed}
+        {:error, _reason} = error -> error
+      end
+    else
+      {:error, :invalid_view_configs}
+    end
+  end
+
+  def apply_control_views(_supervisor, _view_configs), do: {:error, :invalid_view_configs}
+
   # Persistence Functions
 
   @doc """
@@ -529,4 +564,18 @@ defmodule YellowDog.Dns.ViewManager do
 
   defp get_view_name(config) when is_map(config), do: Map.get(config, :name)
   defp get_view_name(config) when is_list(config), do: Keyword.get(config, :name)
+
+  defp valid_control_view_names?(names) do
+    Enum.all?(names, &(is_binary(&1) and &1 != "")) and length(names) == length(Enum.uniq(names))
+  end
+
+  defp active_view_names(supervisor) do
+    supervisor
+    |> list_views()
+    |> Enum.map(fn {name, _pid, _priority} -> name end)
+    |> MapSet.new()
+  end
+
+  defp expected_view_names(names, true), do: names |> MapSet.new() |> MapSet.put("default")
+  defp expected_view_names(names, false), do: MapSet.new(names)
 end

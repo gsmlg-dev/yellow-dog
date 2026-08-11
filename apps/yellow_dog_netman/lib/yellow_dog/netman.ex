@@ -62,6 +62,12 @@ defmodule YellowDog.Netman do
     ProfileStore.list()
   end
 
+  @doc "Lists lifecycle state for every profile with one namespace revision snapshot."
+  @spec list_profile_states() :: {[map()], String.t()}
+  def list_profile_states do
+    ProfileStore.list_states()
+  end
+
   @doc "Gets a connection profile by ID."
   @spec get_profile(String.t()) ::
           {:ok, YellowDog.Netman.Types.Profile.t()} | {:error, :not_found}
@@ -78,13 +84,62 @@ defmodule YellowDog.Netman do
   @doc "Activates a connection profile."
   @spec activate(String.t()) :: :ok | {:error, term()}
   def activate(profile_id) do
-    ReconciliationEngine.activate(profile_id)
+    activate(profile_id, ReconciliationEngine)
+  end
+
+  @doc false
+  @spec activate(String.t(), module()) :: :ok | {:error, term()}
+  def activate(profile_id, reconciliation_engine) when is_atom(reconciliation_engine) do
+    with {:ok, %{desired_revision: desired_revision}} <- ProfileStore.state(profile_id),
+         :ok <- activate_and_wait(reconciliation_engine, profile_id),
+         :ok <- ProfileStore.mark_active(profile_id, desired_revision) do
+      :ok
+    end
+  end
+
+  @doc "Activates every connection selected by a profile and returns their terminal states."
+  @spec activate_with_results(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def activate_with_results(profile_id) do
+    with {:ok, %{desired_revision: desired_revision}} <- ProfileStore.state(profile_id),
+         {:ok, connections} <- ReconciliationEngine.activate_and_wait(profile_id),
+         :ok <- ProfileStore.mark_active(profile_id, desired_revision) do
+      {:ok, connections}
+    end
+  end
+
+  defp activate_and_wait(ReconciliationEngine, profile_id) do
+    case ReconciliationEngine.activate_and_wait(profile_id) do
+      {:ok, _connections} -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp activate_and_wait(reconciliation_engine, profile_id) do
+    reconciliation_engine.activate(profile_id)
   end
 
   @doc "Deactivates a connection."
   @spec deactivate(String.t()) :: :ok | {:error, term()}
   def deactivate(profile_id) do
     ReconciliationEngine.deactivate(profile_id)
+  end
+
+  @doc "Activates one profile/interface connection and waits for convergence."
+  @spec activate_connection(String.t(), String.t()) :: :ok | {:error, term()}
+  def activate_connection(profile_id, interface) do
+    case ReconciliationEngine.activate_connection_and_wait(profile_id, interface) do
+      {:ok, [_connection]} -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc "Deactivates one profile/interface connection and waits for cleanup."
+  @spec deactivate_connection(String.t(), String.t()) :: :ok | {:error, term()}
+  def deactivate_connection(profile_id, interface) do
+    case ReconciliationEngine.deactivate_connection_and_wait(profile_id, interface) do
+      {:ok, _connection} -> :ok
+      {:error, _reason} = error -> error
+    end
   end
 
   ## Policy
@@ -115,6 +170,44 @@ defmodule YellowDog.Netman do
   @spec profile_revision(String.t()) :: {:ok, String.t()} | {:error, :not_found | :invalid_id}
   def profile_revision(id) do
     ProfileStore.revision(id)
+  end
+
+  @doc "Returns a profile together with its desired and active revisions."
+  @spec profile_state(String.t()) :: {:ok, map()} | {:error, term()}
+  def profile_state(id) do
+    ProfileStore.state(id)
+  end
+
+  @doc "Lists immutable revisions for a connection profile."
+  @spec profile_history(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def profile_history(id) do
+    ProfileStore.history(id)
+  end
+
+  @doc "Returns the deterministic revision of the full profile namespace."
+  @spec profiles_revision() :: {:ok, String.t()}
+  def profiles_revision do
+    ProfileStore.namespace_revision()
+  end
+
+  @doc false
+  @spec profiles_snapshot() :: {[YellowDog.Netman.Types.Profile.t()], String.t()}
+  def profiles_snapshot do
+    ProfileStore.namespace_snapshot()
+  end
+
+  @doc "Restores an immutable revision as the desired profile."
+  @spec rollback_profile(String.t(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  def rollback_profile(id, target_revision, opts \\ []) do
+    ProfileStore.rollback(id, target_revision, opts)
+  end
+
+  @doc "Replaces the complete runtime profile namespace."
+  @spec replace_profiles([YellowDog.Netman.Types.Profile.t()], keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  def replace_profiles(profiles, opts \\ []) do
+    ProfileStore.replace(profiles, opts)
   end
 
   @doc "Imports a TOML profile from a file path."

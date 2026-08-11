@@ -1,213 +1,85 @@
 defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
-  @moduledoc """
-  LiveView for individual DHCPv4 pool details.
-
-  Shows pool configuration (subnet, ranges, gateway, DNS), utilization
-  statistics, static reservations, and all leases within the pool.
-  Supports filtering and search within the pool's lease list.
-  """
+  @moduledoc "Management-backed DHCPv4 pool details for one selected Server."
 
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.FormatHelper
-  import YellowDog.Console.ServiceHelper
+  alias YellowDog.Console.DhcpLive.ManagementComponents
+  alias YellowDog.Console.DhcpLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
+  alias YellowDog.Console.ServicePaths
+
+  @family :ipv4
 
   @impl true
   def mount(%{"pool_name" => pool_name}, _session, socket) do
-    if connected?(socket) do
-      # Subscribe to lease events for this pool
-      :telemetry.attach(
-        "dhcpv4-pool-#{pool_name}-#{inspect(self())}",
-        [:yellow_dog, :dhcpv4, :lease_allocated],
-        &handle_telemetry_event/4,
-        %{pid: self(), pool_name: pool_name}
-      )
-    end
-
     {:ok,
-     socket
-     |> assign(:pool_name, pool_name)
-     |> assign(:page_title, "Pool: #{pool_name}")
-     |> assign(:search_query, "")
-     |> assign(:filter_state, "all")
-     |> load_pool_data()}
+     assign(socket,
+       page_title: "DHCPv4 Pool: #{pool_name}",
+       subscribed_server_id: nil,
+       family_label: ManagementSupport.family_label(@family),
+       pool_name: pool_name,
+       pools_path: nil,
+       pool: nil,
+       management_error: nil,
+       cached_observed_at: nil
+     )}
   end
 
   @impl true
-  def handle_event("search", %{"search" => query}, socket) do
+  def handle_params(%{"server_id" => server_id, "pool_name" => pool_name}, _uri, socket) do
+    socket =
+      socket
+      |> ManagementSupport.subscribe(server_id)
+      |> assign(
+        pool_name: pool_name,
+        pools_path: ServicePaths.server_path(server_id, :dhcpv4_pools)
+      )
+
+    {:noreply, if(connected?(socket), do: load_pool(socket), else: socket)}
+  end
+
+  @impl true
+  def handle_event("search", _params, socket), do: {:noreply, socket}
+  def handle_event("filter_state", _params, socket), do: {:noreply, socket}
+
+  def handle_event("release_lease", _params, socket) do
+    {:noreply,
+     put_flash(
+       socket,
+       :error,
+       "Pool-scoped lease revision is unavailable; no command was sent"
+     )}
+  end
+
+  @impl true
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
     {:noreply,
      socket
-     |> assign(:search_query, query)
-     |> load_pool_data()}
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_pool()}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("filter_state", %{"state" => state}, socket) do
-    {:noreply,
-     socket
-     |> assign(:filter_state, state)
-     |> load_pool_data()}
-  end
+  def render(assigns), do: ManagementComponents.pool(assigns)
 
-  @impl true
-  def handle_event("release_lease", %{"mac" => mac}, socket) do
-    mac_binary = parse_mac_string(mac)
+  defp load_pool(socket) do
+    server_id = socket.assigns.selected_server.id
+    payload = %{"family" => ManagementSupport.family_wire(@family)}
+    status = ServerManagement.dhcp_status_get(server_id, payload)
+    pools_result = ServerManagement.dhcp_pools_list(server_id, payload)
+    pools = pools_result |> ManagementSupport.items(@family) |> ManagementSupport.pool_views()
+    results = [status, pools_result]
 
-    case safe_call(
-           YellowDog.Dhcpv4,
-           fn -> YellowDog.Dhcpv4.release_lease(mac_binary) end,
-           {:error, :service_unavailable}
-         ) do
-      :ok ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Lease released successfully")
-         |> load_pool_data()}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to release lease: #{inspect(reason)}")}
-    end
-  end
-
-  @impl true
-  def handle_info({:telemetry_event, _event, _measurements, metadata}, socket) do
-    # Only reload if event is for this pool
-    if metadata[:pool_name] == socket.assigns.pool_name do
-      {:noreply, load_pool_data(socket)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
-
-  @impl true
-  def terminate(_reason, socket) do
-    :telemetry.detach("dhcpv4-pool-#{socket.assigns.pool_name}-#{inspect(self())}")
-    :ok
-  end
-
-  # Private Functions
-
-  defp load_pool_data(socket) do
-    pool_name = socket.assigns.pool_name
-
-    # Get pool configuration and statistics
-    pool_config = get_pool_config(pool_name)
-    pool_stats = get_pool_stats(pool_name)
-    static_reservations = get_static_reservations(pool_name)
-
-    # Get all leases for this pool
-    all_leases = get_pool_leases(pool_name)
-
-    # Filter leases based on search query and state
-    filtered =
-      all_leases
-      |> filter_by_search(socket.assigns.search_query)
-      |> filter_by_state(socket.assigns.filter_state)
-      |> Enum.sort_by(& &1.updated_at, :desc)
-
-    socket
-    |> assign(:pool_config, pool_config)
-    |> assign(:pool_stats, pool_stats)
-    |> assign(:static_reservations, static_reservations)
-    |> assign(:all_leases, all_leases)
-    |> assign(:filtered_leases, filtered)
-  end
-
-  defp get_pool_config(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv4.LeaseManager,
-      fn ->
-        case YellowDog.Dhcpv4.LeaseManager.get_pool_config(pool_name) do
-          {:ok, config} -> config
-          _ -> default_pool_config(pool_name)
-        end
-      end,
-      default_pool_config(pool_name)
+    assign(socket,
+      page_title:
+        "#{socket.assigns.selected_server.name || server_id} — #{socket.assigns.pool_name}",
+      pool: ManagementSupport.find_pool(pools, socket.assigns.pool_name),
+      management_error: ManagementSupport.first_error(results),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(results, socket.assigns.selected_server.last_seen_at)
     )
-  end
-
-  defp default_pool_config(pool_name) do
-    %{
-      name: pool_name,
-      range_start: {192, 168, 1, 10},
-      range_end: {192, 168, 1, 254},
-      subnet_mask: {255, 255, 255, 0},
-      gateway: {192, 168, 1, 1},
-      dns_servers: [{8, 8, 8, 8}, {8, 8, 4, 4}],
-      domain_name: "local",
-      lease_time: 86400,
-      excluded_ranges: []
-    }
-  end
-
-  defp get_pool_stats(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv4,
-      fn ->
-        case YellowDog.Dhcpv4.get_pool_stats(pool_name) do
-          {:ok, stats} -> stats
-          _ -> default_pool_stats()
-        end
-      end,
-      default_pool_stats()
-    )
-  end
-
-  defp default_pool_stats do
-    %{
-      total_addresses: 0,
-      allocated_addresses: 0,
-      available_addresses: 0,
-      static_reservations: 0,
-      utilization_percent: 0.0,
-      leases_by_state: %{}
-    }
-  end
-
-  defp get_static_reservations(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv4.LeaseManager,
-      fn -> YellowDog.Dhcpv4.LeaseManager.get_static_reservations(pool_name) end,
-      []
-    )
-  end
-
-  defp get_pool_leases(pool_name) do
-    safe_call(
-      YellowDog.Dhcpv4,
-      fn -> YellowDog.Dhcpv4.list_leases() |> Enum.filter(&(&1.pool_name == pool_name)) end,
-      []
-    )
-  end
-
-  defp filter_by_search(leases, ""), do: leases
-
-  defp filter_by_search(leases, query) do
-    query_lower = String.downcase(query)
-
-    Enum.filter(leases, fn lease ->
-      mac_match =
-        format_mac(lease.mac_address) |> String.downcase() |> String.contains?(query_lower)
-
-      ip_match = format_ip(lease.ip_address) |> String.contains?(query_lower)
-
-      hostname_match =
-        if lease.hostname,
-          do: String.downcase(lease.hostname) |> String.contains?(query_lower),
-          else: false
-
-      mac_match || ip_match || hostname_match
-    end)
-  end
-
-  defp handle_telemetry_event(event, measurements, metadata, %{pid: pid, pool_name: pool_name}) do
-    if metadata[:pool_name] == pool_name do
-      send(pid, {:telemetry_event, event, measurements, metadata})
-    end
   end
 end

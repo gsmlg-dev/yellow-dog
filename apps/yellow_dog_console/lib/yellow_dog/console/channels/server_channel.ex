@@ -90,22 +90,33 @@ defmodule YellowDog.Console.ServerChannel do
     do: error(:not_connected, socket)
 
   defp dispatch(:awaiting_status, %{tag: :status, status: status}, _encoded, nil, socket) do
-    case ServerConnections.activate(
-           socket.assigns.server_id,
-           self(),
-           socket.assigns.identity,
-           status
-         ) do
-      {:ok, _replaced_pid} ->
-        socket = assign(socket, :handshake_state, :active)
-        accepted(socket)
-
-      {:error, _reason} ->
-        error(:invalid, socket)
-    end
+    accepted(
+      socket
+      |> assign(:status, status)
+      |> assign(:handshake_state, :awaiting_journal)
+    )
   end
 
   defp dispatch(:awaiting_status, _message, _encoded, _sequence, socket),
+    do: error(:not_connected, socket)
+
+  defp dispatch(:awaiting_journal, %{tag: :journal}, encoded, nil, socket) do
+    case ServerConnections.activate_after_journal(
+           socket.assigns.server_id,
+           self(),
+           socket.assigns.identity,
+           socket.assigns.status,
+           encoded
+         ) do
+      {:ok, _replaced_pid} ->
+        accepted(assign(socket, :handshake_state, :active))
+
+      {:error, code} ->
+        error(code, socket)
+    end
+  end
+
+  defp dispatch(:awaiting_journal, _message, _encoded, _sequence, socket),
     do: error(:not_connected, socket)
 
   defp dispatch(:active, %{tag: :heartbeat}, _encoded, nil, socket) do
@@ -190,7 +201,11 @@ defmodule YellowDog.Console.ServerChannel do
 
   defp exact_payload(_payload), do: {:error, :invalid}
 
-  defp matching_server(%{tag: :hello, identity: %{id: server_id}}, server_id), do: :ok
+  defp matching_server(
+         %{tag: :hello, identity: %{target_type: :server, id: server_id}},
+         server_id
+       ),
+       do: :ok
 
   defp matching_server(
          %{target_type: :server, target_id: server_id},
@@ -198,9 +213,7 @@ defmodule YellowDog.Console.ServerChannel do
        ),
        do: :ok
 
-  defp matching_server(%{tag: :result, target_type: target_type}, _server_id)
-       when target_type in [:server, :netman],
-       do: :ok
+  defp matching_server(%{tag: :result, target_type: :server}, _server_id), do: :ok
 
   defp matching_server(_message, _server_id), do: {:error, :invalid}
 
@@ -258,6 +271,7 @@ defmodule YellowDog.Console.ServerChannel do
     @journal_module :"Elixir.YellowDog.Sync.Message.Journal"
     @event_module :"Elixir.YellowDog.Sync.Message.Event"
     @server_identity_module :"Elixir.YellowDog.Sync.Identity.Server"
+    @netman_identity_module :"Elixir.YellowDog.Sync.Identity.Netman"
     @envelope_module :"Elixir.YellowDog.Sync.Envelope"
     @operation_module :"Elixir.YellowDog.Sync.Operation"
     @error_module :"Elixir.YellowDog.Sync.Error"
@@ -299,14 +313,19 @@ defmodule YellowDog.Console.ServerChannel do
 
     @spec reconcile_journal(binary(), String.t()) ::
             {:ok, map()} | {:error, atom()}
-    def reconcile_journal(encoded, server_id) do
+    def reconcile_journal(encoded, server_id), do: reconcile_journal(encoded, :server, server_id)
+
+    @spec reconcile_journal(binary(), :server | :netman, String.t()) ::
+            {:ok, map()} | {:error, atom()}
+    def reconcile_journal(encoded, target_type, target_id)
+        when target_type in [:server, :netman] and is_binary(target_id) do
       with true <- Code.ensure_loaded?(@message_module),
            {:ok, decoded} <- canonical_decode(encoded),
            true <- Map.get(decoded, :__struct__) == @journal_module,
-           :server <- Map.get(decoded, :target_type),
-           ^server_id <- Map.get(decoded, :target_id),
+           ^target_type <- Map.get(decoded, :target_type),
+           ^target_id <- Map.get(decoded, :target_id),
            {:ok, result} <-
-             YellowDog.ManagementCore.runtime_connected(:server, server_id, decoded),
+             YellowDog.ManagementCore.runtime_connected(target_type, target_id, decoded),
            true <- is_map(result) do
         {:ok, result}
       else
@@ -319,6 +338,8 @@ defmodule YellowDog.Console.ServerChannel do
       :exit, _reason -> {:error, :internal}
     end
 
+    def reconcile_journal(_encoded, _target_type, _target_id), do: {:error, :invalid}
+
     @spec encode_config_version_delivery(map()) ::
             {:ok, binary(), map()} | {:error, :invalid}
     def encode_config_version_delivery(version) do
@@ -328,7 +349,8 @@ defmodule YellowDog.Console.ServerChannel do
            true <- Code.ensure_loaded?(config_version_module),
            true <- is_map(version),
            ^config_version_module <- Map.get(version, :__struct__),
-           :server <- Map.get(version, :target_type),
+           target_type when target_type in [:server, :netman] <-
+             Map.get(version, :target_type),
            wire = config_version_envelope_wire(version),
            {:ok, envelope} <- dynamic_apply(@envelope_module, :from_wire, [wire]) do
         encode_config_delivery(envelope)
@@ -361,12 +383,14 @@ defmodule YellowDog.Console.ServerChannel do
     defp summarize(@hello_module, message) do
       identity = Map.get(message, :identity)
 
-      if is_map(identity) and Map.get(identity, :__struct__) == @server_identity_module do
+      with true <- is_map(identity),
+           {:ok, target_type} <- identity_target_type(Map.get(identity, :__struct__)) do
         {:ok,
          %{
            tag: :hello,
            identity:
-             Map.take(identity, [
+             identity
+             |> Map.take([
                :id,
                :name,
                :version,
@@ -374,9 +398,10 @@ defmodule YellowDog.Console.ServerChannel do
                :capabilities,
                :config_revision
              ])
+             |> Map.put(:target_type, target_type)
          }}
       else
-        {:error, :invalid}
+        _invalid -> {:error, :invalid}
       end
     end
 
@@ -431,6 +456,10 @@ defmodule YellowDog.Console.ServerChannel do
     defp summarize(@journal_module, message), do: target_summary(:journal, message)
     defp summarize(@event_module, message), do: target_summary(:event, message)
     defp summarize(_module, _message), do: {:error, :invalid}
+
+    defp identity_target_type(@server_identity_module), do: {:ok, :server}
+    defp identity_target_type(@netman_identity_module), do: {:ok, :netman}
+    defp identity_target_type(_module), do: {:error, :invalid}
 
     defp target_summary(tag, message) do
       {:ok,
@@ -495,7 +524,7 @@ defmodule YellowDog.Console.ServerChannel do
       %{
         "protocol_version" => 1,
         "request_id" => uuid(),
-        "target_type" => "server",
+        "target_type" => version.target_type |> Atom.to_string(),
         "target_id" => Map.get(version, :target_id),
         "operation" => Map.get(version, :operation),
         "idempotency_key" => uuid(),
@@ -513,7 +542,7 @@ defmodule YellowDog.Console.ServerChannel do
       target_id = Map.get(envelope, :target_id)
       operation = Map.get(envelope, :operation)
 
-      if is_binary(request_id) and target_type == :server and is_binary(target_id) and
+      if is_binary(request_id) and target_type in [:server, :netman] and is_binary(target_id) and
            is_binary(operation) do
         {:ok,
          %{

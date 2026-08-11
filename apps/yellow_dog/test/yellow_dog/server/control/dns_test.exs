@@ -58,6 +58,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       zone_controller: ServerDnsControlFake.ZoneController,
       acl_registry: ServerDnsControlFake.AclRegistry,
       acl_codec: ServerDnsControlFake.AclCodec,
+      config_persistence: ServerDnsControlFake.ConfigPersistence,
       provider_store: ServerDnsControlFake.ProviderStore,
       provider_facade: ServerDnsControlFake.ProviderFacade,
       tasks: ServerDnsControlFake.Tasks,
@@ -146,6 +147,311 @@ defmodule YellowDog.Server.Control.DnsTest do
     assert soa == %{mname: "ns1.example.test", rname: "hostmaster.example.test"}
   end
 
+  test "creates a view by persisting the full candidate before runtime activation" do
+    default_config = %{
+      name: "default",
+      priority: :infinity,
+      acl: :any,
+      recursion: true,
+      recursion_enabled: true,
+      zones: [auth: "example.test"]
+    }
+
+    ServerDnsControlFake.configure(%{
+      views: [{"default", self(), 0}],
+      view_configs: [default_config]
+    })
+
+    payload = %{
+      "view_name" => "internal",
+      "match_clients" => ["10.1.2.3/8", "2001:db8::/32", "10.0.0.0/8"],
+      "recursion" => false
+    }
+
+    assert {:ok, result} = Dns.dispatch("server.dns.views.create", payload)
+    assert_valid_result("server.dns.views.create", result)
+
+    assert result["resource"] == %{
+             "view_name" => "internal",
+             "match_clients" => ["10.0.0.0/8", "2001:db8::/32"],
+             "recursion" => false
+           }
+
+    assert [
+             {:config_persistence, :collect_views, []},
+             {:config_persistence, :save_views, [candidate]},
+             {:view_manager, :apply_control_views, [candidate]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert [^default_config, created] = candidate
+    assert created.name == "internal"
+    assert created.priority == 100
+    assert created.recursion == false
+    assert created.recursion_enabled == false
+
+    assert created.acl == [
+             %{action: "allow", network: "10.0.0.0/8"},
+             %{action: "allow", network: "2001:db8::/32"}
+           ]
+  end
+
+  test "updates a view without discarding owner-only configuration" do
+    previous = %{
+      name: "internal",
+      priority: 17,
+      acl: [%{action: "allow", network: "10.0.0.0/8"}],
+      recursion: false,
+      recursion_enabled: false,
+      zones: [auth: "internal.test"],
+      fallback_timeout: 4_000
+    }
+
+    ServerDnsControlFake.configure(%{
+      views: [{"internal", self(), 17}],
+      view_configs: [previous]
+    })
+
+    payload = %{
+      "view_name" => "internal",
+      "match_clients" => ["203.0.113.0/24"],
+      "recursion" => true
+    }
+
+    assert {:ok, result} = Dns.dispatch("server.dns.views.update", payload)
+    assert_valid_result("server.dns.views.update", result)
+
+    assert [
+             {:config_persistence, :collect_views, []},
+             {:config_persistence, :save_views, [[candidate]]},
+             {:view_manager, :apply_control_views, [[candidate]]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert candidate.priority == 17
+    assert candidate.zones == [auth: "internal.test"]
+    assert candidate.fallback_timeout == 4_000
+    assert candidate.recursion == true
+    assert candidate.recursion_enabled == true
+    assert candidate.acl == [%{action: "allow", network: "203.0.113.0/24"}]
+  end
+
+  test "deletes a non-default view from persistence before runtime activation" do
+    default_config = %{name: "default", priority: :infinity, acl: :any, recursion: true}
+    old_config = %{name: "old", priority: 10, acl: :none, recursion: false}
+
+    ServerDnsControlFake.configure(%{
+      views: [{"default", self(), 0}, {"old", self(), 10}],
+      view_configs: [default_config, old_config]
+    })
+
+    assert {:ok, result} =
+             Dns.dispatch("server.dns.views.delete", %{"view_name" => "old"})
+
+    assert_valid_result("server.dns.views.delete", result)
+    assert result["resource_ref"] == %{"view_name" => "old"}
+
+    assert [
+             {:config_persistence, :collect_views, []},
+             {:config_persistence, :save_views, [[^default_config]]},
+             {:view_manager, :apply_control_views, [[^default_config]]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert {:error, %Error{code: :conflict}} =
+             Dns.dispatch("server.dns.views.delete", %{"view_name" => "default"})
+
+    assert [] = ServerDnsControlFake.take_calls()
+  end
+
+  test "restores the prior persisted views when runtime activation fails" do
+    previous = %{name: "internal", priority: 10, acl: :none, recursion: false}
+
+    ServerDnsControlFake.configure(%{
+      views: [{"internal", self(), 10}],
+      view_configs: [previous],
+      responses: %{update_views: [{:error, :reload_failed}, :ok]}
+    })
+
+    payload = %{
+      "view_name" => "internal",
+      "match_clients" => ["10.0.0.0/8"],
+      "recursion" => true
+    }
+
+    assert {:error, %Error{code: :apply_failed}} =
+             Dns.dispatch("server.dns.views.update", payload)
+
+    assert [
+             {:config_persistence, :collect_views, []},
+             {:config_persistence, :save_views, [[candidate]]},
+             {:view_manager, :apply_control_views, [[candidate]]},
+             {:config_persistence, :save_views, [[^previous]]},
+             {:view_manager, :apply_control_views, [[^previous]]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "does not activate a view when durable persistence fails" do
+    ServerDnsControlFake.configure(%{
+      view_configs: [],
+      responses: %{save_views: [{:error, :disk_full}]}
+    })
+
+    payload = %{
+      "view_name" => "internal",
+      "match_clients" => ["10.0.0.0/8"],
+      "recursion" => false
+    }
+
+    assert {:error, %Error{code: :apply_failed}} =
+             Dns.dispatch("server.dns.views.create", payload)
+
+    assert [
+             {:config_persistence, :collect_views, []},
+             {:config_persistence, :save_views, [[_candidate]]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "creates an ACL by persisting canonical rules before registry activation" do
+    ServerDnsControlFake.configure(%{acls: [], persisted_acls: []})
+
+    payload = %{
+      "acl_id" => "trusted",
+      "networks" => ["192.0.2.99/24", "10.0.0.0/8", "192.0.2.0/24"],
+      "action" => "allow"
+    }
+
+    assert {:ok, result} = Dns.dispatch("server.dns.acls.create", payload)
+    assert_valid_result("server.dns.acls.create", result)
+
+    assert result["resource"] == %{
+             "acl_id" => "trusted",
+             "networks" => ["10.0.0.0/8", "192.0.2.0/24"],
+             "action" => "allow"
+           }
+
+    assert [
+             {:acl_registry, :list_acls, []},
+             {:config_persistence, :save_acls, [[candidate]]},
+             {:acl_registry, :create_acl, [candidate]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert candidate == %{
+             name: "trusted",
+             description: "",
+             rules: [
+               %{action: "allow", network: "10.0.0.0/8"},
+               %{action: "allow", network: "192.0.2.0/24"}
+             ]
+           }
+  end
+
+  test "normalizes an empty ACL to the owner's deny-all representation" do
+    ServerDnsControlFake.configure(%{acls: [], persisted_acls: []})
+
+    payload = %{"acl_id" => "nobody", "networks" => [], "action" => "allow"}
+
+    assert {:ok, result} = Dns.dispatch("server.dns.acls.create", payload)
+
+    assert result["resource"] == %{
+             "acl_id" => "nobody",
+             "networks" => [],
+             "action" => "deny"
+           }
+
+    assert {:ok, result["resource"]} ==
+             Dns.current("server.dns.acls.update", %{"acl_id" => "nobody"})
+  end
+
+  test "updates and deletes ACLs without losing owner-only fields" do
+    existing = %{
+      name: "trusted",
+      description: "Managed office networks",
+      rules: [%{action: "allow", network: "10.0.0.0/8"}]
+    }
+
+    ServerDnsControlFake.configure(%{acls: [existing], persisted_acls: [existing]})
+
+    update_payload = %{
+      "acl_id" => "trusted",
+      "networks" => ["203.0.113.0/24"],
+      "action" => "deny"
+    }
+
+    assert {:ok, update_result} = Dns.dispatch("server.dns.acls.update", update_payload)
+    assert_valid_result("server.dns.acls.update", update_result)
+
+    assert [
+             {:acl_registry, :list_acls, []},
+             {:config_persistence, :save_acls, [[updated]]},
+             {:acl_registry, :update_acl, ["trusted", updated]}
+           ] = ServerDnsControlFake.take_calls()
+
+    assert updated.description == "Managed office networks"
+    assert updated.rules == [%{action: "deny", network: "203.0.113.0/24"}]
+
+    assert {:ok, delete_result} =
+             Dns.dispatch("server.dns.acls.delete", %{"acl_id" => "trusted"})
+
+    assert_valid_result("server.dns.acls.delete", delete_result)
+    assert delete_result["resource_ref"] == %{"acl_id" => "trusted"}
+
+    assert [
+             {:acl_registry, :list_acls, []},
+             {:config_persistence, :save_acls, [[]]},
+             {:acl_registry, :delete_acl, ["trusted"]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "does not mutate ACL runtime state when persistence fails" do
+    ServerDnsControlFake.configure(%{
+      acls: [],
+      persisted_acls: [],
+      responses: %{save_acls: [{:error, :disk_full}]}
+    })
+
+    payload = %{
+      "acl_id" => "trusted",
+      "networks" => ["10.0.0.0/8"],
+      "action" => "allow"
+    }
+
+    assert {:error, %Error{code: :apply_failed}} =
+             Dns.dispatch("server.dns.acls.create", payload)
+
+    assert [
+             {:acl_registry, :list_acls, []},
+             {:config_persistence, :save_acls, [[_candidate]]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
+  test "restores prior ACL persistence when registry activation fails" do
+    existing = %{
+      name: "trusted",
+      description: "",
+      rules: [%{action: "allow", network: "10.0.0.0/8"}]
+    }
+
+    ServerDnsControlFake.configure(%{
+      acls: [existing],
+      persisted_acls: [existing],
+      responses: %{update_acl: [{:error, :registry_failed}]}
+    })
+
+    payload = %{
+      "acl_id" => "trusted",
+      "networks" => ["203.0.113.0/24"],
+      "action" => "deny"
+    }
+
+    assert {:error, %Error{code: :apply_failed}} =
+             Dns.dispatch("server.dns.acls.update", payload)
+
+    assert [
+             {:acl_registry, :list_acls, []},
+             {:config_persistence, :save_acls, [[updated]]},
+             {:acl_registry, :update_acl, ["trusted", updated]},
+             {:config_persistence, :save_acls, [[^existing]]}
+           ] = ServerDnsControlFake.take_calls()
+  end
+
   test "rejects forward zone creation before any facade side effect" do
     assert {:error, %Error{code: :unsupported}} =
              Dns.dispatch("server.dns.zones.create", %{zone_payload() | "zone_type" => "forward"})
@@ -176,6 +482,26 @@ defmodule YellowDog.Server.Control.DnsTest do
 
       assert {:error, %Error{code: :unsupported}} =
                Dns.dispatch("server.dns.zones.import", payload)
+    end
+
+    assert [] = ServerDnsControlFake.take_calls()
+  end
+
+  test "keeps commands without an approved CAS read unavailable" do
+    approved_dns_queries =
+      ServerOperation.all()
+      |> Map.values()
+      |> Enum.filter(&(&1.kind == :query and String.starts_with?(&1.name, "server.dns.")))
+      |> Enum.map(& &1.name)
+
+    refute Enum.any?(approved_dns_queries, &String.contains?(&1, ".conflicts."))
+    refute Enum.any?(approved_dns_queries, &String.contains?(&1, ".zones.import"))
+
+    payload = %{"conflict_id" => "conflict-1", "resolution" => "use_local"}
+
+    for callback <- [&Dns.current/2, &Dns.dispatch/2] do
+      assert {:error, %Error{code: :unsupported}} =
+               callback.("server.dns.conflicts.resolve", payload)
     end
 
     assert [] = ServerDnsControlFake.take_calls()
@@ -1493,123 +1819,11 @@ defmodule YellowDog.Server.Control.DnsTest do
              ServerDnsControlFake.take_calls()
   end
 
-  test "resolves a conflict synchronously with the post-application DNS zone revision" do
-    conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "Example.Test."}
-    zone = put_in(cloud_authoritative_zone(), [:soa, :serial], 11)
-
-    ServerDnsControlFake.configure(%{
-      conflicts: %{"conflict-1" => conflict},
-      zone_metadata: %{{"default", "example.test"} => zone},
-      record_state: conflict_record_state("192.0.2.2")
-    })
-
-    payload = %{"conflict_id" => "conflict-1", "resolution" => "use_cloud"}
-
-    assert {:ok, result} = Dns.dispatch("server.dns.conflicts.resolve", payload)
-    assert_valid_result("server.dns.conflicts.resolve", result)
-    assert result["resource_type"] == "dns_zone"
-    assert result["resource_id"] == "example.test"
-
-    expected_resource = %{
-      "view_name" => "default",
-      "zone_name" => "example.test",
-      "zone_type" => "authoritative",
-      "provider_id" => "cf-main"
-    }
-
-    assert result["resource"] == expected_resource
-
-    expected_state = conflict_revision_state(expected_resource, 11, "192.0.2.2")
-    assert {:ok, expected_revision} = Revision.calculate(expected_state)
-    assert result["revision"] == expected_revision
-    refute result["revision"] == elem(Revision.calculate(expected_resource), 1)
-
-    assert [
-             {:provider_facade, :fetch_conflict, ["conflict-1"]},
-             {:provider_facade, :resolve_conflict, ["conflict-1", :use_cloud]},
-             {:zone_store, :get_zone, ["default", "example.test"]},
-             {:zone_store, :list_records, ["default", "example.test"]}
-           ] = ServerDnsControlFake.take_calls()
-
-    assert {:ok, current} = Dns.current("server.dns.conflicts.resolve", payload)
-    assert {:ok, ^expected_revision} = Revision.calculate(current)
-  end
-
-  test "maps conflict resolution owner errors without leaking owner terms" do
-    conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "example.test"}
-
-    ServerDnsControlFake.configure(%{
-      conflicts: %{"conflict-1" => conflict},
-      responses: %{resolve_conflict: [{:error, {:owner_failed, "credential-token"}}]}
-    })
-
-    result =
-      Dns.dispatch("server.dns.conflicts.resolve", %{
-        "conflict_id" => "conflict-1",
-        "resolution" => "use_local"
-      })
-
-    assert result == {:error, Error.new(:apply_failed, "apply failed", %{})}
-    refute inspect(result) =~ "owner_failed"
-    refute inspect(result) =~ "credential-token"
-  end
-
-  test "preserves the Route53 use_local unsupported owner boundary without local mutation" do
-    conflict = %{
-      id: "conflict-route53",
-      provider_name: "route53-main",
-      zone: "example.test",
-      provider_type: :route53
-    }
-
-    ServerDnsControlFake.configure(%{
-      conflicts: %{"conflict-route53" => conflict},
-      zone_metadata: %{{"default", "example.test"} => cloud_authoritative_zone()},
-      record_state: conflict_record_state("192.0.2.10"),
-      responses: %{resolve_conflict: [{:error, :unsupported}]}
-    })
-
-    before = mutation_state()
-
-    assert {:error, %Error{code: :unsupported}} =
-             Dns.dispatch("server.dns.conflicts.resolve", %{
-               "conflict_id" => "conflict-route53",
-               "resolution" => "use_local"
-             })
-
-    assert mutation_state() == before
-
-    assert [
-             {:provider_facade, :fetch_conflict, ["conflict-route53"]},
-             {:provider_facade, :resolve_conflict, ["conflict-route53", :use_local]}
-           ] = ServerDnsControlFake.take_calls()
-  end
-
-  test "Dispatcher rejects a conflict revision captured before DNS data changed" do
-    conflict = %{id: "conflict-1", provider_name: "cf-main", zone: "example.test"}
-    zone = cloud_authoritative_zone()
+  test "Dispatcher leaves conflict resolution unavailable even with a supplied revision" do
     payload = %{"conflict_id" => "conflict-1", "resolution" => "use_local"}
-
-    ServerDnsControlFake.configure(%{
-      conflicts: %{"conflict-1" => conflict},
-      zone_metadata: %{{"default", "example.test"} => zone},
-      record_state: conflict_record_state("192.0.2.1")
-    })
-
-    assert {:ok, current} = Dns.current("server.dns.conflicts.resolve", payload)
-    assert {:ok, old_revision} = Revision.calculate(current)
-    ServerDnsControlFake.take_calls()
-
-    changed_zone = put_in(zone, [:soa, :serial], 11)
-
-    ServerDnsControlFake.configure(%{
-      zone_metadata: %{{"default", "example.test"} => changed_zone},
-      record_state: conflict_record_state("192.0.2.2")
-    })
-
     {:ok, payload_digest} = Digest.calculate(payload)
 
-    assert {:error, %Error{code: :conflict, message: "stale revision"}} =
+    assert {:error, %Error{code: :unsupported, message: "unsupported operation"}} =
              Dispatcher.dispatch(%Envelope{
                protocol_version: 1,
                request_id: @request_id,
@@ -1619,16 +1833,12 @@ defmodule YellowDog.Server.Control.DnsTest do
                idempotency_key: @idempotency_key,
                payload: payload,
                payload_digest: payload_digest,
-               expected_revision: old_revision,
+               expected_revision: String.duplicate("a", 64),
                config_version: nil,
                sent_at: @sent_at
              })
 
-    assert [
-             {:provider_facade, :fetch_conflict, ["conflict-1"]},
-             {:zone_store, :get_zone, ["default", "example.test"]},
-             {:zone_store, :list_records, ["default", "example.test"]}
-           ] = ServerDnsControlFake.take_calls()
+    assert [] = ServerDnsControlFake.take_calls()
 
     assert_dispatcher_dns_dependencies()
   end
@@ -2372,6 +2582,9 @@ defmodule YellowDog.Server.Control.DnsTest do
 
   test "mutation dispatch and unknown names are unsupported before dependency calls" do
     supported = [
+      "server.dns.views.create",
+      "server.dns.views.update",
+      "server.dns.views.delete",
       "server.dns.zones.create",
       "server.dns.zones.update",
       "server.dns.zones.delete",
@@ -2379,26 +2592,33 @@ defmodule YellowDog.Server.Control.DnsTest do
       "server.dns.records.create",
       "server.dns.records.update",
       "server.dns.records.delete",
-      "server.dns.conflicts.resolve"
+      "server.dns.acls.create",
+      "server.dns.acls.update",
+      "server.dns.acls.delete"
     ]
 
+    unavailable_cas = ["server.dns.zones.import", "server.dns.conflicts.resolve"]
+
     for operation <-
-          (@mutation_operations -- supported) ++
+          ((@mutation_operations -- supported) -- unavailable_cas) ++
             ["server.dns.records.list.extra", "dns.views.list"] do
-      assert {:error, %Error{code: :unsupported, message: "unsupported operation", details: %{}}} =
-               Dns.dispatch(operation, %{
-                 "view_name" => "default",
-                 "zone_name" => "example.test",
-                 "record_id" => record_id("www", "A")
-               })
+      result =
+        Dns.dispatch(operation, %{
+          "view_name" => "default",
+          "zone_name" => "example.test",
+          "record_id" => record_id("www", "A")
+        })
+
+      assert match?(
+               {:error,
+                %Error{code: :unsupported, message: "unsupported operation", details: %{}}},
+               result
+             ),
+             "#{operation} returned #{inspect(result)}"
     end
 
     assert {:error, %Error{code: :unsupported}} =
              Dns.current("server.dns.unknown", %{})
-
-    for operation <- ["server.dns.zones.import"] do
-      assert {:error, %Error{code: :unsupported}} = Dns.current(operation, %{})
-    end
 
     assert [] = ServerDnsControlFake.take_calls()
   end
@@ -2477,36 +2697,6 @@ defmodule YellowDog.Server.Control.DnsTest do
       connector_name: "cf-main",
       provider: :cloudflare
     })
-  end
-
-  defp conflict_record_state(address) do
-    %{
-      {"default", "example.test"} => [
-        %{
-          owner: "www",
-          type: :a,
-          rrset: [%{ttl: 60, rdata: address}]
-        }
-      ]
-    }
-  end
-
-  defp conflict_revision_state(resource, soa_serial, address) do
-    %{
-      "zone" => resource,
-      "soa_serial" => soa_serial,
-      "rrsets" => [
-        %{
-          "view_name" => "default",
-          "zone_name" => "example.test",
-          "record_id" => record_id("www", "A"),
-          "name" => "www",
-          "type" => "A",
-          "ttl" => 60,
-          "values" => [address]
-        }
-      ]
-    }
   end
 
   defp record_payload(type, values) do

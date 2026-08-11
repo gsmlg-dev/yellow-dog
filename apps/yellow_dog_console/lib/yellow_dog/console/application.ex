@@ -18,14 +18,14 @@ defmodule YellowDog.Console.Application do
           {Phoenix.PubSub, name: YellowDog.Console.PubSub},
           # Telemetry supervisor for metrics
           YellowDog.Console.Telemetry,
-          # Configuration version tracking for settings optimistic locking
-          YellowDog.Console.Settings.ConfigurationVersion,
           # Log broadcaster for real-time log streaming to LiveViews
           YellowDog.Console.LogBroadcaster,
           # Rate limiter for authentication attempts (brute-force protection)
           YellowDog.Console.Plugs.AuthRateLimiter,
           # Registry for connected remote Netman service instances
           YellowDog.Console.NetmanRegistry,
+          # Atomic candidate/active registry for typed remote Netman control channels
+          YellowDog.Console.NetmanConnections,
           # Atomic candidate/active registry for remote Server control channels
           YellowDog.Console.ServerConnections,
           # Note: DHCP LeaseManagers are started by their respective service supervisors

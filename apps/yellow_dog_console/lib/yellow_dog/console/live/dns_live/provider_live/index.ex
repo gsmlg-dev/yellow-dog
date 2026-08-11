@@ -1,239 +1,93 @@
 defmodule YellowDog.Console.DnsLive.ProviderLive.Index do
-  @moduledoc """
-  DNS Provider list page showing all configured providers with status,
-  sync controls, and management actions.
-  """
+  @moduledoc "Management-backed DNS providers for one selected Server."
+
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
+  alias YellowDog.Console.DnsLive.ManagementComponents
+  alias YellowDog.Console.DnsLive.ManagementSupport
+  alias YellowDog.Console.ServerManagement
 
-  @valid_types ~w(iana_root aws cloudflare gcp vultr)
-  @valid_strategies ~w(local_wins remote_wins manual)
+  @credential_mutation_unavailable "Provider credential references cannot yet be materialized by the selected Server"
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns_provider:sync")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns_provider:config")
-    end
-
     {:ok,
      assign(socket,
        page_title: "DNS Providers",
-       providers: list_providers(),
-       delete_confirm: nil,
-       show_form: false,
-       form: new_form()
+       subscribed_server_id: nil,
+       providers: [],
+       management_error: nil,
+       operation_result: nil,
+       cached_observed_at: nil,
+       commands_enabled?: false
      )}
   end
 
   @impl true
-  def handle_params(_params, _uri, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action)}
+  def handle_params(%{"server_id" => server_id}, _uri, socket) do
+    socket = ManagementSupport.subscribe(socket, server_id)
+    {:noreply, if(connected?(socket), do: load_providers(socket, server_id), else: socket)}
   end
-
-  defp apply_action(socket, :new) do
-    socket
-    |> assign(:page_title, "Add DNS Provider")
-    |> assign(:show_form, true)
-    |> assign(:form, new_form())
-  end
-
-  defp apply_action(socket, _action) do
-    socket
-    |> assign(:page_title, "DNS Providers")
-    |> assign(:show_form, false)
-  end
-
-  # ------------------------------------------------------------------
-  # Events
-  # ------------------------------------------------------------------
 
   @impl true
-  def handle_event("refresh", _params, socket) do
-    {:noreply, assign(socket, :providers, list_providers())}
-  end
+  def handle_event("create_provider", _params, socket),
+    do: {:noreply, put_flash(socket, :error, @credential_mutation_unavailable)}
 
-  def handle_event("sync_now", %{"name" => name}, socket) do
-    safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.sync_now(name) end, :ok)
+  def handle_event("delete_provider", %{"provider_id" => provider_id}, socket) do
+    with :ok <- ManagementSupport.mutable(socket),
+         {:ok, revision} <- provider_revision(socket.assigns.providers, provider_id) do
+      result =
+        ServerManagement.dns_providers_delete(
+          ManagementSupport.selected_id(socket),
+          %{"provider_id" => provider_id},
+          ManagementSupport.command_options(revision)
+        )
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Sync triggered for #{name}")
-     |> assign(:providers, list_providers())}
-  end
+      socket =
+        if result.status == :ok,
+          do:
+            update(socket, :providers, fn providers ->
+              Enum.reject(providers, &(&1["provider_id"] == provider_id))
+            end),
+          else: socket
 
-  def handle_event("confirm_delete", %{"name" => name}, socket) do
-    {:noreply, assign(socket, :delete_confirm, name)}
-  end
-
-  def handle_event("cancel_delete", _params, socket) do
-    {:noreply, assign(socket, :delete_confirm, nil)}
-  end
-
-  def handle_event("delete", %{"name" => name}, socket) do
-    safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.remove_provider(name) end, :ok)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "Provider #{name} deleted")
-     |> assign(:delete_confirm, nil)
-     |> assign(:providers, list_providers())}
-  end
-
-  def handle_event("toggle_enabled", %{"name" => name, "enabled" => "true"}, socket) do
-    safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.stop_provider(name) end, :ok)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "Provider #{name} disabled")
-     |> assign(:providers, list_providers())}
-  end
-
-  def handle_event("toggle_enabled", %{"name" => name, "enabled" => "false"}, socket) do
-    safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.start_provider(name) end, :ok)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "Provider #{name} enabled")
-     |> assign(:providers, list_providers())}
-  end
-
-  def handle_event("validate_form", %{"provider" => params}, socket) do
-    {:noreply, assign(socket, :form, to_form(params, as: "provider"))}
-  end
-
-  def handle_event("save_provider", %{"provider" => params}, socket) do
-    type = normalize_type(params["type"])
-    strategy = normalize_strategy(params["conflict_strategy"])
-
-    zones =
-      (params["zones"] || "")
-      |> String.split(",", trim: true)
-      |> Enum.map(&String.trim/1)
-
-    attrs = %{
-      name: params["name"],
-      type: type,
-      zones: zones,
-      sync_interval: String.to_integer(params["sync_interval"] || "300"),
-      conflict_strategy: strategy,
-      enabled: true,
-      credentials: parse_credentials(params["credentials"] || "")
-    }
-
-    case safe_call(
-           YellowDog.DnsProvider,
-           fn -> YellowDog.DnsProvider.add_provider(attrs) end,
-           {:error, :service_unavailable}
-         ) do
-      :ok ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Provider #{attrs.name} created")
-         |> push_navigate(to: ~p"/server/dns/providers")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to create provider: #{inspect(reason)}")}
+      {:noreply, ManagementSupport.finish(socket, result, "Provider deleted")}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
     end
   end
 
-  # ------------------------------------------------------------------
-  # PubSub
-  # ------------------------------------------------------------------
-
   @impl true
-  def handle_info({:dns_provider, _event}, socket) do
-    {:noreply, assign(socket, :providers, list_providers())}
+  def handle_info({:server_connection, _state, %{server_id: server_id}}, socket)
+      when server_id == socket.assigns.selected_server.id do
+    {:noreply,
+     socket
+     |> ManagementSupport.refresh_selected_server(server_id)
+     |> load_providers(server_id)}
   end
 
-  def handle_info(_msg, socket) do
-    {:noreply, socket}
-  end
+  def handle_info(_message, socket), do: {:noreply, socket}
 
-  # ------------------------------------------------------------------
-  # Helpers
-  # ------------------------------------------------------------------
+  defp load_providers(socket, server_id) do
+    result = ServerManagement.dns_providers_list(server_id)
 
-  defp list_providers do
-    providers =
-      safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.list_providers() end, [])
-
-    Enum.map(providers, fn p ->
-      status_info =
-        safe_call(
-          YellowDog.DnsProvider,
-          fn -> YellowDog.DnsProvider.sync_status(p.name) end,
-          {:error, :not_found}
-        )
-
-      sync_status =
-        case status_info do
-          {:ok, info} -> info
-          _ -> %{}
-        end
-
-      Map.merge(p, %{
-        last_sync: Map.get(sync_status, :last_sync),
-        sync_count: Map.get(sync_status, :sync_count, 0),
-        last_error: Map.get(sync_status, :last_error)
-      })
-    end)
-  end
-
-  defp new_form do
-    to_form(
-      %{
-        "name" => "",
-        "type" => "cloudflare",
-        "zones" => "",
-        "sync_interval" => "300",
-        "conflict_strategy" => "local_wins",
-        "credentials" => ""
-      },
-      as: "provider"
+    assign(socket,
+      page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Providers",
+      providers: ManagementSupport.items(result),
+      management_error: if(ManagementSupport.error_result?(result), do: result),
+      cached_observed_at:
+        ManagementSupport.cached_observed_at(
+          [result],
+          socket.assigns.selected_server.last_seen_at
+        ),
+      commands_enabled?: socket.assigns.service_online?
     )
   end
 
-  defp normalize_type(type) when type in @valid_types, do: String.to_existing_atom(type)
-  defp normalize_type(_), do: :cloudflare
-
-  defp normalize_strategy(s) when s in @valid_strategies, do: String.to_existing_atom(s)
-  defp normalize_strategy(_), do: :local_wins
-
-  defp parse_credentials(""), do: nil
-
-  defp parse_credentials(text) do
-    text
-    |> String.split("\n", trim: true)
-    |> Enum.reduce(%{}, fn line, acc ->
-      case String.split(line, "=", parts: 2) do
-        [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
-        _ -> acc
-      end
-    end)
-  end
-
-  @doc false
-  def format_sync_time(nil), do: "Never"
-
-  def format_sync_time(unix) when is_integer(unix) do
-    case DateTime.from_unix(unix) do
-      {:ok, dt} -> Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-      _ -> "Unknown"
+  defp provider_revision(providers, provider_id) do
+    case ManagementSupport.find_digest(providers, &(&1["provider_id"] == provider_id)) do
+      revision when is_binary(revision) -> {:ok, revision}
+      _missing -> {:error, "Provider is not present in the selected Server snapshot"}
     end
   end
-
-  def format_sync_time(_), do: "Unknown"
-
-  @doc false
-  def format_type(type) when is_atom(type) do
-    type
-    |> to_string()
-    |> String.replace("_", " ")
-    |> String.split(" ")
-    |> Enum.map_join(" ", &String.capitalize/1)
-  end
-
-  def format_type(type), do: to_string(type)
 end

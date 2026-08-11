@@ -103,6 +103,65 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     refute first.digest == last.digest
   end
 
+  test "lists sanitized config lifecycle summaries in deterministic order after restart" do
+    register_server("srv-list-a")
+    register_server("srv-list-b")
+    register_netman("netman-list-a")
+
+    assert {:ok, first} =
+             ManagementCore.publish_server_config("srv-list-a", server_attrs(1))
+
+    assert {:ok, second} =
+             ManagementCore.publish_server_config("srv-list-a", server_attrs(2))
+
+    assert {:ok, _other_server} =
+             ManagementCore.publish_server_config("srv-list-b", server_attrs(1))
+
+    assert {:ok, _netman} =
+             ManagementCore.publish_netman_config("netman-list-a", netman_attrs())
+
+    assert {:ok, summaries} = ManagementCore.list_config_versions()
+
+    assert Enum.map(summaries, &{&1.target_type, &1.target_id, &1.version}) == [
+             {:server, "srv-list-a", 2},
+             {:server, "srv-list-a", 1},
+             {:server, "srv-list-b", 1},
+             {:netman, "netman-list-a", 1}
+           ]
+
+    assert Enum.find(summaries, &(&1.digest == first.digest)) == %{
+             target_type: :server,
+             target_id: "srv-list-a",
+             version: 1,
+             operation: first.operation,
+             profile: first.profile,
+             digest: first.digest,
+             state: :desired,
+             state_revision: 0,
+             published_at: first.published_at,
+             state_changed_at: first.state_changed_at,
+             delivered_at: nil,
+             applying_at: nil,
+             applied_at: nil,
+             applied_revision: nil,
+             failed_at: nil,
+             failure_phase: nil,
+             failure_reason: nil,
+             rollback: nil,
+             restored_version: nil,
+             restored_revision: nil
+           }
+
+    refute Map.has_key?(hd(summaries), :payload)
+    refute Map.has_key?(hd(summaries), :expected_revision)
+
+    restart_application()
+
+    assert {:ok, restarted} = ManagementCore.list_config_versions()
+    assert restarted == summaries
+    assert second.digest == hd(restarted).digest
+  end
+
   test "validates target registration, concrete config operation, payload, and runtime CAS" do
     register_server("srv-validation")
 
@@ -410,6 +469,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
   test "rejects malformed, noncanonical, non-ConfigState, and incoherent publications" do
     server_id = "srv-publication-validation"
     register_server(server_id)
+    register_netman(server_id)
     register_server("srv-publication-other")
     assert {:ok, desired} = publish_server(server_id)
 
@@ -445,7 +505,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
         1,
         encoded_acknowledgement(desired, :delivered)
       ),
-      :invalid
+      :conflict
     )
 
     assert_error(
@@ -710,65 +770,63 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
   end
 
-  test "v2 publication state is server-only while legacy Netman lifecycle remains compatible" do
-    legacy_id = "netman-publication-v1"
-    register_netman(legacy_id)
+  test "Netman ConfigState publications persist and replay from the v2 lifecycle" do
+    netman_id = "netman-publication-v2"
+    register_netman(netman_id)
 
-    assert {:ok, first} = ManagementCore.publish_netman_config(legacy_id, netman_attrs())
-    assert {:ok, ^first} = ManagementCore.get_netman_config_version(legacy_id, first.version)
-    assert {:ok, second} = ManagementCore.publish_netman_config(legacy_id, netman_attrs())
-    assert {:ok, ^second} = ManagementCore.get_netman_config_version(legacy_id, second.version)
-    assert {:ok, legacy_manifest_path} = StoragePath.netman_manifest(legacy_id)
-    assert {:ok, legacy_manifest} = AtomicJson.read(legacy_manifest_path)
-    assert legacy_manifest["config_lifecycle"]["schema_version"] == 1
+    assert {:ok, desired} = ManagementCore.publish_netman_config(netman_id, netman_attrs())
+    encoded = encoded_acknowledgement(desired, :delivered)
 
-    forged_id = "netman-publication-v2"
-    register_netman(forged_id)
-    assert {:ok, desired} = ManagementCore.publish_netman_config(forged_id, netman_attrs())
-    acknowledgement = acknowledgement(desired, :delivered, [])
-    encoded_message = encoded_message(acknowledgement)
+    assert {:ok, receipt} =
+             ManagementCore.accept_config_state_publication(:netman, netman_id, 1, encoded)
+
+    assert receipt == %{
+             "target_type" => "netman",
+             "target_id" => netman_id,
+             "publication_sequence" => 1,
+             "state_revision" => 1
+           }
 
     assert {:ok, delivered} =
-             ManagementCore.transition_config(
-               :netman,
-               forged_id,
-               desired.version,
-               :delivered,
-               %{expected_state_revision: 0, acknowledgement: acknowledgement}
-             )
+             ManagementCore.get_netman_config_version(netman_id, desired.version)
 
-    assert {:ok, manifest_path} = StoragePath.netman_manifest(forged_id)
+    assert delivered.state == :delivered
+    assert delivered.state_revision == 1
+
+    assert {:ok, manifest_path} = StoragePath.netman_manifest(netman_id)
     assert {:ok, manifest} = AtomicJson.read(manifest_path)
+    assert manifest["config_lifecycle"]["schema_version"] == 2
+    assert manifest["config_lifecycle"]["publication_high_water"] == 1
 
-    receipt = %{
-      "sequence" => 1,
-      "encoded_message" => encoded_message,
-      "version" => delivered.version,
-      "state" => "delivered",
-      "operation" => delivered.operation,
-      "digest" => delivered.digest,
-      "resulting_state_revision" => delivered.state_revision
-    }
+    restart_application()
 
-    forged_lifecycle =
-      manifest["config_lifecycle"]
-      |> Map.put("schema_version", 2)
-      |> Map.put("publication_high_water", 1)
-      |> Map.put("publication_receipts", %{"1" => receipt})
+    assert {:ok, ^receipt} =
+             ManagementCore.accept_config_state_publication(:netman, netman_id, 1, encoded)
+  end
 
-    assert {:ok, ^manifest_path} =
-             AtomicJson.replace(manifest_path, %{
-               manifest
-               | "config_lifecycle" => forged_lifecycle
-             })
+  test "Netman publication remains single-flight until prior receipts durably drain" do
+    netman_id = "netman-publication-single-flight"
+    register_netman(netman_id)
 
-    assert_error(
-      ManagementCore.get_netman_config_version(forged_id, delivered.version),
-      :invalid
-    )
+    assert {:ok, first} = ManagementCore.publish_netman_config(netman_id, netman_attrs())
 
-    assert_error(ManagementCore.latest_desired_config(:netman, forged_id), :invalid)
-    assert_error(ManagementCore.publish_netman_config(forged_id, netman_attrs()), :invalid)
+    assert_error(ManagementCore.publish_netman_config(netman_id, netman_attrs()), :conflict)
+
+    restart_application()
+
+    assert {:ok, _receipt} = accept_publication(first, 1, :delivered)
+    assert {:ok, delivered} = ManagementCore.get_netman_config_version(netman_id, first.version)
+    assert {:ok, _receipt} = accept_publication(delivered, 2, :applying)
+    assert {:ok, applying} = ManagementCore.get_netman_config_version(netman_id, first.version)
+
+    assert {:ok, _receipt} =
+             accept_publication(applying, 3, :applied, applied_revision: @digest_a)
+
+    assert {:ok, second} = ManagementCore.publish_netman_config(netman_id, netman_attrs())
+    assert second.version == first.version + 1
+    assert second.previous_version == first.version
+    assert second.previous_revision == @digest_a
+    assert {:ok, ^second} = ManagementCore.latest_desired_config(:netman, netman_id)
   end
 
   test "clean v1 lifecycle upgrades on first accepted publication and preserves desired history" do

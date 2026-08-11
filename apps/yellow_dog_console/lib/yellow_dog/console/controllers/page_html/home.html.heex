@@ -9,13 +9,11 @@
           </h1>
         </div>
 
-        <p class="text-2xl font-light mb-8">
-          Distributed DNS and DHCP Server
-        </p>
+        <p class="text-2xl font-light mb-8">Network Management Control Plane</p>
 
         <p class="text-lg text-on-surface-variant mb-12 max-w-2xl mx-auto">
-          A high-performance, Erlang/Elixir-powered DNS and DHCP server with real-time monitoring,
-          mDNS service discovery, and comprehensive network management capabilities.
+          Management is the source of truth. Select a registered Server or Netman node before
+          viewing its status, configuration, and network services.
         </p>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
@@ -24,11 +22,11 @@
               <h2 class="card-title">
                 <div class="flex items-center gap-2">
                   <.dm_mdi name="web" class="w-8 h-8 text-primary" />
-                  <span>DNS Service</span>
+                  <span>Management</span>
                 </div>
               </h2>
-              <div class="text-2xl font-bold text-primary">Running</div>
-              <div class="text-sm text-on-surface-variant">Port 53</div>
+              <div class="text-2xl font-bold text-primary">Source of truth</div>
+              <div class="text-sm text-on-surface-variant">Desired state and node inventory</div>
             </div>
           </div>
 
@@ -37,11 +35,11 @@
               <h2 class="card-title">
                 <div class="flex items-center gap-2">
                   <.dm_mdi name="server-network" class="w-8 h-8 text-success" />
-                  <span>DHCP Services</span>
+                  <span>Servers</span>
                 </div>
               </h2>
-              <div class="text-2xl font-bold text-success">Active</div>
-              <div class="text-sm text-on-surface-variant">IPv4 & IPv6</div>
+              <div class="text-2xl font-bold text-success">Remote control</div>
+              <div class="text-sm text-on-surface-variant">DNS, DHCP, mDNS, and Netboot</div>
             </div>
           </div>
 
@@ -50,26 +48,28 @@
               <h2 class="card-title">
                 <div class="flex items-center gap-2">
                   <.dm_mdi name="wifi" class="w-8 h-8 text-secondary" />
-                  <span>mDNS</span>
+                  <span>Netman</span>
                 </div>
               </h2>
-              <div class="text-2xl font-bold text-secondary">Ready</div>
-              <div class="text-sm text-on-surface-variant">Service Discovery</div>
+              <div class="text-2xl font-bold text-secondary">Network agents</div>
+              <div class="text-sm text-on-surface-variant">
+                Profiles, interfaces, and resolver state
+              </div>
             </div>
           </div>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <.link navigate={~p"/server/dashboard"} class="btn btn-primary gap-2">
-            <.dm_mdi name="view-dashboard" class="w-6 h-6" /> Service Dashboard
+          <.link navigate={~p"/management"} class="btn btn-primary gap-2">
+            <.dm_mdi name="account-cog" class="w-6 h-6" /> Management
           </.link>
 
-          <.link navigate={~p"/server/dns"} class="btn btn-tertiary gap-2">
-            <.dm_mdi name="web" class="w-6 h-6" /> DNS Management
+          <.link navigate={~p"/server"} class="btn btn-tertiary gap-2">
+            <.dm_mdi name="server-network" class="w-6 h-6" /> Select Server
           </.link>
 
-          <.link navigate={~p"/server/mdns"} class="btn btn-secondary gap-2">
-            <.dm_mdi name="magnify" class="w-6 h-6" /> mDNS Discovery
+          <.link navigate={~p"/netman"} class="btn btn-secondary gap-2">
+            <.dm_mdi name="lan" class="w-6 h-6" /> Select Netman
           </.link>
         </div>
 
