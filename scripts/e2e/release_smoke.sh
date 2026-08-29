@@ -46,7 +46,7 @@ native_helper_created=0
 build_console_assets() {
   case "${release}" in
     yellow_dog_management_core)
-      if [ ! -e apps/yellow_dog_console/npm.lock ]; then
+      if [ ! -e package-lock.json ]; then
         console_lock_created=1
       fi
 
@@ -104,7 +104,7 @@ cleanup() {
   rm -rf "${smoke_dir}"
 
   if [ "${console_lock_created}" = "1" ]; then
-    rm -f apps/yellow_dog_console/npm.lock
+    rm -f package-lock.json
   fi
 
   if [ "${native_helper_created}" = "1" ]; then

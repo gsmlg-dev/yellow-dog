@@ -45,9 +45,9 @@ defmodule YellowDog.Console.MixProject do
       {:phoenix, "~> 1.8.1"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_live_view, "~> 1.0"},
-      {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:phoenix_live_dashboard, "~> 0.9.0"},
       {:duskmoon_bundler_runtime, "~> 9.7"},
-      {:duskmoon_bundler, "~> 9.7", runtime: Mix.env() == :dev},
+      {:duskmoon_bundler, "~> 9.7", runtime: Mix.env() in [:dev, :test]},
       {:phoenix_duskmoon, "~> 9.7"},
       {:hackney, "~> 4.0"},
       {:req, "~> 0.5"},
@@ -84,7 +84,8 @@ defmodule YellowDog.Console.MixProject do
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:floki, "~> 0.38", only: :test},
+      {:lazy_html, ">= 0.1.0"}
     ]
   end
 
@@ -92,6 +93,7 @@ defmodule YellowDog.Console.MixProject do
     [
       lint: ["credo --strict", "dialyzer"],
       setup: ["deps.get", "assets.setup", "assets.build"],
+      # WORKAROUND(upstream): duskmoon-dev/phoenix-duskmoon-ui#153
       "assets.setup": ["npm.install"],
       "assets.build": ["compile", "duskmoon_bundler.build yellow_dog_console --tailwind"],
       "assets.deploy": [
