@@ -1,301 +1,205 @@
-# Yellow Dog DNS
+# Yellow Dog
 
-![Yellow Dog DNS](./priv/yellow_dog.png)
+![Yellow Dog](./priv/yellow_dog.png)
 
-Yellow Dog DNS is a distributed DNS and DHCP server written in Elixir/Erlang. It provides a complete network services suite including DNS, mDNS, DHCPv4, and DHCPv6 with a modern web console for management.
+Yellow Dog is a distributed DNS, DHCP, mDNS, and network-management suite written in Elixir/Erlang. It is an Elixir umbrella project with a Phoenix LiveView console, protocol libraries, a managed server runtime, and a separate Linux network-manager runtime.
+
+The umbrella currently builds three production releases:
+
+- `yellow_dog_management_core` — management records, profiles, events, and the management console.
+- `yellow_dog_server` — DNS, mDNS, DHCPv4/v6, netboot, identity, fingerprinting, tasks, and the server agent.
+- `yellow_dog_netman` — DHCP client, DNS stub resolution, Linux network reconciliation, and the Netman agent.
+
+The combined `yellow_dog` release remains available for development compatibility; production workflows build and validate the three runtimes above.
 
 ## Features
 
-- **DNS Server** - Authoritative and forwarding DNS with zone management
-- **mDNS Responder** - Multicast DNS with service discovery and registration
-- **DHCPv4 Server** - Full DHCPv4 implementation with lease management
-- **DHCPv6 Server** - Full DHCPv6 implementation with DUID-based identification
-- **Netboot Server** - TFTP protocol implementation for PXE network booting
-- **Device Identity** - Device fingerprinting and identification
-- **Distributed Store** - Distributed data storage for configuration and state
-- **Web Console** - Phoenix LiveView dashboard with real-time monitoring
+- Authoritative and forwarding DNS with views, zones, ACLs, and TCP support
+- mDNS service registration and discovery
+- DHCPv4 and DHCPv6 servers with persistent lease management
+- TFTP/iPXE network boot support
+- Device identity and passive DHCP fingerprinting
+- Concord-backed server state with a write-through ETS read cache
+- Profile-driven management and Phoenix LiveView operations console
+- A Linux network-manager runtime with DHCP client and netlink integration
 
-## Quick Start
+## Quick start
 
-### Running the Server
+The development environment uses devenv. Activate it before running Mix commands:
 
 ```shell
-# Start all applications
-mix run --no-halt
+direnv allow
+# or: devenv shell
 
-# Start with interactive shell
-iex -S mix
-
-# Start the web console (development)
-cd apps/yellow_dog_console
-mix phx.server
-# Visit http://localhost:4270
+mix deps.get
+mix compile
 ```
 
-### Default Ports
+Run the combined development runtime:
 
-| Service | Port | Protocol |
-|---------|------|----------|
-| DNS     | 53   | UDP      |
-| mDNS    | 5353 | UDP (multicast) |
-| DHCPv4  | 67   | UDP      |
-| DHCPv6  | 547  | UDP      |
-| TFTP    | 69   | UDP      |
-| Web Console | 4270 | HTTP |
+```shell
+mix run --no-halt
+```
+
+Run an individual runtime through the Mix aliases:
+
+```shell
+mix server.run
+mix netman.run
+mix console.run
+```
+
+The console can also be started directly:
+
+```shell
+cd apps/yellow_dog_console
+mix phx.server
+```
+
+Open <http://localhost:4270>. Production console startup requires `PHX_SERVER=true`, `SECRET_KEY_BASE`, and the usual Phoenix host/port settings.
+
+### Default ports
+
+The defaults below include privileged ports. Use `--config` or a service-specific TOML setting when running without the required operating-system privileges.
+
+| Service | Port | Transport |
+| --- | ---: | --- |
+| DNS | 53 | UDP and optional TCP |
+| mDNS | 5353 | UDP multicast/unicast |
+| DHCPv4 | 67 | UDP |
+| DHCPv6 | 547 | UDP |
+| TFTP | 69 | UDP |
+| Web console | 4270 | HTTP |
 
 ## Architecture
 
-Yellow Dog DNS is organized as an Elixir umbrella project with 20 applications:
+The repository contains 25 umbrella applications grouped by responsibility:
 
-### Core Applications
+| Group | Applications |
+| --- | --- |
+| Management | `yellow_dog_management_core`, `yellow_dog_server_agent`, `yellow_dog_netman_agent`, `yellow_dog_sync`, `yellow_dog_tasks` |
+| Core and state | `yellow_dog`, `yellow_dog_config`, `yellow_dog_store`, `yellow_dog_telemetry` |
+| Protocol services | `yellow_dog_dns`, `yellow_dog_dns_provider`, `yellow_dog_dhcpv4`, `yellow_dog_dhcpv6`, `yellow_dog_mdns`, `yellow_dog_netboot` |
+| Host and client services | `yellow_dog_dhcp_client`, `yellow_dog_netman`, `yellow_dog_resolved`, `yellow_dog_identity`, `yellow_dog_fingerprint` |
+| Console | `yellow_dog_console` |
+| Libraries | `abyss`, `ex_dns`, `ex_dhcp`, `geo_ip_db` |
 
-- **YellowDog** - Core application with orchestration
-- **YellowDog.Store** - Distributed data store for configuration and state
-- **YellowDog.Config** - Configuration management
-- **YellowDog.Telemetry** - Centralized telemetry and metrics functionality
-- **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
-- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation with full lease management
-- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation with full lease management
-- **YellowDog.Mdns** - mDNS responder with service discovery and registration
-- **YellowDog.Netboot** - TFTP server and network booting support
-- **YellowDog.Identity** - Device identity management
-- **YellowDog.Fingerprint** - Device fingerprinting
-- **YellowDog.Netman** - Network manager and DHCP client functionality
-- **YellowDog.Resolved** - DNS resolution integration
-- **YellowDogConsole** - Phoenix LiveView web console with DuskMoon UI
+Protocol servers follow the `Server` → `Handler` → `Supervisor` pattern and use the Abyss socket abstraction. The server release owns service orchestration and Store access. The Netman release is intentionally independent of `yellow_dog_store`; its lease data is local TOML state.
 
-### Infrastructure Libraries
+`yellow_dog_store` uses Concord as the source of truth and ETS as a write-through local read cache. DHCPv4/v6 lease allocation still uses Mnesia `disc_copies` tables, while DNS view/zone state is accessed through the Store facades. Server applications must not call `Concord.*` directly.
 
-- **abyss** - High-performance pure Elixir UDP server library
-- **ex_dns** - Pure Elixir DNS protocol library (resource records, zone management)
-- **ex_dhcp** - Pure Elixir DHCP protocol library (DHCPv4/v6 message handling)
-- **geo_ip_db** - GeoIP database integration
+The core API exposes configuration and service status for development and console integrations:
+
+```elixir
+YellowDog.get_all_config()
+YellowDog.get_all_status()
+YellowDog.get_service_status(:dns)
+YellowDog.list_services()
+```
 
 ## Configuration
 
-Configuration is managed through TOML files. Default configuration:
+Configuration is TOML-based. In development the default file is `priv/yellow_dog_default_config.toml`; release applications use the copy under the owning app's `priv/` directory. The file can be selected with the CLI or environment:
+
+```shell
+mix run --no-halt -- --config /etc/yellowdog/config.toml
+YELLOW_DOG_CONFIG=/etc/yellowdog/config.toml mix server.run
+YELLOW_DOG_DATA_DIR=/var/lib/yellowdog mix server.run
+```
+
+`--config` takes precedence over `YELLOW_DOG_CONFIG`, which takes precedence over the environment-specific default. `--data-dir` takes precedence over `YELLOW_DOG_DATA_DIR` and the TOML `data_dir` value. Scheduled jobs use the separate `--tasks-config` and `YELLOW_DOG_TASKS_CONFIG` settings.
+
+A minimal configuration looks like this:
 
 ```toml
+data_dir = "data"
+
 [core]
 dns = true
-mdns = true
-dhcpv4 = true
-dhcpv6 = true
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+netboot = false
 
 [dns]
 listen = "0.0.0.0"
 port = 53
-mode = "forward"
-upstream_servers = ["8.8.8.8", "1.1.1.1"]
+tcp_enabled = true
 
-[mdns]
-listen = "0.0.0.0"
-port = 5353
-
-[dhcpv4]
-listen = "0.0.0.0"
-port = 67
-
-[dhcpv6]
-listen = "::"
-port = 547
+[dns.zones]
+"example.com" = { type = "authoritative", file = "priv/zones/example.com.zone" }
 ```
 
-### Programmatic Configuration
+Runtime configuration also supports Concord clustering (`CONCORD_CLUSTERING`, `CONCORD_CLUSTER_NODES`, and `CONCORD_DATA_DIR`), management/server agent settings, and Phoenix console authentication (`CONSOLE_AUTH_ENABLED`, `CONSOLE_USERNAME`, and `CONSOLE_PASSWORD`). See `config/runtime.exs` for the complete precedence and environment-variable list.
 
-```elixir
-# Get configuration
-YellowDog.get_config(:key)
-YellowDog.get_all_config()
+## Data and persistence
 
-# Check service status
-YellowDog.get_all_status()
-YellowDog.get_service_status(:dns)
+All relative data paths resolve below the configured `data_dir` (default `data/`). Typical service directories are:
 
-# Service management
-YellowDog.list_services()
-# => [:dns, :mdns, :dhcpv4, :dhcpv6]
+```text
+data/
+├── dns/          # views, zones, and DNS service data
+├── mdns/         # registered service data
+├── dhcpv4/       # DHCPv4 lease and pool data
+├── dhcpv6/       # DHCPv6 lease and pool data
+├── fingerprint/  # device fingerprint data
+├── mnesia/       # Mnesia table files
+└── store/        # managed config/store state when enabled
 ```
 
-## Data and Storage
+Treat the data directory as runtime state. Back it up before changing configuration or upgrading a release.
 
-Yellow Dog DNS stores runtime data and configuration in the following locations:
-
-### Data Directory Structure
-
-```
-data/                           # Runtime data (not version controlled)
-├── dns/
-│   ├── views.toml              # DNS views configuration
-│   ├── zones.toml              # DNS zones metadata index
-│   ├── acls.toml               # Named ACL configurations
-│   ├── views/                  # View-specific data
-│   │   └── default/
-│   │       └── zones/          # Zone files for this view
-│   │           └── example.com.zone
-│   └── acls/                   # ACL-related data (reserved)
-├── mdns/
-│   └── services.toml           # mDNS service registrations
-├── dhcpv4/                     # DHCPv4 lease data
-└── dhcpv6/                     # DHCPv6 lease data
-```
-
-### Configuration Files
-
-| File | Description |
-|------|-------------|
-| `data/dns/views.toml` | DNS view definitions with ACL rules |
-| `data/dns/zones.toml` | Zone metadata (type, name, upstreams) |
-| `data/dns/acls.toml` | Named ACL configurations |
-| `data/dns/views/*/zones/*.zone` | Zone data files in BIND format (per-view) |
-| `data/mdns/services.toml` | Registered mDNS services |
-| `config/config.exs` | Application configuration |
-| `config/runtime.exs` | Runtime configuration |
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `YELLOW_DOG_DATA_DIR` | Base directory for runtime data | `./data` |
-| `YELLOW_DOG_CONFIG_FILE` | Path to main config file | `./config.toml` |
-
-### Persistence
-
-- **DNS Zones**: Zone records are persisted to BIND-format zone files in `data/dns/zones/`
-- **Views & Zones Config**: View and zone metadata is saved to TOML files automatically
-- **Backup Files**: `.backup` files are created before each save operation
-
-## Development
-
-### Project Structure
-
-```
-yellow_dog/                     # Umbrella project root
-├── apps/                       # Application directory
-│   ├── yellow_dog/             # Core application
-│   ├── yellow_dog_store/       # Distributed data store
-│   ├── yellow_dog_config/      # Configuration management
-│   ├── yellow_dog_telemetry/   # Telemetry package
-│   ├── yellow_dog_dns/         # DNS functionality
-│   ├── yellow_dog_dhcpv4/      # DHCPv4 protocol
-│   ├── yellow_dog_dhcpv6/      # DHCPv6 protocol
-│   ├── yellow_dog_mdns/        # mDNS functionality
-│   ├── yellow_dog_netboot/     # TFTP server
-│   ├── yellow_dog_identity/    # Device identity
-│   ├── yellow_dog_fingerprint/ # Device fingerprinting
-│   ├── yellow_dog_netman/      # Network manager
-│   ├── yellow_dog_dhcp_client/ # DHCP client
-│   ├── yellow_dog_resolved/    # DNS resolution integration
-│   ├── yellow_dog_console/     # Phoenix web console
-│   ├── abyss/                  # UDP server library
-│   ├── ex_dns/                 # DNS protocol library
-│   ├── ex_dhcp/                # DHCP protocol library
-│   └── geo_ip_db/              # GeoIP database
-├── e2e_test/                   # End-to-end tests
-├── config/                     # Configuration files
-├── priv/                       # Static assets
-└── mix.exs                     # Umbrella mix file
-```
-
-### Development Environment
-
-This project uses [devenv](https://devenv.sh) for development environment management:
-
-```bash
-# Activate the development environment
-direnv allow  # or use devenv shell
-
-# The environment includes:
-# - Elixir 1.18 with OTP 27
-# - Git, figlet, lolcat, watchman, inotify-tools
-# - DuskMoon asset bundling through Mix tasks
-```
-
-### Running Tests
+## Development and validation
 
 ```shell
-# Run all tests
+# Compile and run unit tests
+mix compile --warnings-as-errors
 mix test
 
-# Run tests for specific app
-mix test apps/yellow_dog_dns
-
-# Run E2E tests
-mix test.e2e
-
-# Run E2E tests for specific service
-mix test.e2e.dns
-mix test.e2e.mdns
-mix test.e2e.dhcpv4
-mix test.e2e.dhcpv6
-mix test.e2e.netboot
-```
-
-### Building
-
-```shell
-# Compile all applications
-mix compile
-
-# Format code
-mix format
-
-# Run linting
+# Formatting and linting
+mix format --check-formatted
+mix credo --strict
 mix lint
 
-# Run Dialyzer
-mix dialyzer
-
-# Build release
-mix release
-
-# Build Docker image
-nix build .#docker
+# E2E suites
+mix test.e2e
+mix test.e2e.dns
+mix test.e2e.dhcpv4
+mix test.e2e.management
 ```
 
-## DNS Benchmarking
+E2E tests choose non-privileged ports where possible. The Netman release requires Linux kernel networking support and a Rust toolchain for its native netlink helper. Release smoke checks are available for all three releases:
 
 ```shell
-# Create test queries
-echo "www.example.com A" > t.txt
-echo "www.google.com A" >> t.txt
-
-# Run DNS performance test
-dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 53
+scripts/e2e/release_smoke.sh yellow_dog_management_core
+scripts/e2e/release_smoke.sh yellow_dog_server
+scripts/e2e/release_smoke.sh yellow_dog_netman
 ```
 
-## Web Console
+The CI workflows in `.github/workflows/` run the test, E2E, multi-architecture Docker, and release checks. Do not disable a CI job to hide a failure.
 
-The web console provides a modern interface for managing Yellow Dog DNS:
+## Web console assets
 
-- **Dashboard** - Real-time service status and statistics
-- **DNS Management** - Zone configuration and query logs
-- **mDNS Services** - Service registration and discovery
-- **DHCP Leases** - Lease management for DHCPv4/v6
-- **Diagnostics** - Interactive query tools for DNS, mDNS, DHCP
-- **Settings** - Service configuration management
-
-### Starting the Console
+The console uses Phoenix LiveView and DuskMoon components. DuskmoonBundler owns JavaScript and CSS compilation:
 
 ```shell
 cd apps/yellow_dog_console
-mix setup              # Install dependencies
-mix phx.server         # Start server at http://localhost:4270
+mix setup
+mix assets.build
+mix assets.deploy
 ```
 
-## Docker
+## Docker and Nix
+
+Build the Nix package or Docker image from the repository root:
 
 ```shell
-# Build Docker image
-docker build -t yellow_dog .
-
-# Or use Nix
+nix build .#yellow_dog
 nix build .#docker
-
-# Run container
-docker run -p 53:53/udp -p 67:67/udp -p 4270:4270 yellow_dog
 ```
+
+The GitHub Docker workflow publishes multi-architecture images to GitHub Container Registry. For local development, prefer the Mix runtimes above so that the selected profile and data directory are explicit.
 
 ## License
 
-Yellow Dog DNS is open source software.
+Yellow Dog is open source software.

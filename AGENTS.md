@@ -2,7 +2,7 @@
 
 ## Project Overview & Agent Philosophy
 
-Yellow Dog DNS is a distributed, umbrella-based network services suite written in Elixir/Erlang. It provides authoritative/forwarding DNS, mDNS, DHCPv4, DHCPv6, Netboot (TFTP/iPXE), and device fingerprinting, managed via a Phoenix LiveView web console. As a Pi agent (pi.dev) in this repository, you must behave as a high-autonomy, context-aware, safety-first systems programmer. Because network protocols (DNS, DHCP) require high precision and stability, your operations should prioritize structural integrity, clean boundary separation, and strict compliance with the project's architectural constitution.
+Yellow Dog is a distributed, umbrella-based network services suite written in Elixir/Erlang. It provides authoritative/forwarding DNS, mDNS, DHCPv4, DHCPv6, Netboot (TFTP/iPXE), device identity and fingerprinting, a management control plane, and a Phoenix LiveView console. The umbrella currently builds three production releases: `yellow_dog_management_core`, `yellow_dog_server`, and `yellow_dog_netman`. As a Pi agent (pi.dev) in this repository, you must behave as a high-autonomy, context-aware, safety-first systems programmer. Because network protocols (DNS, DHCP) require high precision and stability, your operations should prioritize structural integrity, clean boundary separation, and strict compliance with the project's architectural constitution.
 
 ### Key Principles
 *   **Minimalism & Focus**: Write tight, idiomatic Elixir. Avoid adding unnecessary dependencies or building bloated configurations.
@@ -81,17 +81,19 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 
 | Category | Apps Path | Description / Key Modules |
 | :--- | :--- | :--- |
-| **Management** | `apps/yellow_dog_management_core`, `apps/yellow_dog_server_agent`, `apps/yellow_dog_netman_agent` | Management core state/facade and skeleton runtime agents for server and Netman status. |
-| **Core & Store** | `apps/yellow_dog*` | Config management, distributed state (Mnesia disk copies), service orchestration. |
-| **Protocols** | `apps/yellow_dog_dns`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | Server GenServers, packet handlers, zone/lease management. |
-| **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity` | DHCP Client, Netlink integration, DNS stub caching, host trust verification. |
+| **Management** | `apps/yellow_dog_management_core`, `apps/yellow_dog_server_agent`, `apps/yellow_dog_netman_agent`, `apps/yellow_dog_sync`, `apps/yellow_dog_tasks` | Management records/events, runtime agents, synchronization, and scheduled jobs. |
+| **Core & Store** | `apps/yellow_dog`, `apps/yellow_dog_config`, `apps/yellow_dog_store`, `apps/yellow_dog_telemetry` | Service orchestration, TOML/config lifecycle, Concord + ETS storage facades, and telemetry. |
+| **Protocols** | `apps/yellow_dog_dns`, `_dns_provider`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | DNS providers, protocol servers, packet handlers, zone/lease management, and network boot. |
+| **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity`, `_fingerprint` | DHCP client, Linux network management, DNS stub caching, host trust, and device identification. |
 | **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DuskMoon UI templates, asset compilation via DuskmoonBundler. |
-| **Libraries** | `apps/abyss`, `ex_dns`, `ex_dhcp`, `geo_ip_db` | Infrastructure libraries (UDP core/native sockets, DNS protocol, DHCP messages). |
+| **Libraries** | `apps/abyss`, `apps/ex_dns`, `apps/ex_dhcp`, `apps/geo_ip_db` | Infrastructure libraries (UDP core/native sockets, DNS protocol, DHCP messages). |
 
 ### Storage Patterns
-*   **DHCP Leases**: Persisted in Mnesia using `disc_copies` tables for fast transactional writes. Indexing must be maintained by IP and lease status.
-*   **DNS Zones**: ETS in-memory lookup cache to guarantee high-concurrency performance. Persisted to standard BIND-format zone files in `data/dns/views/*/zones/`.
-*   **DHCP Client**: Local TOML storage via `LeaseStore`.
+*   **Server Store**: `YellowDog.Store.*` uses Concord as the source of truth and a write-through ETS cache for local reads. Server apps must use these typed facades instead of calling Concord directly.
+*   **DHCP Leases**: DHCPv4/v6 lease tables currently use Mnesia `disc_copies` with secondary indexes for transactional allocation and lookup.
+*   **DNS Zones**: Zone and view state is managed through `YellowDog.Store.Zone`; legacy BIND/TOML import/export paths remain where the app documents them.
+*   **DHCP Client**: Netman leases are persisted locally as TOML through `LeaseStore`; Netman does not depend on `yellow_dog_store`.
+*   **Task and management state**: Runtime records and scheduled-job state are stored under the configured data directory through the management/store boundaries.
 
 ### Commit Message Style
 Follow the **Conventional Commits** specification:
@@ -114,7 +116,8 @@ Follow the **Conventional Commits** specification:
     *   *Umbrella wide*: `mix test`
     *   *App specific*: `mix test apps/yellow_dog_dns`
     *   *Single file*: `mix test apps/yellow_dog_dns/test/yellow_dog/dns/handler_test.exs`
-    *   *E2E tests*: `mix test.e2e.dns` or `mix test.e2e.dhcpv4`
+    *   *E2E tests*: `mix test.e2e.dns`, `mix test.e2e.dhcpv4`, or `mix test.e2e.management`
+    *   *Release smoke checks*: `scripts/e2e/release_smoke.sh yellow_dog_server` (also `yellow_dog_management_core` and `yellow_dog_netman`)
 *   **Linter Checks**: Run `mix lint` from the relevant application directory to execute Credo + Dialyzer. Run `mix format --check-formatted` to check code style.
 
 ---
