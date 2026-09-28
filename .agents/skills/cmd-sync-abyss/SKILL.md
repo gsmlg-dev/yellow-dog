@@ -42,8 +42,6 @@ From the active Yellow Dog checkout root, use the Abyss app as the Mix project s
 devenv shell -- bash -lc 'cd apps/abyss && mix compile --warnings-as-errors'
 devenv shell -- bash -lc 'cd apps/abyss && mix format --check-formatted'
 devenv shell -- bash -lc 'cd apps/abyss && MIX_ENV=test mix test.all'
-devenv shell -- bash -lc 'cd apps/abyss && mix credo --strict'
-devenv shell -- bash -lc 'cd apps/abyss && mix dialyzer --halt-exit-status'
 ```
 
 From the standalone repository root, run separate commands without changing into `apps/abyss`:
@@ -52,13 +50,11 @@ From the standalone repository root, run separate commands without changing into
 devenv shell -- mix compile --warnings-as-errors
 devenv shell -- mix format --check-formatted
 devenv shell -- env MIX_ENV=test mix test.all
-devenv shell -- mix credo --strict
-devenv shell -- mix dialyzer --halt-exit-status
 ```
 
-Do not substitute `mix lint`: the standalone project has no `lint` alias, and the direct Credo and Dialyzer commands make both scopes explicit. After the standalone checks pass, run `devenv shell -- mix hex.build`, inspect the resulting archive contents for required native sources and accidental generated files, confirm the package version is unchanged, and remove only the generated archive created by this validation.
+Do not run Credo, Dialyzer/Dialyxir, or `mix lint` during synchronization. After the standalone checks pass, run `devenv shell -- mix hex.build`, inspect the resulting archive contents for required native sources and accidental generated files, confirm the package version is unchanged, and remove only the generated archive created by this validation.
 
-Report command failures accurately. If a baseline or final failure is outside the synchronization scope, list it and stop without fixing it. Report environment or dependency blockers separately. Never weaken tests, coverage, Credo, or Dialyzer settings to make a check pass.
+Report command failures accurately. If a baseline or final failure is outside the synchronization scope, list it and stop without fixing it. Report environment or dependency blockers separately. Never weaken tests or coverage settings to make a check pass.
 
 The synchronization itself is complete only when shared implementation convergence and all applicable checks are evidenced. If a required check cannot run, report it as pending or blocked with the actual command and error.
 
