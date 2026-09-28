@@ -57,12 +57,29 @@ defmodule YellowDog.Dns.ConfigPersistence do
   def default_data_path do
     try do
       path = apply(YellowDog.Config, :get, [:dns, :data_path])
-      path || "data/dns"
+      if path in [nil, "data/dns"], do: server_dns_data_path(), else: path
     rescue
-      _e in [ArgumentError, UndefinedFunctionError] -> "data/dns"
+      _e in [ArgumentError, UndefinedFunctionError] -> server_dns_data_path()
     catch
-      :exit, _reason -> "data/dns"
+      :exit, _reason -> server_dns_data_path()
     end
+  end
+
+  defp server_dns_data_path do
+    case Application.get_env(:yellow_dog, :data_dir) do
+      dir when is_binary(dir) and dir != "" -> Path.join(resolve_data_dir(dir), "dns")
+      _ -> "data/dns"
+    end
+  end
+
+  defp resolve_data_dir("/" <> _ = path), do: path
+
+  defp resolve_data_dir(path) do
+    :yellow_dog
+    |> Application.app_dir()
+    |> Path.join("../..")
+    |> Path.join(path)
+    |> Path.expand()
   end
 
   @doc """

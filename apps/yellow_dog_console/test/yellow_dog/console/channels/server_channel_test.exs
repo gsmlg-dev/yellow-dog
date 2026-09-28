@@ -8,12 +8,14 @@ defmodule YellowDog.Console.ServerChannelTest do
   alias YellowDog.Console.ServerConnections
   alias YellowDog.Console.ServerSocket
   alias YellowDog.ManagementCore
+  alias YellowDog.Management.DnsZones
   alias YellowDog.Sync.Identity
   alias YellowDog.Sync.Message
 
   alias Message.{
     ConfigDelivery,
     ConfigState,
+    DnsState,
     Event,
     Heartbeat,
     Hello,
@@ -200,6 +202,92 @@ defmodule YellowDog.Console.ServerChannelTest do
     ref = push(socket, "sync", payload(journal(server_id)))
     assert_reply ref, :ok, %{"accepted" => true}
     assert {:ok, %{status: :online}} = ManagementCore.get_server(server_id)
+  end
+
+  test "DNS applied receipt binds to the authenticated server before reconciliation" do
+    server_id = unique_id("dns-state")
+    socket = join_registered(server_id)
+    activate(socket, server_id)
+
+    state = %DnsState{
+      server_id: server_id,
+      generation: 1,
+      digest: @digest,
+      state: :applied,
+      error: nil,
+      observed_at: @observed_at
+    }
+
+    ref = push(socket, "sync", payload(state))
+    assert_reply ref, :error, %{"error" => %{"code" => "conflict"}}
+
+    ref = push(socket, "sync", payload(%{state | server_id: "another-server"}))
+    assert_reply ref, :error, %{"error" => %{"code" => "invalid"}}
+  end
+
+  test "stale installed DNS receipt does not block delivery of a newer offline publication" do
+    server_id = unique_id("dns-stale")
+    socket = join_registered(server_id)
+    activate(socket, server_id)
+    apex = "stale-#{System.unique_integer([:positive])}.example.test."
+    ns = "ns.#{apex}"
+
+    {:ok, zone} =
+      DnsZones.create(%{
+        "apex" => apex,
+        "targets" => [server_id],
+        "rrsets" => [
+          %{
+            "owner" => apex,
+            "type" => "SOA",
+            "ttl" => 300,
+            "records" => [
+              %{
+                "mname" => ns,
+                "rname" => "hostmaster.#{apex}",
+                "refresh" => 3600,
+                "retry" => 600,
+                "expire" => 86_400,
+                "minimum" => 300
+              }
+            ]
+          },
+          %{"owner" => apex, "type" => "NS", "ttl" => 300, "records" => [ns]},
+          %{"owner" => ns, "type" => "A", "ttl" => 300, "records" => ["192.0.2.1"]}
+        ]
+      })
+
+    {:ok, _first} = DnsZones.publish(zone["id"], 1, "operator", "stale-first-#{zone["id"]}")
+    {:ok, old_manifest} = DnsZones.manifest(server_id)
+    {:ok, old_digest} = YellowDog.Sync.DnsManifest.digest(old_manifest)
+
+    {:ok, _updated} =
+      DnsZones.edit(
+        zone["id"],
+        1,
+        [
+          %{"owner" => ns, "type" => "A", "ttl" => 300, "records" => ["192.0.2.2"]}
+        ],
+        "operator",
+        "stale-edit-#{zone["id"]}"
+      )
+
+    {:ok, second} = DnsZones.publish(zone["id"], 2, "operator", "stale-second-#{zone["id"]}")
+
+    old_state = %DnsState{
+      server_id: server_id,
+      generation: 1,
+      digest: old_digest,
+      state: :applied,
+      error: nil,
+      observed_at: @observed_at
+    }
+
+    ref = push(socket, "sync", payload(old_state))
+    assert_reply ref, :ok, %{"accepted" => true}
+
+    {:ok, deployment} = DnsZones.deployment(second["id"])
+    assert deployment["state"] == "accepted"
   end
 
   test "queued Journal from a replaced channel cannot reconcile or deliver pending config" do

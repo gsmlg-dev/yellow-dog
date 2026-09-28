@@ -34,25 +34,26 @@ defmodule YellowDog.Console.ServerSocketTest do
 
   test "requires exact nonempty token, server_id, and supported Phoenix protocol version" do
     server_id = unique_id("socket-auth")
+    token = ServerSocket.node_token(@token, server_id)
     register_server(server_id)
 
     assert {:ok, socket} =
-             connect(%{"token" => @token, "server_id" => server_id, "vsn" => "2.0.0"})
+             connect(%{"token" => token, "server_id" => server_id, "vsn" => "2.0.0"})
 
     assert socket.assigns.server_id == server_id
     assert ServerSocket.id(socket) == nil
 
     for params <- [
           %{},
-          %{"token" => @token},
+          %{"token" => token},
           %{"server_id" => server_id},
-          %{"token" => @token, "server_id" => server_id},
+          %{"token" => token, "server_id" => server_id},
           %{"token" => "", "server_id" => server_id, "vsn" => "2.0.0"},
           %{"token" => "wrong", "server_id" => server_id, "vsn" => "2.0.0"},
-          %{"token" => @token, "server_id" => "", "vsn" => "2.0.0"},
-          %{"token" => @token, "server_id" => server_id, "vsn" => "1.0.0"},
-          %{"token" => @token, "server_id" => server_id, "vsn" => 2},
-          %{"token" => @token, "server_id" => server_id, "vsn" => "2.0.0", "extra" => true}
+          %{"token" => token, "server_id" => "", "vsn" => "2.0.0"},
+          %{"token" => token, "server_id" => server_id, "vsn" => "1.0.0"},
+          %{"token" => token, "server_id" => server_id, "vsn" => 2},
+          %{"token" => token, "server_id" => server_id, "vsn" => "2.0.0", "extra" => true}
         ] do
       assert :error = connect(params)
     end
@@ -60,12 +61,29 @@ defmodule YellowDog.Console.ServerSocketTest do
     Application.put_env(:yellow_dog_console, :management_token, "")
 
     assert :error =
-             connect(%{"token" => @token, "server_id" => server_id, "vsn" => "2.0.0"})
+             connect(%{"token" => token, "server_id" => server_id, "vsn" => "2.0.0"})
 
     Application.delete_env(:yellow_dog_console, :management_token)
 
     assert :error =
-             connect(%{"token" => @token, "server_id" => server_id, "vsn" => "2.0.0"})
+             connect(%{"token" => token, "server_id" => server_id, "vsn" => "2.0.0"})
+  end
+
+  test "one enrolled Server credential cannot claim another enrolled ID" do
+    first_id = unique_id("first")
+    second_id = unique_id("second")
+    register_server(first_id)
+    register_server(second_id)
+
+    first_token = ServerSocket.node_token(@token, first_id)
+
+    assert {:ok, _socket} =
+             connect(%{"token" => first_token, "server_id" => first_id, "vsn" => "2.0.0"})
+
+    assert :error =
+             connect(%{"token" => first_token, "server_id" => second_id, "vsn" => "2.0.0"})
+
+    assert :error = connect(%{"token" => @token, "server_id" => first_id, "vsn" => "2.0.0"})
   end
 
   test "rejects malformed and unregistered concrete IDs" do
@@ -82,9 +100,10 @@ defmodule YellowDog.Console.ServerSocketTest do
   test "does not reject a registered server in a management-only release" do
     server_id = unique_id("management-release")
     register_server(server_id)
+    token = ServerSocket.node_token(@token, server_id)
 
     assert {:ok, _socket} =
-             connect(%{"token" => @token, "server_id" => server_id, "vsn" => "2.0.0"})
+             connect(%{"token" => token, "server_id" => server_id, "vsn" => "2.0.0"})
   end
 
   test "never logs provided token values" do

@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: YellowDog authoritative DNS management API
+  version: 1.0.0-m1
+  description: Management-owned A, NS and SOA zone publication for the M1 slice.
+servers:
+  - url: /api/v1
+security:
+  - operatorToken: []
+components:
+  securitySchemes:
+    operatorToken:
+      type: http
+      scheme: bearer
+      description: YELLOW_DOG_OPERATOR_API_TOKEN; separate from Server Agent credentials.
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+    RRset:
+      type: object
+      required: [owner, type, ttl, records]
+      properties:
+        owner: {type: string, example: example.test.}
+        type: {type: string, enum: [A, NS, SOA]}
+        ttl: {type: integer, minimum: 1, maximum: 2147483647}
+        records:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            oneOf:
+              - {type: string, description: IPv4 address or canonical absolute NS name}
+              - type: object
+                required: [mname, rname, refresh, retry, expire, minimum]
+                properties:
+                  mname: {type: string}
+                  rname: {type: string}
+                  refresh: {type: integer}
+                  retry: {type: integer}
+                  expire: {type: integer}
+                  minimum: {type: integer}
+    Zone:
+      type: object
+      properties:
+        id: {type: string}
+        apex: {type: string}
+        targets: {type: array, items: {type: string}}
+        revision: {type: integer}
+        published_version: {type: integer, nullable: true}
+        soa_serial: {type: integer}
+        rrsets: {type: array, items: {$ref: '#/components/schemas/RRset'}}
+    Deployment:
+      type: object
+      properties:
+        id: {type: string}
+        zone_id: {type: string}
+        draft_revision: {type: integer}
+        zone_version: {type: integer}
+        zone_digest: {type: string}
+        soa_serial: {type: integer}
+        state: {type: string, enum: [accepted, applied, failed]}
+        targets:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              generation: {type: integer}
+              expected_digest: {type: string, description: Digest of the desired complete DNS manifest.}
+              observed:
+                type: object
+                nullable: true
+                description: Agent-reported installed identity. This is not independent DNS verification.
+                properties:
+                  generation: {type: integer}
+                  digest: {type: string, description: Observed manifest digest.}
+                  zone_version: {type: integer, nullable: true}
+                  zone_digest: {type: string, nullable: true}
+                  state: {type: string, enum: [applied, failed]}
+                  error: {type: string, nullable: true}
+              verification:
+                type: object
+                nullable: true
+                description: Independent UDP/TCP verification evidence; null until a separate probe records it.
+paths:
+  /zones:
+    get:
+      operationId: listZones
+      description: Returns at most 100 zones sorted by apex.
+      responses:
+        '200': {description: Zones}
+    post:
+      operationId: createZone
+      description: Creates a durable draft with explicit enrolled Server IDs. Request limit 65536 bytes.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apex, targets]
+              properties:
+                apex: {type: string}
+                targets: {type: array, minItems: 1, maxItems: 16, items: {type: string}}
+                rrsets: {type: array, maxItems: 256, items: {$ref: '#/components/schemas/RRset'}}
+      responses:
+        '201': {description: Draft zone, content: {application/json: {schema: {$ref: '#/components/schemas/Zone'}}}}
+        '422': {description: Invalid zone data, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /zones/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: getZone
+      responses:
+        '200': {description: Zone, content: {application/json: {schema: {$ref: '#/components/schemas/Zone'}}}}
+  /zones/{id}/rrsets:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: listRRsets
+      responses:
+        '200': {description: Draft RRsets and revision}
+    patch:
+      operationId: editRRsets
+      description: Atomic whole-RRset replacements or deletions; requires expected_revision.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_revision, edits]
+              properties:
+                expected_revision: {type: integer}
+                edits: {type: array, minItems: 1, maxItems: 100, items: {type: object}}
+      responses:
+        '200': {description: Updated draft}
+        '409': {description: Stale revision}
+        '422': {description: Invalid RRset}
+  /zones/{id}/publish:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+    post:
+      operationId: publishZone
+      description: Accepts durable publication for one exact draft revision. Agent application is asynchronous.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_revision]
+              properties:
+                expected_revision: {type: integer}
+      responses:
+        '202': {description: Durable deployment, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+        '409': {description: Stale revision or conflicting idempotency reuse}
+        '422': {description: Incomplete zone}
+  /deployments/{id}:
+    get:
+      operationId: getDeployment
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Deployment, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /servers:
+    get:
+      operationId: listServers
+      description: Enrolled identities and reported connectivity state.
+      responses:
+        '200': {description: Servers}

@@ -39,6 +39,7 @@ defmodule YellowDog.Console.Plugs.ManagementReleaseOnly do
   end
 
   defp allowed_path?("/management"), do: true
+  defp allowed_path?("/api/v1/" <> _rest), do: true
   defp allowed_path?("/management/" <> _rest), do: true
   defp allowed_path?("/server"), do: true
   defp allowed_path?("/server/" <> _rest), do: true

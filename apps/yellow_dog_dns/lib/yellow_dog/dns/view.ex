@@ -182,6 +182,11 @@ defmodule YellowDog.Dns.View do
     GenServer.call(pid, {:register_zone, zone_type, zone_name})
   end
 
+  @doc "Removes a managed zone route from this view."
+  def unregister_zone(pid, zone_type, zone_name) do
+    GenServer.call(pid, {:unregister_zone, zone_type, zone_name})
+  end
+
   @doc """
   Registers an RPZ zone with this view.
   """
@@ -340,6 +345,13 @@ defmodule YellowDog.Dns.View do
       end)
       |> Enum.uniq()
 
+    :ok = invalidate_cache_entries_for_zone(state.cache_table, zone_name)
+    {:reply, :ok, %{state | zones: zones}}
+  end
+
+  def handle_call({:unregister_zone, zone_type, zone_name}, _from, state) do
+    zones = Enum.reject(state.zones, &(&1 == {zone_type, zone_name}))
+    :ok = invalidate_cache_entries_for_zone(state.cache_table, zone_name)
     {:reply, :ok, %{state | zones: zones}}
   end
 

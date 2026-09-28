@@ -604,6 +604,8 @@ end
 defmodule YellowDog.ServerDnsControlFake.ConfigPersistence do
   @moduledoc false
 
+  def default_data_path, do: "test/dns"
+
   def collect_views do
     YellowDog.ServerDnsControlFake.fetch(
       :view_configs,
@@ -625,6 +627,14 @@ defmodule YellowDog.ServerDnsControlFake.ConfigPersistence do
       {:config_persistence, :save_acls, [acls]},
       fn state -> {:ok, %{state | persisted_acls: acls}} end
     )
+  end
+end
+
+defmodule YellowDog.ServerDnsControlFake.ManagedSnapshot do
+  @moduledoc false
+
+  def managed_zone?(apex, _data_path) do
+    apex == Application.get_env(:yellow_dog, :managed_zone_test_apex)
   end
 end
 

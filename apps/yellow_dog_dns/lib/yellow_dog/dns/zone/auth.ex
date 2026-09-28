@@ -39,6 +39,7 @@ defmodule YellowDog.Dns.Zone.Auth do
     :zone_file,
     :zone_data_path,
     :ttl,
+    managed: false,
     query_count: 0,
     hit_count: 0,
     miss_count: 0,
@@ -209,6 +210,11 @@ defmodule YellowDog.Dns.Zone.Auth do
     GenServer.call(pid, :get_version)
   end
 
+  @doc "Atomically replaces the in-memory index of a management-owned zone."
+  def activate_managed(pid, records), do: GenServer.call(pid, {:activate_managed, records})
+
+  def managed?(pid), do: GenServer.call(pid, :managed?)
+
   @doc """
   Gets metadata about the zone including version info.
 
@@ -273,27 +279,38 @@ defmodule YellowDog.Dns.Zone.Auth do
       zone_file: zone_file,
       zone_data_path: zone_data_path,
       ttl: Keyword.get(opts, :ttl, 3600),
+      managed: Keyword.get(opts, :managed, false),
       created_at: DateTime.utc_now(),
       dirty: false
     }
 
-    # Load initial zone data.
-    # Priority: explicit zone_data opts > zone_file > Store persistence > empty
-    state =
-      cond do
-        zone_data = Keyword.get(opts, :zone_data) ->
-          load_zone_data(state, zone_data)
+    recovery =
+      case {state.managed, Keyword.get(opts, :managed_data_dir)} do
+        {true, dir} when is_binary(dir) ->
+          YellowDog.Dns.ManagedSnapshot.recover_zone_data(zone_name, dir)
 
-        zone_file != nil ->
-          load_zone_file(state, zone_file)
-
-        true ->
-          load_from_store(state)
+        _ ->
+          {:ok, nil}
       end
 
-    Telemetry.info("Auth zone started", %{name: zone_name, zone_file: zone_file})
+    case recovery do
+      {:ok, recovered} ->
+        # A committed snapshot wins on process restart. A staged first install
+        # has no committed snapshot yet and uses its explicit candidate data.
+        state =
+          cond do
+            is_list(recovered) -> load_zone_data(state, recovered)
+            zone_data = Keyword.get(opts, :zone_data) -> load_zone_data(state, zone_data)
+            zone_file != nil -> load_zone_file(state, zone_file)
+            true -> load_from_store(state)
+          end
 
-    {:ok, state}
+        Telemetry.info("Auth zone started", %{name: zone_name, zone_file: zone_file})
+        {:ok, state}
+
+      {:error, reason} ->
+        {:stop, {:managed_recovery_failed, reason}}
+    end
   end
 
   @impl true
@@ -323,28 +340,67 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:reload, config}, _from, state) do
-    # Clear existing data
-    :ets.delete_all_objects(state.table)
+    if state.managed do
+      {:reply, {:error, :managed_zone}, state}
+    else
+      # Clear existing data
+      :ets.delete_all_objects(state.table)
 
-    # Reload zone data: explicit opts > zone_file > Store > empty
-    new_state =
-      cond do
-        zone_data = Keyword.get(config, :zone_data) ->
-          load_zone_data(state, zone_data)
+      # Reload zone data: explicit opts > zone_file > Store > empty
+      new_state =
+        cond do
+          zone_data = Keyword.get(config, :zone_data) ->
+            load_zone_data(state, zone_data)
 
-        zone_file = Keyword.get(config, :zone_file) ->
-          load_zone_file(state, zone_file)
+          zone_file = Keyword.get(config, :zone_file) ->
+            load_zone_file(state, zone_file)
 
-        true ->
-          load_from_store(state)
-      end
+          true ->
+            load_from_store(state)
+        end
 
-    Telemetry.info("Auth zone reloaded", %{name: state.name})
+      Telemetry.info("Auth zone reloaded", %{name: state.name})
 
-    {:reply, :ok, %{new_state | dirty: false}}
+      {:reply, :ok, %{new_state | dirty: false}}
+    end
   end
 
+  def handle_call(:managed?, _from, state), do: {:reply, state.managed, state}
+
+  def handle_call({:activate_managed, records}, _from, %{managed: true} = state)
+      when is_list(records) do
+    table = :ets.new(:managed_zone_candidate, [:bag, :protected, read_concurrency: true])
+    insert_records(table, records)
+    old_table = state.table
+
+    {soa, ns_records, _} =
+      Enum.reduce(records, {nil, [], []}, fn record, {soa, ns, rest} ->
+        case normalize_type(record.type) do
+          :soa -> {record, ns, rest}
+          :ns -> {soa, [record | ns], rest}
+          _ -> {soa, ns, [record | rest]}
+        end
+      end)
+
+    new_state = %{
+      state
+      | table: table,
+        soa: soa,
+        ns_records: Enum.reverse(ns_records),
+        dirty: false
+    }
+
+    :ets.delete(old_table)
+    {:reply, :ok, new_state}
+  end
+
+  def handle_call({:activate_managed, _}, _from, state),
+    do: {:reply, {:error, :unmanaged_zone}, state}
+
   @impl true
+  def handle_call({:update_config, _config}, _from, %{managed: true} = state),
+    do: {:reply, {:error, :managed_zone}, state}
+
   def handle_call({:update_config, config}, _from, state) do
     ttl = Map.get(config, :ttl, state.ttl)
     new_state = %{state | ttl: ttl}
@@ -382,37 +438,16 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:add_record, record}, _from, state) do
-    key = {normalize_name(record.name), normalize_type(record.type)}
-    :ets.insert(state.table, {key, record})
-
-    new_state = %{
-      state
-      | dirty: true,
-        version: state.version + 1,
-        updated_at: DateTime.utc_now()
-    }
-
-    # Async-sync the changed RRset to Store for persistence
-    async_sync_rrset_to_store(new_state, record.name, record.type)
-
-    {:reply, :ok, new_state}
+    if state.managed,
+      do: {:reply, {:error, :managed_zone}, state},
+      else: add_record_unmanaged(record, state)
   end
 
   @impl true
   def handle_call({:remove_record, name, type}, _from, state) do
-    :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
-
-    # Async-sync deletion to Store
-    async_delete_rrset_from_store(state, name, type)
-
-    new_state = %{
-      state
-      | dirty: true,
-        version: state.version + 1,
-        updated_at: DateTime.utc_now()
-    }
-
-    {:reply, :ok, new_state}
+    if state.managed,
+      do: {:reply, {:error, :managed_zone}, state},
+      else: remove_record_unmanaged(name, type, state)
   end
 
   @impl true
@@ -452,45 +487,16 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:add_record_versioned, record, expected_version}, _from, state) do
-    if state.version == expected_version do
-      key = {normalize_name(record.name), normalize_type(record.type)}
-      :ets.insert(state.table, {key, record})
-      new_version = state.version + 1
-
-      new_state = %{
-        state
-        | dirty: true,
-          version: new_version,
-          updated_at: DateTime.utc_now()
-      }
-
-      async_sync_rrset_to_store(new_state, record.name, record.type)
-
-      {:reply, {:ok, new_version}, new_state}
-    else
-      {:reply, {:error, :version_conflict}, state}
-    end
+    if state.managed,
+      do: {:reply, {:error, :managed_zone}, state},
+      else: add_record_versioned_unmanaged(record, expected_version, state)
   end
 
   @impl true
   def handle_call({:remove_record_versioned, name, type, expected_version}, _from, state) do
-    if state.version == expected_version do
-      :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
-      new_version = state.version + 1
-
-      new_state = %{
-        state
-        | dirty: true,
-          version: new_version,
-          updated_at: DateTime.utc_now()
-      }
-
-      async_delete_rrset_from_store(new_state, name, type)
-
-      {:reply, {:ok, new_version}, new_state}
-    else
-      {:reply, {:error, :version_conflict}, state}
-    end
+    if state.managed,
+      do: {:reply, {:error, :managed_zone}, state},
+      else: remove_record_versioned_unmanaged(name, type, expected_version, state)
   end
 
   @impl true
@@ -518,6 +524,9 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   @impl true
+  def handle_call({:import_zone_file, _bind_string}, _from, %{managed: true} = state),
+    do: {:reply, {:error, :managed_zone}, state}
+
   def handle_call({:import_zone_file, bind_string}, _from, state) do
     case DNS.Zone.parse_zone_string(bind_string) do
       {:ok, zone} ->
@@ -607,6 +616,80 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   # Private Functions
+
+  defp add_record_unmanaged(record, state) do
+    key = {normalize_name(record.name), normalize_type(record.type)}
+    :ets.insert(state.table, {key, record})
+
+    new_state = %{
+      state
+      | dirty: true,
+        version: state.version + 1,
+        updated_at: DateTime.utc_now()
+    }
+
+    # Async-sync the changed RRset to Store for persistence
+    async_sync_rrset_to_store(new_state, record.name, record.type)
+
+    {:reply, :ok, new_state}
+  end
+
+  defp remove_record_unmanaged(name, type, state) do
+    :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
+
+    # Async-sync deletion to Store
+    async_delete_rrset_from_store(state, name, type)
+
+    new_state = %{
+      state
+      | dirty: true,
+        version: state.version + 1,
+        updated_at: DateTime.utc_now()
+    }
+
+    {:reply, :ok, new_state}
+  end
+
+  defp add_record_versioned_unmanaged(record, expected_version, state) do
+    if state.version == expected_version do
+      key = {normalize_name(record.name), normalize_type(record.type)}
+      :ets.insert(state.table, {key, record})
+      new_version = state.version + 1
+
+      new_state = %{
+        state
+        | dirty: true,
+          version: new_version,
+          updated_at: DateTime.utc_now()
+      }
+
+      async_sync_rrset_to_store(new_state, record.name, record.type)
+
+      {:reply, {:ok, new_version}, new_state}
+    else
+      {:reply, {:error, :version_conflict}, state}
+    end
+  end
+
+  defp remove_record_versioned_unmanaged(name, type, expected_version, state) do
+    if state.version == expected_version do
+      :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
+      new_version = state.version + 1
+
+      new_state = %{
+        state
+        | dirty: true,
+          version: new_version,
+          updated_at: DateTime.utc_now()
+      }
+
+      async_delete_rrset_from_store(new_state, name, type)
+
+      {:reply, {:ok, new_version}, new_state}
+    else
+      {:reply, {:error, :version_conflict}, state}
+    end
+  end
 
   # Load records from Store into ETS on startup.
   # Returns updated state with records loaded, or unchanged state if Store has nothing.

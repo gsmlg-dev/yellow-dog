@@ -46,6 +46,7 @@ defmodule YellowDog.Server.Control.Dns do
     acl_registry: Module.concat(["YellowDog", "Dns", "AclRegistry"]),
     acl_codec: Module.concat(["YellowDog", "Dns", "View", "ACL"]),
     config_persistence: Module.concat(["YellowDog", "Dns", "ConfigPersistence"]),
+    managed_snapshot: Module.concat(["YellowDog", "Dns", "ManagedSnapshot"]),
     provider_store: Module.concat(["YellowDog", "Store", "Provider"]),
     provider_facade: Module.concat(["YellowDog", "DnsProvider"]),
     tasks: Module.concat(["YellowDog", "Tasks"]),
@@ -444,6 +445,7 @@ defmodule YellowDog.Server.Control.Dns do
   defp create_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.create", payload),
          payload <- canonicalize_zone_payload(payload),
+         :ok <- ensure_unmanaged_zone(payload),
          "authoritative" <- payload["zone_type"] || unsupported_error(),
          :ok <- ensure_view(payload["view_name"]),
          :missing <- fetch_zone(payload["view_name"], payload["zone_name"]),
@@ -502,6 +504,7 @@ defmodule YellowDog.Server.Control.Dns do
   defp update_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.update", payload),
          payload <- canonicalize_zone_payload(payload),
+         :ok <- ensure_unmanaged_zone(payload),
          {:ok, old_zone} <- fetch_zone(payload["view_name"], payload["zone_name"]),
          {:ok, "authoritative"} <- stored_zone_type(old_zone),
          "authoritative" <- payload["zone_type"] || conflict_error(),
@@ -541,6 +544,7 @@ defmodule YellowDog.Server.Control.Dns do
   defp delete_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.delete", payload),
          payload <- canonicalize_zone_payload(payload),
+         :ok <- ensure_unmanaged_zone(payload),
          {:ok, zone} <- fetch_zone(payload["view_name"], payload["zone_name"]),
          {:ok, "authoritative"} <- stored_zone_type(zone),
          {:ok, records} <- list_store_records(payload["view_name"], payload["zone_name"]) do
@@ -572,6 +576,7 @@ defmodule YellowDog.Server.Control.Dns do
   defp sync_zone(payload) do
     with {:ok, payload} <- validate_operation_payload("server.dns.zones.sync", payload),
          payload <- canonicalize_zone_payload(payload),
+         :ok <- ensure_unmanaged_zone(payload),
          {:ok, zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
          {:ok, result} <- cloud_sync_result(payload, zone) do
       case dependency_call(:tasks, :enqueue_cloud_zone_sync, [
@@ -595,6 +600,7 @@ defmodule YellowDog.Server.Control.Dns do
 
     with {:ok, payload} <- validate_operation_payload(operation, payload),
          payload <- canonicalize_zone_payload(payload),
+         :ok <- ensure_unmanaged_zone(payload),
          :ok <- validate_record_reference(operation, payload),
          {:ok, _zone} <- authoritative_zone(payload["view_name"], payload["zone_name"]),
          {:ok, mutation} <- record_mutation(action, payload),
@@ -1992,6 +1998,19 @@ defmodule YellowDog.Server.Control.Dns do
     :exit, {:noproc, _details} -> not_found_error()
     :exit, _reason -> apply_failed_error()
     _kind, _reason -> apply_failed_error()
+  end
+
+  defp ensure_unmanaged_zone(%{"zone_name" => zone_name}) do
+    with {:ok, data_path} <- dependency_call(:config_persistence, :default_data_path, []),
+         {:ok, managed?} <-
+           dependency_call(:managed_snapshot, :managed_zone?, [
+             canonical_name(zone_name) <> ".",
+             data_path
+           ]) do
+      if managed?, do: conflict_error(), else: :ok
+    else
+      _ -> apply_failed_error()
+    end
   end
 
   defp dependency_module(key), do: Map.fetch!(dependencies(), key)

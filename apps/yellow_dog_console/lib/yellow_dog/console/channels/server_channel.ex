@@ -7,6 +7,7 @@ defmodule YellowDog.Console.ServerChannel do
 
   alias __MODULE__.SyncCodec
   alias YellowDog.Console.ServerConnections
+  alias YellowDog.Management.DnsZones
 
   @sync_event "sync"
   @payload_keys ["message", "publication_sequence"]
@@ -59,6 +60,12 @@ defmodule YellowDog.Console.ServerChannel do
     {:stop, {:shutdown, :handshake_timeout}, socket}
   end
 
+  def handle_info(:dns_reconcile, socket) do
+    send_dns_manifest(socket)
+    Process.send_after(self(), :dns_reconcile, 5_000)
+    {:noreply, socket}
+  end
+
   def handle_info({:server_management_push, encoded}, socket) when is_binary(encoded) do
     :ok =
       push(socket, @sync_event, %{
@@ -109,6 +116,7 @@ defmodule YellowDog.Console.ServerChannel do
            encoded
          ) do
       {:ok, _replaced_pid} ->
+        send(self(), :dns_reconcile)
         accepted(assign(socket, :handshake_state, :active))
 
       {:error, code} ->
@@ -125,6 +133,47 @@ defmodule YellowDog.Console.ServerChannel do
       {:error, _reason} -> error(:not_connected, socket)
     end
   end
+
+  defp dispatch(
+         :active,
+         %{
+           tag: :dns_state,
+           target_id: server_id,
+           generation: generation,
+           digest: digest,
+           state: :applied
+         },
+         _encoded,
+         nil,
+         socket
+       ) do
+    case DnsZones.report_applied(server_id, generation, digest) do
+      :ok -> accepted(socket)
+      {:error, _} -> stale_dns_state_receipt(server_id, generation, socket)
+    end
+  end
+
+  defp dispatch(
+         :active,
+         %{
+           tag: :dns_state,
+           target_id: server_id,
+           generation: generation,
+           digest: digest,
+           state: :failed,
+           error: reason
+         },
+         _encoded,
+         nil,
+         socket
+       ) do
+    case DnsZones.report_failed(server_id, generation, digest, reason) do
+      :ok -> accepted(socket)
+      {:error, _} -> stale_dns_state_receipt(server_id, generation, socket)
+    end
+  end
+
+  defp dispatch(:active, %{tag: :dns_state}, _encoded, nil, socket), do: accepted(socket)
 
   defp dispatch(:active, %{tag: :status, status: status}, _encoded, nil, socket) do
     case ServerConnections.update_status(socket.assigns.server_id, self(), status) do
@@ -190,6 +239,16 @@ defmodule YellowDog.Console.ServerChannel do
   defp dispatch(:active, _message, _encoded, _sequence, socket),
     do: error(:unsupported, socket)
 
+  defp stale_dns_state_receipt(server_id, generation, socket) do
+    case DnsZones.manifest(server_id) do
+      {:ok, %{"generation" => desired}} when is_integer(desired) and generation < desired ->
+        accepted(socket)
+
+      _ ->
+        error(:conflict, socket)
+    end
+  end
+
   defp exact_payload(payload) when is_map(payload) do
     if Enum.sort(Map.keys(payload)) == @payload_keys and
          is_binary(payload["message"]) do
@@ -226,6 +285,17 @@ defmodule YellowDog.Console.ServerChannel do
   defp valid_publication_sequence(_tag, _sequence), do: {:error, :invalid}
 
   defp accepted(socket), do: {:reply, {:ok, %{"accepted" => true}}, socket}
+
+  defp send_dns_manifest(socket) do
+    with {:ok, %{"generation" => generation} = manifest} when generation > 0 <-
+           DnsZones.manifest(socket.assigns.server_id),
+         {:ok, encoded} <- SyncCodec.encode_dns_manifest(manifest) do
+      push(socket, @sync_event, %{"message" => encoded, "publication_sequence" => nil})
+    else
+      _ -> :ok
+    end
+  end
+
   defp error(code, socket), do: {:reply, {:error, error_reply(code)}, socket}
   defp error_reply(code), do: %{"error" => wire_error(code)}
 
@@ -268,6 +338,8 @@ defmodule YellowDog.Console.ServerChannel do
     @result_module :"Elixir.YellowDog.Sync.Message.Result"
     @config_delivery_module :"Elixir.YellowDog.Sync.Message.ConfigDelivery"
     @config_state_module :"Elixir.YellowDog.Sync.Message.ConfigState"
+    @dns_state_module :"Elixir.YellowDog.Sync.Message.DnsState"
+    @dns_manifest_delivery_module :"Elixir.YellowDog.Sync.Message.DnsManifestDelivery"
     @journal_module :"Elixir.YellowDog.Sync.Message.Journal"
     @event_module :"Elixir.YellowDog.Sync.Message.Event"
     @server_identity_module :"Elixir.YellowDog.Sync.Identity.Server"
@@ -308,6 +380,16 @@ defmodule YellowDog.Console.ServerChannel do
         {:ok, encoded, summary}
       else
         _invalid -> {:error, :invalid}
+      end
+    end
+
+    def encode_dns_manifest(manifest) when is_map(manifest) do
+      with true <- Code.ensure_loaded?(@dns_manifest_delivery_module),
+           message <- struct(@dns_manifest_delivery_module, manifest: manifest),
+           {:ok, encoded} <- codec_apply(:encode, [message]) do
+        {:ok, encoded}
+      else
+        _ -> {:error, :invalid}
       end
     end
 
@@ -453,6 +535,20 @@ defmodule YellowDog.Console.ServerChannel do
       do: envelope_summary(:config_delivery, message)
 
     defp summarize(@config_state_module, message), do: target_summary(:config_state, message)
+
+    defp summarize(@dns_state_module, message) do
+      {:ok,
+       %{
+         tag: :dns_state,
+         target_type: :server,
+         target_id: Map.get(message, :server_id),
+         generation: Map.get(message, :generation),
+         digest: Map.get(message, :digest),
+         state: Map.get(message, :state),
+         error: Map.get(message, :error)
+       }}
+    end
+
     defp summarize(@journal_module, message), do: target_summary(:journal, message)
     defp summarize(@event_module, message), do: target_summary(:event, message)
     defp summarize(_module, _message), do: {:error, :invalid}

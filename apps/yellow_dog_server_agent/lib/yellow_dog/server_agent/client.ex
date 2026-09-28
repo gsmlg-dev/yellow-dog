@@ -15,12 +15,15 @@ defmodule YellowDog.ServerAgent.Client do
   alias YellowDog.ServerAgent.ConfigApplier
   alias YellowDog.ServerAgent.ConfigApplyStore
   alias YellowDog.Sync.Bounds
+  alias YellowDog.Sync.DnsManifest
   alias YellowDog.Sync.Error
   alias YellowDog.Sync.Identity.Server
   alias YellowDog.Sync.Message
   alias YellowDog.Sync.Message.Command
   alias YellowDog.Sync.Message.ConfigDelivery
   alias YellowDog.Sync.Message.ConfigState
+  alias YellowDog.Sync.Message.DnsManifestDelivery
+  alias YellowDog.Sync.Message.DnsState
   alias YellowDog.Sync.Message.Heartbeat
   alias YellowDog.Sync.Message.Hello
   alias YellowDog.Sync.Message.Query
@@ -472,6 +475,7 @@ defmodule YellowDog.ServerAgent.Client do
     |> schedule_periodic(:heartbeat)
     |> schedule_periodic(:status)
     |> upload_journal()
+    |> upload_dns_state()
     |> flush_config_publications()
   end
 
@@ -520,6 +524,9 @@ defmodule YellowDog.ServerAgent.Client do
   defp inbound_identity(%ConfigDelivery{envelope: envelope}, server_id),
     do: envelope_identity(envelope, server_id)
 
+  defp inbound_identity(%DnsManifestDelivery{manifest: %{"server_id" => server_id}}, server_id),
+    do: :ok
+
   defp inbound_identity(_unsupported, _server_id), do: :error
 
   defp envelope_identity(%{target_type: :server, target_id: server_id}, server_id), do: :ok
@@ -534,6 +541,77 @@ defmodule YellowDog.ServerAgent.Client do
   defp route_inbound(%ConfigDelivery{envelope: envelope}, state) do
     _result = local_call(fn -> ConfigApplier.apply(envelope, state.config.config_applier) end)
     flush_config_publications(state)
+  end
+
+  defp route_inbound(%DnsManifestDelivery{manifest: manifest}, state) do
+    with {:ok, digest} <- DnsManifest.validate(manifest, state.config.identity.id),
+         data_dir when is_binary(data_dir) <- dns_data_dir(state),
+         {:ok, %{"generation" => generation, "digest" => ^digest}} <-
+           local_call(fn -> apply(dns_runtime(), :install, [manifest, data_dir]) end),
+         ^generation <- manifest["generation"] do
+      publish_dns_state(manifest["generation"], digest, :applied, nil, state)
+    else
+      failure ->
+        digest =
+          case DnsManifest.digest(manifest) do
+            {:ok, value} -> value
+            _ -> String.duplicate("0", 64)
+          end
+
+        publish_dns_state(
+          manifest["generation"],
+          digest,
+          :failed,
+          inspect(failure) |> String.slice(0, 1_024),
+          state
+        )
+    end
+  end
+
+  defp upload_dns_state(%{status: :active} = state) do
+    data_dir = dns_data_dir(state)
+
+    case local_call(fn -> apply(dns_runtime(), :installed_status, [data_dir]) end) do
+      {:ok, %{"generation" => generation, "digest" => digest}}
+      when is_integer(generation) and generation > 0 ->
+        publish_dns_state(generation, digest, :applied, nil, state)
+
+      _ ->
+        state
+    end
+  end
+
+  defp upload_dns_state(state), do: state
+
+  defp publish_dns_state(generation, digest, status, error, state)
+       when is_integer(generation) and generation > 0 do
+    message = %DnsState{
+      server_id: state.config.identity.id,
+      generation: generation,
+      digest: digest,
+      state: status,
+      error: error,
+      observed_at: wall_now(state)
+    }
+
+    case push_message(message, nil, state) do
+      :ok -> state
+      # An older installed generation can be rejected while Management has a newer
+      # desired manifest. Keep this connection available to receive that manifest.
+      :error -> state
+    end
+  end
+
+  defp dns_runtime, do: :"Elixir.YellowDog.Dns.ManagedSnapshot"
+
+  defp dns_data_dir(_state) do
+    module = :"Elixir.YellowDog.Dns.ConfigPersistence"
+
+    if Code.ensure_loaded?(module) and function_exported?(module, :default_data_path, 0) do
+      apply(module, :default_data_path, [])
+    else
+      "data/dns"
+    end
   end
 
   defp dispatch_inbound(envelope, state) do
@@ -1116,11 +1194,13 @@ defmodule YellowDog.ServerAgent.Client do
 
   defp identity(_value), do: :error
 
-  defp identity_updates(%{
-         profile: profile,
-         capabilities: capabilities,
-         config_revision: config_revision
-       } = updates)
+  defp identity_updates(
+         %{
+           profile: profile,
+           capabilities: capabilities,
+           config_revision: config_revision
+         } = updates
+       )
        when map_size(updates) == 3 do
     candidate = %Server{
       id: "validation",

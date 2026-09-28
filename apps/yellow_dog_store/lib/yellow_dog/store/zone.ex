@@ -21,6 +21,33 @@ defmodule YellowDog.Store.Zone do
 
   @max_batch_size 500
   @max_cas_retries 10
+  @managed_snapshot_module :"Elixir.YellowDog.Dns.ManagedSnapshot"
+  @dns_config_persistence_module :"Elixir.YellowDog.Dns.ConfigPersistence"
+
+  # Managed authoritative zones are owned by the published snapshot, even when
+  # DNS is offline. Keep this lookup dynamic so Store does not start DNS in the
+  # management release or create an umbrella dependency cycle.
+  defp ensure_unmanaged_zone("default", zone) do
+    if Code.ensure_loaded?(@managed_snapshot_module) and
+         Code.ensure_loaded?(@dns_config_persistence_module) do
+      try do
+        data_dir = apply(@dns_config_persistence_module, :default_data_path, [])
+        apex = zone |> String.downcase() |> String.trim_trailing(".") |> Kernel.<>(".")
+
+        if apply(@managed_snapshot_module, :managed_zone?, [apex, data_dir]),
+          do: {:error, :managed_zone},
+          else: :ok
+      rescue
+        _ -> {:error, :managed_zone_check_failed}
+      catch
+        _, _ -> {:error, :managed_zone_check_failed}
+      end
+    else
+      :ok
+    end
+  end
+
+  defp ensure_unmanaged_zone(_view_name, _zone), do: :ok
 
   @doc false
   def max_replacement_transaction_bytes, do: Replacement.max_transaction_bytes()
@@ -77,7 +104,8 @@ defmodule YellowDog.Store.Zone do
   @spec create_zone(view_name(), zone_name(), soa(), keyword()) ::
           :ok | {:error, :already_exists | term()}
   def create_zone(view_name, name, soa, opts \\ []) do
-    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
+    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
           create_zone_locked(backend, view_name, name, soa, opts)
@@ -136,7 +164,8 @@ defmodule YellowDog.Store.Zone do
   @spec create_forward_zone(view_name(), zone_name(), [map()], keyword()) ::
           :ok | {:error, :already_exists | term()}
   def create_forward_zone(view_name, name, forwarders, opts \\ []) do
-    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
+    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
           create_forward_zone_locked(backend, view_name, name, forwarders, opts)
@@ -199,7 +228,8 @@ defmodule YellowDog.Store.Zone do
   @spec create_stub_zone(view_name(), zone_name(), [map()], keyword()) ::
           :ok | {:error, :already_exists | term()}
   def create_stub_zone(view_name, name, primaries, opts \\ []) do
-    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
+    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
           create_stub_zone_locked(backend, view_name, name, primaries, opts)
@@ -256,7 +286,8 @@ defmodule YellowDog.Store.Zone do
   """
   @spec delete_zone(view_name(), zone_name()) :: :ok | {:error, term()}
   def delete_zone(view_name, name) do
-    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
+    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
           delete_zone_locked(backend, view_name, name)
@@ -350,7 +381,8 @@ defmodule YellowDog.Store.Zone do
 
   @spec update_zone(view_name(), zone_name(), map()) :: :ok | {:error, term()}
   def update_zone(view_name, name, attrs) do
-    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
+    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
           do_update_zone_locked(backend, view_name, name, attrs, @max_update_retries)
@@ -465,6 +497,7 @@ defmodule YellowDog.Store.Zone do
           :ok | {:error, term()}
   def put_rrset(view_name, zone, owner, type, rrset) do
     with {:ok, {view_name, zone}} <- Key.canonical_zone_scope(view_name, zone),
+         :ok <- ensure_unmanaged_zone(view_name, zone),
          {:ok, owner} <- Key.canonical_owner(owner),
          :ok <- validate_rr_type(type) do
       with_zone_lock(view_name, zone, fn ->
@@ -519,6 +552,7 @@ defmodule YellowDog.Store.Zone do
           | {:error, {:rollback_failed, term(), term()}}
   def replace_records(view_name, zone, records) do
     with {:ok, {view_name, zone}} <- Key.canonical_zone_scope(view_name, zone),
+         :ok <- ensure_unmanaged_zone(view_name, zone),
          {:ok, desired_records} <-
            validate_desired_records(view_name, zone, records) do
       case with_zone_lock(view_name, zone, fn ->
@@ -563,6 +597,7 @@ defmodule YellowDog.Store.Zone do
   @spec delete_rrset(view_name(), zone_name(), owner(), rr_type()) :: :ok | {:error, term()}
   def delete_rrset(view_name, zone, owner, type) do
     with {:ok, {view_name, zone}} <- Key.canonical_zone_scope(view_name, zone),
+         :ok <- ensure_unmanaged_zone(view_name, zone),
          {:ok, owner} <- Key.canonical_owner(owner),
          :ok <- validate_rr_type(type) do
       with_zone_lock(view_name, zone, fn ->
@@ -651,6 +686,7 @@ defmodule YellowDog.Store.Zone do
   @spec import_zone(view_name(), zone_name(), list(map())) :: :ok | {:error, term()}
   def import_zone(view_name, name, records) when is_list(records) do
     with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name),
          {:ok, records} <- canonicalize_import_records(records) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
@@ -716,7 +752,8 @@ defmodule YellowDog.Store.Zone do
   """
   @spec increment_serial(view_name(), zone_name()) :: :ok | {:error, term()}
   def increment_serial(view_name, name) do
-    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name) do
+    with {:ok, {view_name, name}} <- Key.canonical_zone_scope(view_name, name),
+         :ok <- ensure_unmanaged_zone(view_name, name) do
       with_zone_lock(view_name, name, fn ->
         with_recovery(view_name, name, fn backend ->
           do_increment_serial_locked(backend, view_name, name, @max_cas_retries)

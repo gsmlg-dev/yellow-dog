@@ -193,6 +193,14 @@ defmodule YellowDog.Dns.Supervisor do
       Enum.each(zones, &start_zone/1)
     end
 
+    case YellowDog.Dns.ManagedSnapshot.recover(get_data_path()) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Telemetry.error("Managed DNS recovery failed", %{reason: inspect(reason)})
+    end
+
     # Start Store event consumers if EventBridge is available
     start_store_consumers()
 
@@ -405,7 +413,7 @@ defmodule YellowDog.Dns.Supervisor do
           acl: :any,
           zones: [],
           rpz_zones: [],
-          recursion_enabled: true,
+          recursion_enabled: not authoritative_only?(),
           fallback_forwarders: default_forwarders,
           ecs_enabled: false
         })
@@ -418,9 +426,20 @@ defmodule YellowDog.Dns.Supervisor do
     |> apply_default_forwarders(default_forwarders)
   end
 
-  defp apply_default_forwarders(view_config, []), do: view_config
-
   defp apply_default_forwarders(view_config, default_forwarders) when is_map(view_config) do
+    if authoritative_only?() do
+      view_config
+      |> Map.put(:recursion_enabled, false)
+      |> Map.put(:recursion, false)
+      |> Map.put(:fallback_forwarders, [])
+    else
+      apply_unmanaged_forwarders(view_config, default_forwarders)
+    end
+  end
+
+  defp apply_unmanaged_forwarders(view_config, []), do: view_config
+
+  defp apply_unmanaged_forwarders(view_config, default_forwarders) when is_map(view_config) do
     fallback_forwarders = Map.get(view_config, :fallback_forwarders, [])
 
     recursion_enabled =
@@ -521,6 +540,10 @@ defmodule YellowDog.Dns.Supervisor do
   end
 
   defp get_default_forwarders(opts) do
+    if authoritative_only?(), do: [], else: configured_default_forwarders(opts)
+  end
+
+  defp configured_default_forwarders(opts) do
     servers =
       case Keyword.fetch(opts, :upstream_servers) do
         {:ok, upstream_servers} -> upstream_servers
@@ -528,6 +551,12 @@ defmodule YellowDog.Dns.Supervisor do
       end
 
     normalize_forwarders(servers)
+  end
+
+  defp authoritative_only? do
+    YellowDog.Server.ProfileResolver.resolve().profile in [:cloud_dns, :dns_only]
+  rescue
+    _ -> false
   end
 
   defp configured_upstream_servers do

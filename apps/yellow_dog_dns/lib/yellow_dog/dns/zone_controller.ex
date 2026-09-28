@@ -60,11 +60,27 @@ defmodule YellowDog.Dns.ZoneController do
 
   @spec start_zone(Supervisor.supervisor(), atom(), String.t(), keyword()) ::
           DynamicSupervisor.on_start_child()
-  def start_zone(supervisor, zone_type, zone_name, config) do
+  def start_zone(supervisor, :auth, zone_name, config) do
+    data_dir = YellowDog.Dns.ConfigPersistence.default_data_path()
+    canonical_name = zone_name |> String.downcase() |> String.trim_trailing(".") |> Kernel.<>(".")
+
+    if not Keyword.get(config, :managed, false) and
+         YellowDog.Dns.ManagedSnapshot.managed_zone?(canonical_name, data_dir) do
+      {:error, :managed_zone}
+    else
+      do_start_zone(supervisor, :auth, zone_name, config)
+    end
+  end
+
+  def start_zone(supervisor, zone_type, zone_name, config),
+    do: do_start_zone(supervisor, zone_type, zone_name, config)
+
+  defp do_start_zone(supervisor, zone_type, zone_name, config) do
     view_name = Keyword.get(config, :view_name, @default_view)
 
     # Persist zone metadata to Store if not already present
-    ensure_zone_in_store(view_name, zone_type, zone_name, config)
+    unless Keyword.get(config, :managed, false),
+      do: ensure_zone_in_store(view_name, zone_type, zone_name, config)
 
     module = zone_module(zone_type)
     opts = Keyword.merge(config, name: zone_name, view_name: view_name)

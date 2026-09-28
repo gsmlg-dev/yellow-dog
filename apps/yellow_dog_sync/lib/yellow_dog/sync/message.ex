@@ -3,13 +3,15 @@ defmodule YellowDog.Sync.Message do
 
   alias YellowDog.Sync.Bounds
   alias YellowDog.Sync.Codec
+  alias YellowDog.Sync.DnsManifest
+  alias YellowDog.Sync.Digest
   alias YellowDog.Sync.Envelope
   alias YellowDog.Sync.Error
   alias YellowDog.Sync.Identity
   alias YellowDog.Sync.Operation
 
   @uuid_pattern ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
-  @message_types ~w(hello heartbeat status query command result config_delivery config_state journal event)
+  @message_types ~w(hello heartbeat status query command result config_delivery config_state dns_manifest dns_state journal event)
   @max_wrapper_bytes byte_size(~s({"payload":,"type":"config_delivery"}))
   @max_message_document_bytes Codec.max_document_bytes() + @max_wrapper_bytes
   @max_message_depth Bounds.max_error_details_depth() + 2
@@ -87,6 +89,18 @@ defmodule YellowDog.Sync.Message do
     @type t :: %__MODULE__{}
   end
 
+  defmodule DnsManifestDelivery do
+    @enforce_keys [:manifest]
+    defstruct @enforce_keys
+    @type t :: %__MODULE__{}
+  end
+
+  defmodule DnsState do
+    @enforce_keys [:server_id, :generation, :digest, :state, :error, :observed_at]
+    defstruct @enforce_keys
+    @type t :: %__MODULE__{}
+  end
+
   defmodule Journal do
     @enforce_keys [:target_type, :target_id, :entries]
     defstruct @enforce_keys
@@ -108,6 +122,8 @@ defmodule YellowDog.Sync.Message do
           | Result.t()
           | ConfigDelivery.t()
           | ConfigState.t()
+          | DnsManifestDelivery.t()
+          | DnsState.t()
           | Journal.t()
           | Event.t()
 
@@ -236,6 +252,38 @@ defmodule YellowDog.Sync.Message do
     end
   end
 
+  defp to_wire(%DnsManifestDelivery{manifest: manifest}) when is_map(manifest) do
+    with {:ok, _digest} <- DnsManifest.validate(manifest, manifest["server_id"]) do
+      tagged("dns_manifest", manifest)
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp to_wire(%DnsManifestDelivery{}), do: invalid_error()
+
+  defp to_wire(%DnsState{} = message) do
+    with true <- is_binary(message.server_id) and byte_size(message.server_id) in 1..128,
+         true <- is_integer(message.generation) and message.generation > 0,
+         {:ok, digest} <- Digest.validate(message.digest),
+         true <- message.state in [:applied, :failed],
+         true <-
+           is_nil(message.error) or
+             (is_binary(message.error) and byte_size(message.error) <= 1_024),
+         {:ok, observed_at} <- utc_datetime(message.observed_at) do
+      tagged("dns_state", %{
+        "server_id" => message.server_id,
+        "generation" => message.generation,
+        "digest" => digest,
+        "state" => Atom.to_string(message.state),
+        "error" => message.error,
+        "observed_at" => DateTime.to_iso8601(observed_at)
+      })
+    else
+      _ -> invalid_error()
+    end
+  end
+
   defp to_wire(%Journal{} = message) do
     with {:ok, target_type} <- target_type_atom(message.target_type),
          {:ok, target_id} <- valid_id(message.target_id),
@@ -357,6 +405,41 @@ defmodule YellowDog.Sync.Message do
          {:ok, config_state} <-
            config_state_from_wire(target_type, target_id, wire, state, observed_at) do
       {:ok, config_state}
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp from_wire(%{"type" => "dns_manifest", "payload" => manifest}) when is_map(manifest) do
+    with {:ok, _digest} <- DnsManifest.validate(manifest, manifest["server_id"]) do
+      {:ok, %DnsManifestDelivery{manifest: manifest}}
+    else
+      _ -> invalid_error()
+    end
+  end
+
+  defp from_wire(%{"type" => "dns_manifest"}), do: invalid_error()
+
+  defp from_wire(%{"type" => "dns_state", "payload" => wire}) do
+    with {:ok, wire} <-
+           exact_map(wire, ["server_id", "generation", "digest", "state", "error", "observed_at"]),
+         true <- is_binary(wire["server_id"]) and byte_size(wire["server_id"]) in 1..128,
+         true <- is_integer(wire["generation"]) and wire["generation"] > 0,
+         {:ok, digest} <- Digest.validate(wire["digest"]),
+         true <- wire["state"] in ["applied", "failed"],
+         true <-
+           is_nil(wire["error"]) or
+             (is_binary(wire["error"]) and byte_size(wire["error"]) <= 1_024),
+         {:ok, observed_at} <- utc_datetime(wire["observed_at"]) do
+      {:ok,
+       %DnsState{
+         server_id: wire["server_id"],
+         generation: wire["generation"],
+         digest: digest,
+         state: String.to_existing_atom(wire["state"]),
+         error: wire["error"],
+         observed_at: observed_at
+       }}
     else
       _ -> invalid_error()
     end

@@ -60,9 +60,12 @@ defmodule YellowDog.Console.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  plug YellowDog.Console.Plugs.DnsRequestBodyLimit
+
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
+    body_reader: {YellowDog.Console.Plugs.DnsRequestBodyLimit, :read_body, []},
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride

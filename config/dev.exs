@@ -133,3 +133,4 @@ config :yellow_dog_resolved, enabled: false
 config :yellow_dog_netman, netman_autostart: false
 
 config :yellow_dog_console, :management_token, "dev-management-token"
+config :yellow_dog_console, :operator_api_token, "dev-operator-token"

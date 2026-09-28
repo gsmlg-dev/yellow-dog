@@ -14,6 +14,9 @@ cookie=""
 management_node=""
 server_node=""
 netman_node=""
+server_data_dir=""
+server_concord_dir=""
+server_agent_dir=""
 management_log=""
 server_log=""
 netman_log=""
@@ -100,8 +103,12 @@ run_releases() {
 
   secret="management-release-e2e-secret-key-base-management-release-e2e-secret-key-base"
   local token="management-release-e2e-token"
+  local operator_token="management-release-e2e-operator-token"
   cookie="management_release_e2e_cookie"
   local server_id="management-e2e-server"
+  server_data_dir="${e2e_dir}/server-data"
+  server_concord_dir="${e2e_dir}/server-concord"
+  server_agent_dir="${e2e_dir}/server-agent-data"
   local netman_id="management-e2e-netman"
   local suffix="${BASHPID}_${RANDOM}"
   management_node="yd_management_e2e_${suffix}"
@@ -171,9 +178,9 @@ run_releases() {
       -u RELEASE_VM_ARGS \
       CONCORD_CLUSTER_ENABLED=false \
       CONCORD_CLUSTERING=false \
-      CONCORD_DATA_DIR="${e2e_dir}/server-concord" \
+      CONCORD_DATA_DIR="${server_concord_dir}" \
       YELLOW_DOG_CONFIG="${server_config}" \
-      YELLOW_DOG_DATA_DIR="${e2e_dir}/server-data" \
+      YELLOW_DOG_DATA_DIR="${server_data_dir}" \
       RELEASE_NODE="${server_node}" \
       RELEASE_COOKIE="${cookie}" \
       RELEASE_TMP="${e2e_dir}/server-tmp" \
@@ -258,7 +265,7 @@ run_releases() {
         -u SECRET_KEY_BASE \
         CONCORD_CLUSTER_ENABLED=false \
         CONCORD_CLUSTERING=false \
-        CONCORD_DATA_DIR="${e2e_dir}/server-concord" \
+        CONCORD_DATA_DIR="${server_concord_dir}" \
         RELEASE_NODE="${server_node}" \
         RELEASE_COOKIE="${cookie}" \
         RELEASE_TMP="${e2e_dir}/server-tmp" \
@@ -439,6 +446,7 @@ EOF
       CONSOLE_AUTH_ENABLED=false \
       SECRET_KEY_BASE="${secret}" \
       YELLOW_DOG_MANAGEMENT_TOKEN="${token}" \
+      YELLOW_DOG_OPERATOR_API_TOKEN="${operator_token}" \
       YELLOW_DOG_DATA_DIR="${e2e_dir}/management-data" \
       RELEASE_NODE="${management_node}" \
       RELEASE_COOKIE="${cookie}" \
@@ -449,6 +457,8 @@ EOF
 
   start_server() {
     local trust_mode="${1:-trusted}"
+    local server_token
+    server_token="$(python3 -c 'import base64, hashlib, hmac, sys; print(base64.urlsafe_b64encode(hmac.new(sys.argv[1].encode(), ("yellow-dog-server:" + sys.argv[2]).encode(), hashlib.sha256).digest()).decode().rstrip("="))' "${token}" "${server_id}")"
     local -a vm_args=()
 
     case "${trust_mode}" in
@@ -462,13 +472,13 @@ EOF
       -u RELEASE_VM_ARGS \
       CONCORD_CLUSTER_ENABLED=false \
       CONCORD_CLUSTERING=false \
-      CONCORD_DATA_DIR="${e2e_dir}/server-concord" \
+      CONCORD_DATA_DIR="${server_concord_dir}" \
       YELLOW_DOG_CONFIG="${server_config}" \
-      YELLOW_DOG_DATA_DIR="${e2e_dir}/server-data" \
+      YELLOW_DOG_DATA_DIR="${server_data_dir}" \
       YELLOW_DOG_SERVER_MANAGEMENT_URL="https://localhost:${tls_port}" \
-      YELLOW_DOG_SERVER_MANAGEMENT_TOKEN="${token}" \
+      YELLOW_DOG_SERVER_MANAGEMENT_TOKEN="${server_token}" \
       YELLOW_DOG_SERVER_ID="${server_id}" \
-      YELLOW_DOG_SERVER_AGENT_DATA_DIR="${e2e_dir}/server-agent-data" \
+      YELLOW_DOG_SERVER_AGENT_DATA_DIR="${server_agent_dir}" \
       YELLOW_DOG_SERVER_RECONNECT_INITIAL_MS=50 \
       YELLOW_DOG_SERVER_RECONNECT_MAX_MS=250 \
       RELEASE_NODE="${server_node}" \
@@ -1027,6 +1037,208 @@ true = length(events) >= 6
 IO.puts("management restart preserved durable control-plane state")
 EOF
   management_rpc "$(cat "${durable_assertions}")"
+
+  # Exercise a fresh authoritative Server through the operator API and the
+  # existing authenticated Server Agent connection.
+  stop_server clean
+  kill "${dns_blocker_pid}" >/dev/null 2>&1
+  wait "${dns_blocker_pid}" 2>/dev/null || true
+  dns_blocker_pid=""
+  local managed_dns_port
+  managed_dns_port="$(python3 -c 'import socket; t=socket.socket(); t.bind(("127.0.0.1", 0)); p=t.getsockname()[1]; u=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); u.bind(("127.0.0.1", p)); print(p); u.close(); t.close()')"
+  server_id="management-e2e-dns-server"
+  server_data_dir="${e2e_dir}/managed-dns-server-data"
+  server_concord_dir="${e2e_dir}/managed-dns-server-concord"
+  server_agent_dir="${e2e_dir}/managed-dns-server-agent-data"
+  mkdir -p "${server_data_dir}" "${server_concord_dir}" "${server_agent_dir}"
+  cat > "${server_config}" <<EOF
+data_dir = "${server_data_dir}"
+
+[dns]
+port = ${managed_dns_port}
+listen = "127.0.0.1"
+data_path = "${server_data_dir}/dns"
+
+[yellow_dog_server]
+profile = "dns_only"
+id = "${server_id}"
+name = "Management E2E Authoritative DNS Server"
+
+[yellow_dog_server.services]
+dns = true
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+netboot = false
+identity = false
+fingerprint = false
+server_agent = true
+EOF
+  management_rpc "{:ok, %{id: \"${server_id}\"}} = YellowDog.ManagementCore.register_server(%{id: \"${server_id}\", name: \"Management E2E Authoritative DNS Server\", profile: :dns_only, status: :offline, services: %{dns: true, server_agent: true}})" >/dev/null
+  start_server
+  wait_for_agent_rpc server "${server_pid}" server_rpc
+
+  local zone_response="${e2e_dir}/zone-response.json"
+  local publish_response="${e2e_dir}/publish-response.json"
+  local status_response="${e2e_dir}/deployment-response.json"
+  local zone_request="${e2e_dir}/zone-request.json"
+  cat > "${zone_request}" <<EOF
+{"apex":"example.test.","targets":["${server_id}"],"rrsets":[{"owner":"example.test.","type":"SOA","ttl":300,"records":[{"mname":"ns1.example.test.","rname":"hostmaster.example.test.","refresh":3600,"retry":600,"expire":86400,"minimum":300}]},{"owner":"example.test.","type":"NS","ttl":300,"records":["ns1.example.test."]},{"owner":"ns1.example.test.","type":"A","ttl":300,"records":["192.0.2.53"]}]}
+EOF
+  curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" -H 'Content-Type: application/json' \
+    -H 'Idempotency-Key: management-release-e2e-zone-create' \
+    --data-binary "@${zone_request}" \
+    "https://localhost:${tls_port}/api/v1/zones" > "${zone_response}"
+  local zone_id
+  zone_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "${zone_response}")"
+
+  curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" -H 'Content-Type: application/json' \
+    -H 'Idempotency-Key: management-release-e2e-zone-publish' \
+    --data '{"expected_revision":1}' \
+    "https://localhost:${tls_port}/api/v1/zones/${zone_id}/publish" > "${publish_response}"
+  local deployment_id soa_serial
+  deployment_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "${publish_response}")"
+  soa_serial="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["soa_serial"])' "${publish_response}")"
+
+  verify_dns() {
+    local transport="$1" type="$2" expected="$3" output
+    local query_name='example.test.'
+    if [ "${type}" = A ]; then query_name='ns1.example.test.'; fi
+    local -a flags=()
+    if [ "${transport}" = tcp ]; then flags=(+tcp); fi
+    output="$(dig @127.0.0.1 -p "${managed_dns_port}" "${flags[@]}" +time=1 +tries=1 +noall +comments +answer "${query_name}" "${type}")"
+    grep -q 'flags:.* aa[; ]' <<< "${output}"
+    if grep -Eq 'flags:.*[[:space:]]ra[;[:space:]]' <<< "${output}"; then return 1; fi
+    grep -Fq "${expected}" <<< "${output}"
+  }
+
+  local deadline=$((SECONDS + 30))
+  until verify_dns udp NS 'ns1.example.test.' >/dev/null 2>&1; do
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'published DNS zone did not become queryable' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  for transport in udp tcp; do
+    verify_dns "${transport}" A '192.0.2.53'
+    verify_dns "${transport}" NS 'ns1.example.test.'
+    verify_dns "${transport}" SOA "${soa_serial}"
+    local -a flags=()
+    if [ "${transport}" = tcp ]; then flags=(+tcp); fi
+    dig @127.0.0.1 -p "${managed_dns_port}" "${flags[@]}" +time=1 +tries=1 +noall +comments outside.test. A \
+      | grep -q 'status: REFUSED'
+  done
+  echo 'authoritative A NS SOA answers verified over UDP and TCP'
+
+  # Publish a newer version while Server is offline. Management must accept it
+  # durably, and the existing Agent channel must converge after Server returns.
+  stop_server clean
+  local edit_response="${e2e_dir}/offline-zone-edit-response.json"
+  local offline_publish_response="${e2e_dir}/offline-zone-publish-response.json"
+  local prior_soa_serial="${soa_serial}"
+  curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" -H 'Content-Type: application/json' \
+    -H 'Idempotency-Key: management-release-e2e-offline-zone-edit' \
+    --request PATCH \
+    --data '{"expected_revision":1,"edits":[{"owner":"ns1.example.test.","type":"A","ttl":300,"records":["192.0.2.54"]}]}' \
+    "https://localhost:${tls_port}/api/v1/zones/${zone_id}/rrsets" > "${edit_response}"
+  python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["revision"] == 2' "${edit_response}"
+
+  local publish_status
+  publish_status="$(curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" -H 'Content-Type: application/json' \
+    -H 'Idempotency-Key: management-release-e2e-offline-zone-publish' \
+    --write-out '%{http_code}' \
+    --data '{"expected_revision":2}' \
+    "https://localhost:${tls_port}/api/v1/zones/${zone_id}/publish" \
+    --output "${offline_publish_response}")"
+  [ "${publish_status}" = 202 ]
+  deployment_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "${offline_publish_response}")"
+  soa_serial="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["soa_serial"])' "${offline_publish_response}")"
+  [ "${soa_serial}" -gt "${prior_soa_serial}" ]
+  curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" \
+    "https://localhost:${tls_port}/api/v1/deployments/${deployment_id}" > "${status_response}"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["state"] == "accepted"; assert all(t["observed"] is None for t in d["targets"].values())' "${status_response}"
+  echo 'offline DNS publication durably accepted through authenticated HTTP'
+
+  start_server
+  wait_for_agent_rpc server "${server_pid}" server_rpc
+  deadline=$((SECONDS + 30))
+  until verify_dns udp A '192.0.2.54' >/dev/null 2>&1; do
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'offline DNS publication did not converge after Server reconnect' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  for transport in udp tcp; do
+    verify_dns "${transport}" A '192.0.2.54'
+    verify_dns "${transport}" NS 'ns1.example.test.'
+    verify_dns "${transport}" SOA "${soa_serial}"
+    local -a flags=()
+    if [ "${transport}" = tcp ]; then flags=(+tcp); fi
+    if dig @127.0.0.1 -p "${managed_dns_port}" "${flags[@]}" +short +time=1 +tries=1 ns1.example.test. A \
+      | grep -Fq '192.0.2.53'; then
+      echo 'old DNS A record remained after offline publication caught up' >&2
+      return 1
+    fi
+  done
+  deadline=$((SECONDS + 30))
+  while :; do
+    curl --fail --silent --show-error --cacert "${ca_cert}" \
+      -H "Authorization: Bearer ${operator_token}" \
+      "https://localhost:${tls_port}/api/v1/deployments/${deployment_id}" > "${status_response}"
+    if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("state") == "applied" and all((t.get("observed") or {}).get("generation") == 2 for t in d.get("targets", {}).values()) else 1)' "${status_response}"; then
+      break
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'offline DNS publication did not report applied after Server reconnect' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo 'Server Agent caught up offline DNS publication after reconnect'
+
+  stop_management
+  stop_server clean
+  start_server
+  wait_for_agent_rpc server "${server_pid}" server_rpc
+  deadline=$((SECONDS + 30))
+  until verify_dns udp NS 'ns1.example.test.' >/dev/null 2>&1; do
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'server restart did not recover durable DNS zone' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  for transport in udp tcp; do
+    verify_dns "${transport}" A '192.0.2.54'
+    verify_dns "${transport}" NS 'ns1.example.test.'
+    verify_dns "${transport}" SOA "${soa_serial}"
+  done
+  echo 'server restart served durable DNS snapshot without management'
+
+  start_management
+  wait_for_management
+  deadline=$((SECONDS + 30))
+  while :; do
+    curl --fail --silent --show-error --cacert "${ca_cert}" \
+      -H "Authorization: Bearer ${operator_token}" \
+      "https://localhost:${tls_port}/api/v1/deployments/${deployment_id}" > "${status_response}"
+    if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("state") == "applied" and all((t.get("observed") or {}).get("state") == "applied" for t in d.get("targets", {}).values()) else 1)' "${status_response}"; then
+      break
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'management did not recover applied DNS state after reconnect' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo 'management reconnect recovered applied DNS state'
 
   curl "${curl_args[@]}" --cacert "${ca_cert}" \
     "https://localhost:${tls_port}/management/servers" > "${servers_page}"

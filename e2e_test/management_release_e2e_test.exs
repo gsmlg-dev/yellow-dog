@@ -46,6 +46,11 @@ defmodule E2ETest.ManagementReleaseE2ETest do
     assert evidence =~ "offline desired configuration applied"
     assert evidence =~ "failed activation restored known-good configuration"
     assert evidence =~ "management restart preserved durable control-plane state"
+    assert evidence =~ "authoritative A NS SOA answers verified over UDP and TCP"
+    assert evidence =~ "offline DNS publication durably accepted through authenticated HTTP"
+    assert evidence =~ "Server Agent caught up offline DNS publication after reconnect"
+    assert evidence =~ "server restart served durable DNS snapshot without management"
+    assert evidence =~ "management reconnect recovered applied DNS state"
     assert leaked_ra_dirs(root) == leaked_ra_dirs_before
   end
 

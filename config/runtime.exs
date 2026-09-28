@@ -24,6 +24,10 @@ if management_token = System.get_env("YELLOW_DOG_MANAGEMENT_TOKEN") do
   config :yellow_dog_console, :management_token, management_token
 end
 
+if operator_token = System.get_env("YELLOW_DOG_OPERATOR_API_TOKEN") do
+  config :yellow_dog_console, :operator_api_token, operator_token
+end
+
 console_runtime? =
   not is_nil(System.get_env("PHX_SERVER")) or
     System.get_env("RELEASE_NAME") not in ["yellow_dog_server", "yellow_dog_netman"]
@@ -49,11 +53,8 @@ if config_env() == :prod and console_runtime? do
   config :yellow_dog_console, YellowDog.Console.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      # Bearer credentials reach this listener only through a local TLS terminator.
+      ip: {127, 0, 0, 1},
       port: port
     ],
     secret_key_base: secret_key_base

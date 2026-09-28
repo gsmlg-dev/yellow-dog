@@ -20,7 +20,7 @@ defmodule YellowDog.Console.ServerSocket do
       )
       when map_size(params) == 3 do
     with true <- valid_server_id?(server_id),
-         true <- valid_token?(token),
+         true <- valid_token?(token, server_id),
          {:ok, _server} <- registered_server(server_id) do
       {:ok, assign(socket, :server_id, server_id)}
     else
@@ -38,16 +38,23 @@ defmodule YellowDog.Console.ServerSocket do
       String.valid?(server_id)
   end
 
-  defp valid_token?(token) do
-    expected = Application.get_env(:yellow_dog_console, :management_token)
+  defp valid_token?(token, server_id) do
+    master = Application.get_env(:yellow_dog_console, :management_token)
 
-    if nonempty_binary?(token) and nonempty_binary?(expected) do
+    if nonempty_binary?(token) and nonempty_binary?(master) do
+      expected = node_token(master, server_id)
       provided_hash = :crypto.hash(:sha256, token)
       expected_hash = :crypto.hash(:sha256, expected)
       Plug.Crypto.secure_compare(provided_hash, expected_hash)
     else
       false
     end
+  end
+
+  @doc "Derives a Server credential bound to one enrolled ID from the provisioning secret."
+  def node_token(master, server_id) when is_binary(master) and is_binary(server_id) do
+    :crypto.mac(:hmac, :sha256, master, "yellow-dog-server:" <> server_id)
+    |> Base.url_encode64(padding: false)
   end
 
   defp nonempty_binary?(value), do: is_binary(value) and byte_size(value) > 0

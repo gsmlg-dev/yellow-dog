@@ -59,6 +59,7 @@ defmodule YellowDog.Server.Control.DnsTest do
       acl_registry: ServerDnsControlFake.AclRegistry,
       acl_codec: ServerDnsControlFake.AclCodec,
       config_persistence: ServerDnsControlFake.ConfigPersistence,
+      managed_snapshot: ServerDnsControlFake.ManagedSnapshot,
       provider_store: ServerDnsControlFake.ProviderStore,
       provider_facade: ServerDnsControlFake.ProviderFacade,
       tasks: ServerDnsControlFake.Tasks,
@@ -79,6 +80,7 @@ defmodule YellowDog.Server.Control.DnsTest do
     on_exit(fn ->
       restore_env(Dns, previous_dns)
       restore_env(Dispatcher, previous_dispatcher)
+      Application.delete_env(:yellow_dog, :managed_zone_test_apex)
     end)
 
     :ok
@@ -145,6 +147,32 @@ defmodule YellowDog.Server.Control.DnsTest do
            ] = ServerDnsControlFake.take_calls()
 
     assert soa == %{mname: "ns1.example.test", rname: "hostmaster.example.test"}
+  end
+
+  test "local zone and record mutations reject a management-owned zone" do
+    Application.put_env(:yellow_dog, :managed_zone_test_apex, "example.test.")
+
+    assert {:error, %Error{code: :conflict}} =
+             Dns.dispatch("server.dns.zones.create", zone_payload())
+
+    assert {:error, %Error{code: :conflict}} =
+             Dns.dispatch("server.dns.zones.delete", %{
+               "view_name" => "default",
+               "zone_name" => "example.test"
+             })
+
+    assert {:error, %Error{code: :conflict}} =
+             Dns.dispatch("server.dns.records.create", %{
+               "view_name" => "default",
+               "zone_name" => "example.test",
+               "record_id" => record_id("www", "A"),
+               "name" => "www",
+               "type" => "A",
+               "ttl" => 300,
+               "values" => ["192.0.2.1"]
+             })
+
+    assert [] = ServerDnsControlFake.take_calls()
   end
 
   test "creates a view by persisting the full candidate before runtime activation" do

@@ -41,6 +41,12 @@ defmodule YellowDog.Console.Router do
     plug :authenticate_management_token
   end
 
+  pipeline :dns_management_api do
+    plug :accepts, ["json"]
+    plug YellowDog.Console.Plugs.ManagementReleaseOnly
+    plug :authenticate_operator_token
+  end
+
   pipeline :boot do
     plug :accepts, ["html", "json", "text"]
     plug YellowDog.Console.Plugs.ManagementReleaseOnly
@@ -280,6 +286,19 @@ defmodule YellowDog.Console.Router do
     delete "/hosts/:id", IdentityController, :delete
   end
 
+  scope "/api/v1", YellowDog.Console do
+    pipe_through :dns_management_api
+
+    post "/zones", DnsZoneController, :create
+    get "/zones", DnsZoneController, :index
+    get "/zones/:id", DnsZoneController, :show
+    get "/zones/:id/rrsets", DnsZoneController, :rrsets
+    patch "/zones/:id/rrsets", DnsZoneController, :edit
+    post "/zones/:id/publish", DnsZoneController, :publish
+    get "/deployments/:id", DnsZoneController, :deployment
+    get "/servers", DnsZoneController, :servers
+  end
+
   # Enable LiveDashboard in development
   if Application.compile_env(:yellow_dog_console, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
@@ -304,6 +323,21 @@ defmodule YellowDog.Console.Router do
       conn
     else
       _invalid ->
+        conn
+        |> put_resp_header("www-authenticate", "Bearer")
+        |> send_resp(401, "Unauthorized")
+        |> halt()
+    end
+  end
+
+  defp authenticate_operator_token(conn, _opts) do
+    with ["Bearer " <> provided] <- get_req_header(conn, "authorization"),
+         expected when is_binary(expected) and byte_size(expected) > 0 <-
+           Application.get_env(:yellow_dog_console, :operator_api_token),
+         true <- constant_time_token_match?(provided, expected) do
+      assign(conn, :api_actor, "operator")
+    else
+      _ ->
         conn
         |> put_resp_header("www-authenticate", "Bearer")
         |> send_resp(401, "Unauthorized")
