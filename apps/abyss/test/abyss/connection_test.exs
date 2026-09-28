@@ -27,7 +27,7 @@ defmodule Abyss.ConnectionTest do
       listener_pool_pid = Abyss.Server.listener_pool_pid(server_pid)
       listener_pids = Abyss.ListenerPool.listener_pids(listener_pool_pid)
       listener_pid = hd(listener_pids)
-      {socket, _telemetry} = Abyss.Listener.socket_info(listener_pid)
+      socket = listener_socket(listener_pid)
 
       span = Abyss.Telemetry.start_span(:test, %{}, %{})
 
@@ -61,7 +61,7 @@ defmodule Abyss.ConnectionTest do
       listener_pool_pid = Abyss.Server.listener_pool_pid(server_pid)
       listener_pids = Abyss.ListenerPool.listener_pids(listener_pool_pid)
       listener_pid = hd(listener_pids)
-      {socket, _telemetry} = Abyss.Listener.socket_info(listener_pid)
+      socket = listener_socket(listener_pid)
 
       span = Abyss.Telemetry.start_span(:test, %{}, %{})
 
@@ -98,7 +98,7 @@ defmodule Abyss.ConnectionTest do
       listener_pool_pid = Abyss.Server.listener_pool_pid(server_pid)
       listener_pids = Abyss.ListenerPool.listener_pids(listener_pool_pid)
       listener_pid = hd(listener_pids)
-      {socket, _telemetry} = Abyss.Listener.socket_info(listener_pid)
+      socket = listener_socket(listener_pid)
 
       span = Abyss.Telemetry.start_span(:test, %{}, %{})
 
@@ -197,5 +197,14 @@ defmodule Abyss.ConnectionTest do
       # This test verifies the configuration supports such calculations
       :ok
     end
+  end
+
+  defp listener_socket(listener_pid) do
+    assert {:ok, _local_info} = Abyss.Listener.listener_info_cached(listener_pid)
+
+    assert [{^listener_pid, _local_info, socket}] =
+             :ets.lookup(:abyss_listener_info, listener_pid)
+
+    socket
   end
 end

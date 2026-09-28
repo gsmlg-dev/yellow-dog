@@ -1,3 +1,13 @@
+defmodule Abyss.ServerConfigTestDispatcher do
+  @behaviour Abyss.DatagramDispatcher
+
+  @impl true
+  def init(_context, _opts), do: {:ok, nil}
+
+  @impl true
+  def handle_datagram(_remote, _bytes, _received_at, %{state: state}), do: {:ok, state}
+end
+
 defmodule Abyss.ServerConfigTest do
   use ExUnit.Case, async: true
   doctest Abyss.ServerConfig
@@ -242,6 +252,31 @@ defmodule Abyss.ServerConfigTest do
   end
 
   describe "new configuration options" do
+    test "validates the opt-in datagram dispatcher contract" do
+      assert_raise ArgumentError, ~r/datagram_dispatcher must be a module/, fn ->
+        Abyss.ServerConfig.new(handler_module: Abyss.TestHandler, datagram_dispatcher: :invalid)
+      end
+
+      assert_raise ArgumentError, ~r/only supported for unicast/, fn ->
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          transport_module: Abyss.Transport.UDP.Broadcast,
+          datagram_dispatcher: Abyss.ServerConfigTestDispatcher
+        )
+      end
+
+      config =
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          datagram_dispatcher: Abyss.ServerConfigTestDispatcher,
+          dispatcher_max_queue: 4,
+          dispatcher_max_queue_bytes: 1024
+        )
+
+      assert config.datagram_dispatcher == Abyss.ServerConfigTestDispatcher
+      assert config.dispatcher_max_queue == 4
+    end
+
     test "udp_buffer_size default and custom values" do
       default_config = Abyss.ServerConfig.new(handler_module: Abyss.TestHandler, port: 1234)
       assert default_config.udp_buffer_size == 64 * 1024

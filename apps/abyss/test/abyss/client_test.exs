@@ -112,7 +112,7 @@ defmodule Abyss.ClientTest do
 
         {:error, reason} ->
           # Broadcast can fail due to permission or network configuration
-          assert reason in [:enetunreach, :eacces, :eperm, :enetdown, :einval]
+          assert reason in [:enetunreach, :ehostunreach, :eacces, :eperm, :enetdown, :einval]
       end
     end
 
@@ -126,7 +126,7 @@ defmodule Abyss.ClientTest do
 
         {:error, reason} ->
           # Multicast can fail in certain environments
-          assert reason in [:enetunreach, :eacces, :eperm, :enetdown, :einval]
+          assert reason in [:enetunreach, :ehostunreach, :eacces, :eperm, :enetdown, :einval]
       end
     end
 
@@ -139,7 +139,7 @@ defmodule Abyss.ClientTest do
           assert true
 
         {:error, reason} ->
-          assert reason in [:enetunreach, :eacces, :eperm, :enetdown, :einval]
+          assert reason in [:enetunreach, :ehostunreach, :eacces, :eperm, :enetdown, :einval]
       end
     end
 

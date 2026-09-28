@@ -19,7 +19,7 @@ defmodule Abyss.Integration.EchoTest do
 
       # Get the port from one of the listeners
       listener_pid = hd(listener_pids)
-      {ip, port} = Abyss.Listener.listener_info(listener_pid)
+      {:ok, {ip, port}} = Abyss.Listener.listener_info_cached(listener_pid)
 
       # Create a client socket
       {:ok, client_socket} = Abyss.Transport.UDP.listen(0, [])
@@ -85,7 +85,7 @@ defmodule Abyss.Integration.EchoTest do
 
       # Get the port from one of the listeners
       listener_pid = hd(listener_pids)
-      {ip, port} = Abyss.Listener.listener_info(listener_pid)
+      {:ok, {ip, port}} = Abyss.Listener.listener_info_cached(listener_pid)
 
       {:ok, client_socket} = Abyss.Transport.UDP.listen(0, [])
 

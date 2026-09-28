@@ -66,7 +66,8 @@ defmodule Abyss.Listener do
           listener_socket: Abyss.Transport.socket(),
           listener_span: Abyss.Telemetry.t(),
           local_info: Abyss.Transport.socket_info(),
-          transport: module()
+          transport: module(),
+          dispatcher: pid() | nil
         }
 
   @doc """
@@ -249,29 +250,34 @@ defmodule Abyss.Listener do
 
       listener_span = Abyss.Telemetry.start_span(:listener, %{}, span_metadata)
 
-      state = %{
-        broadcast: broadcast,
-        is_active: active,
-        is_listening: false,
-        server_config: server_config,
-        server_pid: server_pid,
-        listener_id: listener_id,
-        listener_socket: listener_socket,
-        listener_span: listener_span,
-        local_info: {ip, port},
-        transport: transport
-      }
+      with {:ok, dispatcher} <-
+             start_dispatcher(server_config, listener_socket, transport, {ip, port}) do
+        state = %{
+          broadcast: broadcast,
+          is_active: active,
+          is_listening: false,
+          server_config: server_config,
+          server_pid: server_pid,
+          listener_id: listener_id,
+          listener_socket: listener_socket,
+          listener_span: listener_span,
+          local_info: {ip, port},
+          transport: transport,
+          dispatcher: dispatcher
+        }
 
-      # Cache listener info and socket in ETS for queries while blocked in recv.
-      # The socket is stored so stop/1 can close it to unblock recv(:infinity).
-      cache_listener_info(self(), {ip, port}, listener_socket)
+        # Cache listener info and socket for queries while blocked in recv.
+        cache_listener_info(self(), {ip, port}, listener_socket)
 
-      # Start listening immediately for non-broadcast mode
-      unless broadcast do
-        Process.send_after(self(), :start_listening, 0)
+        unless broadcast, do: Process.send_after(self(), :start_listening, 0)
+
+        {:ok, state}
+      else
+        {:error, reason} ->
+          transport.close(listener_socket)
+          Abyss.Telemetry.stop_span(listener_span)
+          {:stop, reason}
       end
-
-      {:ok, state}
     else
       {:error, reason} ->
         {:stop, reason}
@@ -311,6 +317,11 @@ defmodule Abyss.Listener do
   @impl true
   def handle_info({:udp, socket, ip, port, data}, state) do
     accept_packet(ip, port, data, socket, state)
+    {:noreply, state}
+  end
+
+  def handle_info({:abyss_dispatcher_writer_error, reason}, state) do
+    Abyss.Telemetry.span_event(state.listener_span, :dispatcher_writer_error, %{reason: reason})
     {:noreply, state}
   end
 
@@ -377,28 +388,44 @@ defmodule Abyss.Listener do
         max_size: state.server_config.max_packet_size
       })
     else
-      start_time = Abyss.Telemetry.monotonic_time()
+      if is_pid(state.dispatcher) do
+        case Abyss.Dispatcher.dispatch(
+               state.dispatcher,
+               {ip, port},
+               data,
+               Abyss.Telemetry.monotonic_time()
+             ) do
+          {:error, reason} ->
+            Abyss.Telemetry.span_event(listener_span, :dispatcher_drop, %{reason: reason})
 
-      # Track connection acceptance
-      Abyss.Telemetry.track_connection_accepted(state.server_config.handler_module)
+          {:dropped, reason} ->
+            Abyss.Telemetry.span_event(listener_span, :dispatcher_drop, %{reason: reason})
 
-      connection_span =
-        Abyss.Telemetry.start_child_span_with_sampling(
-          listener_span,
-          :connection,
-          %{monotonic_time: start_time},
-          %{remote_address: ip, remote_port: port, accept_start_time: start_time},
-          sample_rate: state.server_config.connection_telemetry_sample_rate
+          _ ->
+            :ok
+        end
+      else
+        start_time = Abyss.Telemetry.monotonic_time()
+        Abyss.Telemetry.track_connection_accepted(state.server_config.handler_module)
+
+        connection_span =
+          Abyss.Telemetry.start_child_span_with_sampling(
+            listener_span,
+            :connection,
+            %{monotonic_time: start_time},
+            %{remote_address: ip, remote_port: port, accept_start_time: start_time},
+            sample_rate: state.server_config.connection_telemetry_sample_rate
+          )
+
+        Abyss.Connection.start(
+          state.server_pid,
+          self(),
+          socket,
+          {ip, port, data},
+          state.server_config,
+          connection_span
         )
-
-      Abyss.Connection.start(
-        state.server_pid,
-        self(),
-        socket,
-        {ip, port, data},
-        state.server_config,
-        connection_span
-      )
+      end
     end
 
     :ok
@@ -423,7 +450,35 @@ defmodule Abyss.Listener do
   def terminate(_reason, state) do
     # Clean up cached listener info
     uncache_listener_info(self())
+    if is_pid(state.dispatcher), do: GenServer.stop(state.dispatcher, :normal, 1_000)
     state.transport.close(state.listener_socket)
     Abyss.Telemetry.stop_span(state.listener_span)
+  end
+
+  defp start_dispatcher(
+         %Abyss.ServerConfig{datagram_dispatcher: nil},
+         _socket,
+         _transport,
+         _local
+       ),
+       do: {:ok, nil}
+
+  defp start_dispatcher(config, socket, transport, local_info) do
+    {module, module_options} =
+      case config.datagram_dispatcher do
+        module when is_atom(module) -> {module, config.dispatcher_options}
+        {module, options} -> {module, Keyword.merge(config.dispatcher_options, options)}
+      end
+
+    Abyss.Dispatcher.start_link(
+      module: module,
+      module_options: module_options,
+      socket: socket,
+      transport: transport,
+      local_info: local_info,
+      listener: self(),
+      max_queue: config.dispatcher_max_queue,
+      max_bytes: config.dispatcher_max_queue_bytes
+    )
   end
 end

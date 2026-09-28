@@ -33,7 +33,11 @@ defmodule Abyss.ServerConfig do
           connection_telemetry_sample_rate: float(),
           handler_memory_check_interval: pos_integer(),
           handler_memory_warning_threshold: pos_integer(),
-          handler_memory_hard_limit: pos_integer()
+          handler_memory_hard_limit: pos_integer(),
+          datagram_dispatcher: nil | module() | {module(), keyword()},
+          dispatcher_options: keyword(),
+          dispatcher_max_queue: pos_integer(),
+          dispatcher_max_queue_bytes: pos_integer()
         }
 
   @connections_per_listener 100
@@ -64,7 +68,11 @@ defmodule Abyss.ServerConfig do
             connection_telemetry_sample_rate: 0.05,
             handler_memory_check_interval: 10_000,
             handler_memory_warning_threshold: 100,
-            handler_memory_hard_limit: 150
+            handler_memory_hard_limit: 150,
+            datagram_dispatcher: nil,
+            dispatcher_options: [],
+            dispatcher_max_queue: 128,
+            dispatcher_max_queue_bytes: 1_048_576
 
   @spec new(Abyss.options()) :: t()
   def new(opts \\ []) do
@@ -166,7 +174,44 @@ defmodule Abyss.ServerConfig do
             "handler_memory_warning_threshold must be positive and < handler_memory_hard_limit (got warning: #{config.handler_memory_warning_threshold}, hard limit: #{config.handler_memory_hard_limit})"
     end
 
+    validate_dispatcher!(config)
+
     :ok
+  end
+
+  defp validate_dispatcher!(%__MODULE__{datagram_dispatcher: nil}), do: :ok
+
+  defp validate_dispatcher!(%__MODULE__{broadcast: true, datagram_dispatcher: dispatcher})
+       when not is_nil(dispatcher),
+       do: raise(ArgumentError, "datagram_dispatcher is only supported for unicast listeners")
+
+  defp validate_dispatcher!(%__MODULE__{} = config) do
+    dispatcher_module =
+      case config.datagram_dispatcher do
+        module when is_atom(module) -> module
+        {module, opts} when is_atom(module) and is_list(opts) -> module
+        _ -> nil
+      end
+
+    loaded? = not is_nil(dispatcher_module) and Code.ensure_loaded?(dispatcher_module)
+
+    unless loaded? and function_exported?(dispatcher_module, :init, 2) and
+             function_exported?(dispatcher_module, :handle_datagram, 4) do
+      raise ArgumentError,
+            "datagram_dispatcher must be a module exporting init/2 and handle_datagram/4"
+    end
+
+    unless is_list(config.dispatcher_options) do
+      raise ArgumentError, "dispatcher_options must be a keyword list"
+    end
+
+    unless is_integer(config.dispatcher_max_queue) and config.dispatcher_max_queue > 0 do
+      raise ArgumentError, "dispatcher_max_queue must be positive"
+    end
+
+    unless is_integer(config.dispatcher_max_queue_bytes) and config.dispatcher_max_queue_bytes > 0 do
+      raise ArgumentError, "dispatcher_max_queue_bytes must be positive"
+    end
   end
 
   @doc """

@@ -76,7 +76,7 @@ defmodule Abyss.MixProject do
     [
       maintainers: ["Jonathan Gao"],
       licenses: ["MIT"],
-      files: ~w(lib LICENSE mix.exs README.md
+      files: ~w(lib LICENSE mix.exs README.md docs/dispatcher.md
            native/dhcp_socket/src native/dhcp_socket/Cargo.toml
            native/dhcp_socket/Cargo.lock native/dhcp_socket/.cargo),
       links: %{

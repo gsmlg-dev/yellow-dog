@@ -128,7 +128,11 @@ defmodule Abyss do
           read_timeout: timeout(),
           shutdown_timeout: timeout(),
           silent_terminate_on_error: boolean(),
-          max_packet_size: pos_integer()
+          max_packet_size: pos_integer(),
+          datagram_dispatcher: nil | module() | {module(), keyword()},
+          dispatcher_options: keyword(),
+          dispatcher_max_queue: pos_integer(),
+          dispatcher_max_queue_bytes: pos_integer()
         ]
 
   @typedoc "A module implementing `Abyss.Transport` behaviour"
