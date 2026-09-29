@@ -838,6 +838,26 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert answer.type == :cname
     end
 
+    test "stops a CNAME loop without repeating answers", %{zone: pid, zone_name: zone_name} do
+      for {owner, target} <- [
+            {"first.#{zone_name}", "second.#{zone_name}"},
+            {"second.#{zone_name}", "first.#{zone_name}"}
+          ] do
+        assert :ok =
+                 Auth.add_record(pid, %{
+                   name: owner,
+                   type: :cname,
+                   class: :in,
+                   ttl: 300,
+                   rdata: target
+                 })
+      end
+
+      assert {:ok, response} = Auth.resolve(pid, build_query("first.#{zone_name}", :a))
+      assert length(response.anlist) == 2
+      assert Enum.all?(response.anlist, &(&1.type == :cname))
+    end
+
     test "returns :refused for queries outside zone", %{zone: pid} do
       # Query for a completely different domain
       query = build_query("www.otherdomain.com", :a)
@@ -1358,8 +1378,10 @@ defmodule YellowDog.Dns.Zone.AuthTest do
                "any.#{zone_name}"
     end
 
-    test "wildcard does not match two-label-deep query", %{zone: pid, zone_name: zone_name} do
-      # *.zone_name matches only one level deep
+    test "wildcard below closest encloser matches a deeper query", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
       Auth.add_record(pid, %{
         name: "*.#{zone_name}",
         type: :a,
@@ -1368,13 +1390,40 @@ defmodule YellowDog.Dns.Zone.AuthTest do
         rdata: {10, 0, 0, 2}
       })
 
-      # a.b.zone_name is two levels deep — must NOT match *.zone_name
       query = build_query("a.b.#{zone_name}", :a)
       {:ok, response} = Auth.resolve(pid, query)
 
-      nxdomain = DNS.Message.RCode.nx_domain()
-      assert response.header.rcode == nxdomain
-      assert response.anlist == []
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert [answer] = response.anlist
+
+      assert to_string(answer.name) |> String.downcase() |> String.trim_trailing(".") ==
+               "a.b.#{zone_name}"
+    end
+
+    test "empty nonterminal blocks wildcard below its branch", %{zone: pid, zone_name: zone_name} do
+      Auth.add_record(pid, %{
+        name: "*.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 2}
+      })
+
+      Auth.add_record(pid, %{
+        name: "host.b.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 3}
+      })
+
+      assert {:ok, ent} = Auth.resolve(pid, build_query("b.#{zone_name}", :a))
+      assert ent.header.rcode == DNS.Message.RCode.no_error()
+      assert ent.anlist == []
+
+      assert {:ok, missing} = Auth.resolve(pid, build_query("missing.b.#{zone_name}", :a))
+      assert missing.header.rcode == DNS.Message.RCode.nx_domain()
+      assert missing.anlist == []
     end
 
     test "exact match takes precedence over wildcard", %{zone: pid, zone_name: zone_name} do

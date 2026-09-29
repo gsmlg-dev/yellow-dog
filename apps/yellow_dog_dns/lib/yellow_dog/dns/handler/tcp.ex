@@ -41,7 +41,10 @@ defmodule YellowDog.Dns.Handler.TCP do
         })
 
         # Start connection process for tracking queries
-        case ConnectionManager.start_connection(self(), client_ip, client_port, socket: socket) do
+        case ConnectionManager.start_connection(self(), client_ip, client_port,
+               socket: socket,
+               transport: :tcp
+             ) do
           {:ok, conn_pid} ->
             state = %{
               client_ip: client_ip,

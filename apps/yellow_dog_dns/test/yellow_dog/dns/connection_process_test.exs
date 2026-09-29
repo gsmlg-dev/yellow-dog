@@ -287,9 +287,66 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       parsed = DNS.Message.from_iodata(response_data)
       assert parsed.header.qr == 1
       assert rcode_value(parsed.header.rcode) == 4
+      assert parsed.header.ra == 0
 
       stats = ConnectionProcess.stats(pid)
       assert stats.active_queries == 0
+    end
+
+    test "rejects duplicate EDNS OPT records with FORMERR", %{pid: pid} do
+      query = build_test_query(204)
+      opt = DNS.Message.Record.new(".", 41, 1232, 0, <<>>)
+      query = %{query | arlist: [opt, opt], header: %{query.header | arcount: 2}}
+
+      assert :ok = ConnectionProcess.submit_raw_data(pid, DNS.to_iodata(query))
+      assert_receive {:dns_raw_response, 204, response_data}, 500
+      response = Message.from_iodata(response_data)
+      assert rcode_value(response.header.rcode) == 1
+      assert response.header.ra == 0
+      assert [%{type: type}] = response.arlist
+      assert to_string(type) == "OPT"
+      assert ConnectionProcess.stats(pid).active_queries == 0
+    end
+
+    test "refuses unsupported question classes and zone transfers", %{pid: pid} do
+      for {id, question} <- [
+            {205, Question.new("example.com", :a, :ch)},
+            {206, Question.new("example.com", 251, :in)},
+            {207, Question.new("example.com", 252, :in)}
+          ] do
+        query = build_test_query(id)
+        query = %{query | qdlist: [question]}
+        assert :ok = ConnectionProcess.submit_raw_data(pid, DNS.to_iodata(query))
+        assert_receive {:dns_raw_response, ^id, response_data}, 500
+        response = Message.from_iodata(response_data)
+        assert rcode_value(response.header.rcode) == 5
+        assert response.header.aa == 0
+        assert response.header.ra == 0
+      end
+
+      assert ConnectionProcess.stats(pid).active_queries == 0
+    end
+
+    test "returns NOTIMP for unsupported legacy meta question types", %{pid: pid} do
+      query = build_test_query(208)
+      query = %{query | qdlist: [Question.new("example.com", 253, :in)]}
+      assert :ok = ConnectionProcess.submit_raw_data(pid, DNS.to_iodata(query))
+      assert_receive {:dns_raw_response, 208, response_data}, 500
+      assert rcode_value(Message.from_iodata(response_data).header.rcode) == 4
+    end
+
+    test "returns BADVERS in OPT extended RCODE for an unsupported EDNS version", %{pid: pid} do
+      query = build_test_query(209)
+      opt = DNS.Message.Record.new(".", 41, 1232, 65_536, <<>>)
+      query = %{query | arlist: [opt], header: %{query.header | arcount: 1}}
+
+      assert :ok = ConnectionProcess.submit_raw_data(pid, DNS.to_iodata(query))
+      assert_receive {:dns_raw_response, 209, response_data}, 500
+      response = Message.from_iodata(response_data)
+      assert rcode_value(response.header.rcode) == 0
+      assert response.header.aa == 0
+      assert [%{ttl: 16_777_216}] = response.arlist
+      assert ConnectionProcess.stats(pid).active_queries == 0
     end
   end
 
@@ -446,6 +503,7 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       assert_receive {:dns_response, 400, response}, 100
       # SERVFAIL has rcode value 2
       assert rcode_value(response.header.rcode) == 2
+      assert response.header.ra == 0
 
       # Query should be removed from active queries
       stats = ConnectionProcess.stats(pid)
@@ -1022,6 +1080,68 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       assert received.header.tc == 0
       # Answer section should be intact
       assert length(received.anlist) > 0
+    end
+
+    test "raw TCP response keeps answers larger than the UDP limit" do
+      {:ok, tcp_pid} =
+        ConnectionProcess.start_link(
+          handler_pid: self(),
+          client_ip: {127, 0, 0, 1},
+          client_port: 12_346,
+          transport: :tcp,
+          query_timeout: 500
+        )
+
+      on_exit(fn -> if Process.alive?(tcp_pid), do: GenServer.stop(tcp_pid) end)
+      query = build_test_query(9004)
+      assert :ok = ConnectionProcess.submit_raw_data(tcp_pid, DNS.to_iodata(query))
+      response = build_large_response(query, 600)
+      assert IO.iodata_length(DNS.to_iodata(response)) > 512
+      send(tcp_pid, {:resolution_complete, 9004, response})
+
+      assert_receive {:dns_raw_response, 9004, response_data}, 500
+      wire = IO.iodata_to_binary(response_data)
+      assert byte_size(wire) > 512
+      assert length(Message.from_iodata(wire).anlist) == length(response.anlist)
+      <<_id::16, _qr::1, _opcode::4, _aa::1, tc::1, _rest::bits>> = wire
+      assert tc == 0
+    end
+
+    test "EDNS advertised UDP size permits larger answer but is capped at 1232 bytes", %{pid: pid} do
+      query = build_test_query(9005)
+      opt = DNS.Message.Record.new(".", 41, 4096, 0, <<>>)
+      query = %{query | arlist: [opt], header: %{query.header | arcount: 1}}
+      assert :ok = ConnectionProcess.submit_raw_data(pid, DNS.to_iodata(query))
+      response = build_large_response(query, 2_000)
+      assert IO.iodata_length(DNS.to_iodata(response)) > 1_232
+      send(pid, {:resolution_complete, 9005, response})
+
+      assert_receive {:dns_raw_response, 9005, response_data}, 500
+      wire = IO.iodata_to_binary(response_data)
+      assert byte_size(wire) <= 1_232
+      <<_id::16, _qr::1, _opcode::4, _aa::1, tc::1, _rest::bits>> = wire
+      assert tc == 1
+      assert [%{type: type, class: %{value: <<1_232::16>>}}] = Message.from_iodata(wire).arlist
+      assert to_string(type) == "OPT"
+    end
+
+    test "EDNS advertised UDP size avoids the legacy 512-byte truncation", %{pid: pid} do
+      query = build_test_query(9006)
+      opt = DNS.Message.Record.new(".", 41, 1232, 0, <<>>)
+      query = %{query | arlist: [opt], header: %{query.header | arcount: 1}}
+      assert :ok = ConnectionProcess.submit_raw_data(pid, DNS.to_iodata(query))
+      response = build_large_response(query, 600)
+      size = IO.iodata_length(DNS.to_iodata(response))
+      assert size > 512 and size <= 1_232
+      send(pid, {:resolution_complete, 9006, response})
+
+      assert_receive {:dns_raw_response, 9006, response_data}, 500
+      wire = IO.iodata_to_binary(response_data)
+      assert byte_size(wire) == size + 11
+      <<_id::16, _qr::1, _opcode::4, _aa::1, tc::1, _rest::bits>> = wire
+      assert tc == 0
+      assert [%{type: type, class: %{value: <<1_232::16>>}}] = Message.from_iodata(wire).arlist
+      assert to_string(type) == "OPT"
     end
   end
 end

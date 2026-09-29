@@ -173,8 +173,21 @@ defmodule YellowDog.Dns.ManagedSnapshot do
                 {:ok, tuple} = ip |> String.to_charlist() |> :inet.parse_ipv4_address()
                 tuple
 
+              {"AAAA", ip} when is_binary(ip) ->
+                {:ok, tuple} = ip |> String.to_charlist() |> :inet.parse_ipv6_address()
+                tuple
+
               {"NS", host} when is_binary(host) ->
                 host
+
+              {"CNAME", host} when is_binary(host) ->
+                host
+
+              {"MX", %{"preference" => preference, "exchange" => exchange}} ->
+                {preference, exchange}
+
+              {"TXT", segments} when is_list(segments) ->
+                segments
 
               {"SOA",
                %{
@@ -291,10 +304,7 @@ defmodule YellowDog.Dns.ManagedSnapshot do
           actual = Auth.get_all_records(pid)
 
           checks =
-            [{apex, :soa}, {apex, :ns}] ++
-              for record <- records,
-                  record.type.value == <<0, 1>>,
-                  do: {to_string(record.name), :a}
+            Enum.uniq(for record <- records, do: {to_string(record.name), record_type(record)})
 
           if view_routes_zone?(apex) and Enum.sort(actual) == Enum.sort(records) and
                Enum.all?(checks, fn {owner, type} -> check_answer(owner, type) end),
@@ -305,6 +315,18 @@ defmodule YellowDog.Dns.ManagedSnapshot do
           {:halt, {:error, :local_check_failed}}
       end
     end)
+  end
+
+  defp record_type(%Record{type: %{value: <<code::16>>}}) do
+    case code do
+      1 -> :a
+      2 -> :ns
+      5 -> :cname
+      6 -> :soa
+      15 -> :mx
+      16 -> :txt
+      28 -> :aaaa
+    end
   end
 
   defp view_routes_zone?(apex) do

@@ -307,6 +307,7 @@ defmodule YellowDog.Dns.View do
   @impl true
   def handle_call({:reload, config}, _from, state) do
     config = normalize_opts(config)
+    :ets.delete_all_objects(state.cache_table)
 
     new_state = %{
       state
@@ -422,20 +423,24 @@ defmodule YellowDog.Dns.View do
   defp do_resolve(state, connection_pid, query_id, query) do
     case query.qdlist do
       [question | _] ->
-        # Check view-local cache first
-        case check_cache(state, question.name, question.type) do
-          {:ok, cached_response} ->
-            # Notify connection process of cache hit
-            send(connection_pid, {:zone_lookup, query_id, :hit})
-            send_cached_route_metadata(state, connection_pid, query_id, question.name)
-            response = update_response_id(cached_response, query.header.id)
-            apply_rpz_and_respond(state, connection_pid, query_id, query, response)
+        if internet_class?(question.class) do
+          # Check view-local cache first
+          case check_cache(state, query) do
+            {:ok, cached_response} ->
+              send(connection_pid, {:zone_lookup, query_id, :hit})
+              send_cached_route_metadata(state, connection_pid, query_id, question.name)
+              response = update_cached_response(cached_response, query)
 
-          :miss ->
-            # Notify connection process of cache miss
-            send(connection_pid, {:zone_lookup, query_id, :miss})
-            # Find zone and resolve
-            resolve_query(state, connection_pid, query_id, query, question)
+              if managed_authoritative_response?(state, query),
+                do: {:ok, response},
+                else: apply_rpz_and_respond(state, connection_pid, query_id, query, response)
+
+            :miss ->
+              send(connection_pid, {:zone_lookup, query_id, :miss})
+              resolve_query(state, connection_pid, query_id, query, question)
+          end
+        else
+          {:error, :refused}
         end
 
       [] ->
@@ -453,7 +458,9 @@ defmodule YellowDog.Dns.View do
 
         {:error, _} = error ->
           # Zone resolution failed - try fallback forwarders if configured
-          try_fallback(state, connection_pid, query_id, query, error)
+          if managed_authoritative_response?(state, query),
+            do: error,
+            else: try_fallback(state, connection_pid, query_id, query, error)
       end
     else
       # No matching zone - try recursion if enabled
@@ -468,7 +475,15 @@ defmodule YellowDog.Dns.View do
 
   defp resolve_in_zone(state, connection_pid, query_id, query, zone_name) do
     # Try different zone types in order
-    zone_types = [:auth, :forward, :stub]
+    zone_types =
+      case ZoneController.find_zone(state.name, :auth, zone_name) do
+        {:ok, pid} ->
+          if YellowDog.Dns.Zone.Auth.managed?(pid), do: [:auth], else: [:auth, :forward, :stub]
+
+        :error ->
+          [:auth, :forward, :stub]
+      end
+
     view_name = state.name
 
     result =
@@ -476,16 +491,19 @@ defmodule YellowDog.Dns.View do
         case ZoneController.find_zone(view_name, zone_type, zone_name) do
           {:ok, zone_pid} ->
             module = zone_module(zone_type)
+            managed = zone_type == :auth and YellowDog.Dns.Zone.Auth.managed?(zone_pid)
 
             case module.resolve(zone_pid, query) do
               {:ok, response} ->
-                response = compose_response(state, query, response)
+                response =
+                  if managed, do: response, else: compose_response(state, query, response)
+
                 # Notify connection process
                 send_query_route(connection_pid, query_id, zone_type, zone_name)
                 send(connection_pid, {:zone_response, query_id, response})
                 # Cache the response
                 cache_response(state, query, response)
-                {:ok, response}
+                {:ok, response, managed}
 
               {:referral, _ns_records} ->
                 # Handle referral - for now, treat as not found
@@ -507,19 +525,40 @@ defmodule YellowDog.Dns.View do
     case result do
       nil ->
         # No zone could resolve - try recursion if enabled
-        if state.recursion_enabled do
+        if state.recursion_enabled and not managed_authoritative_response?(state, query) do
           perform_recursion(state, connection_pid, query_id, query)
         else
           {:error, :refused}
         end
 
-      {:ok, response} ->
-        apply_rpz_and_respond(state, connection_pid, query_id, query, response)
+      {:ok, response, managed} ->
+        if managed,
+          do: {:ok, response},
+          else: apply_rpz_and_respond(state, connection_pid, query_id, query, response)
 
       error ->
         error
     end
   end
+
+  defp managed_authoritative_response?(state, %{qdlist: [question | _]}) do
+    if Process.whereis(ZoneController) do
+      case find_zone_for_name(state.zones, question.name) do
+        nil ->
+          false
+
+        zone_name ->
+          case ZoneController.find_zone(state.name, :auth, zone_name) do
+            {:ok, pid} -> YellowDog.Dns.Zone.Auth.managed?(pid)
+            :error -> false
+          end
+      end
+    else
+      false
+    end
+  end
+
+  defp managed_authoritative_response?(_state, _query), do: false
 
   defp perform_recursion(state, connection_pid, query_id, query) do
     # Notify connection process of recursive step
@@ -744,15 +783,16 @@ defmodule YellowDog.Dns.View do
   defp fallback_zone_type?("fallback"), do: true
   defp fallback_zone_type?(_zone_type), do: false
 
-  defp check_cache(state, name, type) do
-    key = {normalize_name(name), to_string(type)}
+  defp check_cache(state, %{qdlist: [question | _]} = query) do
+    key = {normalize_name(question.name), to_string(question.type)}
     now = System.system_time(:second)
 
     case :ets.lookup(state.cache_table, key) do
       [{^key, {response, expires_at}}] ->
         remaining_ttl = expires_at - now
 
-        if remaining_ttl > 0 do
+        if remaining_ttl > 0 and cached_query_compatible?(response, query) and
+             cache_route_available?(state, question.name) do
           # RFC 1034 §4.3.4: adjust record TTLs to remaining cache time so
           # downstream resolvers and clients don't cache beyond actual expiry.
           {:ok, set_response_ttls(response, remaining_ttl)}
@@ -765,6 +805,33 @@ defmodule YellowDog.Dns.View do
         :miss
     end
   end
+
+  defp cached_query_compatible?(%{qdlist: [cached | _], header: header}, query) do
+    [current | _] = query.qdlist
+
+    to_string(cached.class) == to_string(current.class) and
+      header.rd == query.header.rd
+  end
+
+  defp cached_query_compatible?(_, _), do: false
+
+  defp cache_route_available?(state, name) do
+    case find_zone_match(state.zones, name) do
+      nil ->
+        true
+
+      {type, zone_name} ->
+        if Process.whereis(ZoneController) do
+          match?({:ok, _}, ZoneController.find_zone(state.name, type, zone_name))
+        else
+          true
+        end
+    end
+  end
+
+  defp internet_class?(:in), do: true
+  defp internet_class?(%DNS.Class{value: <<1::16>>}), do: true
+  defp internet_class?(_), do: false
 
   defp set_response_ttls(response, remaining_ttl) do
     adjust = fn records ->
@@ -790,7 +857,7 @@ defmodule YellowDog.Dns.View do
           ttl = get_min_ttl(response)
           key = {normalize_name(question.name), to_string(question.type)}
           expires_at = System.system_time(:second) + ttl
-          :ets.insert(state.cache_table, {key, {response, expires_at}})
+          if ttl > 0, do: :ets.insert(state.cache_table, {key, {response, expires_at}})
 
         [] ->
           :ok
@@ -824,13 +891,17 @@ defmodule YellowDog.Dns.View do
     all_records = response.anlist ++ response.nslist ++ response.arlist
 
     case all_records do
-      [] -> 300
-      records -> Enum.reduce(records, 300, fn r, acc -> min(r.ttl, acc) end) |> max(60)
+      [] -> 0
+      records -> Enum.reduce(records, 4_294_967_295, fn r, acc -> min(r.ttl, acc) end)
     end
   end
 
-  defp update_response_id(response, new_id) do
-    %{response | header: %{response.header | id: new_id}}
+  defp update_cached_response(response, query) do
+    %{
+      response
+      | header: %{response.header | id: query.header.id, rd: query.header.rd},
+        qdlist: query.qdlist
+    }
   end
 
   defp normalize_name(%DNS.Message.Domain{} = domain) do

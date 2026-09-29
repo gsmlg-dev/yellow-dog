@@ -8,7 +8,9 @@ defmodule YellowDog.Dns.ManagedSnapshotTest do
   alias YellowDog.Sync.DnsManifest
 
   setup do
-    dir = Path.join(System.tmp_dir!(), "managed_dns_#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(System.tmp_dir!(), "managed_dns_#{Base.encode16(:crypto.strong_rand_bytes(8))}")
+
     {:ok, registry} = Registry.start_link(keys: :unique, name: YellowDog.Dns.ZoneRegistry)
     {:ok, view_registry} = Registry.start_link(keys: :unique, name: YellowDog.Dns.ViewRegistry)
     {:ok, controller} = ZoneController.start_link([])
@@ -64,9 +66,69 @@ defmodule YellowDog.Dns.ManagedSnapshotTest do
 
     assert :ok = ZoneController.stop_zone("default", :auth, "example.test.")
     assert {:ok, nil} = ManagedSnapshot.installed_status(dir)
+
+    assert {:error, :refused} =
+             ViewManager.resolve(self(), {127, 0, 0, 1}, 42, query)
+
     assert :ok = ManagedSnapshot.recover(dir)
     {:ok, recovered} = ZoneController.find_zone("default", :auth, "example.test.")
     assert length(Auth.get_records(recovered, "example.test.", :a)) == 1
+  end
+
+  test "installs the v1 RR types with typed RDATA and ordered TXT segments", %{dir: dir} do
+    base = manifest(1, "192.0.2.1")
+    [zone] = base["zones"]
+
+    rrsets =
+      zone["rrsets"] ++
+        [
+          %{
+            "owner" => "v6.example.test.",
+            "type" => "AAAA",
+            "ttl" => 301,
+            "records" => ["2001:db8::53"]
+          },
+          %{
+            "owner" => "alias.example.test.",
+            "type" => "CNAME",
+            "ttl" => 302,
+            "records" => ["v6.example.test."]
+          },
+          %{
+            "owner" => "mail.example.test.",
+            "type" => "MX",
+            "ttl" => 303,
+            "records" => [%{"preference" => 10, "exchange" => "v6.example.test."}]
+          },
+          %{
+            "owner" => "text.example.test.",
+            "type" => "TXT",
+            "ttl" => 304,
+            "records" => [["first", "second with space", ""]]
+          }
+        ]
+
+    zone = %{zone | "rrsets" => rrsets}
+    {:ok, digest} = DnsManifest.zone_digest(zone)
+    candidate = %{base | "zones" => [Map.put(zone, "digest", digest)]}
+
+    assert {:ok, %{"generation" => 1}} = ManagedSnapshot.install(candidate, dir)
+    {:ok, pid} = ZoneController.find_zone("default", :auth, "example.test.")
+
+    assert [aaaa] = Auth.get_records(pid, "v6.example.test.", :aaaa)
+    assert aaaa.ttl == 301
+    assert aaaa.data.data == {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0x53}
+    assert [cname] = Auth.get_records(pid, "alias.example.test.", :cname)
+    assert to_string(cname.data.data) == "v6.example.test."
+    assert [mx] = Auth.get_records(pid, "mail.example.test.", :mx)
+    assert {10, exchange} = mx.data.data
+    assert to_string(exchange) == "v6.example.test."
+    assert [txt] = Auth.get_records(pid, "text.example.test.", :txt)
+    assert txt.data.data == ["first", "second with space", ""]
+    assert txt.ttl == 304
+
+    assert :ok = ManagedSnapshot.recover(dir)
+    assert {:ok, %{"generation" => 1}} = ManagedSnapshot.installed_status(dir)
   end
 
   test "rejects stale, conflicting and corrupt candidates without changing active records", %{
@@ -202,6 +264,93 @@ defmodule YellowDog.Dns.ManagedSnapshotTest do
     {:ok, pid} = ZoneController.find_zone("default", :auth, "example.test.")
     assert Auth.get_records(pid, "example.test.", :a) == []
     assert [_] = Auth.get_records(pid, "ns1.example.test.", :a)
+  end
+
+  test "managed AAAA, CNAME, MX and TXT records serve without recursive completion", %{dir: dir} do
+    snapshot = manifest(1, "192.0.2.1")
+    [zone] = snapshot["zones"]
+
+    extra = [
+      %{
+        "owner" => "www.example.test.",
+        "type" => "AAAA",
+        "ttl" => 600,
+        "records" => ["2001:db8::1"]
+      },
+      %{
+        "owner" => "alias.example.test.",
+        "type" => "CNAME",
+        "ttl" => 120,
+        "records" => ["www.example.test."]
+      },
+      %{
+        "owner" => "external.example.test.",
+        "type" => "CNAME",
+        "ttl" => 120,
+        "records" => ["elsewhere.test."]
+      },
+      %{
+        "owner" => "example.test.",
+        "type" => "MX",
+        "ttl" => 900,
+        "records" => [%{"preference" => 10, "exchange" => "mail.example.test."}]
+      },
+      %{
+        "owner" => "example.test.",
+        "type" => "TXT",
+        "ttl" => 300,
+        "records" => [["part one", "part two"]]
+      }
+    ]
+
+    zone = %{zone | "rrsets" => zone["rrsets"] ++ extra}
+    {:ok, digest} = DnsManifest.zone_digest(zone)
+    snapshot = %{snapshot | "zones" => [%{zone | "digest" => digest}]}
+    assert {:ok, _} = ManagedSnapshot.install(snapshot, dir)
+    {:ok, view} = ViewManager.get_view("default")
+    assert :ok = YellowDog.Dns.View.reload(view, %{recursion_enabled: true})
+
+    for {owner, type, expected_type} <- [
+          {"www.example.test.", :aaaa, "AAAA"},
+          {"example.test.", :mx, "MX"},
+          {"example.test.", :txt, "TXT"}
+        ] do
+      assert {:ok, response} =
+               ViewManager.resolve(self(), {127, 0, 0, 1}, 1, query(owner, type))
+
+      assert response.header.aa in [1, true]
+      assert response.header.ra in [0, false]
+      assert Enum.any?(response.anlist, &(to_string(&1.type) == expected_type))
+      assert is_binary(IO.iodata_to_binary(DNS.to_iodata(response)))
+    end
+
+    assert {:ok, alias_response} =
+             ViewManager.resolve(self(), {127, 0, 0, 1}, 1, query("alias.example.test.", :aaaa))
+
+    assert Enum.map(alias_response.anlist, &to_string(&1.type)) == ["CNAME", "AAAA"]
+    assert alias_response.header.ra in [0, false]
+
+    assert {:ok, external} =
+             ViewManager.resolve(self(), {127, 0, 0, 1}, 1, query("external.example.test.", :a))
+
+    assert Enum.map(external.anlist, &to_string(&1.type)) == ["CNAME"]
+    assert external.header.ra in [0, false]
+  end
+
+  test "managed negative answers cap SOA TTL at the minimum", %{dir: dir} do
+    assert {:ok, _} = ManagedSnapshot.install(manifest(1, "192.0.2.1"), dir)
+    {:ok, pid} = ZoneController.find_zone("default", :auth, "example.test.")
+
+    for {owner, type, expected_rcode} <- [
+          {"absent.example.test.", :a, DNS.Message.RCode.nx_domain()},
+          {"example.test.", :aaaa, DNS.Message.RCode.no_error()}
+        ] do
+      assert {:ok, response} = Auth.resolve(pid, query(owner, type))
+      assert response.header.rcode == expected_rcode
+      assert response.header.aa in [1, true]
+      assert response.header.ra in [0, false]
+      assert [%{ttl: 300}] = response.nslist
+    end
   end
 
   test "Store.Zone rejects direct mutations of a published managed apex", %{dir: root} do
@@ -349,6 +498,16 @@ defmodule YellowDog.Dns.ManagedSnapshotTest do
       "server_id" => "server-1",
       "generation" => generation,
       "zones" => [Map.put(zone, "digest", digest)]
+    }
+  end
+
+  defp query(owner, type) do
+    %DNS.Message{
+      header: %{DNS.Message.Header.new() | id: 1, rd: 1, qdcount: 1},
+      qdlist: [DNS.Message.Question.new(owner, type, :in)],
+      anlist: [],
+      nslist: [],
+      arlist: []
     }
   end
 end

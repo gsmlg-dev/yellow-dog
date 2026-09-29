@@ -1290,14 +1290,13 @@ defmodule YellowDog.Dns.Zone.Auth do
           all_answers = chase_cname_chain(state, cname_records, qtype, 0)
           {:ok, build_response(query, all_answers, state)}
 
-        name_exists?(state.table, qname) ->
+        node_exists?(state.table, qname) ->
           {:ok, build_nodata_response(query, state)}
 
         true ->
-          # RFC 1034 §4.3.3 / RFC 4592: try wildcard expansion before NXDOMAIN.
-          # The wildcard candidate is the query name with the leftmost label
-          # replaced by "*" (e.g., "a.example.com" → "*.example.com").
-          wildcard = wildcard_candidate(qname)
+          # RFC 4592: the source of synthesis is below the closest existing
+          # ancestor, which may be an empty nonterminal.
+          wildcard = wildcard_candidate(state.table, state.name, qname)
 
           wildcard_records =
             if wildcard, do: lookup_records(state.table, wildcard, qtype), else: []
@@ -1316,7 +1315,7 @@ defmodule YellowDog.Dns.Zone.Auth do
               all_answers = chase_cname_chain(state, expanded_cnames, qtype, 0)
               {:ok, build_response(query, all_answers, state)}
 
-            wildcard != nil and name_exists?(state.table, wildcard) ->
+            wildcard != nil and node_exists?(state.table, wildcard) ->
               # RFC 4592 §2.2.2: the wildcard "exists" but has no records of
               # the requested type → NODATA (not NXDOMAIN).
               {:ok, build_nodata_response(query, state)}
@@ -1347,16 +1346,22 @@ defmodule YellowDog.Dns.Zone.Auth do
   # Returns the accumulated list of records (CNAMEs + final target records).
   # Stops when the depth limit is reached, the target is out-of-zone, or
   # the target has records of the requested type (end of chain).
-  defp chase_cname_chain(_state, _cname_records, _qtype, depth)
+  defp chase_cname_chain(state, cname_records, qtype, depth) do
+    visited = MapSet.new(Enum.map(cname_records, &normalize_name(&1.name)))
+    do_chase_cname_chain(state, cname_records, qtype, depth, visited)
+  end
+
+  defp do_chase_cname_chain(_state, _cname_records, _qtype, depth, _visited)
        when depth >= @max_cname_depth,
        do: []
 
-  defp chase_cname_chain(state, cname_records, qtype, depth) do
+  defp do_chase_cname_chain(state, cname_records, qtype, depth, visited) do
     cname_records ++
       Enum.flat_map(cname_records, fn cname_record ->
         target_name = cname_target_name(cname_record)
 
-        if target_name != nil and in_zone?(state.name, target_name) do
+        if target_name != nil and in_zone?(state.name, target_name) and
+             not MapSet.member?(visited, target_name) do
           target_records = lookup_records(state.table, target_name, qtype)
           target_cnames = lookup_records(state.table, target_name, :cname)
 
@@ -1365,7 +1370,13 @@ defmodule YellowDog.Dns.Zone.Auth do
               target_records
 
             Enum.any?(target_cnames) ->
-              chase_cname_chain(state, target_cnames, qtype, depth + 1)
+              do_chase_cname_chain(
+                state,
+                target_cnames,
+                qtype,
+                depth + 1,
+                MapSet.put(visited, target_name)
+              )
 
             true ->
               []
@@ -1398,16 +1409,26 @@ defmodule YellowDog.Dns.Zone.Auth do
     |> Enum.any?()
   end
 
-  # RFC 1034 §4.3.3 / RFC 4592: build the wildcard candidate for qname by
-  # replacing the leftmost label with "*".
-  # "a.example.com"   → "*.example.com"
-  # "a.b.example.com" → "*.b.example.com"
-  # Returns nil for apex queries (no label to strip).
-  defp wildcard_candidate(qname) do
-    case String.split(qname, ".", parts: 2) do
-      [_first, rest] when rest != "" -> "*.#{rest}"
-      _ -> nil
-    end
+  defp node_exists?(table, name) do
+    name_exists?(table, name) or
+      Enum.any?(:ets.tab2list(table), fn {{owner, _type}, _record} ->
+        String.ends_with?(owner, "." <> normalize_name(name))
+      end)
+  end
+
+  defp wildcard_candidate(table, zone_name, qname) do
+    zone = normalize_name(zone_name)
+
+    qname
+    |> String.split(".")
+    |> Enum.drop(1)
+    |> Enum.with_index()
+    |> Enum.find_value(fn {_label, index} ->
+      ancestor = qname |> String.split(".") |> Enum.drop(index + 1) |> Enum.join(".")
+
+      if in_zone?(zone, ancestor) and node_exists?(table, ancestor),
+        do: "*.#{ancestor}"
+    end)
   end
 
   defp in_zone?(zone_name, qname) do
@@ -1475,6 +1496,7 @@ defmodule YellowDog.Dns.Zone.Auth do
         query.header
         | qr: 1,
           aa: 1,
+          ra: 0,
           rcode: RCode.no_error(),
           ancount: length(answers),
           nscount: 0,
@@ -1490,13 +1512,14 @@ defmodule YellowDog.Dns.Zone.Auth do
   # RFC 2308 §2: negative responses SHOULD include the zone SOA in the
   # authority section so that resolvers can cache negative results.
   defp build_nodata_response(query, state) do
-    authority = if state.soa, do: [state.soa], else: []
+    authority = negative_soa(state)
 
     %Message{
       header: %{
         query.header
         | qr: 1,
           aa: 1,
+          ra: 0,
           rcode: RCode.no_error(),
           ancount: 0,
           nscount: length(authority),
@@ -1510,13 +1533,14 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp build_nxdomain_response(query, state) do
-    authority = if state.soa, do: [state.soa], else: []
+    authority = negative_soa(state)
 
     %Message{
       header: %{
         query.header
         | qr: 1,
           aa: 1,
+          ra: 0,
           rcode: RCode.nx_domain(),
           ancount: 0,
           nscount: length(authority),
@@ -1527,6 +1551,19 @@ defmodule YellowDog.Dns.Zone.Auth do
       nslist: authority,
       arlist: []
     }
+  end
+
+  defp negative_soa(%{soa: nil}), do: []
+
+  defp negative_soa(%{soa: soa}) do
+    minimum =
+      case soa do
+        %Message.Record{data: %{data: data}} when is_tuple(data) -> elem(data, 6)
+        %{rdata: rdata} when is_map(rdata) -> Map.get(rdata, :minimum, soa.ttl)
+        _ -> soa.ttl
+      end
+
+    [%{soa | ttl: min(soa.ttl, minimum)}]
   end
 
   defp load_zone_data(state, zone_data) when is_list(zone_data) do

@@ -380,6 +380,54 @@ defmodule YellowDog.Dns.ViewTest do
   end
 
   describe "reload/2" do
+    test "reload clears cached answers before changing zone routes" do
+      view_name = "test_reload_cache_#{:rand.uniform(1_000_000)}"
+      query = build_test_query(14_001, "www.example.com", :a)
+      {:ok, pid} = View.start_link(name: view_name, recursion_enabled: false)
+
+      :sys.replace_state(pid, fn state ->
+        :ets.insert(
+          state.cache_table,
+          {{"www.example.com", "A"},
+           {build_test_response(query), System.system_time(:second) + 300}}
+        )
+
+        state
+      end)
+
+      assert View.stats(pid).cache_size == 1
+      assert :ok = View.reload(pid, %{zones: []})
+      assert View.stats(pid).cache_size == 0
+      assert {:error, :refused} = View.resolve(pid, self(), 14_001, query)
+      GenServer.stop(pid)
+    end
+
+    test "cached answers cannot cross QCLASS or RD requests" do
+      view_name = "test_cache_flags_#{:rand.uniform(1_000_000)}"
+      query = build_test_query(14_002, "www.example.com", :a)
+      {:ok, pid} = View.start_link(name: view_name, recursion_enabled: false)
+
+      :sys.replace_state(pid, fn state ->
+        :ets.insert(
+          state.cache_table,
+          {{"www.example.com", "A"},
+           {build_test_response(query), System.system_time(:second) + 300}}
+        )
+
+        state
+      end)
+
+      assert {:ok, cached} = View.resolve(pid, self(), 14_002, query)
+      assert cached.header.rd == 1
+
+      rd_zero = %{query | header: %{query.header | id: 14_003, rd: 0}}
+      assert {:error, :refused} = View.resolve(pid, self(), 14_003, rd_zero)
+
+      ch = %{query | qdlist: [Question.new("www.example.com", :a, :ch)]}
+      assert {:error, :refused} = View.resolve(pid, self(), 14_004, ch)
+      GenServer.stop(pid)
+    end
+
     @tag :capture_log
     test "reloads priority configuration" do
       view_name = "test_reload_priority_#{:rand.uniform(1_000_000)}"

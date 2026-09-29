@@ -62,6 +62,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
     :client_ip,
     :client_port,
     :socket,
+    transport: :udp,
     queries: %{},
     query_timeout: @default_query_timeout,
     max_concurrent_queries: 100
@@ -91,6 +92,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   # RFC 6891 §6.1.2 OPT pseudo-RR type value
   @opt_rr_type 41
+  @max_edns_udp_payload 1_232
 
   # Client API
 
@@ -102,6 +104,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
   - `:client_ip` - Client IP address (required)
   - `:client_port` - Client port number (required)
   - `:socket` - Socket for sending responses
+  - `:transport` - `:udp` or `:tcp` (default: `:udp`)
   - `:query_timeout` - Per-query timeout in ms (default: 5000)
   """
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -158,6 +161,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
     client_ip = Keyword.fetch!(opts, :client_ip)
     client_port = Keyword.fetch!(opts, :client_port)
     socket = Keyword.get(opts, :socket)
+    transport = Keyword.get(opts, :transport, :udp)
     query_timeout = Keyword.get(opts, :query_timeout, @default_query_timeout)
 
     # Monitor the handler - if it dies, we should too
@@ -168,6 +172,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
       client_ip: client_ip,
       client_port: client_port,
       socket: socket,
+      transport: transport,
       query_timeout: query_timeout
     }
 
@@ -200,25 +205,52 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
         {:reply, {:error, :not_a_query}, state}
       else
-        # RFC 1035 §4.1.1: Only OPCODE 0 (QUERY) is supported.
-        # Return NOTIMP for any other opcode (IQUERY, STATUS, Notify, Update, etc.).
-        if query.header.opcode != OpCode.query() do
-          Telemetry.debug("Unsupported DNS opcode — returning NOTIMP", %{
-            id: query.header.id,
-            opcode: to_string(query.header.opcode)
-          })
+        cond do
+          # RFC 6891 §6.1.1: a request with multiple OPT records is malformed.
+          opt_count(query) > 1 ->
+            response = build_protocol_error_response(query, RCode.form_err())
+            send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(response)})
+            {:reply, :ok, state}
 
-          notimp = build_notimp_response(query)
-          send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(notimp)})
-          {:reply, :ok, state}
-        else
-          case submit_query_internal(state, query, raw: true) do
-            {:ok, new_state} ->
-              {:reply, :ok, new_state}
+          # RFC 1035 §4.1.1: Only OPCODE 0 (QUERY) is supported.
+          query.header.opcode != OpCode.query() ->
+            Telemetry.debug("Unsupported DNS opcode — returning NOTIMP", %{
+              id: query.header.id,
+              opcode: to_string(query.header.opcode)
+            })
 
-            {:error, _reason} = error ->
-              {:reply, error, state}
-          end
+            notimp = build_protocol_error_response(query, RCode.not_imp())
+            send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(notimp)})
+            {:reply, :ok, state}
+
+          length(query.qdlist) != 1 ->
+            response = build_protocol_error_response(query, RCode.form_err())
+            send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(response)})
+            {:reply, :ok, state}
+
+          unsupported_edns_version?(query) ->
+            response = build_badvers_response(query)
+            send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(response)})
+            {:reply, :ok, state}
+
+          unsupported_question_class?(query) or zone_transfer_question?(query) ->
+            response = build_protocol_error_response(query, RCode.refused())
+            send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(response)})
+            {:reply, :ok, state}
+
+          unsupported_meta_question?(query) ->
+            response = build_protocol_error_response(query, RCode.not_imp())
+            send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(response)})
+            {:reply, :ok, state}
+
+          true ->
+            case submit_query_internal(state, query, raw: true) do
+              {:ok, new_state} ->
+                {:reply, :ok, new_state}
+
+              {:error, _reason} = error ->
+                {:reply, error, state}
+            end
         end
       end
     rescue
@@ -505,7 +537,11 @@ defmodule YellowDog.Dns.ConnectionProcess do
         if qs.raw do
           # RFC 1035 §4.2.1: truncate UDP responses that exceed the client's
           # declared buffer size (default 512, larger with EDNS0).
-          response_data = DNS.to_iodata(maybe_truncate(response, qs.max_udp_payload))
+          max_payload = if state.transport == :tcp, do: 65_535, else: qs.max_udp_payload
+
+          response_data =
+            DNS.to_iodata(response |> with_edns(qs.query) |> maybe_truncate(max_payload))
+
           send(state.handler_pid, {:dns_raw_response, query_id, response_data})
         else
           send(state.handler_pid, {:dns_response, query_id, response})
@@ -535,7 +571,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
         # Send error response to handler (raw binary or parsed message)
         if qs.raw do
-          response_data = DNS.to_iodata(error_response)
+          response_data = DNS.to_iodata(with_edns(error_response, qs.query))
           send(state.handler_pid, {:dns_raw_response, query_id, response_data})
         else
           send(state.handler_pid, {:dns_response, query_id, error_response})
@@ -557,7 +593,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
     end
   end
 
-  defp build_notimp_response(query) do
+  defp build_protocol_error_response(query, rcode) do
     %Message{
       header: %{
         query.header
@@ -565,7 +601,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
           aa: 0,
           tc: 0,
           ra: 0,
-          rcode: RCode.not_imp(),
+          rcode: rcode,
           ancount: 0,
           nscount: 0,
           arcount: 0
@@ -575,7 +611,34 @@ defmodule YellowDog.Dns.ConnectionProcess do
       nslist: [],
       arlist: []
     }
+    |> with_edns(query)
   end
+
+  defp build_badvers_response(query) do
+    response = build_protocol_error_response(query, RCode.no_error())
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+
+    opt =
+      Enum.map(response.arlist, fn record ->
+        if record.type == opt_type, do: %{record | ttl: 16_777_216}, else: record
+      end)
+
+    %{response | arlist: opt}
+  end
+
+  defp unsupported_edns_version?(%Message{arlist: arlist}) do
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+    Enum.any?(arlist, &(&1.type == opt_type and rem(div(&1.ttl, 65_536), 256) != 0))
+  end
+
+  defp unsupported_question_class?(%Message{qdlist: [question]}),
+    do: question.class != DNS.Class.internet()
+
+  defp zone_transfer_question?(%Message{qdlist: [question]}),
+    do: question.type.value in [<<251::16>>, <<252::16>>]
+
+  defp unsupported_meta_question?(%Message{qdlist: [question]}),
+    do: question.type.value in [<<253::16>>, <<254::16>>]
 
   defp create_error_response(query, reason) do
     rcode =
@@ -593,7 +656,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
         | qr: 1,
           aa: 0,
           tc: 0,
-          ra: 1,
+          ra: 0,
           rcode: rcode,
           ancount: 0,
           nscount: 0,
@@ -740,7 +803,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
         # payload size as a 16-bit unsigned integer.
         try do
           <<udp_payload::16>> = opt_rec.class.value
-          max(udp_payload, 512)
+          udp_payload |> max(512) |> min(@max_edns_udp_payload)
         rescue
           _ -> 512
         end
@@ -748,6 +811,34 @@ defmodule YellowDog.Dns.ConnectionProcess do
   end
 
   defp extract_edns0_payload_size(_), do: 512
+
+  defp opt_count(%Message{arlist: arlist}) when is_list(arlist) do
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+    Enum.count(arlist, &(&1.type == opt_type))
+  end
+
+  defp opt_count(_), do: 0
+
+  # RFC 6891 requires an OPT response when the request includes OPT. Advertise
+  # our bounded size and do not copy request options into the answer.
+  defp with_edns(%Message{} = response, %Message{arlist: arlist}) when is_list(arlist) do
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+
+    if Enum.any?(arlist, &(&1.type == opt_type)) do
+      other = Enum.reject(response.arlist, &(&1.type == opt_type))
+      opt = DNS.Message.Record.new(".", @opt_rr_type, @max_edns_udp_payload, 0, <<>>)
+
+      %{
+        response
+        | arlist: other ++ [opt],
+          header: %{response.header | arcount: length(other) + 1}
+      }
+    else
+      response
+    end
+  end
+
+  defp with_edns(response, _query), do: response
 
   # If the serialized response would exceed `max_bytes`, return a truncated
   # response with TC=1 and an empty answer section.  Per RFC 1035 §4.2.1,
@@ -758,12 +849,15 @@ defmodule YellowDog.Dns.ConnectionProcess do
     wire = DNS.to_iodata(response)
 
     if IO.iodata_length(wire) > max_bytes do
+      opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+      opt = Enum.filter(response.arlist, &(&1.type == opt_type))
+
       truncated = %Message{
         response
-        | header: %{response.header | tc: 1, ancount: 0, nscount: 0, arcount: 0},
+        | header: %{response.header | tc: 1, ancount: 0, nscount: 0, arcount: length(opt)},
           anlist: [],
           nslist: [],
-          arlist: []
+          arlist: opt
       }
 
       Telemetry.debug("DNS response truncated for UDP", %{
