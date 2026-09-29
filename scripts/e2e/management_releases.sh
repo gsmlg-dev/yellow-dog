@@ -1240,6 +1240,82 @@ EOF
   done
   echo 'management reconnect recovered applied DNS state'
 
+  # M2: publish the additional managed RR types through the real API and
+  # verify resolver semantics with packets on the release Server.
+  local m2_edit_request="${e2e_dir}/m2-zone-edit-request.json"
+  local m2_edit_response="${e2e_dir}/m2-zone-edit-response.json"
+  local m2_publish_response="${e2e_dir}/m2-zone-publish-response.json"
+  cat > "${m2_edit_request}" <<'EOF'
+{"expected_revision":2,"edits":[{"owner":"v6.example.test.","type":"AAAA","ttl":300,"records":["2001:db8::53"]},{"owner":"alias.example.test.","type":"CNAME","ttl":300,"records":["ns1.example.test."]},{"owner":"mail.example.test.","type":"MX","ttl":300,"records":[{"preference":10,"exchange":"v6.example.test."}]},{"owner":"text.example.test.","type":"TXT","ttl":300,"records":[["first","second with space"]]},{"owner":"*.example.test.","type":"A","ttl":300,"records":["192.0.2.99"]},{"owner":"leaf.branch.example.test.","type":"A","ttl":300,"records":["192.0.2.44"]}]}
+EOF
+  curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" -H 'Content-Type: application/json' \
+    -H 'Idempotency-Key: management-release-e2e-m2-zone-edit' \
+    --request PATCH --data-binary "@${m2_edit_request}" \
+    "https://localhost:${tls_port}/api/v1/zones/${zone_id}/rrsets" > "${m2_edit_response}"
+  python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["revision"] == 3' "${m2_edit_response}"
+
+  curl --fail --silent --show-error --cacert "${ca_cert}" \
+    -H "Authorization: Bearer ${operator_token}" -H 'Content-Type: application/json' \
+    -H 'Idempotency-Key: management-release-e2e-m2-zone-publish' \
+    --data '{"expected_revision":3}' \
+    "https://localhost:${tls_port}/api/v1/zones/${zone_id}/publish" > "${m2_publish_response}"
+  local m2_deployment_id
+  m2_deployment_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "${m2_publish_response}")"
+
+  deadline=$((SECONDS + 30))
+  until dig @127.0.0.1 -p "${managed_dns_port}" +time=1 +tries=1 +short alias.example.test. A \
+      | grep -Fq '192.0.2.54'; do
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'M2 DNS publication did not become queryable' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+
+  for transport in udp tcp; do
+    local -a flags=()
+    if [ "${transport}" = tcp ]; then flags=(+tcp); fi
+    local answer
+    for row in \
+      'v6.example.test. AAAA 2001:db8::53' \
+      'alias.example.test. A 192.0.2.54' \
+      'mail.example.test. MX 10_v6.example.test.' \
+      'text.example.test. TXT first' \
+      'wild.example.test. A 192.0.2.99'; do
+      read -r query_name query_type expected <<< "${row}"
+      expected="${expected//_/ }"
+      answer="$(dig @127.0.0.1 -p "${managed_dns_port}" "${flags[@]}" +time=1 +tries=1 +noall +comments +answer "${query_name}" "${query_type}")"
+      grep -q 'flags:.* aa[; ]' <<< "${answer}"
+      if grep -Eq 'flags:.*[[:space:]]ra[;[:space:]]' <<< "${answer}"; then return 1; fi
+      grep -Fq "${expected}" <<< "${answer}"
+    done
+
+    answer="$(dig @127.0.0.1 -p "${managed_dns_port}" "${flags[@]}" +time=1 +tries=1 +noall +comments +answer +authority branch.example.test. A)"
+    grep -q 'status: NOERROR' <<< "${answer}"
+    grep -q 'SOA' <<< "${answer}"
+    if grep -Fq '192.0.2.99' <<< "${answer}"; then return 1; fi
+    answer="$(dig @127.0.0.1 -p "${managed_dns_port}" "${flags[@]}" +time=1 +tries=1 +noall +comments +answer +authority missing.branch.example.test. A)"
+    grep -q 'status: NXDOMAIN' <<< "${answer}"
+    grep -q 'SOA' <<< "${answer}"
+    if grep -Fq '192.0.2.99' <<< "${answer}"; then return 1; fi
+  done
+  deadline=$((SECONDS + 30))
+  while :; do
+    curl --fail --silent --show-error --cacert "${ca_cert}" \
+      -H "Authorization: Bearer ${operator_token}" \
+      "https://localhost:${tls_port}/api/v1/deployments/${m2_deployment_id}" > "${status_response}"
+    if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("state") == "applied" else 1)' "${status_response}"; then
+      break
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo 'M2 DNS publication did not report applied' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo 'M2 managed RR types wildcard and negative answers verified over UDP and TCP'
+
   curl "${curl_args[@]}" --cacert "${ca_cert}" \
     "https://localhost:${tls_port}/management/servers" > "${servers_page}"
   grep -q "${server_id}" "${servers_page}"

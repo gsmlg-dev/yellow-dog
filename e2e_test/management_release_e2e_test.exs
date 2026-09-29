@@ -51,6 +51,7 @@ defmodule E2ETest.ManagementReleaseE2ETest do
     assert evidence =~ "Server Agent caught up offline DNS publication after reconnect"
     assert evidence =~ "server restart served durable DNS snapshot without management"
     assert evidence =~ "management reconnect recovered applied DNS state"
+    assert evidence =~ "M2 managed RR types wildcard and negative answers verified over UDP and TCP"
     assert leaked_ra_dirs(root) == leaked_ra_dirs_before
   end
 
