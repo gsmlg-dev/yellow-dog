@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Yellow Dog Management</title><script defer src="/management.js"></script></head>
+<body>
+<header><h1>Yellow Dog Management</h1><p>Prepare DNS configuration for logical Workers. Actual runtime state is unknown.</p></header>
+<form id="login"><label>Operator token <input id="token" type="password" required autocomplete="off" minlength="32"></label><button>Sign in</button></form>
+<button id="logout" hidden>Sign out</button>
+<p id="notice" role="status" aria-live="polite"></p>
+<main id="workspace" hidden>
+<nav><a href="#dns">DNS business data</a> · <a href="#workers">Logical Workers</a> · <a href="#allocation">Services and assignments</a> · <a href="#targets">Prepared targets</a></nav>
+<section id="dns"><h2>DNS zones</h2><p>Zones can be created before any Worker exists. Confirming a version freezes its content; editing the draft does not change existing assignments.</p>
+<label>Existing zone <select id="zone-select"><option value="">New zone</option></select></label>
+<form id="zone-form"><label>Zone name <input name="name" required placeholder="example.test."></label><input name="id" type="hidden"><input name="expected_revision" type="hidden">
+<h3>Records</h3><p>Supported types: SOA, NS, A. Use fully qualified names. The zone must contain one apex SOA and at least one apex NS. SOA value: mname rname serial refresh retry expire minimum.</p>
+<table><thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">TTL</th><th scope="col">Value</th><th scope="col">Remove</th></tr></thead><tbody id="records"></tbody></table>
+<button id="add-record" type="button">Add record</button> <button>Save draft</button><button type="button" id="confirm-zone">Confirm immutable version</button><button type="button" id="delete-zone">Delete unassigned draft</button></form>
+<h3>Immutable versions</h3><ul id="versions"></ul></section>
+<section id="workers"><h2>Logical Workers</h2><p>No address, registration, or connection is required. All Workers are unconnected; actual state is unknown.</p>
+<label>Existing Worker <select id="worker-select"><option value="">New Worker</option></select></label>
+<form id="worker-form"><label>Stable Worker ID <input name="id" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*"></label> <label>Name <input name="name" required maxlength="128"></label><input name="expected_revision" type="hidden"><p>Expected capability: DNS (operator declared).</p><button>Save Worker</button></form></section>
+<section id="allocation"><h2>Services and resource assignments</h2>
+<label>Allocation target <select id="target-worker"></select></label><p id="worker-state"></p>
+<form id="service-form"><label>Service instance <select id="service-select"><option value="">New service</option></select></label> <label>Instance ID <input name="id" required maxlength="64" value="dns"></label> <label>Desired state <select name="desired_state"><option value="stopped">Stopped</option><option value="running">Running</option></select></label> <label>Listen address <input name="listen_address" required value="127.0.0.1"></label> <label>Port <input name="port" type="number" min="1" max="65535" value="5353" required></label> <button>Save desired service state</button></form>
+<form id="assignment-form"><h3>Assign selected immutable version</h3><label>Zone <select id="assign-zone" required></select></label> <label>Version <select id="assign-version" required></select></label> <label>Service ID <input name="service_id" required value="dns"></label><fieldset><legend>Worker targets (the service must exist on each selected Worker)</legend><div id="assignment-workers"></div></fieldset><button>Assign to selected Workers</button></form>
+<h3>Current assignments on selected target</h3><ul id="assignments"></ul></section>
+<section id="targets"><h2>Complete target preview</h2><p>Preview includes the selected Worker's complete desired set and changes since its previous confirmed target. Prepared configuration is not applied configuration.</p><button id="preview">Refresh preview</button> <button id="confirm-target">Confirm complete target</button><pre id="preview-output"></pre>
+<form id="export-form"><label>Confirmed plan revision <input name="revision" type="number" min="1" required></label><button>Download TOML</button></form><p id="prepared-state"></p></section>
+</main></body></html>
