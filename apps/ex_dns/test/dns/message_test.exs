@@ -18,6 +18,7 @@ defmodule DNS.MessageTest do
   alias DNS.Message.Domain
   alias DNS.Message.Header
   alias DNS.Message.Question
+  alias DNS.Message.Record
   alias DNS.ResourceRecordType, as: RRType
   alias DNS.Class
 
@@ -515,6 +516,40 @@ defmodule DNS.MessageTest do
   end
 
   describe "DNS.Parameter protocol" do
+    test "encodes negative SOA authority before EDNS OPT additional" do
+      question = Question.new("missing.example.test.", :a, :in)
+
+      soa =
+        Record.new("example.test.", :soa, :in, 300, {
+          Domain.new("ns1.example.test."),
+          Domain.new("hostmaster.example.test."),
+          42,
+          3600,
+          600,
+          86_400,
+          300
+        })
+
+      opt = Record.new(".", 41, 1232, 0, <<>>)
+      header = Message.new().header
+
+      message = %Message{
+        header: %{header | qr: 1, qdcount: 1, nscount: 1, arcount: 1},
+        qdlist: [question],
+        anlist: [],
+        nslist: [soa],
+        arlist: [opt]
+      }
+
+      wire = DNS.to_iodata(message)
+      parsed = Message.from_iodata(wire)
+      assert parsed.header.nscount == 1
+      assert [%{type: authority_type}] = parsed.nslist
+      assert to_string(authority_type) == "SOA"
+      assert [%{type: additional_type}] = parsed.arlist
+      assert to_string(additional_type) == "OPT"
+    end
+
     test "implements DNS.Parameter protocol" do
       msg = Message.new()
 

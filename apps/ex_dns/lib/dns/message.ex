@@ -114,9 +114,16 @@ defmodule DNS.Message do
 
   defimpl DNS.Parameter, for: DNS.Message do
     @impl true
-    def to_iodata(%DNS.Message{header: header, qdlist: qdlist, anlist: anlist, arlist: arlist}) do
+    def to_iodata(%DNS.Message{
+          header: header,
+          qdlist: qdlist,
+          anlist: anlist,
+          nslist: nslist,
+          arlist: arlist
+        }) do
       <<DNS.to_iodata(header)::binary, DNS.to_iodata(qdlist)::binary,
-        DNS.to_iodata(anlist)::binary, DNS.to_iodata(arlist)::binary>>
+        DNS.to_iodata(anlist)::binary, DNS.to_iodata(nslist)::binary,
+        DNS.to_iodata(arlist)::binary>>
     end
   end
 
