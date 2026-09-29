@@ -1,0 +1,5 @@
+schema_version = 1
+worker_id = "edge-empty"
+revision = 1
+services = [{ id = "dns-primary", type = "dns", desired_state = "stopped", config = { listen_address = "127.0.0.1", port = 1053 }, resources = [] }]
+resources = []
