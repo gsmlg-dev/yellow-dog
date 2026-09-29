@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: YellowDog authoritative DNS management API
-  version: 1.0.0-m1
-  description: Management-owned A, NS and SOA zone publication for the M1 slice.
+  version: 1.0.0-m2
+  description: Management-owned authoritative zone publication. TXT records are ordered arrays of UTF-8 segments.
 servers:
   - url: /api/v1
 security:
@@ -29,7 +29,7 @@ components:
       required: [owner, type, ttl, records]
       properties:
         owner: {type: string, example: example.test.}
-        type: {type: string, enum: [A, NS, SOA]}
+        type: {type: string, enum: [A, AAAA, NS, SOA, CNAME, MX, TXT]}
         ttl: {type: integer, minimum: 1, maximum: 2147483647}
         records:
           type: array
@@ -37,7 +37,18 @@ components:
           maxItems: 64
           items:
             oneOf:
-              - {type: string, description: IPv4 address or canonical absolute NS name}
+              - {type: string, description: IPv4 or IPv6 address, or canonical absolute NS/CNAME name}
+              - type: array
+                description: One TXT record as ordered UTF-8 segments, each at most 255 bytes.
+                minItems: 1
+                maxItems: 255
+                items: {type: string, maxLength: 255}
+              - type: object
+                required: [preference, exchange]
+                additionalProperties: false
+                properties:
+                  preference: {type: integer, minimum: 0, maximum: 65535}
+                  exchange: {type: string, description: Canonical absolute domain name}
               - type: object
                 required: [mname, rname, refresh, retry, expire, minimum]
                 properties:

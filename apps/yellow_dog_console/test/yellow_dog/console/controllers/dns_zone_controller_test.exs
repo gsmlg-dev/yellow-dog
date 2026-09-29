@@ -111,6 +111,60 @@ defmodule YellowDog.Console.DnsZoneControllerTest do
     assert DnsZones.list() == []
   end
 
+  test "API accepts expanded DNS records and reports alias validation errors", %{conn: conn} do
+    body = zone_body()
+
+    extra = [
+      %{
+        "owner" => "ns1.example.test.",
+        "type" => "AAAA",
+        "ttl" => 300,
+        "records" => ["2001:DB8::53"]
+      },
+      %{
+        "owner" => "example.test.",
+        "type" => "MX",
+        "ttl" => 300,
+        "records" => [%{"preference" => 10, "exchange" => "mail.example.test."}]
+      },
+      %{
+        "owner" => "_dmarc.example.test.",
+        "type" => "TXT",
+        "ttl" => 300,
+        "records" => [["v=DMARC1; ", "p=reject"]]
+      }
+    ]
+
+    zone =
+      conn
+      |> auth()
+      |> put_req_header("idempotency-key", "new-types")
+      |> post("/api/v1/zones", %{body | "rrsets" => body["rrsets"] ++ extra})
+      |> json_response(201)
+
+    assert Enum.find(zone["rrsets"], &(&1["type"] == "TXT"))["records"] ==
+             [["v=DMARC1; ", "p=reject"]]
+
+    error =
+      conn
+      |> auth()
+      |> put_req_header("idempotency-key", "bad-alias")
+      |> patch("/api/v1/zones/#{zone["id"]}/rrsets", %{
+        "expected_revision" => 1,
+        "edits" => [
+          %{
+            "owner" => "example.test.",
+            "type" => "CNAME",
+            "ttl" => 300,
+            "records" => ["other.test."]
+          }
+        ]
+      })
+      |> json_response(422)
+
+    assert error["error"]["code"] == "cname_at_apex"
+  end
+
   defp zone_body do
     %{
       "apex" => "example.test.",

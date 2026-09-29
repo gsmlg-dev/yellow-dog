@@ -246,10 +246,11 @@ defmodule YellowDog.Management.DnsZones do
   defp do_publish(path, state, server_state, id, revision, identity, request) do
     with {:ok, zone} <- fetch(state["zones"], id),
          :ok <- expected_revision(zone, revision),
-         :ok <- DnsZone.validate_complete(zone["apex"], zone["rrsets"]) do
+         :ok <- DnsZone.validate_complete(zone["apex"], zone["rrsets"]),
+         {:ok, serial} <- DnsZone.next_serial(zone["soa_serial"]),
+         {:ok, snapshot} <-
+           DnsZone.snapshot(zone, length(zone["versions"]) + 1, serial) do
       version = length(zone["versions"]) + 1
-      serial = zone["soa_serial"] + 1
-      snapshot = DnsZone.snapshot(zone, version, serial)
 
       generations =
         Enum.reduce(
@@ -303,9 +304,10 @@ defmodule YellowDog.Management.DnsZones do
   defp apply_edits(zone, edits) do
     Enum.reduce_while(edits, {:ok, zone["rrsets"]}, fn edit, {:ok, current} ->
       with %{"owner" => owner, "type" => type} <- edit,
-           {:ok, owner} <- DnsZone.name(owner),
+           true <- valid_edit_fields?(edit),
+           {:ok, owner} <- DnsZone.owner_name(owner),
            true <- owner == zone["apex"] or String.ends_with?(owner, "." <> zone["apex"]),
-           true <- type in ~w(A NS SOA) do
+           true <- type in ~w(A AAAA NS SOA CNAME MX TXT) do
         current = Enum.reject(current, &(&1["owner"] == owner and &1["type"] == type))
 
         next =
@@ -315,15 +317,21 @@ defmodule YellowDog.Management.DnsZones do
             [Map.take(edit, ~w(owner type ttl records)) | current]
           end
 
-        case DnsZone.normalize_rrsets(zone["apex"], next) do
-          {:ok, normalized} -> {:cont, {:ok, normalized}}
-          error -> {:halt, error}
-        end
+        {:cont, {:ok, next}}
       else
         _ -> {:halt, {:error, :invalid_edits}}
       end
     end)
+    |> case do
+      {:ok, rrsets} -> DnsZone.normalize_rrsets(zone["apex"], rrsets)
+      error -> error
+    end
   end
+
+  defp valid_edit_fields?(%{"delete" => true} = edit),
+    do: Enum.sort(Map.keys(edit)) == ~w(delete owner type)
+
+  defp valid_edit_fields?(edit), do: Enum.sort(Map.keys(edit)) == ~w(owner records ttl type)
 
   defp add_expected_digests(state, targets, deployment_id) do
     Enum.reduce_while(targets, {:ok, state}, fn server_id, {:ok, acc} ->
