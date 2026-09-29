@@ -1,0 +1,3 @@
+worker_id = "edge-01"
+data_dir = "./state"
+source = "./plan.toml"

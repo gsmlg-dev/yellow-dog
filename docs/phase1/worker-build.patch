@@ -1,0 +1,16 @@
+--- a/mix.exs
++++ b/mix.exs
+@@ -18,2 +18,7 @@
+           ]
++        ],
++        yellow_dog_worker: [
++          include_executables_for: [:unix],
++          runtime_config_path: "apps/yellow_dog_worker/config/runtime.exs",
++          applications: [yellow_dog_worker: :permanent]
+         ],
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -87,2 +87,3 @@
+ | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity`, `_fingerprint` | DHCP client, Linux network management, DNS stub caching, host trust, and device identification. |
++| **Worker** | `apps/yellow_dog_worker` | Independent local TOML service manager, durable snapshots, per-service controllers, and authoritative DNS adapter. No Management Agent or database. |
+ | **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DuskMoon UI templates, asset compilation via DuskmoonBundler. |
