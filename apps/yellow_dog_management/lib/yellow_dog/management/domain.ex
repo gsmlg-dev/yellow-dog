@@ -7,18 +7,32 @@ defmodule YellowDog.Management.Domain do
 
   alias YellowDog.Management.{
     Assignment,
+    Backups,
     Audit,
+    DnsAcls,
+    DnsViews,
     Idempotency,
+    Netmans,
+    ProfileCatalog,
     Repo,
     ResourceVersion,
     Rrset,
     Service,
     Target,
+    Tasks,
     Worker,
     Zone
   }
 
-  @operations ~w(create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign confirm_target)
+  @netman_operations ~w(create_netman update_netman update_netman_config confirm_netman_config rollback_netman_config)
+  @task_operations ~w(update_task run_task)
+  @backup_operations ~w(create_backup delete_backup)
+  @dns_acl_operations ~w(create_dns_acl update_dns_acl delete_dns_acl)
+  @dns_view_operations ~w(create_dns_view update_dns_view delete_dns_view)
+  @operations ~w(create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign confirm_target) ++
+                @netman_operations ++
+                @task_operations ++
+                @backup_operations ++ @dns_acl_operations ++ @dns_view_operations
   @worker_id ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
   @doc "Run an idempotent mutation. All successful effects and the recorded result commit together."
@@ -33,9 +47,16 @@ defmodule YellowDog.Management.Domain do
       case Repo.transaction(fn ->
              transact(operation, params, actor, idempotency_key, fingerprint)
            end) do
-        {:ok, {:ok, result}} -> {:ok, result}
-        {:ok, {:error, error}} -> {:error, error}
-        {:error, error} -> {:error, error}
+        {:ok, {:ok, result}} ->
+          if operation in @task_operations, do: Tasks.broadcast(params["key"])
+          if operation in @backup_operations, do: Backups.broadcast(result["id"])
+          {:ok, result}
+
+        {:ok, {:error, error}} ->
+          {:error, error}
+
+        {:error, error} ->
+          {:error, error}
       end
     else
       {:error, error} -> {:error, error}
@@ -52,6 +73,34 @@ defmodule YellowDog.Management.Domain do
   def list_workers do
     Repo.all(from(w in Worker, order_by: w.id))
     |> Enum.map(&worker_map/1)
+  end
+
+  defdelegate list_netmans(), to: Netmans, as: :list
+  defdelegate get_netman(id), to: Netmans, as: :get
+  defdelegate get_netman_config(id), to: Netmans, as: :get_config
+  defdelegate list_netman_versions(id), to: Netmans, as: :versions
+  defdelegate list_netman_history(), to: Netmans, as: :history
+  defdelegate list_tasks(), to: Tasks, as: :list
+  defdelegate get_task(key), to: Tasks, as: :get
+  defdelegate list_task_jobs(key), to: Tasks, as: :jobs
+  defdelegate list_task_history(), to: Tasks, as: :history
+  defdelegate list_dns_acls(worker_id, service_id), to: DnsAcls, as: :list
+  defdelegate get_dns_acl(worker_id, service_id, id), to: DnsAcls, as: :get
+  defdelegate list_dns_views(worker_id, service_id), to: DnsViews, as: :list
+  defdelegate get_dns_view(worker_id, service_id, id), to: DnsViews, as: :get
+
+  def list_audit do
+    Repo.all(from(a in Audit, order_by: [desc: a.inserted_at, desc: a.id], limit: 100))
+    |> Enum.map(fn audit ->
+      %{
+        "id" => audit.id,
+        "actor" => audit.actor,
+        "operation" => audit.operation,
+        "request" => audit.request,
+        "result" => audit.result,
+        "inserted_at" => DateTime.to_iso8601(audit.inserted_at)
+      }
+    end)
   end
 
   def get_worker(id) do
@@ -138,6 +187,30 @@ defmodule YellowDog.Management.Domain do
     end
   end
 
+  def list_target_history do
+    Repo.all(
+      from(target in Target,
+        join: worker in Worker,
+        on: worker.id == target.worker_id,
+        order_by: [desc: target.inserted_at, asc: target.worker_id, desc: target.revision],
+        select: %{
+          "id" => target.id,
+          "worker_id" => target.worker_id,
+          "worker_name" => worker.name,
+          "revision" => target.revision,
+          "digest" => target.digest,
+          "prepared_at" => target.inserted_at
+        }
+      )
+    )
+    |> Enum.map(fn target ->
+      target
+      |> Map.update!("prepared_at", &DateTime.to_iso8601/1)
+      |> Map.put("status", "prepared")
+      |> Map.put("actual_state", "unknown")
+    end)
+  end
+
   def preview_target(worker_id) do
     Repo.transaction(fn ->
       worker = lock_worker(worker_id)
@@ -187,7 +260,7 @@ defmodule YellowDog.Management.Domain do
 
         outcome =
           try do
-            {:ok, dispatch(operation, params)}
+            {:ok, dispatch(operation, params, actor)}
           rescue
             _error in [Ecto.InvalidChangesetError, Postgrex.Error] ->
               {:error, error("database_constraint", "Database constraint rejected the mutation")}
@@ -235,6 +308,23 @@ defmodule YellowDog.Management.Domain do
     end
   end
 
+  defp dispatch(operation, params, actor) when operation in @task_operations,
+    do: Tasks.dispatch(operation, params, actor)
+
+  defp dispatch(operation, params, _actor), do: dispatch(operation, params)
+
+  defp dispatch(operation, params) when operation in @netman_operations,
+    do: Netmans.dispatch(operation, params)
+
+  defp dispatch(operation, params) when operation in @backup_operations,
+    do: Backups.dispatch(operation, params)
+
+  defp dispatch(operation, params) when operation in @dns_acl_operations,
+    do: DnsAcls.dispatch(operation, params)
+
+  defp dispatch(operation, params) when operation in @dns_view_operations,
+    do: DnsViews.dispatch(operation, params)
+
   defp dispatch("create_worker", params) do
     id = required_string(params, "id", 64)
 
@@ -249,7 +339,12 @@ defmodule YellowDog.Management.Domain do
     capabilities = capabilities(params)
     if Repo.get(Worker, id), do: abort("conflict", "Worker ID already exists")
 
-    %Worker{id: id, name: name, expected_capabilities: capabilities}
+    %Worker{
+      id: id,
+      name: name,
+      profile_name: worker_profile(params, "custom"),
+      expected_capabilities: capabilities
+    }
     |> Repo.insert!()
     |> worker_map()
   end
@@ -269,6 +364,7 @@ defmodule YellowDog.Management.Domain do
     worker
     |> Ecto.Changeset.change(
       name: name,
+      profile_name: worker_profile(params, worker.profile_name),
       expected_capabilities: capabilities,
       revision: worker.revision + 1
     )
@@ -366,6 +462,7 @@ defmodule YellowDog.Management.Domain do
   end
 
   defp dispatch("put_service", params) do
+    allowed_keys(params, ~w(worker_id expected_revision id instance_id type desired_state config))
     worker = lock_worker(required_string(params, "worker_id", 64))
     expect_revision(worker.revision, params)
     instance_id = Map.get(params, "instance_id", Map.get(params, "id", "dns"))
@@ -386,13 +483,17 @@ defmodule YellowDog.Management.Domain do
     service =
       case service do
         nil ->
-          Repo.insert!(%Service{
-            worker_id: worker.id,
-            instance_id: instance_id,
-            type: type,
-            desired_state: state,
-            config: config
-          })
+          created =
+            Repo.insert!(%Service{
+              worker_id: worker.id,
+              instance_id: instance_id,
+              type: type,
+              desired_state: state,
+              config: config
+            })
+
+          if created.type == "dns", do: DnsViews.provision_default(created)
+          created
 
         existing ->
           existing
@@ -743,11 +844,21 @@ defmodule YellowDog.Management.Domain do
     %{
       "id" => worker.id,
       "name" => worker.name,
+      "profile_name" => worker.profile_name,
       "expected_capabilities" => worker.expected_capabilities,
       "status" => worker.status,
       "actual_state" => "unknown",
       "revision" => worker.revision
     }
+  end
+
+  defp worker_profile(params, current) do
+    profile = Map.get(params, "profile_name", current)
+
+    unless Enum.any?(ProfileCatalog.list_server_profiles(), &(to_string(&1.name) == profile)),
+      do: abort("invalid_request", "Choose a known Server profile from the catalog")
+
+    profile
   end
 
   defp zone_map(zone) do

@@ -4,6 +4,7 @@ defmodule YellowDog.Management.Worker do
   @primary_key {:id, :string, autogenerate: false}
   schema "management_workers" do
     field(:name, :string)
+    field(:profile_name, :string, default: "custom")
     field(:expected_capabilities, {:array, :string}, default: [])
     field(:status, :string, default: "not_yet_connected")
     field(:revision, :integer, default: 1)

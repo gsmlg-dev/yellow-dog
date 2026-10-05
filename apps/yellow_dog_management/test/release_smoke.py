@@ -1,6 +1,7 @@
 """Run against a freshly migrated, disposable database and a built release.
 
 YELLOW_DOG_MANAGEMENT_DATABASE_URL must be set. No Worker is launched.
+Requests are unauthenticated; the disposable smoke port defaults to 14280.
 python3 test/release_smoke.py /absolute/release/bin/yellow_dog_management
 """
 import json
@@ -16,16 +17,15 @@ import uuid
 
 binary = pathlib.Path(sys.argv[1]).resolve()
 port = int(os.environ.get('YELLOW_DOG_MANAGEMENT_PORT', '14280'))
-token = 'disposable-phase-one-operator-token-0001'
 base = f'http://127.0.0.1:{port}/api'
-env = dict(os.environ, YELLOW_DOG_MANAGEMENT_OPERATOR_TOKEN=token,
-           YELLOW_DOG_MANAGEMENT_PORT=str(port), RELEASE_DISTRIBUTION='none')
+env = dict(os.environ, YELLOW_DOG_MANAGEMENT_PORT=str(port), RELEASE_DISTRIBUTION='none')
+env.pop('YELLOW_DOG_MANAGEMENT_OPERATOR_TOKEN', None)
 log = open('/tmp/yellow-dog-management-release-smoke.log', 'w')
 process = None
 
 
 def request(path, body=None, key=None, raw=False, expected=200):
-    headers = {'Authorization': 'Bearer ' + token}
+    headers = {}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -61,7 +61,7 @@ def start():
             return
         except (OSError, AssertionError):
             time.sleep(.1)
-    raise AssertionError('Release never exposed authenticated API')
+    raise AssertionError('Release never exposed unauthenticated API')
 
 
 def stop():
@@ -83,6 +83,19 @@ try:
     assert not any(name.startswith(forbidden) for name in names), names
     print('Release dependency boundary:', ', '.join(sorted(names)), flush=True)
     start()
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/management.css', timeout=10) as stylesheet:
+        assert stylesheet.headers.get_content_type() == 'text/css'
+        css = stylesheet.read().decode()
+        assert '--color-primary' in css and '.btn' in css
+    print('Packaged local DuskMoon stylesheet passed', flush=True)
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/management', timeout=10) as page:
+        html = page.read().decode()
+        assert 'yd-layout' in html and 'management-live.js' in html
+        assert 'Operator token' not in html
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/management-live.js', timeout=10) as script:
+        assert script.headers.get_content_type() in ('text/javascript', 'application/javascript')
+        assert script.read()
+    print('Packaged Console layout and LiveView client passed', flush=True)
     assert request('/workers') == []
     assert request('/zones') == []
     a = mutate('create_zone', zone('example.test.'))
@@ -123,11 +136,11 @@ try:
     vc = mutate('confirm_zone', {'id': unused['id'], 'expected_revision': unused['revision']})
     concurrent_worker = request('/workers/logical-1')
     requests = [{'worker_id': 'logical-1', 'service_id': 'dns', 'resource_version_id': version['id'], 'expected_revision': concurrent_worker['revision']} for version in [vb, vc]]
-    def attempt(body):
+    def attempt(body, operation='assign'):
         data = json.dumps(body).encode()
-        headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Idempotency-Key': str(uuid.uuid4())}
+        headers = {'Content-Type': 'application/json', 'Idempotency-Key': str(uuid.uuid4())}
         try:
-            response = urllib.request.urlopen(urllib.request.Request(base + '/commands/assign', data=data, headers=headers), timeout=10)
+            response = urllib.request.urlopen(urllib.request.Request(base + '/commands/' + operation, data=data, headers=headers), timeout=10)
         except urllib.error.HTTPError as error:
             response = error
         return body, response.status, json.loads(response.read())
@@ -143,10 +156,53 @@ try:
     assert {r['id'] for r in aggregate['resources']} == {a['id'], b['id'], unused['id']}
     assert aggregate['services'][0]['desired_state'] == 'stopped'
     print('A6: concurrent HTTP assignments on independent DB connections produced one conflict; retry preserved all three zones', flush=True)
+    assert request('/netmans') == []
+    netman = mutate('create_netman', {'id': 'release-netman', 'name': 'Release Netman', 'profile_name': 'vm'})
+    assert netman['status'] == 'not_yet_connected' and netman['actual_state'] == 'unknown'
+    assert netman['last_seen_at'] is None
+    netman_config = {'profiles': [{
+        'profile_id': 'wired', 'interface': 'eth0', 'zone': 'lan',
+        'ipv4': {'method': 'manual', 'address': '192.0.2.10/24', 'gateway': '192.0.2.1', 'dns': ['192.0.2.53'], 'dns_search': ['example.test']},
+        'ipv6': {'method': 'disabled'}
+    }], 'resolved': {'upstreams': ['192.0.2.53'], 'search_domains': ['example.test']}}
+    draft = mutate('update_netman_config', {'id': netman['id'], 'expected_revision': 1, 'document': netman_config})
+    first_netman_version = mutate('confirm_netman_config', {'id': netman['id'], 'expected_revision': draft['revision']}, 'durable-netman-confirm')
+    netman_requests = []
+    for address in ['192.0.2.11/24', '192.0.2.12/24']:
+        candidate = json.loads(json.dumps(draft['document']))
+        candidate['profiles'][0]['ipv4']['address'] = address
+        netman_requests.append({'id': netman['id'], 'expected_revision': draft['revision'], 'document': candidate})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        netman_outcomes = list(pool.map(lambda body: attempt(body, 'update_netman_config'), netman_requests))
+    assert sorted(status for _, status, _ in netman_outcomes) == [200, 409], netman_outcomes
+    for body, status, result in netman_outcomes:
+        if status == 409:
+            assert result['error']['code'] == 'revision_conflict'
+            body['expected_revision'] = request('/netmans/release-netman/config')['revision']
+            mutate('update_netman_config', body)
+    current_draft = request('/netmans/release-netman/config')
+    second_netman_version = mutate('confirm_netman_config', {'id': netman['id'], 'expected_revision': current_draft['revision']})
+    rollback = mutate('rollback_netman_config', {'id': netman['id'], 'expected_revision': current_draft['revision'], 'target_version': first_netman_version['version']})
+    assert rollback['document'] == first_netman_version['document']
+    assert rollback['digest'] == first_netman_version['digest']
+    assert rollback['rollback_source_id'] == first_netman_version['id']
+    assert rollback['actual_state'] == 'unknown' and rollback['status'] == 'prepared'
+    assert request('/netmans/release-netman/versions') == [rollback, second_netman_version, first_netman_version]
+    mutate('create_netman', {'id': 'observer', 'profile_name': 'observe_only'})
+    rejected = mutate('confirm_netman_config', {'id': 'observer', 'expected_revision': 1}, expected=422)
+    assert rejected['error']['code'] == 'read_only'
+    netmans_before = request('/netmans')
+    netman_draft_before = request('/netmans/release-netman/config')
+    netman_versions_before = request('/netmans/release-netman/versions')
+    print('Netman: real concurrent PG requests, prepared immutable history, desired rollback and observe-only rejection passed; no host-network operations', flush=True)
     before = request('/workers/' + worker_id)
     stop()
     start()
     assert request('/workers/' + worker_id) == before
+    assert request('/netmans') == netmans_before
+    assert request('/netmans/release-netman/config') == netman_draft_before
+    assert request('/netmans/release-netman/versions') == netman_versions_before
+    assert mutate('confirm_netman_config', {'id': netman['id'], 'expected_revision': draft['revision']}, 'durable-netman-confirm') == first_netman_version
     assert mutate('confirm_zone', confirm_body, 'durable-confirm') == v
     assert len(request('/zones/' + a['id'] + '/versions')) == 1
     for wid, target in targets.items():
@@ -154,6 +210,7 @@ try:
         assert request(f'/workers/{wid}/targets/{target["revision"]}/export', raw=True) == exports[wid]
     assert len(request('/zones')) == 3
     print('A7-A8: real release process restart preserved drafts, assignments, versions, targets and durable idempotency; historical exports byte-identical', flush=True)
+    print('Netman: independent process restart preserved node metadata, desired draft, all versions and exact idempotent result', flush=True)
     print('RELEASE SMOKE PASSED', flush=True)
 finally:
     stop()

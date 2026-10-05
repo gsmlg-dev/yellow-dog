@@ -325,6 +325,124 @@ defmodule YellowDog.Management.DomainTest do
     assert Enum.map(preview["plan"]["services"], & &1["id"]) == ["dns"]
   end
 
+  test "unsupported put_service fields reject inserts and updates without business effects" do
+    for existing? <- [false, true] do
+      worker = create_worker("unsupported-service-#{existing?}")
+
+      if existing? do
+        mutation("put_service", Fixtures.service(worker["id"], worker["revision"]))
+      end
+
+      assert {:ok, before_worker} = Domain.get_worker(worker["id"])
+      assert {:ok, before_preview} = Domain.preview_target(worker["id"])
+      before_audits = Repo.all(YellowDog.Management.Audit)
+
+      for {field, value} <- [
+            {"desired_status", "running"},
+            {"resources", []},
+            {"unsupported", nil}
+          ] do
+        request =
+          Fixtures.service(worker["id"], before_worker["revision"])
+          |> Map.delete("desired_state")
+          |> Map.put(field, value)
+
+        failure_key = key()
+        audits = Repo.all(YellowDog.Management.Audit)
+
+        assert {:error,
+                %{code: "invalid_request", message: "Unsupported field: " <> ^field, details: %{}} =
+                  failure} = Domain.mutate("put_service", request, "operator", failure_key)
+
+        assert {:ok, ^before_worker} = Domain.get_worker(worker["id"])
+        assert {:ok, ^before_preview} = Domain.preview_target(worker["id"])
+
+        assert [
+                 %YellowDog.Management.Audit{
+                   operation: "put_service",
+                   request: ^request,
+                   result: result
+                 }
+               ] =
+                 Repo.all(YellowDog.Management.Audit) -- audits
+
+        assert result == %{
+                 "error" => %{
+                   "code" => "invalid_request",
+                   "message" => "Unsupported field: #{field}",
+                   "details" => %{}
+                 }
+               }
+
+        outcome = Repo.get!(YellowDog.Management.Idempotency, failure_key)
+        assert outcome.result == result
+        rejected_audits = Repo.all(YellowDog.Management.Audit)
+        assert {:error, ^failure} = Domain.mutate("put_service", request, "operator", failure_key)
+        assert Repo.all(YellowDog.Management.Audit) == rejected_audits
+        assert Repo.get!(YellowDog.Management.Idempotency, failure_key) == outcome
+
+        assert {:error, %{code: "idempotency_conflict"}} =
+                 Domain.mutate("put_service", Map.delete(request, field), "operator", failure_key)
+
+        assert {:ok, ^before_worker} = Domain.get_worker(worker["id"])
+        assert Repo.all(YellowDog.Management.Audit) == rejected_audits
+      end
+
+      for audit <- before_audits do
+        assert Repo.get!(YellowDog.Management.Audit, audit.id) == audit
+      end
+
+      corrected =
+        mutation("put_service", Fixtures.service(worker["id"], before_worker["revision"]))
+
+      assert corrected["desired_state"] == "running"
+      assert corrected["worker_revision"] == before_worker["revision"] + 1
+    end
+  end
+
+  test "put_service preserves omitted defaults, documented fields and instance_id alias" do
+    worker = create_worker("service-defaults")
+    config = %{"listen_address" => "127.0.0.1", "port" => 5300}
+
+    defaulted =
+      mutation("put_service", %{
+        "worker_id" => worker["id"],
+        "expected_revision" => worker["revision"],
+        "config" => config
+      })
+
+    assert %{
+             "instance_id" => "dns",
+             "type" => "dns",
+             "desired_state" => "stopped",
+             "config" => ^config
+           } =
+             defaulted
+
+    request = Fixtures.service(worker["id"], defaulted["worker_revision"])
+    success_key = key()
+    assert {:ok, running} = Domain.mutate("put_service", request, "operator", success_key)
+    assert running["id"] == defaulted["id"]
+    assert running["desired_state"] == "running"
+    assert running["worker_revision"] == defaulted["worker_revision"] + 1
+    assert {:ok, ^running} = Domain.mutate("put_service", request, "operator", success_key)
+    assert {:ok, %{"revision" => revision}} = Domain.get_worker(worker["id"])
+    assert revision == running["worker_revision"]
+
+    alias_service =
+      mutation("put_service", %{
+        "worker_id" => worker["id"],
+        "expected_revision" => revision,
+        "id" => "ignored-by-alias",
+        "instance_id" => "dns-secondary",
+        "config" => %{config | "port" => 5301}
+      })
+
+    assert alias_service["instance_id"] == "dns-secondary"
+    assert alias_service["desired_state"] == "stopped"
+    assert alias_service["type"] == "dns"
+  end
+
   defp create_zone(name), do: mutation("create_zone", Fixtures.zone(name))
 
   defp create_worker(id) do
