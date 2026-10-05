@@ -113,6 +113,9 @@ async function verifyAssignments(saved, workers) {
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#zone-assignments-form fieldset')).map(row => row.dataset.workerId)`), workers);
   for (const worker of saved.workers) {
     await navigate(`/server/${worker}/dashboard`, '#resource-assignments');
+    if (!p1Only) {
+      assert.equal(await evaluate(`document.querySelector('#target-export-scope').textContent.includes('DNS Views and IP database artifacts are not serialized')`), true);
+    }
     const data = await api(`/workers/${worker}`);
     assert.equal(data.actual_state, 'unknown');
     assert.equal(data.status, 'not_yet_connected');
@@ -254,7 +257,14 @@ try {
       await verifyAssignments(saved, saved.workers);
       await navigate(`/server/${saved.workers[0]}/dns/views/${saved.service_ids[0]}`, '#dns-views-table');
       assert.equal(await evaluate(`!!document.querySelector('#dns-view-${saved.view_id}')`), true);
-      if (!p1Only) await verifyCatalog();
+      if (!p1Only) {
+        await verifyCatalog();
+        const limited = await fetch(`${base}/api${saved.target_path}/export?scope=dns_zones`);
+        assert.equal(limited.headers.get('x-yellow-dog-export-scope'), 'dns_zones');
+        const full = await fetch(`${base}/api${saved.target_path}/export?scope=full`);
+        assert.equal(full.status, 422);
+        assert.equal((await full.json()).error.code, 'unsupported_export');
+      }
     } else if (phase === 'editor-failures') {
       const original = await api(`/zones/${saved.zone_id}`);
       await navigate(zonePath(saved.zone_id), '#zone-form');

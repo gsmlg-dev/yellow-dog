@@ -1,7 +1,7 @@
 defmodule YellowDog.Management.Web do
   @moduledoc "Management API without built-in authentication."
   use Plug.Router
-  alias YellowDog.Management.{Backups, ConfigCompiler, Domain}
+  alias YellowDog.Management.{Backups, ConfigCompiler, Domain, ExportScope}
 
   plug(:headers)
 
@@ -128,11 +128,16 @@ defmodule YellowDog.Management.Web do
   end
 
   get "/api/workers/:id/targets/:revision/export" do
-    with {:ok, revision} <- revision(revision),
+    conn = fetch_query_params(conn)
+
+    with :ok <- ExportScope.validate(conn.query_params["scope"]),
+         {:ok, revision} <- revision(revision),
          {:ok, %{"toml" => toml, "target" => target}} <-
            ConfigCompiler.export_target(id, revision) do
       conn
       |> put_resp_content_type("application/toml")
+      |> put_resp_header("x-yellow-dog-export-scope", ExportScope.scope())
+      |> put_resp_header("x-yellow-dog-export-excludes", Enum.join(ExportScope.excluded(), ","))
       |> put_resp_header(
         "content-disposition",
         "attachment; filename=target-#{target["revision"]}.toml"

@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.WorkerLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Domain, ProfileCatalog}
+  alias YellowDog.Management.{Domain, ExportScope, ProfileCatalog}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
   alias YellowDog.ManagementUI.Submission
 
@@ -324,6 +324,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
           </.form>
         </.card>
         <.card title="Target preview and export">
+          <p id="target-export-scope" class="management-help">{ExportScope.description()}</p>
           <div class="flex flex-wrap gap-4">
             <button class="btn btn-outline" type="button" phx-click="preview">Preview target</button><button
               class="btn btn-primary"

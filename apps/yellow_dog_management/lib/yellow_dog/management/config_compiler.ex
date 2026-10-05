@@ -1,5 +1,5 @@
 defmodule YellowDog.Management.ConfigCompiler do
-  @moduledoc "Exports a committed complete target without contacting a Worker."
+  @moduledoc "Exports a committed DNS/Zone target without contacting a Worker; Views and IP artifacts are excluded."
 
   alias YellowDog.ConfigSpec
   alias YellowDog.Management.Domain

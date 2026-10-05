@@ -163,6 +163,14 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
 
     {:ok, fresh, _} = live(build_conn(), "/server/submission-worker/dashboard")
     assert has_element?(fresh, "a[href='/api/workers/submission-worker/targets/1/export']")
+
+    assert has_element?(
+             fresh,
+             "#target-export-scope",
+             "DNS Views and IP database artifacts are not serialized"
+           )
+
+    assert has_element?(fresh, "#target-export-scope", "Valid drafts can still be saved")
     html = fresh |> element("button[phx-click='unassign']") |> render_click()
     assert html =~ "Assignment removed"
     assert Domain.list_assignments(worker["id"]) == []

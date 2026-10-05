@@ -80,7 +80,7 @@ baseline, not the new selectors, assignments or artifact catalog.
 | P1 Worker scope and Zone assignments | Complete; 78 scoped tests and real browser/restart acceptance |
 | P2 editor reliability and persistence | Complete; 85 focused checks plus real browser failure/retry acceptance |
 | P3 artifact catalog | Complete; fixture publication/UI checks and full release restart acceptance |
-| P4 export boundary and integrated acceptance | Pending functional checkpoints |
+| P4 export boundary and integrated acceptance | Complete; explicit export limits, 129 scoped tests, full browser/restart and architecture checks |
 
 P1/P2/P3 now have actual database, browser and restart acceptance; the source-only
 retention evidence remains a separate prerequisite check.
@@ -188,3 +188,109 @@ release/browser/HTTP/PostgreSQL processes were stopped. Evidence:
 `/tmp/yellow-dog-final-browser.log`, and
 `/tmp/yellow-dog-management-configuration-_eow0b5a` (runtime snapshots, durable
 file hashes, browser failure counters and screenshots).
+
+## P4 accepted export boundary and final verification
+
+Supported implicit or `?scope=dns_zones` exports retain their historical TOML
+bytes, digest and shared WorkerPlan round-trip. The API declares its limited scope
+in response headers, and the actual Worker page explains excluded DNS View/IP
+artifact serialization. Explicit `?scope=full` requests receive structured
+`unsupported_export` errors; drafts remain editable. No codec/schema or competing
+wire format was added. `management-artifact-integration.md` records the future
+consumer-derived requirements, exact pinned artifact references, separate file
+transfer, durable Worker acceptance/rollback and offline continuity contract.
+It is a future requirement, not current Worker runtime acceptance.
+
+Executed final checks:
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test test/assignment_domain_test.exs test/domain_test.exs test/web_test.exs test/dns_views_test.exs test/dns_views_live_test.exs test/zones_live_test.exs test/worker_submission_live_test.exs test/task_artifacts_test.exs test/geo_ip_download_test.exs test/ip_database_live_test.exs test/geoip_live_test.exs test/export_scope_test.exs'
+devenv shell -- scripts/e2e/architecture_smoke.sh
+devenv shell -- python3 scripts/e2e/check_ui_source_migration.py
+devenv shell -- scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py _build/prod/rel/yellow_dog_management/bin/yellow_dog_management
+git diff --check
+```
+
+Results: strict compilation passed; 129 scoped tests passed; both isolated release
+assemblies and the positive/four negative architecture fixtures passed; provenance
+passed 203 retained files; scoped `mix format --check-formatted` passed all 141
+changed Elixir/HEEx sources. Full actual browser phases and forced restart passed
+on the final release source, including explicit full-export rejection and visible
+limited-export disclosure. Evidence: `/tmp/yellow-dog-final-tests.log`,
+`/tmp/yellow-dog-final-architecture.log`, `/tmp/yellow-dog-final-provenance.log`,
+`/tmp/yellow-dog-final-browser.log`, and
+`/tmp/yellow-dog-management-configuration-_eow0b5a`.
+
+The historical Events-page test failure above remains untriaged and unchanged.
+No other out-of-scope test suite or deferred Worker runtime repair was pursued.
+Current acceptance is Management persistence, configuration editing and artifact
+synchronization. Legacy redesign pages remain retained/unrouted; Worker delivery,
+View/GeoIP serialization, GeoIP loading, diagnostics and network execution remain
+deferred. No source file changed in `apps/yellow_dog_worker` or
+`apps/yellow_dog_config_spec`.
+
+### Delivery and reproduction
+
+The checkpoints are separate Conventional Commits pushed to `origin/main`:
+P0 `b6d6a015`, P1 `2b5a73af`, P2 `09dd320f`, P3 `9f93b528`, followed by the P4
+export-boundary/report commit. The final response records the exact ending SHA
+after that commit and push. The starting SHA is
+`0301404b18b9faffa629982d5035474524f4c21e`. The supplied untracked plan is preserved
+unmodified and is intentionally excluded from every commit.
+
+To reproduce the complete demonstration, enter the repository and run the
+architecture smoke command above to rebuild the releases. Then run the full
+configuration smoke command above. It creates disposable PostgreSQL, an isolated
+artifact directory and controlled loopback Country/City HTTP fixtures, starts
+only Management, and drives fresh Chromium profiles. It creates a global Zone
+with zero Workers, two disconnected logical Workers/Services, a selected-scope
+View, v1 assignments and a prepared historical target. It synchronizes datasets,
+SIGKILLs/restarts Management, verifies persistence, injects/clears a disposable
+database failure to prove retained edits and idempotency, confirms v2 without
+retargeting v1, removes one assignment, fails a subsequent sync, and checks the
+previous catalog and immutable historical TOML. Temporary processes stop in
+cleanup. The run prints its evidence directory for snapshots and screenshots.
+
+### Modified files
+
+All paths below are repository-relative. P0 additionally changes retained
+`apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/` sources and
+their exact `docs/phase1/ui-source-migration.json` transformation manifest; the
+source checker verifies every retained adaptation. The list below names every
+changed file outside that retained tree. The complete retained path inventory is
+reproducible with `git show --name-only b6d6a015`.
+
+- `AGENTS.md`
+- `apps/yellow_dog_management/lib/yellow_dog/management/application.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/config_compiler.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/domain.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/export_scope.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/geo_ip_download.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/sync_geo_ip_worker.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/task_artifacts.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/task_schemas.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management/web.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/components/sidebar.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/live/dns_views_live.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/live/ip_database_live.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/live/tools_live/geoip_live.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/live/worker_live.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/live/zones_live.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/router.ex`
+- `apps/yellow_dog_management/lib/yellow_dog/management_ui/submission.ex`
+- `apps/yellow_dog_management/priv/repo/migrations/20261006010000_add_geoip_artifact_catalog.exs`
+- `apps/yellow_dog_management/test/assignment_domain_test.exs`
+- `apps/yellow_dog_management/test/dns_views_browser_smoke.mjs`
+- `apps/yellow_dog_management/test/dns_views_live_test.exs`
+- `apps/yellow_dog_management/test/export_scope_test.exs`
+- `apps/yellow_dog_management/test/geoip_live_test.exs`
+- `apps/yellow_dog_management/test/ip_database_live_test.exs`
+- `apps/yellow_dog_management/test/management_configuration_browser_smoke.mjs`
+- `apps/yellow_dog_management/test/management_configuration_smoke.py`
+- `apps/yellow_dog_management/test/task_artifacts_test.exs`
+- `apps/yellow_dog_management/test/worker_submission_live_test.exs`
+- `apps/yellow_dog_management/test/zones_live_test.exs`
+- `docs/phase1/management-artifact-integration.md`
+- `docs/phase1/management-configuration-progress.md`
+- `docs/phase1/ui-source-migration.json`
+- `docs/phase1/ui-source-migration.md`
