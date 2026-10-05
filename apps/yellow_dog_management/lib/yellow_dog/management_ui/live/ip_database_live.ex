@@ -1,23 +1,44 @@
 defmodule YellowDog.ManagementUI.IpDatabaseLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Domain, GeoIP}
+  alias YellowDog.Management.{Domain, TaskArtifacts}
 
   @impl true
   def mount(_params, _session, socket) do
-    server = Application.get_env(:yellow_dog_management, :geoip_server, GeoIP)
+    if connected?(socket),
+      do: Phoenix.PubSub.subscribe(YellowDog.ManagementUI.PubSub, "management:tasks")
 
-    socket =
-      assign(socket,
-        page_title: "IP Database",
-        geoip_server: server,
-        databases: [],
-        operation: nil,
-        download_result: nil,
-        error: nil
-      )
+    {:ok,
+     socket
+     |> assign(page_title: "IP Database", databases: [], download_result: nil, error: nil)
+     |> refresh()}
+  end
 
-    {:ok, refresh(socket)}
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, refresh(socket)}
+
+  def handle_event("download", %{"type" => type}, socket) when type in ~w(city country) do
+    socket = assign(socket, download_result: nil, error: nil)
+
+    case Domain.mutate("run_task", %{"key" => "ip_#{type}"}, "operator", Ecto.UUID.generate()) do
+      {:ok, job} -> {:noreply, socket |> refresh() |> assign(download_result: job, error: nil)}
+      {:error, error} -> {:noreply, assign(socket, error: error[:message] || error["message"])}
+    end
+  end
+
+  def handle_event(_event, _params, socket),
+    do: {:noreply, assign(socket, error: "Invalid catalog action")}
+
+  @impl true
+  def handle_info({:task_updated, key}, socket) when key in ~w(ip_city ip_country),
+    do: {:noreply, refresh(socket)}
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp refresh(socket) do
+    tasks = Map.new(Domain.list_tasks(), &{&1["key"], &1})
+    databases = Enum.map(TaskArtifacts.catalog(), &Map.put(&1, :task, tasks["ip_#{&1.kind}"]))
+    assign(socket, databases: databases, error: nil)
   end
 
   @impl true
@@ -25,15 +46,10 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <h1>IP Database</h1>
-      <div class="management-actions">
-        <button id="ip-database-refresh" class="btn btn-secondary" phx-click="refresh">Refresh</button>
-        <.link navigate="/tool/geoip" class="btn btn-secondary">IP Geo Lookup</.link>
-      </div>
+      <button id="ip-database-refresh" class="btn btn-secondary" phx-click="refresh">Refresh</button>
       <p class="management-help">
-        Synchronization tasks download, validate and select durable MMDB artifacts.
-        Reload and unload below only affect the local Management lookup database.
+        Global, versioned database artifacts synchronized by Management. Synchronization does not mean delivery or loading on a Worker.
       </p>
-      <p :if={@operation} role="status">Reloading {@operation} database...</p>
       <p
         :if={@download_result}
         id="ip-database-download-result"
@@ -43,144 +59,108 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
       >
         Task queued (job {@download_result["id"]}). Queueing is not successful completion.
       </p>
-      <div :if={@error} id="ip-database-error" class="alert alert-error" role="alert">{@error}</div>
+      <p :if={@error} id="ip-database-error" class="alert alert-error" role="alert">{@error}</p>
       <section
         :for={database <- @databases}
-        id={"ip-database-#{database.name}"}
+        id={"ip-database-#{database.kind}"}
         class="card card-bordered"
       >
         <div class="card-body">
-          <h2>{if database.name == :city, do: "City Database", else: "Country Database"}</h2>
+          <h2>{String.capitalize(database.kind)} Database</h2>
           <dl>
-            <dt>Status</dt><dd data-status={database.status}>{database.status}</dd>
-            <dt>Loaded snapshot</dt><dd>{if database.loaded, do: "Available", else: "None"}</dd>
-            <dt>Configured Path</dt><dd>{display(database.path)}</dd>
-            <dt>SHA-256</dt><dd>{display(database.digest)}</dd>
-            <dt>File Size</dt><dd>{file_size(database.file_size)}</dd>
-            <dt>File Modified</dt><dd>{epoch(database.modified_at)}</dd>
-            <dt>Loaded At</dt><dd>{display(database.loaded_at)}</dd>
-            <dt>Database Type</dt><dd>{display(database.metadata[:database_type])}</dd>
-            <dt>Build</dt><dd>{epoch(database.metadata[:build_epoch])}</dd>
-            <dt>IP Version</dt><dd>{display(database.metadata[:ip_version])}</dd>
-            <dt>Node Count</dt><dd>{display(database.metadata[:node_count])}</dd>
-            <dt>Record Size</dt><dd>{display(database.metadata[:record_size])}</dd>
-            <dt>Languages</dt><dd>{languages(database.metadata[:languages])}</dd>
-            <dt>Description</dt><dd>{description(database.metadata[:description])}</dd>
+            <dt>Source</dt><dd>{database.task["source"]}</dd>
+            <dt>Schedule</dt><dd>
+              {if database.task["enabled"], do: database.task["cron"], else: "Disabled"}
+            </dd>
+            <dt>Synchronization state</dt><dd data-sync-state={job_state(database.task)}>
+              {job_state(database.task)}
+            </dd>
+            <dt>Last job error</dt><dd>{job_error(database.task)}</dd>
+            <dt>Last successful synchronization</dt><dd>
+              {if database.selected, do: display(database.selected.selected_at), else: "None"}
+            </dd>
+            <dt>Artifact availability</dt><dd data-status={availability(database.selected)}>
+              {availability(database.selected)}
+            </dd>
           </dl>
-          <p :if={database.last_error} class="alert alert-error" role="alert">
-            Last load failed: {inspect(database.last_error)}. {if database.loaded,
-              do: "The last valid snapshot is still available.",
-              else: "No snapshot is loaded."}
-          </p>
-          <p :if={!database.configured} class="management-help">
-            Run Download / Sync, or set {environment_variable(database.name)} before starting Management.
+          <div :if={database.selected} data-digest={database.selected.digest}>
+            <dl>
+              <dt>Selected digest</dt><dd>{database.selected.digest}</dd>
+              <dt>Size</dt><dd>{database.selected.size} bytes</dd>
+              <dt>Format</dt><dd>{database.selected.format}</dd>
+              <dt>Published</dt><dd>{display(database.selected.published_at)}</dd>
+              <dt>Dataset source</dt><dd>{source(database.selected.source_url)}</dd>
+              <dt>Database type</dt><dd>{database.selected.metadata["database_type"]}</dd>
+              <dt>Build</dt><dd>{display(database.selected.metadata["build_epoch"])}</dd>
+              <dt>Metadata</dt><dd>{Jason.encode!(database.selected.metadata)}</dd>
+            </dl>
+            <p :if={!database.selected.available} role="alert">
+              Selected artifact unavailable: {inspect(database.selected.availability_error)}. Synchronize a valid durable file before distributing it.
+            </p>
+          </div>
+          <p class="management-help">
+            A failed new synchronization can coexist with an available previous artifact.
           </p>
           <div class="management-actions">
             <button
-              id={"ip-database-download-#{database.name}"}
-              class="btn btn-secondary"
-              phx-click="download"
-              phx-value-type={database.name}
-              phx-disable-with="Queueing…"
-            >Queue IP {if database.name == :city, do: "City", else: "Country"}</button>
-            <.link navigate={"/system/tasks/ip_#{database.name}"} class="btn btn-secondary">Sync History</.link>
-            <button
-              id={"ip-database-reload-#{database.name}"}
+              id={"ip-database-download-#{database.kind}"}
               class="btn btn-primary"
-              phx-click="reload"
-              phx-value-type={database.name}
-              disabled={!database.configured || database.status == :loading || @operation != nil}
-            >Reload</button>
-            <button
-              id={"ip-database-unload-#{database.name}"}
-              class="btn btn-secondary"
-              phx-click="unload"
-              phx-value-type={database.name}
-              data-confirm="Unload this database from memory? The configured MMDB file remains on disk. Reload restores it."
-              disabled={!database.loaded && database.status != :loading}
-            >Unload</button>
+              phx-click="download"
+              phx-value-type={database.kind}
+              phx-disable-with="Queueing…"
+            >Queue IP {String.capitalize(database.kind)}</button>
+            <.link navigate={"/system/tasks/ip_#{database.kind}"} class="btn btn-secondary">Source, schedule and sync history</.link>
           </div>
+          <h3>Available dataset versions</h3>
+          <p :if={database.versions == []}>No synchronized datasets.</p>
+          <table class="table" id={"ip-database-versions-#{database.kind}"}>
+            <thead>
+              <tr>
+                <th>Digest</th><th>Size</th><th>Published</th><th>Availability</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={version <- database.versions} data-digest={version.digest}>
+                <td>{version.digest}</td><td>{version.size} bytes</td><td>
+                  {display(version.published_at)}
+                </td><td>{availability(version)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </Layouts.app>
     """
   end
 
-  @impl true
-  def handle_event("refresh", _params, socket), do: {:noreply, refresh(socket)}
+  defp availability(nil), do: "No selected artifact"
+  defp availability(%{available: true}), do: "Available"
+  defp availability(_artifact), do: "Unavailable"
 
-  def handle_event("download", %{"type" => type}, socket) when type in ["city", "country"] do
-    case Domain.mutate("run_task", %{"key" => "ip_#{type}"}, "operator", Ecto.UUID.generate()) do
-      {:ok, job} ->
-        {:noreply, assign(socket, download_result: job, error: nil)}
-
-      {:error, error} ->
-        {:noreply,
-         assign(socket, download_result: nil, error: error[:message] || error["message"])}
+  defp job_state(task) do
+    case task["last_job"] do
+      %{"state" => "available"} -> "queued"
+      %{"state" => state} -> state
+      _ -> "idle"
     end
   end
 
-  def handle_event("reload", %{"type" => type}, socket) when type in ["city", "country"] do
-    if socket.assigns.operation do
-      {:noreply, socket}
-    else
-      server = socket.assigns.geoip_server
-      database_type = if type == "city", do: :city, else: :country
+  defp job_error(task) do
+    case task["last_job"] do
+      %{"errors" => errors} when errors != [] ->
+        errors |> List.last() |> Map.get("error", "Synchronization failed")
 
-      {:noreply,
-       socket
-       |> assign(operation: type, error: nil)
-       |> start_async(:reload_database, fn -> GeoIP.reload(database_type, server) end)}
+      _ ->
+        "None"
     end
   end
 
-  def handle_event("unload", %{"type" => type}, socket) when type in ["city", "country"] do
-    database_type = if type == "city", do: :city, else: :country
-    result = GeoIP.unload(database_type, socket.assigns.geoip_server)
-    socket = refresh(socket)
-    {:noreply, assign(socket, error: operation_error(result))}
-  end
-
-  def handle_event(event, _params, socket) when event in ["reload", "unload", "download"] do
-    {:noreply, assign(socket, download_result: nil, error: "Invalid database selection")}
-  end
-
-  @impl true
-  def handle_async(:reload_database, {:ok, result}, socket) do
-    {:noreply, socket |> refresh() |> assign(operation: nil, error: operation_error(result))}
-  end
-
-  def handle_async(:reload_database, {:exit, reason}, socket) do
-    {:noreply,
-     socket |> refresh() |> assign(operation: nil, error: "Reload failed: #{inspect(reason)}")}
-  end
-
-  defp refresh(socket) do
-    case GeoIP.info(socket.assigns.geoip_server) do
-      entries when is_list(entries) -> assign(socket, databases: entries, error: nil)
-      _error -> assign(socket, databases: [], error: "Database service unavailable")
-    end
-  end
-
-  defp operation_error(:ok), do: nil
-  defp operation_error({:error, reason}), do: "Database operation failed: #{inspect(reason)}"
-  defp display(nil), do: "—"
+  defp display(nil), do: "Unknown"
+  defp display(%DateTime{} = value), do: DateTime.to_iso8601(value)
   defp display(value), do: to_string(value)
-  defp file_size(nil), do: "—"
-  defp file_size(value), do: "#{value} bytes"
-  defp languages(values) when is_list(values), do: Enum.join(values, ", ")
-  defp languages(_values), do: "—"
-  defp description(value) when is_map(value), do: value["en"] || "—"
-  defp description(_value), do: "—"
-  defp environment_variable(:city), do: "YELLOW_DOG_MANAGEMENT_GEOIP_CITY_PATH"
-  defp environment_variable(:country), do: "YELLOW_DOG_MANAGEMENT_GEOIP_COUNTRY_PATH"
 
-  defp epoch(value) when is_integer(value) do
-    case DateTime.from_unix(value) do
-      {:ok, datetime} -> Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S UTC")
-      _error -> "—"
-    end
+  defp source(url) do
+    uri = URI.parse(url)
+    URI.to_string(%{uri | userinfo: nil, query: nil, fragment: nil})
   end
-
-  defp epoch(_value), do: "—"
 end

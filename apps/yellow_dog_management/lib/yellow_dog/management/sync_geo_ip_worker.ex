@@ -25,7 +25,7 @@ defmodule YellowDog.Management.SyncGeoIPWorker do
 
           with {:ok, artifact} <-
                  GeoIPDownload.fetch(type, Settings.artifact_directory(), url: url),
-               :ok <- TaskArtifacts.activate(job, type, artifact),
+               :ok <- TaskArtifacts.publish(job, type, artifact),
                do: :ok
 
         receipt ->

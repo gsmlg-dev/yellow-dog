@@ -15,6 +15,8 @@ defmodule YellowDog.Management.GeoIPArtifact do
   use Ecto.Schema
   @primary_key {:digest, :string, autogenerate: false}
   schema "management_geoip_artifacts" do
+    field(:kind, :string)
+    field(:format, :string)
     field(:path, :string)
     field(:size, :integer)
     field(:source_url, :string)

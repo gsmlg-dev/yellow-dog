@@ -4,79 +4,73 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias YellowDog.Management.{Domain, GeoIP, GeoIPFixtures, Repo, TaskDefinition}
+  alias YellowDog.Management.{
+    Domain,
+    GeoIPDownload,
+    GeoIPDownloadFixture,
+    GeoIPFixtures,
+    GeoIPSelection,
+    Repo,
+    SyncGeoIPWorker,
+    TaskArtifacts,
+    TaskDefinition
+  }
+
   @endpoint YellowDog.ManagementUI.Endpoint
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
-    Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
-
-    directory =
-      Path.join(System.tmp_dir!(), "management-ipdb-ui-#{System.unique_integer([:positive])}")
-
+    :ok = Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
+    directory = Path.join(System.tmp_dir!(), "management-ipdb-ui-#{Ecto.UUID.generate()}")
     File.mkdir_p!(directory)
-    path = GeoIPFixtures.write!(directory)
-    server = start_supervised!({GeoIP, name: nil, paths: %{city: path}})
-    GeoIPFixtures.wait_loaded(server)
-    previous = Application.fetch_env(:yellow_dog_management, :geoip_server)
-    Application.put_env(:yellow_dog_management, :geoip_server, server)
-
-    on_exit(fn ->
-      case previous do
-        {:ok, value} -> Application.put_env(:yellow_dog_management, :geoip_server, value)
-        :error -> Application.delete_env(:yellow_dog_management, :geoip_server)
-      end
-
-      File.rm_rf!(directory)
-    end)
-
-    %{conn: build_conn(), server: server, path: path}
+    on_exit(fn -> File.rm_rf!(directory) end)
+    assert is_nil(Process.whereis(YellowDog.Management.GeoIP))
+    %{conn: build_conn(), directory: directory}
   end
 
-  test "metadata, file details and unconfigured guidance are real, not download placeholders", %{
-    conn: conn,
-    path: path
-  } do
-    {:ok, view, html} = live(conn, "/system/ip-database")
-    assert has_element?(view, "#ip-database-city", path)
-    assert has_element?(view, "#ip-database-city", "22569 bytes")
+  test "durable catalog metadata and versions survive a fresh LiveView session", context do
+    artifact = publish_fixture(context.directory)
+    {:ok, view, html} = live(context.conn, "/system/ip-database")
+    assert has_element?(view, "#ip-database-city [data-status='Available']")
+    assert has_element?(view, "#ip-database-city [data-digest='#{artifact.digest}']")
+    assert has_element?(view, "#ip-database-city", "#{artifact.size} bytes")
     assert has_element?(view, "#ip-database-city", "GeoIP2-City")
-    assert has_element?(view, "#ip-database-city [data-status='loaded']")
+    assert has_element?(view, "#ip-database-city", "mmdb")
+    assert has_element?(view, "#ip-database-city [data-sync-state='completed']")
+    assert has_element?(view, "#ip-database-versions-city tr[data-digest='#{artifact.digest}']")
+    assert has_element?(view, "#ip-database-country [data-status='No selected artifact']")
+    assert has_element?(view, "#ip-database-country", "No synchronized datasets")
+    assert has_element?(view, "a[href='/system/tasks/ip_city']", "sync history")
+    assert has_element?(view, "a[href='/system/tasks/ip_country']", "sync history")
 
-    for field <- [
-          "Build",
-          "IP Version",
-          "Node Count",
-          "Record Size",
-          "Languages",
-          "en, zh",
-          "File Modified",
-          "Loaded At"
+    for label <- [
+          "Source",
+          "Schedule",
+          "Last successful synchronization",
+          "Selected digest",
+          "Published",
+          "Metadata"
         ] do
-      assert html =~ field
+      assert html =~ label
     end
 
-    assert has_element?(view, "#ip-database-country", "YELLOW_DOG_MANAGEMENT_GEOIP_COUNTRY_PATH")
-    assert has_element?(view, "#ip-database-reload-country[disabled]")
-    assert has_element?(view, "#ip-database-download-city[phx-click='download']", "Queue IP City")
+    refute html =~ artifact.path
+    refute html =~ "Loaded snapshot"
+    refute has_element?(view, "button[phx-click='reload']")
+    refute has_element?(view, "button[phx-click='unload']")
+    refute has_element?(view, "select[name*='worker']")
+    assert html =~ "Synchronization does not mean delivery or loading on a Worker"
 
-    assert has_element?(
-             view,
-             "#ip-database-download-country[phx-click='download']",
-             "Queue IP Country"
-           )
-
-    assert has_element?(view, "a[href='/system/tasks/ip_city']", "Sync History")
-    assert has_element?(view, "a[href='/system/tasks/ip_country']", "Sync History")
+    {:ok, fresh, _html} = live(build_conn(), "/system/ip-database")
+    assert has_element?(fresh, "#ip-database-city [data-digest='#{artifact.digest}']")
+    assert has_element?(fresh, "#ip-database-city [data-status='Available']")
   end
 
-  test "direct sync buttons queue real durable jobs without enabling schedules or claiming completion",
-       %{
-         conn: conn,
-         server: server
-       } do
+  test "direct sync buttons queue durable jobs while schedules and availability stay separate", %{
+    conn: conn
+  } do
     tasks = Repo.all(TaskDefinition) |> Enum.sort_by(& &1.key)
-    snapshots = GeoIP.info(server)
+    before_audit = Domain.list_audit()
     {:ok, view, _html} = live(conn, "/system/ip-database")
 
     for type <- ~w(city country) do
@@ -84,7 +78,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
       assert [job] = Domain.list_task_jobs("ip_#{type}")
       assert job["state"] == "available"
       assert job["attempt"] == 0
-      assert job["result"] == nil
+      assert is_nil(job["result"])
 
       assert has_element?(
                view,
@@ -96,27 +90,31 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
                "#ip-database-download-result",
                "Queueing is not successful completion"
              )
+
+      assert has_element?(view, "#ip-database-#{type} [data-sync-state='queued']")
+      assert has_element?(view, "#ip-database-#{type} [data-status='No selected artifact']")
     end
 
     assert Repo.all(TaskDefinition) |> Enum.sort_by(& &1.key) == tasks
-    assert GeoIP.info(server) == snapshots
-    assert Enum.all?(Domain.list_audit(), &(&1["operation"] == "run_task"))
+    assert [first, second] = Domain.list_audit() -- before_audit
+    assert Enum.all?([first, second], &(&1["operation"] == "run_task"))
+    assert is_nil(Process.whereis(YellowDog.Management.GeoIP))
   end
 
-  test "sync selection is a strict enum and client task keys or URLs cannot retarget it", %{
-    conn: conn,
-    server: server
+  test "server-selected task keys reject forged types and ignore client URLs and paths", %{
+    conn: conn
   } do
     {:ok, view, _html} = live(conn, "/system/ip-database")
 
     before_read =
-      {Domain.list_tasks(), Domain.list_task_history(), Domain.list_audit(), GeoIP.info(server)}
+      {Domain.list_tasks(), Domain.list_task_history(), Domain.list_audit(),
+       TaskArtifacts.catalog()}
 
     for payload <- [%{}, %{"type" => "mac"}, %{"type" => []}, %{"type" => %{}}, %{"type" => 1}] do
-      assert render_click(view, "download", payload) =~ "Invalid database selection"
+      assert render_click(view, "download", payload) =~ "Invalid catalog action"
 
       assert {Domain.list_tasks(), Domain.list_task_history(), Domain.list_audit(),
-              GeoIP.info(server)} == before_read
+              TaskArtifacts.catalog()} == before_read
     end
 
     render_click(view, "download", %{
@@ -127,98 +125,132 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     })
 
     assert [job] = Domain.list_task_jobs("ip_city")
-    assert job["task_key"] == "ip_city"
+    canonical = Repo.get!(Oban.Job, job["id"], prefix: "management_jobs")
+    assert canonical.args["source_url"] != "http://attacker.invalid/"
+    refute Map.has_key?(canonical.args, "path")
     assert Domain.list_task_jobs("ip_country") == []
     assert Domain.list_task_jobs("mac") == []
-    assert hd(Domain.list_audit())["request"] == %{"key" => "ip_city"}
+    assert [audit] = Domain.list_audit() -- elem(before_read, 2)
+    assert audit["request"] == %{"key" => "ip_city"}
     assert has_element?(view, "#ip-database-download-result")
     refute has_element?(view, "#ip-database-error")
   end
 
-  test "queue errors are shown without a fake job or a lost lookup snapshot", %{
-    conn: conn,
-    server: server
-  } do
+  test "queue insertion failure cannot report success or replace available artifacts", context do
+    artifact = publish_fixture(context.directory)
+    catalog = TaskArtifacts.catalog()
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    view |> element("#ip-database-download-city") |> render_click()
+    assert has_element?(view, "#ip-database-download-result")
+    before_failure = Domain.list_audit()
     Repo.query!("ALTER TABLE management_jobs.oban_jobs DROP CONSTRAINT positive_max_attempts")
 
     Repo.query!(
-      "ALTER TABLE management_jobs.oban_jobs ADD CONSTRAINT positive_max_attempts CHECK (false)"
+      "ALTER TABLE management_jobs.oban_jobs ADD CONSTRAINT positive_max_attempts CHECK (false) NOT VALID"
     )
 
-    snapshot = GeoIP.info(server)
-    {:ok, view, _html} = live(conn, "/system/ip-database")
     view |> element("#ip-database-download-country") |> render_click()
     assert has_element?(view, "#ip-database-error", "Task could not be queued")
     refute has_element?(view, "#ip-database-download-result")
-    assert Domain.list_task_history() == []
-    assert GeoIP.info(server) == snapshot
-    assert hd(Domain.list_audit())["result"]["error"]["code"] == "invalid_request"
+    assert TaskArtifacts.catalog() == catalog
+    assert has_element?(view, "#ip-database-city [data-digest='#{artifact.digest}']")
+    assert has_element?(view, "#ip-database-city [data-status='Available']")
+    assert Domain.list_task_jobs("ip_country") == []
+    assert [audit] = Domain.list_audit() -- before_failure
+    assert audit["result"]["error"]["code"] == "invalid_request"
   end
 
-  test "unload then async reload restores actual lookups and refresh sees external changes", %{
-    conn: conn,
-    server: server,
-    path: path
-  } do
-    {:ok, view, _html} = live(conn, "/system/ip-database")
+  test "a failed real synchronization retains the prior available digest and displays its error",
+       context do
+    artifact = publish_fixture(context.directory)
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+
+    {:ok, _queued} =
+      SyncGeoIPWorker.new(%{
+        "task_key" => "ip_city",
+        "source_url" => "http://127.0.0.1:1/missing"
+      })
+      |> Oban.insert()
+
+    assert %{failure: 1, success: 0} =
+             Oban.drain_queue(queue: :management_sync, with_safety: true)
+
+    view |> element("#ip-database-refresh") |> render_click()
+
+    assert has_element?(view, "#ip-database-city [data-sync-state='retryable']")
+    assert has_element?(view, "#ip-database-city [data-status='Available']")
+    assert has_element?(view, "#ip-database-city [data-digest='#{artifact.digest}']")
+    assert has_element?(view, "#ip-database-city", "Last job error")
+    assert has_element?(view, "#ip-database-city", "http_error")
+    assert has_element?(view, "#ip-database-city", "Last successful synchronization")
+    assert Repo.get!(GeoIPSelection, "city").digest == artifact.digest
+    assert is_nil(Process.whereis(YellowDog.Management.GeoIP))
+  end
+
+  test "missing selected bytes become unavailable while completed job metadata stays visible",
+       context do
+    artifact = publish_fixture(context.directory)
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    File.rm!(artifact.path)
+    view |> element("#ip-database-refresh") |> render_click()
+
+    assert has_element?(view, "#ip-database-city [data-sync-state='completed']")
+    assert has_element?(view, "#ip-database-city [data-status='Unavailable']")
+    assert has_element?(view, "#ip-database-city [role='alert']", "enoent")
 
     assert has_element?(
              view,
-             "#ip-database-unload-city[data-confirm='Unload this database from memory? The configured MMDB file remains on disk. Reload restores it.']"
+             "#ip-database-versions-city tr[data-digest='#{artifact.digest}']",
+             "Unavailable"
            )
 
-    view |> element("#ip-database-unload-city") |> render_click()
-    assert File.read!(path) == GeoIPFixtures.binary()
-    assert has_element?(view, "#ip-database-city [data-status='unloaded']")
-    assert {:error, :not_loaded} = GeoIP.lookup("81.2.69.160", :city, server)
-    view |> element("#ip-database-reload-city") |> render_click()
-    render_async(view)
-    assert has_element?(view, "#ip-database-city [data-status='loaded']")
-    assert {:ok, %{city: "London"}} = GeoIP.lookup("81.2.69.160", :city, server)
-    :ok = GeoIP.unload(:city, server)
-    view |> element("#ip-database-refresh") |> render_click()
-    assert has_element?(view, "#ip-database-city [data-status='unloaded']")
+    assert Repo.get!(GeoIPSelection, "city").digest == artifact.digest
   end
 
-  test "failed reload exposes error without discarding the valid snapshot", %{
-    conn: conn,
-    path: path,
-    server: server
-  } do
-    {:ok, view, _html} = live(conn, "/system/ip-database")
-    File.write!(path, "invalid MMDB")
-    view |> element("#ip-database-reload-city") |> render_click()
-    html = render_async(view)
-    assert html =~ "Database operation failed"
-    assert html =~ "The last valid snapshot is still available"
-    assert has_element?(view, "#ip-database-city [data-status='error']")
-    assert {:ok, %{city: "London"}} = GeoIP.lookup("81.2.69.160", :city, server)
-    assert Process.alive?(view.pid)
-  end
+  test "pubsub refresh exposes new versions without changing immutable historical metadata",
+       context do
+    first = publish_fixture(context.directory)
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    changed = :binary.replace(GeoIPFixtures.binary(), "London", "Londox")
+    second = publish_fixture(context.directory, changed)
+    send(view.pid, {:task_updated, "ip_city"})
+    assert has_element?(view, "#ip-database-city [data-digest='#{second.digest}']")
+    assert has_element?(view, "#ip-database-versions-city tr[data-digest='#{first.digest}']")
+    assert has_element?(view, "#ip-database-versions-city tr[data-digest='#{second.digest}']")
+    assert File.read!(first.path) == GeoIPFixtures.binary()
 
-  test "forged enum cannot mutate either slot or add client-supplied paths", %{
-    conn: conn,
-    server: server,
-    path: path
-  } do
-    {:ok, view, _html} = live(conn, "/system/ip-database")
-
-    for event <- ["unload", "reload"] do
-      assert render_click(view, event, %{"type" => "unknown", "path" => "/etc/passwd"}) =~
-               "Invalid database selection"
+    for event <- ~w(reload unload) do
+      assert render_click(view, event, %{"type" => "city", "path" => "/etc/passwd"}) =~
+               "Invalid catalog action"
     end
 
-    assert [%{loaded: true, path: ^path}, %{loaded: false, path: nil}] = GeoIP.info(server)
-
-    assert render_click(view, "reload", %{"type" => "country"})
-           |> then(fn _html -> render_async(view) end) =~ "unconfigured"
+    assert {:ok, %{available: true}} = TaskArtifacts.get(:city, second.digest)
   end
 
-  test "unavailable database service reports a meaningful failure", %{conn: conn} do
-    Application.put_env(:yellow_dog_management, :geoip_server, :nonexistent_management_geoip_test)
-    {:ok, view, html} = live(conn, "/system/ip-database")
-    assert html =~ "Database service unavailable"
-    view |> element("#ip-database-refresh") |> render_click()
-    assert has_element?(view, "#ip-database-error", "Database service unavailable")
+  defp publish_fixture(directory, contents \\ GeoIPFixtures.binary()) do
+    {url, _server} = GeoIPDownloadFixture.start(200, :zlib.gzip(contents))
+    {:ok, artifact} = GeoIPDownload.fetch(:city, directory, url: url)
+
+    job =
+      Repo.insert!(
+        %Oban.Job{
+          worker: "YellowDog.Management.SyncGeoIPWorker",
+          queue: "management_sync",
+          args: %{"task_key" => "ip_city", "source_url" => url},
+          state: "executing",
+          attempt: 1,
+          max_attempts: 3,
+          attempted_at: DateTime.utc_now()
+        },
+        prefix: "management_jobs"
+      )
+
+    assert :ok = TaskArtifacts.publish(job, :city, artifact)
+
+    job
+    |> Ecto.Changeset.change(state: "completed", completed_at: DateTime.utc_now())
+    |> Repo.update!()
+
+    artifact
   end
 end

@@ -12,6 +12,71 @@ defmodule YellowDog.Management.GeoIPDownload do
   @timeout 120_000
   @chunk_size 16 * 1024
 
+  @doc "Verify a durable immutable artifact without retaining a lookup database."
+  def verify(type, %{path: path, digest: digest, size: size}) when type in [:city, :country] do
+    safely(fn ->
+      contents = artifact_contents(path, size)
+      actual = :crypto.hash(:sha256, contents) |> Base.encode16(case: :lower)
+      if actual != digest, do: fail(:artifact_digest_mismatch)
+      {:ok, validate_contents(contents, type)}
+    end)
+  end
+
+  def verify(_type, _artifact), do: {:error, :invalid_artifact}
+
+  @doc "Check availability by hashing bounded immutable bytes; publication already validates their format."
+  def check_artifact(%{path: path, digest: digest, size: size}) do
+    safely(fn ->
+      artifact_stat(path, size)
+
+      with_file(path, [:read, :binary, :raw], fn input ->
+        actual = hash_file(input, :crypto.hash_init(:sha256))
+        if actual != digest, do: fail(:artifact_digest_mismatch)
+      end)
+
+      :ok
+    end)
+  end
+
+  def check_artifact(_artifact), do: {:error, :invalid_artifact}
+
+  defp artifact_contents(path, size) do
+    artifact_stat(path, size)
+    with_file(path, [:read, :binary, :raw], fn input -> read_artifact(input, [], 0, size) end)
+  end
+
+  defp artifact_stat(path, size)
+       when is_integer(size) and size > 0 and size <= @decompressed_limit do
+    case File.lstat(path) do
+      {:ok, %{type: :regular, size: ^size, mode: mode}} when :erlang.band(mode, 0o222) == 0 ->
+        :ok
+
+      {:error, reason} ->
+        fail({:file_error, reason})
+
+      _other ->
+        fail(:invalid_artifact_file)
+    end
+  end
+
+  defp artifact_stat(_path, _size), do: fail(:invalid_artifact_size)
+
+  defp read_artifact(input, chunks, total, expected) do
+    case :file.read(input, @chunk_size) do
+      {:ok, bytes} when total + byte_size(bytes) <= expected ->
+        read_artifact(input, [bytes | chunks], total + byte_size(bytes), expected)
+
+      :eof when total == expected ->
+        chunks |> Enum.reverse() |> IO.iodata_to_binary()
+
+      {:error, reason} ->
+        fail({:file_error, reason})
+
+      _other ->
+        fail(:invalid_artifact_size)
+    end
+  end
+
   def fetch(type, directory, opts \\ []) do
     with {:ok, config} <- configuration(type, directory, opts) do
       caller = self()
@@ -346,7 +411,10 @@ defmodule YellowDog.Management.GeoIPDownload do
 
   defp validate_database(path, type) do
     contents = unwrap(File.read(path))
+    validate_contents(contents, type)
+  end
 
+  defp validate_contents(contents, type) do
     parsed =
       try do
         MMDB2Decoder.parse_database(contents)
@@ -416,11 +484,19 @@ defmodule YellowDog.Management.GeoIPDownload do
     end
   end
 
-  defp hash_file(input, hash) do
+  defp hash_file(input, hash, total \\ 0) do
     case :file.read(input, @chunk_size) do
-      {:ok, bytes} -> hash_file(input, :crypto.hash_update(hash, bytes))
-      :eof -> Base.encode16(:crypto.hash_final(hash), case: :lower)
-      {:error, reason} -> fail({:file_error, reason})
+      {:ok, bytes} when total + byte_size(bytes) <= @decompressed_limit ->
+        hash_file(input, :crypto.hash_update(hash, bytes), total + byte_size(bytes))
+
+      {:ok, _bytes} ->
+        fail(:invalid_artifact_size)
+
+      :eof ->
+        Base.encode16(:crypto.hash_final(hash), case: :lower)
+
+      {:error, reason} ->
+        fail({:file_error, reason})
     end
   end
 

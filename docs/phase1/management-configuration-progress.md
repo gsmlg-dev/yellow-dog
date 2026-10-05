@@ -79,11 +79,11 @@ baseline, not the new selectors, assignments or artifact catalog.
 | P0 build prerequisites | Complete; forced compile and 94 scoped baseline tests pass |
 | P1 Worker scope and Zone assignments | Complete; 78 scoped tests and real browser/restart acceptance |
 | P2 editor reliability and persistence | Complete; 85 focused checks plus real browser failure/retry acceptance |
-| P3 artifact catalog | Pending P0 |
+| P3 artifact catalog | Complete; fixture publication/UI checks and full release restart acceptance |
 | P4 export boundary and integrated acceptance | Pending functional checkpoints |
 
-P3 backend implementation is in progress separately; its scoped tests do not
-replace pending catalog UI and full release restart acceptance.
+P1/P2/P3 now have actual database, browser and restart acceptance; the source-only
+retention evidence remains a separate prerequisite check.
 
 ## P1 accepted configuration workflows
 
@@ -147,3 +147,44 @@ The broader check stopped; Events source/tests were not changed or investigated.
 This unrelated-page failure is recorded, not counted as a pass or established as
 pre-existing. The current repository scope explicitly excludes unrelated suite
 failures as completion gates. Log: `/tmp/yellow-dog-worker-submission-green.log`.
+
+## P3 accepted artifact catalog
+
+Management publishes bounded, validated read-only MMDB files before committing
+artifact metadata, independent Country/City selections and task receipts. No
+publication activates GeoIP, and no GeoIP query process is supervised. Kind/digest
+catalog lookup verifies actual durable bytes; missing/corrupt files are unavailable.
+The catalog UI separates queued/job state from artifact availability, preserves
+prior selections after failed sync, exposes metadata/history, and removes local
+reload/unload controls. The diagnostic route explicitly reports unavailable
+Worker-backed lookup. A failed queue attempt clears earlier queue feedback.
+
+Migration: `apps/yellow_dog_management/priv/repo/migrations/20261006010000_add_geoip_artifact_catalog.exs`
+adds constrained kind/format metadata and a catalog index. Historical rows are
+not backfilled or modified through immutable-table trigger bypasses. No Worker,
+ConfigSpec, network protocol, enrollment or delivery implementation changed.
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test test/task_artifacts_test.exs test/geo_ip_download_test.exs test/ip_database_live_test.exs test/geoip_live_test.exs'
+devenv shell -- scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py _build/prod/rel/yellow_dog_management/bin/yellow_dog_management
+```
+
+The focused catalog checks passed: 41 tests, 0 failures. Coverage includes real
+Country/City jobs, duplicate content, old retries/receipts, wrong-kind/corrupt/large
+files, filesystem failures, real database publication rollback, missing files,
+and catalog UI behavior. The final integrated suite also passes 129 tests after
+three test-isolation assertions were corrected to inspect new audits instead of
+assuming independent-connection tests leave no immutable audit history. Audit
+history remains intact; production immutability was not weakened.
+
+The full real release/Chromium flow passed create/sync/verify/editor-failures/advance/
+failed-sync. City and Country metadata and digest-addressed file bytes survived
+SIGKILL and a new Management process. A later local-HTTP failure retained both
+available selections. Read-only probes of the actual supervisor/application
+inventory confirmed no GeoIP query process or execution Worker/legacy runtime.
+The only Management listener was its ephemeral loopback HTTP port. All owned
+release/browser/HTTP/PostgreSQL processes were stopped. Evidence:
+`/tmp/yellow-dog-p3-final.log`, `/tmp/yellow-dog-final-tests.log`,
+`/tmp/yellow-dog-final-browser.log`, and
+`/tmp/yellow-dog-management-configuration-_eow0b5a` (runtime snapshots, durable
+file hashes, browser failure counters and screenshots).

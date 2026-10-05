@@ -1,6 +1,6 @@
 defmodule YellowDog.Management.Application do
   use Application
-  alias YellowDog.Management.{GeoIP, LogStream, MacDatabase, Repo, Settings}
+  alias YellowDog.Management.{LogStream, MacDatabase, Repo, Settings}
 
   @impl true
   def start(_type, _args) do
@@ -8,10 +8,6 @@ defmodule YellowDog.Management.Application do
       Repo,
       {Phoenix.PubSub, name: YellowDog.ManagementUI.PubSub},
       LogStream,
-      {GeoIP,
-       paths: Settings.geoip_paths(),
-       restore_selection:
-         Application.get_env(:yellow_dog_management, :restore_geoip_selection, true)},
       {MacDatabase, path: Settings.mac_database_path()},
       {Oban, Application.fetch_env!(:yellow_dog_management, Oban)},
       {YellowDog.Management.TaskScheduler, []},
