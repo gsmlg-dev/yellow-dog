@@ -8,19 +8,31 @@ When working on files within a specific sub-app (`apps/<app_name>/`), read that 
 
 ## Project Overview
 
-Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0.
+Yellow Dog is an Elixir/Erlang umbrella. Phase 1 supports independent Management
+(PostgreSQL/UI/API) and Worker (local TOML/authoritative DNS) products on Elixir 1.18
+/ OTP 27-28. Legacy DNS/DHCP/mDNS/Netboot and Phoenix LiveView code remains reusable
+source outside the supported root build.
 
-### Three Top-Level Runtimes
+### Two Independent Business Runtimes
 
-The umbrella builds three primary YellowDog runtime releases (root `mix.exs`):
-
-- **`yellow_dog_management_core`** — management state and console-facing management APIs
-- **`yellow_dog_server`** — profile-driven server runtime: DNS, mDNS, DHCPv4/v6, netboot, identity, fingerprinting, server agent, console
-- **`yellow_dog_netman`** — profile-driven network manager runtime (netman, dhcp_client, resolved, netman agent). Does NOT include Store, Concord, or the core server orchestrator
-
-The combined **`yellow_dog`** release remains for development compatibility.
+The supported root umbrella releases are `yellow_dog_management` (Ecto/PostgreSQL,
+UI/API, logical targets and TOML exports) and `yellow_dog_worker` (local TOML-only
+service execution and authoritative DNS). Both use one pure `yellow_dog_config_spec`.
+The root build selects these products plus `abyss` and `ex_dns`; legacy apps remain
+reusable source outside the supported product build. Mixed releases/startup aliases
+are retired. Phase 1 excludes live Agents, delivery and connected reconciliation.
 
 ### Applications
+
+| App | Location | Purpose |
+|-----|----------|---------|
+| **YellowDog.Management** | `apps/yellow_dog_management/` | PostgreSQL domain, UI/API without built-in login on port 4270, immutable target export; no service execution |
+| **YellowDog.Worker** | `apps/yellow_dog_worker/` | Local TOML bootstrap, durable snapshots and authoritative DNS; no PostgreSQL/UI/Agent |
+| **YellowDog.ConfigSpec** | `apps/yellow_dog_config_spec/` | Shared pure WorkerPlan validation, normalization, digests, TOML codec and fixtures |
+| **Abyss** | `apps/abyss/` | Worker UDP/server socket infrastructure |
+| **ExDns** | `apps/ex_dns/` | Worker DNS protocol library (messages, zones, records) |
+
+The following applications are legacy source, excluded from the supported root build:
 
 | App | Location | Purpose |
 |-----|----------|---------|
@@ -43,13 +55,20 @@ The combined **`yellow_dog`** release remains for development compatibility.
 | **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DuskMoon UI, DuskmoonBundler) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
-| **Abyss** | `apps/abyss/` | UDP/server socket library (used by all protocol apps and DHCP client native sockets) |
-| **ExDns** | `apps/ex_dns/` | DNS protocol library (messages, zones, records) |
 | **ExDhcp** | `apps/ex_dhcp/` | DHCP protocol library (DHCPv4/v6 messages) |
 
 Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own namespaces: `Abyss.*`, `DNS.*`, `DHCP.*`, `GeoIpDb.*`.
 
 ### Key Architecture Decisions
+
+- The project is in design stage with no released/deployed versions to support. Preserve and redevelop business capabilities, not legacy routes, payloads, storage formats, or version-compatibility layers. Use scoped architecture/business/data-integrity/runtime checks; obsolete compatibility tests and unrelated whole-suite failures do not block design work.
+- Management owns PostgreSQL business data and UI/API without built-in authentication; it does not execute Worker services.
+- Service configuration is authored in Management; network services execute only on Worker. Netboot and Identity belong exclusively to Worker, including provisioning and identity/trust runtime authority. Management configuration records do not constitute those runtime services.
+- The architecture-only slice is verified. The current task directly migrates original UI source into `lib/yellow_dog/management_ui/redesign/` for later redesign, without compilation/runtime guarantees. Existing native Management pages remain intact; backends, service repair, full functional redevelopment and shared-contract expansion remain separate work.
+- Worker boots and recovers from local TOML/state only; it has no Management/PostgreSQL/UI/Agent dependency.
+- Both use one pure ConfigSpec under `apps/yellow_dog_config_spec/`. Historical handoff patches and copied source assemblies are not prerequisites.
+
+### Legacy Architecture Reference (Outside Phase 1 Build)
 
 - Runtime `Application` modules exist for `yellow_dog_management_core`, `yellow_dog`, `yellow_dog_netman`, `yellow_dog_console`, `yellow_dog_server_agent`, `yellow_dog_netman_agent`, and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Most protocol apps remain library applications started by `YellowDog.Application`
 - Server services are conditionally started by `YellowDog.Application` through `YellowDog.Server.ProfileResolver`, which supports `[yellow_dog_server]` profiles and falls back to legacy `[core]` flags
@@ -62,33 +81,54 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 ## Constitution (Architectural Constraints)
 
 - **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`, or `Abyss.DhcpSocket.Native`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp`; production DHCP client sockets use the Abyss-owned Rust NIF via `DhcpSocket.Native`.
-- **No server app calls `Concord.*` directly** — all access goes through `YellowDog.Store.*` facade modules
+- **No legacy server app calls `Concord.*` directly** — all access goes through `YellowDog.Store.*` facade modules; Phase 1 Management and Worker do not use this Store.
 
 ## Common Commands
 
+Run from the repository root inside `devenv shell`. Use only the product-specific
+startup aliases, not whole-umbrella startup.
+
 ```bash
-# Run all tests (from umbrella root)
-mix test
+# Independent builds and development startup (choose one runtime)
+mix deps.get
+MIX_ENV=prod mix release yellow_dog_management
+MIX_ENV=prod mix release yellow_dog_worker
+mix management.run
+mix worker.run
 
-# Console tests specifically (MUST cd into app dir)
-cd apps/yellow_dog_console && mix test
+# Dedicated architecture gate, separate from service/UI acceptance
+scripts/e2e/architecture_smoke.sh
 
-# Single test file
-mix test apps/yellow_dog_dhcpv4/test/yellow_dog/dhcpv4/handler_test.exs
-
-# E2E tests (auto-selects ports, CI-friendly; suites live in e2e_test/)
-mix test.e2e                # All E2E
-mix test.e2e.dns            # Per-service: .dns .mdns .dhcpv4 .dhcpv6 .netboot .zone.auth .zone.forward
+# Scoped service/contract checks
+mix cmd --app yellow_dog_config_spec --app yellow_dog_worker mix test
+scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test
+scripts/e2e/phase1_postgres.sh scripts/e2e/release_smoke.sh yellow_dog_management
+scripts/e2e/release_smoke.sh yellow_dog_worker
+scripts/e2e/file_gate.sh
 
 # Build verification (CI pipeline)
 mix compile --warnings-as-errors
 mix format --check-formatted
 mix credo --strict
 
-# Lint + Dialyzer (available per-app via `mix lint`, CI disables Dialyzer due to memory)
-mix lint                    # from any app dir: runs credo --strict + dialyzer
+```
 
-# Start Phoenix console (dev)
+The dedicated architecture command can also be run directly as
+`devenv shell -- scripts/e2e/architecture_smoke.sh`. It checks the production build,
+two release names, root apps, isolated runtime configuration, full artifact
+dependencies and pure/shared ConfigSpec byte equality without starting services.
+It also validates actual product callbacks/startup modes and module ownership,
+with disposable negative-artifact checks for legacy runtime and boundary leaks.
+Known runtime/UI bugs and external-resource source-format work are deferred while
+finishing the architecture split. Do not add test skips or weaken acceptance tests.
+
+### Historical Console Commands
+
+These commands describe legacy source only, not the supported Phase 1 build or
+Management UI startup. They are not required for either business release.
+
+```bash
+# Historical console source commands (outside the supported Phase 1 root build)
 cd apps/yellow_dog_console && mix phx.server    # http://localhost:4270
 
 # Console setup (first time or after deps change)
@@ -112,6 +152,17 @@ direnv allow                # or: devenv shell
 
 ### Dependency Graph
 
+```text
+yellow_dog_management → yellow_dog_config_spec + Ecto/PostgreSQL + Bandit/Plug
+yellow_dog_worker     → yellow_dog_config_spec + abyss + ex_dns
+yellow_dog_config_spec → jason + toml (pure contract; no business runtime)
+```
+
+There is no runtime dependency between the two products. Operators transfer a
+confirmed Management export as a local Worker TOML file.
+
+### Legacy Dependency Graph (Outside Phase 1 Build)
+
 ```
 YellowDog (core: orchestration) → yellow_dog_config + yellow_dog_store + abyss
 ├── YellowDog.Dns         → ex_dns + abyss + store + geo_ip_db + telemetry
@@ -127,7 +178,7 @@ YellowDog (core: orchestration) → yellow_dog_config + yellow_dog_store + abyss
 └── YellowDogConsole      → phoenix + all service apps + store + geo_ip_db
 ```
 
-### Console Page Structure
+### Legacy Console Page Structure
 
 LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 
@@ -141,7 +192,7 @@ LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 | Tools | GeoIP, Whois, MAC Lookup | Async `Task.async` + `handle_info` for network calls |
 | System | Settings, Logs, Diagnostics, Process Map, Backups | TOML config persistence, process tree SVG |
 
-### Console Component Architecture
+### Legacy Console Component Architecture
 
 - Layout: `Layouts.app` wraps all pages (`layouts.ex`), sidebar defined there
 - Components: `CoreComponents` auto-imported (stat, badge, card, modal, table, etc.)
@@ -175,14 +226,14 @@ LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 - IPv4/IPv6 integer conversion: use shared `Ipv4Util`/`Ipv6Util` modules (not private defp copies)
 - DUID formatting: `DuidFormat.format!/2` returns "UNKNOWN" on failure (vs `format/2` → nil)
 
-### Storage Patterns
+### Legacy Storage Patterns
 
 - **Store (`YellowDog.Store.*`)**: unified backend for server-side apps — Concord (Raft KV, source of truth) with write-through ETS read cache. Domain facades: `Lease`, `Zone`, `Device`, `Rpz`, `Host`, `Cache`, `DynDns`, `Config`. GenStage `EventBridge` for cross-domain events
 - **DNS zones**: managed via `YellowDog.Store.Zone`; `YellowDog.Dns.ZoneStore` is deprecated (kept for import/export compatibility)
 - **DHCP leases (DHCPv4/v6)**: still direct Mnesia (`disc_copies`) in `LeaseStorage` — Store.Mnesia migration is planned but not done; tables have secondary indices by IP, state, and pool
 - **DHCP client leases**: TOML file persistence via `LeaseStore` (netman product, no Store dependency)
 
-### TOML Configuration Structure
+### Legacy TOML Configuration Structure
 
 Default config ships at `priv/yellowdogdns_default_config.toml`:
 ```toml
@@ -209,6 +260,14 @@ Config loading/validation lives in `apps/yellow_dog_config/` (`YellowDog.Config`
 
 ## Test Environment
 
+Phase 1 Management tests use a disposable PostgreSQL database through
+`scripts/e2e/phase1_postgres.sh`. Worker tests use local temporary state and
+unprivileged listeners; both products use fixtures from
+`apps/yellow_dog_config_spec/`. See each product README for service checks.
+The architecture gate does not require a database or perform UI acceptance.
+
+### Legacy Test Environment
+
 - DNS service disabled (avoids privileged port 53); Resolved also disabled in test
 - E2E tests start with `port: 0` for auto-selection
 - mDNS uses unicast to loopback in CI (no multicast)
@@ -221,8 +280,9 @@ Config loading/validation lives in `apps/yellow_dog_config/` (`YellowDog.Config`
 
 GitHub Actions workflows:
 - **CI** (`ci.yml`): Matrix test on OTP 27+28, `--warnings-as-errors`, format check; Dialyzer **disabled** (GitHub runner OOM)
-- **Docker** (`docker.yml`): Multi-arch Nix builds → GitHub Container Registry
-- **Release** (`release.yml`): Automated releases
+- **Phase 1** (`phase1.yml`): Scoped product tests, isolated release checks and file-only interoperability
+- **Docker** (`docker.yml`): Two-product multi-arch Nix image builds; publication is opt-in on manual dispatch
+- **Release** (`release.yml`): Manually dispatched two-product tarball/image releases
 - Never disable any job in ci.yml
 
 ## Git Conventions

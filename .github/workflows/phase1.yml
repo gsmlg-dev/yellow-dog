@@ -1,0 +1,138 @@
+name: Phase 1
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture:
+    name: Independent product architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: mix deps.get
+      - name: Build products and inspect full release boundaries without starting services
+        run: scripts/e2e/architecture_smoke.sh | tee "${RUNNER_TEMP}/phase1-architecture.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase1-architecture-log
+          path: ${{ runner.temp }}/phase1-architecture.log
+          if-no-files-found: warn
+
+  unit:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [yellow_dog_config_spec, yellow_dog_worker]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+      - run: mix deps.get
+      - run: MIX_ENV='test' mix compile --warnings-as-errors
+      - run: mix cmd --app ${{ matrix.app }} mix test
+
+  management:
+    name: Management / PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+      - run: sudo apt-get update && sudo apt-get install -y postgresql
+      - run: pg_config --bindir >> "$GITHUB_PATH"
+      - run: mix deps.get
+      - run: MIX_ENV='test' mix compile --warnings-as-errors
+      - run: scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test
+
+  management-ui:
+    name: Management UI / Node
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: node --test apps/yellow_dog_management/test/management_ui_test.mjs
+
+  releases:
+    name: Release / ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [yellow_dog_management, yellow_dog_worker]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+      - run: sudo apt-get update && sudo apt-get install -y postgresql util-linux coreutils iproute2
+      - run: pg_config --bindir >> "$GITHUB_PATH"
+      - run: mix deps.get
+      - name: Build and smoke Management
+        if: matrix.app == 'yellow_dog_management'
+        run: scripts/e2e/phase1_postgres.sh scripts/e2e/release_smoke.sh yellow_dog_management
+      - name: Build and smoke Worker without PostgreSQL
+        if: matrix.app == 'yellow_dog_worker'
+        run: scripts/e2e/release_smoke.sh yellow_dog_worker
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase1-${{ matrix.app }}-logs
+          path: |
+            /tmp/yellow-dog-management-release-smoke.log
+            /tmp/yellow-dog-phase1-pg.*/init.log
+            /tmp/yellow-dog-phase1-pg.*/server.log
+            /tmp/yellow-dog-worker-smoke-*/boot-*.log
+          if-no-files-found: warn
+
+  file-gate:
+    name: Management export / offline Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y postgresql util-linux coreutils
+      - run: pg_config --bindir >> "$GITHUB_PATH"
+      - run: mix deps.get
+      - name: Build both products and consume authenticated exports offline
+        run: scripts/e2e/file_gate.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase1-file-gate-evidence
+          path: |
+            /tmp/yellow-dog-file-gate-*/
+            /tmp/yellow-dog-phase1-pg.*/init.log
+            /tmp/yellow-dog-phase1-pg.*/server.log
+          if-no-files-found: warn

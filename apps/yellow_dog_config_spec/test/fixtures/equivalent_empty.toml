@@ -1,0 +1,6 @@
+# Same semantic plan as empty_resources.toml with reordered fields and whitespace.
+worker_id="edge-empty"
+resources=[]
+services=[{ resources=[], config={port=1053,listen_address="127.0.0.1"}, desired_state="stopped",type="dns",id="dns-primary" }]
+revision=1
+schema_version=1

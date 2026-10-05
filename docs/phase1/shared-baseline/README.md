@@ -1,6 +1,10 @@
-# Phase 1 C0 ConfigSpec handoff
+# Phase 1 shared ConfigSpec (integrated C0)
 
-Baseline inspected: `61a447a3`. This directory holds the proposed shared application only. It does not modify the root umbrella or either runtime track. Apply `../config-spec.patch` from the repository root with `git apply docs/phase1/config-spec.patch`, then have the shared-file owner wire the application into the root build and lockfile. Management and Worker must both depend on this one library.
+Historical baseline inspected: `61a447a3`. This directory and `../config-spec.patch`
+retain the original handoff for provenance. The integrated application and fixtures
+now live at `apps/yellow_dog_config_spec/` and are used by both products in the actual
+root build. Do not apply the historical patch or copy this source into a validation
+assembly. The contract below documents that single shared implementation.
 
 ## Contract
 
@@ -66,15 +70,25 @@ The `toml` parser is pinned to **0.7.0**. The supported TOML 1.0 subset is basic
 
 ## Validation
 
-The proposed application uses normal umbrella paths for build output, dependencies, and the root lockfile. Validate the patch in a disposable assembly from the repository root, using the repository's pinned `devenv` and dependency checkout:
+The integrated application uses normal umbrella build/dependency paths and the
+root lockfile. Validate the current implementation directly from the repository
+root using the pinned `devenv`; do not apply the historical handoff patch:
 
 ```sh
-C0_DIR="$(mktemp -d)"
-git -C "$C0_DIR" init -q
-git -C "$C0_DIR" apply "$PWD/docs/phase1/config-spec.patch"
-cp mix.lock "$C0_DIR/mix.lock"
-ln -s "$PWD/deps" "$C0_DIR/deps"
-devenv shell -- sh -c 'cd "$1/apps/yellow_dog_config_spec" && mix test && mix format --check-formatted && mix compile --warnings-as-errors' sh "$C0_DIR"
+devenv shell -- mix deps.get
+devenv shell -- mix cmd --app yellow_dog_config_spec mix test
+devenv shell -- mix cmd --app yellow_dog_config_spec mix compile --warnings-as-errors
+devenv shell -- sh -c 'cd apps/yellow_dog_config_spec && mix format --check-formatted'
 ```
 
-The shared-file owner should add the app to the umbrella and wire each runtime app that uses it, add the release/dependency wiring appropriate to the two final releases, and update the root lockfile only if dependency resolution requires it. The root currently already locks `toml` 0.7.0 and `jason`.
+Both business apps already declare this one library as an umbrella dependency.
+The root defines only `yellow_dog_management` and `yellow_dog_worker` releases and
+locks `toml` 0.7.0 and `jason`. Check the build/release boundary separately:
+
+```sh
+devenv shell -- scripts/e2e/architecture_smoke.sh
+```
+
+This production gate checks app/release selection, isolated runtime config, full
+artifact dependencies, and pure/shared ConfigSpec byte equality. It does not run
+service/UI acceptance. Historical reports and patches remain provenance only.

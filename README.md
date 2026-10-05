@@ -2,204 +2,254 @@
 
 ![Yellow Dog](./priv/yellow_dog.png)
 
-Yellow Dog is a distributed DNS, DHCP, mDNS, and network-management suite written in Elixir/Erlang. It is an Elixir umbrella project with a Phoenix LiveView console, protocol libraries, a managed server runtime, and a separate Linux network-manager runtime.
+Phase 1 has exactly two independent business releases:
 
-The umbrella currently builds three production releases:
+- `yellow_dog_management`: PostgreSQL-backed DNS data UI/API, logical Workers,
+  immutable resource versions, complete target preview/confirmation, and TOML export.
+- `yellow_dog_worker`: local TOML-only desired-state execution, durable committed
+  snapshots, explicit reload, and authoritative DNS over UDP/TCP.
 
-- `yellow_dog_management_core` — management records, profiles, events, and the management console.
-- `yellow_dog_server` — DNS, mDNS, DHCPv4/v6, netboot, identity, fingerprinting, tasks, and the server agent.
-- `yellow_dog_netman` — DHCP client, DNS stub resolution, Linux network reconciliation, and the Netman agent.
+Service configuration belongs to Management; network services execute on Worker.
+Netboot and Identity are exclusively Worker capabilities, not Management boot
+servers or a central identity/trust authority. Their implementation is deferred.
+The architecture-only slice is verified. The current task transfers original UI
+source directly into Management's compiled `ManagementUI.Redesign` tree for later
+redesign, with compilation/runtime failure accepted. Source coverage and provenance
+are in `docs/phase1/ui-source-migration.md`; backend redevelopment and Worker
+runtime failures remain deferred and are not claimed fixed.
 
-The combined `yellow_dog` release remains available for development compatibility; production workflows build and validate the three runtimes above.
+Management can create data without any Worker records. A logical Worker is not a
+connected runtime: its actual state remains unknown. Operators explicitly export
+and transfer a complete confirmed target to the appropriate local Worker.
+There is no enrollment, heartbeat, remote delivery, or connected reconciliation in
+Phase 1. Legacy business-data migration and mixed-runtime compatibility are excluded.
 
-## Features
+## Build From This Checkout
 
-- Authoritative and forwarding DNS with views, zones, ACLs, and TCP support
-- mDNS service registration and discovery
-- DHCPv4 and DHCPv6 servers with persistent lease management
-- TFTP/iPXE network boot support
-- Device identity and passive DHCP fingerprinting
-- Concord-backed server state with a write-through ETS read cache
-- Profile-driven management and Phoenix LiveView operations console
-- A Linux network-manager runtime with DHCP client and netlink integration
+Run Mix commands inside the repository's Nix devenv:
 
-## Quick start
-
-The development environment uses devenv. Activate it before running Mix commands:
-
-```shell
-direnv allow
-# or: devenv shell
-
+```sh
+devenv shell
 mix deps.get
-mix compile
+mix compile --warnings-as-errors
+MIX_ENV=prod mix release yellow_dog_management
+MIX_ENV=prod mix release yellow_dog_worker
 ```
 
-Run the combined development runtime:
+The existing umbrella selects the two products plus `yellow_dog_config_spec`,
+`abyss`, and `ex_dns`. Both products use the same ConfigSpec and fixtures under
+`apps/yellow_dog_config_spec/`. No source assembly, pending documentation patch,
+Node/console asset build, or legacy service startup is needed.
 
-```shell
-mix run --no-halt
+Legacy applications remain reusable source, not supported business releases.
+`yellow_dog_management_core`, `yellow_dog_server`, `yellow_dog_netman`, the combined
+`yellow_dog` release, and their console/server/Netman startup aliases are retired.
+Historical Track A/B reports describe pre-integration runs; they are not current
+acceptance evidence.
+
+## Management
+
+Use a dedicated PostgreSQL database. Database credentials are read at runtime,
+not during compilation. Normal Ecto migrations are explicit:
+
+```sh
+export YELLOW_DOG_MANAGEMENT_DATABASE_URL=postgres://postgres@127.0.0.1:5432/yellow_dog_management
+export YELLOW_DOG_MANAGEMENT_PORT=4270
+_build/prod/rel/yellow_dog_management/bin/yellow_dog_management eval 'YellowDog.Management.Release.migrate()'
+_build/prod/rel/yellow_dog_management/bin/yellow_dog_management start
 ```
 
-Run an individual runtime through the Mix aliases:
+Open `http://127.0.0.1:4270` directly; there is no login or UI/API authentication.
+The default listener is loopback (`127.0.0.1`) on port `4270`. Anyone who can reach
+it can read, modify, and export business data. Use an external authentication/TLS
+reverse proxy for remote access. All-interface development binding is explicit
+and must be restricted to a trusted network or protected by that proxy.
+See `apps/yellow_dog_management/README.md` for
+the API, concurrency controls, immutable targets, and supported DNS data.
 
-```shell
-mix server.run
-mix netman.run
-mix console.run
+For development, devenv supplies a project-specific PostgreSQL Unix socket and
+database environment variables; it does not bind a TCP port:
+
+```sh
+devenv up -d postgres
+devenv shell -- mix ecto.setup
 ```
 
-The console can also be started directly:
+Then run `devenv shell -- mix management.run` to start only Management and its
+dependencies. No operator token is required. Database data persists under
+`.devenv/state/postgres/`. See the Management README for connection and stop commands.
 
-```shell
-cd apps/yellow_dog_console
-mix phx.server
+### Management Overview and Events
+
+The overview displays real logical Worker/Netman/Zone counts, all 13 read-only
+Server/Netman presets and the latest five durable PostgreSQL audit events.
+Refresh is read-only. `/management/events` groups desired Worker/Netman events
+and exposes committed/rejected transaction outcomes and JSON details for the
+latest 100 retained audits. These are not remote execution, Worker application
+or task-completion claims; nonpersisted requests are not invented into history.
+
+Run only this feature's real PostgreSQL/Chromium/restart acceptance with:
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_overview.sh
 ```
 
-Open <http://localhost:4270>. Production console startup requires `PHX_SERVER=true`, `SECRET_KEY_BASE`, and the usual Phoenix host/port settings.
+### Management Backups
 
-### Default ports
+`/system/backups` provides optional labels (at most 128 UTF-8 bytes), catalog
+metadata, durable Oban creation/deletion jobs, asynchronous verification, and
+downloads at `/api/backups/:id/download`. Pending/deleting states refresh
+automatically; queued work is not successful completion. Deletion requires
+confirmation, can be canceled, and removes only the selected backup package,
+not live business data or selected GeoIP artifacts.
 
-The defaults below include privileged ports. Use `--config` or a service-specific TOML setting when running without the required operating-system privileges.
+Each private current-format package contains a PostgreSQL custom-format dump,
+a JSON manifest with per-table counts and digests, and the immutable GeoIP
+artifact files referenced by the captured catalog. Ordinary concurrent writers
+may continue: manifest counts, artifact references and `pg_dump --snapshot`
+use the same exported PostgreSQL snapshot. Concurrent schema migration/DDL and
+schema/software-version conversion are outside this backup scope. Worker local
+state, live Logger/ETS/socket/process state, deployment credentials, and the bytes
+of earlier backup archives are excluded.
 
-| Service | Port | Transport |
-| --- | ---: | --- |
-| DNS | 53 | UDP and optional TCP |
-| mDNS | 5353 | UDP multicast/unicast |
-| DHCPv4 | 67 | UDP |
-| DHCPv6 | 547 | UDP |
-| TFTP | 69 | UDP |
-| Web console | 4270 | HTTP |
+The snapshot may include this backup's own pending catalog row and in-progress
+job state; it precedes their later ready/completed receipts. Verification reports
+`byte_integrity`, not full recoverability or a successful restore.
+`/system/backups/restore` supports selection, byte verification and acknowledgment
+of destructive downtime requirements, but **restore execution remains
+unavailable**. There is no executable restore CLI or live-database restore action.
 
-## Architecture
+The parent reports the final 33 scoped tests, owned-file formatting and the
+current native/release/Chromium E2E passing, including isolated staging PostgreSQL
+restore and identical-archive adoption on retry after publication but before the
+ready catalog commit. Destructive live/offline restore execution was not
+exercised and remains unimplemented. See the backup section of
+`docs/phase1/ui-migration-matrix.md` for exact evidence, development deployment
+observations and remaining destructive-recovery gates.
 
-The repository contains 25 umbrella applications grouped by responsibility:
+## Worker
 
-| Group | Applications |
-| --- | --- |
-| Management | `yellow_dog_management_core`, `yellow_dog_server_agent`, `yellow_dog_netman_agent`, `yellow_dog_sync`, `yellow_dog_tasks` |
-| Core and state | `yellow_dog`, `yellow_dog_config`, `yellow_dog_store`, `yellow_dog_telemetry` |
-| Protocol services | `yellow_dog_dns`, `yellow_dog_dns_provider`, `yellow_dog_dhcpv4`, `yellow_dog_dhcpv6`, `yellow_dog_mdns`, `yellow_dog_netboot` |
-| Host and client services | `yellow_dog_dhcp_client`, `yellow_dog_netman`, `yellow_dog_resolved`, `yellow_dog_identity`, `yellow_dog_fingerprint` |
-| Console | `yellow_dog_console` |
-| Libraries | `abyss`, `ex_dns`, `ex_dhcp`, `geo_ip_db` |
-
-Protocol servers follow the `Server` → `Handler` → `Supervisor` pattern and use the Abyss socket abstraction. The server release owns service orchestration and Store access. The Netman release is intentionally independent of `yellow_dog_store`; its lease data is local TOML state.
-
-`yellow_dog_store` uses Concord as the source of truth and ETS as a write-through local read cache. DHCPv4/v6 lease allocation still uses Mnesia `disc_copies` tables, while DNS view/zone state is accessed through the Store facades. Server applications must not call `Concord.*` directly.
-
-The core API exposes configuration and service status for development and console integrations:
-
-```elixir
-YellowDog.get_all_config()
-YellowDog.get_all_status()
-YellowDog.get_service_status(:dns)
-YellowDog.list_services()
-```
-
-## Configuration
-
-Configuration is TOML-based. In development the default file is `priv/yellow_dog_default_config.toml`; release applications use the copy under the owning app's `priv/` directory. The file can be selected with the CLI or environment:
-
-```shell
-mix run --no-halt -- --config /etc/yellowdog/config.toml
-YELLOW_DOG_CONFIG=/etc/yellowdog/config.toml mix server.run
-YELLOW_DOG_DATA_DIR=/var/lib/yellowdog mix server.run
-```
-
-`--config` takes precedence over `YELLOW_DOG_CONFIG`, which takes precedence over the environment-specific default. `--data-dir` takes precedence over `YELLOW_DOG_DATA_DIR` and the TOML `data_dir` value. Scheduled jobs use the separate `--tasks-config` and `YELLOW_DOG_TASKS_CONFIG` settings.
-
-A minimal configuration looks like this:
+The Linux Worker requires `flock` from util-linux, GNU coreutils `sync` (including
+`sync -f`), and `/bin/sh`. The devenv includes these tools. A packaged runtime must
+put them on `PATH`; no database, Management URL, Agent, or credential is required.
 
 ```toml
-data_dir = "data"
-
-[core]
-dns = true
-mdns = false
-dhcpv4 = false
-dhcpv6 = false
-netboot = false
-
-[dns]
-listen = "0.0.0.0"
-port = 53
-tcp_enabled = true
-
-[dns.zones]
-"example.com" = { type = "authoritative", file = "priv/zones/example.com.zone" }
+worker_id = "edge-01"
+data_dir = "/var/lib/yellowdog-worker"
+source = "/etc/yellowdog-worker/target.toml"
 ```
 
-Runtime configuration also supports Concord clustering (`CONCORD_CLUSTERING`, `CONCORD_CLUSTER_NODES`, and `CONCORD_DATA_DIR`), management/server agent settings, and Phoenix console authentication (`CONSOLE_AUTH_ENABLED`, `CONSOLE_USERNAME`, and `CONSOLE_PASSWORD`). See `config/runtime.exs` for the complete precedence and environment-variable list.
+Save this machine-local bootstrap separately from the Management-exported target.
+The target's `worker_id` must match it. Start with:
 
-## Data and persistence
-
-All relative data paths resolve below the configured `data_dir` (default `data/`). Typical service directories are:
-
-```text
-data/
-├── dns/          # views, zones, and DNS service data
-├── mdns/         # registered service data
-├── dhcpv4/       # DHCPv4 lease and pool data
-├── dhcpv6/       # DHCPv6 lease and pool data
-├── fingerprint/  # device fingerprint data
-├── mnesia/       # Mnesia table files
-└── store/        # managed config/store state when enabled
+```sh
+YELLOW_DOG_WORKER_BOOTSTRAP=/etc/yellowdog-worker/bootstrap.toml \
+  _build/prod/rel/yellow_dog_worker/bin/yellow_dog_worker start
 ```
 
-Treat the data directory as runtime state. Back it up before changing configuration or upgrading a release.
+For development, `mix worker.run` starts only Worker and its dependencies. See
+`apps/yellow_dog_worker/README.md` for explicit lifecycle/reload commands, local
+snapshot recovery, file permissions, and SOA/NS/A configuration.
 
-## Development and validation
+## Architecture Validation
 
-```shell
-# Compile and run unit tests
-mix compile --warnings-as-errors
-mix test
+From the repository root, run the dedicated architecture-split gate:
 
-# Formatting and linting
-mix format --check-formatted
-mix credo --strict
-mix lint
-
-# E2E suites
-mix test.e2e
-mix test.e2e.dns
-mix test.e2e.dhcpv4
-mix test.e2e.management
+```sh
+devenv shell -- scripts/e2e/architecture_smoke.sh
 ```
 
-E2E tests choose non-privileged ports where possible. The Netman release requires Linux kernel networking support and a Rust toolchain for its native netlink helper. Release smoke checks are available for all three releases:
+It compiles the production root with warnings-as-errors, builds exactly the two
+business releases, and checks root app/release selection, isolated runtime config,
+full artifact dependencies, and the purity and byte equality of shared ConfigSpec.
+It does not start Management, PostgreSQL, or Worker services and is separate from
+full service/UI acceptance.
 
-```shell
-scripts/e2e/release_smoke.sh yellow_dog_management_core
-scripts/e2e/release_smoke.sh yellow_dog_server
-scripts/e2e/release_smoke.sh yellow_dog_netman
+## Scoped Service and Contract Validation
+
+Run the following commands from the repository root inside `devenv shell`:
+
+```sh
+mix cmd --app yellow_dog_config_spec --app yellow_dog_worker mix test
+scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test
+mix format --check-formatted mix.exs config/config.exs apps/yellow_dog_management/mix.exs apps/yellow_dog_worker/mix.exs
+(cd apps/yellow_dog_config_spec && mix format --check-formatted)
 ```
 
-The CI workflows in `.github/workflows/` run the test, E2E, multi-architecture Docker, and release checks. Do not disable a CI job to hide a failure.
+Run actual release smokes against disposable state, not an operator's database:
 
-## Web console assets
-
-The console uses Phoenix LiveView and DuskMoon components. DuskmoonBundler owns JavaScript and CSS compilation:
-
-```shell
-cd apps/yellow_dog_console
-mix setup
-mix assets.build
-mix assets.deploy
+```sh
+scripts/e2e/phase1_postgres.sh scripts/e2e/release_smoke.sh yellow_dog_management
+scripts/e2e/release_smoke.sh yellow_dog_worker
 ```
 
-## Docker and Nix
+The PostgreSQL helper starts an isolated cluster on a temporary loopback port,
+exports its fresh database URL only to the command, stops it on exit, and retains
+its data/logs under the printed temporary directory. Release tests inspect complete
+transitive application contents and actual process-owned listeners.
 
-Build the Nix package or Docker image from the repository root:
+Release smokes and fixture tests do not replace the final file-only interoperability
+gate: Management's actual export must boot/recover Worker after both
+Management and PostgreSQL stop. This is a separate service integration check, not
+the dedicated architecture gate. Known runtime/UI defects and external-resource
+source-format work are explicitly deferred while completing the architecture
+split; failures must not be hidden with new test skips. Current evidence and
+remaining work are tracked in `docs/phase1/integration-progress.md`.
 
-```shell
-nix build .#yellow_dog
-nix build .#docker
+Run the real file-only gate from the same checkout:
+
+```sh
+devenv shell -- scripts/e2e/file_gate.sh
 ```
 
-The GitHub Docker workflow publishes multi-architecture images to GitHub Container Registry. For local development, prefer the Mix runtimes above so that the selected profile and data directory are explicit.
+It builds both products without assembling source trees, creates and confirms
+targets through HTTP without authentication, and stops both Management and its disposable
+PostgreSQL cluster before booting Worker. Its selected exports and process logs
+are retained under `/tmp/yellow-dog-file-gate-*`. The gate compares actual UDP/TCP
+SOA/NS/A content to those exports and exercises local recovery, stopped intent,
+zone change/removal and equivalent no-write reloads. It does not replace the
+separate blocked-shutdown, TCP concurrency or negative-SOA-TTL regressions.
+
+## Linux Packages
+
+The pinned Nix flake exposes two independent packages and two images:
+
+```sh
+nix build .#yellow_dog_management
+nix build .#yellow_dog_worker
+nix build .#docker-management
+nix build .#docker-worker
+```
+
+`default` aliases Worker; it is not a third product. Both x86_64 and aarch64 Linux
+are supported. The Worker Nix wrapper supplies util-linux, GNU coreutils and Bash
+on `PATH`, including inside its Nix image. The images provide `/bin/sh`; neither
+contains a PostgreSQL server or baked database/operator credentials.
+
+Set `RELEASE_COOKIE` to a deployment-specific secret before running either Nix
+package, including `eval` for migrations. The immutable Nix store cannot generate
+`releases/COOKIE` at startup; `RELEASE_DISTRIBUTION=none` does not remove this
+bootstrap requirement. Do not bake the cookie into an image.
+
+The Debian Dockerfile selects one product using `MIX_RELEASE_NAME`. Build locally
+without publishing using the devenv:
+
+```sh
+devenv shell -- ./build_img.sh 1.2.0 yellow_dog_management --load
+devenv shell -- ./build_img.sh 1.2.0 yellow_dog_worker --load
+```
+
+Worker containers need a writable local state directory and a mounted bootstrap
+and target; Management containers need a dedicated external PostgreSQL database
+and network access restricted to trusted hosts or an external authentication/TLS
+proxy. Use the explicit release commands above for migrations.
+Release tarballs contain ERTS but need the host's compatible Linux shared libraries;
+Worker tarball hosts must also install util-linux/coreutils and provide `/bin/sh`.
+Only the two products have tarball/image release matrices. Image publication is
+explicitly opt-in on the manual image workflows; the existing release workflow
+publishes only when manually dispatched. No workflow is dispatched by these
+local validation commands.
 
 ## License
 
-Yellow Dog is open source software.
+See `LICENSE`.

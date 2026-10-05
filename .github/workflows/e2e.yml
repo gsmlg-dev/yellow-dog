@@ -2,210 +2,53 @@ name: E2E Tests
 
 on:
   push:
-    branches: [ '*' ]
+    branches: ['*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Optional Mix release version override (e.g. 1.2.3)'
+        description: Optional Mix release version override
         required: false
         type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.release_version || 'source' }}
-  cancel-in-progress: true
-
 jobs:
-  e2e:
-    name: E2E Tests (${{ matrix.service }})
-    if: github.event_name != 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        service: [dns, mdns, dhcpv4, dhcpv6]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: '1.18'
-          otp-version: '28'
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
-
-      - name: Install dependencies
-        run: mix deps.get
-
-      - name: Compile
-        run: mix compile
-
-      - name: Run E2E tests (${{ matrix.service }})
-        env:
-          MIX_ENV: test
-        run: mix test.e2e.${{ matrix.service }}
-        timeout-minutes: 5
-
-  e2e-all:
-    name: E2E Tests (All)
-    if: github.event_name != 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    needs: e2e
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: '1.18'
-          otp-version: '28'
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
-
-      - name: Install dependencies
-        run: mix deps.get
-
-      - name: Compile
-        run: mix compile
-
-      - name: Run all E2E tests
-        env:
-          MIX_ENV: test
-        run: mix test.e2e
-        timeout-minutes: 10
-
   release-e2e:
-    name: E2E Release (${{ matrix.release.label }})
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: E2E Release / ${{ matrix.release }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        release:
-          - label: management_core
-            name: yellow_dog_management_core
-          - label: server
-            name: yellow_dog_server
-          - label: netman
-            name: yellow_dog_netman
-            needs_rust: true
+        release: [yellow_dog_management, yellow_dog_worker]
     env:
-      MIX_ENV: prod
-      SECRET_KEY_BASE: release-smoke-secret-key-base-release-smoke-secret-key-base
       RELEASE_VERSION: ${{ inputs.release_version || '' }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
         with:
           elixir-version: '1.18'
           otp-version: '28'
-
-      - name: Install Rust toolchain
-        if: matrix.release.needs_rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux system dependencies
-        run: sudo apt-get update && sudo apt-get install -y inotify-tools
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y postgresql util-linux coreutils iproute2
+      - run: echo "$(pg_config --bindir)" >> "$GITHUB_PATH"
+      - run: mix deps.get
+      - name: Management release smoke
+        if: matrix.release == 'yellow_dog_management'
+        run: scripts/e2e/phase1_postgres.sh scripts/e2e/release_smoke.sh yellow_dog_management
+      - name: Worker release smoke
+        if: matrix.release == 'yellow_dog_worker'
+        run: scripts/e2e/release_smoke.sh yellow_dog_worker
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
+          name: e2e-${{ matrix.release }}-logs
           path: |
-            ~/.hex
-            ~/.cache/rebar3
-            deps
-            _build
-            apps/abyss/native/dhcp_socket/target
-            apps/yellow_dog_netman/native/netlink_helper/target
-          key: ${{ runner.os }}-release-e2e-${{ matrix.release.label }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-release-e2e-${{ matrix.release.label }}-
-            ${{ runner.os }}-release-e2e-
-
-      - name: Install dependencies
-        run: |
-          mix local.hex --force
-          mix local.rebar --force
-          mix deps.get --only prod
-
-      - name: Build release and run E2E smoke checks
-        run: scripts/e2e/release_smoke.sh ${{ matrix.release.name }}
-        timeout-minutes: 10
-
-  management-release-e2e:
-    name: E2E Release (coordinated management control plane)
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    env:
-      SECRET_KEY_BASE: management-release-e2e-secret-key-base-management-release-e2e-secret-key-base
-      RELEASE_VERSION: ${{ inputs.release_version || '' }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: '1.18'
-          otp-version: '28'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux system dependencies
-        run: sudo apt-get update && sudo apt-get install -y inotify-tools openssl curl python3
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.hex
-            ~/.cache/rebar3
-            deps
-            _build
-            apps/abyss/native/dhcp_socket/target
-            apps/yellow_dog_netman/native/netlink_helper/target
-          key: ${{ runner.os }}-management-release-e2e-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-management-release-e2e-
-            ${{ runner.os }}-release-e2e-
-
-      - name: Install dependencies
-        run: |
-          mix local.hex --force
-          mix local.rebar --force
-          mix deps.get
-
-      - name: Build and exercise all management releases
-        env:
-          MIX_ENV: test
-        run: mix test.e2e.management
-        timeout-minutes: 20
+            /tmp/yellow-dog-management-release-smoke.log
+            /tmp/yellow-dog-phase1-pg.*/init.log
+            /tmp/yellow-dog-phase1-pg.*/server.log
+            /tmp/yellow-dog-worker-smoke-*/boot-*.log
+          if-no-files-found: warn

@@ -29,7 +29,10 @@ jobs:
           otp-version: '28'
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y inotify-tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql util-linux coreutils
+
+      - name: Locate PostgreSQL tools
+        run: echo "$(pg_config --bindir)" >> "$GITHUB_PATH"
 
       - name: Cache dependencies
         uses: actions/cache@v5
@@ -47,11 +50,5 @@ jobs:
           mix local.rebar --force
           mix deps.get
 
-      - name: Build console assets
-        working-directory: apps/yellow_dog_console
-        run: |
-          mix assets.setup
-          mix assets.build
-
-      - name: Run tests
-        run: mix test --exclude privileged_port --exclude load --exclude performance --exclude network --exclude integration --exclude property
+      - name: Run Phase 1 product tests with fresh PostgreSQL
+        run: scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_config_spec --app yellow_dog_management --app yellow_dog_worker mix test

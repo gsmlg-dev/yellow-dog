@@ -2,9 +2,12 @@
 
 ## Project Overview & Agent Philosophy
 
-Yellow Dog is a distributed, umbrella-based network services suite written in Elixir/Erlang. It provides authoritative/forwarding DNS, mDNS, DHCPv4, DHCPv6, Netboot (TFTP/iPXE), device identity and fingerprinting, a management control plane, and a Phoenix LiveView console. The umbrella currently builds three production releases: `yellow_dog_management_core`, `yellow_dog_server`, and `yellow_dog_netman`. As a Pi agent (pi.dev) in this repository, you must behave as a high-autonomy, context-aware, safety-first systems programmer. Because network protocols (DNS, DHCP) require high precision and stability, your operations should prioritize structural integrity, clean boundary separation, and strict compliance with the project's architectural constitution.
+Yellow Dog is a distributed, umbrella-based network services suite written in Elixir/Erlang. It provides authoritative/forwarding DNS, mDNS, DHCPv4, DHCPv6, Netboot (TFTP/iPXE), device identity and fingerprinting, a management control plane, and a Phoenix LiveView console. The supported Phase 1 umbrella builds exactly two independent business releases: `yellow_dog_management` (PostgreSQL/UI/API) and `yellow_dog_worker` (local TOML-only execution). Legacy runtimes remain reusable source outside this build. As a Pi agent (pi.dev) in this repository, you must behave as a high-autonomy, context-aware, safety-first systems programmer. Because network protocols (DNS, DHCP) require high precision and stability, your operations should prioritize structural integrity, clean boundary separation, and strict compliance with the project's architectural constitution.
 
 ### Key Principles
+*   **Runtime Ownership**: Management owns service configuration in PostgreSQL/UI/API; network services execute only on Worker. Netboot and Identity are Worker-only capabilities, not Management provisioning or trust-authority services. Configuration saved in Management is not evidence of Worker execution.
+*   **Current Migration Scope**: The architecture-only slice is verified. The user now authorizes direct migration of original UI source into Management's compiled UI tree for later redesign, without compilation/runtime guarantees. Preserve current pages using a separate `ManagementUI.Redesign` namespace; do not implement backends, connect legacy services/Agents, or treat source migration as functional acceptance. Worker runtime repair remains deferred.
+*   **Design Stage, No Compatibility**: The project has no released or deployed versions to support. Redevelop and retain business capabilities, not old routes, payloads, storage formats, or version-compatibility layers. Validate current architecture, business behavior, data integrity, and real runtime operation; obsolete compatibility tests and unrelated full-suite failures are not completion gates.
 *   **Minimalism & Focus**: Write tight, idiomatic Elixir. Avoid adding unnecessary dependencies or building bloated configurations.
 *   **Safety & Constrained Protocols**: Respect UDP abstractions and Mnesia transaction rules. Network sockets and state modifications must follow explicit boundaries.
 *   **Extensibility**: Build decoupled library apps. Use Application environment settings, behaviours, and registry patterns to allow dynamic additions.
@@ -81,7 +84,10 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 
 | Category | Apps Path | Description / Key Modules |
 | :--- | :--- | :--- |
-| **Management** | `apps/yellow_dog_management_core`, `apps/yellow_dog_server_agent`, `apps/yellow_dog_netman_agent`, `apps/yellow_dog_sync`, `apps/yellow_dog_tasks` | Management records/events, runtime agents, synchronization, and scheduled jobs. |
+| **Management (Phase 1)** | `apps/yellow_dog_management` | Independent PostgreSQL configuration domain, DuskMoon UI/API without built-in login on port 4270, checked-in local CSS, logical Workers, immutable versions and TOML export; no Worker service execution. |
+| **Worker (Phase 1)** | `apps/yellow_dog_worker` | Owns network-service execution, including Netboot and Identity; current implementation has local TOML, durable snapshots and authoritative DNS, no Management/PG/Agent. Other service implementations are deferred. |
+| **Shared contract** | `apps/yellow_dog_config_spec` | One pure WorkerPlan codec, validator, digest and shared fixtures for both products. |
+| **Legacy Management** | `apps/yellow_dog_management_core`, `apps/yellow_dog_server_agent`, `apps/yellow_dog_netman_agent`, `apps/yellow_dog_sync`, `apps/yellow_dog_tasks` | Retained reusable source outside the supported Phase 1 build. |
 | **Core & Store** | `apps/yellow_dog`, `apps/yellow_dog_config`, `apps/yellow_dog_store`, `apps/yellow_dog_telemetry` | Service orchestration, TOML/config lifecycle, Concord + ETS storage facades, and telemetry. |
 | **Protocols** | `apps/yellow_dog_dns`, `_dns_provider`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | DNS providers, protocol servers, packet handlers, zone/lease management, and network boot. |
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity`, `_fingerprint` | DHCP client, Linux network management, DNS stub caching, host trust, and device identification. |
@@ -117,7 +123,7 @@ Follow the **Conventional Commits** specification:
     *   *App specific*: `mix test apps/yellow_dog_dns`
     *   *Single file*: `mix test apps/yellow_dog_dns/test/yellow_dog/dns/handler_test.exs`
     *   *E2E tests*: `mix test.e2e.dns`, `mix test.e2e.dhcpv4`, or `mix test.e2e.management`
-    *   *Release smoke checks*: `scripts/e2e/release_smoke.sh yellow_dog_server` (also `yellow_dog_management_core` and `yellow_dog_netman`)
+    *   *Release smoke checks*: `scripts/e2e/release_smoke.sh yellow_dog_worker`; run Management with `scripts/e2e/phase1_postgres.sh scripts/e2e/release_smoke.sh yellow_dog_management` against disposable PostgreSQL.
 *   **Linter Checks**: Run `mix lint` from the relevant application directory to execute Credo + Dialyzer. Run `mix format --check-formatted` to check code style.
 
 ---

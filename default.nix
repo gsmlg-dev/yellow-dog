@@ -1,77 +1,58 @@
 {
   lib,
   pkgs,
-  buildNpmPackage,
-  beamPackages,
-  nodejs,
+  beam28Packages,
   rustPlatform,
+  releaseName ? "yellow_dog_worker",
   ...
 }: let
-  mix-file = builtins.readFile ./mix.exs;
-  lines = builtins.split "\n" mix-file;
-  lines_s = builtins.filter builtins.isString lines;
-  versionLine = builtins.elemAt (builtins.filter (line: builtins.match "[[:space:]]+version:.*" line != null) lines_s) 0; # Get the first matching line
-  version_in_mix = builtins.elemAt (builtins.split "\"" versionLine) 2; # Extract version between quotes
-
-  pname = "yellow_dog";
-  version = version_in_mix;
+  supportedReleases = ["yellow_dog_management" "yellow_dog_worker"];
+  versionLines = lib.splitString "\n" (builtins.readFile ./mix.exs);
+  versionLine = builtins.head (builtins.filter (line: builtins.match "[[:space:]]+version:.*" line != null) versionLines);
+  version = builtins.elemAt (lib.splitString "\"" versionLine) 1;
   cargoRoot = "apps/abyss/native/dhcp_socket";
 
-  src = lib.fileset.toSource {
-    root = ./.;
-    fileset = ./.;
+  src = lib.cleanSourceWith {
+    src = ./.;
+    filter = path: type: let
+      relative = lib.removePrefix "${toString ./.}/" (toString path);
+      topLevel = builtins.head (lib.splitString "/" relative);
+    in
+      lib.cleanSourceFilter path type
+      && !(builtins.elem topLevel ["_build" "deps" "node_modules" ".trees" ".devenv" ".direnv" "data" "tmp" "nonode@nohost"])
+      && !(lib.hasPrefix ".env" topLevel)
+      && !(lib.hasInfix "/native/" relative && (lib.hasInfix "/target/" relative || lib.hasSuffix "/target" relative))
+      && relative != "apps/abyss/priv/native/dhcp_socket.so";
   };
 
-  mixFodDeps = beamPackages.fetchMixDeps {
-    pname = "${pname}-mix-deps";
+  mixFodDeps = beam28Packages.fetchMixDeps {
+    pname = "yellow-dog-phase1-mix-deps";
     inherit src version;
-    # nix will complain and tell you the right value to replace this with
-    hash = "sha256-ziyUBavDvp5bY6knOr6NfYX0cOGl3DP3IUpb/OGLxO8=";
-    mixEnv = "prod"; # default is "prod", when empty includes all dependencies, such as "dev", "test".
-    # if you have build time environment variables add them here
-    RELEASE_COOKIE = "Best_in_the_World!";
+    hash = "sha256-z7gfXCRlr30IZwvCTdFaqkx4HG7NwoAkyXXVbhjAJzI=";
+    mixEnv = "prod";
   };
 
   cargoDeps = rustPlatform.fetchCargoVendor {
     inherit src cargoRoot;
     hash = "sha256-VnGOU+mS57W5Z4Vbi0GmVVZiuPrmph14ocST+dQJSvk=";
   };
-
-  exTursoPrecompiledNif = pkgs.fetchurl {
-    url = "https://github.com/gsmlg-dev/ex_turso/releases/download/v0.2.1/libex_turso-v0.2.1-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz";
-    hash = "sha256-5e/4LanWZxc8WOO4Ah0KrklgL3+ZFL+erhfSj+6/wKQ=";
-  };
-
-  exTursoPrecompiledCache = pkgs.linkFarm "ex-turso-precompiled-cache" [
-    {
-      name = "libex_turso-v0.2.1-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz";
-      path = exTursoPrecompiledNif;
-    }
-  ];
 in
-  beamPackages.mixRelease {
-    inherit pname version src mixFodDeps cargoDeps cargoRoot;
-
-    mixReleaseName = "yellow_dog";
-
-    nativeBuildInputs = [
-      rustPlatform.cargoSetupHook
-      pkgs.cargo
-      pkgs.rustc
-    ];
-
-    # WORKAROUND(upstream): gsmlg-dev/ex_turso#6
-    RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH = exTursoPrecompiledCache;
-
-    preBuild = ''
-      mkdir -p deps/ex_turso/priv/native
-    '';
-
-    postBuild = ''
-    '';
-
-    meta = with lib; {
-      description = "YellowDog Server for GSMLG.dev";
-      mainProgram = "yellow_dog";
-    };
-  }
+  assert builtins.elem releaseName supportedReleases;
+    (beam28Packages.mixRelease {
+      pname = releaseName;
+      inherit version src mixFodDeps cargoDeps cargoRoot;
+      mixReleaseName = releaseName;
+      compileFlags = ["--warnings-as-errors"];
+      nativeBuildInputs = [rustPlatform.cargoSetupHook pkgs.cargo pkgs.rustc];
+      passthru = {inherit mixFodDeps;};
+      meta = {
+        description = "Independent YellowDog Phase 1 ${releaseName}";
+        mainProgram = releaseName;
+        platforms = lib.platforms.linux;
+      };
+    }).overrideAttrs (previous: {
+      postFixup = previous.postFixup + lib.optionalString (releaseName == "yellow_dog_worker") ''
+        wrapProgram "$out/bin/yellow_dog_worker" \
+          --prefix PATH : ${lib.makeBinPath [pkgs.util-linux pkgs.coreutils pkgs.bash]}
+      '';
+    })

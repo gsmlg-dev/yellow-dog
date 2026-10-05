@@ -6,73 +6,27 @@ defmodule YellowDog.Umbrella.MixProject do
       apps_path: "apps",
       version: "1.2.0",
       start_permanent: Mix.env() == :prod,
-      description: "YellowDog DNS/DHCP server and network manager",
+      description: "Independent YellowDog Management and TOML-driven Worker",
+      apps: [:yellow_dog_config_spec, :yellow_dog_management, :yellow_dog_worker, :abyss, :ex_dns],
       releases: [
-        yellow_dog_management_core: [
+        yellow_dog_management: [
           include_executables_for: [:unix],
-          applications: [
-            yellow_dog_management_core: :permanent,
-            yellow_dog_config: :permanent,
-            yellow_dog_telemetry: :permanent,
-            yellow_dog_console: :permanent
-          ]
+          rel_templates_path: "rel/phase1",
+          runtime_config_path: "apps/yellow_dog_management/config/runtime.exs",
+          applications: [yellow_dog_management: :permanent]
         ],
-        yellow_dog_server: [
+        yellow_dog_worker: [
           include_executables_for: [:unix],
-          applications: [
-            yellow_dog: :permanent,
-            yellow_dog_config: :permanent,
-            yellow_dog_telemetry: :permanent,
-            yellow_dog_store: :permanent,
-            yellow_dog_dns: :permanent,
-            yellow_dog_mdns: :permanent,
-            yellow_dog_dhcpv4: :permanent,
-            yellow_dog_dhcpv6: :permanent,
-            yellow_dog_netboot: :permanent,
-            yellow_dog_identity: :permanent,
-            yellow_dog_fingerprint: :permanent,
-            yellow_dog_tasks: :permanent,
-            yellow_dog_server_agent: :load
-          ]
-        ],
-        yellow_dog_netman: [
-          include_executables_for: [:unix],
-          applications: [
-            yellow_dog_config: :permanent,
-            yellow_dog_telemetry: :permanent,
-            yellow_dog_dhcp_client: :permanent,
-            yellow_dog_resolved: :permanent,
-            yellow_dog_netman_agent: :load,
-            yellow_dog_netman: :permanent
-          ]
-        ],
-        yellow_dog: [
-          include_executables_for: [:unix],
-          applications: [
-            yellow_dog: :permanent,
-            yellow_dog_telemetry: :permanent,
-            yellow_dog_dns: :permanent,
-            yellow_dog_mdns: :permanent,
-            yellow_dog_dhcpv4: :permanent,
-            yellow_dog_dhcpv6: :permanent,
-            yellow_dog_dhcp_client: :permanent,
-            yellow_dog_netman: :permanent,
-            yellow_dog_netboot: :permanent,
-            yellow_dog_identity: :permanent,
-            yellow_dog_fingerprint: :permanent,
-            yellow_dog_tasks: :permanent,
-            yellow_dog_management_core: :permanent,
-            yellow_dog_server_agent: :load,
-            yellow_dog_netman_agent: :load,
-            yellow_dog_console: :permanent
-          ]
+          rel_templates_path: "rel/phase1",
+          runtime_config_path: "apps/yellow_dog_worker/config/runtime.exs",
+          applications: [yellow_dog_worker: :permanent]
         ]
       ],
       dialyzer: dialyzer(),
       aliases: aliases(),
       docs: docs(),
       deps: deps()
-    ] ++ phoenix_listeners()
+    ]
   end
 
   # Dependencies listed here are available only for this
@@ -89,14 +43,6 @@ defmodule YellowDog.Umbrella.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
-  end
-
-  defp phoenix_listeners do
-    if Mix.env() in [:dev, :test] do
-      [listeners: [Phoenix.CodeReloader]]
-    else
-      []
-    end
   end
 
   defp dialyzer do
@@ -131,96 +77,9 @@ defmodule YellowDog.Umbrella.MixProject do
       lint: ["cmd mix lint"],
       credo: ["cmd mix credo --strict"],
       dialyzer: ["cmd mix dialyzer"],
-      "console.run": ["cmd --app yellow_dog_console mix phx.server"],
-      "server.run": ["start_server"],
-      "yellowdog.run": ["cmd --app yellow_dog_console mix phx.server"],
-      "netman.run": ["start_netman"],
-      # E2E test aliases - use function to run tests at umbrella root
-      "test.e2e": &run_e2e_tests/1,
-      "test.e2e.dns": &run_e2e_dns/1,
-      "test.e2e.mdns": &run_e2e_mdns/1,
-      "test.e2e.dhcpv4": &run_e2e_dhcpv4/1,
-      "test.e2e.dhcpv6": &run_e2e_dhcpv6/1,
-      "test.e2e.management": &run_e2e_management/1,
-      "test.e2e.netboot": &run_e2e_netboot/1,
-      "test.e2e.zone.auth": &run_e2e_zone_auth/1,
-      "test.e2e.zone.forward": &run_e2e_zone_forward/1,
-      "test.e2e.zone.stub": &run_e2e_zone_stub/1
+      "ecto.setup": ["do --app yellow_dog_management cmd mix ecto.setup"],
+      "management.run": ["do --app yellow_dog_management cmd mix run --no-halt"],
+      "worker.run": ["cmd --app yellow_dog_worker mix run --no-halt"]
     ]
-  end
-
-  # E2E test functions - run ExUnit directly at umbrella level
-  defp run_e2e_tests(_args) do
-    run_e2e_test_files(["e2e_test/"])
-  end
-
-  defp run_e2e_dns(_args) do
-    files = Path.wildcard("e2e_test/dns*_e2e_test.exs")
-    run_e2e_test_files(files)
-  end
-
-  defp run_e2e_mdns(_args) do
-    run_e2e_test_files(["e2e_test/mdns_e2e_test.exs"])
-  end
-
-  defp run_e2e_dhcpv4(_args) do
-    run_e2e_test_files(["e2e_test/dhcpv4_e2e_test.exs"])
-  end
-
-  defp run_e2e_dhcpv6(_args) do
-    run_e2e_test_files(["e2e_test/dhcpv6_e2e_test.exs"])
-  end
-
-  defp run_e2e_management(_args) do
-    run_e2e_test_files(["e2e_test/management_release_e2e_test.exs"])
-  end
-
-  defp run_e2e_netboot(_args) do
-    run_e2e_test_files(["e2e_test/netboot_tftp_e2e_test.exs"])
-  end
-
-  defp run_e2e_zone_auth(_args) do
-    run_e2e_test_files(["e2e_test/dns_zone_auth_e2e_test.exs"])
-  end
-
-  defp run_e2e_zone_forward(_args) do
-    run_e2e_test_files(["e2e_test/dns_zone_forward_e2e_test.exs"])
-  end
-
-  defp run_e2e_zone_stub(_args) do
-    run_e2e_test_files(["e2e_test/dns_zone_stub_e2e_test.exs"])
-  end
-
-  defp run_e2e_test_files(paths) do
-    # Ensure test environment
-    Mix.env(:test)
-
-    # Compile the umbrella apps first (skip compile env validation for E2E)
-    Mix.Task.run("compile", ["--no-validate-compile-env"])
-
-    # Load and compile test helper
-    Code.compile_file("e2e_test/test_helper.exs")
-
-    # Require all test files
-    Enum.each(paths, fn path ->
-      if File.dir?(path) do
-        Path.wildcard(Path.join(path, "**/*_test.exs"))
-        |> Enum.each(&Code.require_file/1)
-      else
-        if File.exists?(path) do
-          Code.require_file(path)
-        end
-      end
-    end)
-
-    # Run ExUnit and check results
-    %{failures: failures, excluded: excluded, total: total} = ExUnit.run()
-
-    # Exit with non-zero code if there are failures
-    if failures > 0 do
-      Mix.raise("#{failures} test(s) failed out of #{total} (#{excluded} excluded)")
-    end
-
-    :ok
   end
 end

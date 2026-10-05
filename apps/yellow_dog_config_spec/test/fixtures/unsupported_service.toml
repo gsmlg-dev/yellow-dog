@@ -1,0 +1,5 @@
+schema_version = 1
+worker_id = "edge-unsupported"
+revision = 1
+services = [{ id = "dhcp", type = "dhcpv4", desired_state = "running", config = { listen_address = "127.0.0.1", port = 1067 }, resources = [] }]
+resources = []

@@ -1,18 +1,34 @@
-name: Docker
+name: Nix Product Images
 
 on:
   push:
-    branches: ['main']
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish both product images to GHCR
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Build image
-
-    runs-on: ubuntu-latest
+    name: ${{ matrix.product }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
-        arch: [x86_64, aarch64]
+        product: [management, worker]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            system: x86_64-linux
+            runner: ubuntu-latest
+          - arch: arm64
+            system: aarch64-linux
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v6
@@ -26,79 +42,67 @@ jobs:
       - name: Build Docker image
         id: build
         run: |
-          nix build --print-build-logs --accept-flake-config .#docker
+          nix build --print-build-logs --accept-flake-config .#packages.${{ matrix.system }}.docker-${{ matrix.product }}
           [ ! -L result ] && exit 1
           echo "path=$(realpath result)" >> "$GITHUB_OUTPUT"
 
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
-          name: container-${{ matrix.arch }}
+          name: container-${{ matrix.product }}-${{ matrix.arch }}
           path: ${{ steps.build.outputs.path }}
           if-no-files-found: error
           retention-days: 1
 
-  push:
-    name: Push image
-
+  publish:
+    name: Publish ${{ matrix.product }}
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
     needs: build
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        product: [management, worker]
     permissions:
       contents: read
       actions: read
       packages: write
 
-    env:
-      REGISTRY: ghcr.io
-      USERNAME: ${{ github.actor }}
-      IMAGE_NAME: ${{ github.repository }}
-
-    if: github.event_name == 'push'
-
     steps:
       - uses: actions/checkout@v6
 
-      - name: Get version
-        id: get_version
+      - name: Image tags
+        id: tags
         run: |
-          version=$(cat mix.exs |grep version: | cut -d '"' -f 2)
+          repository=$(printf '%s' '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
+          version=$(sed -n 's/.*version: "\([^"]*\)".*/\1/p' mix.exs | head -1)
+          echo "image=ghcr.io/$repository-${{ matrix.product }}" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: lowercase github.repository
-        id: get_name
-        run: |
-          echo "IMAGE_NAME=`echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]'`" >> "$GITHUB_OUTPUT"
 
       - name: Download images
         uses: actions/download-artifact@v4
         with:
+          pattern: container-${{ matrix.product }}-*
           path: images
 
       - name: Login to registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ env.USERNAME }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Push to registry
+      - name: Publish separate product manifest
         env:
-          TAG: ${{ env.REGISTRY }}/${{ steps.get_name.outputs.IMAGE_NAME }}:latest
-          VTAG: ${{ env.REGISTRY }}/${{ steps.get_name.outputs.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
+          IMAGE: ${{ steps.tags.outputs.image }}
+          VERSION: ${{ steps.tags.outputs.version }}
         run: |
-          set -eux
-          architectures=("x86_64" "aarch64")
-          for arch in "${architectures[@]}"; do
-            docker load < images/container-"$arch"/*.tar.gz
-            docker tag yellow_dog:latest ${{ env.TAG }}-"$arch"
-            docker push ${{ env.TAG }}-"$arch"
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            docker load < images/container-${{ matrix.product }}-"$arch"/*
+            docker tag yellow_dog_${{ matrix.product }}:latest "$IMAGE:latest-$arch"
+            docker push "$IMAGE:latest-$arch"
           done
-          docker manifest create ${{ env.TAG }} \
-            --amend ${{ env.TAG }}-x86_64 \
-            --amend ${{ env.TAG }}-aarch64
-          docker manifest push ${{ env.TAG }}
-          docker manifest create ${{ env.VTAG }} \
-            --amend ${{ env.TAG }}-x86_64 \
-            --amend ${{ env.TAG }}-aarch64
-          docker manifest push ${{ env.VTAG }}
+          for tag in latest "$VERSION"; do
+            docker manifest create "$IMAGE:$tag" "$IMAGE:latest-amd64" "$IMAGE:latest-arm64"
+            docker manifest push "$IMAGE:$tag"
+          done

@@ -114,34 +114,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - product_slug: yellow-dog-management-core
-            mix_release: yellow_dog_management_core
+          - product_slug: yellow-dog-management
+            mix_release: yellow_dog_management
             platform: linux
             arch: amd64
             runner: ubuntu-latest
-          - product_slug: yellow-dog-server
-            mix_release: yellow_dog_server
-            platform: linux
-            arch: amd64
-            runner: ubuntu-latest
-          - product_slug: yellow-dog-server
-            mix_release: yellow_dog_server
+          - product_slug: yellow-dog-management
+            mix_release: yellow_dog_management
             platform: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-          - product_slug: yellow-dog-netman
-            mix_release: yellow_dog_netman
+          - product_slug: yellow-dog-worker
+            mix_release: yellow_dog_worker
             platform: linux
             arch: amd64
             runner: ubuntu-latest
-          - product_slug: yellow-dog-netman
-            mix_release: yellow_dog_netman
+          - product_slug: yellow-dog-worker
+            mix_release: yellow_dog_worker
             platform: linux
             arch: arm64
             runner: ubuntu-24.04-arm
     env:
       MIX_ENV: prod
-      SECRET_KEY_BASE: release-build-secret-key-base-release-build-secret-key-base
       VERSION: ${{ needs.create-release.outputs.version }}
       RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
       MIX_RELEASE_NAME: ${{ matrix.mix_release }}
@@ -166,7 +160,7 @@ jobs:
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y inotify-tools
+        run: sudo apt-get update && sudo apt-get install -y util-linux coreutils
 
       - name: Restore build cache
         uses: actions/cache@v5
@@ -177,7 +171,6 @@ jobs:
             deps
             _build
             apps/abyss/native/dhcp_socket/target
-            apps/yellow_dog_netman/native/netlink_helper/target
           key: release-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.product_slug }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
           restore-keys: |
             release-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.product_slug }}-
@@ -190,26 +183,10 @@ jobs:
           mix local.rebar --force
           mix deps.get --only prod
 
-      - name: Build Netman native helper
-        if: matrix.mix_release == 'yellow_dog_netman'
-        run: |
-          set -euo pipefail
-          cargo build --release --manifest-path apps/yellow_dog_netman/native/netlink_helper/Cargo.toml
-          mkdir -p apps/yellow_dog_netman/priv/native
-          cp apps/yellow_dog_netman/native/netlink_helper/target/release/netlink_helper apps/yellow_dog_netman/priv/native/
-          chmod 755 apps/yellow_dog_netman/priv/native/netlink_helper
-
-      - name: Build console assets
-        if: matrix.mix_release == 'yellow_dog_management_core'
-        working-directory: apps/yellow_dog_console
-        run: |
-          set -euo pipefail
-          mix assets.setup
-          mix assets.deploy
-
       - name: Build Mix release
         run: |
           set -euo pipefail
+          mix compile --warnings-as-errors
           mix release "${MIX_RELEASE_NAME}" --version "${VERSION}" --overwrite
 
       - name: Package release tarball
@@ -239,16 +216,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image_key: management-core
-            image_label: management_core
-            mix_release: yellow_dog_management_core
-            image_suffix: -management-core
-            image_title: YellowDog Management Core
-          - image_key: server
-            image_label: server
-            mix_release: yellow_dog_server
-            image_suffix: ''
-            image_title: YellowDog Server
+          - image_key: management
+            image_label: management
+            mix_release: yellow_dog_management
+            image_suffix: -management
+            image_title: YellowDog Management
+          - image_key: worker
+            image_label: worker
+            mix_release: yellow_dog_worker
+            image_suffix: -worker
+            image_title: YellowDog Worker
     env:
       VERSION: ${{ needs.create-release.outputs.version }}
       RELEASE_TAG: ${{ needs.create-release.outputs.tag }}

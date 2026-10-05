@@ -13,9 +13,9 @@ defmodule YellowDog.Worker.MixProject do
       start_permanent: Mix.env() == :prod,
       releases: [yellow_dog_worker: [include_executables_for: [:unix]]],
       deps: [
-        {:yellow_dog_config_spec, path: "../yellow_dog_config_spec"},
-        {:abyss, path: "../abyss"},
-        {:ex_dns, path: "../ex_dns"},
+        {:yellow_dog_config_spec, in_umbrella: true},
+        {:abyss, in_umbrella: true},
+        {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
         {:toml, "== 0.7.0"}
       ]

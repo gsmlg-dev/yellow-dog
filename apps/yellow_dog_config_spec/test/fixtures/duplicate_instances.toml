@@ -1,0 +1,8 @@
+schema_version = 1
+worker_id = "edge-duplicate"
+revision = 1
+resources = []
+services = [
+  { id = "dns-primary", type = "dns", desired_state = "running", config = { listen_address = "127.0.0.1", port = 1053 }, resources = [] },
+  { id = "dns-primary", type = "dns", desired_state = "stopped", config = { listen_address = "127.0.0.1", port = 1054 }, resources = [] }
+]

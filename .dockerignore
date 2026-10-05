@@ -8,6 +8,11 @@ deps/
 cover/
 doc/
 node_modules/
+data/
+.devenv/
+.direnv/
+.env*
+nonode@nohost/
 tmp/
 erl_crash.dump
 *.ez
@@ -16,6 +21,7 @@ erl_crash.dump
 
 # Rust build artifacts (re-built inside container)
 apps/*/native/*/target/
+apps/*/priv/native/*.so
 
 # Test artifacts
 apps/*/cover/
