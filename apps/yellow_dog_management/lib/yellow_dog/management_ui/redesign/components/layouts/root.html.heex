@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full" data-theme="sunshine">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title suffix=" · YellowDog">
+      {assigns[:page_title] || "YellowDog Console"}
+    </.live_title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+      rel="stylesheet"
+    />
+    {DuskmoonBundler.Preload.tags(
+      YellowDog.ManagementUI.Redesign.Endpoint,
+      "/assets/js/app.js",
+      profile: :yellow_dog_management
+    )}
+    <link
+      phx-track-static
+      rel="stylesheet"
+      href={
+        DuskmoonBundler.static_path(
+          YellowDog.ManagementUI.Redesign.Endpoint,
+          "/assets/css/app.css",
+          profile: :yellow_dog_management
+        )
+      }
+    />
+    <script
+      defer
+      phx-track-static
+      type="module"
+      src={
+        DuskmoonBundler.static_path(
+          YellowDog.ManagementUI.Redesign.Endpoint,
+          "/assets/js/app.js",
+          profile: :yellow_dog_management
+        )
+      }
+    >
+    </script>
+  </head>
+  <body class="h-full bg-surface text-on-surface">
+    {@inner_content}
+  </body>
+</html>

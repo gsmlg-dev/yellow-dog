@@ -1,0 +1,91 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-acls">
+    <ManagementComponents.page_header
+      title="DNS ACLs"
+      server={@selected_server}
+      online?={@service_online?}
+      back={ServicePaths.server_path(@selected_server.id, :dns)}
+    />
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+
+    <.card title="Access lists">
+      <p :if={@acls == []} class="text-sm text-on-surface-variant">No ACLs reported</p>
+      <div
+        :for={acl <- @acls}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+      >
+        <div>
+          <div class="font-semibold">{acl["acl_id"]}</div>
+          <div class="font-mono text-xs text-on-surface-variant">
+            {Enum.join(acl["networks"], ", ")}
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <.badge color={if acl["action"] == "allow", do: "success", else: "error"} size="sm">
+            {acl["action"]}
+          </.badge>
+          <button
+            phx-click="delete_acl"
+            phx-value-acl_id={acl["acl_id"]}
+            class="btn btn-error btn-xs"
+            disabled={not @commands_enabled?}
+          >Delete</button>
+        </div>
+      </div>
+    </.card>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <.card title="Create ACL">
+        <.form for={@acl_form} id="create-acl-form" phx-submit="create_acl" class="space-y-3">
+          <.input id="create-acl-id" field={@acl_form[:acl_id]} label="ACL ID" required />
+          <.input
+            id="create-acl-networks"
+            field={@acl_form[:networks]}
+            label="Networks (comma separated CIDRs)"
+            required
+          />
+          <.input
+            id="create-acl-action"
+            field={@acl_form[:action]}
+            type="select"
+            label="Action"
+            options={[{"Allow", "allow"}, {"Deny", "deny"}]}
+          />
+          <button class="btn btn-primary" disabled={not @commands_enabled?}>Create</button>
+        </.form>
+      </.card>
+
+      <.card title="Update ACL">
+        <.form for={@acl_form} id="update-acl-form" phx-submit="update_acl" class="space-y-3">
+          <.input id="update-acl-id" field={@acl_form[:acl_id]} label="Existing ACL ID" required />
+          <.input
+            id="update-acl-networks"
+            field={@acl_form[:networks]}
+            label="Networks (comma separated CIDRs)"
+            required
+          />
+          <.input
+            id="update-acl-action"
+            field={@acl_form[:action]}
+            type="select"
+            label="Action"
+            options={[{"Allow", "allow"}, {"Deny", "deny"}]}
+          />
+          <button class="btn btn-secondary" disabled={not @commands_enabled?}>Update</button>
+        </.form>
+      </.card>
+    </div>
+  </div>
+</Layouts.app>

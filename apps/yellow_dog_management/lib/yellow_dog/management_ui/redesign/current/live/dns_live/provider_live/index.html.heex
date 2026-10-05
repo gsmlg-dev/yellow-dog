@@ -1,0 +1,61 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-providers">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Providers"
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dns)}
+      />
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+    <div class="alert alert-warning" id="provider-create-unavailable">
+      <.dm_mdi name="lock-outline" class="h-5 w-5" />
+      <span>
+        Provider creation is unavailable until management credential references can be
+        materialized by the selected Server.
+      </span>
+    </div>
+
+    <.card title="Configured providers">
+      <p :if={@providers == []} class="text-sm text-on-surface-variant">No providers reported</p>
+      <div
+        :for={provider <- @providers}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+      >
+        <div>
+          <.link
+            navigate={
+              ServicePaths.server_path(
+                @selected_server.id,
+                {:dns_provider, provider["provider_id"]}
+              )
+            }
+            class="font-semibold text-primary"
+          >{provider["provider_id"]}</.link>
+          <div class="text-xs text-on-surface-variant">
+            {provider["provider_type"]} · {provider["credential_ref"]}
+          </div>
+        </div>
+        <button
+          phx-click="delete_provider"
+          phx-value-provider_id={provider["provider_id"]}
+          class="btn btn-error btn-xs"
+          disabled={not @commands_enabled?}
+        >Delete</button>
+      </div>
+    </.card>
+  </div>
+</Layouts.app>

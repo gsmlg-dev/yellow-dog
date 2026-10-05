@@ -1,0 +1,108 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-records">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Records"
+        subtitle={"#{@view_name} / #{@zone_name}"}
+        server={@selected_server}
+        online?={@service_online?}
+        back={
+          ServicePaths.server_path(@selected_server.id, :dns_zones) <>
+            "?" <> URI.encode_query(%{"view_name" => @view_name})
+        }
+      />
+      <div :if={@live_action == :index} class="flex gap-2">
+        <.link
+          navigate={record_path(@selected_server.id, :new, @zone_name, @view_name)}
+          class="btn btn-primary"
+        >New record</.link>
+        <.link
+          navigate={record_path(@selected_server.id, :bulk, @zone_name, @view_name)}
+          class="btn btn-ghost"
+        >Bulk</.link>
+      </div>
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+
+    <.card title="Resource records">
+      <p :if={@records == []} class="text-sm text-on-surface-variant">No records reported</p>
+      <div :if={@records != []} class="overflow-x-auto">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Name</th><th>Type</th><th>TTL</th><th>Values</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={record <- @records}>
+              <td class="font-mono">{record["name"]}</td>
+              <td>
+                <.badge color="info" size="sm">{record["type"]}</.badge>
+              </td>
+              <td>{record["ttl"]}</td>
+              <td class="font-mono text-sm">{Enum.join(record["values"], ", ")}</td>
+              <td class="text-right">
+                <.link
+                  navigate={
+                    record_path(
+                      @selected_server.id,
+                      :edit,
+                      @zone_name,
+                      @view_name,
+                      record["record_id"]
+                    )
+                  }
+                  class="btn btn-ghost btn-xs"
+                >Edit</.link>
+                <button
+                  phx-click="delete_record"
+                  phx-value-record_id={record["record_id"]}
+                  class="btn btn-error btn-xs"
+                  disabled={not @commands_enabled?}
+                >Delete</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
+
+    <div :if={@live_action in [:new, :edit]} class="grid grid-cols-1 gap-6">
+      <.card :if={@live_action == :new} title="Create record">
+        <.record_form
+          form={@record_form}
+          id="create-record-form"
+          event="create_record"
+          button="Create"
+          enabled?={@commands_enabled?}
+        />
+      </.card>
+      <.card :if={@live_action == :edit} title="Update record">
+        <.record_form
+          form={@record_form}
+          id="update-record-form"
+          event="update_record"
+          button="Update"
+          enabled?={@commands_enabled?}
+        />
+      </.card>
+    </div>
+
+    <div :if={@live_action == :bulk} id="record-bulk-unavailable" class="alert alert-warning">
+      Bulk record changes are unavailable because the management protocol exposes only exact-item
+      create, update, and delete operations.
+    </div>
+  </div>
+</Layouts.app>

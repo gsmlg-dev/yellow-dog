@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@source "../css";
+@source "../js";
+@source "../../../lib/yellow_dog/management_ui/redesign";
+@source "../../../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon";
+
+@plugin "@duskmoon-dev/core/plugin";
+@import "@duskmoon-dev/core/themes/sunshine";
+@import "@duskmoon-dev/core/themes/moonlight";
+@import "@duskmoon-dev/core/components";
+
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+@custom-variant dark (&:where([data-theme=moonlight], [data-theme=moonlight] *));
+
+/* Typography — project font stack */
+:root {
+  --font-display: 'Instrument Serif', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body { font-family: var(--font-body); }
+h1, h2, h3 { font-family: var(--font-display); }
+code, pre, .font-mono { font-family: var(--font-mono); }
+
+[data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* WORKAROUND(upstream): duskmoon-dev/phoenix-duskmoon-ui#29
+   dm_mdi SVGs need intrinsic dimensions so missed utility sizing cannot stretch controls. */
+:where(svg[viewBox="0 0 24 24"][aria-hidden="true"]:not([width]):not([height])) {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
+/* App layout: appbar on top, sidebar + main below */
+.yd-layout {
+  display: flex;
+  flex-direction: column;
+  --yd-navbar-height: 4rem;
+}
+
+/* Body area below appbar: sidebar + main content side by side */
+.yd-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  min-height: calc(100dvh - var(--yd-navbar-height));
+}
+
+/* Sidebar container — hidden on mobile, shown on lg+ */
+.yd-sidebar {
+  display: none;
+  flex-shrink: 0;
+  width: 20rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-outline-variant);
+}
+
+.yd-sidebar-sticky {
+  position: sticky;
+  top: var(--yd-navbar-height);
+  align-self: flex-start;
+  height: calc(100dvh - var(--yd-navbar-height));
+  max-height: calc(100dvh - var(--yd-navbar-height));
+}
+
+@media (min-width: 1024px) {
+  .yd-sidebar {
+    display: block;
+  }
+}
+
+/* Mobile sidebar — triggered by JS class on parent .yd-layout */
+.yd-sidebar-open .yd-sidebar {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: 100dvh;
+  max-height: none;
+  z-index: 1200;
+  border-right: none;
+  box-shadow: var(--shadow-2xl);
+}
+
+@media (min-width: 1024px) {
+  .yd-sidebar-open .yd-sidebar {
+    position: sticky;
+    top: var(--yd-navbar-height);
+    box-shadow: none;
+    border-right: 1px solid var(--color-outline-variant);
+  }
+}
+
+/* Sidebar overlay backdrop for mobile */
+.yd-sidebar-overlay {
+  display: none;
+}
+
+.yd-sidebar-open .yd-sidebar .yd-sidebar-overlay {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: hsl(var(--color-scrim) / 0.5);
+  cursor: pointer;
+}
+
+@media (min-width: 1024px) {
+  .yd-sidebar-open .yd-sidebar .yd-sidebar-overlay {
+    display: none;
+  }
+}
+
+/* Navbar appbar — spans full width at top */
+.yd-layout > .navbar {
+  flex-shrink: 0;
+}
+
+/* Ghost buttons on primary navbar inherit primary-content color */
+.yd-layout > .navbar .btn-ghost {
+  --btn-text-color: var(--color-primary-content);
+  color: var(--color-primary-content);
+}
+
+.yd-layout > .navbar .btn-ghost:hover {
+  background-color: color-mix(in oklch, var(--color-primary-content) 12%, transparent);
+}
+
+/* Active nav menu item in primary appbar */
+.btn-active {
+  background-color: color-mix(in oklch, var(--color-primary-content) 20%, transparent);
+  color: var(--color-primary-content);
+}
+
+/* Sidebar nested-menu: keep text/background on the same theme container pair */
+.yd-sidebar-panel {
+  background-color: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+  min-height: 100%;
+}
+
+.yd-sidebar .nested-menu li > a,
+.yd-sidebar .nested-menu li > button {
+  color: var(--color-on-secondary-container);
+}
+
+.yd-sidebar .nested-menu li > a:hover,
+.yd-sidebar .nested-menu li > button:hover {
+  background-color: color-mix(in oklch, var(--color-on-secondary-container) 12%, transparent);
+}
+
+.yd-sidebar .nested-menu-title {
+  color: color-mix(in oklch, var(--color-on-secondary-container) 62%, transparent);
+}
+
+.yd-sidebar .nested-menu li > a.active,
+.yd-sidebar .nested-menu li > button.active {
+  background-color: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+
+.yd-sidebar .nested-menu li > a.active:hover,
+.yd-sidebar .nested-menu li > button.active:hover {
+  background-color: color-mix(in oklch, var(--color-primary-container), var(--color-on-primary-container) 8%);
+}
+
+/* Main content fills remaining width */
+.yd-main {
+  flex: 1;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

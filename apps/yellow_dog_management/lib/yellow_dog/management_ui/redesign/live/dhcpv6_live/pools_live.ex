@@ -1,0 +1,450 @@
+defmodule YellowDog.ManagementUI.Redesign.Dhcpv6Live.PoolsLive do
+  @moduledoc """
+  LiveView for managing DHCPv6 address pools.
+
+  Provides CRUD operations for address pools:
+  - List all pools with utilization stats
+  - Add new pools
+  - Edit existing pools
+  - Delete pools (with confirmation)
+  """
+
+  use YellowDog.ManagementUI.Redesign, :live_view
+  import YellowDog.ManagementUI.Redesign.CsvHelper
+
+  import YellowDog.ManagementUI.Redesign.FormatHelper,
+    only: [format_ip: 1, format_dns_servers: 1, format_duration: 1, filtered_pools: 2]
+
+  import YellowDog.ManagementUI.Redesign.ServiceHelper
+
+  alias YellowDog.ManagementUI.Redesign.Components.PoolFormComponent
+  alias YellowDog.ManagementUI.Redesign.Settings.AddressPool
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok,
+     socket
+     |> assign(
+       page_title: "Address Pools",
+       show_form: false,
+       form_mode: :create,
+       editing_pool: nil,
+       filter: "",
+       service_running: service_running?(YellowDog.Dhcpv6.LeaseManager)
+     )
+     |> load_pools()}
+  end
+
+  @impl true
+  def handle_event("show_new_form", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_form, true)
+     |> assign(:form_mode, :create)
+     |> assign(:editing_pool, nil)}
+  end
+
+  @impl true
+  def handle_event("show_edit_form", %{"pool-name" => pool_name}, socket) do
+    pool = find_pool(socket.assigns.pools, pool_name)
+
+    if pool do
+      # Convert backend pool to AddressPool struct for the form
+      address_pool = %AddressPool{
+        id: pool_name,
+        name: pool_name,
+        protocol: :ipv6,
+        network: pool[:network],
+        range_start: format_ip(pool.range_start),
+        range_end: format_ip(pool.range_end),
+        preferred_lifetime: pool[:preferred_lifetime],
+        valid_lifetime: pool[:valid_lifetime],
+        dns_servers: format_dns_servers(pool[:dns_servers])
+      }
+
+      {:noreply,
+       socket
+       |> assign(:show_form, true)
+       |> assign(:form_mode, :edit)
+       |> assign(:editing_pool, address_pool)}
+    else
+      {:noreply, put_flash(socket, :error, "Pool not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_pool", %{"pool-name" => pool_name}, socket) do
+    case safe_call(
+           YellowDog.Dhcpv6,
+           fn -> YellowDog.Dhcpv6.remove_pool(pool_name, force: false) end,
+           {:error, :service_unavailable}
+         ) do
+      :ok ->
+        {:noreply,
+         socket
+         |> load_pools()
+         |> put_flash(:info, "Pool '#{pool_name}' deleted successfully")}
+
+      {:error, :has_active_leases} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Cannot delete pool '#{pool_name}': has active leases. Release leases first or use force delete."
+         )}
+
+      {:error, :pool_not_found} ->
+        {:noreply, put_flash(socket, :error, "Pool '#{pool_name}' not found")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete pool: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("force_delete_pool", %{"pool-name" => pool_name}, socket) do
+    case safe_call(
+           YellowDog.Dhcpv6,
+           fn -> YellowDog.Dhcpv6.remove_pool(pool_name, force: true) end,
+           {:error, :service_unavailable}
+         ) do
+      :ok ->
+        {:noreply,
+         socket
+         |> load_pools()
+         |> put_flash(:info, "Pool '#{pool_name}' force deleted successfully")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete pool: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    pools = filtered_pools(socket.assigns.pools, socket.assigns.filter)
+    csv = build_pools_csv(pools)
+
+    {:noreply,
+     push_event(socket, "download_csv", %{
+       content: csv,
+       filename: "dhcpv6_pools_#{Date.to_iso8601(Date.utc_today())}.csv"
+     })}
+  end
+
+  @impl true
+  def handle_info(:close_pool_form, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_form, false)
+     |> assign(:editing_pool, nil)}
+  end
+
+  @impl true
+  def handle_info({:pool_saved, :dhcpv6, pool, mode}, socket) do
+    result =
+      try do
+        case mode do
+          :create ->
+            pool_config = build_pool_config(pool)
+            YellowDog.Dhcpv6.add_pool(pool_config)
+
+          :edit ->
+            pool_config = build_pool_config(pool)
+            YellowDog.Dhcpv6.update_pool(pool.name, pool_config)
+        end
+      rescue
+        e -> {:error, Exception.message(e)}
+      catch
+        :exit, reason -> {:error, "Service unavailable: #{inspect(reason)}"}
+      end
+
+    case result do
+      {:ok, _} ->
+        flash_msg =
+          if mode == :create, do: "Pool created successfully", else: "Pool updated successfully"
+
+        {:noreply,
+         socket
+         |> assign(:show_form, false)
+         |> assign(:editing_pool, nil)
+         |> load_pools()
+         |> put_flash(:info, flash_msg)}
+
+      {:error, :pool_already_exists} ->
+        {:noreply, put_flash(socket, :error, "A pool with this name already exists")}
+
+      {:error, :range_overlap} ->
+        {:noreply, put_flash(socket, :error, "IP range overlaps with an existing pool")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to save pool: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <div class="space-y-6">
+        <!-- Header -->
+        <div class="flex justify-between items-center">
+          <div>
+            <h1 class="text-2xl font-bold">DHCPv6 Address Pools</h1>
+            <p class="text-on-surface-variant">Manage IPv6 address pools for DHCP allocation</p>
+          </div>
+          <button class="btn btn-primary" phx-click="show_new_form">
+            <.dm_mdi name="plus" class="w-5 h-5" /> Add Pool
+          </button>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="flex flex-wrap gap-4 items-center">
+          <div class="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="Search pools..."
+              aria-label="Search DHCPv6 pools"
+              value={@filter}
+              phx-change="filter"
+              phx-debounce="300"
+              name="filter"
+              class="input w-full"
+            />
+          </div>
+          <button
+            class="btn btn-outline btn-sm"
+            phx-click="export_csv"
+            id="export-csv"
+            phx-hook="CsvDownload"
+          >
+            Export CSV
+          </button>
+        </div>
+
+        <!-- Service Status Alert -->
+        <%= unless @service_running do %>
+          <div class="alert alert-info">
+            <.dm_mdi name="alert-circle-outline" class="w-6 h-6 shrink-0" />
+            <div>
+              <h3 class="font-bold">DHCPv6 Service Not Running</h3>
+              <div class="text-sm">
+                Pool configuration can still be managed. Pool statistics will be unavailable until the service is started.
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Pools Table -->
+        <%= if Enum.empty?(@pools) do %>
+          <div class="card bg-surface-container">
+            <div class="card-body items-center text-center py-12">
+              <.dm_mdi name="server-network" class="w-16 h-16 text-on-surface-variant" />
+              <h2 class="card-title text-on-surface-variant">No Address Pools</h2>
+              <p class="text-on-surface-variant">
+                Create your first address pool to start allocating IPv6 addresses
+              </p>
+              <button class="btn btn-primary mt-4" phx-click="show_new_form">
+                <.dm_mdi name="plus" class="w-5 h-5" /> Add Pool
+              </button>
+            </div>
+          </div>
+        <% else %>
+          <div class="overflow-x-auto">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Network</th>
+                  <th scope="col">IPv6 Range</th>
+                  <th scope="col">Preferred / Valid Lifetime</th>
+                  <th scope="col">Utilization</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for pool <- filtered_pools(@pools, @filter) do %>
+                  <tr>
+                    <td class="font-medium">
+                      <.link
+                        navigate={~p"/server/dhcpv6/pools/#{pool.name}"}
+                        class="link link-primary"
+                      >
+                        {pool.name}
+                      </.link>
+                    </td>
+                    <td class="font-mono text-sm">{pool[:network] || "-"}</td>
+                    <td class="font-mono text-sm">
+                      <div>{format_ip(pool.range_start)}</div>
+                      <div class="text-on-surface-variant">to {format_ip(pool.range_end)}</div>
+                    </td>
+                    <td>
+                      {format_duration(pool[:preferred_lifetime])} / {format_duration(
+                        pool[:valid_lifetime]
+                      )}
+                    </td>
+                    <td>
+                      <% stats = get_pool_stats(pool.name) %>
+                      <div class="flex items-center gap-2">
+                        <progress
+                          class={"progress w-20 progress-#{utilization_color(stats.utilization_percent)}"}
+                          value={stats.utilization_percent}
+                          max="100"
+                        />
+                        <span class="text-sm">{Float.round(stats.utilization_percent, 1)}%</span>
+                      </div>
+                      <span class="text-xs text-on-surface-variant">
+                        {stats.allocated_addresses}/{stats.total_addresses} allocated
+                      </span>
+                    </td>
+                    <td>
+                      <%= if pool[:enabled] != false do %>
+                        <span class="badge badge-success badge-sm">Active</span>
+                      <% else %>
+                        <span class="badge badge-ghost badge-sm">Disabled</span>
+                      <% end %>
+                    </td>
+                    <td>
+                      <div class="flex gap-1">
+                        <button
+                          class="btn btn-ghost btn-sm"
+                          phx-click="show_edit_form"
+                          phx-value-pool-name={pool.name}
+                          title="Edit pool"
+                        >
+                          <.dm_mdi name="pencil" class="w-4 h-4" />
+                        </button>
+                        <button
+                          class="btn btn-ghost btn-sm text-error"
+                          phx-click="delete_pool"
+                          phx-value-pool-name={pool.name}
+                          phx-disable-with="..."
+                          data-confirm="Are you sure you want to delete this pool?"
+                          title="Delete pool"
+                        >
+                          <.dm_mdi name="delete" class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          <%= if @filter != "" do %>
+            <div class="text-sm text-on-surface-variant mt-2">
+              Showing {length(filtered_pools(@pools, @filter))} of {length(@pools)} pools
+            </div>
+          <% end %>
+        <% end %>
+
+        <!-- Pool Form Modal -->
+        <%= if @show_form do %>
+          <.live_component
+            module={PoolFormComponent}
+            id="pool-form"
+            mode={@form_mode}
+            protocol={:ipv6}
+            service_type={:dhcpv6}
+            pool={@editing_pool}
+          />
+        <% end %>
+      </div>
+    </Layouts.app>
+    """
+  end
+
+  # Private Functions
+
+  defp build_pools_csv(pools) do
+    header = "Name,Network,Range Start,Range End,Preferred Lifetime,Valid Lifetime,Status\n"
+
+    rows =
+      Enum.map_join(pools, "\n", fn pool ->
+        [
+          csv_escape(pool.name),
+          csv_escape(pool[:network] || ""),
+          csv_escape(format_ip(pool.range_start) || ""),
+          csv_escape(format_ip(pool.range_end) || ""),
+          csv_escape(format_duration(pool[:preferred_lifetime])),
+          csv_escape(format_duration(pool[:valid_lifetime] || pool[:lease_time])),
+          csv_escape(if pool[:enabled] != false, do: "Active", else: "Disabled")
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp load_pools(socket) do
+    pools = get_pools()
+    assign(socket, :pools, pools)
+  end
+
+  defp get_pools do
+    try do
+      # First try the LeaseManager (when service is running, pools have full struct)
+      case Process.whereis(YellowDog.Dhcpv6.LeaseManager) do
+        nil ->
+          # Service not running - load directly from PoolStore
+          case YellowDog.Dhcpv6.PoolStore.load_pools() do
+            {:ok, pools} -> pools
+            {:error, _} -> []
+          end
+
+        _pid ->
+          YellowDog.Dhcpv6.LeaseManager.get_pools()
+      end
+    catch
+      _, _ -> []
+    end
+  end
+
+  defp find_pool(pools, name) do
+    Enum.find(pools, &(&1.name == name))
+  end
+
+  defp get_pool_stats(pool_name) do
+    try do
+      all_stats = YellowDog.Dhcpv6.LeaseManager.get_all_pool_stats()
+      Map.get(all_stats, pool_name, default_stats())
+    catch
+      _, _ -> default_stats()
+    end
+  end
+
+  defp default_stats do
+    %{
+      total_addresses: 0,
+      allocated_addresses: 0,
+      available_addresses: 0,
+      utilization_percent: 0.0
+    }
+  end
+
+  defp build_pool_config(pool) do
+    %{
+      name: pool.name,
+      network: pool.network,
+      range_start: pool.range_start,
+      range_end: pool.range_end,
+      preferred_lifetime: pool.preferred_lifetime || 3600,
+      valid_lifetime: pool.valid_lifetime || 7200,
+      dns_servers: parse_dns_servers(pool.dns_servers),
+      enabled: true
+    }
+    |> Map.reject(fn {_, v} -> is_nil(v) || v == "" end)
+  end
+
+  defp parse_dns_servers(nil), do: nil
+  defp parse_dns_servers([]), do: nil
+  defp parse_dns_servers(servers) when is_list(servers), do: servers
+end

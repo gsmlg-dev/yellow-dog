@@ -1,0 +1,108 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-provider">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title={@provider_id}
+        subtitle="DNS provider"
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dns_providers)}
+      />
+      <div class="flex gap-2">
+        <.link
+          navigate={
+            ServicePaths.server_path(@selected_server.id, {:dns_provider_conflicts, @provider_id})
+          }
+          class="btn btn-warning btn-sm"
+        >
+          Conflicts
+        </.link>
+        <button phx-click="refresh" class="btn btn-ghost btn-sm">Refresh</button>
+      </div>
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+
+    <div :if={is_nil(@provider)} class="alert alert-warning">
+      This provider is not present in the selected Server snapshot.
+    </div>
+
+    <div class="alert alert-warning" id="provider-update-unavailable">
+      <.dm_mdi name="lock-outline" class="h-5 w-5" />
+      <span>
+        Provider credential updates are unavailable until management credential references can be
+        materialized by the selected Server.
+      </span>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <.card title="Provider configuration">
+        <.form
+          for={@provider_form}
+          id="provider-update-form"
+          phx-submit="update_provider"
+          class="space-y-3"
+        >
+          <.input field={@provider_form[:provider_id]} label="Provider ID" readonly disabled />
+          <.input
+            field={@provider_form[:provider_type]}
+            type="select"
+            label="Type"
+            options={[
+              {"Cloudflare", "cloudflare"},
+              {"Route 53", "route53"},
+              {"RFC 2136", "rfc2136"}
+            ]}
+            disabled
+          />
+          <.input field={@provider_form[:endpoint]} label="Endpoint (optional)" disabled />
+          <.input field={@provider_form[:credential_ref]} label="Credential reference" disabled />
+          <button class="btn btn-primary" disabled>Update provider</button>
+        </.form>
+      </.card>
+
+      <.card title="Provider zones">
+        <.form
+          for={@selection_form}
+          id="provider-zone-view"
+          phx-change="select_view"
+          class="mb-4"
+        >
+          <.input field={@selection_form[:view_name]} label="View" phx-debounce="300" />
+        </.form>
+        <p :if={@zones == []} class="text-sm text-on-surface-variant">
+          No zones reported for this provider in view {@view_name}.
+        </p>
+        <div
+          :for={zone <- @zones}
+          class="flex items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+        >
+          <div>
+            <div class="font-mono font-semibold">{zone["zone_name"]}</div>
+            <div class="text-xs text-on-surface-variant">{zone["zone_type"]}</div>
+          </div>
+          <button
+            phx-click="sync_zone"
+            phx-value-view_name={zone["view_name"]}
+            phx-value-zone_name={zone["zone_name"]}
+            class="btn btn-info btn-xs"
+            disabled={not @commands_enabled?}
+          >
+            Sync
+          </button>
+        </div>
+      </.card>
+    </div>
+  </div>
+</Layouts.app>

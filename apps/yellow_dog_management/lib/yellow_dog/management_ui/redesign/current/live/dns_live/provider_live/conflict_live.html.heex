@@ -1,0 +1,49 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-conflicts">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Sync Conflicts"
+        subtitle={@provider_id}
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, {:dns_provider, @provider_id})}
+      />
+      <button phx-click="refresh" class="btn btn-ghost btn-sm">Refresh</button>
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+
+    <div :if={is_nil(@provider)} class="alert alert-warning">
+      This provider is not present in the selected Server snapshot.
+    </div>
+
+    <.card title="Conflict resolution unavailable">
+      <div class="alert alert-warning">
+        Conflict resolution is unavailable because its revision is not exposed by the management API.
+      </div>
+      <.form
+        for={@conflict_form}
+        id="conflict-resolution-form"
+        phx-submit="resolve_conflict"
+        class="mt-4 space-y-3"
+      >
+        <.input field={@conflict_form[:conflict_id]} label="Conflict ID" disabled />
+        <.input
+          field={@conflict_form[:resolution]}
+          type="select"
+          label="Resolution"
+          options={[{"Use selected Server", "use_local"}, {"Use provider", "use_cloud"}]}
+          disabled
+        />
+        <button class="btn btn-warning" disabled>Resolution unavailable</button>
+      </.form>
+    </.card>
+  </div>
+</Layouts.app>

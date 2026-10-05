@@ -1,0 +1,110 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div id="mdns-monitor" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-bold">mDNS Monitor</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-error btn-sm gap-2"
+          phx-click="clear_cache"
+          disabled={!@commands_enabled? or is_nil(@cache_revision)}
+          data-confirm="Clear the selected Server's mDNS cache?"
+        >
+          <.dm_mdi name="delete" class="h-4 w-4" /> Clear Cache
+        </button>
+      </div>
+    </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-monitor-offline">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+        Cache mutations are disabled.
+      </span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-monitor-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error.message}</span>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Recent queries</div>
+        <div class="mt-1 text-3xl font-semibold">{length(@queries)}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Cached records</div>
+        <div class="mt-1 text-3xl font-semibold">{length(@cache_entries)}</div>
+      </.card>
+    </div>
+
+    <div class="flex flex-col gap-3 sm:flex-row">
+      <input
+        type="search"
+        name="search"
+        value={@search}
+        placeholder="Search queries"
+        aria-label="Search mDNS queries"
+        class="input w-full"
+        phx-change="search"
+        phx-debounce="300"
+      />
+      <select name="limit" class="select" aria-label="Query limit" phx-change="set_limit">
+        <option :for={limit <- [50, 100, 200, 500]} value={limit} selected={@limit == limit}>
+          {limit} queries
+        </option>
+      </select>
+    </div>
+
+    <.card title="Recent queries">
+      <div
+        :if={filtered_queries(@queries, @search) == []}
+        class="py-10 text-center text-on-surface-variant"
+      >
+        No mDNS queries match this filter.
+      </div>
+      <div :if={filtered_queries(@queries, @search) != []} class="overflow-x-auto">
+        <table class="table table-striped" id="mdns-query-table">
+          <thead>
+            <tr>
+              <th>Observed</th><th>Source</th><th>Name</th><th>Type</th><th>Answered</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={query <- filtered_queries(@queries, @search)}>
+              <td>{query["occurred_at"]}</td>
+              <td class="font-mono text-sm">
+                {query["source_address"]}:{query["source_port"]}
+              </td>
+              <td>{query["query_name"]}</td>
+              <td>
+                <.badge color="info" size="sm">{query["record_type"]}</.badge>
+              </td>
+              <td>{if query["answered"], do: "Yes", else: "No"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
+  </div>
+</Layouts.app>

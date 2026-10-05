@@ -1,0 +1,166 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-zones">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Zones"
+        subtitle={"View #{@view_name}"}
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dns)}
+      />
+      <div :if={@live_action == :index} class="flex gap-2">
+        <.link
+          navigate={zone_path(@selected_server.id, :dns_zone_new, @view_name)}
+          class="btn btn-primary"
+        >New zone</.link>
+        <.link
+          navigate={zone_path(@selected_server.id, :dns_zone_import, @view_name)}
+          class="btn btn-ghost"
+        >Import</.link>
+      </div>
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+
+    <.form for={@selection_form} id="dns-zone-view" phx-change="select_view" class="max-w-md">
+      <.input field={@selection_form[:view_name]} label="View" phx-debounce="300" />
+    </.form>
+
+    <.card title="Managed zones">
+      <p :if={@zones == []} class="text-sm text-on-surface-variant">No zones reported</p>
+      <div
+        :for={zone <- @zones}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+      >
+        <div>
+          <div class="font-semibold">{zone["zone_name"]}</div>
+          <div class="text-xs text-on-surface-variant">
+            {zone["zone_type"]} · {zone["provider_id"] || "local"}
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <.link
+            navigate={records_path(@selected_server.id, zone["zone_name"], zone["view_name"])}
+            class="btn btn-ghost btn-xs"
+          >Records</.link>
+          <.link
+            navigate={
+              zone_path(
+                @selected_server.id,
+                {:dns_zone_edit, zone["zone_name"]},
+                zone["view_name"]
+              )
+            }
+            class="btn btn-ghost btn-xs"
+          >Edit</.link>
+          <button
+            :if={zone["provider_id"]}
+            phx-click="sync_zone"
+            phx-value-view_name={zone["view_name"]}
+            phx-value-zone_name={zone["zone_name"]}
+            phx-value-provider_id={zone["provider_id"]}
+            class="btn btn-info btn-xs"
+            disabled={not @commands_enabled?}
+          >Sync</button>
+          <button
+            phx-click="delete_zone"
+            phx-value-view_name={zone["view_name"]}
+            phx-value-zone_name={zone["zone_name"]}
+            class="btn btn-error btn-xs"
+            disabled={not @commands_enabled?}
+          >Delete</button>
+        </div>
+      </div>
+    </.card>
+
+    <div :if={@live_action in [:new, :edit, :import]} class="grid grid-cols-1 gap-6">
+      <.card :if={@live_action == :new} title="Create zone">
+        <.form for={@zone_form} id="zone-form" phx-submit="create_zone" class="space-y-3">
+          <.input
+            id="create-zone-view"
+            field={@zone_form[:view_name]}
+            label="View"
+            required
+            readonly
+          />
+          <.input id="create-zone-name" field={@zone_form[:zone_name]} label="Zone name" required />
+          <.input
+            id="create-zone-type"
+            field={@zone_form[:zone_type]}
+            type="select"
+            label="Type"
+            options={[{"Authoritative", "authoritative"}, {"Forward", "forward"}]}
+          />
+          <.input
+            id="create-zone-provider"
+            field={@zone_form[:provider_id]}
+            label="Provider ID (optional)"
+          />
+          <button class="btn btn-primary" disabled={not @commands_enabled?}>Create</button>
+        </.form>
+      </.card>
+
+      <.card :if={@live_action == :edit} title="Update zone">
+        <.form for={@zone_form} id="zone-update-form" phx-submit="update_zone" class="mt-3">
+          <div class="space-y-3">
+            <.input
+              id="update-zone-view"
+              field={@zone_form[:view_name]}
+              label="View"
+              required
+              readonly
+            />
+            <.input
+              id="update-zone-name"
+              field={@zone_form[:zone_name]}
+              label="Zone name"
+              required
+              readonly
+            />
+            <.input
+              id="update-zone-type"
+              field={@zone_form[:zone_type]}
+              type="select"
+              label="Type"
+              options={[{"Authoritative", "authoritative"}, {"Forward", "forward"}]}
+            />
+            <.input
+              id="update-zone-provider"
+              field={@zone_form[:provider_id]}
+              label="Provider ID (optional)"
+            />
+          </div>
+          <button class="btn btn-secondary" disabled={not @commands_enabled?}>Update</button>
+        </.form>
+      </.card>
+
+      <.card :if={@live_action == :import} title="Zone import">
+        <div class="alert alert-warning">
+          Zone import is unavailable because its revision is not exposed by the management API.
+        </div>
+        <.form
+          for={@import_form}
+          id="zone-import-form"
+          phx-submit="import_zone"
+          class="mt-3 space-y-3"
+        >
+          <.input field={@import_form[:view_name]} label="View" />
+          <.input field={@import_form[:zone_name]} label="Zone name" />
+          <.input field={@import_form[:source_id]} label="Provider or snapshot ID" />
+          <button class="btn btn-warning" disabled>Import unavailable</button>
+        </.form>
+      </.card>
+    </div>
+  </div>
+</Layouts.app>

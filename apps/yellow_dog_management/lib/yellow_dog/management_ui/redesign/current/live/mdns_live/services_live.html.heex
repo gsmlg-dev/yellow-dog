@@ -1,0 +1,212 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div id="mdns-services" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-bold">Registered mDNS Services</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary gap-2"
+          phx-click="show_new_form"
+          disabled={!@commands_enabled?}
+        >
+          <.dm_mdi name="plus" class="h-5 w-5" /> Register Service
+        </button>
+      </div>
+    </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-services-offline">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+        Mutations are disabled.
+      </span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-services-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error.message}</span>
+    </div>
+
+    <div role="tablist" class="tabs tabs-boxed w-fit">
+      <button
+        :for={{filter, label} <- [{:all, "All"}, {:enabled, "Enabled"}, {:disabled, "Disabled"}]}
+        type="button"
+        role="tab"
+        phx-click="filter"
+        phx-value-filter={filter}
+        class={["tab", @filter == filter && "tab-active"]}
+      >
+        {label}
+      </button>
+    </div>
+
+    <.card>
+      <div
+        :if={filtered_services(@services, @filter) == []}
+        class="py-10 text-center text-on-surface-variant"
+      >
+        No registered services match this filter.
+      </div>
+      <div :if={filtered_services(@services, @filter) != []} class="overflow-x-auto">
+        <table class="table table-striped" id="mdns-services-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Type</th><th>Port</th><th>TXT</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={service <- filtered_services(@services, @filter)}>
+              <td class="font-medium">{service["name"]}</td>
+              <td class="font-mono text-sm">{service["service_type"]}</td>
+              <td>{service["service_port"]}</td>
+              <td>{length(service["txt"] || [])} records</td>
+              <td>
+                <.badge color={if service["enabled"], do: "success", else: "ghost"} size="sm">
+                  {if service["enabled"], do: "Enabled", else: "Disabled"}
+                </.badge>
+              </td>
+              <td>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-xs"
+                    phx-click="toggle_service"
+                    phx-value-id={service["service_id"]}
+                    disabled={!@commands_enabled?}
+                  >
+                    {if service["enabled"], do: "Disable", else: "Enable"}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-xs"
+                    phx-click="show_edit_form"
+                    phx-value-id={service["service_id"]}
+                    disabled={!@commands_enabled?}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-error btn-xs"
+                    phx-click="delete_service"
+                    phx-value-id={service["service_id"]}
+                    disabled={!@commands_enabled?}
+                    data-confirm="Delete this service?"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.card>
+
+    <dialog
+      :if={@show_form}
+      id="service-modal"
+      class="dialog-backdrop dialog-backdrop-show"
+      open
+      phx-window-keydown="hide_form"
+      phx-key="Escape"
+    >
+      <div class="dialog dialog-md max-w-2xl">
+        <h2 class="mb-4 text-2xl font-bold">
+          {if @form_mode == :new, do: "Register New Service", else: "Edit Service"}
+        </h2>
+
+        <form
+          id="mdns-service-form"
+          phx-submit="save_service"
+          phx-change="validate_service"
+          class="space-y-4"
+        >
+          <label class="form-control">
+            <span class="label-text">Service name</span>
+            <input
+              type="text"
+              name="name"
+              value={@editing_service && @editing_service["name"]}
+              class={["input w-full", @form_errors[:name] && "input-error"]}
+              required
+            />
+            <span :if={@form_errors[:name]} class="text-sm text-error">{@form_errors[:name]}</span>
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">Service type</span>
+            <input
+              type="text"
+              name="type"
+              value={@editing_service && @editing_service["service_type"]}
+              placeholder="_http._tcp"
+              class={["input w-full", @form_errors[:type] && "input-error"]}
+              required
+            />
+            <span :if={@form_errors[:type]} class="text-sm text-error">{@form_errors[:type]}</span>
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">Port</span>
+            <input
+              type="number"
+              name="port"
+              value={@editing_service && @editing_service["service_port"]}
+              min="1"
+              max="65535"
+              class={["input w-full", @form_errors[:port] && "input-error"]}
+              required
+            />
+            <span :if={@form_errors[:port]} class="text-sm text-error">{@form_errors[:port]}</span>
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">TXT records</span>
+            <textarea
+              name="txt"
+              rows="4"
+              placeholder="version=1.0&#10;path=/api"
+              class={["textarea w-full", @form_errors[:txt] && "textarea-error"]}
+            >{txt_for_form(@editing_service)}</textarea>
+            <span :if={@form_errors[:txt]} class="text-sm text-error">{@form_errors[:txt]}</span>
+            <span :if={!@form_errors[:txt]} class="text-sm text-on-surface-variant">
+              One key=value pair per line.
+            </span>
+          </label>
+
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-ghost" phx-click="hide_form">Cancel</button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              disabled={!@commands_enabled? or map_size(@form_errors) > 0}
+              phx-disable-with="Saving..."
+            >
+              {if @form_mode == :new, do: "Register", else: "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  </div>
+</Layouts.app>

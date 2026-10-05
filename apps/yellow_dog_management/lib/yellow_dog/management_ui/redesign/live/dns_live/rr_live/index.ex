@@ -1,0 +1,753 @@
+defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
+  @moduledoc """
+  DNS Resource Records management page with data table.
+  Third level of the Zone -> Records hierarchy.
+  Shows resource records for a specific zone.
+  """
+  use YellowDog.ManagementUI.Redesign, :live_view
+
+  import YellowDog.ManagementUI.Redesign.CsvHelper
+  import YellowDog.ManagementUI.Redesign.ServiceHelper
+
+  alias YellowDog.Dns.ZoneController
+  alias YellowDog.Store.Zone, as: StoreZone
+  alias YellowDog.Tasks
+
+  @default_view_name "default"
+  @valid_rr_types ~w(a aaaa cname mx ns txt soa srv ptr cap naptr hinfo rp loc)
+
+  @impl true
+  def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "dns:records")
+    end
+
+    {:ok,
+     assign(socket,
+       page_title: "Resource Records",
+       service_running: service_running?(YellowDog.Dns),
+       view_name: @default_view_name,
+       zone_id: nil,
+       zone_type: nil,
+       zone_name: nil,
+       zone_pid: nil,
+       rrs: [],
+       filter: "",
+       type_filter: "all",
+       delete_confirm: nil,
+       bulk_form: nil,
+       editing_rr: nil,
+       bulk_preview: nil
+     )}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  # ============================================================================
+  # Action Handlers
+  # ============================================================================
+
+  defp apply_action(socket, :index, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      socket
+      |> assign_zone_context(zone)
+      |> assign(:page_title, "Records - #{zone.origin}")
+      |> assign(:bulk_form, nil)
+      |> assign(:editing_rr, nil)
+      |> load_records()
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
+  end
+
+  defp apply_action(socket, :new, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      socket
+      |> assign_zone_context(zone)
+      |> assign(:page_title, "New Record - #{zone.origin}")
+      |> assign(:editing_rr, nil)
+      |> load_records()
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
+  end
+
+  defp apply_action(socket, :edit, %{"zone_id" => zone_id, "rr_index" => rr_index_str}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      apply_edit_action(socket, zone, rr_index_str)
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
+  end
+
+  defp apply_action(socket, :bulk, %{"zone_id" => zone_id}) do
+    with {:ok, zone} <- get_default_auth_zone_by_id(zone_id) do
+      form_data = %{
+        "records" => ""
+      }
+
+      socket
+      |> assign_zone_context(zone)
+      |> assign(:page_title, "Bulk Add Records - #{zone.origin}")
+      |> assign(:bulk_form, to_form(form_data))
+      |> assign(:bulk_preview, nil)
+      |> load_records()
+    else
+      error -> zone_lookup_redirect(socket, error)
+    end
+  end
+
+  defp apply_edit_action(socket, zone, rr_index_str) do
+    zone_id = zone.id
+    zone_name = zone.origin
+
+    rr_index =
+      case Integer.parse(rr_index_str) do
+        {idx, ""} -> idx
+        _ -> -1
+      end
+
+    socket =
+      socket
+      |> assign_zone_context(zone)
+      |> load_records()
+
+    case Enum.at(socket.assigns.rrs, rr_index) do
+      nil ->
+        socket
+        |> put_flash(:error, "Resource record not found")
+        |> push_navigate(to: records_path(zone_id))
+
+      rr ->
+        socket
+        |> assign(:page_title, "Edit Record - #{zone_name}")
+        |> assign(:editing_rr, %{index: rr_index, original: rr})
+    end
+  end
+
+  # ============================================================================
+  # Event Handlers
+  # ============================================================================
+
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    socket = maybe_enqueue_current_cloud_zone_sync(socket)
+    {:noreply, load_records(socket)}
+  end
+
+  @impl true
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  @impl true
+  def handle_event("filter_type", %{"type" => type}, socket) do
+    {:noreply, assign(socket, :type_filter, type)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    %{rrs: rrs, filter: filter, type_filter: type_filter, zone_name: zone_name} = socket.assigns
+    records = filtered_records(rrs, filter, type_filter)
+
+    csv = build_records_csv(records)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    zone = zone_name |> String.replace(".", "_")
+    filename = "dns_records_#{zone}_#{timestamp}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
+  def handle_event("export_bind", _params, socket) do
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
+
+    case export_zone_bind(view_name, zone_type, zone_name) do
+      {:ok, content} ->
+        timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+        zone = zone_name |> String.replace(".", "_")
+        filename = "#{zone}_#{timestamp}.zone"
+        {:noreply, push_event(socket, "download_csv", %{content: content, filename: filename})}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Export failed: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("preview_bulk", %{"bulk" => %{"records" => records_text}}, socket) do
+    preview = parse_bulk_preview(records_text, socket.assigns.zone_name)
+    {:noreply, assign(socket, :bulk_preview, preview)}
+  end
+
+  @impl true
+  def handle_event("bulk_add_rrs", %{"bulk" => bulk_params}, socket) do
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name, zone_id: zone_id} =
+      socket.assigns
+
+    records_text = bulk_params["records"]
+
+    case find_auth_zone(view_name, zone_type, zone_name) do
+      {:ok, pid} ->
+        # Prepend $ORIGIN so the zone parser knows the zone name
+        zone_text = "$ORIGIN #{zone_name}.\n#{records_text}"
+
+        case YellowDog.Dns.Zone.Auth.import_zone_file(pid, zone_text) do
+          {:ok, stats} ->
+            count = Map.get(stats, :imported, 0)
+
+            Phoenix.PubSub.broadcast(
+              YellowDog.ManagementUI.Redesign.PubSub,
+              "dns:records",
+              {:record_updated, zone_name}
+            )
+
+            {:noreply,
+             socket
+             |> put_flash(:info, "Imported #{count} records successfully")
+             |> push_navigate(to: records_path(zone_id))}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Import failed: #{inspect(reason)}")}
+        end
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, reason)}
+    end
+  end
+
+  @impl true
+  def handle_event("confirm_delete", %{"index" => index_str}, socket) do
+    index =
+      case Integer.parse(index_str) do
+        {idx, ""} -> idx
+        _ -> -1
+      end
+
+    rr = Enum.at(socket.assigns.rrs, index)
+
+    if rr do
+      {:noreply, assign(socket, :delete_confirm, %{index: index, rr: rr})}
+    else
+      {:noreply, put_flash(socket, :error, "Record not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_rr", _params, socket) do
+    %{delete_confirm: %{rr: rr}, view_name: view_name, zone_type: zone_type, zone_name: zone_name} =
+      socket.assigns
+
+    case find_auth_zone(view_name, zone_type, zone_name) do
+      {:ok, pid} ->
+        case remove_existing_record(pid, rr) do
+          :ok ->
+            Phoenix.PubSub.broadcast(
+              YellowDog.ManagementUI.Redesign.PubSub,
+              "dns:records",
+              {:record_updated, zone_name}
+            )
+
+            {:noreply,
+             socket
+             |> assign(:delete_confirm, nil)
+             |> load_records()
+             |> put_flash(
+               :info,
+               "Record '#{rr.name}' (#{String.upcase(to_string(rr.type))}) deleted successfully"
+             )}
+
+          {:error, reason} ->
+            {:noreply,
+             socket
+             |> assign(:delete_confirm, nil)
+             |> put_flash(:error, "Failed to delete record: #{inspect(reason)}")}
+        end
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:delete_confirm, nil)
+         |> put_flash(:error, reason)}
+    end
+  end
+
+  @impl true
+  def handle_event("close_modal", _params, socket) do
+    {:noreply, assign(socket, :delete_confirm, nil)}
+  end
+
+  @impl true
+  def handle_event("cancel", _params, socket) do
+    {:noreply, push_navigate(socket, to: records_path(socket.assigns.zone_id))}
+  end
+
+  # ============================================================================
+  # PubSub Handlers
+  # ============================================================================
+
+  @impl true
+  def handle_info({:record_updated, _zone_name}, socket) do
+    {:noreply, load_records(socket)}
+  end
+
+  @impl true
+  def handle_info({:record_saved, validated_record}, socket) do
+    # Handle save from RecordForm component
+    %{zone_pid: zone_pid, zone_name: zone_name, zone_id: zone_id} = socket.assigns
+
+    editing = socket.assigns[:editing_rr]
+
+    if zone_pid && Process.alive?(zone_pid) do
+      # If editing, remove old record first
+      if editing do
+        remove_existing_record(zone_pid, editing.original)
+      end
+
+      # Build and add the new record
+      record = build_record_from_validated(zone_pid, validated_record)
+      :ok = YellowDog.Dns.Zone.Auth.add_record(zone_pid, record)
+
+      # Broadcast update
+      Phoenix.PubSub.broadcast(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "dns:records",
+        {:record_updated, zone_name}
+      )
+
+      action = if editing, do: "updated", else: "created"
+
+      {:noreply,
+       socket
+       |> put_flash(
+         :info,
+         "Record '#{validated_record.name}' (#{String.upcase(to_string(validated_record.type))}) #{action}"
+       )
+       |> push_navigate(to: records_path(zone_id))}
+    else
+      {:noreply, put_flash(socket, :error, "Zone not available")}
+    end
+  end
+
+  @impl true
+  def handle_info(:record_cancelled, socket) do
+    {:noreply, push_navigate(socket, to: records_path(socket.assigns.zone_id))}
+  end
+
+  @impl true
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
+  end
+
+  # ============================================================================
+  # Private Helpers
+  # ============================================================================
+
+  defp assign_zone_context(socket, zone) do
+    view_name = Map.get(zone, :view_name, @default_view_name)
+    zone_type = Map.get(zone, :zone_type)
+    zone_name = Map.get(zone, :origin)
+
+    socket
+    |> assign(:view_name, view_name)
+    |> assign(:zone_id, zone.id)
+    |> assign(:zone_type, zone_type)
+    |> assign(:zone_name, zone_name)
+    |> assign(:zone_pid, get_zone_pid(view_name, zone_type, zone_name))
+  end
+
+  defp get_default_auth_zone_by_id(zone_id) do
+    with {:ok, zone} <- StoreZone.get_zone_by_id(zone_id),
+         @default_view_name <- Map.get(zone, :view_name),
+         :auth <- Map.get(zone, :zone_type) do
+      {:ok, zone}
+    else
+      zone_type when zone_type in [:forward, :stub, :cache, :rpz] -> {:error, :not_authoritative}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp zone_lookup_redirect(socket, {:error, :not_authoritative}) do
+    socket
+    |> put_flash(:error, "Only authoritative zones have resource records")
+    |> push_navigate(to: zones_path())
+  end
+
+  defp zone_lookup_redirect(socket, _error) do
+    socket
+    |> put_flash(:error, "Zone not found")
+    |> push_navigate(to: zones_path())
+  end
+
+  defp get_zone_pid(view_name, zone_type, zone_name) do
+    try do
+      case ZoneController.find_zone(view_name, zone_type, zone_name) do
+        {:ok, pid} -> pid
+        :error -> nil
+      end
+    catch
+      _, _ -> nil
+    end
+  end
+
+  defp zones_path, do: ~p"/server/dns/zones"
+  defp records_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records"
+  defp new_record_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records/new"
+  defp bulk_records_path(zone_id), do: ~p"/server/dns/zones/#{zone_id}/records/bulk"
+
+  defp edit_record_path(zone_id, rr_index),
+    do: ~p"/server/dns/zones/#{zone_id}/records/#{rr_index}/edit"
+
+  defp maybe_enqueue_current_cloud_zone_sync(socket) do
+    %{view_name: view_name, zone_name: zone_name} = socket.assigns
+
+    with {:ok, zone} <- StoreZone.get_zone(view_name, zone_name),
+         true <- cloud_mirror_enabled?(Map.get(zone, :cloud_mirror)) do
+      task_key = Tasks.cloud_zone_task_key(view_name, zone_name)
+
+      case Tasks.enqueue(task_key) do
+        {:ok, _job} ->
+          put_flash(socket, :info, "Queued Cloud DNS sync for #{zone_name}")
+
+        {:error, reason} ->
+          put_flash(socket, :error, "Unable to queue Cloud DNS sync: #{inspect(reason)}")
+      end
+    else
+      _ -> socket
+    end
+  end
+
+  defp cloud_mirror_enabled?(mirror) when is_map(mirror) do
+    (Map.get(mirror, :enabled) || Map.get(mirror, "enabled")) in [true, "true", "1", 1]
+  end
+
+  defp cloud_mirror_enabled?(_mirror), do: false
+
+  defp load_records(socket) do
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
+
+    records =
+      if zone_type == :auth do
+        case get_auth_zone_records(view_name, zone_type, zone_name) do
+          {:ok, records} -> records
+          :error -> []
+        end
+      else
+        []
+      end
+
+    assign(socket, :rrs, records)
+  end
+
+  defp get_auth_zone_records(view_name, zone_type, zone_name) do
+    try do
+      case ZoneController.find_zone(view_name, zone_type, zone_name) do
+        {:ok, pid} ->
+          records =
+            YellowDog.Dns.Zone.Auth.get_all_records(pid)
+            |> Enum.map(fn record ->
+              %{
+                name: format_record_name(record.name),
+                type: normalize_record_type(record.type),
+                ttl: record.ttl,
+                class: record.class,
+                rdata: format_rdata(normalize_record_type(record.type), extract_rdata(record))
+              }
+            end)
+            |> Enum.sort_by(fn r -> {r.name, record_type_order(r.type)} end)
+
+          {:ok, records}
+
+        :error ->
+          :error
+      end
+    catch
+      _, _ -> :error
+    end
+  end
+
+  # ============================================================================
+  # Filtering
+  # ============================================================================
+
+  def filtered_records(records, filter, type_filter) do
+    records
+    |> filter_by_name(filter)
+    |> filter_by_type(type_filter)
+  end
+
+  defp filter_by_name(records, ""), do: records
+  defp filter_by_name(records, nil), do: records
+
+  defp filter_by_name(records, filter) do
+    filter_lower = String.downcase(filter)
+
+    Enum.filter(records, fn r ->
+      String.downcase(r.name) |> String.contains?(filter_lower)
+    end)
+  end
+
+  defp filter_by_type(records, "all"), do: records
+
+  defp filter_by_type(records, type_str) when type_str in @valid_rr_types do
+    type = String.to_existing_atom(type_str)
+    Enum.filter(records, fn r -> r.type == type end)
+  end
+
+  defp filter_by_type(records, _type_str), do: records
+
+  def unique_record_types(records) do
+    records
+    |> Enum.map(& &1.type)
+    |> Enum.uniq()
+    |> Enum.sort_by(&record_type_order/1)
+  end
+
+  # ============================================================================
+  # Bulk Preview
+  # ============================================================================
+
+  @doc "Parses zone text and returns a preview map. Public for testability."
+  def parse_bulk_preview("", _zone_name), do: nil
+  def parse_bulk_preview(nil, _zone_name), do: nil
+
+  def parse_bulk_preview(text, zone_name) do
+    zone_text = "$ORIGIN #{zone_name}.\n#{text}"
+
+    case DNS.Zone.parse_zone_string(zone_text) do
+      {:ok, zone} ->
+        records = zone.records || []
+
+        record_details =
+          Enum.flat_map(records, fn rrset ->
+            data_list = if is_list(rrset.data), do: rrset.data, else: [rrset.data]
+
+            Enum.map(data_list, fn _d ->
+              %{
+                name: format_rrset_name(rrset.name),
+                type: String.upcase(to_string(rrset.type)),
+                ttl: rrset.ttl
+              }
+            end)
+          end)
+
+        type_counts =
+          record_details
+          |> Enum.frequencies_by(& &1.type)
+
+        %{
+          status: :ok,
+          count: length(record_details),
+          types: type_counts,
+          records: record_details
+        }
+
+      {:error, reason} ->
+        %{status: :error, message: to_string(reason)}
+    end
+  end
+
+  defp format_rrset_name(name) when is_binary(name), do: name
+  defp format_rrset_name(%DNS.Message.Domain{} = d), do: to_string(d)
+  defp format_rrset_name(name), do: to_string(name)
+
+  # ============================================================================
+  # BIND Zone Export
+  # ============================================================================
+
+  defp export_zone_bind(view_name, :auth, zone_name) do
+    try do
+      case ZoneController.find_zone(view_name, :auth, zone_name) do
+        {:ok, pid} ->
+          YellowDog.Dns.Zone.Auth.export_zone_file(pid)
+
+        :error ->
+          {:error, "Zone not found"}
+      end
+    catch
+      _, _ -> {:error, "Zone not available"}
+    end
+  end
+
+  defp export_zone_bind(_view_name, _zone_type, _zone_name) do
+    {:error, "Only authoritative zones can be exported as BIND format"}
+  end
+
+  # ============================================================================
+  # CSV Export
+  # ============================================================================
+
+  defp build_records_csv(records) do
+    header = "Name,Type,TTL,Data\r\n"
+
+    rows =
+      Enum.map_join(records, "\r\n", fn rr ->
+        [
+          csv_escape(rr.name),
+          csv_escape(String.upcase(to_string(rr.type))),
+          to_string(rr.ttl),
+          csv_escape(rr.rdata)
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  # ============================================================================
+  # Formatting
+  # ============================================================================
+
+  def record_type_badge(:a), do: "primary"
+  def record_type_badge(:aaaa), do: "primary"
+  def record_type_badge(:cname), do: "secondary"
+  def record_type_badge(:ns), do: "accent"
+  def record_type_badge(:mx), do: "info"
+  def record_type_badge(:txt), do: "warning"
+  def record_type_badge(:soa), do: "success"
+  def record_type_badge(:srv), do: "info"
+  def record_type_badge(:ptr), do: "accent"
+  def record_type_badge(_), do: "ghost"
+
+  defp record_type_order(:soa), do: 0
+  defp record_type_order(:ns), do: 1
+  defp record_type_order(:a), do: 2
+  defp record_type_order(:aaaa), do: 3
+  defp record_type_order(:cname), do: 4
+  defp record_type_order(:mx), do: 5
+  defp record_type_order(:txt), do: 6
+  defp record_type_order(:srv), do: 7
+  defp record_type_order(:ptr), do: 8
+  defp record_type_order(_), do: 99
+
+  defp format_record_name(%DNS.Message.Domain{} = domain), do: to_string(domain)
+  defp format_record_name(name) when is_binary(name), do: name
+  defp format_record_name(name), do: to_string(name)
+
+  defp normalize_record_type(%DNS.ResourceRecordType{} = type) do
+    type
+    |> to_string()
+    |> String.downcase()
+    |> safe_type_atom()
+  end
+
+  defp normalize_record_type(type) when is_binary(type) do
+    type
+    |> String.downcase()
+    |> safe_type_atom()
+  end
+
+  defp normalize_record_type(type) when is_atom(type), do: type
+  defp normalize_record_type(type), do: type
+
+  defp safe_type_atom(type_str) when type_str in @valid_rr_types,
+    do: String.to_existing_atom(type_str)
+
+  defp safe_type_atom(type_str) do
+    try do
+      String.to_existing_atom(type_str)
+    rescue
+      ArgumentError -> :unknown
+    end
+  end
+
+  defp extract_rdata(%{rdata: rdata}), do: rdata
+  defp extract_rdata(%{data: data}), do: data
+  defp extract_rdata(_record), do: nil
+
+  defp format_rdata(:a, rdata), do: format_ip_address(rdata)
+  defp format_rdata(:aaaa, rdata), do: format_ip_address(rdata)
+  defp format_rdata(:cname, rdata), do: format_domain(rdata)
+  defp format_rdata(:ns, rdata), do: format_domain(rdata)
+  defp format_rdata(:ptr, rdata), do: format_domain(rdata)
+  defp format_rdata(:mx, rdata), do: format_mx(rdata)
+  defp format_rdata(:txt, rdata), do: format_txt(rdata)
+  defp format_rdata(:soa, rdata), do: format_soa(rdata)
+  defp format_rdata(:srv, rdata), do: format_srv(rdata)
+  defp format_rdata(_type, rdata), do: to_string(rdata)
+
+  defp format_ip_address(%{address: addr}) when is_tuple(addr),
+    do: :inet.ntoa(addr) |> to_string()
+
+  defp format_ip_address(addr) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
+  defp format_ip_address(rdata), do: to_string(rdata)
+
+  defp format_domain(%{name: name}), do: to_string(name)
+  defp format_domain(%DNS.Message.Domain{} = domain), do: to_string(domain)
+  defp format_domain(name) when is_binary(name), do: name
+  defp format_domain(rdata), do: to_string(rdata)
+
+  defp format_mx(%{preference: pref, exchange: exchange}),
+    do: "#{pref} #{format_domain(exchange)}"
+
+  defp format_mx(rdata), do: to_string(rdata)
+
+  defp format_txt(%{txt_data: data}) when is_list(data), do: Enum.join(data, " ")
+  defp format_txt(%{txt_data: data}) when is_binary(data), do: data
+  defp format_txt(data) when is_binary(data), do: data
+  defp format_txt(rdata), do: to_string(rdata)
+
+  defp format_soa(%{mname: mname, rname: rname, serial: serial}) do
+    "#{format_domain(mname)} #{format_domain(rname)} #{serial}"
+  end
+
+  defp format_soa(rdata), do: to_string(rdata)
+
+  defp format_srv(%{priority: priority, weight: weight, port: port, target: target}) do
+    "#{priority} #{weight} #{port} #{format_domain(target)}"
+  end
+
+  defp format_srv(rdata), do: to_string(rdata)
+
+  defp find_auth_zone(view_name, :auth, zone_name) do
+    case ZoneController.find_zone(view_name, :auth, zone_name) do
+      {:ok, pid} -> {:ok, pid}
+      :error -> {:error, "Authoritative zone not found: #{zone_name}"}
+    end
+  end
+
+  defp find_auth_zone(_view_name, _zone_type, zone_name) do
+    {:error, "Zone '#{zone_name}' is not authoritative"}
+  end
+
+  defp detect_record_format(pid) do
+    case YellowDog.Dns.Zone.Auth.get_all_records(pid) do
+      [%DNS.Message.Record{} | _] -> :dns_message_record
+      [%DNS.Zone.Parser.ResourceRecord{} | _] -> :parser_record
+      [%{rdata: _} | _] -> :map_record
+      _ -> :dns_message_record
+    end
+  end
+
+  # Build record from validated RecordValidator output
+  defp build_record_from_validated(pid, validated) do
+    format = detect_record_format(pid)
+    build_record_struct(format, validated.name, validated.type, validated.ttl, validated.rdata)
+  end
+
+  defp build_record_struct(:dns_message_record, name, type, ttl, rdata) do
+    DNS.Message.Record.new(name, type, :in, ttl, rdata)
+  end
+
+  defp build_record_struct(:parser_record, name, type, ttl, rdata) do
+    %DNS.Zone.Parser.ResourceRecord{
+      name: name,
+      ttl: ttl,
+      class: "IN",
+      type: String.upcase(to_string(type)),
+      rdata: rdata
+    }
+  end
+
+  defp build_record_struct(:map_record, name, type, ttl, rdata) do
+    %{name: name, type: type, class: :in, ttl: ttl, rdata: rdata}
+  end
+
+  defp remove_existing_record(_pid, %{name: nil}), do: :ok
+
+  defp remove_existing_record(pid, %{name: name, type: type}) do
+    YellowDog.Dns.Zone.Auth.remove_record(pid, name, normalize_record_type(type))
+  end
+end

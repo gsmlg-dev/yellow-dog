@@ -1,0 +1,184 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="max-w-7xl">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">Service Settings</h1>
+        <p class="text-sm text-on-surface-variant mt-1">
+          Configure YellowDog network services
+        </p>
+      </div>
+
+      <div class="flex gap-2 items-center">
+        <!-- Version Info -->
+        <div class="text-xs text-on-surface-variant">
+          <span>Config Version: {@version_info.version}</span>
+        </div>
+        <!-- Reload Button -->
+        <.dm_btn
+          variant="ghost"
+          size="sm"
+          phx-click="reload_config"
+          title="Reload configuration from disk"
+          aria-label="Reload configuration from disk"
+        >
+          <.dm_mdi name="refresh" class="h-5 w-5" /> Reload
+        </.dm_btn>
+      </div>
+    </div>
+    <!-- Tab Navigation -->
+    <div class="tabs bg-surface-container mb-6">
+      <.link
+        patch={~p"/server/settings/dns"}
+        class={["tab", @active_tab == :dns && "tab-active"]}
+      >
+        <.dm_mdi name="web" class="h-4 w-4 mr-2" /> DNS
+      </.link>
+
+      <.link
+        patch={~p"/server/settings/mdns"}
+        class={["tab", @active_tab == :mdns && "tab-active"]}
+      >
+        <.dm_mdi name="wifi" class="h-4 w-4 mr-2" /> mDNS
+      </.link>
+
+      <.link
+        patch={~p"/server/settings/dhcpv4"}
+        class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
+      >
+        <.dm_mdi name="chip" class="h-4 w-4 mr-2" /> DHCPv4
+      </.link>
+
+      <.link
+        patch={~p"/server/settings/dhcpv6"}
+        class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
+      >
+        <.dm_mdi name="chip" class="h-4 w-4 mr-2" /> DHCPv6
+      </.link>
+
+      <.link
+        patch={~p"/server/settings/netboot"}
+        class={["tab", @active_tab == :netboot && "tab-active"]}
+      >
+        <.dm_mdi name="server-network" class="h-4 w-4 mr-2" /> Netboot
+      </.link>
+    </div>
+    <!-- Tab Content -->
+    <div class="mt-4">
+      <%= case @active_tab do %>
+        <% :dns -> %>
+          <YellowDog.ManagementUI.Redesign.SettingsLive.DnsTab.dns_tab
+            changeset={@dns_changeset}
+            pending_changes={@pending_changes}
+          />
+        <% :mdns -> %>
+          <YellowDog.ManagementUI.Redesign.SettingsLive.MdnsTab.mdns_tab
+            changeset={@mdns_changeset}
+            pending_changes={Map.has_key?(@pending_changes, :mdns)}
+          />
+        <% :dhcpv4 -> %>
+          <YellowDog.ManagementUI.Redesign.SettingsLive.Dhcpv4Tab.dhcpv4_tab
+            changeset={@dhcpv4_changeset}
+            pending_changes={Map.has_key?(@pending_changes, :dhcpv4)}
+          />
+        <% :dhcpv6 -> %>
+          <YellowDog.ManagementUI.Redesign.SettingsLive.Dhcpv6Tab.dhcpv6_tab
+            changeset={@dhcpv6_changeset}
+            pending_changes={Map.has_key?(@pending_changes, :dhcpv6)}
+          />
+        <% :netboot -> %>
+          <YellowDog.ManagementUI.Redesign.SettingsLive.NetbootTab.netboot_tab
+            changeset={@netboot_changeset}
+            pending_changes={Map.has_key?(@pending_changes, :netboot)}
+            profiles={@netboot_profiles}
+          />
+      <% end %>
+    </div>
+    <!-- Conflict Resolution Modal -->
+    <%= if @show_conflict_modal do %>
+      <.modal
+        id="conflict-modal"
+        title="Configuration Conflict Detected"
+        show={true}
+        on_cancel={JS.push("close_conflict_modal")}
+      >
+        <div class="space-y-4">
+          <div class="alert alert-warning">
+            <.dm_mdi name="alert" class="shrink-0 h-6 w-6" />
+            <span>
+              The configuration has been modified by another user or process. Your changes cannot be saved.
+            </span>
+          </div>
+
+          <p class="text-sm text-on-surface-variant">
+            Click "Reload Configuration" to get the latest version and try again.
+          </p>
+        </div>
+
+        <:actions>
+          <.dm_btn variant="ghost" phx-click="close_conflict_modal">
+            Cancel
+          </.dm_btn>
+          <.dm_btn
+            variant="primary"
+            phx-click="reload_config"
+            phx-click-away="close_conflict_modal"
+          >
+            Reload Configuration
+          </.dm_btn>
+        </:actions>
+      </.modal>
+    <% end %>
+    <!-- Recovery Modal (for backup restoration) -->
+    <%= if @show_recovery_modal do %>
+      <.modal
+        id="recovery-modal"
+        title="Configuration Recovery"
+        show={true}
+        on_cancel={JS.push("close_recovery_modal")}
+      >
+        <div class="space-y-4">
+          <p class="text-sm">
+            Select a backup to restore:
+          </p>
+
+          <div class="space-y-2">
+            <%= for backup <- list_backups(@config_path) do %>
+              <.dm_btn
+                variant="outline"
+                class="w-full justify-start"
+                phx-click="restore_backup"
+                phx-value-backup_path={backup.path}
+              >
+                <.dm_mdi name="folder" class="h-5 w-5 mr-2" />
+                <span class="flex-1 text-left">
+                  {backup.timestamp}
+                </span>
+                <span class="text-xs text-on-surface-variant">
+                  {backup.size}
+                </span>
+              </.dm_btn>
+            <% end %>
+          </div>
+        </div>
+
+        <:actions>
+          <.dm_btn variant="ghost" phx-click="close_recovery_modal">
+            Close
+          </.dm_btn>
+        </:actions>
+      </.modal>
+    <% end %>
+    <!-- Pool Form Modal -->
+    <%= if @show_pool_form do %>
+      <.live_component
+        module={YellowDog.ManagementUI.Redesign.SettingsLive.PoolFormComponent}
+        id="pool-form"
+        pool={@editing_pool}
+        mode={@pool_form_mode}
+        service_type={@pool_form_service}
+        protocol={@pool_form_protocol}
+      />
+    <% end %>
+  </div>
+</Layouts.app>

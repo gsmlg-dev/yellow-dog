@@ -1,0 +1,90 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div id="mdns-overview" class="space-y-6">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-bold">mDNS</h1>
+        <p class="mt-2 text-on-surface-variant">
+          {@selected_server.name || @selected_server.id} · {@selected_server.id}
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <.badge color={if @service_online?, do: "success", else: "ghost"} size="sm">
+          {if @service_online?, do: "Online", else: "Offline"}
+        </.badge>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle"
+          phx-click="refresh"
+          aria-label="Refresh"
+        >
+          <.dm_mdi name="refresh" class="h-6 w-6" />
+        </button>
+      </div>
+    </div>
+
+    <div :if={not @service_online?} class="alert alert-warning" id="mdns-offline-snapshot">
+      <.dm_mdi name="cloud-off-outline" class="h-5 w-5" />
+      <span>
+        Offline cached snapshot
+        <%= if @cached_observed_at do %>
+          observed {Calendar.strftime(@cached_observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+        <% end %>.
+      </span>
+    </div>
+
+    <div :if={@management_error} class="alert alert-error" id="mdns-management-error">
+      <.dm_mdi name="alert-circle-outline" class="h-5 w-5" />
+      <span>{@management_error}</span>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Registered services</div>
+        <div class="mt-1 text-3xl font-semibold">{@registered_count}</div>
+        <div class="mt-1 text-sm text-on-surface-variant">{@registered_count} registered</div>
+        <:actions>
+          <.link
+            navigate={
+              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(@selected_server.id, :mdns_services)
+            }
+            class="btn btn-primary btn-sm"
+          >
+            Manage
+          </.link>
+        </:actions>
+      </.card>
+
+      <.card>
+        <div class="text-sm text-on-surface-variant">Discovered services</div>
+        <div class="mt-1 text-3xl font-semibold">{@discovered_count}</div>
+        <div class="mt-1 text-sm text-on-surface-variant">{@discovered_count} discovered</div>
+        <:actions>
+          <.link
+            navigate={
+              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(@selected_server.id, :mdns_discovery)
+            }
+            class="btn btn-secondary btn-sm"
+          >
+            Browse
+          </.link>
+        </:actions>
+      </.card>
+
+      <.card>
+        <div class="text-sm text-on-surface-variant">Cached records</div>
+        <div class="mt-1 text-3xl font-semibold">{@cache_count}</div>
+        <div class="mt-1 text-sm text-on-surface-variant">{@cache_count} cached</div>
+        <:actions>
+          <.link
+            navigate={
+              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(@selected_server.id, :mdns_monitor)
+            }
+            class="btn btn-accent btn-sm"
+          >
+            Monitor
+          </.link>
+        </:actions>
+      </.card>
+    </div>
+  </div>
+</Layouts.app>

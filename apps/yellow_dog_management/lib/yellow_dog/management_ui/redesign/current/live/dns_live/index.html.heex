@@ -1,0 +1,77 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-overview">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS"
+        subtitle="Management source of truth"
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dashboard)}
+      />
+      <button phx-click="refresh" class="btn btn-ghost btn-sm" aria-label="Refresh DNS">
+        <.dm_mdi name="refresh" class="h-5 w-5" /> Refresh
+      </button>
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <.card>
+        <div class="text-sm text-on-surface-variant">Views</div>
+        <div class="text-2xl font-bold text-primary">{length(@views)}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Queries</div>
+        <div class="text-2xl font-bold text-info">{@metrics["queries"]}</div>
+      </.card>
+      <.card>
+        <div class="text-sm text-on-surface-variant">Failures</div>
+        <div class="text-2xl font-bold text-error">{@metrics["failures"]}</div>
+      </.card>
+    </div>
+
+    <.card title="DNS views">
+      <p :if={@views == []} class="text-sm text-on-surface-variant">No views reported</p>
+      <div :for={view <- @views} class="flex items-center justify-between py-2">
+        <span class="font-semibold">{view["view_name"]}</span>
+        <.badge color={if view["recursion"], do: "success", else: "ghost"} size="sm">
+          {if view["recursion"], do: "recursive", else: "authoritative only"}
+        </.badge>
+      </div>
+    </.card>
+
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_views)}
+        class="btn btn-ghost"
+      >Views</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_zones)}
+        class="btn btn-ghost"
+      >Zones</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_acl)}
+        class="btn btn-ghost"
+      >ACL</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_logs)}
+        class="btn btn-ghost"
+      >Logs</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_metrics)}
+        class="btn btn-ghost"
+      >Metrics</.link>
+      <.link
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_providers)}
+        class="btn btn-ghost"
+      >Providers</.link>
+    </div>
+  </div>
+</Layouts.app>

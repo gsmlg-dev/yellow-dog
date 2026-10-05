@@ -1,0 +1,118 @@
+<Layouts.app flash={@flash} current_path={@current_path}>
+  <div class="space-y-6" id="server-dns-views">
+    <div class="flex items-center justify-between gap-4">
+      <ManagementComponents.page_header
+        title="DNS Views"
+        server={@selected_server}
+        online?={@service_online?}
+        back={ServicePaths.server_path(@selected_server.id, :dns)}
+      />
+      <.link
+        :if={@live_action == :index}
+        navigate={ServicePaths.server_path(@selected_server.id, :dns_view_new)}
+        class="btn btn-primary"
+      >New view</.link>
+    </div>
+
+    <ManagementComponents.offline_snapshot
+      :if={not @service_online?}
+      observed_at={@cached_observed_at}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@management_error)}
+      result={@management_error}
+    />
+    <ManagementComponents.operation_error
+      :if={ManagementSupport.error_result?(@operation_result)}
+      result={@operation_result}
+    />
+
+    <.card title="Managed views">
+      <p :if={@views == []} class="text-sm text-on-surface-variant">No views reported</p>
+      <div
+        :for={view <- @views}
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant py-3 last:border-0"
+      >
+        <div>
+          <div class="font-semibold">{view["view_name"]}</div>
+          <div class="font-mono text-xs text-on-surface-variant">
+            {Enum.join(view["match_clients"], ", ")}
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <.badge color={if view["recursion"], do: "success", else: "ghost"} size="sm">
+            {if view["recursion"], do: "recursive", else: "no recursion"}
+          </.badge>
+          <.link
+            navigate={
+              ServicePaths.server_path(@selected_server.id, {:dns_view_edit, view["view_name"]})
+            }
+            class="btn btn-ghost btn-xs"
+          >Edit</.link>
+          <button
+            phx-click="delete_view"
+            phx-value-view_name={view["view_name"]}
+            class="btn btn-error btn-xs"
+            disabled={not @commands_enabled?}
+          >Delete</button>
+        </div>
+      </div>
+    </.card>
+
+    <div :if={@live_action in [:new, :edit]} class="grid grid-cols-1 gap-6">
+      <.card :if={@live_action == :new} title="Create view">
+        <.form for={@view_form} id="create-view-form" phx-submit="create_view" class="space-y-3">
+          <.input id="create-view-name" field={@view_form[:view_name]} label="View name" required />
+          <.input
+            id="create-view-match-clients"
+            field={@view_form[:match_clients]}
+            label="Match clients (comma separated CIDRs)"
+            required
+          />
+          <label class="label cursor-pointer justify-start gap-3">
+            <input type="hidden" name="view[recursion]" value="false" />
+            <input
+              type="checkbox"
+              name="view[recursion]"
+              value="true"
+              checked
+              class="checkbox checkbox-primary"
+            />
+            <span class="label-text">Enable recursion</span>
+          </label>
+          <button class="btn btn-primary" disabled={not @commands_enabled?}>Create</button>
+        </.form>
+      </.card>
+
+      <.card :if={@live_action == :edit} title="Update view">
+        <.form for={@view_form} id="update-view-form" phx-submit="update_view" class="space-y-3">
+          <.input
+            id="update-view-name"
+            field={@view_form[:view_name]}
+            label="Existing view name"
+            required
+            readonly
+          />
+          <.input
+            id="update-view-match-clients"
+            field={@view_form[:match_clients]}
+            label="Match clients (comma separated CIDRs)"
+            required
+          />
+          <label class="label cursor-pointer justify-start gap-3">
+            <input type="hidden" name="view[recursion]" value="false" />
+            <input
+              type="checkbox"
+              name="view[recursion]"
+              value="true"
+              checked={ManagementSupport.boolean(@view_form[:recursion].value)}
+              class="checkbox checkbox-primary"
+            />
+            <span class="label-text">Enable recursion</span>
+          </label>
+          <button class="btn btn-secondary" disabled={not @commands_enabled?}>Update</button>
+        </.form>
+      </.card>
+    </div>
+  </div>
+</Layouts.app>

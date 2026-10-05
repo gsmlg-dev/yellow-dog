@@ -1,0 +1,82 @@
+<Layouts.app flash={@flash}>
+  <div class="min-h-[calc(100vh-5rem)] flex items-center justify-center bg-gradient-to-br from-primary/10 via-surface-container to-secondary/10">
+    <div class="text-center p-8">
+      <div class="max-w-4xl">
+        <div class="flex items-center justify-center gap-4 mb-8">
+          <div class="text-6xl">🐕</div>
+          <h1 class="text-7xl font-bold">
+            <span class="text-primary">Yellow</span><span class="text-warning">Dog</span>
+          </h1>
+        </div>
+
+        <p class="text-2xl font-light mb-8">
+          Distributed DNS and DHCP Server
+        </p>
+
+        <p class="text-lg text-on-surface-variant mb-12 max-w-2xl mx-auto">
+          A high-performance, Erlang/Elixir-powered DNS and DHCP server with real-time monitoring,
+          mDNS service discovery, and comprehensive network management capabilities.
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <h2 class="card-title">
+                <div class="flex items-center gap-2">
+                  <.dm_mdi name="web" class="w-8 h-8 text-primary" />
+                  <span>DNS Service</span>
+                </div>
+              </h2>
+              <div class="text-2xl font-bold text-primary">Running</div>
+              <div class="text-sm text-on-surface-variant">Port 53</div>
+            </div>
+          </div>
+
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <h2 class="card-title">
+                <div class="flex items-center gap-2">
+                  <.dm_mdi name="server-network" class="w-8 h-8 text-success" />
+                  <span>DHCP Services</span>
+                </div>
+              </h2>
+              <div class="text-2xl font-bold text-success">Active</div>
+              <div class="text-sm text-on-surface-variant">IPv4 & IPv6</div>
+            </div>
+          </div>
+
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <h2 class="card-title">
+                <div class="flex items-center gap-2">
+                  <.dm_mdi name="wifi" class="w-8 h-8 text-secondary" />
+                  <span>mDNS</span>
+                </div>
+              </h2>
+              <div class="text-2xl font-bold text-secondary">Ready</div>
+              <div class="text-sm text-on-surface-variant">Service Discovery</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <.link navigate={~p"/server/dashboard"} class="btn btn-primary gap-2">
+            <.dm_mdi name="view-dashboard" class="w-6 h-6" /> Service Dashboard
+          </.link>
+
+          <.link navigate={~p"/server/dns"} class="btn btn-tertiary gap-2">
+            <.dm_mdi name="web" class="w-6 h-6" /> DNS Management
+          </.link>
+
+          <.link navigate={~p"/server/mdns"} class="btn btn-secondary gap-2">
+            <.dm_mdi name="magnify" class="w-6 h-6" /> mDNS Discovery
+          </.link>
+        </div>
+
+        <div class="mt-16 text-center text-sm text-on-surface-variant">
+          <p>YellowDog DNS v0.1.0 · Built with Elixir & Phoenix</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layouts.app>

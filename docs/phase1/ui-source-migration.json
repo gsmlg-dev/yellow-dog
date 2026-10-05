@@ -1,0 +1,4810 @@
+{
+  "scope": "Direct compiled UI source migration for later redesign; no compilation or runtime guarantee",
+  "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+  "historical_revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+  "namespace": "YellowDog.ManagementUI.Redesign",
+  "shared_sources": [
+    "apps/yellow_dog_console/lib/yellow_dog/console.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/service_paths.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/csv_helper.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/format_helper.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/string_helper.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/validators.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/gettext.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/settings/service_configuration.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/settings/address_pool.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_controller.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html/home.html.heex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/controllers/error_html.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/controllers/error_json.ex",
+    "apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/hex_formatter.ex"
+  ],
+  "files": [
+    {
+      "source": "apps/yellow_dog_console/assets/css/app.css",
+      "target": "apps/yellow_dog_management/assets/redesign/css/app.css",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "asset-paths",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "@source \"../../lib/yellow_dog/console\";",
+          "@source \"../../../lib/yellow_dog/management_ui/redesign\";"
+        ],
+        [
+          "@source \"../../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon\";",
+          "@source \"../../../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon\";"
+        ]
+      ],
+      "source_sha256": "ecc36fb2197ad5f74d869ca1a0b3556426a327146399d99c1ca8fbc25c599a85",
+      "target_sha256": "e380de0809a45d2fe8ce2e4173f96bef62637d89865d4c603f6d6a02bbbbdfc8"
+    },
+    {
+      "source": "apps/yellow_dog_console/assets/js/app.js",
+      "target": "apps/yellow_dog_management/assets/redesign/js/app.js",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "69c94f67bd28a2512269464aab4c50e3e40c8aa3375548551924bb0fba6fd2ab",
+      "target_sha256": "69c94f67bd28a2512269464aab4c50e3e40c8aa3375548551924bb0fba6fd2ab"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-and-active-verified-routes",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "endpoint: YellowDog.ManagementUI.Redesign.Endpoint",
+          "endpoint: YellowDog.ManagementUI.Endpoint"
+        ],
+        [
+          "router: YellowDog.ManagementUI.Redesign.Router",
+          "router: YellowDog.ManagementUI.Router"
+        ]
+      ],
+      "source_sha256": "26db2bc6fe4e3868eacceb7aacc3d0c38cfebdf6d2c992b86e90143dce97e22f",
+      "target_sha256": "9ee3d2d23e72cfe2749a06df8c45e0a3e458dbc00973f99b7871ac45b924e531"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/button.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/button.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "7c4f304e87fc632d09fd3a1ef84429683b9f3916d391e6d7a7d74b4abe86daca",
+      "target_sha256": "246275a67788316af257a85d3a04d316942d74536eed771e13cbb401d0103c48"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/core_components.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/core_components.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "4186ef3bd8c368006776d789be605c15b8cba52d03d156a62b682d63383037ac",
+      "target_sha256": "9e0ee058899b6fe374524366f67e34277d800c4c0fc826805cad371e8a18111d"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/layouts.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/layouts.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "1c867b56bbe5fd2473b7ee9281ed89b682c87afc32eb7f0cc690a4d353055bdd",
+      "target_sha256": "4bf59ad71cf07e3116b30ea66fff098873c0378ee53f5e7f7c90c8dec2cda08f"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/layouts/root.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/layouts/root.html.heex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "c085561d74ac632a0b7dcf7bb7eefa47a8118f3eb3acd5e39670a94356ea7b95",
+      "target_sha256": "10208448f22df92ce29aea1c1d8b20c288fc129d9a4c14cd12451b8b8b5f8646"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/netboot_components.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/netboot_components.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "20eb929df563757f3b97f26e9927ee233506b6782d5ed4cb8166b55f2ecebda9",
+      "target_sha256": "fda06284cde7288f65d367accfc631970c2667e80a315919a2518238c4a9ef8d"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/record_form.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/record_form.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "a3bb83a72ebd2785378ca65b27e81aba9f82505971cd1121c05b42547a8af65e",
+      "target_sha256": "8ae84a740aa01c89e0ba7fef61c6fa1d20ea6410dbe427616d68351643770cbb"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/sidebar.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/sidebar.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "9726f4070561006f5605d3b8e04560c9aece84607a8eb2d51b391e628a848070",
+      "target_sha256": "321b1fdf73b7da91fa61fea64a77460bae0c8b9c78476fa17cec7ef5a58b20d7"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/error_html.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/error_html.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "f8cc3f40f993cce662a365525ce28a6e5334535536b075fced4a03a7548931bc",
+      "target_sha256": "741e60ed5418c17b94bde936f1c7fdcb0fc9bac66c992797c3e73b0aa5e7c8ad"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/error_json.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/error_json.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "b6d1cf8d09d7c47d0f3d86feb248b98486bbc77d172b06a7ea62c270d1248623",
+      "target_sha256": "13d1878c7f709f87a9d14d8b82cc438048fca2b8bb1fe4886aba0bcfddcd1848"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_controller.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_controller.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "2d08865cef45364222b6a0fbc93caa812451cb3c323e762f4264ec6ff58fc5d4",
+      "target_sha256": "fda43037e2a524578b481f23c98044b557f4aaa28b37dfe853b4eb6119303658"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_html.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "1ee217915333530f264127ee677fb260a9ba1153626ce4ad2076c97672fe12fa",
+      "target_sha256": "815d93cf1d5417020c0fa4b05340856f2343c97e99e542c7ae7749a6791210e6"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html/home.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_html/home.html.heex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "6263545b7b9bbb82bf1364edab0d0daf8a716f2e4acd1f1cbc10a851e58fca73",
+      "target_sha256": "6263545b7b9bbb82bf1364edab0d0daf8a716f2e4acd1f1cbc10a851e58fca73"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/csv_helper.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/csv_helper.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "764309125e89fa454d3659f1c25820b96b14f2a32f17dc31613a8b2eca30508a",
+      "target_sha256": "8762176a70088c58c06d4cdb1e109052d6827ccc9b94f3dcd72890e2ba10e2c9"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/format_helper.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/format_helper.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "113f3b35eb2089dffacdb29ebf574dd386b05d4326bc789f8f2ce97ddd2c1905",
+      "target_sha256": "95868a8b885481460bf286c04a34a63ff016a5c84bc34a73e708cd042933feab"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/gettext.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/gettext.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "9efe5e951431638bed13086f3878a670852ca477ddaca65bfe026024ca527549",
+      "target_sha256": "38e98d282dcbca75d52908a0bece4cddc3f48fae5a630254f39c9e22c4848a7a"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/hooks/current_path.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/hooks/current_path.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "aab5328cd141892a2b43e293343259efa8e4f69cc15d44e907a001ce0cd3ce85",
+      "target_sha256": "6236bb9afc746d5b16b8533c2eec92ff145d5fc529aac0d15298d59898ff3513"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/hooks/service_scope.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/hooks/service_scope.ex",
+      "revision": "working-tree",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ]
+      ],
+      "source_sha256": "8e9466cc9a174d61ac0bcbbe1e9798152faa4bee2795677b5a16eaf818c3dcaa",
+      "target_sha256": "0bb12e58f9e5ea04fde47b82c19cf67b30b11b7e8d5865038d52c0bee928cd1d"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/backups_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/backups_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "56616b61392943d848f9325887f42132ce75ebda6667c658e94c3f6b2de915d4",
+      "target_sha256": "009f3033363542db9d36c01eabe3d8c3c72c9081c085045b08a7321e86b444ca",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/cloud_dns_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/cloud_dns_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "dff90ac4c6b41b9271fe98130d40fd86d66fe6cb211e396fe6c1be612993532c",
+      "target_sha256": "819fe01869f9d2ee289baa5d4c9e6970f6bc201967547c7eddee213bb289ad12",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/components/pool_form_component.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/components/pool_form_component.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "a3a9738b49de1468ea3b0426693676a314e0c1a18f9dd565107ac9a1c9c1fcd3",
+      "target_sha256": "6f511e9495e1eda0039326a77f839c10102489fcbd723a515bc56ead68ba84b0",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dashboard_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dashboard_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "22a2456b69972cbd04cae2aae3d6879f7204bbc1b117a1227c5288a5aac39f76",
+      "target_sha256": "fc94c11e1fa319c36f0a1b2246c07beef6253498e37cdc60a90973c260374a7d",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dashboard_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dashboard_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "2acd58c1e0137f55c2e9ed7d26bc2f61a07fe4657688a53a14bd87e9eaf50023",
+      "target_sha256": "2acd58c1e0137f55c2e9ed7d26bc2f61a07fe4657688a53a14bd87e9eaf50023",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_client_live/activity_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_client_live/activity_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "cee061a8ff877b925e9b9a2e60dd4223129a3421c8e059ccc77caf50b3399bd8",
+      "target_sha256": "985ba470e71ed7d1b0d381e8dbcb1b4c58e66d447247e4af7c01fe6ecfaf5457",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_client_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_client_live/index.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "0fb8a4df577bfc128cddfea41d91fb0a7651d256e448d160b2cbfa7dad5b7d01",
+      "target_sha256": "2a7920c5f1be155f755c71ee558ae306107efce67f1ba03dfbd4bf619e53b333",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_client_live/interfaces_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_client_live/interfaces_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "98f24408e1b4601eb5ee0763f8467d3de5674421bf09e3478c808ba1700000d5",
+      "target_sha256": "bf5c192f6d13809c03c50fee4fecf69b14f418b3e05f1a1e3e6066b4f149dde1",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_live/management_components.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_live/management_components.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "3af1c0093a48d42b639d64b315c01dff7e7ff2f56edefbb41c7e2d182b704da5",
+      "target_sha256": "3bb9b33e6cb337f52e7138638a123b671ce665ef654b736fd0bb287fc48ea862",
+      "selection_reason": "new_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_live/management_support.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_live/management_support.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "595f288fbb0b1fc4707caf1f4575fbf6de56e2d84da56569628802a33da79412",
+      "target_sha256": "2eb7082e15d22b7b9928607c5936ba45bfdf8f6ae44efd48c353a04d3a0e72fe",
+      "selection_reason": "new_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/activity_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/activity_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "17c250f00405b2d2cecb619b7d29a65eeb5546cb9962833c2f9e25d75a097c48",
+      "target_sha256": "f942164858934842a9687bd182c92293e0e0b6e5404cdba31c644b0181919851",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "ec8dc8c681d881a83abd288537bc7967ac90b029edb52266aac5d9c8f2a48793",
+      "target_sha256": "cc29ac2b3fdd88f9f88197edefb626b7122a06767f58a4c8c2bd68292b12b92d",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "eeda659d0bb1856fc571578e1457f8d88a90d64b16da245955d6636b7c4dcd4f",
+      "target_sha256": "eeda659d0bb1856fc571578e1457f8d88a90d64b16da245955d6636b7c4dcd4f",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/leases_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/leases_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "bca6ebd42b235c48e25f4eeb0a3a548acc0ae21a186288504cd083a6f46b580d",
+      "target_sha256": "130059646d5c61a089947306249b994f2c74a26ffef1712c731c715ddb952c91",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/leases_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/leases_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "85d4dafc0d4ba96a66af76ced4be754496dfa85384cb84046465083f81b3095c",
+      "target_sha256": "85d4dafc0d4ba96a66af76ced4be754496dfa85384cb84046465083f81b3095c",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pool_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/pool_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "58b6f002e0319cdb1ead203b52a90b480975bf570a1513ed3a9f909b4747a8ab",
+      "target_sha256": "9311f0f094e411cde40de5c101d4ae7234f6d3f9441a9f50ab6b643d95e41971",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pool_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/pool_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "356c8058b7fec3ae4ea1c3742b5fdf6d39bd7afcd7d4a723d5b9fdfc91ccfdfc",
+      "target_sha256": "356c8058b7fec3ae4ea1c3742b5fdf6d39bd7afcd7d4a723d5b9fdfc91ccfdfc",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pools_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv4_live/pools_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "37710b59eacc0641223b01ef5c63fff416720ada98926f6fd787e340a1c9b542",
+      "target_sha256": "09d2e74ac93916418ed87774535d81e0f63fa56de5e7be9cc5cf107a5664eb66",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/activity_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/activity_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "814c5ef4e145352bc56aafe61b081fd4843543c63148bbbbdd9dfdc67c7e62a5",
+      "target_sha256": "8104159a1006d1b7a519f1087cb48c8c44322075fe536013eb0646388b3cbbd3",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "933c581bdd9fd3f978e3e4822fe293f86a399039fb4a9f0cdaee173373ebc91d",
+      "target_sha256": "bb211f55ad2a9d7a61b92fde2a87bac15fb9379f9ced7ed23d75178da547d206",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "c9a90d751d0ab524cc4ada6a38bec79931eeb4d0b9e7a343c8d63dace46c2658",
+      "target_sha256": "c9a90d751d0ab524cc4ada6a38bec79931eeb4d0b9e7a343c8d63dace46c2658",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/leases_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/leases_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "4d34f80a5cf0930cca2afe437bd83dfa6a774810607b5b46ef65d532e46f6500",
+      "target_sha256": "437b942a4e65227299ae38b29fd69cbdf87820a63f9d427aaf3beb9ce59a4322",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/leases_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/leases_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "cf75228a8423ee05abca9d1fc3d3fbd4f59e10f28e9300fdf2f6aacae5ab8e79",
+      "target_sha256": "cf75228a8423ee05abca9d1fc3d3fbd4f59e10f28e9300fdf2f6aacae5ab8e79",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pool_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/pool_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "0460567b7d0351bd0256de7264dfd78db1faeed3a7dc228683908ef7a2988b03",
+      "target_sha256": "796b8d91104c4ccc427f4d3b402dc89c73086fa21d43db8057773df4bcb84bb4",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pool_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/pool_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "9729e951d2c489130fa3b9912f92aa5d54e1e3777b80c0c6e5397e1c0209f008",
+      "target_sha256": "9729e951d2c489130fa3b9912f92aa5d54e1e3777b80c0c6e5397e1c0209f008",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pools_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcpv6_live/pools_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "123854facfe841fca46bd5b180db09cb0f4ad9df63df71f3743bcfe0660aa24b",
+      "target_sha256": "b92672fcbaca5fc1e473050c47dfe60122925ea76c350543f0a7676bdba285e6",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/hex_dump.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/components/hex_dump.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "856374857970401becf6d83d793a1097483ba1fa4967902b6bbccf5918403015",
+      "target_sha256": "54b47c364e3e2e1d2cfe54ef866ed7aabb55b25927fb700b4deea3ffeef882de",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/query_history.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/components/query_history.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "2a93be766fe5b41cf7e9f10fd6be78d4c0264c04765f5ae23ae61a454d497939",
+      "target_sha256": "fc69e32888a26c92863e646975e8c3745e7dcb9718d23aa18adf4c1cd984e325",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/result_display.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/components/result_display.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "055f8ea740d1d16c8e874c7135cc0e5ca92a8b00c7d349ce9ef1a608e51dc99c",
+      "target_sha256": "8b76c0ae69a2a0b2df40b463c51b0790b3d4a5877a63c4dac42a8e0d0eece044",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dhcpv4_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/dhcpv4_tab.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "18afedbca98d4c416f95b0d027826980b751f39e3eb30662955cd2504fd9d0ae",
+      "target_sha256": "2edf55cdf63d65ffdf8ae64a981af8227e977d123b1f35f0f963c7d86ef0b23b",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dhcpv6_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/dhcpv6_tab.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "0b3446451619b72330dd02ef8cc415fb79ad82f9b0e71874d71e9f2248a92361",
+      "target_sha256": "199268e9841677e5d64ec29dcc5b7a6e5d13e25a8c60c63e3773933e6c79c850",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/diagnostics_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/diagnostics_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "3c0e81d1ad96d9c3e123873b827004521fc7e02161e4cfa71cac9a2f49bfdac4",
+      "target_sha256": "2c8e7b4de64a7c2b00d57625e95587aee734dbacf9a4975aa0dd92b86f07c1a4",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dns_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/dns_tab.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "cbda4e40996d16e01c9fc0b6674c7b70ebc278bbb4544cc4992bf46123490238",
+      "target_sha256": "c5fe4dc21af5d275cfb6b2f0e72687124c664288cbf0d1eee1af89b0c8114a38",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/mdns_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/mdns_tab.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "5dca26b7fa264916441f4ea24e1c0f1c070244fcb6a8b2c3147ec383df416201",
+      "target_sha256": "cd1d6659193ea2604424ccc41390ecdad81aabe9f37ebb0b6cd9970219cf9756",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/acl_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/acl_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "f907b11b8f5e4f8cae9ee08715ad0d3aeff3888f7b510f96e5e449bc21a681fa",
+      "target_sha256": "b3b0c0c377cf5c7daee33205ea644a5a4af9d8e8477cd88d5b87d9f4d33b29e1",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/acl_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/acl_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "48f0ac644892d306cf4f04d86db19464bbdb3b03fa4188772b4a9b776389d3f1",
+      "target_sha256": "48f0ac644892d306cf4f04d86db19464bbdb3b03fa4188772b4a9b776389d3f1",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "7228770382795c3978f341fbf3c7fe7ba172a440a22a37bd767deb8fa4c9f47d",
+      "target_sha256": "b29809b2b9a7851191c9d076219b0f6d2505c2710c58b0d4d7e56ba221aa3c16",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "834704f0dcfcf8b846e46dd6e8a77389218f9c02e94de26edeee85e1cc240c4d",
+      "target_sha256": "834704f0dcfcf8b846e46dd6e8a77389218f9c02e94de26edeee85e1cc240c4d",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/management_support.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/management_support.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "b7c73bb14ce2ab64a736b670809e067c2e97e647418b550c9855b4d7e860e9ab",
+      "target_sha256": "ddd0585c051791cd196fedc4b148a3109e5ef9d7c40c94148127908835ab175a",
+      "selection_reason": "new_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/metrics_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/metrics_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "456d88c84c3b9afadcd168e4a285f7d71e514f6dff8f62cd3f7a884f270ac472",
+      "target_sha256": "92b6b73fcae7f3d703becb61f9c827c7106394b17c95b9664af76e6cf5d30352",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/conflict_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/provider_live/conflict_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "c06d2063894525cb90e98658b7f1c6a93e1a999054ecdc5e339fd768011abba6",
+      "target_sha256": "dd63c0a38d398fd23970f83b94a7cd76a00434ac04c3acc26d548005ca490ea4",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/conflict_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/provider_live/conflict_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "bcc042ce68080b2d6e73a19051f12dc496e57bb26a3dbd65e03a104eb7538374",
+      "target_sha256": "bcc042ce68080b2d6e73a19051f12dc496e57bb26a3dbd65e03a104eb7538374",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/provider_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "fdef0db4dcc5780d81e04508d20208dacea1e5c5714545fe16b213eb32d61f87",
+      "target_sha256": "c24eac1d28d4eee42e8e2a70876f10a937c9d81b6aa615fd30646e5f02742a26",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/provider_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "68230a58e161a9c54c68d49d3b6c9b2afadff1547e73f11358cb47d8c5e3d3da",
+      "target_sha256": "68230a58e161a9c54c68d49d3b6c9b2afadff1547e73f11358cb47d8c5e3d3da",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/show.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/provider_live/show.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "b17306d388c9825d8eb5da1e38b9bdd52af7fe883c368a2375b1855df2050eae",
+      "target_sha256": "b2a611d18c5723841c5f80b9a2dab4c5487d38a72f9fb1b2c184c72460ab9f58",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/show.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/provider_live/show.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "e3a5b3b4860baf0b9782067bac0e2b393abcaa8a25ccbb7f34c1adb4914135c9",
+      "target_sha256": "e3a5b3b4860baf0b9782067bac0e2b393abcaa8a25ccbb7f34c1adb4914135c9",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/query_logs_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/query_logs_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "c3837c9cdb44f737406dc671f2abea0f55370b9e99eb04c965ca895d9a02c2cd",
+      "target_sha256": "d60d53d144219b90f09098b9ae0f609478036d3630ae6687ab481111ca0a337b",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/rr_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/rr_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "555f9ebe050f0c411ddeb8c8c6d42051397bd728aa18896dd06594b4aa7bd135",
+      "target_sha256": "fe21750090d44a1f0ba29196224482440984619263d5753d50aad7eae86a3700",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/rr_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/rr_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "32b0d466c40eae7f04394dd3e67200746986db29b604baa4f3f2b13ec55613cc",
+      "target_sha256": "2c594387c8360154f08f7f9a3a942d79e70e9d5e23b9bbbb6772de45151a2f82",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/view_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/view_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "5a7c6287e5fcdfeafe6e14a03526aa1cbe3c376b5a7d8f14a9f9cc4d9ed75b92",
+      "target_sha256": "7a0558f119cb9bde91cff3566210c1029aaa963f002dfc4274b678cbbf9530cf",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/view_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/view_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "2d2283aebf87ab7617cec9c0b8fca0bdab31aba672c2f750758f4c7a62cfa792",
+      "target_sha256": "2d2283aebf87ab7617cec9c0b8fca0bdab31aba672c2f750758f4c7a62cfa792",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/zone_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/zone_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "9fe43d6f61cdb1c8f2a87421809a6b17cc42611c549ecdae0e75d829074da9d0",
+      "target_sha256": "34065302a4318dffe3e426d7ee7631b427c7f853ac23202a37ba2e293afd4263",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/zone_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/zone_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "e12dfe7a08fcbdabe4452d2ce6571b6d8bdb33ff1103709be8f8fa76b2af65ec",
+      "target_sha256": "e12dfe7a08fcbdabe4452d2ce6571b6d8bdb33ff1103709be8f8fa76b2af65ec",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/device_detail_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/fingerprint_live/device_detail_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "b6414c69b3f1967be8fb02080c84e71aa121eed3e34bf407afe52ccd6ed59209",
+      "target_sha256": "fc4b1e1c7248bbbf84143b1d5690dd09e88adecac9e055d020d10cd3fb33b76a",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/devices_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/fingerprint_live/devices_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "d3c2545a39e5ff83d7ee4bdb46e97a01f58fec18d5836ee84627dd58056605c2",
+      "target_sha256": "def80ad63b347c6ad917a418f785dd15b29ef44644c1d60c44a74b507fd21a0e",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/fingerprints_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/fingerprint_live/fingerprints_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "f7c0ae57e7040f16d5359a2ae859f4ceb589b34fd94c0fe7b7206e787559441f",
+      "target_sha256": "269fde848e04de6005fd1dca5fc4c10e3066efaf6c3e03c6b6139486f2479769",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/approvals_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/approvals_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "00ec204adcccd4859d29965d08f7277dea06ecd0f931375874cc90ce57fd7a88",
+      "target_sha256": "60e67bf67daa2a13491f81b369082edeb76311144c2ce1114164a95d2692e29d",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/audit_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/audit_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "26afe0928a742e7541dac8ca8b3927a9724d0ff7b807b135cd8dc43d6e94c086",
+      "target_sha256": "390371863ee74511e3cf0a1494567db5607059a899174f2e2713e74ef47e5801",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/host_detail_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/host_detail_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "bdcf348c85517fe149d9ae61e5b8521ec3bd2a9141e2578246fd78602eceb0e2",
+      "target_sha256": "fae907f3f08367a58e32a266364d4f94f13a677aa35e668bf3c84754a564d33a",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/hosts_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/hosts_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "eff751a4c6ea529b335dee7b13b3c0b707613839af4ea86ffb4c91f6cb469350",
+      "target_sha256": "e9dc1a5e395413c389ab28ea7cded3fcc2a85c92b25bfe6c79990d322b95f99e",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "138645a14d2716e5437471b2d82911fdd5ecaaf374c746ab0068ee31c57285e1",
+      "target_sha256": "96975c57a0a3f48e568b7a01754acc49bd9c2f0fd43940d6a439fd0f9208ed13",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/policies_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/policies_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "fc14aef18252d5d49a6ab0b0c5fbb3311346aa7c0093ddbbffd6c9962f819e12",
+      "target_sha256": "9ae3d0bf0e4fa8c766da567c7163648c01e4bb455324211f3771fabba1782e9a",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/tokens_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/identity/tokens_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "ee9ecd0a243714bf37137b6faf6ec214e81fac704dcde4350a9bde9e8cf06740",
+      "target_sha256": "d175c9dc0631d105c7b1155d000b3ef78080a10a43a8ce081a878fa95bc2b68f",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/ip_database_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/ip_database_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "c199f319381761c2290e41c1a0a6befd6a4e44751eaa25b4ee3e318a5b162f5d",
+      "target_sha256": "f7076945c2ef3d56c2f6acdf4e600feeb2bbb69d21434b30bb819dc1c8d53917",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/logs_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/logs_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "d266f1944ca79201b975176e9ff254fa79bcb3da69fa6526ec3b2fa3daf94c44",
+      "target_sha256": "ea19329505ecebe10284887f49ff403a837df9311112b0cce227370341b3c610",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mac_database_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mac_database_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "984ab26384d43a8e6c4ca73ed0d7fddaeb422020cfb8658693a6654ac0ade86d",
+      "target_sha256": "f0e2d095fad20c5fdd4a9d384f58654112a08cd597d81998e8fc2e614e9218ff",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/data.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/management_live/data.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "2584f850074849d58a42ac90a1b09e5920b926c74a9dc9b2d7ad55c1e054fef4",
+      "target_sha256": "3d9c3483d82690d2b202464bdfbe4aad0bf584f000605d4c2a71f844b9913e68",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/management_live/index.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "48976b038624cb279882a5f92a15d00f479d1f79df09cf6cdf2dcb374cb559b0",
+      "target_sha256": "a242b1af50fa79cf2352e34fc9297214ace9527e0e5e185bbb55230097af4e42",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/discovery_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/discovery_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "5c1ec81e8c1cd9463f31170a98793e80f1a6074e16c4d047bd39ec2989eab9db",
+      "target_sha256": "d84eb1e4b1ef59cdc7c56d3235d4a351c35d79c0c44750c61147cab38347934b",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/discovery_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/discovery_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "2bcc3dc8d94864f3e31f3b8dbf760c6bf3dc70bb8ffde8e273d5a8afaedf8faf",
+      "target_sha256": "2bcc3dc8d94864f3e31f3b8dbf760c6bf3dc70bb8ffde8e273d5a8afaedf8faf",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "37894cb957536915364151d19fa6123520c6626301dab0770a3b19cc3ed8995b",
+      "target_sha256": "18b83c4e2c05f4ec904408a87ec6a72175f2768aba3435c39701fa920504cc6e",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/index.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "4f3967ff63a685511990e4cb4bf8985dbc7ec52691e00fdb6074d4ba2e946538",
+      "target_sha256": "4f3967ff63a685511990e4cb4bf8985dbc7ec52691e00fdb6074d4ba2e946538",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/management_support.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/management_support.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "16f3e848dc92790fde8366f3775bbdd4ae09806bf368c4bfbe3e0937219e585e",
+      "target_sha256": "e12144e67dfb98413710befc8a81e191aaa32d9e890cf96c75998a1c9a2ea047",
+      "selection_reason": "new_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/monitor_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "e3eb296d6f8c584f9ac5de50838cf6a682ed1ab2e16a9cce548498b7c5d33262",
+      "target_sha256": "92ddac02e78044cd11d2c80ca1b772c95a3931701f6248da8fc38d649d08d051",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/monitor_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "19ff92d7c1c0ca5476c366da862452876adab862b1aba74ff7e2c61285554e2f",
+      "target_sha256": "19ff92d7c1c0ca5476c366da862452876adab862b1aba74ff7e2c61285554e2f",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/services_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/services_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "49efee36f15e007afea577a93bf845950ebba0e28a3a5a66c1e0fc41fbfc082d",
+      "target_sha256": "baf2e0d49b59db5c10bfea89a9016f1f000457997d46ccf6fb1f10e13bfb7972",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/services_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/services_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "1687d4cc5c8d9dcaf314af33ca15e9fbc334db7ec48c8e90d7565e76ddc931c5",
+      "target_sha256": "1687d4cc5c8d9dcaf314af33ca15e9fbc334db7ec48c8e90d7565e76ddc931c5",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/device_detail_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/device_detail_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "2aa35e14d2d39c0d84d235bf68dc2287f7d8d6e61e7a64bd3e253251c097d5dc",
+      "target_sha256": "05250753726c40dfc5624ab50c15b60b888dd6f5cd039c75967233c079e356d2",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/devices_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/devices_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "a1bce45365eb086f74a0985e0a32c7cb4a4235441f78cff0680eae2b4cf155ce",
+      "target_sha256": "a63be56eb18f9c4bd29232e565dce44f133e17ba6a27cd3d2c4fb4e0825d04d3",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "5364dd0a13e80c4bed28f4b87fb22d8d8ae645e74aa5770e318df14b69a6f702",
+      "target_sha256": "fe14e1fbbf328e895463224f5bae478eeeda942cbc41cf030c866162d6718976",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/log_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/log_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "529bca739ecfc6f4e1d9021458813eebcd48a6df3d6f186307a2f8dca916ebbd",
+      "target_sha256": "d4bc685ce1fdacaece19f9a4d5317014ae9d01618145370ec22d634202e5cf31",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/management_support.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/management_support.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "8feeb4b971119af343c67e18d6cd9f6f828865ca6d61c4909cd1e66cd1edd01b",
+      "target_sha256": "fddf5322c6fdfd94a51921065f8ea5eeb96dd6ee0d11c2bb532ebce9b64b9720",
+      "selection_reason": "new_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/profile_editor_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/profile_editor_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "f582a65dc930e3a73d956ff0173c9a9da97fcbe7749445c05b05bcb5becd4da1",
+      "target_sha256": "b7af4d12d0e6495c54b24f3432757e22849351a6a25af7b76e32c54d3648b451",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/profiles_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/profiles_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "63fccad099548d25547092de6a6f4e1803e1719587b6a46366ef2f9d8587a313",
+      "target_sha256": "9224ebbf14a8b822f5637b6e5be5ad183d817bdc7a3dd9dcd8ea8c040e60349d",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/tftp_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/tftp_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "8b0461cce50f84358a21feec652159f0c8030665af641fc1f8f12365e35382d2",
+      "target_sha256": "6904a5dbb766588bfd81e73404cc4c63b862d874fcd28383ddb99dc1e6440bb6",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/config_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/config_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "326cef19b2f89c8f18d6f4c09c72062d4982eae2ede9e1f1ca3ffb43478f9909",
+      "target_sha256": "7062204a6bbe51e39f3361032c79fcdc5daa52c4ab91f357b94558d78ac1666e",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dashboard_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/dashboard_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "2e6ac98cf735797d417bfded47856f049627781f63fd4020f24b4dd4a5759282",
+      "target_sha256": "f128f23ed688d0bc00bb690251555f8f7ad530b3853e31660350618c5ac21428",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dhcp_client_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/dhcp_client_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "9a6ac5ff42f164fbc710c6b1e294bfa8d25a5b43a20f3db28aa9974dd1bd64c4",
+      "target_sha256": "9d6b811695e31afc07e7bb273f45bf312cb7363bbb7c44a9e630ca03990a980e",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/interfaces_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/interfaces_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "6159ef8999a39009e8e4ec0f5d7e35980a817ee0bfa0ddfccb42b6d3811b2a94",
+      "target_sha256": "7148d8a200bdbc78e1bc97957b0a88aab92e5615f0f41715606e6c78d2706658",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/node_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/node_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "14afd16cdb641a381bd728f658ad2ea3679ba9d1b36128db517c14968d5ded68",
+      "target_sha256": "09a1be11cf9032f03cb62dbd223a99221a35a8391d3cbe6161b1430f1e6a5613",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/resolved_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/resolved_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "cd323a3578d7f1f6c970c9c72d73571649eec4bc7747a554ae323418af1f2812",
+      "target_sha256": "bbfa0c60bf037c67e7a61d99e58b0720556148baaddd32b4c2f9502283e956de",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/process_map_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "7f0c26fe9fd5983a9143cf08dac90fb2e7f8a06c8aa8e65e9963d9cbc12e985b",
+      "target_sha256": "7369b19d5d621da79481dfc737811fa06aea6fe18330dbcbd671f0275c02ceca",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/server_live/selector_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/server_live/selector_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "75fe208c95d5bb2294fed735ec06369d461792b856ea1111d4882742b95fe378",
+      "target_sha256": "5b0917df04940fe360b56ae10e99f6053dbbb31f1f6521d6d28064ce0ca291d2",
+      "selection_reason": "new_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "ba886e5749de643faed4b83331f6898f9d1681e96a95b9847c4b353351f33f00",
+      "target_sha256": "60f91b04e032a616a94d8981c11eeabf57e28da4d59b18c3db0d0aad972b781f",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "11a5b9b8e3d1527706ff0893d4ca58e2c9496d126e4f594f58d0577872bc55b2",
+      "target_sha256": "5141ac11cc7a1088e3e6c59a06abb56ef13c786d9a0f4a8f27ac444de32b902f",
+      "selection_reason": "richer_original_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live/dhcpv4_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live/dhcpv4_tab.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "893c155d35b77afe381a51e3c689aa33e7ecf484aebfa32ef6a98728c2e3d4a4",
+      "target_sha256": "85e9d2ea7cd38437c105ab64e41e95896c31c145f30e67cf45a0663e0647af04",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live/dhcpv6_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live/dhcpv6_tab.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "5ef9621a9f379c5a2d75f52ccbe267538b31c34cf9cacf3c46ffb9cceb634df5",
+      "target_sha256": "cf8990ea25c5535c4bf06c39ff4642794590da7826ed1627ae9f4c1fb5048848",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live/dns_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live/dns_tab.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "bd456d793c9f94c8ed402200290d4166415793ac70e1fb61f0a9fe412dd28e25",
+      "target_sha256": "491d681cd8e374b0990f33ca8631d83a26a152e872ddef9acb93a4652f2b2f44",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live/mdns_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live/mdns_tab.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "cadd8c1d78ec4d2ca3a6f4922527931ff9d6d0b3da2fe86ad9a08bb2577a3c9d",
+      "target_sha256": "1fd2ef73c12bde0fc1979f322f29fd7cbd2a796f55bf54d174faab926807779d",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live/netboot_tab.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/settings_live/netboot_tab.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "adaptation": "namespace-only",
+      "source_sha256": "9a8c74b9dfc1c5b2202a1e4aef8050e53cb0915b897fc445e2523cbb12c85f19",
+      "target_sha256": "fba06b60d1d836d3990e2dd4f4f399b32ceb1424a3ce1eb6cd4008568664bdb4",
+      "selection_reason": "historical_only_ui",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tasks_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tasks_live/index.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "93e6515e3e7ee9fe3cb2164cdda0be33488ffc3e4dde9b82f66ca1e8953580dc",
+      "target_sha256": "c5470bbb662040a564977b32f5cc3e706e2a893eeb9ce113e42d34d87c0f2f06",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tasks_live/show.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tasks_live/show.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "dc638e36e75e05d07137d92818d85a2fc262250aebf00a673ae375ec00cbb9ff",
+      "target_sha256": "c29e2204aa9518853ad475cf204107ec5697c6818a5856791b29f7782fca56fb",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tools_live/geoip_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tools_live/geoip_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "f57adf9944eb6b2b662b16a07af647b32ae0a18eef12bd5b29fca3b916518f20",
+      "target_sha256": "31358d219367acf32d1e9d0bc5a54a8df11722f6dc647d890a87c48917622433",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tools_live/mac_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tools_live/mac_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "5b7547a0c62719026c79dd6ed755fa50e9fa1fcd7e13a2ee4fa5ae18fa3f4754",
+      "target_sha256": "f6dcc47a2de559b9e4998bc8af830b895ed946b29b3598c29d014feba956e3cb",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tools_live/whois_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tools_live/whois_live.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "source_sha256": "284d7ed696a7be94f2d52c8607a44d0296043d376148e72c9e3e7379f6945ab9",
+      "target_sha256": "612bafb986c91b712eac443f1389d2bc3c7ea3ed77d209b694d45eaf12825b87",
+      "selection_reason": "unchanged_ui_or_additive_current_source",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ]
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/service_paths.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/service_paths.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "9908499d392a3c3e287a5efb1b0b08f1afc01bc5c8ceaba09fbcb6e5be5eef90",
+      "target_sha256": "1032fe1992976da53fd51ef488ecd0991200153919fbfd17fa291a104e535587"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/settings/address_pool.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/settings/address_pool.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "d71651c1e63832c6b0c650d6979a4fcb729422001562d23d6a11d7578c5b0c62",
+      "target_sha256": "a57dfa257b81048d91832d28acfbe26872454305a7ed47281825daae1cfc03d6"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/settings/service_configuration.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/settings/service_configuration.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "142f04d0c47c35db4733c813db6342ba75c17ab72f12a86c59a07fa1c8c61d9d",
+      "target_sha256": "bd124dcce64d739a6856b73ac1bc346ace398c68128fa6679f5da162aabaf7f6"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/string_helper.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/string_helper.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "091d78ccb3dc39a5b0853377ed205749431313c4342c86e46aff5738e65d477b",
+      "target_sha256": "3d27a1ca5daff25dfcf9adcc2c3dee957eac80ca6464de4cc7c27c286c9d4980"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/validators.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/validators.ex",
+      "revision": "working-tree",
+      "adaptation": "namespace-only",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "62024ab6906d0ee0a6ab4b4afd74b99fc7f09e9f664d163b50c4f80dc3d5e46a",
+      "target_sha256": "cba233d158acc5c229879ad6b563cb6ada2c61dad3b472b708b1eb4b1eb8af2d"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/hex_formatter.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/diagnostics/hex_formatter.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ]
+      ],
+      "source_sha256": "c3d864d4e226963bc579bf836fdd5aeed201aa4fb5f023e682af2561ddaf4ca7",
+      "target_sha256": "abeb5dcec391347949587879ece06863571e33b1fa67f2dbc4d48ece4babc9c6"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/sidebar.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/original_sidebar.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "YellowDog.ManagementUI.Redesign.Components.Sidebar",
+          "YellowDog.ManagementUI.Redesign.OriginalSidebar"
+        ]
+      ],
+      "source_sha256": "eb80e4170e2d872fbeb29d3b69f997f5d76086907ebac0f825d7056c1a9dc994",
+      "target_sha256": "3c88a4824b982ec90d8cdd272425118346379b63a57f0cd7ffa56e2f2a6d0c6a"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/cloud_dns_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/cloud_dns_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "d85fb6c7471b41f32e4ff3bccef3baac4b5e4653e415968f6819881e9cfdf687",
+      "target_sha256": "1a88c055a83fb9e0461aa08e6e0ccacb0cb1d610913fe6d5ac37037cbf48f9a1",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/components/pool_form_component.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/components/pool_form_component.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Original."
+        ]
+      ],
+      "source_sha256": "baf588dd0c2e7cfef8a2d961387e5ffdce52f6604efa00fe54b626b5949d3a34",
+      "target_sha256": "1870a29ed17dab081b20c51ff493c7c1a1815b24b9fd785140818e8fa8bcce1a"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dashboard_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dashboard_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "a3d03c57a45ec759c4dd986a09615349429939ad0dfb30703e097d8a0d3c6e3f",
+      "target_sha256": "d713207a9a933cefd633dc8057923783db458d22f17dd401e16e4862919038a9",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dashboard_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dashboard_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "c2de3137e825fe073c81cefb06550110faf7564b76d90b28706be5fe7b540d22",
+      "target_sha256": "c2de3137e825fe073c81cefb06550110faf7564b76d90b28706be5fe7b540d22",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/activity_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/activity_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "c987bb5b119dc214dcdaf1414e04f780bcd19ac7cfc7f34eb59079f47b6a5db7",
+      "target_sha256": "6000cd1a59e1c77a82740b0b409f074fb18a6f64a314032cb67a1cad48636511",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "78a658c0388406ef70ca529165b2b3a089de2aba9b7cf4404b653d2f27589032",
+      "target_sha256": "b8631b41a41cec4a79d16b2536b7875624e4109dd13fb4510ab4554010e16d22",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/leases_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/leases_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "479e1fcff8a86d54541b19cefec0a5a8a179906e1d43867f0ec717df29fd15d0",
+      "target_sha256": "fa42a68d73f1f411198fbda75f2bafb3048d3dc2b8cc4e287ef741cb8d414efb",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pool_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/pool_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "2243735652314014afc568f47f424679038cb139b10b7f11335d924751b5d17f",
+      "target_sha256": "e0bc52d96fb75540cac03e34d3e0334564e5d71b88d8b8cba0b3615d28838256",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pools_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/pools_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "1ae38c1489985c9ba483dcb850af81fc5c29532af4066789c18fabf8f0724762",
+      "target_sha256": "76a3561b28f0e5bf98dc61bff4d78862d060a7e9ca06c1e0287d6aa5adadee5e",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/activity_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/activity_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "3fc3a80881a9b37976a15c6dddfdc4177d4fbb28aa82bdcafa3fd268a1f9bbb3",
+      "target_sha256": "d9ee81944b036565bb1a55d5d6c69cf5d262fc2b82d4fdd5a8e64ad7e430440b",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "153ea48bb0fa5c0ab0e22b5d7a161642c0f631a8b0fff1cd487413c4be670291",
+      "target_sha256": "1562fc01d000ce81d2fc401c1c72235843ab15db9489567e9c600f9cba31ba1e",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/leases_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/leases_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "6d8e6f0ec266bf081df736774fc311151e6733374502884e6fa10a95f69cecb4",
+      "target_sha256": "6e15838962c00fdbb70a1911253d624fed4cc5a27df4c6923aa5f73ed92744a7",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pool_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/pool_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "7d9fcba7d85ba435ee9294ff4685856278a667f087d3ff6445cf6698533b9191",
+      "target_sha256": "1130e97fcaa312184e2d5ab4bb66cc17d68fc12186e5ac24a50520c75cdd1b85",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pools_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/pools_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "291f1db3b681e1148c4c2ac09d2c8508fbb41759a130feab2e1bd3d34a547cad",
+      "target_sha256": "fc4a51fa10db3e53d180c22d4e43c979cde58604f343ad433ddc11dfdabe3bc6",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/acl_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/acl_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "47da1979c560447ba18a2d56f85df377a7ee787d0a08c1cdad49586ff90c8de3",
+      "target_sha256": "a2c1b89f3fdc81eecd1410ed9f5a9d7b192244bee4eeda07bce5b49180f1821a",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/acl_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/acl_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "12a8518e4a0eb3c9f4e30bef963ff524dda6d8a3d71a7281540c59c4747e16de",
+      "target_sha256": "12a8518e4a0eb3c9f4e30bef963ff524dda6d8a3d71a7281540c59c4747e16de",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "9a6aad395e8d3d2454b889bfdb9d29eeab299ea014aebd4ecaaa70de3c02a0eb",
+      "target_sha256": "b0292206adfddb64c8732ecc757688a34f90e099b7ce787142a5598da399028e",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/index.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "6677c85c7c84e2555b23cf44398ed3e53c0d825b6bcdfdaf1d4dafe909444bc5",
+      "target_sha256": "6677c85c7c84e2555b23cf44398ed3e53c0d825b6bcdfdaf1d4dafe909444bc5",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/metrics_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/metrics_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "4807ad9ab636a1f5570e3f3efdae92af20407ae89c6de11e3ee3ce310913a189",
+      "target_sha256": "3d52973bafb259dcfc9207f702c9491a830ac06a4376ef0ab2f60a3787b98127",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/conflict_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/conflict_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "373047b9dea5ce6a2e7697e23068622dba75693f5fa0d858eaa3e1ff1e218bd6",
+      "target_sha256": "0598f2dbe9b795ecbe6179d6f62f07ed92a5815825525ecf5630ab0167ec085f",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/conflict_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/conflict_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "d12f90596fc8b47b6180a2f732d9f1b513ea88c50f2405b41b52434b9d2ea6a9",
+      "target_sha256": "d12f90596fc8b47b6180a2f732d9f1b513ea88c50f2405b41b52434b9d2ea6a9",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "9267a9a2ffc45e810205aa7831cfc497261e4c12d09d6d69564e619ac7e792ec",
+      "target_sha256": "5a03317cb3476be16522d8e2995c84777c77b56b3d7cf7e617758a9ed4b9578f",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/index.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "00a4039cee5f6e87f3f52999ae709899fcee881c2ca4a6776b171aee9bafe6f9",
+      "target_sha256": "00a4039cee5f6e87f3f52999ae709899fcee881c2ca4a6776b171aee9bafe6f9",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/show.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/show.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "9c9cdb7a0918bcaa587bf894642c05ece73ced1126e870b00b19a3f52e770ca1",
+      "target_sha256": "ec6f449496cb09df2f45011a864cf903b77f8e9bb760ffa000a67422305dc0d1",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/show.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/show.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "6e8efd30ff640b8254eb6d41807a7a98698d5df4e8ed383f3e74c5d7cfdf08c3",
+      "target_sha256": "6e8efd30ff640b8254eb6d41807a7a98698d5df4e8ed383f3e74c5d7cfdf08c3",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/query_logs_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/query_logs_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "12809829fef8503da59b9e7cddf023380b68d9b1d32a07765b2df69829c7e4b4",
+      "target_sha256": "cac8b3161a02e778209c180117d833ca2818c27881506741e9880a9b20703e96",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/rr_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/rr_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "dbb6ccb47b80ad21cbdc788556e59f5bedca8e1b3a6ccfaaeb165d769ca75097",
+      "target_sha256": "0db7467aa2bba2a7ccb73ac73d20529c642c9747acad94d7dee3ed98a3f03a46",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/rr_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/rr_live/index.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "be3366b0d1dbb6b817118565bdb388d12c72979becdba2a14e61b2e674c17943",
+      "target_sha256": "be3366b0d1dbb6b817118565bdb388d12c72979becdba2a14e61b2e674c17943",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/view_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/view_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "361f883ff890468f8e400fd55452bda7e52ef21b27c2a00c098d4cd31f0b08cb",
+      "target_sha256": "6230b326dc91b22eef9e52e1d5d73f52facac2264377d2a8fc0c858d60cadff3",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/view_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/view_live/index.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "c6b4ae01405077287d3ec3fd1c2861f546ac0fea2f4b040ebbd1f83643ac3ff6",
+      "target_sha256": "c6b4ae01405077287d3ec3fd1c2861f546ac0fea2f4b040ebbd1f83643ac3ff6",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/zone_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/zone_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "bf33a888d13e9e749c01e4c58934ba2d692de05fbf6623aaaef3e8bf22dd25cd",
+      "target_sha256": "8b369a4332333ca67c6c2e617752ca3f731335a603393ca1db5eafb8ff507022",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/zone_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/zone_live/index.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "92b75f4122c4cdb29f2f4d63d861669a95adae58fdab891d9d5caa15d19674ad",
+      "target_sha256": "92b75f4122c4cdb29f2f4d63d861669a95adae58fdab891d9d5caa15d19674ad",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/device_detail_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/fingerprint_live/device_detail_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "afd1a3e74250a474dceaf5376cff86592cfee1213413de3565843ef3a8534fb3",
+      "target_sha256": "8525a1a10a462995b6c5714f54ee7445fc3ff4b1b6811e3efa7b731edacec99b",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/devices_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/fingerprint_live/devices_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "8d0e73b00cbe8fe93a8dbc6942bfa9ae7468df57c98a4e46b028ab3a08e6266a",
+      "target_sha256": "a09086a7755025f2ff0d3ebf30b5fd5b813631fefc4679ffb2d471bac28f36e0",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/fingerprints_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/fingerprint_live/fingerprints_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "d16ed1b2c5d87c1c1339c3a100d8a0534b1c4daf8cd13e3a64000155af074e4d",
+      "target_sha256": "db89df5e149e5e65237faf1b900ba5faf52d89d4359c2178ebce62ddec6ce3e7",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/approvals_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/approvals_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "cd7f873c9b89380cf774fd67c8dee4e01222503d52bf991ac07de86d3a2d37c6",
+      "target_sha256": "496809dd4a44be3430ee5c17515269447e8779a398b56f0bd2ff1612ae9bf2b6",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/audit_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/audit_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "debc33efa8c77af0b6d4d899422781b3eaca1bd354c0befaa2fe088e3bf30648",
+      "target_sha256": "cad5f0caa119e8670fb8d86432dcf56fca141872c54e90ebc26c595d35c41bba",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/host_detail_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/host_detail_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "718980c8d8c4c9437144ae34d940b6968b8d1412800babb77113ac6f5c7e7578",
+      "target_sha256": "fba771422e24f30acb808abbf0ae097aadf37d1955ebf0600c21b725623dcc04",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/hosts_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/hosts_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "8b94f3ae255baa2bb565064df7350127984259d87eeba8b1271dd8c02a10c058",
+      "target_sha256": "e802eedcea8bc1a018b7765ee10778e93ccc037845b0180f7c27f6026ebdcd38",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "41642964896ef0c5eee9416289726bd849f0a03804c3dd09110b0a7d88c343a2",
+      "target_sha256": "6ad5c6494a9b08a51f1512220ec7945b1d03e1c881f5ea91f5fb84c6bc1f1685",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/policies_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/policies_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "b75dea3ce97e726407eb9618ad1944be362ab5f7b1dbaf69d17c2e4b19bef305",
+      "target_sha256": "d0a2f9c920260c494b815afbb2bceb30c7ef7a14f442e75d4c17e35f0027576c",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/tokens_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/tokens_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "425a527572aeee715c1059e22ab422126dcdb7d8ed430744f81c86eb83d28a16",
+      "target_sha256": "f5bff45a4556fdcd751b3cbe487065aadbafbab4a8ca3eb30c983c68dfa77365",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/data.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/management_live/data.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Original."
+        ]
+      ],
+      "source_sha256": "20334fbe0e65093f6f255df0bf7955a868bf980cd20c246999740266ba026e0c",
+      "target_sha256": "8d3d7a57baafb2066273883336d3c7460262c19f6ca461e8d02f8ff0fae8caf7"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/management_live/index.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Original."
+        ]
+      ],
+      "source_sha256": "37535d55e65d22d130595f17bc1d70423e9718565aa452baf2b2e919ddb06179",
+      "target_sha256": "0cb4060fd34a9cb357a886eaaa0845efbd77fa4c7d38ae4cb853699977747a4d"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/discovery_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/discovery_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "6192e219cd0ff53e60bfbb0174a70a22596248a0b8458d353061a6c7ca31d124",
+      "target_sha256": "b87e30bb9e908294651120017de08c07f82d7df269b30c83a0675e7427d93de2",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/discovery_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/discovery_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "8b2b240dcbd5a6e72302c80738861e3b54b748211ebc968e9b7a8f249adabb28",
+      "target_sha256": "8b2b240dcbd5a6e72302c80738861e3b54b748211ebc968e9b7a8f249adabb28",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "e48a6284c84516118ec67935695f7b130648a33792e5575537b2e35d760de402",
+      "target_sha256": "f77055c59cb1decd2f838699cba67510681a265d943780b799540a121fe3ada8",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/index.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/index.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "b85656b25082c1212955802ee8a47c7ee8b951771437f38d88de37e3bbb4a69c",
+      "target_sha256": "301bdbd5352fd1ee393c6f0fe6829357ffaf51b9550300c51ef6f5fa2292bf74",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/monitor_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "524278c29e34808472fb1c4a68b31c1a4419c356e415c5fdcee122277d3b7635",
+      "target_sha256": "5d29aae73e0479d0cde392f47c295aea150d928fea35ae470dc350fd500209e4",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/monitor_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "6a099619af44d6392274632c53ed23a47941650d0248a724ab4e9df7475ba7db",
+      "target_sha256": "6a099619af44d6392274632c53ed23a47941650d0248a724ab4e9df7475ba7db",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/services_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/services_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "4d192a0f5ddf93c6f9594c9af67f74e24a58e2e06453db385079b69ca568762d",
+      "target_sha256": "4ab4b87b984c668f20a161ee4d57df128035ef505a631fe1e89de5136be849bb",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/services_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/services_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "9cfc9e5331787fef56c3af8a6bdfe977fb24043fbd7ddd60e721b05102fd50ea",
+      "target_sha256": "9cfc9e5331787fef56c3af8a6bdfe977fb24043fbd7ddd60e721b05102fd50ea",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/device_detail_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/device_detail_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "9e92a4d400b7cad4ab601d360f5d2a88c139ba073c89b2d8ca7a26bdc4c5001b",
+      "target_sha256": "a0b397f9a3dddb69900299a14cc7387f68fbb55731599610857d5fa5958bd904",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/devices_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/devices_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "4becd45a591f677b83744cae7566ea2886b7dc73c3848710a01a93b97ae052f7",
+      "target_sha256": "e923d5167ee7a2fdf807c40fb237bb9d8b3f6f446b1f456654db82283da6b1db",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/index.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/index.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "48118d795dbe96ddd0edc46cc8b17ecfb3d30e322fcff7be9d4e63420e1f5951",
+      "target_sha256": "5b0164135487185803a93bc7363590d7dec4e3d70c366399bd97e9265174aaaa",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/log_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/log_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "867ed14d448879a7b299c0060159312cc0ceaf477ea7ba1d6aca72732a902cb7",
+      "target_sha256": "92859a7a23eba514a4b82e7f0755534ddfd367295be9c9ddb127d838a1cd64c7",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/profile_editor_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/profile_editor_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "edb73d482951cdbe5d623b174c02854a31d50284d9e4994e18de95a70fd112e8",
+      "target_sha256": "631206653d55269718d2befd3e54df45c1a8b1f3b131c1ac57f0fe066facacb2",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/profiles_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/profiles_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "9d0add70b34b2ba537b705ca2640c028b4a37b1e8b5f35a01c95f7a07fd062db",
+      "target_sha256": "da85ffac78926717cda207ad1fdd7ad27ef62d85bca7ae7d37d2a727ab5b909c",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/tftp_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/tftp_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "f7c3b85ce45473348e4d15620222507adc92a0c68687e0c6d74d1160f8b0b766",
+      "target_sha256": "e38f0f4234381efa978a9627ffba68b705b596517fef404041b3d7097b458062",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/config_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/config_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "47d51592fafbe499159070bca76eee2631df9fd019235b4a1898de73f5dc14b1",
+      "target_sha256": "e0f58fe75a3df37771c8cf10cdb69253e13d63dccb029d5353f6ea75a95236ad",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dashboard_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/dashboard_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "f71c4827fa2e198140fd9d5bccc2b879653bea19dd37baef54b16b5b84247c07",
+      "target_sha256": "04454d8be7c3c276b17b24f906c937ae53e68c15af62201cc610c5c6bff9b77f",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dhcp_client_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/dhcp_client_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "eaa50b98f2db471883dab9d75b4216badd373a6938ac63694afa9620ed5bbdf8",
+      "target_sha256": "d9ccba97f44a6b4718dcb0243d167fcc4104647fe2b1725ebabc7609795a00d1",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/interfaces_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/interfaces_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "f98a107aaa8d52343fc0c2533015be4ac0049cce97aab3aa716c764f997ad4ac",
+      "target_sha256": "3a4937c36d68de873a78098d4f819d6c0afde107376c560c396b15e38f7b9845",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/node_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/node_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "d4efa4f74fa3258b455d51359ac8dfc87f3344414648e8a1efd4a4653e9223d2",
+      "target_sha256": "13361d3dbb640389bdcf174e85c95c0f3b6782e97fd0965b19fbd67e5bbb78f7",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/resolved_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/resolved_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "f751bd2aef014075d97cda192a669d40d4e2b81ddaaffa7b593d2d2f2bbdf6d5",
+      "target_sha256": "7f8471e3250e9019f876657b345dbf5f4f17376e0ae63dec6c6cfbe33595236c",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/settings_live.ex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "626608963e9d748f37e46a90dab2e327113f99ed4526204e3e30e6a7b4b23ff2",
+      "target_sha256": "d859a392a9ae172f46ad1cc38133b82f22d0105a5dd5ceba1bb4fae934a3413c",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/settings_live.html.heex",
+      "revision": "working-tree",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ]
+      ],
+      "source_sha256": "10e6b742d53fad6cb5400ff340fbc9a6aebfd5ebccc7cc39752bf88e20a97d5d",
+      "target_sha256": "10e6b742d53fad6cb5400ff340fbc9a6aebfd5ebccc7cc39752bf88e20a97d5d",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html.ex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/controllers/page_html.ex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Original."
+        ]
+      ],
+      "source_sha256": "1ee217915333530f264127ee677fb260a9ba1153626ce4ad2076c97672fe12fa",
+      "target_sha256": "91b9f3702916a984d65daf49745baf36a1f89ec1dfae7c7c4e2b83487708ad04",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    },
+    {
+      "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html/home.html.heex",
+      "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/controllers/page_html/home.html.heex",
+      "revision": "8550aa05388270c7c35c3115365d49ed058e48ad",
+      "replacements": [
+        [
+          "YellowDog.Console",
+          "YellowDog.ManagementUI.Redesign"
+        ],
+        [
+          ":yellow_dog_console",
+          ":yellow_dog_management"
+        ],
+        [
+          "lib/yellow_dog/console",
+          "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "defmodule YellowDog.ManagementUI.Redesign.",
+          "defmodule YellowDog.ManagementUI.Redesign.Original."
+        ]
+      ],
+      "source_sha256": "b5762cca0c0de18e4ee19333ef0f46cba5d7591e16eb8301b2266faffa70a211",
+      "target_sha256": "b5762cca0c0de18e4ee19333ef0f46cba5d7591e16eb8301b2266faffa70a211",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+    }
+  ]
+}
