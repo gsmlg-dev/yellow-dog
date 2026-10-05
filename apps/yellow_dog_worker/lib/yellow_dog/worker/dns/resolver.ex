@@ -63,11 +63,11 @@ defmodule YellowDog.Worker.Dns.Resolver do
           cond do
             records == [] ->
               descendant? = Enum.any?(Map.keys(zone.by_name), &String.ends_with?(&1, "." <> name))
-              {if(descendant?, do: 0, else: 3), 1, [], zone.soa}
+              {if(descendant?, do: 0, else: 3), 1, [], negative_soa(zone.soa)}
 
             true ->
               matching = Enum.filter(records, &(&1.type.value == type or type == <<255::16>>))
-              authority = if matching == [], do: zone.soa, else: []
+              authority = if matching == [], do: negative_soa(zone.soa), else: []
               {0, 1, matching, authority}
           end
       end
@@ -95,6 +95,13 @@ defmodule YellowDog.Worker.Dns.Resolver do
     else
       wire
     end
+  end
+
+  defp negative_soa(records) do
+    Enum.map(records, fn record ->
+      {_mname, _rname, _serial, _refresh, _retry, _expire, minimum} = record.data.data
+      %{record | ttl: min(record.ttl, minimum)}
+    end)
   end
 
   defp matching_zone(name, zones) do

@@ -5,6 +5,201 @@ defmodule YellowDog.Worker.DnsAdapterTest do
   alias DNS.Message.Question
   alias YellowDog.Worker.DnsAdapter
 
+  test "accepted idle and partial clients cannot block another TCP client or UDP" do
+    {adapter, port} = adapter()
+    idle = connect(port)
+    accepted_owner(idle)
+    partial = connect(port)
+    :ok = :gen_tcp.send(partial, <<40::16, 1, 2>>)
+
+    assert {:ok, _} = query(:udp, port, "ns1.example.com.", 1)
+    valid = connect(port)
+    send_query(valid, "ns1.example.com.", 1)
+    assert {:ok, response} = receive_response(valid, 500)
+    assert [%{data: %{data: {192, 0, 2, 53}}}] = response.anlist
+    assert DnsAdapter.status(adapter).ready
+  end
+
+  test "a TCP session handles sequential and pipelined framed requests" do
+    {_adapter, port} = adapter()
+    client = connect(port)
+
+    for type <- [1, 6, 2] do
+      send_query(client, "example.com.", type)
+      assert {:ok, response} = receive_response(client)
+      assert [%{type: %{value: <<^type::16>>}}] = response.qdlist
+    end
+
+    send_query(client, "ns1.example.com.", 1)
+    send_query(client, "example.com.", 6)
+    assert {:ok, %{anlist: [%{type: %{value: <<1::16>>}}]}} = receive_response(client)
+    assert {:ok, %{anlist: [%{type: %{value: <<6::16>>}}]}} = receive_response(client)
+  end
+
+  test "malformed and oversized frames close only their own session" do
+    {adapter, port} = adapter()
+    original = :sys.get_state(adapter)
+
+    for frame <- [<<11::16>>, <<4097::16>>, <<12::16, 0::96>>] do
+      bad = connect(port)
+      :ok = :gen_tcp.send(bad, frame)
+      assert {:error, :closed} = :gen_tcp.recv(bad, 0, 3000)
+      assert {:ok, _} = query(:tcp, port, "ns1.example.com.", 1)
+      assert {:ok, _} = query(:udp, port, "ns1.example.com.", 1)
+      assert :sys.get_state(adapter).acceptor == original.acceptor
+      assert :sys.get_state(adapter).udp == original.udp
+    end
+  end
+
+  test "a failed TCP handler does not restart listeners or interrupt another session" do
+    {adapter, port} = adapter()
+    bad = connect(port)
+    handler = accepted_owner(bad)
+    good = connect(port)
+    original = :sys.get_state(adapter)
+    monitor = Process.monitor(handler)
+    Process.exit(handler, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^handler, :killed}
+    assert {:error, :closed} = :gen_tcp.recv(bad, 0, 1000)
+    send_query(good, "ns1.example.com.", 1)
+    assert {:ok, _} = receive_response(good)
+    assert {:ok, _} = query(:udp, port, "ns1.example.com.", 1)
+    assert :sys.get_state(adapter).acceptor == original.acceptor
+    assert :sys.get_state(adapter).udp == original.udp
+  end
+
+  test "TCP idle and incomplete body deadlines close their sessions" do
+    {_adapter, port} = adapter()
+    idle = connect(port)
+    accepted_owner(idle)
+    assert {:error, :closed} = :gen_tcp.recv(idle, 0, 3000)
+    partial = connect(port)
+    :ok = :gen_tcp.send(partial, <<40::16, 1, 2>>)
+    assert {:error, :closed} = :gen_tcp.recv(partial, 0, 3000)
+    assert {:ok, _} = query(:tcp, port, "ns1.example.com.", 1)
+  end
+
+  test "a fragmented valid frame is completed independently of another client" do
+    {_adapter, port} = adapter()
+    client = connect(port)
+    wire = packet("ns1.example.com.", 1)
+    <<first, rest::binary>> = <<byte_size(wire)::16, wire::binary>>
+    :ok = :gen_tcp.send(client, <<first>>)
+    accepted_owner(client)
+    assert {:ok, _} = query(:tcp, port, "example.com.", 6)
+    :ok = :gen_tcp.send(client, rest)
+    assert {:ok, %{anlist: [%{data: %{data: {192, 0, 2, 53}}}]}} = receive_response(client)
+  end
+
+  test "a client that stops reading cannot retain a handler past the send deadline" do
+    zone =
+      update_in(resource("192.0.2.53"), ["content", "records"], fn records ->
+        [soa, ns, address] = records
+        [soa, ns | for(_index <- 1..1800, do: address)]
+      end)
+
+    {adapter, port} = adapter([zone])
+
+    {:ok, client} =
+      :gen_tcp.connect(
+        {127, 0, 0, 1},
+        port,
+        [:binary, active: false, recbuf: 1024, buffer: 2048],
+        1000
+      )
+
+    on_exit(fn -> :gen_tcp.close(client) end)
+    handler = accepted_owner(client)
+    monitor = Process.monitor(handler)
+    wire = packet("ns1.example.com.", 1)
+    frame = <<byte_size(wire)::16, wire::binary>>
+    :ok = :gen_tcp.send(client, :binary.copy(frame, 256))
+    assert queued_send?(handler, System.monotonic_time(:millisecond) + 2000)
+    assert {:ok, _} = query(:tcp, port, "example.com.", 6)
+    assert {:ok, _} = query(:udp, port, "example.com.", 6)
+    assert_receive {:DOWN, ^monitor, :process, ^handler, _}, 3000
+    assert DnsAdapter.status(adapter).ready
+  end
+
+  test "TCP connection capacity is bounded and becomes reusable after a client exits" do
+    {adapter, port} = adapter()
+    state = :sys.get_state(adapter)
+    assert is_pid(Map.get(state, :sessions))
+
+    clients =
+      for _index <- 1..32 do
+        client = connect(port)
+        accepted_owner(client)
+        client
+      end
+
+    assert length(Task.Supervisor.children(state.sessions)) == 32
+    excess = connect(port)
+    assert {:error, :closed} = :gen_tcp.recv(excess, 0, 500)
+    [first | _rest] = clients
+    handler = accepted_owner(first)
+    monitor = Process.monitor(handler)
+    :gen_tcp.close(first)
+    assert_receive {:DOWN, ^monitor, :process, ^handler, _}, 1000
+    assert {:ok, _} = query(:tcp, port, "ns1.example.com.", 1)
+  end
+
+  test "stop observes active TCP handlers and listeners terminating" do
+    {adapter, port} = adapter()
+    clients = for _index <- 1..3, do: connect(port)
+    handlers = Enum.map(clients, &accepted_owner/1)
+    monitors = Enum.map(handlers, &{&1, Process.monitor(&1)})
+    assert :ok = GenServer.stop(adapter)
+
+    for {handler, monitor} <- monitors do
+      assert_receive {:DOWN, ^monitor, :process, ^handler, _}, 1000
+    end
+
+    for client <- clients, do: assert({:error, :closed} == :gen_tcp.recv(client, 0, 500))
+    assert_listeners_closed(port)
+  end
+
+  test "negative SOA TTL is capped without changing positive TTL or any SOA RDATA" do
+    for {ttl, minimum} <- [{3600, 60}, {60, 3600}, {3600, 0}], transport <- [:udp, :tcp] do
+      zone =
+        resource("192.0.2.53")
+        |> put_in(["content", "records", Access.at(0), "ttl"], ttl)
+        |> put_in(["content", "records", Access.at(0), "data", "minimum"], minimum)
+        |> update_in(["content", "records"], fn records ->
+          records ++
+            [
+              %{
+                "name" => "leaf.branch.example.com.",
+                "type" => "A",
+                "ttl" => 300,
+                "data" => %{"address" => "192.0.2.1"}
+              }
+            ]
+        end)
+
+      {adapter, port} = adapter([zone])
+      assert {:ok, %{anlist: [positive]}} = query(transport, port, "example.com.", 6)
+      assert positive.ttl == ttl
+
+      for {name, type, rcode} <- [
+            {"absent.example.com.", 1, 3},
+            {"ns1.example.com.", 2, 0},
+            {"branch.example.com.", 1, 0}
+          ] do
+        assert {:ok, negative} = query(transport, port, name, type)
+        assert negative.header.rcode.value == <<rcode::4>>
+        assert negative.header.aa == 1
+        assert negative.anlist == []
+        assert [authority] = negative.nslist
+        assert authority == %{positive | ttl: min(ttl, minimum)}
+      end
+
+      assert {:ok, %{anlist: [^positive]}} = query(transport, port, "example.com.", 6)
+      assert :ok = GenServer.stop(adapter)
+      assert_listeners_closed(port)
+    end
+  end
+
   test "serves authoritative SOA, NS, A and negative replies over UDP and TCP; swaps content" do
     port = free_port()
     service = service(port)
@@ -111,6 +306,82 @@ defmodule YellowDog.Worker.DnsAdapterTest do
 
     assert {:ok, socket} = exclusive_udp_listener(port)
     assert :ok = Abyss.Transport.UDP.Unicast.close(socket)
+  end
+
+  defp adapter(resources \\ [resource("192.0.2.53")]) do
+    port = free_port()
+
+    adapter =
+      start_supervised!({DnsAdapter, service: service(port), resources: resources},
+        id: make_ref(),
+        restart: :temporary
+      )
+
+    {adapter, port}
+  end
+
+  defp connect(port) do
+    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 1000)
+    on_exit(fn -> :gen_tcp.close(socket) end)
+    socket
+  end
+
+  defp accepted_owner(client) do
+    {:ok, {_, client_port}} = :inet.sockname(client)
+    deadline = System.monotonic_time(:millisecond) + 1000
+    accepted_owner(client_port, deadline)
+  end
+
+  defp accepted_owner(client_port, deadline) do
+    owner =
+      Enum.find_value(:erlang.ports(), fn socket ->
+        with {:ok, {{127, 0, 0, 1}, ^client_port}} <- :inet.peername(socket),
+             {:connected, owner} <- :erlang.port_info(socket, :connected),
+             {:current_stacktrace, stack} <- Process.info(owner, :current_stacktrace),
+             true <-
+               Enum.any?(stack, fn {module, function, _, _} ->
+                 module == :prim_inet and function in [:recv0, :recv]
+               end) do
+          owner
+        else
+          _ -> nil
+        end
+      end)
+
+    cond do
+      is_pid(owner) -> owner
+      System.monotonic_time(:millisecond) < deadline -> accepted_owner(client_port, deadline)
+      true -> flunk("accepted TCP client did not reach its blocking receive")
+    end
+  end
+
+  defp queued_send?(handler, deadline) do
+    queued =
+      Enum.any?(:erlang.ports(), fn socket ->
+        :erlang.port_info(socket, :connected) == {:connected, handler} and
+          case :erlang.port_info(socket, :queue_size) do
+            {:queue_size, size} -> size > 0
+            _ -> false
+          end
+      end)
+
+    cond do
+      queued -> true
+      System.monotonic_time(:millisecond) < deadline -> queued_send?(handler, deadline)
+      true -> false
+    end
+  end
+
+  defp send_query(client, name, type) do
+    wire = packet(name, type)
+    :ok = :gen_tcp.send(client, <<byte_size(wire)::16, wire::binary>>)
+  end
+
+  defp receive_response(client, timeout \\ 1000) do
+    with {:ok, <<size::16>>} <- :gen_tcp.recv(client, 2, timeout),
+         {:ok, wire} <- :gen_tcp.recv(client, size, timeout) do
+      {:ok, Message.from_iodata(wire)}
+    end
   end
 
   defp exclusive_udp_listener(port) do

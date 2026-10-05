@@ -12,15 +12,15 @@ defmodule YellowDog.Worker.FileOps do
     error -> {:error, {:sync_failed, error}}
   end
 
-  def write_synced(path, bytes) do
-    with {:ok, file} <- :file.open(path, [:write, :binary, :exclusive, :raw]) do
+  def write_synced(path, bytes, backend \\ :file) do
+    with {:ok, file} <- backend.open(path, [:write, :binary, :exclusive, :raw]) do
       result =
-        with :ok <- :file.write(file, bytes),
-             :ok <- :file.sync(file) do
+        with :ok <- backend.write(file, bytes),
+             :ok <- backend.sync(file) do
           :ok
         end
 
-      close = :file.close(file)
+      close = backend.close(file)
 
       case {result, close} do
         {:ok, :ok} -> :ok
@@ -31,4 +31,6 @@ defmodule YellowDog.Worker.FileOps do
   end
 
   def rename(source, target), do: File.rename(source, target)
+  def read(path), do: File.read(path)
+  def remove(path), do: File.rm(path)
 end

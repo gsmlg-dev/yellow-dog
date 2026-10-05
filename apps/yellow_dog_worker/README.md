@@ -6,18 +6,35 @@ It has no PostgreSQL, Management URL, credentials, enrollment, Agent, or managem
 connection. `YellowDog.Worker.submit_plan/2` is the sole internal future-Agent
 attachment point; it uses exactly the same path as local reload.
 
+Worker owns network-service execution, including Netboot and Identity. Management
+authors service configuration but does not run provisioning or identity/trust
+services. Only authoritative DNS is currently implemented here; restoring the
+architecture does not require adding the remaining services or fixing runtime
+failures. This ownership decision is not a claim of functional acceptance.
+
 ## Build and run
 
-The shared-file owner must first adopt `docs/phase1/config-spec.patch`. This Track B
-change uses that existing C0 implementation and does not change its format. For an
-isolated build before shared integration, from the repository root:
+The integrated root build uses the same `apps/yellow_dog_config_spec/` as Management.
+Build the real product directly from the repository root in the devenv shell:
 
 ```sh
-docs/phase1/prepare-worker-validation.sh /tmp/yellow-dog-track-b-validation
-devenv shell -- bash -c 'cd /tmp/yellow-dog-track-b-validation/apps/yellow_dog_worker && mix deps.get && MIX_ENV=prod mix release yellow_dog_worker --overwrite'
+mix deps.get
+MIX_ENV=prod mix release yellow_dog_worker --overwrite
 ```
 
-Copy `examples/bootstrap.toml` and `examples/plan.toml` to a local configuration
+Check the architecture split separately from service/UI acceptance:
+
+```sh
+devenv shell -- scripts/e2e/architecture_smoke.sh
+```
+
+`devenv shell -- docs/phase1/prepare-worker-validation.sh /tmp/yellow-dog-worker-build`
+optionally selects build output at `/tmp/yellow-dog-worker-build/_build/prod/`
+and prints the release binary path. It builds the same checkout, not a copied
+source assembly, and is not an acceptance gate.
+
+Copy `apps/yellow_dog_worker/examples/bootstrap.toml` and
+`apps/yellow_dog_worker/examples/plan.toml` to a local configuration
 directory. Adjust `worker_id` in both files and the DNS listen address/port in the
 plan. The sample binds loopback port 1053. Bootstrap paths are relative to the
 bootstrap file. Bootstrap has exactly three required fields: `worker_id`, `source`,
@@ -25,7 +42,7 @@ and `data_dir`. Its identity and machine-local paths never come from a managed p
 
 ```sh
 YELLOW_DOG_WORKER_BOOTSTRAP=/etc/yellow-dog/bootstrap.toml \
-  /tmp/yellow-dog-track-b-validation/_build/prod/rel/yellow_dog_worker/bin/yellow_dog_worker start
+  _build/prod/rel/yellow_dog_worker/bin/yellow_dog_worker start
 ```
 
 Linux runtime tools `flock`, POSIX `sh`, `cat`, and GNU `sync` must be on PATH.
@@ -114,6 +131,36 @@ previous snapshots. Prepared but uncommitted files never become startup state.
 A post-rename synchronization error attempts a synchronized pointer rollback;
 failure of rollback is explicitly `commit_uncertain`, never success.
 
+LocalStore also atomically replaces one bounded, checksummed
+`journal/transition.toml` under the same directory lock. It retains the latest
+attempt, exact base pointer/last-valid hash, candidate hash, phase and ordered
+forward/recovery service outcomes, without duplicating plans or storing PIDs.
+Complete-plan adapter validation precedes staging. Durable intent precedes effects;
+each dispatch is recorded before execution and its observed acceptance or confirmed
+owned termination afterward. Lost outcome persistence stops forward work and
+reports uncertainty. Commit intent, synchronized pointer replacement,
+`pointer_committed` and completed finalization all precede a successful reply.
+
+Restart chooses the base for incomplete application/commit intent, even when a
+candidate pointer is readable. Only a matching pointer and `pointer_committed` or
+completed-commit checkpoint permit candidate recovery, after checked synchronization
+and real runtime reconciliation. Interrupted first boot without a base stays not
+ready until explicit reload; it never implicitly retries editable source. Invalid,
+unsupported or unrelated journals fail explicitly. Journal-free directories remain
+compatible. Completed historical rejection is diagnostic rather than permanent
+storage uncertainty; finalization failures still return errors, never retroactive
+success. Status/check only observe; managed controller repair is coordinated through
+the same manager/journal path. Healthy semantic no-ops perform zero persistence
+operations, including journal writes; projection repair preserves sound snapshots
+and `current`.
+
+An explicit retry first reconciles an unfinished attempt and checkpoints its
+recovery before staging another plan or returning unchanged. A failed recovery
+checkpoint halts further actions and remains visible as persistence uncertainty;
+a later explicit retry must reconcile again. Journal APIs reject missing or
+out-of-order transitions without advancing durable state. Recovery through a
+valid previous snapshot retains the corrupted-active warning in status/check.
+
 Recovery verifies snapshot bytes and parses the full shared plan. If the active
 snapshot is damaged and the previous one is valid, status reports recovery on the
 previous version. Corrupt commit records fail explicitly. No garbage collection is
@@ -123,9 +170,16 @@ process interruption; they do not simulate every filesystem or physical power lo
 
 ## Verification
 
+Run from the repository root. These service checks are separate from the dedicated
+architecture gate. Known runtime/UI defects and external-resource source-format
+work are deferred while completing the split; do not add skips to hide failures.
+
 ```sh
-devenv shell -- bash -c 'cd /tmp/yellow-dog-track-b-validation/apps/yellow_dog_worker && mix test && MIX_ENV=test mix compile --warnings-as-errors && mix format --check-formatted'
-python3 apps/yellow_dog_worker/test/release_smoke.py /tmp/yellow-dog-track-b-validation/_build/prod/rel/yellow_dog_worker/bin/yellow_dog_worker
+devenv shell -- mix cmd --app yellow_dog_worker mix test
+devenv shell -- scripts/e2e/release_smoke.sh yellow_dog_worker
+devenv shell -- env MIX_ENV=prod mix release yellow_dog_worker --overwrite
+devenv shell -- python3 apps/yellow_dog_worker/test/worker_transition_crash.py \
+  _build/prod/rel/yellow_dog_worker/bin/yellow_dog_worker
 ```
 
 The release smoke uses real sockets and independent OS restarts, including SIGKILL.
@@ -133,4 +187,13 @@ It unsets Management/database environment settings, checks release dependencies,
 serves SOA/NS/A on UDP and TCP, reloads during queries, verifies no-op file/PID
 stability, rejects a second directory owner, and proves stopped-state persistence
 and later explicit start with updated data. See `docs/phase1/track-b-report.md` for
-actual results and outstanding shared integration.
+historical isolated results. Current integrated evidence and remaining acceptance
+gates are in `docs/phase1/integration-progress.md`.
+
+The dedicated journal crash harness installs test-only barriers in the actual
+release through local RPC, blocks at precise dispatch/action/commit boundaries,
+and SIGKILLs independent OS processes. It checks source-absent recovery using an
+independent UDP/TCP SOA/NS/A client, stopped intent and explicit first-boot reload.
+These are process-crash tests, not proof against physical power loss. Unit faults
+exercise the actual FileOps open/write/file-sync/close wrapper and store readback,
+rename and directory synchronization paths. Test logs/data stay under `/tmp`.

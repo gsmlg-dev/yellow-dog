@@ -4,6 +4,7 @@ defmodule YellowDog.Worker.DnsAdapter do
 
   alias YellowDog.Worker.Dns.Resolver
   alias YellowDog.Worker.Dns.UdpHandler
+  alias YellowDog.Worker.OwnedShutdown
 
   @ready_attempts 50
 
@@ -11,6 +12,12 @@ defmodule YellowDog.Worker.DnsAdapter do
 
   def update(pid, service, resources), do: GenServer.call(pid, {:update, service, resources})
   def status(pid), do: GenServer.call(pid, :status)
+
+  def validate(service, resources) do
+    with {:ok, _zones} <- Resolver.build(resources),
+         {:ok, _ip, _port} <- parse_binding(service),
+         do: :ok
+  end
 
   @impl GenServer
   def init(opts) do
@@ -25,6 +32,8 @@ defmodule YellowDog.Worker.DnsAdapter do
              {:ip, ip},
              {:active, false},
              {:reuseaddr, true},
+             {:send_timeout, 2000},
+             {:send_timeout_close, true},
              {:packet, 0}
            ]) do
         {:ok, tcp} -> start_listeners(tcp, service, resources, zones, ip, port)
@@ -41,7 +50,9 @@ defmodule YellowDog.Worker.DnsAdapter do
         case wait_udp(udp, ip, port, @ready_attempts) do
           :ok ->
             adapter = self()
-            {:ok, acceptor} = Task.start_link(fn -> accept_loop(tcp, adapter) end)
+            {:ok, sessions} = Task.Supervisor.start_link(max_children: 32)
+            {:ok, acceptor} = Task.start_link(fn -> accept_loop(tcp, adapter, sessions) end)
+            owned = OwnedShutdown.tree(udp) ++ [sessions, acceptor]
 
             {:ok,
              %{
@@ -52,7 +63,10 @@ defmodule YellowDog.Worker.DnsAdapter do
                port: port,
                tcp: tcp,
                udp: udp,
-               acceptor: acceptor
+               acceptor: acceptor,
+               sessions: sessions,
+               owner: hd(Process.get(:"$ancestors")),
+               owned: owned
              }}
 
           {:error, reason} ->
@@ -89,6 +103,7 @@ defmodule YellowDog.Worker.DnsAdapter do
     {:reply,
      %{
        ready: ready,
+       owned_pids: [self() | state.owned],
        listeners: %{udp: ready, tcp: Process.alive?(state.acceptor)},
        listen_address: state.service["config"]["listen_address"],
        port: state.port,
@@ -101,9 +116,13 @@ defmodule YellowDog.Worker.DnsAdapter do
   end
 
   @impl GenServer
-  def handle_info({:EXIT, pid, reason}, state) when pid == state.udp or pid == state.acceptor do
+  def handle_info({:EXIT, pid, reason}, state)
+      when pid == state.udp or pid == state.acceptor or pid == state.sessions do
     {:stop, {:listener_exited, reason}, state}
   end
+
+  def handle_info({:EXIT, pid, reason}, %{owner: pid} = state),
+    do: {:stop, {:owner_exited, reason}, state}
 
   def handle_info(_, state), do: {:noreply, state}
 
@@ -111,9 +130,14 @@ defmodule YellowDog.Worker.DnsAdapter do
   def terminate(_reason, state) do
     :gen_tcp.close(state.tcp)
 
-    if Process.alive?(state.acceptor), do: Process.exit(state.acceptor, :shutdown)
-    if Process.alive?(state.udp), do: Abyss.stop(state.udp, 2_000)
-    :ok
+    acceptor_result = OwnedShutdown.terminate_task(state.acceptor)
+    session_result = OwnedShutdown.stop(state.sessions)
+    udp_result = OwnedShutdown.stop(state.udp, state.owned -- [state.sessions, state.acceptor])
+
+    case {acceptor_result, session_result, udp_result} do
+      {:ok, :ok, :ok} -> :ok
+      errors -> exit({:listener_shutdown_failed, errors})
+    end
   end
 
   defp parse_binding(%{
@@ -167,17 +191,51 @@ defmodule YellowDog.Worker.DnsAdapter do
     :exit, _ -> false
   end
 
-  defp accept_loop(tcp, adapter) do
+  defp accept_loop(tcp, adapter, sessions) do
     case :gen_tcp.accept(tcp) do
       {:ok, client} ->
-        handle_client(client, adapter)
-        accept_loop(tcp, adapter)
+        start_session(client, adapter, sessions)
+        accept_loop(tcp, adapter, sessions)
 
       {:error, :closed} ->
         :ok
 
-      {:error, _} ->
-        :ok
+      {:error, reason} ->
+        exit({:accept_failed, reason})
+    end
+  end
+
+  defp start_session(client, adapter, sessions) do
+    case Task.Supervisor.start_child(sessions, fn -> await_client(adapter) end, shutdown: 500) do
+      {:ok, handler} ->
+        case :gen_tcp.controlling_process(client, handler) do
+          :ok ->
+            send(handler, {:client, client})
+
+          {:error, reason} ->
+            :gen_tcp.close(client)
+            Process.exit(handler, {:ownership_failed, reason})
+        end
+
+      {:error, :max_children} ->
+        :gen_tcp.close(client)
+
+      {:error, reason} ->
+        :gen_tcp.close(client)
+        exit({:session_start_failed, reason})
+    end
+  end
+
+  defp await_client(adapter) do
+    receive do
+      {:client, client} ->
+        try do
+          handle_client(client, adapter)
+        after
+          :gen_tcp.close(client)
+        end
+    after
+      2000 -> exit(:ownership_timeout)
     end
   end
 
@@ -187,11 +245,15 @@ defmodule YellowDog.Worker.DnsAdapter do
          {:ok, packet} <- :gen_tcp.recv(client, length, 2_000),
          {:ok, zones} <- GenServer.call(adapter, :snapshot, 2_000),
          response when is_binary(response) <- Resolver.reply(packet, zones, :tcp) do
-      :gen_tcp.send(client, <<byte_size(response)::16, response::binary>>)
+      case :gen_tcp.send(client, <<byte_size(response)::16, response::binary>>) do
+        :ok -> handle_client(client, adapter)
+        {:error, reason} -> {:error, {:send_failed, reason}}
+      end
     else
-      _ -> :ok
+      {:error, :closed} -> :ok
+      {:error, reason} -> {:error, reason}
+      false -> {:error, :invalid_frame_size}
+      nil -> {:error, :malformed_query}
     end
-
-    :gen_tcp.close(client)
   end
 end
