@@ -71,7 +71,7 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.Index do
   end
 
   defp get_mdns_status do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.status() end, %{
+    safe_call(YellowDog.Mdns, fn -> Function.capture(YellowDog.Mdns, :status, 0).() end, %{
       running: false,
       mode: :unknown,
       registered_services: 0,
@@ -82,13 +82,13 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.Index do
   defp get_mdns_stats do
     safe_call(
       YellowDog.Mdns.ServiceRegistry,
-      fn -> %{registry_stats: YellowDog.Mdns.ServiceRegistry.stats()} end,
+      fn -> %{registry_stats: Function.capture(YellowDog.Mdns.ServiceRegistry, :stats, 0).()} end,
       %{registry_stats: %{total: 0, enabled: 0, disabled: 0, registered: 0, from_file: 0}}
     )
   end
 
   defp get_network_stats do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.network_stats() end, %{
+    safe_call(YellowDog.Mdns, fn -> Function.capture(YellowDog.Mdns, :network_stats, 0).() end, %{
       total_responses: 0,
       total_queries: 0,
       active_services: 0,

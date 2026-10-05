@@ -63,7 +63,11 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.Index do
   end
 
   defp get_dhcp_stats do
-    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.stats() end, default_stats())
+    safe_call(
+      YellowDog.Dhcpv4,
+      fn -> Function.capture(YellowDog.Dhcpv4, :stats, 0).() end,
+      default_stats()
+    )
   end
 
   defp default_stats do
@@ -76,13 +80,17 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.Index do
   end
 
   defp get_pool_stats do
-    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.get_all_pool_stats() end, %{})
+    safe_call(
+      YellowDog.Dhcpv4,
+      fn -> Function.capture(YellowDog.Dhcpv4, :get_all_pool_stats, 0).() end,
+      %{}
+    )
   end
 
   defp get_pools do
     safe_call(
       YellowDog.Dhcpv4.LeaseManager,
-      fn -> YellowDog.Dhcpv4.LeaseManager.get_pools() end,
+      fn -> Function.capture(YellowDog.Dhcpv4.LeaseManager, :get_pools, 0).() end,
       []
     )
   end
@@ -92,6 +100,8 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.Index do
   end
 
   defp get_status do
-    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.status() end, %{running: false})
+    safe_call(YellowDog.Dhcpv4, fn -> Function.capture(YellowDog.Dhcpv4, :status, 0).() end, %{
+      running: false
+    })
   end
 end

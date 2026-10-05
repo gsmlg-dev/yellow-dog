@@ -37,7 +37,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.AclLive do
   def handle_event("create_acl", %{"acl" => params}, socket) do
     with :ok <- ManagementSupport.mutable(socket) do
       result =
-        ServerManagement.dns_acls_create(
+        Function.capture(ServerManagement, :dns_acls_create, 3).(
           ManagementSupport.selected_id(socket),
           acl_payload(params),
           ManagementSupport.command_options(nil)
@@ -54,7 +54,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.AclLive do
     with :ok <- ManagementSupport.mutable(socket),
          {:ok, revision} <- acl_revision(socket.assigns.acls, acl_id) do
       result =
-        ServerManagement.dns_acls_update(
+        Function.capture(ServerManagement, :dns_acls_update, 3).(
           ManagementSupport.selected_id(socket),
           acl_payload(params),
           ManagementSupport.command_options(revision)
@@ -71,7 +71,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.AclLive do
     with :ok <- ManagementSupport.mutable(socket),
          {:ok, revision} <- acl_revision(socket.assigns.acls, acl_id) do
       result =
-        ServerManagement.dns_acls_delete(
+        Function.capture(ServerManagement, :dns_acls_delete, 3).(
           ManagementSupport.selected_id(socket),
           %{"acl_id" => acl_id},
           ManagementSupport.command_options(revision)
@@ -100,7 +100,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.AclLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_acls(socket, server_id) do
-    result = ServerManagement.dns_acls_list(server_id)
+    result = Function.capture(ServerManagement, :dns_acls_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — DNS ACLs",
@@ -130,7 +130,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.AclLive do
     end
   end
 
-  defp put_resource(socket, %ManagementResult{status: :ok, value: %{"resource" => resource}}) do
+  defp put_resource(socket, %{
+         __struct__: ManagementResult,
+         status: :ok,
+         value: %{"resource" => resource}
+       }) do
     acls = [resource | Enum.reject(socket.assigns.acls, &(&1["acl_id"] == resource["acl_id"]))]
     assign(socket, :acls, Enum.sort_by(acls, & &1["acl_id"]))
   end

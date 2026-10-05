@@ -1,5 +1,27 @@
 # UI source migration for redesign
 
+## Subsequent Management configuration increment
+
+The source-only acceptance below records the October 4–5 transfer. The later
+`docs/yellow-dog-codex-management-plan.md` authorizes functional work on routed
+native DNS View scope, global Zone assignments and editor persistence, and the
+Management IP database artifact catalog. It also authorizes minimal compilation
+prerequisites, with each retained-source adaptation recorded in the provenance
+manifest. Retained redesign pages remain unrouted; importing legacy runtimes or
+redeveloping unrelated pages remains outside scope. Current checks and checkpoint
+status are recorded in `management-configuration-progress.md`.
+
+The historical 201-file inventory and test statements below describe the
+original transfer, not acceptance of these later changes.
+
+P0 now retains 203 files: the original presentations plus the genuine
+`ServiceHelper` and pure `ConfigHelpers`. The manifest records namespace fixes,
+tagged-map struct matching, deferred constructors/calls to unavailable backends,
+and scoped formatting. The checker still verifies exact transformations,
+source hashes, both presentation revisions, and complete inventory. The native
+Management build is executable; this does not make the unrouted redesign pages
+functional or authorize loading their legacy backends.
+
 ## Accepted scope
 
 On 2026-10-04 the user authorized moving UI code directly into the current

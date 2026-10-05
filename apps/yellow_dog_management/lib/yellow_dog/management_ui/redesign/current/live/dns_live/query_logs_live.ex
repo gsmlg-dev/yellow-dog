@@ -118,7 +118,10 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.QueryLogsLive do
   end
 
   defp load_logs(socket, server_id) do
-    result = ServerManagement.dns_logs_list(server_id, %{"view_name" => socket.assigns.view_name})
+    result =
+      Function.capture(ServerManagement, :dns_logs_list, 2).(server_id, %{
+        "view_name" => socket.assigns.view_name
+      })
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Query Logs",

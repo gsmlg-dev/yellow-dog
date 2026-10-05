@@ -178,7 +178,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.LogLive do
     do: Enum.filter(entries, &(entry_value(&1, "level", "info") == level))
 
   defp load_logs(socket, server_id) do
-    result = ServerManagement.netboot_logs_list(server_id)
+    result = Function.capture(ServerManagement, :netboot_logs_list, 1).(server_id)
     results = [result]
 
     assign(socket,

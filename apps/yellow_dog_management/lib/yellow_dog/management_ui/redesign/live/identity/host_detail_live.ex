@@ -28,7 +28,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.HostDetailLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.approve(socket.assigns.host_id) end,
+        fn -> Function.capture(YellowDogIdentity, :approve, 1).(socket.assigns.host_id) end,
         {:error, :unavailable}
       )
 
@@ -42,7 +42,12 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.HostDetailLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke(socket.assigns.host_id, "console-operator") end,
+        fn ->
+          Function.capture(YellowDogIdentity, :revoke, 2).(
+            socket.assigns.host_id,
+            "console-operator"
+          )
+        end,
         {:error, :unavailable}
       )
 
@@ -56,7 +61,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.HostDetailLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.delete_host(socket.assigns.host_id) end,
+        fn -> Function.capture(YellowDogIdentity, :delete_host, 1).(socket.assigns.host_id) end,
         {:error, :unavailable}
       )
 
@@ -79,7 +84,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.HostDetailLive do
       ServiceHelper.safe_call(
         YellowDogIdentity,
         fn ->
-          case YellowDogIdentity.get_host(host_id) do
+          case Function.capture(YellowDogIdentity, :get_host, 1).(host_id) do
             {:ok, host} -> host
             _ -> nil
           end
@@ -91,7 +96,9 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.HostDetailLive do
       if host do
         ServiceHelper.safe_call(
           YellowDogIdentity,
-          fn -> YellowDogIdentity.audit_log(host_id: host_id, limit: 20) end,
+          fn ->
+            Function.capture(YellowDogIdentity, :audit_log, 1).(host_id: host_id, limit: 20)
+          end,
           []
         )
       else

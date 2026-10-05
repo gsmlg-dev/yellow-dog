@@ -43,8 +43,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.Index do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_overview(socket, server_id) do
-    views_result = ServerManagement.dns_views_list(server_id)
-    metrics_result = ServerManagement.dns_metrics_get(server_id)
+    views_result = Function.capture(ServerManagement, :dns_views_list, 1).(server_id)
+    metrics_result = Function.capture(ServerManagement, :dns_metrics_get, 1).(server_id)
     results = [views_result, metrics_result]
 
     assign(socket,

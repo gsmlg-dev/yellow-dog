@@ -199,7 +199,7 @@ defmodule YellowDog.ManagementUI.Redesign.FingerprintLive.DeviceDetailLive do
     device =
       safe_call(
         YellowDog.Fingerprint,
-        fn -> YellowDog.Fingerprint.get_device(mac) end,
+        fn -> Function.capture(YellowDog.Fingerprint, :get_device, 1).(mac) end,
         :not_found
       )
 
@@ -211,7 +211,7 @@ defmodule YellowDog.ManagementUI.Redesign.FingerprintLive.DeviceDetailLive do
               case safe_call(
                      YellowDog.Fingerprint,
                      fn ->
-                       YellowDog.Fingerprint.lookup(
+                       Function.capture(YellowDog.Fingerprint, :lookup, 1).(
                          d.fingerprint_v4_id || d.fingerprint_v6_id || ""
                        )
                      end,

@@ -51,7 +51,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
       }
 
       result =
-        NetmanManagement.resolved_config_update(
+        Function.capture(NetmanManagement, :resolved_config_update, 3).(
           selected_id(socket),
           payload,
           expected_revision: revision
@@ -67,7 +67,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
     with :ok <- configurable(socket),
          {:ok, revision} <- exact_revision(socket.assigns.config_revision, "configuration") do
       result =
-        NetmanManagement.resolved_config_rollback(
+        Function.capture(NetmanManagement, :resolved_config_rollback, 3).(
           selected_id(socket),
           %{"target_revision" => params["target_revision"]},
           expected_revision: revision
@@ -83,7 +83,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
     with :ok <- mutable(socket),
          {:ok, revision} <- exact_revision(socket.assigns.cache_revision, "cache") do
       result =
-        NetmanManagement.resolved_cache_flush(
+        Function.capture(NetmanManagement, :resolved_cache_flush, 3).(
           selected_id(socket),
           %{},
           expected_revision: revision,
@@ -92,7 +92,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
 
       socket =
         case result do
-          %ManagementResult{status: :ok} ->
+          %{__struct__: ManagementResult, status: :ok} ->
             assign(socket, cache_entries: [], cache_revision: nil)
 
           _result ->
@@ -101,7 +101,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
 
       message =
         case result do
-          %ManagementResult{status: :ok, value: %{"cleared_entries" => count}} ->
+          %{__struct__: ManagementResult, status: :ok, value: %{"cleared_entries" => count}} ->
             "Flushed #{count} cache entries"
 
           _result ->
@@ -318,12 +318,15 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
   end
 
   defp load_resolved(socket, netman_id) do
-    config_result = NetmanManagement.resolved_config(netman_id)
-    mode_result = NetmanManagement.runtime_apply_mode_get(netman_id)
-    upstream_result = NetmanManagement.resolved_upstreams_list(netman_id)
-    domains_result = NetmanManagement.resolved_search_domains_list(netman_id)
-    cache_result = NetmanManagement.resolved_cache_get(netman_id)
-    counters_result = NetmanManagement.resolved_counters_get(netman_id)
+    config_result = Function.capture(NetmanManagement, :resolved_config, 1).(netman_id)
+    mode_result = Function.capture(NetmanManagement, :runtime_apply_mode_get, 1).(netman_id)
+    upstream_result = Function.capture(NetmanManagement, :resolved_upstreams_list, 1).(netman_id)
+
+    domains_result =
+      Function.capture(NetmanManagement, :resolved_search_domains_list, 1).(netman_id)
+
+    cache_result = Function.capture(NetmanManagement, :resolved_cache_get, 1).(netman_id)
+    counters_result = Function.capture(NetmanManagement, :resolved_counters_get, 1).(netman_id)
 
     runtime_results = [
       mode_result,
@@ -338,7 +341,10 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
     upstream_value = value(upstream_result, %{})
     cache_value = value(cache_result, %{})
     managed_config = value(config_result, nil)
-    config_bootstrap? = match?(%ManagementResult{status: :ok, value: nil}, config_result)
+
+    config_bootstrap? =
+      match?(%{__struct__: ManagementResult, status: :ok, value: nil}, config_result)
+
     config_read_error? = error_result?(config_result)
 
     assign(socket,
@@ -406,16 +412,17 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
 
   defp mutable(_socket), do: :ok
 
-  defp finish(socket, %ManagementResult{status: :ok} = result, message) when is_binary(message) do
+  defp finish(socket, %{__struct__: ManagementResult, status: :ok} = result, message)
+       when is_binary(message) do
     socket
     |> assign(operation_result: result)
     |> put_flash(:info, message)
   end
 
-  defp finish(socket, %ManagementResult{status: :ok} = result, _message),
+  defp finish(socket, %{__struct__: ManagementResult, status: :ok} = result, _message),
     do: assign(socket, operation_result: result)
 
-  defp finish(socket, %ManagementResult{} = result, _message) do
+  defp finish(socket, %{__struct__: ManagementResult} = result, _message) do
     socket
     |> assign(operation_result: result)
     |> put_flash(:error, result.message)
@@ -424,17 +431,23 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
   defp subscribe(socket, netman_id) do
     if connected?(socket) and socket.assigns.subscribed_netman_id != netman_id do
       if old_id = socket.assigns.subscribed_netman_id do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:netman:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{netman_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:netman:#{netman_id}"
+      )
     end
 
     assign(socket, :subscribed_netman_id, netman_id)
   end
 
   defp refresh_selected_netman(socket, netman_id) do
-    case ManagementCore.get_netman(netman_id) do
+    case Function.capture(ManagementCore, :get_netman, 1).(netman_id) do
       {:ok, netman} ->
         assign(socket,
           selected_netman: netman,
@@ -450,13 +463,14 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
   defp selected_id(socket), do: socket.assigns.selected_netman.id
 
   defp exact_revision(revision, owner) do
-    case Digest.validate(revision) do
+    case Function.capture(Digest, :validate, 1).(revision) do
       {:ok, revision} -> {:ok, revision}
       _error -> {:error, "The exact #{owner} revision is unavailable"}
     end
   end
 
-  defp revision_available?(revision), do: match?({:ok, _revision}, Digest.validate(revision))
+  defp revision_available?(revision),
+    do: match?({:ok, _revision}, Function.capture(Digest, :validate, 1).(revision))
 
   defp csv(value) when value in [nil, ""], do: []
 
@@ -467,25 +481,25 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.ResolvedLive do
     |> Enum.reject(&(&1 == ""))
   end
 
-  defp value(%ManagementResult{status: :ok, value: value}, _default), do: value
+  defp value(%{__struct__: ManagementResult, status: :ok, value: value}, _default), do: value
   defp value(_result, default), do: default
   defp items(result), do: result |> value(%{}) |> Map.get("items", [])
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
 
   defp cached_observed_at(results, fallback) do
     Enum.find_value(results, fallback, fn
-      %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+      %{__struct__: ManagementResult, source: :cache, observed_at: observed_at} -> observed_at
       _result -> nil
     end)
   end
 
-  defp error_result?(%ManagementResult{status: :error}), do: true
+  defp error_result?(%{__struct__: ManagementResult, status: :error}), do: true
   defp error_result?(_result), do: false
 
   defp display(nil), do: "-"

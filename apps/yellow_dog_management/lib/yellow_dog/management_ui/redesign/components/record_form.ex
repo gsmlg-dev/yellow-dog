@@ -99,7 +99,7 @@ defmodule YellowDog.ManagementUI.Redesign.Components.RecordForm do
 
     validation_params = build_validation_params(type, form_data, socket.assigns.zone_name)
 
-    case RecordValidator.validate(type, validation_params) do
+    case Function.capture(RecordValidator, :validate, 2).(type, validation_params) do
       {:ok, validated_record} ->
         if socket.assigns[:on_save] do
           socket.assigns.on_save.(validated_record)
@@ -665,7 +665,7 @@ defmodule YellowDog.ManagementUI.Redesign.Components.RecordForm do
   end
 
   defp validate_record(type, params, socket) do
-    case RecordValidator.validate(type, params) do
+    case Function.capture(RecordValidator, :validate, 2).(type, params) do
       {:ok, validated} ->
         # Check for conflicts if zone_pid is available
         warnings = check_conflicts(validated, socket)
@@ -693,9 +693,14 @@ defmodule YellowDog.ManagementUI.Redesign.Components.RecordForm do
       zone_name = socket.assigns.zone_name
 
       try do
-        existing_records = YellowDog.Dns.Zone.Auth.get_all_records(zone_pid)
+        existing_records =
+          Function.capture(YellowDog.Dns.Zone.Auth, :get_all_records, 1).(zone_pid)
 
-        case ZoneValidator.check_would_conflict(validated, existing_records, zone_name) do
+        case Function.capture(ZoneValidator, :check_would_conflict, 3).(
+               validated,
+               existing_records,
+               zone_name
+             ) do
           {:ok, :no_conflict} ->
             []
 

@@ -63,7 +63,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.ProfileEditorLive 
          true <- errors == %{} || {:error, "Please correct the profile fields"},
          {:ok, revision} <- expected_revision(socket) do
       result =
-        ServerManagement.netboot_profiles_put(
+        Function.capture(ServerManagement, :netboot_profiles_put, 3).(
           ManagementSupport.selected_id(socket),
           profile_payload(normalized),
           ManagementSupport.command_options(revision)
@@ -87,7 +87,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.ProfileEditorLive 
          profile_id when is_binary(profile_id) <- socket.assigns.profile_id,
          {:ok, revision} <- profile_revision(socket.assigns.profiles, profile_id) do
       result =
-        ServerManagement.netboot_profiles_delete(
+        Function.capture(ServerManagement, :netboot_profiles_delete, 3).(
           ManagementSupport.selected_id(socket),
           %{"profile_id" => profile_id},
           ManagementSupport.command_options(revision)
@@ -253,9 +253,9 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.ProfileEditorLive 
   end
 
   defp load_editor(socket, server_id, params) do
-    profiles_result = ServerManagement.netboot_profiles_list(server_id)
-    assets_result = ServerManagement.netboot_assets_list(server_id)
-    devices_result = ServerManagement.netboot_devices_list(server_id)
+    profiles_result = Function.capture(ServerManagement, :netboot_profiles_list, 1).(server_id)
+    assets_result = Function.capture(ServerManagement, :netboot_assets_list, 1).(server_id)
+    devices_result = Function.capture(ServerManagement, :netboot_devices_list, 1).(server_id)
     results = [profiles_result, assets_result, devices_result]
     profiles = ManagementSupport.items(profiles_result)
     assets = ManagementSupport.items(assets_result)
@@ -342,7 +342,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.ProfileEditorLive 
     ManagementSupport.exact_revision(profiles, &(&1["profile_id"] == profile_id), "Profile")
   end
 
-  defp put_profile(socket, %ManagementResult{status: :ok, value: %{"resource" => profile}}) do
+  defp put_profile(socket, %{
+         __struct__: ManagementResult,
+         status: :ok,
+         value: %{"resource" => profile}
+       }) do
     profiles = [
       profile | Enum.reject(socket.assigns.profiles, &(&1["profile_id"] == profile["profile_id"]))
     ]

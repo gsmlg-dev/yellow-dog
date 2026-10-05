@@ -26,8 +26,8 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
   def mount(_params, _session, socket) do
     config_path = get_config_path()
 
-    with {:ok, config} <- ConfigManager.load_config(config_path),
-         version_info <- ConfigurationVersion.get_version(config_path) do
+    with {:ok, config} <- Function.capture(ConfigManager, :load_config, 1).(config_path),
+         version_info <- Function.capture(ConfigurationVersion, :get_version, 1).(config_path) do
       socket =
         socket
         |> assign(
@@ -179,9 +179,9 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
   def handle_event("reload_config", _params, socket) do
     config_path = socket.assigns.config_path
 
-    case ConfigManager.load_config(config_path) do
+    case Function.capture(ConfigManager, :load_config, 1).(config_path) do
       {:ok, config} ->
-        version_info = ConfigurationVersion.get_version(config_path)
+        version_info = Function.capture(ConfigurationVersion, :get_version, 1).(config_path)
 
         socket =
           socket
@@ -211,7 +211,10 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
 
   @impl true
   def handle_event("restore_backup", %{"backup_path" => backup_path}, socket) do
-    case ConfigManager.restore_backup(backup_path, socket.assigns.config_path) do
+    case Function.capture(ConfigManager, :restore_backup, 2).(
+           backup_path,
+           socket.assigns.config_path
+         ) do
       :ok ->
         # Reload configuration after restore
         handle_event("reload_config", %{}, socket)
@@ -501,17 +504,17 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
 
     # Attempt save with optimistic locking
     with :ok <-
-           ConfigurationVersion.compare_and_swap(
+           Function.capture(ConfigurationVersion, :compare_and_swap, 3).(
              config_path,
              version_info.version,
              version_info.timestamp
            ),
-         {:ok, _backup_path} <- ConfigManager.create_backup(config_path),
-         :ok <- ConfigManager.update_config(config_path, updates) do
+         {:ok, _backup_path} <- Function.capture(ConfigManager, :create_backup, 1).(config_path),
+         :ok <- Function.capture(ConfigManager, :update_config, 2).(config_path, updates) do
       # Success - reload configuration and update version
-      new_version_info = ConfigurationVersion.get_version(config_path)
+      new_version_info = Function.capture(ConfigurationVersion, :get_version, 1).(config_path)
 
-      case ConfigManager.load_config(config_path) do
+      case Function.capture(ConfigManager, :load_config, 1).(config_path) do
         {:ok, new_config} ->
           socket =
             socket
@@ -561,7 +564,7 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
       # Extract new configuration for service
       new_config = extract_service_config(pending)
 
-      case ServiceManager.apply_and_restart(service, new_config) do
+      case Function.capture(ServiceManager, :apply_and_restart, 2).(service, new_config) do
         :ok ->
           socket =
             socket
@@ -651,7 +654,7 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
 
   defp list_boot_profiles do
     try do
-      YellowDog.Netboot.Manifest.Store.list_profiles()
+      Function.capture(YellowDog.Netboot.Manifest.Store, :list_profiles, 0).()
     catch
       _, _ -> []
     end
@@ -771,9 +774,9 @@ defmodule YellowDog.ManagementUI.Redesign.SettingsLive do
   defp dns_reload(scope) do
     try do
       case scope do
-        :all -> YellowDog.Dns.ConfigWatcher.reload()
-        :views -> YellowDog.Dns.ConfigWatcher.reload_views()
-        :acls -> YellowDog.Dns.ConfigWatcher.reload_acls()
+        :all -> Function.capture(YellowDog.Dns.ConfigWatcher, :reload, 0).()
+        :views -> Function.capture(YellowDog.Dns.ConfigWatcher, :reload_views, 0).()
+        :acls -> Function.capture(YellowDog.Dns.ConfigWatcher, :reload_acls, 0).()
       end
     rescue
       e -> {:error, Exception.message(e)}

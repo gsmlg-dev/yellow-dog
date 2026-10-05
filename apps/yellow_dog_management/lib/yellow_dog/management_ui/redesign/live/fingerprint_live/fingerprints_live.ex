@@ -197,7 +197,11 @@ defmodule YellowDog.ManagementUI.Redesign.FingerprintLive.FingerprintsLive do
   @impl true
   def handle_event("classify", %{"hash" => hash}, socket) do
     profiles =
-      safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.list_profiles() end, [])
+      safe_call(
+        YellowDog.Fingerprint,
+        fn -> Function.capture(YellowDog.Fingerprint, :list_profiles, 0).() end,
+        []
+      )
 
     {:noreply, assign(socket, show_classify: true, selected_fp: hash, profiles: profiles)}
   end
@@ -213,7 +217,9 @@ defmodule YellowDog.ManagementUI.Redesign.FingerprintLive.FingerprintsLive do
 
     case safe_call(
            YellowDog.Fingerprint,
-           fn -> YellowDog.Fingerprint.create_override(hash, pid, note) end,
+           fn ->
+             Function.capture(YellowDog.Fingerprint, :create_override, 3).(hash, pid, note)
+           end,
            {:error, :service_unavailable}
          ) do
       :ok ->
@@ -244,15 +250,23 @@ defmodule YellowDog.ManagementUI.Redesign.FingerprintLive.FingerprintsLive do
 
   defp load_data(socket) do
     all =
-      safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.list_fingerprints() end, [])
+      safe_call(
+        YellowDog.Fingerprint,
+        fn -> Function.capture(YellowDog.Fingerprint, :list_fingerprints, 0).() end,
+        []
+      )
 
     stats =
-      safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.database_stats() end, %{
-        fingerprints_v4: 0,
-        fingerprints_v6: 0,
-        profiles: 0,
-        overrides: 0
-      })
+      safe_call(
+        YellowDog.Fingerprint,
+        fn -> Function.capture(YellowDog.Fingerprint, :database_stats, 0).() end,
+        %{
+          fingerprints_v4: 0,
+          fingerprints_v6: 0,
+          profiles: 0,
+          overrides: 0
+        }
+      )
 
     known = Enum.filter(all, &(&1[:profile_id] != nil))
     unknown = Enum.filter(all, &(&1[:profile_id] == nil))

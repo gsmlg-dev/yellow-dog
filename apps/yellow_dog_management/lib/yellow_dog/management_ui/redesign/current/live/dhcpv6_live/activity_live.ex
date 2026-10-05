@@ -74,8 +74,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv6Live.ActivityLive do
   defp load_activity(socket) do
     server_id = socket.assigns.selected_server.id
     payload = %{"family" => ManagementSupport.family_wire(@family)}
-    status = ServerManagement.dhcp_status_get(server_id, payload)
-    activity_result = ServerManagement.dhcp_activity_list(server_id, payload)
+    status = Function.capture(ServerManagement, :dhcp_status_get, 2).(server_id, payload)
+
+    activity_result =
+      Function.capture(ServerManagement, :dhcp_activity_list, 2).(server_id, payload)
+
     results = [status, activity_result]
 
     socket

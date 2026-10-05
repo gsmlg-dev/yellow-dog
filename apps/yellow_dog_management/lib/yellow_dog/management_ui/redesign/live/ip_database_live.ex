@@ -191,7 +191,7 @@ defmodule YellowDog.ManagementUI.Redesign.IpDatabaseLive do
   def handle_event("download", %{"type" => type}, socket) do
     type_atom = validated_type(type)
 
-    case Tasks.enqueue(ip_task(type_atom)) do
+    case Function.capture(Tasks, :enqueue, 1).(ip_task(type_atom)) do
       {:ok, _job} ->
         {:noreply,
          socket
@@ -205,7 +205,7 @@ defmodule YellowDog.ManagementUI.Redesign.IpDatabaseLive do
 
   def handle_event("unload", %{"name" => name}, socket) do
     type_atom = validated_type(name)
-    Database.unload(type_atom)
+    Function.capture(Database, :unload, 1).(type_atom)
 
     {:noreply,
      socket
@@ -219,18 +219,18 @@ defmodule YellowDog.ManagementUI.Redesign.IpDatabaseLive do
   defp validated_type(type) when type in @valid_types, do: String.to_existing_atom(type)
 
   defp load_databases do
-    Database.list_databases()
+    Function.capture(Database, :list_databases, 0).()
     |> Enum.map(fn name ->
       metadata =
-        case Database.get_metadata(name) do
+        case Function.capture(Database, :get_metadata, 1).(name) do
           {:ok, meta} -> meta
           _ -> %{}
         end
 
       {path, file_size} =
-        case Database.file_info(name) do
+        case Function.capture(Database, :file_info, 1).(name) do
           {:ok, info} -> {info.path, info.size}
-          _ -> {Database.database_path(name), nil}
+          _ -> {Function.capture(Database, :database_path, 1).(name), nil}
         end
 
       %{name: name, metadata: metadata, path: path, file_size: file_size}

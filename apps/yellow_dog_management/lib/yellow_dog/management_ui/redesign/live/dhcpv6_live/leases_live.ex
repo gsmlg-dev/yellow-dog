@@ -74,7 +74,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv6Live.LeasesLive do
   def handle_event("release_lease", %{"duid" => duid_str, "iaid" => iaid_str}, socket) do
     with {iaid, ""} <- Integer.parse(iaid_str),
          duid_binary <- parse_duid_string(duid_str) do
-      case YellowDog.Dhcpv6.release_lease(duid_binary, iaid) do
+      case Function.capture(YellowDog.Dhcpv6, :release_lease, 2).(duid_binary, iaid) do
         :ok ->
           {:noreply,
            socket
@@ -136,14 +136,18 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv6Live.LeasesLive do
   end
 
   defp get_leases do
-    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.list_leases() end, [])
+    safe_call(
+      YellowDog.Dhcpv6,
+      fn -> Function.capture(YellowDog.Dhcpv6, :list_leases, 0).() end,
+      []
+    )
   end
 
   defp get_pools do
     safe_call(
       YellowDog.Dhcpv6.LeaseManager,
       fn ->
-        YellowDog.Dhcpv6.LeaseManager.get_pools()
+        Function.capture(YellowDog.Dhcpv6.LeaseManager, :get_pools, 0).()
         |> Enum.map(& &1.name)
         |> Enum.sort()
       end,

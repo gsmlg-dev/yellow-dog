@@ -31,8 +31,8 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
        service_running: service_running?(YellowDog.Dns),
        views: list_views_with_acl(),
        named_acls: list_named_acls(),
-       builtin_acls: ACL.list_builtins(),
-       countries: GeoIpDb.list_countries(),
+       builtin_acls: Function.capture(ACL, :list_builtins, 0).(),
+       countries: Function.capture(GeoIpDb, :list_countries, 0).(),
        selected_countries: [],
        country_search: "",
        editing_view: nil,
@@ -95,7 +95,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
   def handle_event("edit_named_acl", %{"name" => name}, socket) do
     result =
       try do
-        AclRegistry.get_acl(name)
+        Function.capture(AclRegistry, :get_acl, 1).(name)
       catch
         _, _ -> {:error, :service_unavailable}
       end
@@ -172,9 +172,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
         result =
           try do
             if socket.assigns.editing_acl do
-              AclRegistry.update_acl(socket.assigns.editing_acl, acl)
+              Function.capture(AclRegistry, :update_acl, 2).(socket.assigns.editing_acl, acl)
             else
-              AclRegistry.create_acl(acl)
+              Function.capture(AclRegistry, :create_acl, 1).(acl)
             end
           catch
             _, _ -> {:error, :service_unavailable}
@@ -219,7 +219,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
 
     result =
       try do
-        AclRegistry.delete_acl(name)
+        Function.capture(AclRegistry, :delete_acl, 1).(name)
       catch
         _, _ -> {:error, :service_unavailable}
       end
@@ -328,7 +328,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
 
     result =
       try do
-        ViewManager.get_view(view_name)
+        Function.capture(ViewManager, :get_view, 1).(view_name)
       catch
         _, _ -> :error
       end
@@ -336,7 +336,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
     case result do
       {:ok, pid} ->
         try do
-          View.reload(pid, %{acl: acl_config})
+          Function.capture(View, :reload, 2).(pid, %{acl: acl_config})
         catch
           _, _ -> :ok
         end
@@ -384,10 +384,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
 
   defp list_views_with_acl do
     try do
-      views = ViewManager.list_views()
+      views = Function.capture(ViewManager, :list_views, 0).()
 
       Enum.map(views, fn {view_name, pid, priority} ->
-        stats = View.stats(pid)
+        stats = Function.capture(View, :stats, 1).(pid)
         {acl_type, acl_rules} = parse_acl_config(stats)
 
         %{
@@ -412,7 +412,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
       "localhost" -> {"localhost", []}
       "localnets" -> {"localnets", []}
       rules when is_list(rules) -> categorize_rules(rules)
-      %ACL{rules: rules} -> categorize_rules(rules)
+      %{__struct__: ACL, rules: rules} -> categorize_rules(rules)
       _ -> {"any", []}
     end
   end
@@ -562,7 +562,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.AclLive do
 
   defp list_named_acls do
     try do
-      AclRegistry.list_acls()
+      Function.capture(AclRegistry, :list_acls, 0).()
     catch
       _, _ -> []
     end

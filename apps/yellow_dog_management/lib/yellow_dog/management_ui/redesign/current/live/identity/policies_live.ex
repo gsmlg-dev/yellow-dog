@@ -3,8 +3,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.PoliciesLive do
 
   use YellowDog.ManagementUI.Redesign, :live_view
 
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementComponents
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementSupport
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementComponents
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
   alias YellowDog.ManagementUI.Redesign.Layouts
   alias YellowDog.ManagementUI.Redesign.ServerManagement
   alias YellowDog.ManagementUI.Redesign.ServicePaths
@@ -81,7 +81,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.PoliciesLive do
   end
 
   defp load_policies(socket, server_id) do
-    result = ServerManagement.identity_policies_get(server_id)
+    result = Function.capture(ServerManagement, :identity_policies_get, 1).(server_id)
     value = ManagementSupport.value(result, %{})
 
     assign(socket,

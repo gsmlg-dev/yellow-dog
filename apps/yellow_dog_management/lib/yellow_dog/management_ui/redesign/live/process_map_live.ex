@@ -24,7 +24,7 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
       :timer.send_interval(@refresh_interval, self(), :refresh_tree)
     end
 
-    tree = ProcessInspector.get_tree()
+    tree = Function.capture(ProcessInspector, :get_tree, 0).()
 
     # Start with root node and immediate children (app supervisors) expanded
     initial_expanded =
@@ -54,8 +54,11 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
 
     {tree_with_layout, svg_width, svg_height} =
       if tree do
-        laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
-        {w, h} = ProcessInspector.calculate_dimensions(laid_out, layout_opts)
+        laid_out = Function.capture(ProcessInspector, :calculate_layout, 2).(tree, layout_opts)
+
+        {w, h} =
+          Function.capture(ProcessInspector, :calculate_dimensions, 2).(laid_out, layout_opts)
+
         {laid_out, w, h}
       else
         {nil, 600, 300}
@@ -75,14 +78,14 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
        last_refresh: DateTime.utc_now(),
        show_status_panel: false,
        loading_status: false,
-       node_count: ProcessInspector.count_nodes(tree),
+       node_count: Function.capture(ProcessInspector, :count_nodes, 1).(tree),
        expanded_pids: initial_expanded
      )}
   end
 
   @impl true
   def handle_info(:refresh_tree, socket) do
-    tree = ProcessInspector.get_tree()
+    tree = Function.capture(ProcessInspector, :get_tree, 0).()
 
     layout_opts = [
       node_width: @node_width,
@@ -95,8 +98,11 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
 
     {tree_with_layout, svg_width, svg_height} =
       if tree do
-        laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
-        {w, h} = ProcessInspector.calculate_dimensions(laid_out, layout_opts)
+        laid_out = Function.capture(ProcessInspector, :calculate_layout, 2).(tree, layout_opts)
+
+        {w, h} =
+          Function.capture(ProcessInspector, :calculate_dimensions, 2).(laid_out, layout_opts)
+
         {laid_out, w, h}
       else
         {nil, 600, 300}
@@ -105,7 +111,9 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
     # If we have a selected process, check if it's still alive
     socket =
       if socket.assigns.selected_pid do
-        case ProcessInspector.get_process_status(socket.assigns.selected_pid) do
+        case Function.capture(ProcessInspector, :get_process_status, 1).(
+               socket.assigns.selected_pid
+             ) do
           {:ok, status} ->
             assign(socket, selected_status: status)
 
@@ -125,7 +133,7 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
        svg_width: svg_width,
        svg_height: svg_height,
        last_refresh: DateTime.utc_now(),
-       node_count: ProcessInspector.count_nodes(tree)
+       node_count: Function.capture(ProcessInspector, :count_nodes, 1).(tree)
      )}
   end
 
@@ -134,11 +142,11 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
 
   @impl true
   def handle_event("select_node", %{"pid" => pid_string}, socket) do
-    case ProcessInspector.parse_pid(pid_string) do
+    case Function.capture(ProcessInspector, :parse_pid, 1).(pid_string) do
       {:ok, pid} ->
         socket = assign(socket, loading_status: true, selected_pid: pid)
 
-        case ProcessInspector.get_process_status(pid) do
+        case Function.capture(ProcessInspector, :get_process_status, 1).(pid) do
           {:ok, status} ->
             {:noreply,
              assign(socket,
@@ -168,7 +176,7 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
 
   @impl true
   def handle_event("toggle_expand", %{"pid" => pid_string}, socket) do
-    case ProcessInspector.parse_pid(pid_string) do
+    case Function.capture(ProcessInspector, :parse_pid, 1).(pid_string) do
       {:ok, pid} ->
         expanded_pids = socket.assigns.expanded_pids
 
@@ -180,7 +188,7 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
           end
 
         # Recalculate layout with new expansion state
-        tree = ProcessInspector.get_tree()
+        tree = Function.capture(ProcessInspector, :get_tree, 0).()
 
         layout_opts = [
           node_width: @node_width,
@@ -193,8 +201,12 @@ defmodule YellowDog.ManagementUI.Redesign.ProcessMapLive do
 
         {tree_with_layout, svg_width, svg_height} =
           if tree do
-            laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
-            {w, h} = ProcessInspector.calculate_dimensions(laid_out, layout_opts)
+            laid_out =
+              Function.capture(ProcessInspector, :calculate_layout, 2).(tree, layout_opts)
+
+            {w, h} =
+              Function.capture(ProcessInspector, :calculate_dimensions, 2).(laid_out, layout_opts)
+
             {laid_out, w, h}
           else
             {nil, 600, 300}

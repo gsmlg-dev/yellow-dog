@@ -36,7 +36,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.QueryLogsLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, QueryLogger.pubsub_topic())
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        Function.capture(QueryLogger, :pubsub_topic, 0).()
+      )
+
       Process.send_after(self(), :refresh, @refresh_interval)
     end
 
@@ -97,7 +101,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.QueryLogsLive do
   @impl true
   def handle_event("clear", _params, socket) do
     try do
-      QueryLogger.clear_buffer()
+      Function.capture(QueryLogger, :clear_buffer, 0).()
     catch
       _, _ -> :ok
     end
@@ -146,14 +150,18 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.QueryLogsLive do
 
   @impl true
   def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, QueryLogger.pubsub_topic())
+    Phoenix.PubSub.unsubscribe(
+      YellowDog.ManagementUI.Redesign.PubSub,
+      Function.capture(QueryLogger, :pubsub_topic, 0).()
+    )
+
     :ok
   end
 
   defp load_entries(socket) do
     entries =
       try do
-        all = QueryLogger.get_recent_logs(limit: @max_display)
+        all = Function.capture(QueryLogger, :get_recent_logs, 1).(limit: @max_display)
         filter_entries(all, socket.assigns)
       catch
         _, _ -> []
@@ -202,7 +210,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.QueryLogsLive do
 
   defp fetch_stats do
     try do
-      QueryLogger.stats()
+      Function.capture(QueryLogger, :stats, 0).()
     catch
       _, _ -> default_stats()
     end
@@ -213,7 +221,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.QueryLogsLive do
   end
 
   defp format_ip(nil), do: "-"
-  defp format_ip(ip), do: YellowDog.Dns.IpFormat.format(ip)
+  defp format_ip(ip), do: Function.capture(YellowDog.Dns.IpFormat, :format, 1).(ip)
 
   defp format_response_time(nil), do: "-"
   defp format_response_time(us) when us < 1_000, do: "#{us}us"

@@ -15,7 +15,7 @@ defmodule YellowDog.ManagementUI.Redesign.TasksLive.Index do
 
   @impl true
   def handle_params(_params, _url, socket) do
-    {:noreply, assign(socket, :tasks, Tasks.list_tasks())}
+    {:noreply, assign(socket, :tasks, Function.capture(Tasks, :list_tasks, 0).())}
   end
 
   @impl true
@@ -113,18 +113,18 @@ defmodule YellowDog.ManagementUI.Redesign.TasksLive.Index do
 
   @impl true
   def handle_event("refresh", _params, socket) do
-    {:noreply, assign(socket, :tasks, Tasks.list_tasks())}
+    {:noreply, assign(socket, :tasks, Function.capture(Tasks, :list_tasks, 0).())}
   end
 
   def handle_event("run_now", %{"task" => key}, socket) do
-    case Tasks.enqueue(key) do
+    case Function.capture(Tasks, :enqueue, 1).(key) do
       {:ok, _job} ->
-        task = Tasks.get_task!(key)
+        task = Function.capture(Tasks, :get_task!, 1).(key)
 
         {:noreply,
          socket
          |> put_flash(:info, "#{task.label} sync queued")
-         |> assign(:tasks, Tasks.list_tasks())}
+         |> assign(:tasks, Function.capture(Tasks, :list_tasks, 0).())}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Unable to queue task: #{inspect(reason)}")}
@@ -132,12 +132,12 @@ defmodule YellowDog.ManagementUI.Redesign.TasksLive.Index do
   end
 
   def handle_event("save_task_config", %{"task_key" => key, "task" => task_params}, socket) do
-    case Tasks.update_task(key, task_params) do
+    case Function.capture(Tasks, :update_task, 2).(key, task_params) do
       {:ok, _task} ->
         {:noreply,
          socket
          |> put_flash(:info, "Task schedule updated")
-         |> assign(:tasks, Tasks.list_tasks())}
+         |> assign(:tasks, Function.capture(Tasks, :list_tasks, 0).())}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Unable to update task: #{inspect(reason)}")}

@@ -41,7 +41,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
        view_form: nil,
        editing_view: nil,
        is_default_view: false,
-       countries: GeoIpDb.list_countries(),
+       countries: Function.capture(GeoIpDb, :list_countries, 0).(),
        selected_countries: [],
        country_search: "",
        form_errors: %{}
@@ -462,15 +462,18 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
   # ============================================================================
 
   defp load_persisted_views do
-    views_path = Path.join(ConfigPersistence.default_data_path(), "views.toml")
-    ViewStore.load_views(views_path)
+    views_path =
+      Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), "views.toml")
+
+    Function.capture(ViewStore, :load_views, 1).(views_path)
   end
 
   defp save_views_to_toml(views) do
-    views_path = Path.join(ConfigPersistence.default_data_path(), "views.toml")
+    views_path =
+      Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), "views.toml")
 
-    with :ok <- File.mkdir_p(ConfigPersistence.default_data_path()) do
-      ViewStore.save_views(views_path, views)
+    with :ok <- File.mkdir_p(Function.capture(ConfigPersistence, :default_data_path, 0).()) do
+      Function.capture(ViewStore, :save_views, 2).(views_path, views)
     end
   end
 
@@ -485,12 +488,12 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
     if dns_service_running?() do
       try do
         if editing do
-          case ViewManager.get_view(editing) do
-            {:ok, pid} -> View.reload(pid, config)
-            :error -> ViewManager.start_view(config)
+          case Function.capture(ViewManager, :get_view, 1).(editing) do
+            {:ok, pid} -> Function.capture(View, :reload, 2).(pid, config)
+            :error -> Function.capture(ViewManager, :start_view, 1).(config)
           end
         else
-          ViewManager.start_view(config)
+          Function.capture(ViewManager, :start_view, 1).(config)
         end
       catch
         :exit, _ -> :ok
@@ -501,8 +504,8 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
   defp propagate_toggle(view_name, enabled) do
     if dns_service_running?() do
       try do
-        case ViewManager.get_view(view_name) do
-          {:ok, pid} -> View.set_enabled(pid, enabled)
+        case Function.capture(ViewManager, :get_view, 1).(view_name) do
+          {:ok, pid} -> Function.capture(View, :set_enabled, 2).(pid, enabled)
           :error -> :ok
         end
       catch
@@ -514,7 +517,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
   defp propagate_delete(view_name) do
     if dns_service_running?() do
       try do
-        ViewManager.stop_view(view_name)
+        Function.capture(ViewManager, :stop_view, 1).(view_name)
       catch
         :exit, _ -> :ok
       end
@@ -549,10 +552,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
 
   defp list_views_from_service do
     try do
-      views = ViewManager.list_views()
+      views = Function.capture(ViewManager, :list_views, 0).()
 
       Enum.map(views, fn {view_name, pid, priority} ->
-        stats = View.stats(pid)
+        stats = Function.capture(View, :stats, 1).(pid)
 
         %{
           name: view_name,
@@ -603,9 +606,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ViewLive.Index do
 
   defp get_view_config_from_service(view_name) do
     try do
-      case ViewManager.get_view(view_name) do
+      case Function.capture(ViewManager, :get_view, 1).(view_name) do
         {:ok, pid} ->
-          stats = View.stats(pid)
+          stats = Function.capture(View, :stats, 1).(pid)
 
           config = %{
             name: stats.name,

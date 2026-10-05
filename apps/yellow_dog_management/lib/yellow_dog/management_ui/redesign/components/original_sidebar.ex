@@ -24,7 +24,7 @@ defmodule YellowDog.ManagementUI.Redesign.OriginalSidebar do
 
     clients =
       if section == "Netman" do
-        YellowDog.ManagementUI.Redesign.NetmanRegistry.list()
+        Function.capture(YellowDog.ManagementUI.Redesign.NetmanRegistry, :list, 0).()
       else
         []
       end

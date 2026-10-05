@@ -15,7 +15,7 @@ defmodule YellowDog.ManagementUI.Redesign.TasksLive.Show do
 
   @impl true
   def handle_params(%{"task" => key}, _url, socket) do
-    task = Tasks.get_task!(key)
+    task = Function.capture(Tasks, :get_task!, 1).(key)
 
     {:noreply,
      assign(socket,
@@ -99,9 +99,9 @@ defmodule YellowDog.ManagementUI.Redesign.TasksLive.Show do
 
   @impl true
   def handle_event("run_now", %{"task" => key}, socket) do
-    case Tasks.enqueue(key) do
+    case Function.capture(Tasks, :enqueue, 1).(key) do
       {:ok, _job} ->
-        task = Tasks.get_task!(key)
+        task = Function.capture(Tasks, :get_task!, 1).(key)
 
         {:noreply,
          socket

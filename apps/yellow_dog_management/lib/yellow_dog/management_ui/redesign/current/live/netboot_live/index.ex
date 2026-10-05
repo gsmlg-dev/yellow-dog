@@ -205,10 +205,10 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.Index do
   end
 
   defp load_overview(socket, server_id) do
-    profiles_result = ServerManagement.netboot_profiles_list(server_id)
-    devices_result = ServerManagement.netboot_devices_list(server_id)
-    assets_result = ServerManagement.netboot_assets_list(server_id)
-    transfers_result = ServerManagement.netboot_transfers_list(server_id)
+    profiles_result = Function.capture(ServerManagement, :netboot_profiles_list, 1).(server_id)
+    devices_result = Function.capture(ServerManagement, :netboot_devices_list, 1).(server_id)
+    assets_result = Function.capture(ServerManagement, :netboot_assets_list, 1).(server_id)
+    transfers_result = Function.capture(ServerManagement, :netboot_transfers_list, 1).(server_id)
     results = [profiles_result, devices_result, assets_result, transfers_result]
 
     assign(socket,

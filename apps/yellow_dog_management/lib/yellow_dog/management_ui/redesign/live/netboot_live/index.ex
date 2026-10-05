@@ -301,7 +301,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.Index do
       safe_call(
         YellowDog.Netboot.Device.Registry,
         fn ->
-          YellowDog.Netboot.Device.Registry.list()
+          Function.capture(YellowDog.Netboot.Device.Registry, :list, 0).()
         end,
         []
       )
@@ -310,7 +310,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.Index do
       safe_call(
         YellowDog.Netboot.Device.Registry,
         fn ->
-          YellowDog.Netboot.Device.Registry.count_by_state()
+          Function.capture(YellowDog.Netboot.Device.Registry, :count_by_state, 0).()
         end,
         %{}
       )
@@ -319,7 +319,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.Index do
       safe_call(
         YellowDog.Netboot.TFTP.Server,
         fn ->
-          YellowDog.Netboot.TFTP.Server.status()
+          Function.capture(YellowDog.Netboot.TFTP.Server, :status, 0).()
         end,
         %{running: false, port: 69, file_count: 0, active_transfers: 0}
       )
@@ -328,7 +328,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.Index do
       safe_call(
         YellowDog.Netboot.Manifest.Store,
         fn ->
-          YellowDog.Netboot.Manifest.Store.list_profiles()
+          Function.capture(YellowDog.Netboot.Manifest.Store, :list_profiles, 0).()
         end,
         []
       )
@@ -355,7 +355,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.Index do
   end
 
   defp load_metrics do
-    YellowDog.Netboot.Metrics.all()
+    Function.capture(YellowDog.Netboot.Metrics, :all, 0).()
   rescue
     _ -> default_metrics()
   end

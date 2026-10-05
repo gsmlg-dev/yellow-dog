@@ -194,7 +194,13 @@ defmodule YellowDog.ManagementUI.Redesign.FingerprintLive.DevicesLive do
   # --- Private ---
 
   defp load_devices(socket) do
-    all = safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.list_devices() end, [])
+    all =
+      safe_call(
+        YellowDog.Fingerprint,
+        fn -> Function.capture(YellowDog.Fingerprint, :list_devices, 0).() end,
+        []
+      )
+
     identified = Enum.count(all, & &1.profile_id)
 
     types =

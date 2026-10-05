@@ -82,8 +82,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
     with {:ok, entries} <- typed_service_entries(params, socket.assigns.selected_service),
          document <- merge_service_entries(socket, params["profile"], entries),
          :ok <- validate_document(document),
-         %ManagementResult{status: :ok} <-
-           ServerManagement.put_config_draft(
+         %{__struct__: ManagementResult, status: :ok} <-
+           Function.capture(ServerManagement, :put_config_draft, 3).(
              socket.assigns.selected_server.id,
              socket.assigns.draft_revision,
              document
@@ -93,7 +93,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
        |> load_settings()
        |> put_flash(:info, "Draft saved")}
     else
-      %ManagementResult{status: :error, message: message} ->
+      %{__struct__: ManagementResult, status: :error, message: message} ->
         {:noreply, put_flash(socket, :error, message)}
 
       {:error, message} ->
@@ -114,27 +114,27 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
 
   def handle_event("apply", _params, socket) do
     result =
-      ServerManagement.publish_config_draft(
+      Function.capture(ServerManagement, :publish_config_draft, 2).(
         socket.assigns.selected_server.id,
         socket.assigns.draft_revision
       )
 
     case result do
-      %ManagementResult{status: :ok} ->
+      %{__struct__: ManagementResult, status: :ok} ->
         {:noreply,
          socket
          |> load_settings()
          |> put_flash(:info, "Waiting for Server acknowledgement")}
 
-      %ManagementResult{status: :error, message: message} ->
+      %{__struct__: ManagementResult, status: :error, message: message} ->
         {:noreply, put_flash(socket, :error, message)}
     end
   end
 
   def handle_event("rollback", %{"version" => version}, %{assigns: %{in_flight?: false}} = socket) do
     with {:ok, version} <- parse_version(version),
-         %ManagementResult{status: :ok} <-
-           ServerManagement.rollback_config(
+         %{__struct__: ManagementResult, status: :ok} <-
+           Function.capture(ServerManagement, :rollback_config, 3).(
              socket.assigns.selected_server.id,
              version,
              socket.assigns.draft_revision
@@ -144,7 +144,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
        |> load_settings()
        |> put_flash(:info, "Rollback published; waiting for Server acknowledgement")}
     else
-      %ManagementResult{status: :error, message: message} ->
+      %{__struct__: ManagementResult, status: :error, message: message} ->
         {:noreply, put_flash(socket, :error, message)}
 
       {:error, message} ->
@@ -158,8 +158,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
 
   defp load_settings(socket) do
     server_id = socket.assigns.selected_server.id
-    draft_result = ServerManagement.get_config_draft(server_id)
-    versions_result = ServerManagement.config_versions(server_id)
+    draft_result = Function.capture(ServerManagement, :get_config_draft, 1).(server_id)
+    versions_result = Function.capture(ServerManagement, :config_versions, 1).(server_id)
     draft = result_value(draft_result, %{draft_revision: 0, document: nil})
     document = draft.document || default_document(socket.assigns.selected_server)
     versions = result_value(versions_result, [])
@@ -271,8 +271,10 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
   end
 
   defp validate_document(document) do
-    with {:ok, operation} <- ServerOperation.fetch("server.config.replace"),
-         {:ok, _document} <- Operation.validate_payload(operation, document) do
+    with {:ok, operation} <-
+           Function.capture(ServerOperation, :fetch, 1).("server.config.replace"),
+         {:ok, _document} <-
+           Function.capture(Operation, :validate_payload, 2).(operation, document) do
       :ok
     else
       _invalid -> {:error, "Configuration contains an invalid managed setting"}
@@ -348,12 +350,14 @@ defmodule YellowDog.ManagementUI.Redesign.Current.SettingsLive do
   defp selected_service(service) when service in @services, do: service
   defp selected_service(_service), do: :dns
 
-  defp result_value(%ManagementResult{status: :ok, value: value}, _fallback), do: value
+  defp result_value(%{__struct__: ManagementResult, status: :ok, value: value}, _fallback),
+    do: value
+
   defp result_value(_result, fallback), do: fallback
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error, message: message} -> message
+      %{__struct__: ManagementResult, status: :error, message: message} -> message
       _result -> nil
     end)
   end

@@ -39,7 +39,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv6Live.PoolLive do
     safe_call(
       YellowDog.Dhcpv6,
       fn ->
-        stats = YellowDog.Dhcpv6.get_all_pool_stats()
+        stats = Function.capture(YellowDog.Dhcpv6, :get_all_pool_stats, 0).()
         Map.get(stats, pool_name)
       end
     )
@@ -49,7 +49,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv6Live.PoolLive do
     safe_call(
       YellowDog.Dhcpv6.LeaseManager,
       fn ->
-        pools = YellowDog.Dhcpv6.LeaseManager.get_pools()
+        pools = Function.capture(YellowDog.Dhcpv6.LeaseManager, :get_pools, 0).()
         Enum.find(pools, fn p -> p.name == pool_name end)
       end
     )
@@ -59,7 +59,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv6Live.PoolLive do
     safe_call(
       YellowDog.Dhcpv6,
       fn ->
-        YellowDog.Dhcpv6.list_leases()
+        Function.capture(YellowDog.Dhcpv6, :list_leases, 0).()
         |> Enum.filter(fn l -> l.pool_name == pool_name end)
         |> Enum.sort_by(& &1.expires_at, :desc)
       end,

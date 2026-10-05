@@ -30,7 +30,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.ApprovalsLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.approve(id, "console-operator") end,
+        fn -> Function.capture(YellowDogIdentity, :approve, 2).(id, "console-operator") end,
         {:error, :unavailable}
       )
 
@@ -44,7 +44,13 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.ApprovalsLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke(id, "console-operator", "rejected via console") end,
+        fn ->
+          Function.capture(YellowDogIdentity, :revoke, 3).(
+            id,
+            "console-operator",
+            "rejected via console"
+          )
+        end,
         {:error, :unavailable}
       )
 
@@ -81,7 +87,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.ApprovalsLive do
     Enum.each(selected, fn id ->
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.approve(id, "console-operator") end,
+        fn -> Function.capture(YellowDogIdentity, :approve, 2).(id, "console-operator") end,
         {:error, :unavailable}
       )
     end)
@@ -100,7 +106,13 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.ApprovalsLive do
     Enum.each(selected, fn id ->
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console") end,
+        fn ->
+          Function.capture(YellowDogIdentity, :revoke, 3).(
+            id,
+            "console-operator",
+            "bulk rejected via console"
+          )
+        end,
         {:error, :unavailable}
       )
     end)
@@ -121,7 +133,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.ApprovalsLive do
       ServiceHelper.safe_call(
         YellowDogIdentity,
         fn ->
-          YellowDogIdentity.list_hosts(status: :pending)
+          Function.capture(YellowDogIdentity, :list_hosts, 1).(status: :pending)
         end,
         []
       )

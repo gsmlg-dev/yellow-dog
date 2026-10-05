@@ -51,7 +51,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.DeviceDetailLive d
       }
 
       result =
-        ServerManagement.netboot_devices_put(
+        Function.capture(ServerManagement, :netboot_devices_put, 3).(
           ManagementSupport.selected_id(socket),
           payload,
           ManagementSupport.command_options(revision)
@@ -72,7 +72,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.DeviceDetailLive d
          %{} = device <- socket.assigns.device,
          {:ok, revision} <- device_revision(socket.assigns.devices, device["device_id"]) do
       result =
-        ServerManagement.netboot_devices_delete(
+        Function.capture(ServerManagement, :netboot_devices_delete, 3).(
           ManagementSupport.selected_id(socket),
           %{"device_id" => device["device_id"]},
           ManagementSupport.command_options(revision)
@@ -194,8 +194,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.DeviceDetailLive d
   end
 
   defp load_device(socket, server_id) do
-    devices_result = ServerManagement.netboot_devices_list(server_id)
-    profiles_result = ServerManagement.netboot_profiles_list(server_id)
+    devices_result = Function.capture(ServerManagement, :netboot_devices_list, 1).(server_id)
+    profiles_result = Function.capture(ServerManagement, :netboot_profiles_list, 1).(server_id)
     results = [devices_result, profiles_result]
     devices = ManagementSupport.items(devices_result)
 
@@ -225,7 +225,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.DeviceDetailLive d
     ManagementSupport.exact_revision(devices, &(&1["device_id"] == device_id), "Device")
   end
 
-  defp put_device(socket, %ManagementResult{status: :ok, value: %{"resource" => device}}) do
+  defp put_device(socket, %{
+         __struct__: ManagementResult,
+         status: :ok,
+         value: %{"resource" => device}
+       }) do
     devices = [
       device | Enum.reject(socket.assigns.devices, &(&1["device_id"] == device["device_id"]))
     ]

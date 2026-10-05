@@ -70,7 +70,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.Index do
   end
 
   defp get_dns_status do
-    safe_call(YellowDog.Dns, fn -> YellowDog.Dns.status() end, %{
+    safe_call(YellowDog.Dns, fn -> Function.capture(YellowDog.Dns, :status, 0).() end, %{
       running: false,
       info: "DNS service not running"
     })
@@ -89,11 +89,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.Index do
       safe_call(
         YellowDog.Dns,
         fn ->
-          views = YellowDog.Dns.ViewManager.list_views()
+          views = Function.capture(YellowDog.Dns.ViewManager, :list_views, 0).()
 
           view_stats =
             Enum.map(views, fn {view_name, pid, priority} ->
-              stats = Map.merge(@view_stat_defaults, View.stats(pid))
+              stats = Map.merge(@view_stat_defaults, Function.capture(View, :stats, 1).(pid))
 
               %{
                 name: view_name,
@@ -127,7 +127,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.Index do
   end
 
   defp total_zone_count do
-    case StoreZone.list_zones() do
+    case Function.capture(StoreZone, :list_zones, 0).() do
       {:ok, zones} -> length(zones)
       {:error, _reason} -> 0
     end
@@ -156,10 +156,13 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.Index do
     safe_call(
       YellowDog.Dns,
       fn ->
-        zones = YellowDog.Dns.ZoneController.list_zones()
+        zones = Function.capture(YellowDog.Dns.ZoneController, :list_zones, 0).()
 
         cache_stats =
-          for({:cache, _name, pid} <- zones, do: YellowDog.Dns.Zone.Cache.stats(pid))
+          for(
+            {:cache, _name, pid} <- zones,
+            do: Function.capture(YellowDog.Dns.Zone.Cache, :stats, 1).(pid)
+          )
           |> Enum.reduce(@cache_stat_defaults, fn stat, acc ->
             stat = Map.merge(@cache_stat_defaults, stat)
 

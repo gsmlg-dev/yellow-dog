@@ -154,7 +154,10 @@ defmodule YellowDog.ManagementUI.Redesign.LogsLive do
     case log_route(uri) do
       :tasks ->
         if connected?(socket) and not subscribed?(socket) do
-          Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, LogBroadcaster.topic())
+          Phoenix.PubSub.subscribe(
+            YellowDog.ManagementUI.Redesign.PubSub,
+            Function.capture(LogBroadcaster, :topic, 0).()
+          )
         end
 
         {:noreply,
@@ -163,13 +166,16 @@ defmodule YellowDog.ManagementUI.Redesign.LogsLive do
            log_title: "Task Log",
            task_log?: true,
            connected: connected?(socket),
-           logs: task_log_entries(Tasks.list_tasks()),
+           logs: task_log_entries(Function.capture(Tasks, :list_tasks, 0).()),
            selected_apps: MapSet.new([:yellow_dog_tasks])
          )}
 
       :realtime ->
         if connected?(socket) and not subscribed?(socket) do
-          Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, LogBroadcaster.topic())
+          Phoenix.PubSub.subscribe(
+            YellowDog.ManagementUI.Redesign.PubSub,
+            Function.capture(LogBroadcaster, :topic, 0).()
+          )
         end
 
         {:noreply,

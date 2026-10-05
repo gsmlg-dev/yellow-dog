@@ -49,7 +49,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.Show do
   def handle_event("sync_now", _params, socket) do
     name = socket.assigns.provider_name
 
-    safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.sync_now(name) end, :ok)
+    safe_call(
+      YellowDog.DnsProvider,
+      fn -> Function.capture(YellowDog.DnsProvider, :sync_now, 1).(name) end,
+      :ok
+    )
 
     {:noreply,
      socket
@@ -62,7 +66,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.Show do
 
     safe_call(
       YellowDog.DnsProvider,
-      fn -> YellowDog.DnsProvider.sync_now(name, zone) end,
+      fn -> Function.capture(YellowDog.DnsProvider, :sync_now, 2).(name, zone) end,
       :ok
     )
 
@@ -77,9 +81,17 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.Show do
     config = socket.assigns.config
 
     if config[:enabled] do
-      safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.stop_provider(name) end, :ok)
+      safe_call(
+        YellowDog.DnsProvider,
+        fn -> Function.capture(YellowDog.DnsProvider, :stop_provider, 1).(name) end,
+        :ok
+      )
     else
-      safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.start_provider(name) end, :ok)
+      safe_call(
+        YellowDog.DnsProvider,
+        fn -> Function.capture(YellowDog.DnsProvider, :start_provider, 1).(name) end,
+        :ok
+      )
     end
 
     {:noreply,
@@ -112,7 +124,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.Show do
     name = socket.assigns.provider_name
 
     providers =
-      safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.list_providers() end, [])
+      safe_call(
+        YellowDog.DnsProvider,
+        fn -> Function.capture(YellowDog.DnsProvider, :list_providers, 0).() end,
+        []
+      )
 
     provider = Enum.find(providers, fn p -> p.name == name end)
 
@@ -130,7 +146,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.Show do
     sync_status =
       case safe_call(
              YellowDog.DnsProvider,
-             fn -> YellowDog.DnsProvider.sync_status(name) end,
+             fn -> Function.capture(YellowDog.DnsProvider, :sync_status, 1).(name) end,
              {:error, :not_found}
            ) do
         {:ok, status} -> status
@@ -138,7 +154,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.Show do
       end
 
     conflicts =
-      safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.list_conflicts(name) end, [])
+      safe_call(
+        YellowDog.DnsProvider,
+        fn -> Function.capture(YellowDog.DnsProvider, :list_conflicts, 1).(name) end,
+        []
+      )
 
     socket
     |> assign(:config, config)

@@ -81,7 +81,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
       result = save_service(socket, payload)
 
       case result do
-        %ManagementResult{status: :ok, value: %{"resource" => service}} ->
+        %{__struct__: ManagementResult, status: :ok, value: %{"resource" => service}} ->
           message =
             if socket.assigns.form_mode == :new, do: "Service registered", else: "Service updated"
 
@@ -95,7 +95,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
            )
            |> put_flash(:info, message)}
 
-        %ManagementResult{status: :error, message: message} ->
+        %{__struct__: ManagementResult, status: :error, message: message} ->
           {:noreply, put_flash(socket, :error, message)}
       end
     else
@@ -112,7 +112,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
       enabled = not service["enabled"]
 
       result =
-        ServerManagement.mdns_services_toggle(
+        Function.capture(ServerManagement, :mdns_services_toggle, 3).(
           socket.assigns.selected_server.id,
           %{"service_id" => service_id, "enabled" => enabled},
           expected_revision: revision,
@@ -126,7 +126,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
   def handle_event("delete_service", %{"id" => service_id}, socket) do
     mutate_existing(socket, service_id, fn _service, revision ->
       result =
-        ServerManagement.mdns_services_delete(
+        Function.capture(ServerManagement, :mdns_services_delete, 3).(
           socket.assigns.selected_server.id,
           %{"service_id" => service_id},
           expected_revision: revision,
@@ -162,10 +162,14 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
   def validate_service_params(_params), do: %{form: "Invalid service data"}
 
   defp load_services(socket) do
-    result = ServerManagement.mdns_services_list(socket.assigns.selected_server.id)
+    result =
+      Function.capture(ServerManagement, :mdns_services_list, 1).(
+        socket.assigns.selected_server.id
+      )
 
     case result do
-      %ManagementResult{status: :ok, value: %{"items" => services}} when is_list(services) ->
+      %{__struct__: ManagementResult, status: :ok, value: %{"items" => services}}
+      when is_list(services) ->
         assign(socket,
           services: services,
           management_error: nil,
@@ -173,7 +177,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
           commands_enabled?: socket.assigns.service_online?
         )
 
-      %ManagementResult{status: :error} ->
+      %{__struct__: ManagementResult, status: :error} ->
         assign(socket,
           services: [],
           management_error: result,
@@ -188,11 +192,20 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
 
     case socket.assigns.form_mode do
       :new ->
-        ServerManagement.mdns_services_register(socket.assigns.selected_server.id, payload, opts)
+        Function.capture(ServerManagement, :mdns_services_register, 3).(
+          socket.assigns.selected_server.id,
+          payload,
+          opts
+        )
 
       :edit ->
         opts = Keyword.put(opts, :expected_revision, revision(socket.assigns.editing_service))
-        ServerManagement.mdns_services_update(socket.assigns.selected_server.id, payload, opts)
+
+        Function.capture(ServerManagement, :mdns_services_update, 3).(
+          socket.assigns.selected_server.id,
+          payload,
+          opts
+        )
     end
   end
 
@@ -203,13 +216,17 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
       {result, message} = callback.(service, revision)
 
       case result do
-        %ManagementResult{status: :ok, value: %{"resource" => updated}} ->
+        %{__struct__: ManagementResult, status: :ok, value: %{"resource" => updated}} ->
           {:noreply,
            socket
            |> assign(:services, put_service(socket.assigns.services, updated))
            |> put_flash(:info, message)}
 
-        %ManagementResult{status: :ok, value: %{"resource_ref" => %{"service_id" => deleted}}} ->
+        %{
+          __struct__: ManagementResult,
+          status: :ok,
+          value: %{"resource_ref" => %{"service_id" => deleted}}
+        } ->
           {:noreply,
            socket
            |> assign(
@@ -218,7 +235,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
            )
            |> put_flash(:info, message)}
 
-        %ManagementResult{status: :error, message: error} ->
+        %{__struct__: ManagementResult, status: :error, message: error} ->
           {:noreply, put_flash(socket, :error, error)}
       end
     else
@@ -269,7 +286,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.ServicesLive do
   end
 
   defp revision(service) do
-    case Digest.calculate(service) do
+    case Function.capture(Digest, :calculate, 1).(service) do
       {:ok, revision} -> revision
       {:error, _error} -> nil
     end

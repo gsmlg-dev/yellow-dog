@@ -64,7 +64,7 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.MonitorLive do
   @impl true
   def handle_event("clear_cache", _params, socket) do
     try do
-      YellowDog.Mdns.clear_cache()
+      Function.capture(YellowDog.Mdns, :clear_cache, 0).()
       {:noreply, put_flash(socket, :info, "Cache cleared successfully")}
     catch
       _, _ ->
@@ -116,11 +116,15 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.MonitorLive do
   end
 
   defp get_recent_queries(limit) do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.get_recent_queries(limit: limit) end, [])
+    safe_call(
+      YellowDog.Mdns,
+      fn -> Function.capture(YellowDog.Mdns, :get_recent_queries, 1).(limit: limit) end,
+      []
+    )
   end
 
   defp get_network_stats do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.network_stats() end, %{
+    safe_call(YellowDog.Mdns, fn -> Function.capture(YellowDog.Mdns, :network_stats, 0).() end, %{
       total_responses: 0,
       total_queries: 0,
       active_services: 0,

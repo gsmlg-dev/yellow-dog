@@ -58,7 +58,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.LeasesLive do
            ManagementSupport.find_lease(socket.assigns.all_leases, lease_id),
          opts when is_list(opts) <- ManagementSupport.command_options(lease.resource) do
       result =
-        ServerManagement.dhcp_leases_release(
+        Function.capture(ServerManagement, :dhcp_leases_release, 3).(
           socket.assigns.selected_server.id,
           %{"family" => ManagementSupport.family_wire(@family), "lease_id" => lease_id},
           opts
@@ -92,8 +92,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.LeasesLive do
   defp load_leases(socket) do
     server_id = socket.assigns.selected_server.id
     payload = %{"family" => ManagementSupport.family_wire(@family)}
-    status = ServerManagement.dhcp_status_get(server_id, payload)
-    leases_result = ServerManagement.dhcp_leases_list(server_id, payload)
+    status = Function.capture(ServerManagement, :dhcp_status_get, 2).(server_id, payload)
+    leases_result = Function.capture(ServerManagement, :dhcp_leases_list, 2).(server_id, payload)
     results = [status, leases_result]
     management_error = ManagementSupport.first_error(results)
 
@@ -127,7 +127,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.LeasesLive do
     )
   end
 
-  defp finish_release(socket, %ManagementResult{status: :ok}, lease_id) do
+  defp finish_release(socket, %{__struct__: ManagementResult, status: :ok}, lease_id) do
     {:noreply,
      socket
      |> assign(:all_leases, ManagementSupport.release_lease(socket.assigns.all_leases, lease_id))
@@ -135,6 +135,10 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.LeasesLive do
      |> put_flash(:info, "Lease released successfully")}
   end
 
-  defp finish_release(socket, %ManagementResult{status: :error, message: message}, _lease_id),
-    do: {:noreply, put_flash(socket, :error, message)}
+  defp finish_release(
+         socket,
+         %{__struct__: ManagementResult, status: :error, message: message},
+         _lease_id
+       ),
+       do: {:noreply, put_flash(socket, :error, message)}
 end

@@ -36,11 +36,16 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
   @impl true
   def handle_event("inspect_fsm", params, socket) do
     connection = connection_ref(params)
-    result = NetmanManagement.dhcp_client_fsm_get(selected_id(socket), connection)
+
+    result =
+      Function.capture(NetmanManagement, :dhcp_client_fsm_get, 2).(
+        selected_id(socket),
+        connection
+      )
 
     socket =
       case result do
-        %ManagementResult{status: :ok, value: fsm} ->
+        %{__struct__: ManagementResult, status: :ok, value: fsm} ->
           assign(socket, :fsms, Map.put(socket.assigns.fsms, connection_key(connection), fsm))
 
         _result ->
@@ -57,7 +62,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
     with :ok <- mutable(socket),
          {:ok, revision} <- lease_revision(socket.assigns.leases, payload) do
       result =
-        NetmanManagement.dhcp_client_connections_release_lease(
+        Function.capture(NetmanManagement, :dhcp_client_connections_release_lease, 3).(
           selected_id(socket),
           payload,
           expected_revision: revision,
@@ -66,7 +71,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
 
       socket =
         case result do
-          %ManagementResult{status: :ok} ->
+          %{__struct__: ManagementResult, status: :ok} ->
             update(
               socket,
               :leases,
@@ -225,8 +230,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
   end
 
   defp load_dhcp(socket, netman_id) do
-    mode_result = NetmanManagement.runtime_apply_mode_get(netman_id)
-    leases_result = NetmanManagement.dhcp_client_leases_list(netman_id)
+    mode_result = Function.capture(NetmanManagement, :runtime_apply_mode_get, 1).(netman_id)
+    leases_result = Function.capture(NetmanManagement, :dhcp_client_leases_list, 1).(netman_id)
     leases_value = value(leases_result, %{})
     leases = Map.get(leases_value, "items", [])
     results = [mode_result, leases_result]
@@ -253,13 +258,13 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
 
   defp mutable(_socket), do: :ok
 
-  defp finish(socket, %ManagementResult{status: :ok} = result, message) do
+  defp finish(socket, %{__struct__: ManagementResult, status: :ok} = result, message) do
     socket
     |> assign(operation_result: result)
     |> put_flash(:info, message)
   end
 
-  defp finish(socket, %ManagementResult{} = result, _message) do
+  defp finish(socket, %{__struct__: ManagementResult} = result, _message) do
     socket
     |> assign(operation_result: result)
     |> put_flash(:error, result.message)
@@ -268,17 +273,23 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
   defp subscribe(socket, netman_id) do
     if connected?(socket) and socket.assigns.subscribed_netman_id != netman_id do
       if old_id = socket.assigns.subscribed_netman_id do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:netman:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{netman_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:netman:#{netman_id}"
+      )
     end
 
     assign(socket, :subscribed_netman_id, netman_id)
   end
 
   defp refresh_selected_netman(socket, netman_id) do
-    case ManagementCore.get_netman(netman_id) do
+    case Function.capture(ManagementCore, :get_netman, 1).(netman_id) do
       {:ok, netman} ->
         assign(socket,
           selected_netman: netman,
@@ -298,7 +309,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
     |> Enum.find(&same_connection?(&1, payload))
     |> case do
       %{"revision" => revision} ->
-        case Digest.validate(revision) do
+        case Function.capture(Digest, :validate, 1).(revision) do
           {:ok, revision} -> {:ok, revision}
           _error -> {:error, "The exact lease revision is unavailable"}
         end
@@ -308,7 +319,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
     end
   end
 
-  defp revision_available?(revision), do: match?({:ok, _revision}, Digest.validate(revision))
+  defp revision_available?(revision),
+    do: match?({:ok, _revision}, Function.capture(Digest, :validate, 1).(revision))
 
   defp connection_ref(value) do
     %{"profile_id" => value["profile_id"], "interface" => value["interface"]}
@@ -322,24 +334,24 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.DhcpClientLive do
   defp fsm_color(%{"state" => state}) when state in ["renewing", "rebinding"], do: "warning"
   defp fsm_color(_fsm), do: "ghost"
 
-  defp value(%ManagementResult{status: :ok, value: value}, _default), do: value
+  defp value(%{__struct__: ManagementResult, status: :ok, value: value}, _default), do: value
   defp value(_result, default), do: default
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
 
   defp cached_observed_at(results, fallback) do
     Enum.find_value(results, fallback, fn
-      %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+      %{__struct__: ManagementResult, source: :cache, observed_at: observed_at} -> observed_at
       _result -> nil
     end)
   end
 
-  defp error_result?(%ManagementResult{status: :error}), do: true
+  defp error_result?(%{__struct__: ManagementResult, status: :error}), do: true
   defp error_result?(_result), do: false
 
   defp display(nil), do: "-"

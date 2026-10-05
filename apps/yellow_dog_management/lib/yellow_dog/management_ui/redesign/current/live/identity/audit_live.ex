@@ -3,8 +3,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.AuditLive do
 
   use YellowDog.ManagementUI.Redesign, :live_view
 
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementComponents
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementSupport
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementComponents
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
   alias YellowDog.ManagementUI.Redesign.Layouts
   alias YellowDog.ManagementUI.Redesign.ServerManagement
   alias YellowDog.ManagementUI.Redesign.ServicePaths
@@ -87,7 +87,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.AuditLive do
   end
 
   defp load_audit(socket, server_id) do
-    result = ServerManagement.identity_audit_list(server_id)
+    result = Function.capture(ServerManagement, :identity_audit_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — Identity Audit",

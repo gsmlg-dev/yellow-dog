@@ -44,10 +44,10 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.HostsLive do
         YellowDogIdentity,
         fn ->
           case filter do
-            "pending" -> YellowDogIdentity.list_hosts(status: :pending)
-            "approved" -> YellowDogIdentity.list_hosts(status: :approved)
-            "revoked" -> YellowDogIdentity.list_hosts(status: :revoked)
-            _ -> YellowDogIdentity.list_hosts()
+            "pending" -> Function.capture(YellowDogIdentity, :list_hosts, 1).(status: :pending)
+            "approved" -> Function.capture(YellowDogIdentity, :list_hosts, 1).(status: :approved)
+            "revoked" -> Function.capture(YellowDogIdentity, :list_hosts, 1).(status: :revoked)
+            _ -> Function.capture(YellowDogIdentity, :list_hosts, 0).()
           end
         end,
         []

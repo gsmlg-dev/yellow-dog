@@ -105,7 +105,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.CloudDnsLive do
   end
 
   defp load_providers(socket, server_id) do
-    result = ServerManagement.dns_providers_list(server_id)
+    result = Function.capture(ServerManagement, :dns_providers_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — Cloud DNS",

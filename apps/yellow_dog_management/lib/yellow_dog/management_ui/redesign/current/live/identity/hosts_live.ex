@@ -3,8 +3,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostsLive do
 
   use YellowDog.ManagementUI.Redesign, :live_view
 
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementComponents
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementSupport
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementComponents
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
   alias YellowDog.ManagementUI.Redesign.Layouts
   alias YellowDog.ManagementUI.Redesign.ManagementResult
   alias YellowDog.ManagementUI.Redesign.ServerManagement
@@ -153,7 +153,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostsLive do
   end
 
   defp load_hosts(socket, server_id) do
-    result = ServerManagement.identity_hosts_list(server_id)
+    result = Function.capture(ServerManagement, :identity_hosts_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — Identity Hosts",
@@ -175,13 +175,25 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostsLive do
       result =
         case action do
           :approve ->
-            ServerManagement.identity_hosts_approve(server_id, %{"host_id" => host_id}, opts)
+            Function.capture(ServerManagement, :identity_hosts_approve, 3).(
+              server_id,
+              %{"host_id" => host_id},
+              opts
+            )
 
           :revoke ->
-            ServerManagement.identity_hosts_revoke(server_id, %{"host_id" => host_id}, opts)
+            Function.capture(ServerManagement, :identity_hosts_revoke, 3).(
+              server_id,
+              %{"host_id" => host_id},
+              opts
+            )
 
           :delete ->
-            ServerManagement.identity_hosts_delete(server_id, %{"host_id" => host_id}, opts)
+            Function.capture(ServerManagement, :identity_hosts_delete, 3).(
+              server_id,
+              %{"host_id" => host_id},
+              opts
+            )
         end
 
       apply_mutation_result(socket, host_id, action, result)
@@ -197,7 +209,12 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostsLive do
     end
   end
 
-  defp apply_mutation_result(socket, host_id, action, %ManagementResult{status: :ok} = result) do
+  defp apply_mutation_result(
+         socket,
+         host_id,
+         action,
+         %{__struct__: ManagementResult, status: :ok} = result
+       ) do
     hosts =
       case {action, result.value} do
         {:delete, _value} ->
@@ -215,7 +232,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostsLive do
     |> ManagementSupport.finish(result, success_message(action))
   end
 
-  defp apply_mutation_result(socket, _host_id, action, %ManagementResult{} = result),
+  defp apply_mutation_result(socket, _host_id, action, %{__struct__: ManagementResult} = result),
     do: ManagementSupport.finish(socket, result, success_message(action))
 
   defp success_message(:approve), do: "Host approved"

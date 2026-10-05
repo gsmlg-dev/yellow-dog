@@ -9,7 +9,7 @@ defmodule YellowDog.ManagementUI.Redesign.DashboardLive do
 
   use YellowDog.ManagementUI.Redesign, :live_view
 
-  import YellowDog.ConfigHelpers, only: [get_value: 2]
+  import YellowDog.ManagementUI.Redesign.ConfigHelpers, only: [get_value: 2]
   import YellowDog.ManagementUI.Redesign.FormatHelper, only: [format_bytes: 1, format_uptime: 1]
 
   @impl true
@@ -52,7 +52,7 @@ defmodule YellowDog.ManagementUI.Redesign.DashboardLive do
       when service_str in @valid_services do
     service = String.to_existing_atom(service_str)
 
-    case YellowDog.start_service(service) do
+    case Function.capture(YellowDog, :start_service, 1).(service) do
       :ok ->
         {:noreply,
          socket
@@ -85,7 +85,7 @@ defmodule YellowDog.ManagementUI.Redesign.DashboardLive do
       when service_str in @valid_services do
     service = String.to_existing_atom(service_str)
 
-    case YellowDog.stop_service(service) do
+    case Function.capture(YellowDog, :stop_service, 1).(service) do
       :ok ->
         {:noreply,
          socket
@@ -126,7 +126,7 @@ defmodule YellowDog.ManagementUI.Redesign.DashboardLive do
   defp get_service_status do
     try do
       # Get real status from YellowDog service manager
-      all_status = YellowDog.get_all_status()
+      all_status = Function.capture(YellowDog, :get_all_status, 0).()
 
       # Transform to UI format
       [:dns, :dhcpv4, :dhcpv6, :mdns, :netboot, :identity]

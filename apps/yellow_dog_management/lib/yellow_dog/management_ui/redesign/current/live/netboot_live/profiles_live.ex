@@ -64,7 +64,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.ProfilesLive do
     with :ok <- ManagementSupport.mutable(socket),
          {:ok, revision} <- profile_revision(socket.assigns.profiles, profile_id) do
       result =
-        ServerManagement.netboot_profiles_delete(
+        Function.capture(ServerManagement, :netboot_profiles_delete, 3).(
           ManagementSupport.selected_id(socket),
           %{"profile_id" => profile_id},
           ManagementSupport.command_options(revision)
@@ -253,8 +253,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.ProfilesLive do
   end
 
   defp load_profiles(socket, server_id) do
-    profiles_result = ServerManagement.netboot_profiles_list(server_id)
-    devices_result = ServerManagement.netboot_devices_list(server_id)
+    profiles_result = Function.capture(ServerManagement, :netboot_profiles_list, 1).(server_id)
+    devices_result = Function.capture(ServerManagement, :netboot_devices_list, 1).(server_id)
     results = [profiles_result, devices_result]
     profiles = ManagementSupport.items(profiles_result)
     devices = ManagementSupport.items(devices_result)

@@ -110,7 +110,7 @@ defmodule YellowDog.ManagementUI.Redesign.ToolsLive.GeoipLive do
     if ip == "" do
       {:noreply, assign(socket, result: nil, error: nil, query: "")}
     else
-      case GeoIpDb.lookup(ip) do
+      case Function.capture(GeoIpDb, :lookup, 1).(ip) do
         {:ok, info} ->
           {:noreply, assign(socket, result: info, error: nil, query: ip)}
 
@@ -121,7 +121,7 @@ defmodule YellowDog.ManagementUI.Redesign.ToolsLive.GeoipLive do
   end
 
   defp fetch_db_info do
-    case GeoIpDb.database_info(:city) do
+    case Function.capture(GeoIpDb, :database_info, 1).(:city) do
       {:ok, info} -> info
       _ -> nil
     end

@@ -55,7 +55,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolLive do
 
     case safe_call(
            YellowDog.Dhcpv4,
-           fn -> YellowDog.Dhcpv4.release_lease(mac_binary) end,
+           fn -> Function.capture(YellowDog.Dhcpv4, :release_lease, 1).(mac_binary) end,
            {:error, :service_unavailable}
          ) do
       :ok ->
@@ -122,7 +122,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolLive do
     safe_call(
       YellowDog.Dhcpv4.LeaseManager,
       fn ->
-        case YellowDog.Dhcpv4.LeaseManager.get_pool_config(pool_name) do
+        case Function.capture(YellowDog.Dhcpv4.LeaseManager, :get_pool_config, 1).(pool_name) do
           {:ok, config} -> config
           _ -> default_pool_config(pool_name)
         end
@@ -149,7 +149,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolLive do
     safe_call(
       YellowDog.Dhcpv4,
       fn ->
-        case YellowDog.Dhcpv4.get_pool_stats(pool_name) do
+        case Function.capture(YellowDog.Dhcpv4, :get_pool_stats, 1).(pool_name) do
           {:ok, stats} -> stats
           _ -> default_pool_stats()
         end
@@ -172,7 +172,9 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolLive do
   defp get_static_reservations(pool_name) do
     safe_call(
       YellowDog.Dhcpv4.LeaseManager,
-      fn -> YellowDog.Dhcpv4.LeaseManager.get_static_reservations(pool_name) end,
+      fn ->
+        Function.capture(YellowDog.Dhcpv4.LeaseManager, :get_static_reservations, 1).(pool_name)
+      end,
       []
     )
   end
@@ -180,7 +182,10 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolLive do
   defp get_pool_leases(pool_name) do
     safe_call(
       YellowDog.Dhcpv4,
-      fn -> YellowDog.Dhcpv4.list_leases() |> Enum.filter(&(&1.pool_name == pool_name)) end,
+      fn ->
+        Function.capture(YellowDog.Dhcpv4, :list_leases, 0).()
+        |> Enum.filter(&(&1.pool_name == pool_name))
+      end,
       []
     )
   end

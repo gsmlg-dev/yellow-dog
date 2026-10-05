@@ -16,7 +16,8 @@ defmodule YellowDog.ManagementUI.Redesign.FormatHelper do
 
   @doc "Formats a 6-byte MAC address binary as colon-separated hex."
   @spec format_mac(term()) :: String.t()
-  def format_mac(mac), do: YellowDog.Dhcpv4.MacFormat.format!(mac, default: "Unknown")
+  def format_mac(mac),
+    do: Function.capture(YellowDog.Dhcpv4.MacFormat, :format!, 2).(mac, default: "Unknown")
 
   @doc "Formats an IP address (IPv4 or IPv6 tuple, binary, or nil) as a string."
   @spec format_ip(tuple() | binary() | nil) :: String.t() | nil
@@ -31,12 +32,13 @@ defmodule YellowDog.ManagementUI.Redesign.FormatHelper do
 
   @doc "Formats a DHCPv6 DUID binary as colon-separated hex."
   @spec format_duid(term()) :: String.t()
-  def format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format!(duid, default: "Unknown")
+  def format_duid(duid),
+    do: Function.capture(YellowDog.Dhcpv6.DuidFormat, :format!, 2).(duid, default: "Unknown")
 
   @doc "Formats an IPv6 8-tuple as colon-separated hex."
   @spec format_ipv6(term()) :: String.t()
   def format_ipv6(addr) when is_tuple(addr) and tuple_size(addr) == 8,
-    do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
+    do: Function.capture(YellowDog.Dhcpv6.Ipv6Util, :format, 1).(addr)
 
   def format_ipv6(_), do: "Unknown"
 

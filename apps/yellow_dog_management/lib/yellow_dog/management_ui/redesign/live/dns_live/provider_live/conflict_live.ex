@@ -38,7 +38,13 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.ConflictLive do
 
     safe_call(
       YellowDog.DnsProvider,
-      fn -> YellowDog.DnsProvider.resolve_conflict(name, conflict_id, :keep_local) end,
+      fn ->
+        Function.capture(YellowDog.DnsProvider, :resolve_conflict, 3).(
+          name,
+          conflict_id,
+          :keep_local
+        )
+      end,
       :ok
     )
 
@@ -53,7 +59,13 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.ConflictLive do
 
     safe_call(
       YellowDog.DnsProvider,
-      fn -> YellowDog.DnsProvider.resolve_conflict(name, conflict_id, :keep_remote) end,
+      fn ->
+        Function.capture(YellowDog.DnsProvider, :resolve_conflict, 3).(
+          name,
+          conflict_id,
+          :keep_remote
+        )
+      end,
       :ok
     )
 
@@ -68,7 +80,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.ConflictLive do
 
     safe_call(
       YellowDog.DnsProvider,
-      fn -> YellowDog.DnsProvider.resolve_all_conflicts(name, :keep_local) end,
+      fn ->
+        Function.capture(YellowDog.DnsProvider, :resolve_all_conflicts, 2).(name, :keep_local)
+      end,
       :ok
     )
 
@@ -83,7 +97,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.ConflictLive do
 
     safe_call(
       YellowDog.DnsProvider,
-      fn -> YellowDog.DnsProvider.resolve_all_conflicts(name, :keep_remote) end,
+      fn ->
+        Function.capture(YellowDog.DnsProvider, :resolve_all_conflicts, 2).(name, :keep_remote)
+      end,
       :ok
     )
 
@@ -114,7 +130,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ProviderLive.ConflictLive do
     name = socket.assigns.provider_name
 
     conflicts =
-      safe_call(YellowDog.DnsProvider, fn -> YellowDog.DnsProvider.list_conflicts(name) end, [])
+      safe_call(
+        YellowDog.DnsProvider,
+        fn -> Function.capture(YellowDog.DnsProvider, :list_conflicts, 1).(name) end,
+        []
+      )
 
     assign(socket, :conflicts, conflicts)
   end

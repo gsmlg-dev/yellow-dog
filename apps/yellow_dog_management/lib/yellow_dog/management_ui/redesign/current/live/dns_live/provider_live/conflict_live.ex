@@ -57,7 +57,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ProviderLive.ConflictL
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_provider(socket, server_id) do
-    result = ServerManagement.dns_providers_list(server_id)
+    result = Function.capture(ServerManagement, :dns_providers_list, 1).(server_id)
 
     provider =
       result

@@ -43,7 +43,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.TokensLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.create_token(params) end,
+        fn -> Function.capture(YellowDogIdentity, :create_token, 1).(params) end,
         {:error, :unavailable}
       )
 
@@ -64,7 +64,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.TokensLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke_token(id) end,
+        fn -> Function.capture(YellowDogIdentity, :revoke_token, 1).(id) end,
         {:error, :unavailable}
       )
 
@@ -87,7 +87,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.TokensLive do
       ServiceHelper.safe_call(
         YellowDogIdentity,
         fn ->
-          YellowDogIdentity.list_tokens()
+          Function.capture(YellowDogIdentity, :list_tokens, 0).()
         end,
         []
       )
@@ -197,12 +197,14 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.TokensLive do
                 <td class="text-sm">{format_time(token.created_at)}</td>
                 <td>
                   <span class={
-                    if(YellowDogIdentity.Token.valid?(token),
+                    if(Function.capture(YellowDogIdentity.Token, :valid?, 1).(token),
                       do: "badge badge-success",
                       else: "badge badge-error"
                     )
                   }>
-                    {if YellowDogIdentity.Token.valid?(token), do: "Active", else: "Expired"}
+                    {if Function.capture(YellowDogIdentity.Token, :valid?, 1).(token),
+                      do: "Active",
+                      else: "Expired"}
                   </span>
                 </td>
                 <td>

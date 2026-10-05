@@ -78,7 +78,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ProviderLive.Show do
     with :ok <- ManagementSupport.mutable(socket),
          {:ok, revision} <- zone_revision(socket.assigns.zones, reference) do
       result =
-        ServerManagement.dns_zones_sync(
+        Function.capture(ServerManagement, :dns_zones_sync, 3).(
           ManagementSupport.selected_id(socket),
           Map.put(reference, "provider_id", socket.assigns.provider_id),
           ManagementSupport.command_options(revision)
@@ -86,7 +86,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ProviderLive.Show do
 
       message =
         case result do
-          %ManagementResult{status: :ok, value: %{"changed_records" => count}} ->
+          %{__struct__: ManagementResult, status: :ok, value: %{"changed_records" => count}} ->
             "Synchronized #{count} #{if count == 1, do: "record", else: "records"}"
 
           _result ->
@@ -111,10 +111,12 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ProviderLive.Show do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_provider(socket, server_id) do
-    providers_result = ServerManagement.dns_providers_list(server_id)
+    providers_result = Function.capture(ServerManagement, :dns_providers_list, 1).(server_id)
 
     zones_result =
-      ServerManagement.dns_zones_list(server_id, %{"view_name" => socket.assigns.view_name})
+      Function.capture(ServerManagement, :dns_zones_list, 2).(server_id, %{
+        "view_name" => socket.assigns.view_name
+      })
 
     results = [providers_result, zones_result]
 

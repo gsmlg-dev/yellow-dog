@@ -48,7 +48,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.AuditLive do
     entries =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.audit_log(opts) end,
+        fn -> Function.capture(YellowDogIdentity, :audit_log, 1).(opts) end,
         []
       )
 

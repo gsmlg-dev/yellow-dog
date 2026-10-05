@@ -13,7 +13,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.ResolvedLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: NetmanRegistry.subscribe()
+    if connected?(socket), do: Function.capture(NetmanRegistry, :subscribe, 0).()
     {:ok, assign(socket, page_title: "Resolved Server")}
   end
 
@@ -21,13 +21,19 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.ResolvedLive do
   def handle_params(%{"node_id" => node_id}, _uri, socket) do
     # Unsubscribe from previous node's query log if navigating between nodes
     if old_id = socket.assigns[:node_id] do
-      Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "netman:query_log:#{old_id}")
+      Phoenix.PubSub.unsubscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "netman:query_log:#{old_id}"
+      )
     end
 
-    case NetmanRegistry.get(node_id) do
+    case Function.capture(NetmanRegistry, :get, 1).(node_id) do
       {:ok, client} ->
         if connected?(socket) do
-          Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "netman:query_log:#{node_id}")
+          Phoenix.PubSub.subscribe(
+            YellowDog.ManagementUI.Redesign.PubSub,
+            "netman:query_log:#{node_id}"
+          )
         end
 
         resolved = client[:resolved]
@@ -233,7 +239,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.ResolvedLive do
   # Status updates from registry
   def handle_info({event, %{node_id: node_id}}, socket)
       when event in [:netman_joined, :netman_updated] and node_id == socket.assigns.node_id do
-    case NetmanRegistry.get(node_id) do
+    case Function.capture(NetmanRegistry, :get, 1).(node_id) do
       {:ok, client} ->
         resolved = client[:resolved]
         # Keep streaming query_log — don't replace with status snapshot

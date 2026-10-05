@@ -248,8 +248,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetbootLive.TftpLive do
   end
 
   defp load_assets(socket, server_id) do
-    assets_result = ServerManagement.netboot_assets_list(server_id)
-    transfers_result = ServerManagement.netboot_transfers_list(server_id)
+    assets_result = Function.capture(ServerManagement, :netboot_assets_list, 1).(server_id)
+    transfers_result = Function.capture(ServerManagement, :netboot_transfers_list, 1).(server_id)
     results = [assets_result, transfers_result]
 
     assign(socket,

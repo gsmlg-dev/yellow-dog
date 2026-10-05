@@ -48,7 +48,7 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ServicesLive do
   def handle_event("toggle_service", %{"id" => service_id}, socket) do
     case safe_call(
            YellowDog.Mdns,
-           fn -> YellowDog.Mdns.toggle_service(service_id) end,
+           fn -> Function.capture(YellowDog.Mdns, :toggle_service, 1).(service_id) end,
            {:error, :service_unavailable}
          ) do
       :ok ->
@@ -66,7 +66,9 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ServicesLive do
   def handle_event("delete_service", %{"id" => service_id}, socket) do
     case safe_call(
            YellowDog.Mdns,
-           fn -> YellowDog.Mdns.unregister_service(service_id, persist: true) end,
+           fn ->
+             Function.capture(YellowDog.Mdns, :unregister_service, 2).(service_id, persist: true)
+           end,
            {:error, :service_unavailable}
          ) do
       :ok ->
@@ -98,7 +100,11 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ServicesLive do
   @impl true
   def handle_event("show_edit_form", %{"id" => service_id}, socket) do
     service =
-      safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.get_registered_service(service_id) end, nil)
+      safe_call(
+        YellowDog.Mdns,
+        fn -> Function.capture(YellowDog.Mdns, :get_registered_service, 1).(service_id) end,
+        nil
+      )
 
     {:noreply,
      socket
@@ -139,7 +145,11 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ServicesLive do
           :new ->
             safe_call(
               YellowDog.Mdns,
-              fn -> YellowDog.Mdns.register_service(service_def, persist: true) end,
+              fn ->
+                Function.capture(YellowDog.Mdns, :register_service, 2).(service_def,
+                  persist: true
+                )
+              end,
               {:error, :service_unavailable}
             )
 
@@ -147,7 +157,7 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ServicesLive do
             safe_call(
               YellowDog.Mdns,
               fn ->
-                YellowDog.Mdns.update_service(
+                Function.capture(YellowDog.Mdns, :update_service, 3).(
                   socket.assigns.editing_service.id,
                   service_def,
                   persist: true
@@ -268,7 +278,11 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ServicesLive do
   end
 
   defp list_services(opts \\ []) do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_registered_services(opts) end, [])
+    safe_call(
+      YellowDog.Mdns,
+      fn -> Function.capture(YellowDog.Mdns, :list_registered_services, 1).(opts) end,
+      []
+    )
   end
 
   defp parse_txt_records(txt_string) when is_binary(txt_string) do

@@ -80,7 +80,11 @@ defmodule YellowDog.ManagementUI.Redesign.Layouts do
 
   defp navbar(assigns) do
     nav_sections =
-      if YellowDog.ManagementUI.Redesign.Plugs.ManagementReleaseOnly.management_release_only?() do
+      if Function.capture(
+           YellowDog.ManagementUI.Redesign.Plugs.ManagementReleaseOnly,
+           :management_release_only?,
+           0
+         ).() do
         Enum.take(@nav_sections, 3)
       else
         @nav_sections

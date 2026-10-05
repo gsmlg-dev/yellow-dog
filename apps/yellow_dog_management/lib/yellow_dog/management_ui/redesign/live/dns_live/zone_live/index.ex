@@ -215,12 +215,12 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
     _service_result =
       try do
-        ZoneController.stop_zone(view_name, zone_type, zone_name)
+        Function.capture(ZoneController, :stop_zone, 3).(view_name, zone_type, zone_name)
       catch
         :exit, _ -> {:error, :service_unavailable}
       end
 
-    result = StoreZone.delete_zone(view_name, zone_name)
+    result = Function.capture(StoreZone, :delete_zone, 2).(view_name, zone_name)
 
     case result do
       :ok ->
@@ -285,17 +285,22 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
     result =
       try do
         if editing do
-          case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
+          case Function.capture(ZoneController, :reload_zone, 4).(
+                 view_name,
+                 editing.type,
+                 editing.name,
+                 config
+               ) do
             :ok -> persist_zone_metadata(view_name, editing.type, editing.name, config)
             {:error, reason} -> {:error, reason}
           end
         else
-          case ZoneController.start_zone(zone_type, zone_name, config) do
+          case Function.capture(ZoneController, :start_zone, 3).(zone_type, zone_name, config) do
             {:ok, _pid} ->
               if view_name do
-                case ViewManager.get_view(view_name) do
+                case Function.capture(ViewManager, :get_view, 1).(view_name) do
                   {:ok, pid} ->
-                    View.register_zone(pid, zone_type, zone_name)
+                    Function.capture(View, :register_zone, 3).(pid, zone_type, zone_name)
                     :ok
 
                   :error ->
@@ -560,7 +565,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
   defp import_bind_zone(socket, view_name, zone_data) do
     # Parse the zone data to extract the origin/zone name
-    case DNS.Zone.parse_zone_string(zone_data) do
+    case Function.capture(DNS.Zone, :parse_zone_string, 1).(zone_data) do
       {:ok, zone} ->
         zone_name = zone.origin || "imported.zone"
         # Remove trailing dot if present
@@ -569,7 +574,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
         # Create an auth zone and import the data
         start_result =
           try do
-            ZoneController.start_zone(:auth, zone_name, view_name: view_name)
+            Function.capture(ZoneController, :start_zone, 3).(:auth, zone_name,
+              view_name: view_name
+            )
           catch
             :exit, _ -> {:error, :service_unavailable}
           end
@@ -578,9 +585,12 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
           {:ok, zone_pid} ->
             # Register zone with view
             try do
-              case ViewManager.get_view(view_name) do
-                {:ok, view_pid} -> View.register_zone(view_pid, :auth, zone_name)
-                :error -> :ok
+              case Function.capture(ViewManager, :get_view, 1).(view_name) do
+                {:ok, view_pid} ->
+                  Function.capture(View, :register_zone, 3).(view_pid, :auth, zone_name)
+
+                :error ->
+                  :ok
               end
             catch
               :exit, _ -> :ok
@@ -589,7 +599,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
             # Import the zone data
             import_result =
               try do
-                YellowDog.Dns.Zone.Auth.import_zone_file(zone_pid, zone_data)
+                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(
+                  zone_pid,
+                  zone_data
+                )
               catch
                 :exit, _ -> {:error, :service_unavailable}
               end
@@ -615,7 +628,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
             # Zone already exists — import records into it
             import_result =
               try do
-                YellowDog.Dns.Zone.Auth.import_zone_file(existing_pid, zone_data)
+                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(
+                  existing_pid,
+                  zone_data
+                )
               catch
                 :exit, _ -> {:error, :service_unavailable}
               end
@@ -705,9 +721,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
   defp maybe_enqueue_cloud_dns_sync(view_name, zone_name, :auth, config) do
     if cloud_mirror_config_enabled?(Keyword.get(config, :cloud_mirror)) do
-      task_key = Tasks.cloud_zone_task_key(view_name, zone_name)
+      task_key = Function.capture(Tasks, :cloud_zone_task_key, 2).(view_name, zone_name)
 
-      case Tasks.enqueue(task_key) do
+      case Function.capture(Tasks, :enqueue, 1).(task_key) do
         {:ok, _job} ->
           :ok
 
@@ -726,11 +742,12 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   defp maybe_enqueue_cloud_dns_sync(_view_name, _zone_name, _zone_type, _config), do: :ok
 
   defp enqueue_all_cloud_zone_syncs(socket) do
-    cloud_zone_tasks = Enum.filter(Tasks.list_tasks(), &cloud_zone_task?/1)
+    cloud_zone_tasks =
+      Enum.filter(Function.capture(Tasks, :list_tasks, 0).(), &cloud_zone_task?/1)
 
     {queued, failed} =
       Enum.reduce(cloud_zone_tasks, {0, []}, fn task, {queued, failed} ->
-        case Tasks.enqueue(task.key) do
+        case Function.capture(Tasks, :enqueue, 1).(task.key) do
           {:ok, _job} -> {queued + 1, failed}
           {:error, reason} -> {queued, [{task.key, reason} | failed]}
         end
@@ -766,7 +783,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   defp cloud_mirror_config_enabled?(_mirror), do: false
 
   defp persist_zone_metadata(view_name, :auth, zone_name, config) do
-    StoreZone.update_zone(view_name, zone_name, %{
+    Function.capture(StoreZone, :update_zone, 3).(view_name, zone_name, %{
       cloud_mirror: Keyword.get(config, :cloud_mirror)
     })
   end
@@ -775,7 +792,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
   defp load_zones(socket) do
     zones =
-      case StoreZone.list_zones_for_view(@default_view_name) do
+      case Function.capture(StoreZone, :list_zones_for_view, 1).(@default_view_name) do
         {:ok, zones} -> Enum.map(zones, &zone_row_from_store/1)
         {:error, _reason} -> []
       end
@@ -799,7 +816,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   end
 
   defp get_default_zone_by_id(zone_id) do
-    with {:ok, zone} <- StoreZone.get_zone_by_id(zone_id),
+    with {:ok, zone} <- Function.capture(StoreZone, :get_zone_by_id, 1).(zone_id),
          @default_view_name <- Map.get(zone, :view_name) do
       {:ok, zone}
     else
@@ -815,7 +832,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
   defp load_cloud_dns_connectors(socket) do
     connectors =
-      case StoreProvider.list_configs() do
+      case Function.capture(StoreProvider, :list_configs, 0).() do
         {:ok, configs} -> configs
         {:error, _reason} -> []
       end
@@ -826,10 +843,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   defp get_zone_stats(view_name, type, name) do
     try do
       # Use view-scoped zone lookup
-      case ZoneController.find_zone(view_name, type, name) do
+      case Function.capture(ZoneController, :find_zone, 3).(view_name, type, name) do
         {:ok, pid} ->
           module = zone_module(type)
-          stats = module.stats(pid)
+          stats = Function.capture(module, :stats, 1).(pid)
 
           %{
             record_count: Map.get(stats, :record_count, 0),
@@ -869,7 +886,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   end
 
   defp get_zone_config_from_store(view_name, zone_type, zone_name) do
-    case StoreZone.get_zone(view_name, zone_name) do
+    case Function.capture(StoreZone, :get_zone, 2).(view_name, zone_name) do
       {:ok, %{zone_type: ^zone_type} = zone} ->
         {:ok,
          %{
@@ -902,7 +919,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   defp store_ns_records(_zone), do: []
 
   defp merge_store_zone_metadata(config, view_name, :auth, zone_name) do
-    case StoreZone.get_zone(view_name, zone_name) do
+    case Function.capture(StoreZone, :get_zone, 2).(view_name, zone_name) do
       {:ok, zone} -> Map.put(config, :cloud_mirror, Map.get(zone, :cloud_mirror))
       _ -> config
     end
@@ -915,10 +932,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
   defp get_zone_config_from_service(view_name, zone_type, zone_name) do
     try do
       # Use view-scoped zone lookup
-      case ZoneController.find_zone(view_name, zone_type, zone_name) do
+      case Function.capture(ZoneController, :find_zone, 3).(view_name, zone_type, zone_name) do
         {:ok, pid} ->
           module = zone_module(zone_type)
-          stats = module.stats(pid)
+          stats = Function.capture(module, :stats, 1).(pid)
 
           config = %{
             name: zone_name,
@@ -939,7 +956,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
   defp get_zone_config_from_persistence(view_name, zone_type, zone_name) do
     try do
-      case ConfigPersistence.load_all() do
+      case Function.capture(ConfigPersistence, :load_all, 0).() do
         {:ok, %{zones: zones}} ->
           # Find the matching zone in persisted config
           zone =
@@ -1057,7 +1074,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.ZoneLive.Index do
 
   defp save_config_async do
     Task.start(fn ->
-      case ConfigPersistence.save_current() do
+      case Function.capture(ConfigPersistence, :save_current, 0).() do
         :ok ->
           :ok
 

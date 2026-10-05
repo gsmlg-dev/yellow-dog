@@ -17,17 +17,23 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementSupport do
     if Phoenix.LiveView.connected?(socket) and
          socket.assigns[:subscribed_server_id] != server_id do
       if old_id = socket.assigns[:subscribed_server_id] do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:server:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{server_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:server:#{server_id}"
+      )
     end
 
     Phoenix.Component.assign(socket, :subscribed_server_id, server_id)
   end
 
   def refresh_selected_server(socket, server_id) do
-    case ManagementCore.get_server(server_id) do
+    case Function.capture(ManagementCore, :get_server, 1).(server_id) do
       {:ok, server} ->
         Phoenix.Component.assign(socket,
           selected_server: server,
@@ -40,7 +46,7 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementSupport do
     end
   end
 
-  def items(%ManagementResult{status: :ok, value: %{"items" => items}}, family)
+  def items(%{__struct__: ManagementResult, status: :ok, value: %{"items" => items}}, family)
       when is_list(items) and family in @families do
     family = family_wire(family)
     Enum.filter(items, &match?(%{"family" => ^family}, &1))
@@ -49,7 +55,8 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementSupport do
   def items(_result, _family), do: []
 
   def service_running?(
-        %ManagementResult{
+        %{
+          __struct__: ManagementResult,
           status: :ok,
           value: %{"family" => family, "status" => "running"}
         },
@@ -62,7 +69,7 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementSupport do
 
   def first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
@@ -70,13 +77,14 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementSupport do
   def cached_observed_at(results, fallback) do
     if cached?(results) do
       Enum.find_value(results, fallback, fn
-        %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+        %{__struct__: ManagementResult, source: :cache, observed_at: observed_at} -> observed_at
         _result -> nil
       end)
     end
   end
 
-  def cached?(results), do: Enum.any?(results, &match?(%ManagementResult{source: :cache}, &1))
+  def cached?(results),
+    do: Enum.any?(results, &match?(%{__struct__: ManagementResult, source: :cache}, &1))
 
   def mutable(%{assigns: %{service_online?: true, commands_enabled?: true}}), do: :ok
 
@@ -90,7 +98,7 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementSupport do
     do: [expected_revision: nil, idempotency_key: Ecto.UUID.generate()]
 
   def command_options(resource) when is_map(resource) do
-    case Digest.calculate(resource) do
+    case Function.capture(Digest, :calculate, 1).(resource) do
       {:ok, revision} ->
         [expected_revision: revision, idempotency_key: Ecto.UUID.generate()]
 

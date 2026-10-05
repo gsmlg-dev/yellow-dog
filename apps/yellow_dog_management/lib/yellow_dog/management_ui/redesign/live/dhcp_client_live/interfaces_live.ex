@@ -171,14 +171,22 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpClientLive.InterfacesLive do
   end
 
   defp load_interfaces do
-    case safe_call(YellowDog.DhcpClient, fn -> YellowDog.DhcpClient.all_statuses() end, []) do
+    case safe_call(
+           YellowDog.DhcpClient,
+           fn -> Function.capture(YellowDog.DhcpClient, :all_statuses, 0).() end,
+           []
+         ) do
       interfaces when is_list(interfaces) -> interfaces
       _ -> []
     end
   end
 
   defp load_config do
-    safe_call(YellowDog.DhcpClient.Config, fn -> YellowDog.DhcpClient.Config.load_all() end, %{})
+    safe_call(
+      YellowDog.DhcpClient.Config,
+      fn -> Function.capture(YellowDog.DhcpClient.Config, :load_all, 0).() end,
+      %{}
+    )
   end
 
   defp interface_running?(name, interfaces) do
@@ -191,7 +199,7 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpClientLive.InterfacesLive do
   defp state_badge(_), do: "badge-ghost"
 
   defp format_lease_remaining(lease) do
-    case YellowDog.DhcpClient.Lease.time_remaining(lease) do
+    case Function.capture(YellowDog.DhcpClient.Lease, :time_remaining, 1).(lease) do
       nil -> "-"
       0 -> "Expired"
       remaining -> format_lease_time(remaining)

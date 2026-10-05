@@ -294,7 +294,7 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpClientLive.Index do
   def handle_event("release", %{"interface" => interface}, socket) do
     case safe_call(
            YellowDog.DhcpClient,
-           fn -> YellowDog.DhcpClient.release(interface) end,
+           fn -> Function.capture(YellowDog.DhcpClient, :release, 1).(interface) end,
            :error
          ) do
       :ok ->
@@ -309,7 +309,11 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpClientLive.Index do
   end
 
   defp load_interfaces do
-    case safe_call(YellowDog.DhcpClient, fn -> YellowDog.DhcpClient.all_statuses() end, []) do
+    case safe_call(
+           YellowDog.DhcpClient,
+           fn -> Function.capture(YellowDog.DhcpClient, :all_statuses, 0).() end,
+           []
+         ) do
       interfaces when is_list(interfaces) -> interfaces
       _ -> []
     end
@@ -328,7 +332,7 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpClientLive.Index do
   defp state_badge_class(_), do: "badge-ghost"
 
   defp format_lease_remaining(lease) do
-    case YellowDog.DhcpClient.Lease.time_remaining(lease) do
+    case Function.capture(YellowDog.DhcpClient.Lease, :time_remaining, 1).(lease) do
       nil -> "-"
       0 -> "Expired"
       remaining -> format_lease_time(remaining)

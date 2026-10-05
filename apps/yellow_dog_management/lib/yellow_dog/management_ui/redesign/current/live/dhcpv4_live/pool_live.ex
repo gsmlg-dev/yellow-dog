@@ -68,8 +68,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolLive do
   defp load_pool(socket) do
     server_id = socket.assigns.selected_server.id
     payload = %{"family" => ManagementSupport.family_wire(@family)}
-    status = ServerManagement.dhcp_status_get(server_id, payload)
-    pools_result = ServerManagement.dhcp_pools_list(server_id, payload)
+    status = Function.capture(ServerManagement, :dhcp_status_get, 2).(server_id, payload)
+    pools_result = Function.capture(ServerManagement, :dhcp_pools_list, 2).(server_id, payload)
     pools = pools_result |> ManagementSupport.items(@family) |> ManagementSupport.pool_views()
     results = [status, pools_result]
 

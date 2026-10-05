@@ -3,8 +3,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostDetailLive do
 
   use YellowDog.ManagementUI.Redesign, :live_view
 
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementComponents
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementSupport
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementComponents
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
   alias YellowDog.ManagementUI.Redesign.Layouts
   alias YellowDog.ManagementUI.Redesign.ManagementResult
   alias YellowDog.ManagementUI.Redesign.ServerManagement
@@ -125,7 +125,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostDetailLive do
   end
 
   defp load_host(socket, server_id) do
-    result = ServerManagement.identity_hosts_list(server_id)
+    result = Function.capture(ServerManagement, :identity_hosts_list, 1).(server_id)
     host = Enum.find(ManagementSupport.items(result), &(&1["host_id"] == socket.assigns.host_id))
 
     assign(socket,
@@ -148,9 +148,26 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostDetailLive do
 
       result =
         case action do
-          :approve -> ServerManagement.identity_hosts_approve(server_id, payload, opts)
-          :revoke -> ServerManagement.identity_hosts_revoke(server_id, payload, opts)
-          :delete -> ServerManagement.identity_hosts_delete(server_id, payload, opts)
+          :approve ->
+            Function.capture(ServerManagement, :identity_hosts_approve, 3).(
+              server_id,
+              payload,
+              opts
+            )
+
+          :revoke ->
+            Function.capture(ServerManagement, :identity_hosts_revoke, 3).(
+              server_id,
+              payload,
+              opts
+            )
+
+          :delete ->
+            Function.capture(ServerManagement, :identity_hosts_delete, 3).(
+              server_id,
+              payload,
+              opts
+            )
         end
 
       apply_mutation_result(socket, action, result)
@@ -166,7 +183,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostDetailLive do
     end
   end
 
-  defp apply_mutation_result(socket, :delete, %ManagementResult{status: :ok} = result) do
+  defp apply_mutation_result(
+         socket,
+         :delete,
+         %{__struct__: ManagementResult, status: :ok} = result
+       ) do
     socket
     |> ManagementSupport.finish(result, "Host deleted")
     |> push_navigate(
@@ -177,7 +198,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostDetailLive do
   defp apply_mutation_result(
          socket,
          action,
-         %ManagementResult{status: :ok, value: value} = result
+         %{__struct__: ManagementResult, status: :ok, value: value} = result
        ) do
     host = if is_map(value["resource"]), do: value["resource"], else: socket.assigns.host
 
@@ -186,7 +207,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.HostDetailLive do
     |> ManagementSupport.finish(result, success_message(action))
   end
 
-  defp apply_mutation_result(socket, action, %ManagementResult{} = result),
+  defp apply_mutation_result(socket, action, %{__struct__: ManagementResult} = result),
     do: ManagementSupport.finish(socket, result, success_message(action))
 
   defp success_message(:approve), do: "Host approved"

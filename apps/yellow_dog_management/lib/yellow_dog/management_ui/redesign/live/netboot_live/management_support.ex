@@ -9,17 +9,23 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ManagementSupport do
   def subscribe(socket, server_id) do
     if Phoenix.LiveView.connected?(socket) and socket.assigns[:subscribed_server_id] != server_id do
       if old_id = socket.assigns[:subscribed_server_id] do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:server:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{server_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:server:#{server_id}"
+      )
     end
 
     Phoenix.Component.assign(socket, :subscribed_server_id, server_id)
   end
 
   def refresh_selected_server(socket, server_id) do
-    case ManagementCore.get_server(server_id) do
+    case Function.capture(ManagementCore, :get_server, 1).(server_id) do
       {:ok, server} ->
         Phoenix.Component.assign(socket,
           selected_server: server,
@@ -50,7 +56,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ManagementSupport do
   def digest(nil), do: nil
 
   def digest(item) when is_map(item) do
-    case Digest.calculate(item) do
+    case Function.capture(Digest, :calculate, 1).(item) do
       {:ok, digest} -> digest
       _error -> nil
     end
@@ -69,38 +75,40 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ManagementSupport do
     end
   end
 
-  def finish(socket, %ManagementResult{status: :ok} = result, message) do
+  def finish(socket, %{__struct__: ManagementResult, status: :ok} = result, message) do
     socket
     |> Phoenix.Component.assign(:operation_result, result)
     |> LiveView.put_flash(:info, message)
   end
 
-  def finish(socket, %ManagementResult{} = result, _message) do
+  def finish(socket, %{__struct__: ManagementResult} = result, _message) do
     socket
     |> Phoenix.Component.assign(:operation_result, result)
     |> LiveView.put_flash(:error, result.message)
   end
 
-  def value(%ManagementResult{status: :ok, value: value}, _default), do: value
+  def value(%{__struct__: ManagementResult, status: :ok, value: value}, _default), do: value
   def value(_result, default), do: default
   def items(result), do: result |> value(%{}) |> Map.get("items", [])
 
   def first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
 
   def cached_observed_at(results, fallback) do
     Enum.find_value(results, fallback, fn
-      %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+      %{__struct__: ManagementResult, source: :cache, observed_at: observed_at} -> observed_at
       _result -> nil
     end)
   end
 
-  def cached?(results), do: Enum.any?(results, &match?(%ManagementResult{source: :cache}, &1))
-  def error_result?(%ManagementResult{status: :error}), do: true
+  def cached?(results),
+    do: Enum.any?(results, &match?(%{__struct__: ManagementResult, source: :cache}, &1))
+
+  def error_result?(%{__struct__: ManagementResult, status: :error}), do: true
   def error_result?(_result), do: false
 
   def csv(value) when value in [nil, ""], do: []

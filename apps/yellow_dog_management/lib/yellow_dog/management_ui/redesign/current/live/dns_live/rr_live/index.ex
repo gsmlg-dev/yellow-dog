@@ -53,7 +53,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.RrLive.Index do
   def handle_event("create_record", %{"record" => params}, socket) do
     with :ok <- ManagementSupport.mutable(socket) do
       result =
-        ServerManagement.dns_records_create(
+        Function.capture(ServerManagement, :dns_records_create, 3).(
           ManagementSupport.selected_id(socket),
           record_payload(socket, params),
           ManagementSupport.command_options(nil)
@@ -73,7 +73,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.RrLive.Index do
       payload = record_payload(socket, Map.put(params, "record_id", record_id))
 
       result =
-        ServerManagement.dns_records_update(
+        Function.capture(ServerManagement, :dns_records_update, 3).(
           ManagementSupport.selected_id(socket),
           payload,
           ManagementSupport.command_options(revision)
@@ -94,7 +94,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.RrLive.Index do
       reference = record_reference(socket, record_id)
 
       result =
-        ServerManagement.dns_records_delete(
+        Function.capture(ServerManagement, :dns_records_delete, 3).(
           ManagementSupport.selected_id(socket),
           reference,
           ManagementSupport.command_options(revision)
@@ -144,7 +144,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.RrLive.Index do
 
   defp load_records(socket, server_id) do
     payload = %{"view_name" => socket.assigns.view_name, "zone_name" => socket.assigns.zone_name}
-    result = ServerManagement.dns_records_list(server_id, payload)
+    result = Function.capture(ServerManagement, :dns_records_list, 2).(server_id, payload)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Records",
@@ -225,7 +225,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.RrLive.Index do
 
   defp put_resource(
          socket,
-         %ManagementResult{status: :ok, value: %{"resource" => resource}},
+         %{__struct__: ManagementResult, status: :ok, value: %{"resource" => resource}},
          previous_record_id
        ) do
     replaced_ids = MapSet.new([resource["record_id"], previous_record_id])

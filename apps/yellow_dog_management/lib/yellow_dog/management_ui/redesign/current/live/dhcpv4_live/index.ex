@@ -60,10 +60,10 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.Index do
   defp load_overview(socket) do
     server_id = socket.assigns.selected_server.id
     payload = %{"family" => ManagementSupport.family_wire(@family)}
-    status = ServerManagement.dhcp_status_get(server_id, payload)
-    pools = ServerManagement.dhcp_pools_list(server_id, payload)
-    leases = ServerManagement.dhcp_leases_list(server_id, payload)
-    activity = ServerManagement.dhcp_activity_list(server_id, payload)
+    status = Function.capture(ServerManagement, :dhcp_status_get, 2).(server_id, payload)
+    pools = Function.capture(ServerManagement, :dhcp_pools_list, 2).(server_id, payload)
+    leases = Function.capture(ServerManagement, :dhcp_leases_list, 2).(server_id, payload)
+    activity = Function.capture(ServerManagement, :dhcp_activity_list, 2).(server_id, payload)
     results = [status, pools, leases, activity]
 
     assign(socket,

@@ -17,7 +17,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.PoliciesLive do
     result =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.list_policies() end,
+        fn -> Function.capture(YellowDogIdentity, :list_policies, 0).() end,
         %{policies: [], default_action: :pending}
       )
 

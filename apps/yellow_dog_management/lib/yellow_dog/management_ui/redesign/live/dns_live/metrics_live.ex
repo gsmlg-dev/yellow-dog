@@ -57,7 +57,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.MetricsLive do
   @impl true
   def handle_event("reset", _params, socket) do
     result =
-      safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, {:error, :service_unavailable})
+      safe_call(
+        YellowDog.Dns,
+        fn -> Function.capture(MetricsCollector, :reset, 0).() end,
+        {:error, :service_unavailable}
+      )
 
     socket =
       case result do
@@ -106,26 +110,42 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.MetricsLive do
   end
 
   defp fetch_metrics do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_metrics() end, default_metrics())
+    safe_call(
+      YellowDog.Dns,
+      fn -> Function.capture(MetricsCollector, :get_metrics, 0).() end,
+      default_metrics()
+    )
   end
 
   defp fetch_summary do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.summary() end, default_summary())
+    safe_call(
+      YellowDog.Dns,
+      fn -> Function.capture(MetricsCollector, :summary, 0).() end,
+      default_summary()
+    )
   end
 
   defp fetch_top_domains do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_top_domains(limit: 10) end, [])
+    safe_call(
+      YellowDog.Dns,
+      fn -> Function.capture(MetricsCollector, :get_top_domains, 1).(limit: 10) end,
+      []
+    )
   end
 
   defp fetch_top_clients do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_top_clients(limit: 10) end, [])
+    safe_call(
+      YellowDog.Dns,
+      fn -> Function.capture(MetricsCollector, :get_top_clients, 1).(limit: 10) end,
+      []
+    )
   end
 
   defp fetch_response_times do
     data =
       safe_call(
         YellowDog.Dns,
-        fn -> MetricsCollector.get_response_times() end,
+        fn -> Function.capture(MetricsCollector, :get_response_times, 0).() end,
         %{count: 0, sum: 0, min: 0, max: 0, buckets: []}
       )
 

@@ -447,7 +447,12 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
       Enum.map(macs, fn mac ->
         safe_call(
           YellowDog.Netboot.Device.Registry,
-          fn -> YellowDog.Netboot.Device.Registry.assign_profile(mac, profile_id) end,
+          fn ->
+            Function.capture(YellowDog.Netboot.Device.Registry, :assign_profile, 2).(
+              mac,
+              profile_id
+            )
+          end,
           {:error, :service_unavailable}
         )
       end)
@@ -494,14 +499,19 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
           with {:ok, device} <-
                  safe_call(
                    YellowDog.Netboot.Device.Registry,
-                   fn -> YellowDog.Netboot.Device.Registry.get(mac) end,
+                   fn -> Function.capture(YellowDog.Netboot.Device.Registry, :get, 1).(mac) end,
                    {:error, :unavailable}
                  ) do
             new_tags = Enum.uniq(device.tags ++ [tag])
 
             safe_call(
               YellowDog.Netboot.Device.Registry,
-              fn -> YellowDog.Netboot.Device.Registry.update_tags(mac, new_tags) end,
+              fn ->
+                Function.capture(YellowDog.Netboot.Device.Registry, :update_tags, 2).(
+                  mac,
+                  new_tags
+                )
+              end,
               {:error, :unavailable}
             )
           end
@@ -531,7 +541,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
       Enum.map(macs, fn mac ->
         safe_call(
           YellowDog.Netboot.Device.Registry,
-          fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
+          fn -> Function.capture(YellowDog.Netboot.Device.Registry, :delete, 1).(mac) end,
           {:error, :service_unavailable}
         )
       end)
@@ -556,7 +566,9 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
     result =
       safe_call(
         YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.request_reinstall(mac) end,
+        fn ->
+          Function.capture(YellowDog.Netboot.Device.Registry, :request_reinstall, 1).(mac)
+        end,
         {:error, :unavailable}
       )
 
@@ -577,7 +589,9 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
     result =
       safe_call(
         YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.set_rescue_mode(mac, enabled) end,
+        fn ->
+          Function.capture(YellowDog.Netboot.Device.Registry, :set_rescue_mode, 2).(mac, enabled)
+        end,
         {:error, :unavailable}
       )
 
@@ -618,7 +632,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
     profiles =
       safe_call(
         YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.list_profiles() end,
+        fn -> Function.capture(YellowDog.Netboot.Manifest.Store, :list_profiles, 0).() end,
         []
       )
 
@@ -636,7 +650,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DevicesLive do
       safe_call(
         YellowDog.Netboot.Device.Registry,
         fn ->
-          YellowDog.Netboot.Device.Registry.list()
+          Function.capture(YellowDog.Netboot.Device.Registry, :list, 0).()
         end,
         []
       )

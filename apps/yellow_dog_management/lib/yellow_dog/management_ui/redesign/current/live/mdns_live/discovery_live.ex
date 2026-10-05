@@ -59,10 +59,14 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.DiscoveryLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_discovery(socket) do
-    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)
+    result =
+      Function.capture(ServerManagement, :mdns_discovery_list, 1).(
+        socket.assigns.selected_server.id
+      )
 
     case result do
-      %ManagementResult{status: :ok, value: %{"items" => services}} when is_list(services) ->
+      %{__struct__: ManagementResult, status: :ok, value: %{"items" => services}}
+      when is_list(services) ->
         assign(socket,
           page_title:
             "#{socket.assigns.selected_server.name || socket.assigns.selected_server.id} — mDNS Discovery",
@@ -71,7 +75,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.DiscoveryLive do
           cached_observed_at: result.observed_at
         )
 
-      %ManagementResult{status: :error} ->
+      %{__struct__: ManagementResult, status: :error} ->
         assign(socket, services: [], management_error: result)
     end
   end

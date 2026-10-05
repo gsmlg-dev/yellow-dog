@@ -231,7 +231,7 @@ defmodule YellowDog.ManagementUI.Redesign.BackupsLive do
     socket =
       socket
       |> assign(:creating, true)
-      |> start_async(:create_backup, fn -> Backup.create(opts) end)
+      |> start_async(:create_backup, fn -> Function.capture(Backup, :create, 1).(opts) end)
 
     {:noreply, socket}
   end
@@ -245,7 +245,7 @@ defmodule YellowDog.ManagementUI.Redesign.BackupsLive do
       socket
       |> assign(:verifying, path)
       |> assign(:verify_result, nil)
-      |> start_async(:verify_backup, fn -> Backup.verify(path) end)
+      |> start_async(:verify_backup, fn -> Function.capture(Backup, :verify, 1).(path) end)
 
     {:noreply, socket}
   end
@@ -268,13 +268,15 @@ defmodule YellowDog.ManagementUI.Redesign.BackupsLive do
     socket =
       socket
       |> assign(:restoring, true)
-      |> start_async(:restore_backup, fn -> Backup.restore(path, confirm: true) end)
+      |> start_async(:restore_backup, fn ->
+        Function.capture(Backup, :restore, 2).(path, confirm: true)
+      end)
 
     {:noreply, socket}
   end
 
   def handle_event("delete", %{"path" => path}, socket) do
-    case Backup.delete(path) do
+    case Function.capture(Backup, :delete, 1).(path) do
       :ok ->
         {:noreply,
          socket
@@ -372,7 +374,7 @@ defmodule YellowDog.ManagementUI.Redesign.BackupsLive do
 
   defp load_backups(socket) do
     backups =
-      case Backup.list(dir: Backup.default_dir()) do
+      case Function.capture(Backup, :list, 1).(dir: Function.capture(Backup, :default_dir, 0).()) do
         {:ok, list} -> list
         {:error, _} -> []
       end

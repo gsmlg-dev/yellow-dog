@@ -29,12 +29,12 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: NetmanRegistry.subscribe()
+    if connected?(socket), do: Function.capture(NetmanRegistry, :subscribe, 0).()
 
     {:ok,
      assign(socket,
        page_title: "Network Manager",
-       clients: NetmanRegistry.list(),
+       clients: Function.capture(NetmanRegistry, :list, 0).(),
        show_docs: false,
        ws_host: ws_host(),
        join_example: @join_example,
@@ -43,7 +43,9 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.DashboardLive do
   end
 
   defp ws_host do
-    endpoint_config = Application.get_env(:yellow_dog_management, YellowDog.ManagementUI.Redesign.Endpoint, [])
+    endpoint_config =
+      Application.get_env(:yellow_dog_management, YellowDog.ManagementUI.Redesign.Endpoint, [])
+
     url = Keyword.get(endpoint_config, :url, [])
     host = Keyword.get(url, :host, "localhost")
     port = Keyword.get(endpoint_config |> Keyword.get(:http, []), :port, 4270)
@@ -314,7 +316,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.DashboardLive do
   @impl true
   def handle_info({event, _client_info}, socket)
       when event in [:netman_joined, :netman_left, :netman_updated] do
-    {:noreply, assign(socket, :clients, NetmanRegistry.list())}
+    {:noreply, assign(socket, :clients, Function.capture(NetmanRegistry, :list, 0).())}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}

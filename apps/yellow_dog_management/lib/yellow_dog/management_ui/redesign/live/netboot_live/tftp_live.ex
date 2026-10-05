@@ -414,7 +414,12 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.TftpLive do
         result =
           safe_call(
             YellowDog.Netboot.Asset.Store,
-            fn -> YellowDog.Netboot.Asset.Store.upload_file(dest_path, tmp_path) end,
+            fn ->
+              Function.capture(YellowDog.Netboot.Asset.Store, :upload_file, 2).(
+                dest_path,
+                tmp_path
+              )
+            end,
             {:error, :service_unavailable}
           )
 
@@ -461,8 +466,8 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.TftpLive do
       safe_call(
         YellowDog.Netboot.TFTP.FileIndex,
         fn ->
-          root = YellowDog.Netboot.TFTP.Server.root_dir()
-          YellowDog.Netboot.TFTP.FileIndex.scan(root)
+          root = Function.capture(YellowDog.Netboot.TFTP.Server, :root_dir, 0).()
+          Function.capture(YellowDog.Netboot.TFTP.FileIndex, :scan, 1).(root)
         end,
         {:error, :service_unavailable}
       )
@@ -512,7 +517,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.TftpLive do
     result =
       safe_call(
         YellowDog.Netboot.Asset.Store,
-        fn -> YellowDog.Netboot.Asset.Store.delete_file(path) end,
+        fn -> Function.capture(YellowDog.Netboot.Asset.Store, :delete_file, 1).(path) end,
         {:error, :service_unavailable}
       )
 
@@ -571,7 +576,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.TftpLive do
       safe_call(
         YellowDog.Netboot.TFTP.Server,
         fn ->
-          YellowDog.Netboot.TFTP.Server.status()
+          Function.capture(YellowDog.Netboot.TFTP.Server, :status, 0).()
         end,
         %{running: false, port: 69, file_count: 0, active_transfers: 0, root_dir: "-"}
       )
@@ -580,7 +585,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.TftpLive do
       safe_call(
         YellowDog.Netboot.Asset.Store,
         fn ->
-          YellowDog.Netboot.Asset.Store.file_tree()
+          Function.capture(YellowDog.Netboot.Asset.Store, :file_tree, 0).()
         end,
         []
       )

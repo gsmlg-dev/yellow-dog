@@ -185,7 +185,7 @@ defmodule YellowDog.ManagementUI.Redesign.MacDatabaseLive do
   end
 
   def handle_event("download", _params, socket) do
-    case Tasks.enqueue(:mac) do
+    case Function.capture(Tasks, :enqueue, 1).(:mac) do
       {:ok, _job} ->
         {:noreply, put_flash(socket, :info, "MAC/OUI sync queued.")}
 
@@ -197,7 +197,7 @@ defmodule YellowDog.ManagementUI.Redesign.MacDatabaseLive do
   def handle_event("reload", _params, socket) do
     ensure_oui_database_started()
 
-    case YellowDog.Fingerprint.OuiDatabase.reload() do
+    case Function.capture(YellowDog.Fingerprint.OuiDatabase, :reload, 0).() do
       :ok ->
         {:noreply,
          socket
@@ -216,7 +216,7 @@ defmodule YellowDog.ManagementUI.Redesign.MacDatabaseLive do
       if mac == "" do
         nil
       else
-        YellowDog.Fingerprint.OuiDatabase.lookup(mac)
+        Function.capture(YellowDog.Fingerprint.OuiDatabase, :lookup, 1).(mac)
       end
 
     {:noreply, assign(socket, :test_result, result)}
@@ -233,7 +233,9 @@ defmodule YellowDog.ManagementUI.Redesign.MacDatabaseLive do
         data_dir =
           Application.get_env(:yellow_dog_fingerprint, :data_dir, "data/fingerprint")
 
-        case YellowDog.Fingerprint.OuiDatabase.start_link(data_dir: data_dir) do
+        case Function.capture(YellowDog.Fingerprint.OuiDatabase, :start_link, 1).(
+               data_dir: data_dir
+             ) do
           {:ok, _pid} -> :ok
           {:error, {:already_started, _pid}} -> :ok
           {:error, reason} -> {:error, reason}
@@ -245,7 +247,7 @@ defmodule YellowDog.ManagementUI.Redesign.MacDatabaseLive do
     ensure_oui_database_started()
 
     try do
-      YellowDog.Fingerprint.OuiDatabase.info()
+      Function.capture(YellowDog.Fingerprint.OuiDatabase, :info, 0).()
     catch
       :exit, _ -> nil
     end

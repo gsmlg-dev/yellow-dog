@@ -7,17 +7,23 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.ManagementSupport do
     if Phoenix.LiveView.connected?(socket) and
          socket.assigns[:subscribed_server_id] != server_id do
       if old_id = socket.assigns[:subscribed_server_id] do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:server:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{server_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:server:#{server_id}"
+      )
     end
 
     Phoenix.Component.assign(socket, :subscribed_server_id, server_id)
   end
 
   def refresh_selected_server(socket, server_id) do
-    case ManagementCore.get_server(server_id) do
+    case Function.capture(ManagementCore, :get_server, 1).(server_id) do
       {:ok, server} ->
         Phoenix.Component.assign(socket,
           selected_server: server,

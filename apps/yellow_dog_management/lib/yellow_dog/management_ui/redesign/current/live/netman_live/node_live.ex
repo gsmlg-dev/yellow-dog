@@ -196,13 +196,14 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.NodeLive do
 
   defp load_overview(socket, netman_id) do
     results = [
-      capabilities = NetmanManagement.runtime_capabilities_get(netman_id),
-      apply_mode = NetmanManagement.runtime_apply_mode_get(netman_id),
-      health = NetmanManagement.runtime_reconciliation_health_get(netman_id),
-      profiles = NetmanManagement.profiles_list(netman_id),
-      links = NetmanManagement.network_links_list(netman_id),
-      routes = NetmanManagement.network_routes_list(netman_id),
-      vpn = NetmanManagement.vpn_profile_get(netman_id)
+      capabilities = Function.capture(NetmanManagement, :runtime_capabilities_get, 1).(netman_id),
+      apply_mode = Function.capture(NetmanManagement, :runtime_apply_mode_get, 1).(netman_id),
+      health =
+        Function.capture(NetmanManagement, :runtime_reconciliation_health_get, 1).(netman_id),
+      profiles = Function.capture(NetmanManagement, :profiles_list, 1).(netman_id),
+      links = Function.capture(NetmanManagement, :network_links_list, 1).(netman_id),
+      routes = Function.capture(NetmanManagement, :network_routes_list, 1).(netman_id),
+      vpn = Function.capture(NetmanManagement, :vpn_profile_get, 1).(netman_id)
     ]
 
     assign(socket,
@@ -222,17 +223,23 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.NodeLive do
   defp subscribe(socket, netman_id) do
     if connected?(socket) and socket.assigns.subscribed_netman_id != netman_id do
       if old_id = socket.assigns.subscribed_netman_id do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:netman:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{netman_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:netman:#{netman_id}"
+      )
     end
 
     assign(socket, :subscribed_netman_id, netman_id)
   end
 
   defp refresh_selected_netman(socket, netman_id) do
-    case ManagementCore.get_netman(netman_id) do
+    case Function.capture(ManagementCore, :get_netman, 1).(netman_id) do
       {:ok, netman} ->
         assign(socket,
           selected_netman: netman,
@@ -245,21 +252,21 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.NodeLive do
     end
   end
 
-  defp value(%ManagementResult{status: :ok, value: value}, _default), do: value
+  defp value(%{__struct__: ManagementResult, status: :ok, value: value}, _default), do: value
   defp value(_result, default), do: default
 
   defp items(result), do: result |> value(%{}) |> Map.get("items", [])
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
 
   defp cached_observed_at(results, fallback) do
     Enum.find_value(results, fallback, fn
-      %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+      %{__struct__: ManagementResult, source: :cache, observed_at: observed_at} -> observed_at
       _result -> nil
     end)
   end

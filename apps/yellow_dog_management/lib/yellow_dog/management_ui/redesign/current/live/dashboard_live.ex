@@ -80,17 +80,23 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DashboardLive do
   defp subscribe(socket, server_id) do
     if connected?(socket) and socket.assigns[:subscribed_server_id] != server_id do
       if old_id = socket.assigns[:subscribed_server_id] do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:server:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{server_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:server:#{server_id}"
+      )
     end
 
     assign(socket, :subscribed_server_id, server_id)
   end
 
   defp refresh_selected_server(socket, server_id) do
-    case ManagementCore.get_server(server_id) do
+    case Function.capture(ManagementCore, :get_server, 1).(server_id) do
       {:ok, server} ->
         assign(socket,
           selected_server: server,
@@ -105,9 +111,9 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DashboardLive do
 
   defp load_dashboard(socket) do
     server_id = socket.assigns.selected_server.id
-    services = ServerManagement.runtime_services_list(server_id)
-    health = ServerManagement.runtime_health_get(server_id)
-    stats = ServerManagement.runtime_stats_get(server_id)
+    services = Function.capture(ServerManagement, :runtime_services_list, 1).(server_id)
+    health = Function.capture(ServerManagement, :runtime_health_get, 1).(server_id)
+    stats = Function.capture(ServerManagement, :runtime_stats_get, 1).(server_id)
     results = [services, health, stats]
 
     assign(socket,
@@ -131,28 +137,32 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DashboardLive do
     result =
       case action do
         "start_service" ->
-          ServerManagement.runtime_services_start(
+          Function.capture(ServerManagement, :runtime_services_start, 3).(
             socket.assigns.selected_server.id,
             payload,
             opts
           )
 
         "stop_service" ->
-          ServerManagement.runtime_services_stop(socket.assigns.selected_server.id, payload, opts)
+          Function.capture(ServerManagement, :runtime_services_stop, 3).(
+            socket.assigns.selected_server.id,
+            payload,
+            opts
+          )
       end
 
     case result do
-      %ManagementResult{status: :ok, value: %{"state" => state}} ->
+      %{__struct__: ManagementResult, status: :ok, value: %{"state" => state}} ->
         socket
         |> assign(:services, update_service(socket.assigns.services, service, state))
         |> put_flash(:info, "#{service_name(service)} is now #{state}")
 
-      %ManagementResult{status: :error, message: message} ->
+      %{__struct__: ManagementResult, status: :error, message: message} ->
         put_flash(socket, :error, message)
     end
   end
 
-  defp service_items(%ManagementResult{status: :ok, value: %{"items" => items}})
+  defp service_items(%{__struct__: ManagementResult, status: :ok, value: %{"items" => items}})
        when is_list(items) do
     by_service =
       Enum.reduce(items, %{}, fn
@@ -204,18 +214,20 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DashboardLive do
   end
 
   defp resource_revision(resource) do
-    case Digest.calculate(resource) do
+    case Function.capture(Digest, :calculate, 1).(resource) do
       {:ok, revision} -> revision
       {:error, _error} -> nil
     end
   end
 
-  defp result_value(%ManagementResult{status: :ok, value: value}, _fallback), do: value
+  defp result_value(%{__struct__: ManagementResult, status: :ok, value: value}, _fallback),
+    do: value
+
   defp result_value(_result, fallback), do: fallback
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error, message: message} -> message
+      %{__struct__: ManagementResult, status: :error, message: message} -> message
       _result -> nil
     end)
   end
@@ -223,7 +235,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DashboardLive do
   defp latest_observed_at(results) do
     results
     |> Enum.flat_map(fn
-      %ManagementResult{observed_at: %DateTime{} = observed_at} -> [observed_at]
+      %{__struct__: ManagementResult, observed_at: %DateTime{} = observed_at} -> [observed_at]
       _result -> []
     end)
     |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)

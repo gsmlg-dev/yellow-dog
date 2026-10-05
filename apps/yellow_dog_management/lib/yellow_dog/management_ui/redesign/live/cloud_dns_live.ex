@@ -302,7 +302,7 @@ defmodule YellowDog.ManagementUI.Redesign.CloudDnsLive do
 
   @impl true
   def handle_event("delete_connector", %{"name" => name}, socket) do
-    case Provider.delete_config(name) do
+    case Function.capture(Provider, :delete_config, 1).(name) do
       :ok ->
         {:noreply,
          socket
@@ -317,7 +317,7 @@ defmodule YellowDog.ManagementUI.Redesign.CloudDnsLive do
   defp save_connector(socket, type, params) do
     case connector_config(type, params) do
       {:ok, config} ->
-        case Provider.put_config(config) do
+        case Function.capture(Provider, :put_config, 1).(config) do
           :ok ->
             {:noreply,
              socket
@@ -404,7 +404,7 @@ defmodule YellowDog.ManagementUI.Redesign.CloudDnsLive do
 
   defp load_connectors(socket) do
     connectors =
-      case Provider.list_configs() do
+      case Function.capture(Provider, :list_configs, 0).() do
         {:ok, configs} -> configs
         {:error, _reason} -> []
       end

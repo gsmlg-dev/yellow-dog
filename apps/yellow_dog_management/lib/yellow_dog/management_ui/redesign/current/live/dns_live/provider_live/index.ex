@@ -37,7 +37,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ProviderLive.Index do
     with :ok <- ManagementSupport.mutable(socket),
          {:ok, revision} <- provider_revision(socket.assigns.providers, provider_id) do
       result =
-        ServerManagement.dns_providers_delete(
+        Function.capture(ServerManagement, :dns_providers_delete, 3).(
           ManagementSupport.selected_id(socket),
           %{"provider_id" => provider_id},
           ManagementSupport.command_options(revision)
@@ -69,7 +69,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ProviderLive.Index do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_providers(socket, server_id) do
-    result = ServerManagement.dns_providers_list(server_id)
+    result = Function.capture(ServerManagement, :dns_providers_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Providers",

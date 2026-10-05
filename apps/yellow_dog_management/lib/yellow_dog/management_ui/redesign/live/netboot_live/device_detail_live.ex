@@ -23,7 +23,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
       safe_call(
         YellowDog.Netboot.Manifest.Store,
         fn ->
-          YellowDog.Netboot.Manifest.Store.list_profiles()
+          Function.capture(YellowDog.Netboot.Manifest.Store, :list_profiles, 0).()
         end,
         []
       )
@@ -280,7 +280,10 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
       safe_call(
         YellowDog.Netboot.Device.Registry,
         fn ->
-          YellowDog.Netboot.Device.Registry.assign_profile(socket.assigns.mac, profile_id)
+          Function.capture(YellowDog.Netboot.Device.Registry, :assign_profile, 2).(
+            socket.assigns.mac,
+            profile_id
+          )
         end,
         {:error, :unavailable}
       )
@@ -300,7 +303,11 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
     result =
       safe_call(
         YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.request_reinstall(socket.assigns.mac) end,
+        fn ->
+          Function.capture(YellowDog.Netboot.Device.Registry, :request_reinstall, 1).(
+            socket.assigns.mac
+          )
+        end,
         {:error, :unavailable}
       )
 
@@ -321,7 +328,12 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
     result =
       safe_call(
         YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.set_rescue_mode(socket.assigns.mac, enabled) end,
+        fn ->
+          Function.capture(YellowDog.Netboot.Device.Registry, :set_rescue_mode, 2).(
+            socket.assigns.mac,
+            enabled
+          )
+        end,
         {:error, :unavailable}
       )
 
@@ -345,7 +357,10 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
       case safe_call(
              YellowDog.Netboot.Device.Registry,
              fn ->
-               YellowDog.Netboot.Device.Registry.update_tags(socket.assigns.mac, new_tags)
+               Function.capture(YellowDog.Netboot.Device.Registry, :update_tags, 2).(
+                 socket.assigns.mac,
+                 new_tags
+               )
              end,
              {:error, :unavailable}
            ) do
@@ -368,7 +383,10 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
       case safe_call(
              YellowDog.Netboot.Device.Registry,
              fn ->
-               YellowDog.Netboot.Device.Registry.update_tags(socket.assigns.mac, new_tags)
+               Function.capture(YellowDog.Netboot.Device.Registry, :update_tags, 2).(
+                 socket.assigns.mac,
+                 new_tags
+               )
              end,
              {:error, :unavailable}
            ) do
@@ -390,7 +408,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
     result =
       safe_call(
         YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
+        fn -> Function.capture(YellowDog.Netboot.Device.Registry, :delete, 1).(mac) end,
         {:error, :service_unavailable}
       )
 
@@ -437,7 +455,11 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
     if device.profile_id do
       case safe_call(
              YellowDog.Netboot.Manifest.Store,
-             fn -> YellowDog.Netboot.Manifest.Store.get_profile(device.profile_id) end,
+             fn ->
+               Function.capture(YellowDog.Netboot.Manifest.Store, :get_profile, 1).(
+                 device.profile_id
+               )
+             end,
              {:error, :unavailable}
            ) do
         {:ok, profile} ->
@@ -491,7 +513,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.DeviceDetailLive do
     case safe_call(
            YellowDog.Netboot.Device.Registry,
            fn ->
-             YellowDog.Netboot.Device.Registry.get(mac)
+             Function.capture(YellowDog.Netboot.Device.Registry, :get, 1).(mac)
            end,
            {:error, :not_found}
          ) do

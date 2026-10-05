@@ -228,7 +228,9 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfilesLive do
     result =
       safe_call(
         YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.set_default_profile(id) end,
+        fn ->
+          Function.capture(YellowDog.Netboot.Manifest.Store, :set_default_profile, 1).(id)
+        end,
         {:error, :service_unavailable}
       )
 
@@ -251,7 +253,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfilesLive do
     result =
       safe_call(
         YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
+        fn -> Function.capture(YellowDog.Netboot.Manifest.Store, :delete_profile, 1).(id) end,
         {:error, :service_unavailable}
       )
 
@@ -277,7 +279,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfilesLive do
       safe_call(
         YellowDog.Netboot.Manifest.Store,
         fn ->
-          YellowDog.Netboot.Manifest.Store.list_profiles()
+          Function.capture(YellowDog.Netboot.Manifest.Store, :list_profiles, 0).()
         end,
         []
       )
@@ -286,7 +288,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfilesLive do
       safe_call(
         YellowDog.Netboot.Manifest.Store,
         fn ->
-          YellowDog.Netboot.Manifest.Store.default_profile_id()
+          Function.capture(YellowDog.Netboot.Manifest.Store, :default_profile_id, 0).()
         end,
         nil
       )
@@ -294,7 +296,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfilesLive do
     devices =
       safe_call(
         YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.list() end,
+        fn -> Function.capture(YellowDog.Netboot.Device.Registry, :list, 0).() end,
         []
       )
 

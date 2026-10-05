@@ -5,7 +5,10 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.DiscoveryLive do
   use YellowDog.ManagementUI.Redesign, :live_view
 
   import YellowDog.ManagementUI.Redesign.CsvHelper
-  import YellowDog.ManagementUI.Redesign.FormatHelper, only: [format_expiration: 1, format_time_ago: 1]
+
+  import YellowDog.ManagementUI.Redesign.FormatHelper,
+    only: [format_expiration: 1, format_time_ago: 1]
+
   import YellowDog.ManagementUI.Redesign.ServiceHelper
   import YellowDog.ManagementUI.Redesign.StringHelper, only: [downcase_contains?: 2]
 
@@ -49,7 +52,7 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.DiscoveryLive do
     service =
       safe_call(
         YellowDog.Mdns,
-        fn -> YellowDog.Mdns.get_discovered_service(service_id) end,
+        fn -> Function.capture(YellowDog.Mdns, :get_discovered_service, 1).(service_id) end,
         nil
       )
 
@@ -92,7 +95,11 @@ defmodule YellowDog.ManagementUI.Redesign.MdnsLive.DiscoveryLive do
   end
 
   defp list_discovered_services do
-    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_discovered_services() end, [])
+    safe_call(
+      YellowDog.Mdns,
+      fn -> Function.capture(YellowDog.Mdns, :list_discovered_services, 0).() end,
+      []
+    )
   end
 
   defp filter_services(search, type_filter) do

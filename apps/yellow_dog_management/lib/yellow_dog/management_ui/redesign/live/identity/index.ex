@@ -33,8 +33,8 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.Index do
         YellowDogIdentity,
         fn ->
           case format do
-            "sops" -> YellowDogIdentity.export_recipients(format: :sops)
-            _ -> YellowDogIdentity.export_recipients()
+            "sops" -> Function.capture(YellowDogIdentity, :export_recipients, 1).(format: :sops)
+            _ -> Function.capture(YellowDogIdentity, :export_recipients, 0).()
           end
         end,
         ""
@@ -51,7 +51,7 @@ defmodule YellowDog.ManagementUI.Redesign.IdentityLive.Index do
     stats =
       ServiceHelper.safe_call(
         YellowDogIdentity,
-        fn -> YellowDogIdentity.stats() end,
+        fn -> Function.capture(YellowDogIdentity, :stats, 0).() end,
         default_stats()
       )
 

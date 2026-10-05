@@ -47,7 +47,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ViewLive.Index do
   def handle_event("create_view", %{"view" => params}, socket) do
     with :ok <- ManagementSupport.mutable(socket) do
       result =
-        ServerManagement.dns_views_create(
+        Function.capture(ServerManagement, :dns_views_create, 3).(
           ManagementSupport.selected_id(socket),
           view_payload(params),
           ManagementSupport.command_options(nil)
@@ -67,7 +67,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ViewLive.Index do
       payload = params |> Map.put("view_name", name) |> view_payload()
 
       result =
-        ServerManagement.dns_views_update(
+        Function.capture(ServerManagement, :dns_views_update, 3).(
           ManagementSupport.selected_id(socket),
           payload,
           ManagementSupport.command_options(revision)
@@ -86,7 +86,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ViewLive.Index do
     with :ok <- ManagementSupport.mutable(socket),
          {:ok, revision} <- view_revision(socket.assigns.views, name) do
       result =
-        ServerManagement.dns_views_delete(
+        Function.capture(ServerManagement, :dns_views_delete, 3).(
           ManagementSupport.selected_id(socket),
           %{"view_name" => name},
           ManagementSupport.command_options(revision)
@@ -117,7 +117,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ViewLive.Index do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp load_views(socket, server_id) do
-    result = ServerManagement.dns_views_list(server_id)
+    result = Function.capture(ServerManagement, :dns_views_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Views",
@@ -183,7 +183,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.ViewLive.Index do
 
   defp put_resource(
          socket,
-         %ManagementResult{status: :ok, value: %{"resource" => resource}},
+         %{__struct__: ManagementResult, status: :ok, value: %{"resource" => resource}},
          previous_name
        ) do
     replaced_names = MapSet.new([resource["view_name"], previous_name])

@@ -77,7 +77,9 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolsLive do
   def handle_event("delete_pool", %{"pool-name" => pool_name}, socket) do
     case safe_call(
            YellowDog.Dhcpv4,
-           fn -> YellowDog.Dhcpv4.remove_pool(pool_name, force: false) end,
+           fn ->
+             Function.capture(YellowDog.Dhcpv4, :remove_pool, 2).(pool_name, force: false)
+           end,
            {:error, :service_unavailable}
          ) do
       :ok ->
@@ -106,7 +108,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolsLive do
   def handle_event("force_delete_pool", %{"pool-name" => pool_name}, socket) do
     case safe_call(
            YellowDog.Dhcpv4,
-           fn -> YellowDog.Dhcpv4.remove_pool(pool_name, force: true) end,
+           fn -> Function.capture(YellowDog.Dhcpv4, :remove_pool, 2).(pool_name, force: true) end,
            {:error, :service_unavailable}
          ) do
       :ok ->
@@ -152,11 +154,11 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolsLive do
         case mode do
           :create ->
             pool_config = build_pool_config(pool)
-            YellowDog.Dhcpv4.add_pool(pool_config)
+            Function.capture(YellowDog.Dhcpv4, :add_pool, 1).(pool_config)
 
           :edit ->
             pool_config = build_pool_config(pool)
-            YellowDog.Dhcpv4.update_pool(pool.name, pool_config)
+            Function.capture(YellowDog.Dhcpv4, :update_pool, 2).(pool.name, pool_config)
         end
       rescue
         e -> {:error, Exception.message(e)}
@@ -393,13 +395,13 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolsLive do
       case Process.whereis(YellowDog.Dhcpv4.LeaseManager) do
         nil ->
           # Service not running - load directly from PoolStore
-          case YellowDog.Dhcpv4.PoolStore.load_pools() do
+          case Function.capture(YellowDog.Dhcpv4.PoolStore, :load_pools, 0).() do
             {:ok, pools} -> pools
             {:error, _} -> []
           end
 
         _pid ->
-          YellowDog.Dhcpv4.LeaseManager.get_pools()
+          Function.capture(YellowDog.Dhcpv4.LeaseManager, :get_pools, 0).()
       end
     catch
       _, _ -> []
@@ -412,7 +414,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.PoolsLive do
 
   defp get_pool_stats(pool_name) do
     try do
-      case YellowDog.Dhcpv4.get_pool_stats(pool_name) do
+      case Function.capture(YellowDog.Dhcpv4, :get_pool_stats, 1).(pool_name) do
         {:ok, stats} -> stats
         _ -> default_stats()
       end

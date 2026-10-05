@@ -26,7 +26,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
         safe_call(
           YellowDog.Netboot.Device.Registry,
           fn ->
-            YellowDog.Netboot.Device.Registry.list()
+            Function.capture(YellowDog.Netboot.Device.Registry, :list, 0).()
             |> Enum.count(&(&1.profile_id == profile.id))
           end,
           0
@@ -294,7 +294,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
       result =
         safe_call(
           YellowDog.Netboot.Manifest.Store,
-          fn -> YellowDog.Netboot.Manifest.Store.put_profile(profile) end,
+          fn -> Function.capture(YellowDog.Netboot.Manifest.Store, :put_profile, 1).(profile) end,
           {:error, :unavailable}
         )
 
@@ -320,7 +320,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
     result =
       safe_call(
         YellowDog.Netboot.Manifest.Store,
-        fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
+        fn -> Function.capture(YellowDog.Netboot.Manifest.Store, :delete_profile, 1).(id) end,
         {:error, :service_unavailable}
       )
 
@@ -349,33 +349,35 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
   defp load_profile(%{"id" => id}) do
     case safe_call(
            YellowDog.Netboot.Manifest.Store,
-           fn -> YellowDog.Netboot.Manifest.Store.get_profile(id) end,
+           fn -> Function.capture(YellowDog.Netboot.Manifest.Store, :get_profile, 1).(id) end,
            {:error, :unavailable}
          ) do
       {:ok, profile} -> {:edit, profile, nil}
-      _ -> {:edit, %Profile{id: id, kernel: "", initrd: ""}, nil}
+      _ -> {:edit, struct!(Profile, id: id, kernel: "", initrd: ""), nil}
     end
   end
 
   defp load_profile(%{"clone" => source_id}) do
     case safe_call(
            YellowDog.Netboot.Manifest.Store,
-           fn -> YellowDog.Netboot.Manifest.Store.get_profile(source_id) end,
+           fn ->
+             Function.capture(YellowDog.Netboot.Manifest.Store, :get_profile, 1).(source_id)
+           end,
            {:error, :unavailable}
          ) do
       {:ok, profile} ->
         {:new, %{profile | id: "#{profile.id}-copy"}, source_id}
 
       _ ->
-        {:new, %Profile{id: "", kernel: "", initrd: ""}, nil}
+        {:new, struct!(Profile, id: "", kernel: "", initrd: ""), nil}
     end
   end
 
   defp load_profile(_params) do
-    {:new, %Profile{id: "", kernel: "", initrd: ""}, nil}
+    {:new, struct!(Profile, id: "", kernel: "", initrd: ""), nil}
   end
 
-  defp profile_to_form(%Profile{} = p) do
+  defp profile_to_form(%{__struct__: Profile} = p) do
     %{
       "id" => p.id || "",
       "description" => p.description || "",
@@ -415,7 +417,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
       |> maybe_put("slot_strategy", Map.get(params, "slot_strategy", ""))
       |> maybe_put("flake", Map.get(params, "flake", ""))
 
-    %Profile{
+    struct!(Profile,
       id: id,
       description: Map.get(params, "description"),
       kernel: Map.get(params, "kernel", ""),
@@ -427,7 +429,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
           if a in @valid_arches, do: [String.to_existing_atom(a)], else: []
         end),
       manifest: manifest
-    }
+    )
   end
 
   defp render_preview(form) do
@@ -462,7 +464,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetbootLive.ProfileEditorLive do
   defp load_indexed_files do
     case safe_call(
            YellowDog.Netboot.TFTP.FileIndex,
-           fn -> YellowDog.Netboot.TFTP.FileIndex.list() end,
+           fn -> Function.capture(YellowDog.Netboot.TFTP.FileIndex, :list, 0).() end,
            nil
          ) do
       nil -> nil

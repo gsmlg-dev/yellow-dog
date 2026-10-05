@@ -119,8 +119,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
   defp load_pools(socket) do
     server_id = socket.assigns.selected_server.id
     payload = %{"family" => ManagementSupport.family_wire(@family)}
-    status = ServerManagement.dhcp_status_get(server_id, payload)
-    pools_result = ServerManagement.dhcp_pools_list(server_id, payload)
+    status = Function.capture(ServerManagement, :dhcp_status_get, 2).(server_id, payload)
+    pools_result = Function.capture(ServerManagement, :dhcp_pools_list, 2).(server_id, payload)
     results = [status, pools_result]
     management_error = ManagementSupport.first_error(results)
 
@@ -158,13 +158,17 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
 
       result =
         if force? do
-          ServerManagement.dhcp_pools_force_delete(
+          Function.capture(ServerManagement, :dhcp_pools_force_delete, 3).(
             socket.assigns.selected_server.id,
             Map.put(payload, "force", true),
             opts
           )
         else
-          ServerManagement.dhcp_pools_delete(socket.assigns.selected_server.id, payload, opts)
+          Function.capture(ServerManagement, :dhcp_pools_delete, 3).(
+            socket.assigns.selected_server.id,
+            payload,
+            opts
+          )
         end
 
       finish_delete(socket, result, pool_id, force?)
@@ -175,7 +179,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
     end
   end
 
-  defp finish_delete(socket, %ManagementResult{status: :ok}, pool_id, force?) do
+  defp finish_delete(socket, %{__struct__: ManagementResult, status: :ok}, pool_id, force?) do
     message = if force?, do: "Pool force deleted successfully", else: "Pool deleted successfully"
 
     {:noreply,
@@ -187,7 +191,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
 
   defp finish_delete(
          socket,
-         %ManagementResult{status: :error, message: message},
+         %{__struct__: ManagementResult, status: :error, message: message},
          _pool_id,
          _force?
        ),
@@ -200,14 +204,14 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
       result =
         case mode do
           :create ->
-            ServerManagement.dhcp_pools_create(
+            Function.capture(ServerManagement, :dhcp_pools_create, 3).(
               socket.assigns.selected_server.id,
               pool_payload(pool),
               opts
             )
 
           :edit ->
-            ServerManagement.dhcp_pools_update(
+            Function.capture(ServerManagement, :dhcp_pools_update, 3).(
               socket.assigns.selected_server.id,
               pool_payload(pool),
               opts
@@ -234,7 +238,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
 
   defp finish_save(
          socket,
-         %ManagementResult{status: :ok, value: %{"resource" => resource}},
+         %{__struct__: ManagementResult, status: :ok, value: %{"resource" => resource}},
          mode
        ) do
     message =
@@ -251,8 +255,12 @@ defmodule YellowDog.ManagementUI.Redesign.Current.Dhcpv4Live.PoolsLive do
      |> put_flash(:info, message)}
   end
 
-  defp finish_save(socket, %ManagementResult{status: :error, message: message}, _mode),
-    do: {:noreply, put_flash(socket, :error, message)}
+  defp finish_save(
+         socket,
+         %{__struct__: ManagementResult, status: :error, message: message},
+         _mode
+       ),
+       do: {:noreply, put_flash(socket, :error, message)}
 
   defp pool_payload(pool) do
     %{

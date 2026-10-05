@@ -43,9 +43,9 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.Index do
 
   defp load_overview(socket) do
     server_id = socket.assigns.selected_server.id
-    services = ServerManagement.mdns_services_list(server_id)
-    discovery = ServerManagement.mdns_discovery_list(server_id)
-    cache = ServerManagement.mdns_cache_get(server_id)
+    services = Function.capture(ServerManagement, :mdns_services_list, 1).(server_id)
+    discovery = Function.capture(ServerManagement, :mdns_discovery_list, 1).(server_id)
+    cache = Function.capture(ServerManagement, :mdns_cache_get, 1).(server_id)
     results = [services, discovery, cache]
 
     assign(socket,
@@ -58,12 +58,13 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.Index do
     )
   end
 
-  defp items(%ManagementResult{status: :ok, value: %{"items" => items}}) when is_list(items),
-    do: items
+  defp items(%{__struct__: ManagementResult, status: :ok, value: %{"items" => items}})
+       when is_list(items),
+       do: items
 
   defp items(_result), do: []
 
-  defp cache_entries(%ManagementResult{status: :ok, value: %{"entries" => entries}})
+  defp cache_entries(%{__struct__: ManagementResult, status: :ok, value: %{"entries" => entries}})
        when is_list(entries),
        do: entries
 
@@ -71,7 +72,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.Index do
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error, message: message} -> message
+      %{__struct__: ManagementResult, status: :error, message: message} -> message
       _result -> nil
     end)
   end
@@ -79,7 +80,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.Index do
   defp latest_observed_at(results) do
     results
     |> Enum.flat_map(fn
-      %ManagementResult{observed_at: %DateTime{} = observed_at} -> [observed_at]
+      %{__struct__: ManagementResult, observed_at: %DateTime{} = observed_at} -> [observed_at]
       _result -> []
     end)
     |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)

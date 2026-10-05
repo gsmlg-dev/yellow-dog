@@ -194,7 +194,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
         # Prepend $ORIGIN so the zone parser knows the zone name
         zone_text = "$ORIGIN #{zone_name}.\n#{records_text}"
 
-        case YellowDog.Dns.Zone.Auth.import_zone_file(pid, zone_text) do
+        case Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(pid, zone_text) do
           {:ok, stats} ->
             count = Map.get(stats, :imported, 0)
 
@@ -308,7 +308,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
 
       # Build and add the new record
       record = build_record_from_validated(zone_pid, validated_record)
-      :ok = YellowDog.Dns.Zone.Auth.add_record(zone_pid, record)
+      :ok = Function.capture(YellowDog.Dns.Zone.Auth, :add_record, 2).(zone_pid, record)
 
       # Broadcast update
       Phoenix.PubSub.broadcast(
@@ -359,7 +359,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   end
 
   defp get_default_auth_zone_by_id(zone_id) do
-    with {:ok, zone} <- StoreZone.get_zone_by_id(zone_id),
+    with {:ok, zone} <- Function.capture(StoreZone, :get_zone_by_id, 1).(zone_id),
          @default_view_name <- Map.get(zone, :view_name),
          :auth <- Map.get(zone, :zone_type) do
       {:ok, zone}
@@ -383,7 +383,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
 
   defp get_zone_pid(view_name, zone_type, zone_name) do
     try do
-      case ZoneController.find_zone(view_name, zone_type, zone_name) do
+      case Function.capture(ZoneController, :find_zone, 3).(view_name, zone_type, zone_name) do
         {:ok, pid} -> pid
         :error -> nil
       end
@@ -403,11 +403,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   defp maybe_enqueue_current_cloud_zone_sync(socket) do
     %{view_name: view_name, zone_name: zone_name} = socket.assigns
 
-    with {:ok, zone} <- StoreZone.get_zone(view_name, zone_name),
+    with {:ok, zone} <- Function.capture(StoreZone, :get_zone, 2).(view_name, zone_name),
          true <- cloud_mirror_enabled?(Map.get(zone, :cloud_mirror)) do
-      task_key = Tasks.cloud_zone_task_key(view_name, zone_name)
+      task_key = Function.capture(Tasks, :cloud_zone_task_key, 2).(view_name, zone_name)
 
-      case Tasks.enqueue(task_key) do
+      case Function.capture(Tasks, :enqueue, 1).(task_key) do
         {:ok, _job} ->
           put_flash(socket, :info, "Queued Cloud DNS sync for #{zone_name}")
 
@@ -443,10 +443,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
 
   defp get_auth_zone_records(view_name, zone_type, zone_name) do
     try do
-      case ZoneController.find_zone(view_name, zone_type, zone_name) do
+      case Function.capture(ZoneController, :find_zone, 3).(view_name, zone_type, zone_name) do
         {:ok, pid} ->
           records =
-            YellowDog.Dns.Zone.Auth.get_all_records(pid)
+            Function.capture(YellowDog.Dns.Zone.Auth, :get_all_records, 1).(pid)
             |> Enum.map(fn record ->
               %{
                 name: format_record_name(record.name),
@@ -516,7 +516,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   def parse_bulk_preview(text, zone_name) do
     zone_text = "$ORIGIN #{zone_name}.\n#{text}"
 
-    case DNS.Zone.parse_zone_string(zone_text) do
+    case Function.capture(DNS.Zone, :parse_zone_string, 1).(zone_text) do
       {:ok, zone} ->
         records = zone.records || []
 
@@ -550,7 +550,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   end
 
   defp format_rrset_name(name) when is_binary(name), do: name
-  defp format_rrset_name(%DNS.Message.Domain{} = d), do: to_string(d)
+  defp format_rrset_name(%{__struct__: DNS.Message.Domain} = d), do: to_string(d)
   defp format_rrset_name(name), do: to_string(name)
 
   # ============================================================================
@@ -559,9 +559,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
 
   defp export_zone_bind(view_name, :auth, zone_name) do
     try do
-      case ZoneController.find_zone(view_name, :auth, zone_name) do
+      case Function.capture(ZoneController, :find_zone, 3).(view_name, :auth, zone_name) do
         {:ok, pid} ->
-          YellowDog.Dns.Zone.Auth.export_zone_file(pid)
+          Function.capture(YellowDog.Dns.Zone.Auth, :export_zone_file, 1).(pid)
 
         :error ->
           {:error, "Zone not found"}
@@ -622,11 +622,11 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   defp record_type_order(:ptr), do: 8
   defp record_type_order(_), do: 99
 
-  defp format_record_name(%DNS.Message.Domain{} = domain), do: to_string(domain)
+  defp format_record_name(%{__struct__: DNS.Message.Domain} = domain), do: to_string(domain)
   defp format_record_name(name) when is_binary(name), do: name
   defp format_record_name(name), do: to_string(name)
 
-  defp normalize_record_type(%DNS.ResourceRecordType{} = type) do
+  defp normalize_record_type(%{__struct__: DNS.ResourceRecordType} = type) do
     type
     |> to_string()
     |> String.downcase()
@@ -675,7 +675,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   defp format_ip_address(rdata), do: to_string(rdata)
 
   defp format_domain(%{name: name}), do: to_string(name)
-  defp format_domain(%DNS.Message.Domain{} = domain), do: to_string(domain)
+  defp format_domain(%{__struct__: DNS.Message.Domain} = domain), do: to_string(domain)
   defp format_domain(name) when is_binary(name), do: name
   defp format_domain(rdata), do: to_string(rdata)
 
@@ -702,7 +702,7 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   defp format_srv(rdata), do: to_string(rdata)
 
   defp find_auth_zone(view_name, :auth, zone_name) do
-    case ZoneController.find_zone(view_name, :auth, zone_name) do
+    case Function.capture(ZoneController, :find_zone, 3).(view_name, :auth, zone_name) do
       {:ok, pid} -> {:ok, pid}
       :error -> {:error, "Authoritative zone not found: #{zone_name}"}
     end
@@ -713,9 +713,9 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   end
 
   defp detect_record_format(pid) do
-    case YellowDog.Dns.Zone.Auth.get_all_records(pid) do
-      [%DNS.Message.Record{} | _] -> :dns_message_record
-      [%DNS.Zone.Parser.ResourceRecord{} | _] -> :parser_record
+    case Function.capture(YellowDog.Dns.Zone.Auth, :get_all_records, 1).(pid) do
+      [%{__struct__: DNS.Message.Record} | _] -> :dns_message_record
+      [%{__struct__: DNS.Zone.Parser.ResourceRecord} | _] -> :parser_record
       [%{rdata: _} | _] -> :map_record
       _ -> :dns_message_record
     end
@@ -728,17 +728,17 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   end
 
   defp build_record_struct(:dns_message_record, name, type, ttl, rdata) do
-    DNS.Message.Record.new(name, type, :in, ttl, rdata)
+    Function.capture(DNS.Message.Record, :new, 5).(name, type, :in, ttl, rdata)
   end
 
   defp build_record_struct(:parser_record, name, type, ttl, rdata) do
-    %DNS.Zone.Parser.ResourceRecord{
+    struct!(DNS.Zone.Parser.ResourceRecord,
       name: name,
       ttl: ttl,
       class: "IN",
       type: String.upcase(to_string(type)),
       rdata: rdata
-    }
+    )
   end
 
   defp build_record_struct(:map_record, name, type, ttl, rdata) do
@@ -748,6 +748,10 @@ defmodule YellowDog.ManagementUI.Redesign.DnsLive.RrLive.Index do
   defp remove_existing_record(_pid, %{name: nil}), do: :ok
 
   defp remove_existing_record(pid, %{name: name, type: type}) do
-    YellowDog.Dns.Zone.Auth.remove_record(pid, name, normalize_record_type(type))
+    Function.capture(YellowDog.Dns.Zone.Auth, :remove_record, 3).(
+      pid,
+      name,
+      normalize_record_type(type)
+    )
   end
 end

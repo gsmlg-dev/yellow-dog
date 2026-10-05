@@ -9,17 +9,23 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
     if Phoenix.LiveView.connected?(socket) and
          socket.assigns[:subscribed_server_id] != server_id do
       if old_id = socket.assigns[:subscribed_server_id] do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:server:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:server:#{server_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:server:#{server_id}"
+      )
     end
 
     Phoenix.Component.assign(socket, :subscribed_server_id, server_id)
   end
 
   def refresh_selected_server(socket, server_id) do
-    case ManagementCore.get_server(server_id) do
+    case Function.capture(ManagementCore, :get_server, 1).(server_id) do
       {:ok, server} ->
         Phoenix.Component.assign(socket,
           selected_server: server,
@@ -46,32 +52,40 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
     ]
   end
 
-  def items(%ManagementResult{status: :ok, value: %{"items" => items}}) when is_list(items),
-    do: items
+  def items(%{__struct__: ManagementResult, status: :ok, value: %{"items" => items}})
+      when is_list(items),
+      do: items
 
   def items(_result), do: []
 
-  def value(%ManagementResult{status: :ok, value: value}, default),
+  def value(%{__struct__: ManagementResult, status: :ok, value: value}, default),
     do: if(is_nil(value), do: default, else: value)
 
   def value(_result, default), do: default
 
-  def error(%ManagementResult{status: :error} = result), do: result
+  def error(%{__struct__: ManagementResult, status: :error} = result), do: result
   def error(_result), do: nil
 
-  def cached?(%ManagementResult{source: :cache}), do: true
+  def cached?(%{__struct__: ManagementResult, source: :cache}), do: true
   def cached?(_result), do: false
 
-  def cached_observed_at(%ManagementResult{source: :cache, observed_at: observed_at}, _fallback),
-    do: observed_at
+  def cached_observed_at(
+        %{__struct__: ManagementResult, source: :cache, observed_at: observed_at},
+        _fallback
+      ),
+      do: observed_at
 
   def cached_observed_at(_result, fallback), do: fallback
 
-  def finish(socket, %ManagementResult{status: :ok}, message),
+  def finish(socket, %{__struct__: ManagementResult, status: :ok}, message),
     do: LiveView.put_flash(socket, :info, message)
 
-  def finish(socket, %ManagementResult{status: :error, message: message}, _success_message),
-    do: LiveView.put_flash(socket, :error, message)
+  def finish(
+        socket,
+        %{__struct__: ManagementResult, status: :error, message: message},
+        _success_message
+      ),
+      do: LiveView.put_flash(socket, :error, message)
 
   def replace(items, %{"host_id" => id} = replacement) do
     Enum.map(items, fn
@@ -92,7 +106,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementCompone
 
   use YellowDog.ManagementUI.Redesign, :html
 
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementSupport
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
 
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil
@@ -154,8 +168,8 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.Index do
 
   use YellowDog.ManagementUI.Redesign, :live_view
 
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementComponents
-  alias YellowDog.ManagementUI.Redesign.IdentityLive.ManagementSupport
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementComponents
+  alias YellowDog.ManagementUI.Redesign.Current.IdentityLive.ManagementSupport
   alias YellowDog.ManagementUI.Redesign.Layouts
   alias YellowDog.ManagementUI.Redesign.ServerManagement
   alias YellowDog.ManagementUI.Redesign.ServicePaths
@@ -261,7 +275,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.IdentityLive.Index do
   end
 
   defp load_hosts(socket, server_id) do
-    result = ServerManagement.identity_hosts_list(server_id)
+    result = Function.capture(ServerManagement, :identity_hosts_list, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — Identity",

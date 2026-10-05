@@ -11,13 +11,13 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.InterfacesLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: NetmanRegistry.subscribe()
+    if connected?(socket), do: Function.capture(NetmanRegistry, :subscribe, 0).()
     {:ok, assign(socket, page_title: "Interfaces", selected: nil)}
   end
 
   @impl true
   def handle_params(%{"node_id" => node_id}, _uri, socket) do
-    case NetmanRegistry.get(node_id) do
+    case Function.capture(NetmanRegistry, :get, 1).(node_id) do
       {:ok, client} ->
         {:noreply,
          assign(socket,
@@ -255,7 +255,7 @@ defmodule YellowDog.ManagementUI.Redesign.NetmanLive.InterfacesLive do
   @impl true
   def handle_info({event, %{node_id: node_id}}, socket)
       when event in [:netman_joined, :netman_updated] and node_id == socket.assigns.node_id do
-    case NetmanRegistry.get(node_id) do
+    case Function.capture(NetmanRegistry, :get, 1).(node_id) do
       {:ok, client} ->
         {:noreply, assign(socket, client: client, interfaces: client.interfaces)}
 

@@ -85,7 +85,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.DnsLive.MetricsLive do
   end
 
   defp load_metrics(socket, server_id) do
-    result = ServerManagement.dns_metrics_get(server_id)
+    result = Function.capture(ServerManagement, :dns_metrics_get, 1).(server_id)
 
     assign(socket,
       page_title: "#{socket.assigns.selected_server.name || server_id} — DNS Metrics",

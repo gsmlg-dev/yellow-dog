@@ -53,7 +53,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.MonitorLive do
     with true <- socket.assigns.commands_enabled?,
          revision when is_binary(revision) <- socket.assigns.cache_revision do
       result =
-        ServerManagement.mdns_cache_clear(
+        Function.capture(ServerManagement, :mdns_cache_clear, 3).(
           socket.assigns.selected_server.id,
           %{},
           expected_revision: revision,
@@ -61,13 +61,13 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.MonitorLive do
         )
 
       case result do
-        %ManagementResult{status: :ok, value: %{"cleared_entries" => _count}} ->
+        %{__struct__: ManagementResult, status: :ok, value: %{"cleared_entries" => _count}} ->
           {:noreply,
            socket
            |> assign(cache_entries: [], cache_revision: cache_revision([]))
            |> put_flash(:info, "Cache cleared")}
 
-        %ManagementResult{status: :error, message: message} ->
+        %{__struct__: ManagementResult, status: :error, message: message} ->
           {:noreply, put_flash(socket, :error, message)}
       end
     else
@@ -93,9 +93,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.MonitorLive do
     server_id = socket.assigns.selected_server.id
 
     query_result =
-      ServerManagement.mdns_monitor_list(server_id, %{"limit" => socket.assigns.limit})
+      Function.capture(ServerManagement, :mdns_monitor_list, 2).(server_id, %{
+        "limit" => socket.assigns.limit
+      })
 
-    cache_result = ServerManagement.mdns_cache_get(server_id)
+    cache_result = Function.capture(ServerManagement, :mdns_cache_get, 1).(server_id)
     queries = result_items(query_result)
     cache_entries = cache_entries(cache_result)
     results = [query_result, cache_result]
@@ -111,31 +113,31 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.MonitorLive do
     )
   end
 
-  defp result_items(%ManagementResult{status: :ok, value: %{"items" => items}})
+  defp result_items(%{__struct__: ManagementResult, status: :ok, value: %{"items" => items}})
        when is_list(items),
        do: items
 
   defp result_items(_result), do: []
 
-  defp cache_entries(%ManagementResult{status: :ok, value: %{"entries" => entries}})
+  defp cache_entries(%{__struct__: ManagementResult, status: :ok, value: %{"entries" => entries}})
        when is_list(entries),
        do: entries
 
   defp cache_entries(_result), do: []
 
   defp cache_revision(entries) do
-    case Digest.calculate(%{"entries" => entries}) do
+    case Function.capture(Digest, :calculate, 1).(%{"entries" => entries}) do
       {:ok, revision} -> revision
       {:error, _error} -> nil
     end
   end
 
-  defp success?(%ManagementResult{status: :ok}), do: true
+  defp success?(%{__struct__: ManagementResult, status: :ok}), do: true
   defp success?(_result), do: false
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
@@ -143,7 +145,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.MdnsLive.MonitorLive do
   defp latest_observed_at(results) do
     results
     |> Enum.flat_map(fn
-      %ManagementResult{observed_at: %DateTime{} = observed_at} -> [observed_at]
+      %{__struct__: ManagementResult, observed_at: %DateTime{} = observed_at} -> [observed_at]
       _result -> []
     end)
     |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)

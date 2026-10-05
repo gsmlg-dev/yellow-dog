@@ -36,7 +36,12 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
   @impl true
   def handle_event("connection_state", params, socket) do
     payload = connection_ref(params)
-    result = NetmanManagement.network_connection_state_get(selected_id(socket), payload)
+
+    result =
+      Function.capture(NetmanManagement, :network_connection_state_get, 2).(
+        selected_id(socket),
+        payload
+      )
 
     {:noreply,
      socket
@@ -47,7 +52,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
   def handle_event("activate_connection", params, socket) do
     with :ok <- mutable(socket) do
       result =
-        NetmanManagement.connections_activate(
+        Function.capture(NetmanManagement, :connections_activate, 3).(
           selected_id(socket),
           connection_ref(params),
           command_options(params)
@@ -62,7 +67,7 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
   def handle_event("deactivate_connection", params, socket) do
     with :ok <- mutable(socket) do
       result =
-        NetmanManagement.connections_deactivate(
+        Function.capture(NetmanManagement, :connections_deactivate, 3).(
           selected_id(socket),
           connection_ref(params),
           command_options(params)
@@ -280,11 +285,11 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
   end
 
   defp load_interfaces(socket, netman_id) do
-    mode_result = NetmanManagement.runtime_apply_mode_get(netman_id)
-    links_result = NetmanManagement.network_links_list(netman_id)
-    addresses_result = NetmanManagement.network_addresses_list(netman_id)
-    routes_result = NetmanManagement.network_routes_list(netman_id)
-    profiles_result = NetmanManagement.profiles_list(netman_id)
+    mode_result = Function.capture(NetmanManagement, :runtime_apply_mode_get, 1).(netman_id)
+    links_result = Function.capture(NetmanManagement, :network_links_list, 1).(netman_id)
+    addresses_result = Function.capture(NetmanManagement, :network_addresses_list, 1).(netman_id)
+    routes_result = Function.capture(NetmanManagement, :network_routes_list, 1).(netman_id)
+    profiles_result = Function.capture(NetmanManagement, :profiles_list, 1).(netman_id)
     results = [mode_result, links_result, addresses_result, routes_result, profiles_result]
     apply_mode = mode_result |> value(%{}) |> Map.get("mode")
 
@@ -321,19 +326,19 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
     ]
   end
 
-  defp finish(socket, %ManagementResult{status: :ok} = result, message) do
+  defp finish(socket, %{__struct__: ManagementResult, status: :ok} = result, message) do
     socket
     |> assign(connection_result: result)
     |> put_flash(:info, message)
   end
 
-  defp finish(socket, %ManagementResult{} = result, _message) do
+  defp finish(socket, %{__struct__: ManagementResult} = result, _message) do
     socket
     |> assign(connection_result: result)
     |> finish_error(result)
   end
 
-  defp finish_error(socket, %ManagementResult{status: :error, message: message}),
+  defp finish_error(socket, %{__struct__: ManagementResult, status: :error, message: message}),
     do: put_flash(socket, :error, message)
 
   defp finish_error(socket, _result), do: socket
@@ -341,17 +346,23 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
   defp subscribe(socket, netman_id) do
     if connected?(socket) and socket.assigns.subscribed_netman_id != netman_id do
       if old_id = socket.assigns.subscribed_netman_id do
-        Phoenix.PubSub.unsubscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{old_id}")
+        Phoenix.PubSub.unsubscribe(
+          YellowDog.ManagementUI.Redesign.PubSub,
+          "management:netman:#{old_id}"
+        )
       end
 
-      Phoenix.PubSub.subscribe(YellowDog.ManagementUI.Redesign.PubSub, "management:netman:#{netman_id}")
+      Phoenix.PubSub.subscribe(
+        YellowDog.ManagementUI.Redesign.PubSub,
+        "management:netman:#{netman_id}"
+      )
     end
 
     assign(socket, :subscribed_netman_id, netman_id)
   end
 
   defp refresh_selected_netman(socket, netman_id) do
-    case ManagementCore.get_netman(netman_id) do
+    case Function.capture(ManagementCore, :get_netman, 1).(netman_id) do
       {:ok, netman} ->
         assign(socket,
           selected_netman: netman,
@@ -375,27 +386,27 @@ defmodule YellowDog.ManagementUI.Redesign.Current.NetmanLive.InterfacesLive do
 
   defp routes_for(routes, link), do: Enum.filter(routes, &(&1["link_id"] == link["link_id"]))
 
-  defp value(%ManagementResult{status: :ok, value: value}, _default), do: value
+  defp value(%{__struct__: ManagementResult, status: :ok, value: value}, _default), do: value
   defp value(_result, default), do: default
   defp items(result), do: result |> value(%{}) |> Map.get("items", [])
 
   defp first_error(results) do
     Enum.find_value(results, fn
-      %ManagementResult{status: :error} = result -> result
+      %{__struct__: ManagementResult, status: :error} = result -> result
       _result -> nil
     end)
   end
 
   defp cached_observed_at(results, fallback) do
     Enum.find_value(results, fallback, fn
-      %ManagementResult{source: :cache, observed_at: observed_at} -> observed_at
+      %{__struct__: ManagementResult, source: :cache, observed_at: observed_at} -> observed_at
       _result -> nil
     end)
   end
 
-  defp error_result?(%ManagementResult{status: :error}), do: true
+  defp error_result?(%{__struct__: ManagementResult, status: :error}), do: true
   defp error_result?(_result), do: false
-  defp successful_result?(%ManagementResult{status: :ok}), do: true
+  defp successful_result?(%{__struct__: ManagementResult, status: :ok}), do: true
   defp successful_result?(_result), do: false
 
   defp display(nil), do: "-"

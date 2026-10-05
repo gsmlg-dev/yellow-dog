@@ -13,7 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
       rel="stylesheet"
     />
-    {DuskmoonBundler.Preload.tags(
+    {Function.capture(DuskmoonBundler.Preload, :tags, 3).(
       YellowDog.ManagementUI.Redesign.Endpoint,
       "/assets/js/app.js",
       profile: :yellow_dog_management
@@ -22,7 +22,7 @@
       phx-track-static
       rel="stylesheet"
       href={
-        DuskmoonBundler.static_path(
+        Function.capture(DuskmoonBundler, :static_path, 3).(
           YellowDog.ManagementUI.Redesign.Endpoint,
           "/assets/css/app.css",
           profile: :yellow_dog_management
@@ -34,7 +34,7 @@
       phx-track-static
       type="module"
       src={
-        DuskmoonBundler.static_path(
+        Function.capture(DuskmoonBundler, :static_path, 3).(
           YellowDog.ManagementUI.Redesign.Endpoint,
           "/assets/js/app.js",
           profile: :yellow_dog_management

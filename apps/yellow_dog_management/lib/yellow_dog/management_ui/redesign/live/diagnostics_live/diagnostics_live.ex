@@ -172,7 +172,7 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive do
     socket =
       socket
       |> update_tab(:dns, fn tab -> %{tab | loading: true, form: params} end)
-      |> start_async(:dns_query, fn -> DnsClient.query(params) end)
+      |> start_async(:dns_query, fn -> Function.capture(DnsClient, :query, 1).(params) end)
 
     {:noreply, socket}
   end
@@ -190,7 +190,7 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive do
     socket =
       socket
       |> update_tab(:mdns, fn tab -> %{tab | loading: true, form: params} end)
-      |> start_async(:mdns_query, fn -> MdnsClient.query(params) end)
+      |> start_async(:mdns_query, fn -> Function.capture(MdnsClient, :query, 1).(params) end)
 
     {:noreply, socket}
   end
@@ -208,7 +208,7 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive do
     socket =
       socket
       |> update_tab(:dhcpv4, fn tab -> %{tab | loading: true, form: params} end)
-      |> start_async(:dhcpv4_query, fn -> Dhcpv4Client.query(params) end)
+      |> start_async(:dhcpv4_query, fn -> Function.capture(Dhcpv4Client, :query, 1).(params) end)
 
     {:noreply, socket}
   end
@@ -226,7 +226,7 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive do
     socket =
       socket
       |> update_tab(:dhcpv6, fn tab -> %{tab | loading: true, form: params} end)
-      |> start_async(:dhcpv6_query, fn -> Dhcpv6Client.query(params) end)
+      |> start_async(:dhcpv6_query, fn -> Function.capture(Dhcpv6Client, :query, 1).(params) end)
 
     {:noreply, socket}
   end

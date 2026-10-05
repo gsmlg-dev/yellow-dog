@@ -163,12 +163,12 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive.Components.ResultDispl
   def format_struct(nil), do: "(empty)"
 
   # DNS messages have a nice to_string implementation
-  def format_struct(%Message{} = message) do
+  def format_struct(%{__struct__: Message} = message) do
     to_string(message)
   end
 
   # DHCPv4 messages have a nice to_string implementation
-  def format_struct(%DHCPv4Message{} = message) do
+  def format_struct(%{__struct__: DHCPv4Message} = message) do
     to_string(message)
   end
 

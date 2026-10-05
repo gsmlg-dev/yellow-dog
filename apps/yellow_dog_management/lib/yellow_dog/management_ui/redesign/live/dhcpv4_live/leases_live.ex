@@ -65,7 +65,7 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.LeasesLive do
   def handle_event("release_lease", %{"mac" => mac}, socket) do
     mac_binary = parse_mac_string(mac)
 
-    case YellowDog.Dhcpv4.release_lease(mac_binary) do
+    case Function.capture(YellowDog.Dhcpv4, :release_lease, 1).(mac_binary) do
       :ok ->
         {:noreply,
          socket
@@ -116,7 +116,11 @@ defmodule YellowDog.ManagementUI.Redesign.Dhcpv4Live.LeasesLive do
   end
 
   defp get_all_leases do
-    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.list_leases() end, [])
+    safe_call(
+      YellowDog.Dhcpv4,
+      fn -> Function.capture(YellowDog.Dhcpv4, :list_leases, 0).() end,
+      []
+    )
   end
 
   defp get_unique_pools(leases) do
