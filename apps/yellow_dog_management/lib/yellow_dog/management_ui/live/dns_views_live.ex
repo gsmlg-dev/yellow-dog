@@ -16,10 +16,13 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
      assign(socket,
        page_title: "DNS Views",
        worker: nil,
+       workers: [],
        service: nil,
        services: [],
        views: [],
        scope_params: %{},
+       dirty: false,
+       pending_scope: nil,
        editing: nil,
        deleting: nil,
        error: nil,
@@ -47,6 +50,31 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   def handle_event("cancel", _params, socket),
     do: {:noreply, socket |> clear_editor() |> reset_form()}
 
+  def handle_event("select_worker", %{"scope" => %{"worker_id" => worker_id}}, socket) do
+    request_scope(socket, %{"server_id" => worker_id})
+  end
+
+  def handle_event("select_service", %{"id" => service_id}, socket) do
+    if socket.assigns.worker do
+      request_scope(socket, %{
+        "server_id" => socket.assigns.worker["id"],
+        "service_id" => service_id
+      })
+    else
+      failure(socket, "Select a Worker first")
+    end
+  end
+
+  def handle_event("confirm_scope", _params, socket) do
+    case socket.assigns.pending_scope do
+      nil -> {:noreply, socket}
+      params -> switch_scope(socket, params)
+    end
+  end
+
+  def handle_event("cancel_scope", _params, socket),
+    do: {:noreply, assign(socket, pending_scope: nil)}
+
   def handle_event("edit", %{"id" => id}, socket) do
     case scoped_view(socket, id) do
       {:ok, view} ->
@@ -71,7 +99,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
     if Countries.valid?(code) and not default_edit?(socket) do
       selected = socket.assigns.selected_countries
       updated = if code in selected, do: List.delete(selected, code), else: [code | selected]
-      {:noreply, assign(socket, selected_countries: Enum.sort(updated), error: nil)}
+      {:noreply, assign(socket, selected_countries: Enum.sort(updated), error: nil, dirty: true)}
     else
       failure(socket, "Select a valid country for a non-default View")
     end
@@ -218,20 +246,75 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
     socket =
       socket
       |> clear_editor()
-      |> assign(worker: nil, service: nil, services: [], views: [], scope_params: params)
+      |> assign(
+        worker: nil,
+        workers: Domain.list_workers(),
+        service: nil,
+        services: [],
+        views: [],
+        scope_params: params
+      )
 
+    if is_nil(params["server_id"]) do
+      socket
+    else
+      load_worker(socket, params)
+    end
+  end
+
+  defp load_worker(socket, params) do
     with true <- ServicePaths.valid_server_id?(params["server_id"]),
          {:ok, worker} <- Domain.get_worker(params["server_id"]) do
       services = Enum.filter(worker["services"], &(&1["type"] == "dns"))
       socket = assign(socket, worker: worker, services: services)
 
       case params do
-        %{"service_id" => service_id} -> load_service(socket, service_id)
-        _ -> socket
+        %{"service_id" => service_id} ->
+          load_service(socket, service_id)
+
+        _ ->
+          case services do
+            [service] -> load_service(socket, service["id"])
+            _ -> socket
+          end
       end
     else
       false -> assign(socket, error: "Invalid Worker identifier")
       {:error, error} -> assign(socket, error: message(error))
+    end
+  end
+
+  defp request_scope(socket, params) do
+    same_worker = socket.assigns.worker && socket.assigns.worker["id"] == params["server_id"]
+
+    same_service =
+      is_nil(params["service_id"]) ||
+        (socket.assigns.service && socket.assigns.service["id"] == params["service_id"])
+
+    cond do
+      same_worker && same_service -> {:noreply, socket}
+      socket.assigns.dirty -> {:noreply, assign(socket, pending_scope: params)}
+      true -> switch_scope(socket, params)
+    end
+  end
+
+  defp switch_scope(socket, params) do
+    with {:ok, worker} <- Domain.get_worker(params["server_id"]),
+         true <-
+           is_nil(params["service_id"]) ||
+             Enum.any?(
+               worker["services"],
+               &(&1["id"] == params["service_id"] and &1["type"] == "dns")
+             ) do
+      path =
+        if params["service_id"],
+          do: ServicePaths.server_path(worker["id"], {:dns_views_service, params["service_id"]}),
+          else: ServicePaths.server_path(worker["id"], :dns_views)
+
+      {:noreply, socket |> clear_editor() |> push_patch(to: path)}
+    else
+      false -> failure(socket, "DNS Service not found for the selected Worker")
+      {:error, error} -> failure(socket, error)
     end
   end
 
@@ -277,6 +360,8 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   defp clear_editor(socket) do
     assign(socket,
       editing: nil,
+      dirty: false,
+      pending_scope: nil,
       deleting: nil,
       error: nil,
       field_errors: %{},
@@ -307,6 +392,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
     assign(socket,
       form: to_form(fields, as: "view"),
+      dirty: socket.assigns.dirty || fields != socket.assigns.form.params,
       error: nil,
       country_search: bounded_text(payload["country_search"], socket.assigns.country_search),
       country_action: bounded_text(payload["country_action"], socket.assigns.country_action),
@@ -594,17 +680,43 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
           Desired configuration only. Views do not execute DNS, enforce client rules or change Worker exports.
         </p>
         <p :if={@error} id="dns-view-error" class="text-error" role="alert">{@error}</p>
+        <form id="dns-view-worker-selector" phx-change="select_worker">
+          <label class="management-field">
+            <span>Worker</span>
+            <select class="select select-bordered" name="scope[worker_id]">
+              <option value="" selected={is_nil(@worker)}>Select a logical Worker</option>
+              <option
+                :for={worker <- @workers}
+                value={worker["id"]}
+                selected={@worker && @worker["id"] == worker["id"]}
+              >
+                {worker["name"]} ({worker["id"]})
+              </option>
+            </select>
+          </label>
+        </form>
+        <p :if={@workers == []}>Register a logical Worker before configuring a DNS View.</p>
+        <section :if={@pending_scope} id="dns-view-unsaved-scope" role="alert">
+          <p>Discard unsaved View changes to change Worker or DNS Service?</p>
+          <button class="btn btn-error" phx-click="confirm_scope">Discard changes and switch scope</button>
+          <button class="btn btn-secondary" phx-click="cancel_scope">Keep editing</button>
+        </section>
         <p :if={@worker}>Worker: {@worker["name"]} ({@worker["id"]})</p>
+        <p :if={@service}>DNS Service: {@service["instance_id"]} ({@service["id"]})</p>
         <div :if={@worker} id="dns-view-service-selector" class="management-actions">
-          <p>Select a DNS Service explicitly, even when only one is configured.</p>
-          <p :if={@services == []}>No DNS Services configured</p>
-          <.link
+          <p :if={length(@services) > 1}>Select a DNS Service explicitly.</p>
+          <p :if={@services == []}>
+            No DNS Services configured.
+            <.link navigate={ServicePaths.server_path(@worker["id"], :dashboard)}>Configure a DNS Service</.link>
+          </p>
+          <button
             :for={service <- @services}
-            patch={ServicePaths.server_path(@worker["id"], {:dns_views_service, service["id"]})}
+            phx-click="select_service"
+            phx-value-id={service["id"]}
             class="btn btn-secondary"
             data-service-id={service["id"]}
             aria-current={if @service && @service["id"] == service["id"], do: "page", else: nil}
-          >{service["instance_id"]} ({service["id"]})</.link>
+          >{service["instance_id"]} ({service["id"]})</button>
         </div>
         <div :if={@service} class="management-actions">
           <button id="dns-view-refresh" type="button" class="btn btn-ghost" phx-click="refresh">Refresh</button>

@@ -12,12 +12,18 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       workers: Domain.list_workers(),
+       workers: assignment_workers(),
        zones: [],
        filter: "",
        deleting: nil,
        zone: nil,
        versions: [],
+       assignment_zone_id: nil,
+       assignment_rows: [],
+       assignment_token: nil,
+       assignment_worker_revisions: %{},
+       assignments_dirty: false,
+       assignment_error: nil,
        rows: [],
        validation_errors: [],
        zone_valid?: false,
@@ -60,10 +66,12 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     case socket.assigns.live_action do
       :index ->
-        assign(socket, page_title: "DNS Zones")
+        socket |> reset_assignments() |> assign(page_title: "DNS Zones")
 
       :new ->
-        assign(socket,
+        socket
+        |> reset_assignments()
+        |> assign(
           page_title: "New DNS Zone",
           rows: [new_record("SOA"), new_record("NS")],
           form: to_form(%{"name" => ""}, as: "zone")
@@ -133,6 +141,95 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
   def handle_event("validate", %{"zone" => params}, socket) do
     {:noreply, assign_form(socket, params, record_rows(params))}
+  end
+
+  def handle_event("add_assignment_worker", %{"id" => worker_id}, socket) do
+    worker = Enum.find(socket.assigns.workers, &(&1["id"] == worker_id))
+    services = if worker, do: dns_services(worker), else: []
+
+    cond do
+      is_nil(socket.assigns.zone) || socket.assigns.versions == [] ->
+        {:noreply,
+         assign(socket, assignment_error: "Confirm a Zone version before assigning it.")}
+
+      services == [] ->
+        {:noreply,
+         assign(socket,
+           assignment_error: "Configure a DNS Service for the selected Worker first."
+         )}
+
+      true ->
+        service_id =
+          case services do
+            [service] -> service["id"]
+            _ -> ""
+          end
+
+        row = %{
+          "key" => Ecto.UUID.generate(),
+          "worker_id" => worker_id,
+          "service_id" => service_id,
+          "resource_version_id" => hd(socket.assigns.versions)["id"]
+        }
+
+        {:noreply,
+         assign(socket,
+           assignment_rows: socket.assigns.assignment_rows ++ [row],
+           assignments_dirty: true,
+           assignment_error: nil
+         )}
+    end
+  end
+
+  def handle_event("remove_assignment_row", %{"key" => key}, socket) do
+    rows = Enum.reject(socket.assigns.assignment_rows, &(&1["key"] == key))
+
+    {:noreply,
+     assign(socket, assignment_rows: rows, assignments_dirty: true, assignment_error: nil)}
+  end
+
+  def handle_event("validate_assignments", %{"assignments" => params}, socket)
+      when is_map(params) do
+    {:noreply, retain_assignments(socket, params)}
+  end
+
+  def handle_event("save_assignments", params, socket) do
+    socket = retain_assignments(socket, params["assignments"] || %{})
+
+    if socket.assigns.zone do
+      payload = %{
+        "zone_id" => socket.assigns.zone["id"],
+        "expected_assignment_token" => socket.assigns.assignment_token,
+        "expected_worker_revisions" => socket.assigns.assignment_worker_revisions,
+        "assignments" =>
+          Enum.map(
+            socket.assigns.assignment_rows,
+            &Map.take(&1, ~w(worker_id service_id resource_version_id))
+          )
+      }
+
+      case mutate("set_zone_assignments", payload) do
+        {:ok, _result} ->
+          {:noreply,
+           socket
+           |> load_assignments(socket.assigns.zone["id"])
+           |> put_flash(:info, "Worker assignments saved. No target was prepared or delivered.")}
+
+        {:error, error} ->
+          {:noreply, assign(socket, assignment_error: error[:message] || error["message"])}
+      end
+    else
+      {:noreply,
+       assign(socket, assignment_error: "Save and confirm a Zone version before assigning it.")}
+    end
+  end
+
+  def handle_event("refresh_assignments", _params, socket) do
+    if socket.assigns.zone do
+      {:noreply, load_assignments(socket, socket.assigns.zone["id"])}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_record", _params, socket) do
@@ -275,14 +372,76 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     do: Domain.mutate(operation, params, "operator", Ecto.UUID.generate())
 
   defp load_zone(socket, zone) do
-    socket
-    |> assign(
-      page_title: "Edit DNS Zone",
-      zone: zone,
-      versions: Domain.list_versions(zone["id"])
-    )
-    |> assign_form(%{"name" => zone["name"]}, zone["records"])
+    preserve_assignments =
+      socket.assigns.assignment_zone_id == zone["id"] && socket.assigns.assignments_dirty
+
+    socket =
+      socket
+      |> assign(
+        page_title: "Edit DNS Zone",
+        zone: zone,
+        versions: Domain.list_versions(zone["id"])
+      )
+      |> assign_form(%{"name" => zone["name"]}, zone["records"])
+
+    if preserve_assignments, do: socket, else: load_assignments(socket, zone["id"])
   end
+
+  defp load_assignments(socket, zone_id) do
+    case Domain.get_zone_assignments(zone_id) do
+      {:ok, snapshot} ->
+        rows = Enum.map(snapshot["assignments"], &Map.put(&1, "key", &1["id"]))
+
+        assign(socket,
+          workers: assignment_workers(),
+          assignment_zone_id: zone_id,
+          assignment_rows: rows,
+          assignment_token: snapshot["assignment_token"],
+          assignment_worker_revisions: snapshot["worker_revisions"],
+          assignments_dirty: false,
+          assignment_error: nil
+        )
+
+      {:error, error} ->
+        assign(socket, assignment_error: error[:message] || error["message"])
+    end
+  end
+
+  defp retain_assignments(socket, params) do
+    rows =
+      Enum.map(socket.assigns.assignment_rows, fn row ->
+        Map.merge(row, Map.take(params[row["key"]] || %{}, ~w(service_id resource_version_id)))
+      end)
+
+    assign(socket,
+      assignment_rows: rows,
+      assignments_dirty:
+        socket.assigns.assignments_dirty || rows != socket.assigns.assignment_rows,
+      assignment_error: nil
+    )
+  end
+
+  defp reset_assignments(socket),
+    do:
+      assign(socket,
+        assignment_zone_id: nil,
+        assignment_rows: [],
+        assignment_token: nil,
+        assignment_worker_revisions: %{},
+        assignments_dirty: false,
+        assignment_error: nil
+      )
+
+  defp dns_services(worker), do: Enum.filter(worker["services"], &(&1["type"] == "dns"))
+
+  defp assignment_workers do
+    Enum.map(Domain.list_workers(), fn summary ->
+      {:ok, worker} = Domain.get_worker(summary["id"])
+      worker
+    end)
+  end
+
+  defp assignment_worker(workers, row), do: Enum.find(workers, &(&1["id"] == row["worker_id"]))
 
   defp assign_form(socket, params, rows) do
     errors =
@@ -517,6 +676,98 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             phx-value-id={@zone["id"]}
           >Delete</button>
         </div>
+      </.card>
+      <.card :if={@zone} title="Worker assignments">
+        <p class="management-help">
+          Zone data is global. Assign a confirmed version to each logical Worker and DNS Service; assignments do not report execution.
+        </p>
+        <p :if={@versions == []}>
+          Confirm a version before assigning this Zone. The draft remains editable.
+        </p>
+        <p :if={@assignment_error} id="zone-assignment-error" class="alert alert-error" role="alert">
+          {@assignment_error}
+        </p>
+        <div class="management-actions">
+          <button
+            :for={worker <- @workers}
+            class="btn btn-secondary"
+            phx-click="add_assignment_worker"
+            phx-value-id={worker["id"]}
+            disabled={@versions == [] || dns_services(worker) == []}
+          >
+            Assign {worker["name"]} ({worker["id"]})
+          </button>
+        </div>
+        <p :if={@workers == []}>
+          No logical Workers are registered. Zone drafts and versions remain global.
+        </p>
+        <p :for={worker <- @workers} :if={dns_services(worker) == []}>
+          {worker["name"]} has no DNS Services.
+          <.link navigate={ServicePaths.server_path(worker["id"], :dashboard)}>Configure a DNS Service</.link>
+        </p>
+        <form
+          id="zone-assignments-form"
+          phx-change="validate_assignments"
+          phx-submit="save_assignments"
+        >
+          <fieldset
+            :for={row <- @assignment_rows}
+            id={"zone-assignment-#{row["key"]}"}
+            data-worker-id={row["worker_id"]}
+          >
+            <legend>{assignment_worker(@workers, row)["name"]} ({row["worker_id"]})</legend>
+            <label class="management-field">
+              <span>DNS Service</span>
+              <select class="select" name={"assignments[#{row["key"]}][service_id]"} required>
+                <option value="" selected={row["service_id"] == ""}>Select a DNS Service</option>
+                <option
+                  :for={service <- dns_services(assignment_worker(@workers, row))}
+                  value={service["id"]}
+                  selected={row["service_id"] == service["id"]}
+                >
+                  {service["instance_id"]} ({service["id"]})
+                </option>
+              </select>
+            </label>
+            <label class="management-field">
+              <span>Confirmed Zone version</span>
+              <select class="select" name={"assignments[#{row["key"]}][resource_version_id]"} required>
+                <option
+                  :for={version <- @versions}
+                  value={version["id"]}
+                  selected={row["resource_version_id"] == version["id"]}
+                >
+                  Version {version["version"]} — {version["digest"]}
+                </option>
+              </select>
+            </label>
+            <button
+              type="button"
+              class="btn btn-error"
+              phx-click="remove_assignment_row"
+              phx-value-key={row["key"]}
+            >Remove assignment</button>
+          </fieldset>
+          <div class="management-actions">
+            <button
+              id="zone-save-assignments"
+              class="btn btn-primary"
+              type="submit"
+              phx-disable-with="Saving assignments…"
+              disabled={@versions == [] && @assignment_rows == []}
+            >Save assignments</button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              phx-click="refresh_assignments"
+              data-confirm={
+                if @assignments_dirty,
+                  do: "Discard unsaved assignment changes and reload the assignment set?",
+                  else: nil
+              }
+            >Reload assignment set</button>
+          </div>
+        </form>
       </.card>
       <.card :if={@deleting} title="Confirm Zone deletion">
         <div

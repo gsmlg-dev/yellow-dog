@@ -29,7 +29,7 @@ defmodule YellowDog.Management.Domain do
   @backup_operations ~w(create_backup delete_backup)
   @dns_acl_operations ~w(create_dns_acl update_dns_acl delete_dns_acl)
   @dns_view_operations ~w(create_dns_view update_dns_view delete_dns_view)
-  @operations ~w(create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign confirm_target) ++
+  @operations ~w(create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign set_zone_assignments confirm_target) ++
                 @netman_operations ++
                 @task_operations ++
                 @backup_operations ++ @dns_acl_operations ++ @dns_view_operations
@@ -164,6 +164,14 @@ defmodule YellowDog.Management.Domain do
       )
     )
     |> Enum.map(&assignment_map/1)
+  end
+
+  @doc "Read the canonical Zone assignment set and its concurrency snapshot."
+  def get_zone_assignments(zone_id) do
+    Repo.transaction(fn ->
+      zone = required_zone(zone_id)
+      zone_assignment_snapshot(zone.id)
+    end)
   end
 
   def get_target(worker_id, revision \\ :latest) do
@@ -507,11 +515,11 @@ defmodule YellowDog.Management.Domain do
   end
 
   defp dispatch("assign", params) do
+    version = required_version(required_string(params, "resource_version_id", 64))
+    zone = lock_zone(version.zone_id)
     worker = lock_worker(required_string(params, "worker_id", 64))
     expect_revision(worker.revision, params)
     service = required_service(worker.id, params)
-    version = required_version(required_string(params, "resource_version_id", 64))
-    zone = required_zone(version.zone_id)
     if service.type != "dns", do: abort("unsupported", "DNS Zones require a DNS service")
 
     existing =
@@ -542,18 +550,16 @@ defmodule YellowDog.Management.Domain do
   end
 
   defp dispatch("unassign", params) do
-    worker = lock_worker(required_string(params, "worker_id", 64))
-    expect_revision(worker.revision, params)
-    service = required_service(worker.id, params)
-
     zone_id =
       case Map.get(params, "zone_id", Map.get(params, "resource_id")) do
         nil -> required_version(required_string(params, "resource_version_id", 64)).zone_id
         value -> value
       end
 
-    unless match?({:ok, _}, Ecto.UUID.cast(zone_id)),
-      do: abort("invalid_request", "Zone ID must be a UUID")
+    lock_zone(zone_id)
+    worker = lock_worker(required_string(params, "worker_id", 64))
+    expect_revision(worker.revision, params)
+    service = required_service(worker.id, params)
 
     case Repo.one(
            from(a in Assignment, where: a.service_id == ^service.id and a.zone_id == ^zone_id)
@@ -573,6 +579,99 @@ defmodule YellowDog.Management.Domain do
           "removed" => true
         }
     end
+  end
+
+  defp dispatch("set_zone_assignments", params) do
+    allowed_keys(
+      params,
+      ~w(zone_id expected_assignment_token expected_worker_revisions assignments)
+    )
+
+    zone = lock_zone(required_string(params, "zone_id", 64))
+    existing = zone_assignment_rows(zone.id)
+    expected_token = required_string(params, "expected_assignment_token", 64)
+
+    if expected_token != assignment_token(zone.id, existing),
+      do: abort("revision_conflict", "Assignment set changed; reload before saving assignments")
+
+    submitted = params["assignments"]
+    revisions = params["expected_worker_revisions"]
+
+    unless is_list(submitted) and length(submitted) <= 256 and Enum.all?(submitted, &is_map/1),
+      do: abort("invalid_request", "assignments must be a list of at most 256 selections")
+
+    unless is_map(revisions),
+      do: abort("invalid_request", "expected_worker_revisions must be an object")
+
+    submitted_worker_ids = Enum.map(submitted, &required_string(&1, "worker_id", 64))
+
+    workers =
+      (Enum.map(existing, & &1.service.worker_id) ++ submitted_worker_ids)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map(fn worker_id ->
+        worker = lock_worker(worker_id)
+        expect_revision(worker.revision, %{"expected_revision" => revisions[worker_id]})
+        worker
+      end)
+
+    selections =
+      Enum.map(submitted, fn selection ->
+        allowed_keys(selection, ~w(worker_id service_id resource_version_id))
+        required_string(selection, "service_id", 64)
+        service = required_service(selection["worker_id"], selection)
+        if service.type != "dns", do: abort("unsupported", "DNS Zones require a DNS service")
+        version = required_version(required_string(selection, "resource_version_id", 64))
+
+        if version.zone_id != zone.id,
+          do: abort("invalid_request", "Confirmed version must belong to the selected Zone")
+
+        {service, version}
+      end)
+
+    service_ids = Enum.map(selections, fn {service, _version} -> service.id end)
+
+    if length(Enum.uniq(service_ids)) != length(service_ids),
+      do: abort("invalid_request", "Select each DNS Service only once")
+
+    selections
+    |> Enum.group_by(fn {service, _version} -> service.worker_id end)
+    |> Enum.each(fn {worker_id, values} ->
+      versions = Enum.map(values, fn {_service, version} -> version.id end)
+      validate_assignment_versions(worker_id, zone.id, versions)
+    end)
+
+    existing_by_service = Map.new(existing, &{&1.service_id, &1})
+
+    Enum.each(existing, fn assignment ->
+      if assignment.service_id not in service_ids, do: Repo.delete!(assignment)
+    end)
+
+    Enum.each(selections, fn {service, version} ->
+      case existing_by_service[service.id] do
+        nil ->
+          Repo.insert!(%Assignment{
+            service_id: service.id,
+            zone_id: zone.id,
+            resource_version_id: version.id
+          })
+
+        %{resource_version_id: version_id} when version_id == version.id ->
+          :ok
+
+        assignment ->
+          assignment
+          |> Ecto.Changeset.change(resource_version_id: version.id)
+          |> Repo.update!()
+      end
+    end)
+
+    Enum.each(workers, fn worker ->
+      build_plan(worker.id, next_target_revision(worker.id))
+      bump_worker(worker)
+    end)
+
+    zone_assignment_snapshot(zone.id)
   end
 
   defp dispatch("confirm_target", params) do
@@ -691,6 +790,12 @@ defmodule YellowDog.Management.Domain do
       Repo.all(
         from(a in Assignment, where: a.service_id in ^service_ids, preload: [:resource_version])
       )
+
+    assignments
+    |> Enum.group_by(& &1.zone_id)
+    |> Enum.each(fn {zone_id, values} ->
+      validate_assignment_versions(worker_id, zone_id, Enum.map(values, & &1.resource_version_id))
+    end)
 
     refs = Enum.group_by(assignments, & &1.service_id)
 
@@ -913,6 +1018,55 @@ defmodule YellowDog.Management.Domain do
       "resource_version_id" => assignment.resource_version_id,
       "version" => assignment.resource_version.version
     }
+  end
+
+  defp zone_assignment_rows(zone_id) do
+    Repo.all(
+      from(a in Assignment,
+        join: s in Service,
+        on: a.service_id == s.id,
+        where: a.zone_id == ^zone_id,
+        order_by: [s.worker_id, s.instance_id],
+        preload: [:resource_version, service: :worker]
+      )
+    )
+  end
+
+  defp zone_assignment_snapshot(zone_id) do
+    rows = zone_assignment_rows(zone_id)
+
+    %{
+      "zone_id" => zone_id,
+      "assignment_token" => assignment_token(zone_id, rows),
+      "worker_revisions" => Repo.all(from(w in Worker, select: {w.id, w.revision})) |> Map.new(),
+      "assignments" =>
+        Enum.map(rows, fn row ->
+          row
+          |> assignment_map()
+          |> Map.put("worker_id", row.service.worker_id)
+          |> Map.put("worker_name", row.service.worker.name)
+          |> Map.put("service_instance_id", row.service.instance_id)
+        end)
+    }
+  end
+
+  defp assignment_token(zone_id, rows) do
+    snapshot =
+      rows
+      |> Enum.map(&{&1.id, &1.service_id, &1.resource_version_id, &1.updated_at})
+      |> Enum.sort()
+
+    digest({zone_id, snapshot})
+  end
+
+  defp validate_assignment_versions(worker_id, zone_id, versions) do
+    if length(Enum.uniq(versions)) > 1,
+      do:
+        abort(
+          "invalid_assignment_versions",
+          "All DNS Services in one Worker must select the same confirmed Zone version",
+          %{"worker_id" => worker_id, "zone_id" => zone_id}
+        )
   end
 
   defp target_map(target) do

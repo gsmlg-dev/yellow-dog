@@ -47,36 +47,70 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert snapshot() == before_read
   end
 
-  test "one or two DNS Services must be explicitly selected without query inference", %{
-    conn: conn
-  } do
+  test "single DNS Service preselects and multiple Services require a choice without query inference",
+       %{
+         conn: conn
+       } do
     selected = scope()
     before_read = snapshot()
 
     {:ok, view, html} =
       live(conn, selector(selected) <> "?service_id=#{selected.service["id"]}&server_id=missing")
 
-    assert html =~ "Select a DNS Service explicitly"
-    refute has_element?(view, "#dns-view-form")
+    assert html =~ "DNS Service:"
+    assert has_element?(view, "#dns-view-form")
 
     assert has_element?(
              view,
-             "#dns-view-service-selector a[data-service-id='#{selected.service["id"]}']"
+             "#dns-view-service-selector button[data-service-id='#{selected.service["id"]}']"
            )
 
     assert snapshot() == before_read
     assert get_resp_header(get(conn, selector(selected)), "www-authenticate") == []
 
-    view
-    |> element("#dns-view-service-selector a[data-service-id='#{selected.service["id"]}']")
-    |> render_click()
-
-    assert_patch(view, path(selected))
     assert has_element?(view, "#dns-view-form[phx-hook='ResetForm']")
     alternate = scope(selected.worker["id"], "dns-second")
     {:ok, selector_view, _html} = live(conn, selector(selected))
     refute has_element?(selector_view, "#dns-view-form")
-    assert has_element?(selector_view, "a[data-service-id='#{alternate.service["id"]}']")
+    assert has_element?(selector_view, "button[data-service-id='#{alternate.service["id"]}']")
+
+    selector_view
+    |> element("button[data-service-id='#{alternate.service["id"]}']")
+    |> render_click()
+
+    assert_patch(selector_view, path(alternate))
+  end
+
+  test "global Worker selector includes disconnected Workers and confirms discarding unsaved scope",
+       %{conn: conn} do
+    first = scope("view-selected")
+    second = scope("view-disconnected")
+    {:ok, view, html} = live(conn, "/management/dns/views")
+    assert html =~ second.worker["name"]
+    refute has_element?(view, "#dns-view-form")
+
+    render_change(view, "select_worker", %{"scope" => %{"worker_id" => first.worker["id"]}})
+    assert_patch(view, selector(first))
+    assert has_element?(view, "#dns-view-form")
+    render_change(view, "validate", %{"view" => fields("unsaved")})
+    render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
+    assert has_element?(view, "#dns-view-unsaved-scope")
+    assert has_element?(view, "input[name='view[name]'][value='unsaved']")
+    render_click(view, "cancel_scope")
+    refute has_element?(view, "#dns-view-unsaved-scope")
+    assert has_element?(view, "input[name='view[name]'][value='unsaved']")
+
+    render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
+    render_click(view, "confirm_scope")
+    assert_patch(view, selector(second))
+    assert has_element?(view, "input[name='view[name]'][value='']")
+
+    refute Enum.any?(
+             elem(Domain.list_dns_views(first.worker["id"], first.service["id"]), 1),
+             &(&1["name"] == "unsaved")
+           )
+
+    assert has_element?(view, "#dns-views-table")
   end
 
   test "Worker without DNS and malformed or foreign Service IDs cannot mutate", %{conn: conn} do

@@ -176,6 +176,12 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
       </.link>
     </li>
     <li>
+      <.link navigate="/management/dns/views" class={active?(@current_path, "/management/dns/views")}>
+        <.dm_mdi name="eye" class="w-5 h-5" />
+        <span>DNS Views</span>
+      </.link>
+    </li>
+    <li>
       <.link navigate="/management/zones" class={active?(@current_path, "/management/zones")}>
         <.dm_mdi name="folder-outline" class="w-5 h-5" />
         <span>Zones</span>

@@ -111,6 +111,10 @@ defmodule YellowDog.Management.Web do
     json(conn, 200, %{"data" => Domain.list_versions(id)})
   end
 
+  get "/api/zones/:id/assignments" do
+    respond(conn, Domain.get_zone_assignments(id))
+  end
+
   get "/api/workers/:id/preview" do
     respond(conn, Domain.preview_target(id))
   end

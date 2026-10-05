@@ -77,10 +77,38 @@ baseline, not the new selectors, assignments or artifact catalog.
 | Checkpoint | Status |
 | --- | --- |
 | P0 build prerequisites | Complete; forced compile and 94 scoped baseline tests pass |
-| P1 Worker scope and Zone assignments | Pending P0 |
+| P1 Worker scope and Zone assignments | Complete; 78 scoped tests and real browser/restart acceptance |
 | P2 editor reliability and persistence | Pending P1 |
 | P3 artifact catalog | Pending P0 |
 | P4 export boundary and integrated acceptance | Pending functional checkpoints |
 
-Subagent assignment and artifact findings are source investigation only. They
-do not establish database, LiveView, browser, restart, or release acceptance.
+P3 backend implementation is in progress separately; its scoped tests do not
+replace pending catalog UI and full release restart acceptance.
+
+## P1 accepted configuration workflows
+
+The routed global View entry `/management/dns/views` selects disconnected logical
+Workers. One DNS Service preselects; multiple require a choice; none links to
+Service configuration. Scope switches explicitly handle unsaved input and never
+reparent a View. Global Zone editing has a separate Worker assignment editor;
+atomic submissions use an assignment token, Worker revisions, Zone-first locking,
+and existing command audit/idempotency. Both Worker and Zone pages read the same
+records. No migration or new authoritative ownership field was added.
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test test/assignment_domain_test.exs test/domain_test.exs test/web_test.exs test/dns_views_test.exs test/dns_views_live_test.exs test/zones_live_test.exs'
+devenv shell -- bash -c 'MIX_ENV=prod mix compile --warnings-as-errors && MIX_ENV=prod mix release yellow_dog_management --overwrite'
+devenv shell -- scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py _build/prod/rel/yellow_dog_management/bin/yellow_dog_management --p1-only
+```
+
+Strict compile and 78 scoped tests passed, including independent PostgreSQL
+connection concurrency checks. Real Chromium phases create/verify/advance passed
+after SIGKILL and a new Management process: zero-Worker Zone creation, View scope,
+two assignments, fresh reads, v2 confirmation without retargeting, selective
+removal, and unchanged historical Target TOML. The release was built from current
+integrated source, including parallel P3 changes; P1 mode does not use the catalog.
+Catalog acceptance remains separate. Both PostgreSQL and release/browser processes
+were cleaned up. Evidence: `/tmp/yellow-dog-p1-final.log`,
+`/tmp/yellow-dog-p1-release.log`, and
+`/tmp/yellow-dog-management-configuration-j5ym1tv8`. Scoped formatting and
+`git diff --check` passed.

@@ -28,6 +28,100 @@ defmodule YellowDog.Management.ZonesLiveTest do
     %{conn: build_conn()}
   end
 
+  test "Zone page saves shared assignments separately and both Worker pages agree", %{conn: conn} do
+    zone = mutate("create_zone", DomainFixtures.zone("assignments.test."))
+
+    version =
+      mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => zone["revision"]})
+
+    a = assignment_service("ui-assignment-a")
+    b = assignment_service("ui-assignment-b")
+    {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/edit")
+    render_click(view, "add_assignment_worker", %{"id" => a["worker_id"]})
+    render_click(view, "add_assignment_worker", %{"id" => b["worker_id"]})
+    assert Domain.list_assignments(a["worker_id"]) == []
+    view |> form("#zone-assignments-form") |> render_submit()
+    assert render(view) =~ "Worker assignments saved"
+    assert {:ok, snapshot} = Domain.get_zone_assignments(zone["id"])
+    assert length(snapshot["assignments"]) == 2
+
+    for service <- [a, b] do
+      assert [%{"resource_version_id" => version_id}] =
+               Domain.list_assignments(service["worker_id"])
+
+      assert version_id == version["id"]
+      {:ok, worker_view, _} = live(build_conn(), "/server/#{service["worker_id"]}/dashboard")
+      assert has_element?(worker_view, "#resource-assignments tbody tr", zone["id"])
+
+      assert has_element?(
+               worker_view,
+               "#resource-assignments td:nth-child(2)",
+               to_string(version["version"])
+             )
+    end
+
+    changed = fields(zone)
+    soa_index = Enum.find_index(zone["records"], &(&1["type"] == "SOA")) |> to_string()
+    changed = put_in(changed, ["records", soa_index, "data", "serial"], 2)
+    view |> form("#zone-form", zone: changed) |> render_submit()
+    render_click(view, "confirm_zone", %{"id" => zone["id"]})
+    assert length(Domain.list_versions(zone["id"])) == 2
+
+    assert Enum.all?(
+             Domain.list_assignments(a["worker_id"]),
+             &(&1["resource_version_id"] == version["id"])
+           )
+
+    removed = Enum.find(snapshot["assignments"], &(&1["worker_id"] == a["worker_id"]))
+    render_click(view, "remove_assignment_row", %{"key" => removed["id"]})
+    view |> form("#zone-assignments-form") |> render_submit()
+    assert Domain.list_assignments(a["worker_id"]) == []
+    assert length(Domain.list_assignments(b["worker_id"])) == 1
+    {:ok, fresh, _} = live(build_conn(), "/management/zones/#{zone["id"]}/edit")
+    refute has_element?(fresh, "fieldset[data-worker-id='#{a["worker_id"]}']")
+    assert has_element?(fresh, "fieldset[data-worker-id='#{b["worker_id"]}']")
+  end
+
+  test "stale assignment submissions retain their input and cannot erase another editor", %{
+    conn: conn
+  } do
+    zone = mutate("create_zone", DomainFixtures.zone("stale-assignment.test."))
+
+    version =
+      mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => zone["revision"]})
+
+    a = assignment_service("ui-stale-a")
+    b = assignment_service("ui-stale-b")
+    {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/edit")
+    render_click(view, "add_assignment_worker", %{"id" => a["worker_id"]})
+
+    mutate("assign", %{
+      "worker_id" => b["worker_id"],
+      "service_id" => b["id"],
+      "resource_version_id" => version["id"],
+      "expected_revision" => b["worker_revision"]
+    })
+
+    view |> form("#zone-assignments-form") |> render_submit()
+    assert has_element?(view, "#zone-assignment-error")
+    assert has_element?(view, "fieldset[data-worker-id='#{a["worker_id"]}']")
+    assert Domain.list_assignments(a["worker_id"]) == []
+    assert length(Domain.list_assignments(b["worker_id"])) == 1
+  end
+
+  defp assignment_service(worker_id) do
+    worker = mutate("create_worker", %{"id" => worker_id, "name" => worker_id})
+
+    mutate("put_service", %{
+      "worker_id" => worker["id"],
+      "expected_revision" => worker["revision"],
+      "id" => "dns",
+      "type" => "dns",
+      "desired_state" => "stopped",
+      "config" => %{"listen_address" => "127.0.0.1", "port" => 5530}
+    })
+  end
+
   test "creates a Zone and edits records without Workers", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/management/zones/new")
     view |> element("button[phx-click='add_record']") |> render_click()

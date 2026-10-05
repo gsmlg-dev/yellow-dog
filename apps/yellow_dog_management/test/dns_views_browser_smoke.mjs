@@ -112,7 +112,7 @@ async function saveEditor() {
 
 async function selectorCheck(worker, services) {
   await navigate(pagePath(worker) + `?service_id=${serviceId}`, '#dns-view-service-selector');
-  assert.equal(await evaluate(`document.querySelector('#dns-view-form') === null`), true, 'Selector must not infer a Service');
+  assert.equal(await evaluate(`document.querySelector('#dns-view-form') === null`), services.length !== 1, 'Only a single eligible Service preselects');
   const ids = await evaluate(`Array.from(document.querySelectorAll('#dns-view-service-selector [data-service-id]')).map(link => link.dataset.serviceId).sort()`);
   assert.deepEqual(ids, [...services].sort());
 }
