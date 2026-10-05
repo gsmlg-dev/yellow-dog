@@ -4,6 +4,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   alias YellowDog.ConfigSpec
   alias YellowDog.Management.Domain
   alias YellowDog.ManagementUI.Hooks.CurrentPath
+  alias YellowDog.ManagementUI.Submission
 
   @soa_fields ~w(mname rname serial refresh retry expire minimum)
   @numeric_fields ~w(serial refresh retry expire minimum)
@@ -208,7 +209,9 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           )
       }
 
-      case mutate("set_zone_assignments", payload) do
+      {socket, key} = Submission.prepare(socket, "set_zone_assignments", payload)
+
+      case Domain.mutate("set_zone_assignments", payload, "operator", key) do
         {:ok, _result} ->
           {:noreply,
            socket
@@ -258,7 +261,9 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         do: Map.merge(payload, %{"id" => zone["id"], "expected_revision" => zone["revision"]}),
         else: payload
 
-    case mutate(operation, payload) do
+    {socket, key} = Submission.prepare(socket, operation, payload)
+
+    case Domain.mutate(operation, payload, "operator", key) do
       {:ok, saved} ->
         {:noreply,
          socket
@@ -293,7 +298,10 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   def handle_event("confirm_delete", %{"id" => id}, socket) do
     case socket.assigns.deleting do
       %{"id" => ^id} = zone ->
-        case mutate("delete_zone", %{"id" => id, "expected_revision" => zone["revision"]}) do
+        payload = %{"id" => id, "expected_revision" => zone["revision"]}
+        {socket, key} = Submission.prepare(socket, "delete_zone", payload)
+
+        case Domain.mutate("delete_zone", payload, "operator", key) do
           {:ok, _result} ->
             socket =
               socket
@@ -324,7 +332,10 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     zone = cached_zone(socket, id)
 
     if zone do
-      case mutate("confirm_zone", %{"id" => id, "expected_revision" => zone["revision"]}) do
+      payload = %{"id" => id, "expected_revision" => zone["revision"]}
+      {socket, key} = Submission.prepare(socket, "confirm_zone", payload)
+
+      case Domain.mutate("confirm_zone", payload, "operator", key) do
         {:ok, _result} ->
           socket =
             socket
@@ -367,9 +378,6 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       do: "\"" <> String.replace(value, "\"", "\"\"") <> "\"",
       else: value
   end
-
-  defp mutate(operation, params),
-    do: Domain.mutate(operation, params, "operator", Ecto.UUID.generate())
 
   defp load_zone(socket, zone) do
     preserve_assignments =
@@ -581,7 +589,12 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                   <div class="management-actions">
                     <.link patch={"#{@base_path}/#{zone["id"]}/edit"} class="btn btn-ghost">Edit</.link>
                     <.link navigate={"#{@base_path}/#{zone["id"]}/records"} class="btn btn-ghost">Records</.link>
-                    <button class="btn btn-primary" phx-click="confirm_zone" phx-value-id={zone["id"]}>Confirm Version</button>
+                    <button
+                      class="btn btn-primary"
+                      phx-click="confirm_zone"
+                      phx-disable-with="Confirming…"
+                      phx-value-id={zone["id"]}
+                    >Confirm Version</button>
                     <button
                       class="btn btn-error"
                       phx-click="delete_zone"
@@ -669,7 +682,12 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         </.form>
         <div :if={@zone} class="management-actions">
           <.link navigate={"#{@base_path}/#{@zone["id"]}/records"} class="btn btn-ghost">Records</.link>
-          <button class="btn btn-primary" phx-click="confirm_zone" phx-value-id={@zone["id"]}>Confirm Version</button>
+          <button
+            class="btn btn-primary"
+            phx-click="confirm_zone"
+            phx-disable-with="Confirming…"
+            phx-value-id={@zone["id"]}
+          >Confirm Version</button>
           <button
             class="btn btn-error"
             phx-click="delete_zone"
@@ -783,6 +801,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
               id="zone-delete-confirm"
               class="btn btn-error"
               phx-click="confirm_delete"
+              phx-disable-with="Deleting…"
               phx-value-id={@deleting["id"]}
             >Confirm Delete</button>
             <button id="zone-cancel-delete" class="btn btn-ghost" phx-click="cancel_delete">Cancel Delete</button>

@@ -62,6 +62,10 @@ defmodule YellowDog.Management.Domain do
       {:error, error} -> {:error, error}
     end
   rescue
+    _error in DBConnection.ConnectionError ->
+      {:error,
+       error("database_unavailable", "Database unavailable; your submission was not confirmed")}
+
     error in [Ecto.InvalidChangesetError, Postgrex.Error] ->
       _ = error
       {:error, error("database_constraint", "Database constraint rejected the mutation")}

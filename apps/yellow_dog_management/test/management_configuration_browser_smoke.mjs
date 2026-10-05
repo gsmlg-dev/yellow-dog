@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -97,6 +97,13 @@ async function submit(form, button, event) {
 
 const zonePath = id => `/management/zones/${id}/edit`;
 const assignments = id => api(`/zones/${id}/assignments`);
+
+function submissionCounts() {
+  const result = execFileSync('psql', [process.env.YELLOW_DOG_MANAGEMENT_DATABASE_URL,
+    '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+    "SELECT (SELECT count(*) FROM management_idempotency), (SELECT count(*) FROM management_audits WHERE operation = 'update_zone')"], { encoding: 'utf8' });
+  return result.trim().split('|').map(Number);
+}
 
 async function verifyAssignments(saved, workers) {
   const snapshot = await assignments(saved.zone_id);
@@ -248,6 +255,35 @@ try {
       await navigate(`/server/${saved.workers[0]}/dns/views/${saved.service_ids[0]}`, '#dns-views-table');
       assert.equal(await evaluate(`!!document.querySelector('#dns-view-${saved.view_id}')`), true);
       if (!p1Only) await verifyCatalog();
+    } else if (phase === 'editor-failures') {
+      const original = await api(`/zones/${saved.zone_id}`);
+      await navigate(zonePath(saved.zone_id), '#zone-form');
+      const addressName = await evaluate(`Array.from(document.querySelectorAll('#zone-form [name$="[address]"]')).map(input => input.name)[0]`);
+      assert.ok(addressName);
+      const before = submissionCounts();
+      await change('#zone-form', { [addressName]: 'not-an-ip' });
+      assert.equal(await evaluate(`document.querySelector('[name=${JSON.stringify(addressName)}]').value`), 'not-an-ip');
+      assert.equal(await evaluate(`document.querySelector('#zone-save').disabled`), true);
+      assert.deepEqual(await api(`/zones/${saved.zone_id}`), original);
+      assert.deepEqual(submissionCounts(), before);
+      await change('#zone-form', { [addressName]: '192.0.2.99' });
+      await submit('#zone-form', '#zone-save', 'save');
+      assert.equal(await evaluate(`document.querySelector('[name=${JSON.stringify(addressName)}]').value`), '192.0.2.99');
+      assert.equal(await evaluate(`document.body.textContent.includes('Database constraint')`), true);
+      assert.equal(await evaluate(`document.body.textContent.includes('Zone draft saved')`), false);
+      assert.deepEqual(await api(`/zones/${saved.zone_id}`), original);
+      const failed = submissionCounts();
+      assert.deepEqual(failed, before.map(count => count + 1));
+      await submit('#zone-form', '#zone-save', 'save');
+      assert.deepEqual(submissionCounts(), failed);
+      await change('#zone-form', { [addressName]: '192.0.2.100' });
+      await submit('#zone-form', '#zone-save', 'save');
+      assert.equal(await evaluate(`document.querySelector('[name=${JSON.stringify(addressName)}]').value`), '192.0.2.100');
+      assert.equal(await evaluate(`document.body.textContent.includes('Zone draft saved')`), false);
+      const edited = submissionCounts();
+      assert.deepEqual(edited, failed.map(count => count + 1));
+      assert.deepEqual(await api(`/zones/${saved.zone_id}`), original);
+      await writeFile(join(dirname(evidencePath), 'editor-failures.json'), JSON.stringify({ before, failed, retry: failed, edited, unchanged_zone: original }, null, 2));
     } else if (phase === 'advance') {
       const before = await assignments(saved.zone_id);
       await navigate(zonePath(saved.zone_id), '#zone-form');

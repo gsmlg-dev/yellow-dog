@@ -197,6 +197,22 @@ def main():
         assert probe()["catalog"] == runtime_before["catalog"], "Restart changed durable artifact catalog"
         browser("verify")
         assert persistent_state() == before, "Fresh-session readback changed persistent configuration"
+        database = env["YELLOW_DOG_MANAGEMENT_DATABASE_URL"]
+
+        def sql(statement):
+            subprocess.run(["psql", database, "-X", "-v", "ON_ERROR_STOP=1", "-c", statement],
+                           stdout=log, stderr=log, check=True)
+
+        sql("""CREATE FUNCTION reject_configuration_zone_save() RETURNS trigger LANGUAGE plpgsql
+               AS $$ BEGIN RAISE EXCEPTION 'fixture rejects Zone save'; END $$;
+               CREATE TRIGGER reject_configuration_zone_save BEFORE UPDATE ON management_zones
+               FOR EACH ROW EXECUTE FUNCTION reject_configuration_zone_save();""")
+        try:
+            browser("editor-failures")
+            assert persistent_state() == before, "Rejected browser edits changed persistent configuration"
+        finally:
+            sql("""DROP TRIGGER reject_configuration_zone_save ON management_zones;
+                   DROP FUNCTION reject_configuration_zone_save();""")
         browser("advance")
         saved = json.loads(evidence.read_text())
         assert api(saved["target_path"]) == before["target"]
@@ -208,12 +224,12 @@ def main():
             assert final["catalog"] == runtime_before["catalog"], "Failed sync replaced the prior catalog selection"
             for entry in final["catalog"]:
                 selected = entry["selected"]
-                contents = Path(selected["path"]).read_bytes()
+                contents = (directory / "artifacts" / f'{selected["digest"]}.mmdb').read_bytes()
                 assert selected["available"] and contents == fixtures[entry["kind"]]
                 assert hashlib.sha256(contents).hexdigest() == selected["digest"] == digests[entry["kind"]]
             (directory / "final-runtime.json").write_text(json.dumps(final, indent=2))
-        print("PASS Management configuration: browser persistence, scoped View, shared assignments, SIGKILL recovery, immutable versions/exports and selective removal" +
-              ("; durable City/Country artifacts and failed-sync preservation without a query process" if not args.p1_only else " (P1 only)"), flush=True)
+        print("PASS Management configuration: browser persistence, retained rejected edits, stable retries, scoped View, shared assignments, SIGKILL recovery, immutable versions/exports and selective removal" +
+              ("; durable City/Country artifacts and failed-sync preservation without a query process" if not args.p1_only else " (configuration only)"), flush=True)
     finally:
         stop()
         fixture.shutdown()

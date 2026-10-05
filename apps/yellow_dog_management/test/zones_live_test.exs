@@ -28,6 +28,39 @@ defmodule YellowDog.Management.ZonesLiveTest do
     %{conn: build_conn()}
   end
 
+  test "database rejection retains draft input and retries the same command", %{conn: conn} do
+    Repo.query!("""
+    CREATE FUNCTION pg_temp.reject_zone_draft() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'fixture database failure'; END $$
+    """)
+
+    Repo.query!(
+      "CREATE TRIGGER fixture_reject_draft BEFORE INSERT ON management_zones FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_zone_draft()"
+    )
+
+    {:ok, view, _} = live(conn, "/management/zones/new")
+    render_click(view, "add_record")
+    input = fields(DomainFixtures.zone("retained.test."))
+    view |> form("#zone-form", zone: input) |> render_submit()
+    assert render(view) =~ "Database constraint rejected"
+    assert has_element?(view, "#zone-name[value='retained.test.']")
+    assert Domain.list_zones() == []
+    rejected = snapshot()
+    view |> form("#zone-form", zone: input) |> render_submit()
+    assert snapshot() == rejected
+    changed = fields(DomainFixtures.zone("edited.test."))
+    view |> form("#zone-form", zone: changed) |> render_submit()
+    assert length(Repo.all(Idempotency)) == length(rejected.idempotency) + 1
+    assert Domain.list_zones() == []
+    Repo.query!("DROP TRIGGER fixture_reject_draft ON management_zones")
+    final = fields(DomainFixtures.zone("accepted.test."))
+    view |> form("#zone-form", zone: final) |> render_submit()
+    assert render(view) =~ "Zone draft saved"
+    assert [zone] = Domain.list_zones()
+    {:ok, fresh, _} = live(build_conn(), "/management/zones/#{zone["id"]}/edit")
+    assert has_element?(fresh, "#zone-name[value='accepted.test.']")
+  end
+
   test "Zone page saves shared assignments separately and both Worker pages agree", %{conn: conn} do
     zone = mutate("create_zone", DomainFixtures.zone("assignments.test."))
 
@@ -107,6 +140,10 @@ defmodule YellowDog.Management.ZonesLiveTest do
     assert has_element?(view, "fieldset[data-worker-id='#{a["worker_id"]}']")
     assert Domain.list_assignments(a["worker_id"]) == []
     assert length(Domain.list_assignments(b["worker_id"])) == 1
+    rejected = snapshot()
+    view |> form("#zone-assignments-form") |> render_submit()
+    assert snapshot() == rejected
+    assert has_element?(view, "#zone-assignment-error")
   end
 
   defp assignment_service(worker_id) do
@@ -424,7 +461,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     assert has_element?(view, "#zone-#{zone["id"]}", "2")
     assert snapshot() == after_rejection
     view |> element("#zone-delete-confirm") |> render_click()
-    assert_rejected_command(after_rejection, "delete_zone")
+    assert snapshot() == after_rejection
     assert {:ok, ^concurrent} = Domain.get_zone(zone["id"])
 
     view |> element("#zone-cancel-delete") |> render_click()

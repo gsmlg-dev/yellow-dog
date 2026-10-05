@@ -78,7 +78,7 @@ baseline, not the new selectors, assignments or artifact catalog.
 | --- | --- |
 | P0 build prerequisites | Complete; forced compile and 94 scoped baseline tests pass |
 | P1 Worker scope and Zone assignments | Complete; 78 scoped tests and real browser/restart acceptance |
-| P2 editor reliability and persistence | Pending P1 |
+| P2 editor reliability and persistence | Complete; 85 focused checks plus real browser failure/retry acceptance |
 | P3 artifact catalog | Pending P0 |
 | P4 export boundary and integrated acceptance | Pending functional checkpoints |
 
@@ -112,3 +112,38 @@ were cleaned up. Evidence: `/tmp/yellow-dog-p1-final.log`,
 `/tmp/yellow-dog-p1-release.log`, and
 `/tmp/yellow-dog-management-configuration-j5ym1tv8`. Scoped formatting and
 `git diff --check` passed.
+
+## P2 accepted editor reliability
+
+`ManagementUI.Submission` retains one request identity for unchanged operation
+parameters; edited submissions receive new keys. Zone drafts/assignments, Views,
+and Worker-page mutations use the existing Domain command boundary. Failures
+retain entered fields and selected versions. Successful saves reload canonical
+data, submission buttons disable while pending, and assignment/version/target
+messages distinguish persistence from runtime operation. Connection failures are
+reported as unconfirmed submissions, never as successful saves.
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test test/assignment_domain_test.exs test/domain_test.exs test/web_test.exs test/dns_views_test.exs test/dns_views_live_test.exs test/zones_live_test.exs test/worker_submission_live_test.exs'
+devenv shell -- bash -c 'MIX_ENV=prod mix compile --warnings-as-errors && MIX_ENV=prod mix release yellow_dog_management --overwrite'
+devenv shell -- scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py _build/prod/rel/yellow_dog_management/bin/yellow_dog_management --p1-only
+```
+
+Strict compilation and 85 scoped tests passed. Trigger-based PostgreSQL failures
+proved retained input, no partial assignments, unchanged retry receipts/audits,
+new identity after edits, and successful fresh-session readback. Chromium's
+`editor-failures` phase installed a real disposable-database update rejection,
+checked invalid-input disabling and backend stability, and verified exact request
+counts for rejected saves, retries and changed payloads. Restart and historical
+export checks also passed. Evidence: `/tmp/yellow-dog-p2-final.log`,
+`/tmp/yellow-dog-p2-release.log`, `/tmp/yellow-dog-p2-browser.log`, and
+`/tmp/yellow-dog-management-configuration-e1y_3lhy/editor-failures.json`.
+
+An additional, overly broad subagent command ran
+`mix test test/worker_submission_live_test.exs test/ui_test.exs`: 26 tests,
+1 failure at `test/ui_test.exs:187` (Events audit-detail selector expected one
+`button[phx-click='show']`, found three). The five new Worker tests passed.
+The broader check stopped; Events source/tests were not changed or investigated.
+This unrelated-page failure is recorded, not counted as a pass or established as
+pre-existing. The current repository scope explicitly excludes unrelated suite
+failures as completion gates. Log: `/tmp/yellow-dog-worker-submission-green.log`.

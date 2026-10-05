@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.Management.{Countries, DnsAcls, Domain}
-  alias YellowDog.ManagementUI.DnsRulesText
+  alias YellowDog.ManagementUI.{DnsRulesText, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
   @fields ~w(name priority enabled recursion_enabled ecs_enabled client_rules fallback_forwarders fallback_timeout fallback_retries)
@@ -223,12 +223,10 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   def handle_event(_event, _params, socket), do: failure(socket, "Invalid View action")
 
   defp mutate(socket, operation, fields, feedback) do
-    case Domain.mutate(
-           operation,
-           Map.merge(fields, scope_fields(socket)),
-           "operator",
-           Ecto.UUID.generate()
-         ) do
+    params = Map.merge(fields, scope_fields(socket))
+    {socket, key} = Submission.prepare(socket, operation, params)
+
+    case Domain.mutate(operation, params, "operator", key) do
       {:ok, _view} ->
         {:noreply,
          socket
@@ -651,7 +649,9 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
       else: safe
   end
 
-  defp failure(socket, error), do: {:noreply, assign(socket, error: message(error))}
+  defp failure(socket, error),
+    do: {:noreply, socket |> clear_flash(:info) |> assign(error: message(error))}
+
   defp message(%{message: message}), do: message
   defp message(%{"message" => message}), do: message
   defp message(message) when is_binary(message), do: message
@@ -792,6 +792,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
                     type="button"
                     class="btn btn-ghost btn-sm"
                     phx-click="toggle_enabled"
+                    phx-disable-with="Saving…"
                     phx-value-id={view["id"]}
                   >{status(view)}</button>
                 </td>
@@ -840,6 +841,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
           <div class="management-actions">
             <button
               id="dns-view-save"
+              phx-disable-with="Saving…"
               class="btn btn-primary"
               type="submit"
               disabled={@field_errors != %{}}
@@ -1014,6 +1016,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
             type="button"
             class="btn btn-error"
             phx-click="confirm_delete"
+            phx-disable-with="Deleting…"
             phx-value-id={@deleting["id"]}
           >Confirm Delete</button><button
             id="dns-view-cancel-delete"

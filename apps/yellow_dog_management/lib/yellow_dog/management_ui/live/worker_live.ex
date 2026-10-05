@@ -3,6 +3,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   alias YellowDog.Management.{Domain, ProfileCatalog}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
+  alias YellowDog.ManagementUI.Submission
 
   @impl true
   def mount(_params, _session, socket) do
@@ -24,6 +25,8 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   @impl true
   def handle_event("save_worker", %{"worker" => params}, socket) do
+    socket = assign(socket, :worker_form, to_form(params, as: "worker"))
+
     command(
       socket,
       "update_worker",
@@ -35,6 +38,8 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   end
 
   def handle_event("save_service", %{"service" => params}, socket) do
+    socket = assign(socket, :service_form, to_form(params, as: "service"))
+
     case Integer.parse(params["port"] || "") do
       {port, ""} ->
         command(socket, "put_service", %{
@@ -47,11 +52,12 @@ defmodule YellowDog.ManagementUI.WorkerLive do
         })
 
       _ ->
-        {:noreply, put_flash(socket, :error, "Port must be an integer")}
+        {:noreply, socket |> clear_flash(:info) |> put_flash(:error, "Port must be an integer")}
     end
   end
 
   def handle_event("assign", %{"assignment" => params}, socket) do
+    socket = assign(socket, :assignment_form, to_form(params, as: "assignment"))
     command(socket, "assign", Map.take(params, ~w(service_id resource_version_id)))
   end
 
@@ -91,17 +97,28 @@ defmodule YellowDog.ManagementUI.WorkerLive do
     params =
       Map.merge(%{"worker_id" => worker["id"], "expected_revision" => worker["revision"]}, params)
 
-    case Domain.mutate(operation, params, "operator", Ecto.UUID.generate()) do
+    {socket, key} = Submission.prepare(socket, operation, params)
+
+    case Domain.mutate(operation, params, "operator", key) do
       {:ok, _result} ->
         {:noreply,
          socket
          |> load(worker["id"])
-         |> put_flash(:info, "Configuration saved; not applied to a Worker.")}
+         |> put_flash(:info, success_message(operation))}
 
       {:error, error} ->
         {:noreply, put_flash(socket, :error, message(error))}
     end
   end
+
+  defp success_message("assign"), do: "Assignment saved. Worker actual state remains unknown."
+  defp success_message("unassign"), do: "Assignment removed. Worker actual state remains unknown."
+
+  defp success_message("confirm_target"),
+    do: "Target prepared. Worker actual state remains unknown."
+
+  defp success_message(_operation),
+    do: "Configuration saved. Worker actual state remains unknown."
 
   defp load(socket, worker_id) do
     case Domain.get_worker(worker_id) do
@@ -182,7 +199,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
                 {profile.name} — {profile.description}
               </option>
             </select></label>
-            <button class="btn btn-primary" type="submit">Save name and profile</button>
+            <button class="btn btn-primary" type="submit" phx-disable-with="Saving…">Save name and profile</button>
           </.form>
           <p class="text-sm text-on-surface-variant">
             Profiles are descriptive catalog metadata, not service enablement. Changing a profile
@@ -252,7 +269,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             >
               Running
             </option></select></label>
-            <button class="btn btn-primary" type="submit">Save desired service</button>
+            <button class="btn btn-primary" type="submit" phx-disable-with="Saving…">Save desired service</button>
           </.form>
         </.card>
         <.card title="Resource assignments">
@@ -271,6 +288,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
                       phx-click="unassign"
                       phx-value-service_id={assignment["service_id"]}
                       phx-value-zone_id={assignment["zone_id"]}
+                      phx-disable-with="Removing…"
                     >Unassign</button>
                   </td>
                 </tr>
@@ -287,6 +305,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             <select class="select select-bordered" name="assignment[service_id]" aria-label="Service"><option
               :for={service <- @worker["services"]}
               value={service["id"]}
+              selected={@assignment_form[:service_id].value == service["id"]}
             >
               {service["instance_id"]}
             </option></select>
@@ -294,8 +313,14 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               class="select select-bordered"
               name="assignment[resource_version_id]"
               aria-label="Zone version"
-            ><option :for={{label, version_id} <- @versions} value={version_id}>{label}</option></select>
-            <button class="btn btn-primary" type="submit">Assign version</button>
+            ><option
+              :for={{label, version_id} <- @versions}
+              value={version_id}
+              selected={@assignment_form[:resource_version_id].value == version_id}
+            >
+              {label}
+            </option></select>
+            <button class="btn btn-primary" type="submit" phx-disable-with="Saving…">Assign version</button>
           </.form>
         </.card>
         <.card title="Target preview and export">
@@ -304,6 +329,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               class="btn btn-primary"
               type="button"
               phx-click="confirm_target"
+              phx-disable-with="Preparing…"
             >Confirm prepared target</button>
             <.link
               :if={@target}

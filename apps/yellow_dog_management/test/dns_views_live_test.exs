@@ -29,6 +29,38 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     %{conn: build_conn()}
   end
 
+  test "database failure retains View fields; retries are stable and edits use a new command", %{
+    conn: conn
+  } do
+    selected = scope("view-db-failure")
+
+    Repo.query!("""
+    CREATE FUNCTION pg_temp.reject_view_draft() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'fixture database failure'; END $$
+    """)
+
+    Repo.query!(
+      "CREATE TRIGGER fixture_reject_view BEFORE INSERT ON management_dns_views FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_view_draft()"
+    )
+
+    {:ok, view, _} = live(conn, path(selected))
+    input = fields("retained", %{"client_rules" => "allow countries US"})
+    submit(view, input)
+    assert has_element?(view, "#dns-view-error", "Database constraint rejected")
+    assert has_element?(view, "input[name='view[name]'][value='retained']")
+    assert textarea(view, "#dns-view-rules") == "allow countries US"
+    rejected = snapshot()
+    submit(view, input)
+    assert snapshot() == rejected
+    submit(view, fields("edited"))
+    assert length(Repo.all(Idempotency)) == length(rejected.idempotency) + 1
+    Repo.query!("DROP TRIGGER fixture_reject_view ON management_dns_views")
+    submit(view, fields("accepted"))
+    assert find_view(selected, "accepted")["name"] == "accepted"
+    {:ok, fresh, _} = live(build_conn(), path(selected))
+    assert has_element?(fresh, "tr", "accepted")
+  end
+
   test "unknown Worker, malformed scope and zero Workers fail closed", %{conn: conn} do
     before_read = snapshot()
 
