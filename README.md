@@ -36,6 +36,21 @@ MIX_ENV=prod mix release yellow_dog_management
 MIX_ENV=prod mix release yellow_dog_worker
 ```
 
+The Management release includes database commands that work without Mix:
+
+```sh
+_build/prod/rel/yellow_dog_management/bin/yellow_dog_management setup
+_build/prod/rel/yellow_dog_management/bin/yellow_dog_management migrate
+```
+
+Both require `YELLOW_DOG_MANAGEMENT_DATABASE_URL`. `setup` creates the database if
+missing and applies all pending migrations; the database role needs `CREATEDB`
+permission when creation is necessary. `migrate` only applies pending migrations
+to an existing database. Repeated runs preserve existing data and report
+`applied_migrations=0` when up to date. These commands do not start the UI or
+Worker services, and normal `start` does not automatically migrate or create a
+database. There is no sample-data seed step.
+
 The existing umbrella selects the two products plus `yellow_dog_config_spec`,
 `abyss`, and `ex_dns`. Both products use the same ConfigSpec and fixtures under
 `apps/yellow_dog_config_spec/`. No source assembly, pending documentation patch,
@@ -227,7 +242,7 @@ on `PATH`, including inside its Nix image. The images provide `/bin/sh`; neither
 contains a PostgreSQL server or baked database/operator credentials.
 
 Set `RELEASE_COOKIE` to a deployment-specific secret before running either Nix
-package, including `eval` for migrations. The immutable Nix store cannot generate
+package, including `setup` or `migrate`. The immutable Nix store cannot generate
 `releases/COOKIE` at startup; `RELEASE_DISTRIBUTION=none` does not remove this
 bootstrap requirement. Do not bake the cookie into an image.
 
@@ -265,15 +280,33 @@ YELLOW_DOG_MANAGEMENT_BACKUP_DIRECTORY=/data/backups
 ```
 
 The database host must be reachable from the container. Run schema migrations
-explicitly, then start the UI/API on `http://localhost:4270`:
+explicitly using the built-in `setup` command, then start the UI/API on
+`http://localhost:4270`:
 
 ```sh
 docker run --rm --env-file .env.management \
-  -v yellow-dog-management-data:/data yellow-dog-management:latest \
-  /usr/local/bin/yellow_dog_release eval 'YellowDog.Management.Release.migrate()'
+  -v yellow-dog-management-data:/data yellow-dog-management:latest setup
 docker run -d --name yellow-dog-management --restart unless-stopped \
   --env-file .env.management -p 127.0.0.1:4270:4270 \
   -v yellow-dog-management-data:/data yellow-dog-management:latest
+```
+
+For upgrades or a pre-created database, use `migrate` instead of `setup`:
+
+```sh
+docker run --rm --env-file .env.management \
+  -v yellow-dog-management-data:/data yellow-dog-management:latest migrate
+# The same command is available inside a running container:
+docker exec yellow-dog-management /usr/local/bin/yellow_dog_release migrate
+```
+
+The image entrypoint is the release binary and its default command is `start`.
+To run a shell for diagnostics, use `docker run --rm --entrypoint sh IMAGE`.
+
+Verify the packaged commands against disposable PostgreSQL with:
+
+```sh
+python3 scripts/e2e/management_release_commands.py --image yellow-dog-management:latest
 ```
 
 The Management Debian image includes PostgreSQL 17 client tools for native backups;

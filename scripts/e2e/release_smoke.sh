@@ -32,6 +32,6 @@ fi
 
 if [ "$release" = yellow_dog_management ]; then
   : "${YELLOW_DOG_MANAGEMENT_DATABASE_URL:?Use a disposable fresh database for the smoke test}"
-  "$binary" eval 'YellowDog.Management.Release.migrate()'
+  "$binary" migrate
 fi
 python3 "apps/$release/test/release_smoke.py" "$binary"

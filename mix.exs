@@ -11,7 +11,7 @@ defmodule YellowDog.Umbrella.MixProject do
       releases: [
         yellow_dog_management: [
           include_executables_for: [:unix],
-          rel_templates_path: "rel/phase1",
+          rel_templates_path: "rel/management",
           runtime_config_path: "apps/yellow_dog_management/config/runtime.exs",
           applications: [yellow_dog_management: :permanent]
         ],

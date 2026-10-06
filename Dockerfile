@@ -47,4 +47,5 @@ RUN case "${MIX_RELEASE_NAME}" in \
 COPY --from=builder /app/_build/prod/rel/${MIX_RELEASE_NAME} /app
 RUN ln -s "/app/bin/${MIX_RELEASE_NAME}" /usr/local/bin/yellow_dog_release
 EXPOSE 53/tcp 53/udp 4270/tcp 4280/tcp
-CMD ["/usr/local/bin/yellow_dog_release", "start"]
+ENTRYPOINT ["/usr/local/bin/yellow_dog_release"]
+CMD ["start"]
