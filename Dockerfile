@@ -39,9 +39,12 @@ RUN case "${MIX_RELEASE_NAME}" in \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates coreutils libatomic1 libncursesw6 libstdc++6 openssl util-linux && \
+    if [ "${MIX_RELEASE_NAME}" = "yellow_dog_management" ]; then \
+      apt-get install -y --no-install-recommends postgresql-client; \
+    fi && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/_build/prod/rel/${MIX_RELEASE_NAME} /app
 RUN ln -s "/app/bin/${MIX_RELEASE_NAME}" /usr/local/bin/yellow_dog_release
-EXPOSE 53/tcp 53/udp 4280/tcp
+EXPOSE 53/tcp 53/udp 4270/tcp 4280/tcp
 CMD ["/usr/local/bin/yellow_dog_release", "start"]

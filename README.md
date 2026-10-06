@@ -243,6 +243,44 @@ Worker containers need a writable local state directory and a mounted bootstrap
 and target; Management containers need a dedicated external PostgreSQL database
 and network access restricted to trusted hosts or an external authentication/TLS
 proxy. Use the explicit release commands above for migrations.
+
+For a local Management image and persistent files:
+
+```sh
+docker build --build-arg MIX_RELEASE_NAME=yellow_dog_management \
+  -t yellow-dog-management:latest .
+docker volume create yellow-dog-management-data
+```
+
+Create `.env.management` with the connection to your dedicated PostgreSQL database
+and a stable secret generated with `openssl rand -base64 64`:
+
+```dotenv
+YELLOW_DOG_MANAGEMENT_DATABASE_URL=postgres://user:password@database-host:5432/yellow_dog_management
+YELLOW_DOG_MANAGEMENT_SECRET_KEY_BASE=replace-with-your-generated-secret
+YELLOW_DOG_MANAGEMENT_BIND_ADDRESS=0.0.0.0
+YELLOW_DOG_MANAGEMENT_PORT=4270
+YELLOW_DOG_MANAGEMENT_ARTIFACT_DIRECTORY=/data/artifacts
+YELLOW_DOG_MANAGEMENT_BACKUP_DIRECTORY=/data/backups
+```
+
+The database host must be reachable from the container. Run schema migrations
+explicitly, then start the UI/API on `http://localhost:4270`:
+
+```sh
+docker run --rm --env-file .env.management \
+  -v yellow-dog-management-data:/data yellow-dog-management:latest \
+  /usr/local/bin/yellow_dog_release eval 'YellowDog.Management.Release.migrate()'
+docker run -d --name yellow-dog-management --restart unless-stopped \
+  --env-file .env.management -p 127.0.0.1:4270:4270 \
+  -v yellow-dog-management-data:/data yellow-dog-management:latest
+```
+
+The Management Debian image includes PostgreSQL 17 client tools for native backups;
+its `pg_dump` supports PostgreSQL servers up to major version 17. PostgreSQL runs
+separately from Management. The volume retains synchronized artifacts and backups
+when the Management container is replaced.
+
 Release tarballs contain ERTS but need the host's compatible Linux shared libraries;
 Worker tarball hosts must also install util-linux/coreutils and provide `/bin/sh`.
 Only the two products have tarball/image release matrices. Image publication is

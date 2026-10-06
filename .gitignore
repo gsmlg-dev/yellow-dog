@@ -37,6 +37,9 @@ tmp/
 .devenv/
 .devenv.*
 
+# Management container database credentials and session secret.
+/.env.management
+
 # Claude Code - Keep commands, ignore runtime artifacts
 .claude/.cache/
 .claude/logs/
