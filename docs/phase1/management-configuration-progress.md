@@ -1,5 +1,92 @@
 # Management configuration and IP artifact increment
 
+## 2026-10-08 CI repair after release 1.2.1
+
+The operator expanded the work to all current CI failures after the `v1.2.1`
+release build succeeded. Repairs are isolated in `.trees/fix-ci-management`,
+branch `codex/fix-ci-management`, starting from
+`a7a60dfa6226f159702d28fc69a9a2023c4875af`. The release remains a prerelease;
+its existing tag and published artifacts are not rewritten.
+
+Two independent-connection assignment tests committed fixtures outside the SQL
+sandbox, then left 21 audit/idempotency records behind. This polluted later
+Events, Tasks, Backups, Zone import and other test expectations depending on
+execution order. Regression assertions reproduced both leaks (9 tests, 2
+failures). Each test now uses a unique actor/request-key namespace and removes
+only its committed fixture records. Audit cleanup disables its immutable trigger
+inside one teardown transaction and reenables it before commit; the trigger is
+asserted enabled and the exact prior receipt state is asserted restored before
+and after each test. Production migrations and command invariants are unchanged.
+The same assignment regressions now pass (9 tests, 0 failures).
+
+Five synthetic Zone/Worker submissions now carry the actual rendered hidden
+`_submission` value, preserving forged-field, validation and CAS assertions.
+The Events UI test selects its actual audit record in the audit group, where the
+page also renders separate receipt/job detail buttons. The missing Node CI
+entrypoint is supplied by 10 behavioral tests of the current LiveView hooks;
+these execute the current entrypoint with package/browser boundaries stubbed,
+without restoring the obsolete native UI. These are Node checks, not Chromium
+acceptance.
+
+Supported child applications now declare their own development/test Credo
+dependency so the root per-app alias can run. The two resulting Credo warnings
+are repaired with a SQL sigil and a credential-free reraised ArgumentError.
+Two retained presentations receive formatting-only adjustments recorded as exact
+manifest transformations; all 203 source-retention files still pass provenance.
+Nix packaging updates the production Mix dependency hash to the value reproduced
+by both CI architectures and the local fixed-output build. MDEx's checksum-pinned
+native artifact is declared as a Nix input and placed in Rustler's cache before
+dependency compilation, instead of attempting a download inside the sandbox.
+
+Full Management testing with disposable PostgreSQL and both seed 0 and the
+original Phase 1 seed 635407 reports **474 tests, 1 failure**: packaged MAC source parity. Upstream
+[gsmlg_umbrella#8](https://github.com/gsmlg-dev/gsmlg_umbrella/issues/8) is still
+open, and Hex still publishes only `gsmlg_mac` 0.1.1/0.1.0. The lossless import
+check remains enabled and the task stays blocked by this dependency; no local
+replacement compiler or lossy acceptance is introduced. The FlakeHub rolling
+workflow separately returns **401 Unauthorized**, explicitly requiring the
+`gsmlg-dev` organization to register/authorize in FlakeHub. These external
+blockers prevent a claim that all CI is green.
+
+Evidence: `/tmp/yellow-dog-release-1.2.1/assignment-isolation-{before,after}.log`,
+`management-full-seed0.log`, `/tmp/yellow-dog-ci-node-parent.log`,
+`/tmp/yellow-dog-ci-nix-deps.log` and `/tmp/yellow-dog-flakehub.log`.
+Completed local verification (commands run from the worktree inside the root
+`devenv shell -- bash -c 'cd .trees/fix-ci-management; ...'` context):
+
+| Command | Actual result |
+| --- | --- |
+| `mix format --check-formatted` | Exit 0, full supported formatter scope. |
+| `mix compile --warnings-as-errors` and `MIX_ENV=test mix compile --warnings-as-errors` | Both exit 0. |
+| `mix credo --strict` | All five supported child applications pass, exit 0. |
+| `mix cmd --app yellow_dog_config_spec --app yellow_dog_worker mix test` | ConfigSpec 15/0; Worker 95/0 with its existing 1 skipped test, exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test --warnings-as-errors test/assignment_domain_test.exs test/ui_test.exs test/worker_profiles_live_test.exs test/zone_validation_live_test.exs test/backups_test.exs test/postgres_tools_test.exs` | 58/0, exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test --seed 0` and the same command with `--seed 635407` | Each 474/1, exit 1 from the command wrapper; only the MAC upstream blocker. No filters/skips applied. |
+| `node --test apps/yellow_dog_management/test/management_ui_test.mjs` | 10/0, exit 0. |
+| `python3 scripts/e2e/check_ui_source_migration.py` | 203 files, exit 0. |
+| `scripts/e2e/architecture_smoke.sh` | Positive architecture and four negative fixtures pass, exit 0. |
+| `nix build .#yellow_dog_management.mixFodDeps --no-link --print-build-logs` | Corrected fixed-output hash passes, exit 0. |
+| `nix build .#docker-management .#docker-worker --no-link --print-build-logs` | Both x86_64 product images build, exit 0. |
+| Actual Nix Management release: `migrate`, MDEx HTML evaluation, `python3 apps/yellow_dog_management/test/release_smoke.py <nix-release-binary>` | Native artifact loads and renders HTML; PostgreSQL/HTTP/concurrency/restart gates pass, exit 0. |
+| `python3 apps/yellow_dog_worker/test/release_smoke.py <nix-release-binary>` | Real UDP/TCP, atomic reload, SIGKILL and stopped-state persistence pass, exit 0. |
+| `git diff --check` and supplied-plan SHA-256 | Exit 0; original plan hash unchanged. |
+
+Nix runtime smoke uses `RELEASE_DISTRIBUTION=none`, a disposable
+`RELEASE_COOKIE=yellow_dog_ci_smoke`, and `ERL_FLAGS='+S 2:2 +A 2'`. nixpkgs
+removes the generated release cookie from the immutable store by default;
+operators must supply `RELEASE_COOKIE`, including for nondistributed startup.
+Management was migrated through the disposable PostgreSQL wrapper. Neither
+smoke deployed to NixOS/Podman nor exercised ARM runtime behavior.
+
+Additional logs: `/tmp/yellow-dog-ci-parent-checks.log`,
+`/tmp/yellow-dog-ci-architecture.log`,
+`/tmp/yellow-dog-ci-nix-images-verified.log`,
+`/tmp/yellow-dog-ci-nix-runtime-verified.log` and
+`/tmp/yellow-dog-release-1.2.1/management-full-seed635407.log`.
+Remote CI will be inspected for the pushed repair revision; local checks do not
+establish all-green CI or resolve the two external blockers.
+
+
 ## 2026-10-08 release 1.2.1 preparation
 
 The operator authorized committing the local fixes, fresh verification and a new
