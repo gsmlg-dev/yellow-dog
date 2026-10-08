@@ -192,7 +192,7 @@ defmodule YellowDog.Management.ZoneValidationLiveTest do
       before_submit = snapshot()
       candidate = invalid_candidate(zone, :address)
       {:ok, view, _html} = live(conn, path)
-      render_submit(view, "save", %{"zone" => fields(candidate)})
+      render_submit(view, "save", %{"zone" => fields(candidate), "_submission" => intent(view)})
       after_submit = snapshot()
 
       assert Map.drop(after_submit, [:audit, :idempotency]) ==
@@ -243,7 +243,13 @@ defmodule YellowDog.Management.ZoneValidationLiveTest do
     assert snapshot() == before_refresh
     change(view, candidate)
     assert snapshot() == before_refresh
-    assert render_submit(view, "save", %{"zone" => fields(candidate)}) =~ "revision"
+
+    assert render_submit(view, "save", %{
+             "zone" => fields(candidate),
+             "_submission" => intent(view)
+           }) =~
+             "revision"
+
     assert {:ok, ^concurrent} = Domain.get_zone(zone["id"])
     assert Domain.list_versions(zone["id"]) == [version, second_version]
     assert {:ok, ^worker} = Domain.get_worker(worker["id"])
@@ -287,6 +293,17 @@ defmodule YellowDog.Management.ZoneValidationLiveTest do
     for schema <- [Worker, Service, Assignment, ResourceVersion, Target] do
       assert snapshot()[schema] == before_read[schema]
     end
+  end
+
+  defp intent(view) do
+    [token] =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#zone-form input[name='_submission']")
+      |> LazyHTML.attribute("value")
+
+    token
   end
 
   defp change(view, candidate),

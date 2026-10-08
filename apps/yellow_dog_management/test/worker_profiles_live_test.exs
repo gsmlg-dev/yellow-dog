@@ -151,7 +151,11 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
     assert get(conn, export_path).resp_body == exported.resp_body
     assert non_worker_snapshot() == preserved
 
-    render_submit(view, "save_worker", %{"worker" => %{"name" => "Name only"}})
+    render_submit(view, "save_worker", %{
+      "worker" => %{"name" => "Name only"},
+      "_submission" => intent(view)
+    })
+
     assert {:ok, name_only} = Domain.get_worker(worker["id"])
     assert name_only["name"] == "Name only"
     assert name_only["profile_name"] == "dhcp_only"
@@ -202,7 +206,8 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
              }) =~ "Choose a known Server profile from the catalog"
 
       assert render_submit(edit, "save_worker", %{
-               "worker" => %{"name" => "Rejected rename", "profile_name" => invalid}
+               "worker" => %{"name" => "Rejected rename", "profile_name" => invalid},
+               "_submission" => intent(edit)
              }) =~ "Choose a known Server profile from the catalog"
 
       assert configuration_snapshot() == before_rejections
@@ -247,7 +252,8 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
           "expected_capabilities" => ["dhcpv4"],
           "services" => [],
           "server_agent" => true
-        }
+        },
+        "_submission" => intent(view)
       })
 
       assert {:ok, updated} = Domain.get_worker(worker["id"])
@@ -281,6 +287,17 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
 
       assert read_snapshot() == before_read
     end
+  end
+
+  defp intent(view) do
+    [token] =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#worker-edit-form input[name='_submission']")
+      |> LazyHTML.attribute("value")
+
+    token
   end
 
   defp assert_catalog(view, select_id, selected) do
