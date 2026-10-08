@@ -23,10 +23,277 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
 
   @endpoint YellowDog.ManagementUI.Endpoint
 
+  defmodule UnavailableRepo do
+    use Ecto.Repo, otp_app: :yellow_dog_management, adapter: Ecto.Adapters.Postgres
+  end
+
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
     %{conn: build_conn()}
+  end
+
+  test "same mounted editor recreates an identical deleted View with a new identity", %{
+    conn: conn
+  } do
+    selected = scope("view-recreate")
+    {:ok, view, _} = live(conn, path(selected))
+    before = snapshot()
+    input = fields("office")
+    submit(view, input)
+    first = find_view(selected, "office")
+    click_event(view, "delete", %{"id" => first["id"]})
+    click_event(view, "confirm_delete", %{"id" => first["id"]})
+    refute Enum.any?(list(selected), &(&1["id"] == first["id"]))
+    submit(view, input)
+    second = find_view(selected, "office")
+    refute second["id"] == first["id"]
+    assert length(snapshot().idempotency -- before.idempotency) == 3
+    assert length(snapshot().audit -- before.audit) == 3
+    {:ok, fresh, _} = live(build_conn(), path(selected))
+    assert has_element?(fresh, "tr", "office")
+  end
+
+  test "completed and delayed create/update events cannot write or replace a new editor", %{
+    conn: conn
+  } do
+    selected = scope("view-duplicates")
+    {:ok, view, _} = live(conn, path(selected))
+    input = fields("office")
+    original = %{"view" => input, "_submission" => intent(view)}
+    before = snapshot()
+    render_submit(view, "save", original)
+    created = find_view(selected, "office")
+    after_create = snapshot()
+    assert length(after_create.audit -- before.audit) == 1
+    assert length(after_create.idempotency -- before.idempotency) == 1
+    render_submit(view, "save", original)
+    assert snapshot() == after_create
+    assert has_element?(view, "input[name='view[name]'][value='']")
+
+    click_event(view, "edit", %{"id" => created["id"]})
+    update = %{"view" => fields("office", %{"priority" => "42"}), "_submission" => intent(view)}
+    render_submit(view, "save", update)
+    updated = find_view(selected, "office")
+    assert updated["id"] == created["id"]
+    assert updated["revision"] == 2
+    assert updated["priority"] == 42
+    after_update = snapshot()
+    render_change(view, "validate", %{"view" => fields("new unsaved")})
+    render_submit(view, "save", update)
+    render_submit(view, "save", original)
+    render_submit(view, "save", %{"view" => input})
+    assert snapshot() == after_update
+    assert has_element?(view, "input[name='view[name]'][value='new unsaved']")
+    {:ok, fresh, _} = live(build_conn(), path(selected))
+    assert has_element?(fresh, "tr", "office")
+    assert find_view(selected, "office")["priority"] == 42
+  end
+
+  test "scope changes retire pending events before they can replace fields or write", %{
+    conn: conn
+  } do
+    first = scope("view-old-intent")
+    second = scope("view-new-intent")
+    {:ok, view, _} = live(conn, path(first))
+    create_view(first, "office")
+    pending = %{"view" => fields("office"), "_submission" => intent(view)}
+    render_submit(view, "save", pending)
+    assert has_element?(view, "#dns-view-error", "already exists")
+    render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
+    click_event(view, "confirm_scope")
+    assert_patch(view, selector(second))
+    render_change(view, "validate", %{"view" => fields("new scope unsaved")})
+    before = snapshot()
+    render_submit(view, "save", pending)
+    assert snapshot() == before
+    assert has_element?(view, "input[name='view[name]'][value='new scope unsaved']")
+    submit(view, fields("office"))
+    assert find_view(second, "office")["service_id"] == second.service["id"]
+    assert Enum.count(list(first), &(&1["name"] == "office")) == 1
+  end
+
+  test "malformed current-intent submissions fail closed without dropping editor fields", %{
+    conn: conn
+  } do
+    selected = scope("view-malformed-intent")
+    {:ok, view, _} = live(conn, path(selected))
+    render_change(view, "validate", %{"view" => fields("typed")})
+    before = snapshot()
+    assert render_submit(view, "save", %{"_submission" => intent(view)}) =~ "Invalid View action"
+    assert snapshot() == before
+    assert has_element?(view, "input[name='view[name]'][value='typed']")
+  end
+
+  test "pipelined edit and submit accept changed input before the new token reaches the browser",
+       %{conn: conn} do
+    selected = scope("view-pipelined")
+    create_view(selected, "taken")
+    {:ok, view, _} = live(conn, path(selected))
+    original = %{"view" => fields("taken"), "_submission" => intent(view)}
+    render_submit(view, "save", original)
+    assert has_element?(view, "#dns-view-error", "already exists")
+    before_edit = snapshot()
+    changed = Map.put(original, "view", fields("pipelined"))
+    render_change(view, "validate", changed)
+    render_submit(view, "save", original)
+    assert snapshot() == before_edit
+    assert has_element?(view, "input[name='view[name]'][value='pipelined']")
+    render_submit(view, "save", changed)
+    assert find_view(selected, "pipelined")
+    assert length(snapshot().idempotency -- before_edit.idempotency) == 1
+    assert length(snapshot().audit -- before_edit.audit) == 1
+    saved = snapshot()
+    render_submit(view, "save", changed)
+    render_submit(view, "save", original)
+    assert snapshot() == saved
+  end
+
+  test "edit then revert cannot turn an old duplicate into an independent submission", %{
+    conn: conn
+  } do
+    selected = scope("view-edit-revert")
+
+    Repo.query!(
+      "CREATE FUNCTION pg_temp.reject_reverted_view() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture database failure'; END $$"
+    )
+
+    Repo.query!(
+      "CREATE TRIGGER reject_reverted_view BEFORE INSERT ON management_dns_views FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_reverted_view()"
+    )
+
+    {:ok, view, _} = live(conn, path(selected))
+    original = %{"view" => fields("office"), "_submission" => intent(view)}
+    before = snapshot()
+    render_submit(view, "save", original)
+    assert has_element?(view, "#dns-view-error", "Database constraint rejected")
+    failed = snapshot()
+    assert [original_receipt] = failed.idempotency -- before.idempotency
+    render_change(view, "validate", %{"view" => fields("temporary")})
+    render_change(view, "validate", %{"view" => fields("office")})
+    refute intent(view) == original["_submission"]
+    render_submit(view, "save", original)
+    assert snapshot() == failed
+    assert has_element?(view, "input[name='view[name]'][value='office']")
+    Repo.query!("DROP TRIGGER reject_reverted_view ON management_dns_views")
+    submit(view, fields("office"))
+    assert find_view(selected, "office")
+    assert [new_receipt] = snapshot().idempotency -- failed.idempotency
+    refute new_receipt.key == original_receipt.key
+    assert length(snapshot().audit -- failed.audit) == 1
+    saved = snapshot()
+    render_submit(view, "save", original)
+    assert snapshot() == saved
+    {:ok, fresh, _} = live(build_conn(), path(selected))
+    assert has_element?(fresh, "tr", "office")
+  end
+
+  test "unconfirmed database outcome preserves fields and the pending request for a confirmed retry" do
+    selected = scope("view-unconfirmed")
+
+    {:ok, socket} =
+      YellowDog.ManagementUI.DnsViewsLive.mount(%{}, %{}, %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}, flash: %{}},
+        private: %{live_temp: %{}}
+      })
+
+    socket =
+      Phoenix.Component.assign(socket,
+        worker: selected.worker,
+        service: selected.service,
+        scope_params: %{
+          "server_id" => selected.worker["id"],
+          "service_id" => selected.service["id"]
+        }
+      )
+
+    unavailable =
+      start_supervised!(
+        {UnavailableRepo,
+         [
+           name: nil,
+           pool: DBConnection.ConnectionPool,
+           pool_size: 1,
+           hostname: "127.0.0.1",
+           port: 0,
+           username: "postgres",
+           database: "unavailable",
+           connect_timeout: 10,
+           timeout: 50,
+           queue_target: 1,
+           queue_interval: 1
+         ]},
+        id: :unavailable_repo
+      )
+
+    previous_repo = Repo.get_dynamic_repo()
+    input = %{"view" => fields("unconfirmed"), "_submission" => socket.assigns.submission_id}
+    before = snapshot()
+
+    failed =
+      try do
+        Repo.put_dynamic_repo(unavailable)
+
+        assert {:noreply, failed} =
+                 YellowDog.ManagementUI.DnsViewsLive.handle_event("save", input, socket)
+
+        failed
+      after
+        Repo.put_dynamic_repo(previous_repo)
+      end
+
+    assert failed.assigns.error =~ "submission was not confirmed"
+    assert failed.assigns.form.params["name"] == "unconfirmed"
+    assert failed.assigns.submission_id == socket.assigns.submission_id
+    assert {_params, key} = failed.assigns.submissions["create_dns_view"]
+    assert snapshot() == before
+
+    assert {:noreply, saved} =
+             YellowDog.ManagementUI.DnsViewsLive.handle_event("save", input, failed)
+
+    assert saved.assigns.submission_id != failed.assigns.submission_id
+    assert find_view(selected, "unconfirmed")
+    assert [receipt] = snapshot().idempotency -- before.idempotency
+    assert receipt.key == key
+    assert length(snapshot().audit -- before.audit) == 1
+
+    assert {:noreply, ^saved} =
+             YellowDog.ManagementUI.DnsViewsLive.handle_event("save", input, saved)
+
+    assert length(snapshot().idempotency -- before.idempotency) == 1
+  end
+
+  test "pipelined View updates match real browser fields with read-only fields omitted", %{
+    conn: conn
+  } do
+    for default? <- [false, true] do
+      selected = scope("view-browser-fields-#{default?}")
+
+      record =
+        if default?, do: find_view(selected, "default"), else: create_view(selected, "office")
+
+      {:ok, view, _} = live(conn, path(selected))
+      click_event(view, "edit", %{"id" => record["id"]})
+      update_view(selected, record, %{"enabled" => false})
+      omitted = if default?, do: ~w(name priority client_rules), else: ~w(name)
+      input = fields(record["name"]) |> Map.drop(omitted)
+      request = %{"view" => input, "_submission" => intent(view)}
+      render_submit(view, "save", request)
+      assert has_element?(view, "#dns-view-error", "revision")
+      before_edit = snapshot()
+      changed = put_in(request, ["view", "recursion_enabled"], "false")
+      render_change(view, "validate", changed)
+      render_submit(view, "save", request)
+      assert snapshot() == before_edit
+      render_submit(view, "save", changed)
+      assert length(snapshot().audit -- before_edit.audit) == 1
+      assert length(snapshot().idempotency -- before_edit.idempotency) == 1
+
+      assert has_element?(
+               view,
+               "select[name='view[recursion_enabled]'] option[value='false'][selected]"
+             )
+    end
   end
 
   test "database failure retains View fields; retries are stable and edits use a new command", %{
@@ -72,8 +339,8 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
       {:ok, view, _html} = live(conn, path)
       assert has_element?(view, "#dns-view-error")
       refute has_element?(view, "#dns-view-form")
-      render_submit(view, "save", %{"view" => fields("forged")})
-      render_click(view, "confirm_delete", %{"id" => Ecto.UUID.generate()})
+      submit_event(view, "save", %{"view" => fields("forged")})
+      click_event(view, "confirm_delete", %{"id" => Ecto.UUID.generate()})
     end
 
     assert snapshot() == before_read
@@ -128,12 +395,12 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
     assert has_element?(view, "#dns-view-unsaved-scope")
     assert has_element?(view, "input[name='view[name]'][value='unsaved']")
-    render_click(view, "cancel_scope")
+    click_event(view, "cancel_scope")
     refute has_element?(view, "#dns-view-unsaved-scope")
     assert has_element?(view, "input[name='view[name]'][value='unsaved']")
 
     render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
-    render_click(view, "confirm_scope")
+    click_event(view, "confirm_scope")
     assert_patch(view, selector(second))
     assert has_element?(view, "input[name='view[name]'][value='']")
 
@@ -158,7 +425,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
       {:ok, view, _html} = live(conn, selector(selected) <> "/#{id}")
       assert has_element?(view, "#dns-view-error")
       refute has_element?(view, "#dns-view-form")
-      render_submit(view, "save", %{"view" => fields("forged")})
+      submit_event(view, "save", %{"view" => fields("forged")})
     end
 
     assert snapshot() == before_read
@@ -297,7 +564,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
       })
 
     {:ok, view, _html} = live(conn, path(selected))
-    render_click(view, "edit", %{"id" => saved["id"]})
+    click_event(view, "edit", %{"id" => saved["id"]})
     assert textarea(view, "#dns-view-rules") == "deny countries US\nallow networks"
     assert textarea(view, "#dns-view-forwarders") == "[2001:db8::53]:5353"
 
@@ -351,10 +618,10 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert names == [custom["name"], "default"]
     refute has_element?(view, "#dns-view-#{default["id"]} [phx-click='delete']")
     before_delete = snapshot()
-    render_click(view, "delete", %{"id" => default["id"]})
-    render_click(view, "confirm_delete", %{"id" => default["id"]})
+    click_event(view, "delete", %{"id" => default["id"]})
+    click_event(view, "confirm_delete", %{"id" => default["id"]})
     assert snapshot() == before_delete
-    render_click(view, "edit", %{"id" => default["id"]})
+    click_event(view, "edit", %{"id" => default["id"]})
     assert has_element?(view, "#dns-view-rules[readonly]")
     refute has_element?(view, "input[name='view[priority]']")
     refute has_element?(view, "#dns-view-apply-preset")
@@ -380,7 +647,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert updated["enabled"] == false
     assert updated["ecs_enabled"] == true
     assert updated["fallback_forwarders"] == [%{"address" => "::1", "port" => 53}]
-    render_click(view, "toggle_enabled", %{"id" => updated["id"]})
+    click_event(view, "toggle_enabled", %{"id" => updated["id"]})
     toggled = find_view(selected, "default")
     assert toggled["enabled"] == true
 
@@ -401,7 +668,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
       })
 
     {:ok, view, _html} = live(conn, path(selected))
-    render_click(view, "toggle_enabled", %{"id" => saved["id"]})
+    click_event(view, "toggle_enabled", %{"id" => saved["id"]})
     toggled = find_view(selected, "toggle")
     assert toggled["enabled"] == false
 
@@ -410,7 +677,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
 
     concurrent = update_view(selected, toggled, %{"priority" => 9})
     before_stale = snapshot()
-    render_click(view, "toggle_enabled", %{"id" => saved["id"]})
+    click_event(view, "toggle_enabled", %{"id" => saved["id"]})
     assert has_element?(view, "#dns-view-error")
     assert find_view(selected, "toggle") == concurrent
     assert_rejected_command(before_stale, "update_dns_view")
@@ -422,7 +689,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     selected = scope()
     saved = create_view(selected, "stale")
     {:ok, view, _html} = live(conn, path(selected))
-    render_click(view, "edit", %{"id" => saved["id"]})
+    click_event(view, "edit", %{"id" => saved["id"]})
 
     concurrent =
       update_view(selected, saved, %{
@@ -436,7 +703,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert textarea(view, "#dns-view-rules") == "allow countries US"
     assert find_view(selected, "stale") == concurrent
     assert_rejected_command(before_stale, "update_dns_view")
-    render_click(view, "refresh")
+    click_event(view, "refresh")
     assert has_element?(view, "input[name='view[name]'][value='']")
 
     assert has_element?(
@@ -452,24 +719,24 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     other = create_view(selected, "keep")
     {:ok, view, _html} = live(conn, path(selected))
     before_delete = snapshot()
-    render_click(view, "confirm_delete", %{"id" => saved["id"]})
+    click_event(view, "confirm_delete", %{"id" => saved["id"]})
     assert snapshot() == before_delete
-    render_click(view, "delete", %{"id" => saved["id"]})
+    click_event(view, "delete", %{"id" => saved["id"]})
     assert has_element?(view, "#dns-view-delete-modal[role='dialog']")
-    render_click(view, "confirm_delete", %{"id" => other["id"]})
+    click_event(view, "confirm_delete", %{"id" => other["id"]})
     assert snapshot() == before_delete
-    render_click(view, "cancel_delete")
+    click_event(view, "cancel_delete")
     refute has_element?(view, "#dns-view-confirm-delete")
     assert snapshot() == before_delete
-    render_click(view, "delete", %{"id" => saved["id"]})
+    click_event(view, "delete", %{"id" => saved["id"]})
     current = update_view(selected, saved, %{"fallback_retries" => 4})
     before_stale = snapshot()
-    render_click(view, "confirm_delete", %{"id" => saved["id"]})
+    click_event(view, "confirm_delete", %{"id" => saved["id"]})
     assert_rejected_command(before_stale, "delete_dns_view")
     assert find_view(selected, "delete-me") == current
-    render_click(view, "refresh")
-    render_click(view, "delete", %{"id" => saved["id"]})
-    render_click(view, "confirm_delete", %{"id" => saved["id"]})
+    click_event(view, "refresh")
+    click_event(view, "delete", %{"id" => saved["id"]})
+    click_event(view, "confirm_delete", %{"id" => saved["id"]})
 
     assert {:error, %{code: "not_found"}} =
              Domain.get_dns_view(selected.worker["id"], selected.service["id"], saved["id"])
@@ -504,14 +771,14 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
           {"fallback_forwarders", "[::1]:53junk"},
           {"fallback_forwarders", Enum.map_join(1..129, "\n", fn _index -> "192.0.2.1" end)}
         ] do
-      render_click(view, "cancel")
+      click_event(view, "cancel")
       before_invalid = snapshot()
-      render_submit(view, "save", %{"view" => fields("invalid", %{field => value})})
+      submit_event(view, "save", %{"view" => fields("invalid", %{field => value})})
       assert has_element?(view, "#dns-view-#{field}-error")
       assert snapshot() == before_invalid
     end
 
-    render_click(view, "cancel")
+    click_event(view, "cancel")
     submit(view, fields("max-priority", %{"priority" => "9223372036854775807"}))
     assert find_view(selected, "max-priority")["priority"] == 9_223_372_036_854_775_807
   end
@@ -523,16 +790,16 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
 
     for field <-
           ~w(name priority enabled recursion_enabled ecs_enabled client_rules fallback_forwarders fallback_timeout fallback_retries) do
-      render_click(view, "cancel")
-      render_submit(view, "save", %{"view" => fields("arrays", %{field => ["foreign"]})})
+      click_event(view, "cancel")
+      submit_event(view, "save", %{"view" => fields("arrays", %{field => ["foreign"]})})
       assert has_element?(view, "#dns-view-error")
     end
 
     for event <- ~w(edit delete toggle_enabled confirm_delete) do
-      render_click(view, event, %{"id" => ["not-an-id"]})
+      click_event(view, event, %{"id" => ["not-an-id"]})
     end
 
-    render_click(view, "toggle_country", %{"code" => "XX"})
+    click_event(view, "toggle_country", %{"code" => "XX"})
     assert snapshot() == before_invalid
     assert Process.alive?(view.pid)
   end
@@ -543,10 +810,10 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     {:ok, view, _html} = live(conn, path(selected))
 
     for preset <- ~w(any none localhost localnets) do
-      render_click(view, "cancel")
+      click_event(view, "cancel")
       before_editor = snapshot()
 
-      render_submit(view, "save", %{
+      submit_event(view, "save", %{
         "operation" => "apply_preset",
         "preset" => preset,
         "view" => fields("preset-#{preset}", %{"client_rules" => ""})
@@ -567,7 +834,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
       assert find_view(selected, "preset-#{preset}")["client_rules"] == rules
     end
 
-    render_submit(view, "save", %{
+    submit_event(view, "save", %{
       "operation" => "apply_preset",
       "preset" => "any",
       "view" => fields("typed", %{"client_rules" => "deny any"})
@@ -582,7 +849,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     selected = scope()
     {:ok, view, _html} = live(conn, path(selected))
     before_editor = snapshot()
-    render_click(view, "toggle_country", %{"code" => "US"})
+    click_event(view, "toggle_country", %{"code" => "US"})
 
     render_change(view, "validate", %{
       "view" => fields("typed", %{"client_rules" => "deny networks ::1"}),
@@ -591,13 +858,13 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
 
     assert has_element?(view, "[data-selected-country-code='US']")
     refute has_element?(view, "#dns-view-country-US")
-    render_click(view, "toggle_country", %{"code" => "CA"})
-    render_click(view, "clear_country_search")
+    click_event(view, "toggle_country", %{"code" => "CA"})
+    click_event(view, "clear_country_search")
     assert has_element?(view, "#dns-view-country-US[checked]")
     assert has_element?(view, "#dns-view-country-CA[checked]")
-    render_click(view, "toggle_country", %{"code" => "US"})
+    click_event(view, "toggle_country", %{"code" => "US"})
     refute has_element?(view, "#dns-view-country-US[checked]")
-    render_click(view, "toggle_country", %{"code" => "US"})
+    click_event(view, "toggle_country", %{"code" => "US"})
 
     params =
       fields("latest", %{
@@ -606,7 +873,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
         "priority" => "3"
       })
 
-    render_submit(view, "save", %{
+    submit_event(view, "save", %{
       "operation" => "append_countries",
       "view" => params,
       "country_action" => "deny"
@@ -637,15 +904,15 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     {:ok, view, _html} = live(conn, path(selected))
     refute has_element?(view, "#dns-view-#{foreign["id"]}")
     before_scope = snapshot()
-    render_click(view, "edit", %{"id" => foreign["id"]})
-    render_click(view, "toggle_enabled", %{"id" => foreign["id"]})
+    click_event(view, "edit", %{"id" => foreign["id"]})
+    click_event(view, "toggle_enabled", %{"id" => foreign["id"]})
     assert snapshot() == before_scope
-    render_click(view, "edit", %{"id" => saved["id"]})
-    render_click(view, "toggle_country", %{"code" => "US"})
+    click_event(view, "edit", %{"id" => saved["id"]})
+    click_event(view, "toggle_country", %{"code" => "US"})
     render_patch(view, path(other))
     assert has_element?(view, "input[name='view[name]'][value='']")
     refute has_element?(view, "[data-selected-country-code]")
-    render_click(view, "edit", %{"id" => saved["id"]})
+    click_event(view, "edit", %{"id" => saved["id"]})
     assert has_element?(view, "#dns-view-error")
     assert snapshot() == before_scope
   end
@@ -663,22 +930,39 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     render_change(view, "filter", %{"filter" => "OFFICE", "status" => "disabled"})
     assert has_element?(view, "#dns-view-count", "Showing 1 of 3")
     assert has_element?(view, "#dns-view-#{office["id"]}")
-    render_click(view, "export_csv")
+    click_event(view, "export_csv")
     assert_push_event(view, "download_csv", %{content: csv})
 
     assert csv ==
              "View Name,Status,Priority,Recursion,ECS\r\noffice,Disabled,100,Enabled,Enabled\r\n"
 
-    render_click(view, "edit", %{"id" => office["id"]})
-    render_click(view, "cancel")
-    render_click(view, "refresh")
+    click_event(view, "edit", %{"id" => office["id"]})
+    click_event(view, "cancel")
+    click_event(view, "refresh")
     assert has_element?(view, "#dns-view-count", "Showing 1 of 3")
     assert snapshot() == before_read
     render_change(view, "filter", %{"filter" => "", "status" => "all"})
-    render_click(view, "export_csv")
+    click_event(view, "export_csv")
     assert_push_event(view, "download_csv", %{content: csv})
     assert csv =~ "default,Active,infinity,Enabled,Disabled\r\n"
     refute csv =~ "foreign"
+  end
+
+  defp intent(view) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#submission-intent")
+    |> LazyHTML.attribute("value")
+    |> List.first()
+  end
+
+  defp submit_event(view, event, params) do
+    render_submit(view, event, Map.put(params, "_submission", intent(view)))
+  end
+
+  defp click_event(view, event, params \\ %{}) do
+    render_click(view, event, Map.put(params, "_submission", intent(view)))
   end
 
   defp fields(name, overrides \\ %{}) do
@@ -698,7 +982,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     )
   end
 
-  defp submit(view, params), do: render_submit(view, "save", %{"view" => params})
+  defp submit(view, params), do: submit_event(view, "save", %{"view" => params})
 
   defp textarea(view, selector),
     do:

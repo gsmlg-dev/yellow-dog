@@ -8,7 +8,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     assign(socket,
+     assign(Submission.new(socket),
        page_title: "Server",
        worker: nil,
        preview: nil,
@@ -20,45 +20,44 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   @impl true
   def handle_params(_params, uri, socket) do
-    {:noreply, load(socket, CurrentPath.route_path_params(socket, uri)["server_id"])}
+    {:noreply,
+     load(Submission.new(socket), CurrentPath.route_path_params(socket, uri)["server_id"])}
   end
 
   @impl true
-  def handle_event("save_worker", %{"worker" => params}, socket) do
-    socket = assign(socket, :worker_form, to_form(params, as: "worker"))
 
-    command(
-      socket,
-      "update_worker",
-      Map.merge(Map.take(params, ~w(name profile_name)), %{
-        "id" => socket.assigns.worker["id"],
-        "expected_revision" => socket.assigns.worker["revision"]
-      })
-    )
+  def handle_event(event, params, socket)
+      when event in ~w(save_worker save_service assign unassign confirm_target) do
+    if Submission.current?(
+         socket,
+         params["_submission"],
+         submitted_editor(socket, event, params)
+       ),
+       do: handle_submission(event, params, socket),
+       else: {:noreply, socket}
   end
 
-  def handle_event("save_service", %{"service" => params}, socket) do
-    socket = assign(socket, :service_form, to_form(params, as: "service"))
+  def handle_event(event, params, socket)
+      when event in ~w(validate_worker validate_service validate_assignment) do
+    {field, operation, form} =
+      case event do
+        "validate_worker" -> {"worker", "update_worker", :worker_form}
+        "validate_service" -> {"service", "put_service", :service_form}
+        "validate_assignment" -> {"assignment", "assign", :assignment_form}
+      end
 
-    case Integer.parse(params["port"] || "") do
-      {port, ""} ->
-        command(socket, "put_service", %{
-          "worker_id" => socket.assigns.worker["id"],
-          "expected_revision" => socket.assigns.worker["revision"],
-          "id" => params["id"],
-          "type" => "dns",
-          "desired_state" => params["desired_state"],
-          "config" => %{"listen_address" => params["listen_address"], "port" => port}
-        })
+    values = params[field]
 
-      _ ->
-        {:noreply, socket |> clear_flash(:info) |> put_flash(:error, "Port must be an integer")}
+    if is_map(values) do
+      socket =
+        if values != socket.assigns[form].params,
+          do: Submission.edit(socket, [operation]),
+          else: socket
+
+      {:noreply, assign(socket, form, to_form(values, as: field))}
+    else
+      {:noreply, socket}
     end
-  end
-
-  def handle_event("assign", %{"assignment" => params}, socket) do
-    socket = assign(socket, :assignment_form, to_form(params, as: "assignment"))
-    command(socket, "assign", Map.take(params, ~w(service_id resource_version_id)))
   end
 
   def handle_event("edit_service", %{"id" => id}, socket) do
@@ -74,12 +73,13 @@ defmodule YellowDog.ManagementUI.WorkerLive do
           "port" => to_string(service["config"]["port"])
         }
 
-        {:noreply, assign(socket, :service_form, to_form(params, as: "service"))}
+        {:noreply,
+         assign(
+           Submission.new(socket),
+           :service_form,
+           to_form(params, as: "service")
+         )}
     end
-  end
-
-  def handle_event("unassign", %{"service_id" => service_id, "zone_id" => zone_id}, socket) do
-    command(socket, "unassign", %{"service_id" => service_id, "zone_id" => zone_id})
   end
 
   def handle_event("preview", _params, socket) do
@@ -89,20 +89,101 @@ defmodule YellowDog.ManagementUI.WorkerLive do
     end
   end
 
-  def handle_event("confirm_target", _params, socket), do: command(socket, "confirm_target", %{})
+  defp submitted_editor(socket, event, params)
+       when event in ~w(save_worker save_service assign) do
+    {field, operation, form} =
+      case event do
+        "save_worker" -> {"worker", "update_worker", :worker_form}
+        "save_service" -> {"service", "put_service", :service_form}
+        "assign" -> {"assignment", "assign", :assignment_form}
+      end
 
-  defp command(socket, operation, params) do
+    if params[field] == socket.assigns[form].params, do: operation
+  end
+
+  defp submitted_editor(_socket, _event, _params), do: nil
+
+  defp handle_submission("save_worker", %{"worker" => params} = payload, socket) do
+    socket = assign(socket, :worker_form, to_form(params, as: "worker"))
+
+    command(
+      socket,
+      "update_worker",
+      Map.merge(Map.take(params, ~w(name profile_name)), %{
+        "id" => socket.assigns.worker["id"],
+        "expected_revision" => socket.assigns.worker["revision"]
+      }),
+      payload["_submission"]
+    )
+  end
+
+  defp handle_submission("save_service", %{"service" => params} = payload, socket) do
+    socket = assign(socket, :service_form, to_form(params, as: "service"))
+
+    case Integer.parse(params["port"] || "") do
+      {port, ""} ->
+        command(
+          socket,
+          "put_service",
+          %{
+            "worker_id" => socket.assigns.worker["id"],
+            "expected_revision" => socket.assigns.worker["revision"],
+            "id" => params["id"],
+            "type" => "dns",
+            "desired_state" => params["desired_state"],
+            "config" => %{"listen_address" => params["listen_address"], "port" => port}
+          },
+          payload["_submission"]
+        )
+
+      _ ->
+        {:noreply, socket |> clear_flash(:info) |> put_flash(:error, "Port must be an integer")}
+    end
+  end
+
+  defp handle_submission("assign", %{"assignment" => params} = payload, socket) do
+    socket = assign(socket, :assignment_form, to_form(params, as: "assignment"))
+
+    command(
+      socket,
+      "assign",
+      Map.take(params, ~w(service_id resource_version_id)),
+      payload["_submission"]
+    )
+  end
+
+  defp handle_submission(
+         "unassign",
+         %{"service_id" => service_id, "zone_id" => zone_id} = payload,
+         socket
+       ) do
+    command(
+      socket,
+      "unassign",
+      %{"service_id" => service_id, "zone_id" => zone_id},
+      payload["_submission"]
+    )
+  end
+
+  defp handle_submission("confirm_target", params, socket),
+    do: command(socket, "confirm_target", %{}, params["_submission"])
+
+  defp handle_submission(_event, _params, socket),
+    do: {:noreply, put_flash(socket, :error, "Invalid submission")}
+
+  defp command(socket, operation, params, token) do
     worker = socket.assigns.worker
 
     params =
       Map.merge(%{"worker_id" => worker["id"], "expected_revision" => worker["revision"]}, params)
 
-    {socket, key} = Submission.prepare(socket, operation, params)
+    {socket, key} = Submission.prepare(socket, operation, params, token)
 
     case Domain.mutate(operation, params, "operator", key) do
       {:ok, _result} ->
         {:noreply,
          socket
+         |> Submission.new()
          |> load(worker["id"])
          |> put_flash(:info, success_message(operation))}
 
@@ -166,6 +247,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path} servers={@navigation_servers}>
+      <input id="submission-intent" type="hidden" value={@submission_id} />
       <div :if={@worker} class="max-w-7xl space-y-6" id="server-dashboard">
         <div>
           <h1 class="text-3xl font-bold">{@worker["name"]}</h1><p class="text-on-surface-variant">
@@ -177,8 +259,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             for={@worker_form}
             id="worker-edit-form"
             phx-submit="save_worker"
+            phx-change="validate_worker"
             class="flex flex-wrap gap-4"
           >
+            <input type="hidden" name="_submission" value={@submission_id} />
             <input
               class="input input-bordered"
               name="worker[name]"
@@ -235,8 +319,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             for={@service_form}
             id="service-form"
             phx-submit="save_service"
+            phx-change="validate_service"
             class="grid gap-4 mt-4 md:grid-cols-2"
           >
+            <input type="hidden" name="_submission" value={@submission_id} />
             <label class="form-control"><span class="label">Instance ID</span><input
               class="input input-bordered"
               name="service[id]"
@@ -286,6 +372,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
                       type="button"
                       class="btn btn-outline btn-sm"
                       phx-click="unassign"
+                      phx-value-_submission={@submission_id}
                       phx-value-service_id={assignment["service_id"]}
                       phx-value-zone_id={assignment["zone_id"]}
                       phx-disable-with="Removing…"
@@ -300,8 +387,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             for={@assignment_form}
             id="assignment-form"
             phx-submit="assign"
+            phx-change="validate_assignment"
             class="flex flex-wrap gap-4 mt-4"
           >
+            <input type="hidden" name="_submission" value={@submission_id} />
             <select class="select select-bordered" name="assignment[service_id]" aria-label="Service"><option
               :for={service <- @worker["services"]}
               value={service["id"]}
@@ -330,6 +419,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               class="btn btn-primary"
               type="button"
               phx-click="confirm_target"
+              phx-value-_submission={@submission_id}
               phx-disable-with="Preparing…"
             >Confirm prepared target</button>
             <.link

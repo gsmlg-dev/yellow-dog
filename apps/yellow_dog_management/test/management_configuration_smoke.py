@@ -206,13 +206,19 @@ def main():
         sql("""CREATE FUNCTION reject_configuration_zone_save() RETURNS trigger LANGUAGE plpgsql
                AS $$ BEGIN RAISE EXCEPTION 'fixture rejects Zone save'; END $$;
                CREATE TRIGGER reject_configuration_zone_save BEFORE UPDATE ON management_zones
-               FOR EACH ROW EXECUTE FUNCTION reject_configuration_zone_save();""")
+               FOR EACH ROW EXECUTE FUNCTION reject_configuration_zone_save();
+               CREATE FUNCTION reject_configuration_view_save() RETURNS trigger LANGUAGE plpgsql
+               AS $$ BEGIN RAISE EXCEPTION 'fixture rejects View save'; END $$;
+               CREATE TRIGGER reject_configuration_view_save BEFORE UPDATE ON management_dns_views
+               FOR EACH ROW EXECUTE FUNCTION reject_configuration_view_save();""")
         try:
             browser("editor-failures")
             assert persistent_state() == before, "Rejected browser edits changed persistent configuration"
         finally:
             sql("""DROP TRIGGER reject_configuration_zone_save ON management_zones;
-                   DROP FUNCTION reject_configuration_zone_save();""")
+                   DROP FUNCTION reject_configuration_zone_save();
+                   DROP TRIGGER reject_configuration_view_save ON management_dns_views;
+                   DROP FUNCTION reject_configuration_view_save();""")
         browser("advance")
         saved = json.loads(evidence.read_text())
         assert api(saved["target_path"]) == before["target"]
@@ -225,7 +231,7 @@ def main():
             for entry in final["catalog"]:
                 selected = entry["selected"]
                 contents = (directory / "artifacts" / f'{selected["digest"]}.mmdb').read_bytes()
-                assert selected["available"] and contents == fixtures[entry["kind"]]
+                assert contents == fixtures[entry["kind"]]
                 assert hashlib.sha256(contents).hexdigest() == selected["digest"] == digests[entry["kind"]]
             (directory / "final-runtime.json").write_text(json.dumps(final, indent=2))
         print("PASS Management configuration: browser persistence, retained rejected edits, stable retries, scoped View, shared assignments, SIGKILL recovery, immutable versions/exports and selective removal" +

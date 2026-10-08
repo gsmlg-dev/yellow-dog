@@ -28,6 +28,32 @@ defmodule YellowDog.Management.ZonesLiveTest do
     %{conn: build_conn()}
   end
 
+  test "delayed Zone create cannot become an update after the editor changes workflow", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, "/management/zones/new")
+    render_click(view, "add_record")
+    input = fields(DomainFixtures.zone("zone-intent.test."))
+    request = %{"zone" => input, "_submission" => intent(view)}
+    before = snapshot()
+    render_submit(view, "save", request)
+    assert [zone] = Domain.list_zones()
+    assert_patch(view, "/management/zones/#{zone["id"]}/edit")
+    after_create = snapshot()
+    assert length(after_create.audit -- before.audit) == 1
+    assert length(after_create.idempotency -- before.idempotency) == 1
+    render_submit(view, "save", request)
+    assert snapshot() == after_create
+    assert {:ok, %{"revision" => 1}} = Domain.get_zone(zone["id"])
+    view |> element("a[href='/management/zones/new']") |> render_click()
+    assert_patch(view, "/management/zones/new")
+    render_change(view, "validate", %{"zone" => Map.put(input, "name", "new-unsaved.test.")})
+    render_submit(view, "save", request)
+    render_submit(view, "save", Map.delete(request, "_submission"))
+    assert snapshot() == after_create
+    assert has_element?(view, "#zone-name[value='new-unsaved.test.']")
+  end
+
   test "database rejection retains draft input and retries the same command", %{conn: conn} do
     Repo.query!("""
     CREATE FUNCTION pg_temp.reject_zone_draft() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -39,7 +65,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     )
 
     {:ok, view, _} = live(conn, "/management/zones/new")
-    render_click(view, "add_record")
+    click_event(view, "add_record")
     input = fields(DomainFixtures.zone("retained.test."))
     view |> form("#zone-form", zone: input) |> render_submit()
     assert render(view) =~ "Database constraint rejected"
@@ -61,6 +87,48 @@ defmodule YellowDog.Management.ZonesLiveTest do
     assert has_element?(fresh, "#zone-name[value='accepted.test.']")
   end
 
+  test "pipelined Zone edits accept changed fields without replaying a retired draft", %{
+    conn: conn
+  } do
+    mutate("create_zone", DomainFixtures.zone("taken-zone.test."))
+    {:ok, view, _} = live(conn, "/management/zones/new")
+    input = fields(DomainFixtures.zone("taken-zone.test."))
+    original = %{"zone" => input, "_submission" => intent(view)}
+    render_submit(view, "save", original)
+    assert render(view) =~ "already exists"
+    failed = snapshot()
+    changed = Map.put(original, "zone", fields(DomainFixtures.zone("pipelined-zone.test.")))
+    render_change(view, "validate", changed)
+    render_submit(view, "save", original)
+    assert snapshot() == failed
+    assert has_element?(view, "#zone-name[value='pipelined-zone.test.']")
+    render_submit(view, "save", changed)
+    assert Enum.any?(Domain.list_zones(), &(&1["name"] == "pipelined-zone.test."))
+    assert length(snapshot().audit -- failed.audit) == 1
+    assert length(snapshot().idempotency -- failed.idempotency) == 1
+  end
+
+  test "delayed rejected Zone draft cannot restore rows removed from current editor", %{
+    conn: conn
+  } do
+    mutate("create_zone", DomainFixtures.zone("row-intent.test."))
+    {:ok, view, _} = live(conn, "/management/zones/new")
+
+    original = %{
+      "zone" => fields(DomainFixtures.zone("row-intent.test.")),
+      "_submission" => intent(view)
+    }
+
+    render_submit(view, "save", original)
+    assert render(view) =~ "already exists"
+    failed = snapshot()
+    render_click(view, "remove_record", %{"index" => "0"})
+    rendered = render(view)
+    render_submit(view, "save", original)
+    assert snapshot() == failed
+    assert render(view) == rendered
+  end
+
   test "Zone page saves shared assignments separately and both Worker pages agree", %{conn: conn} do
     zone = mutate("create_zone", DomainFixtures.zone("assignments.test."))
 
@@ -70,8 +138,8 @@ defmodule YellowDog.Management.ZonesLiveTest do
     a = assignment_service("ui-assignment-a")
     b = assignment_service("ui-assignment-b")
     {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/edit")
-    render_click(view, "add_assignment_worker", %{"id" => a["worker_id"]})
-    render_click(view, "add_assignment_worker", %{"id" => b["worker_id"]})
+    click_event(view, "add_assignment_worker", %{"id" => a["worker_id"]})
+    click_event(view, "add_assignment_worker", %{"id" => b["worker_id"]})
     assert Domain.list_assignments(a["worker_id"]) == []
     view |> form("#zone-assignments-form") |> render_submit()
     assert render(view) =~ "Worker assignments saved"
@@ -97,7 +165,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     soa_index = Enum.find_index(zone["records"], &(&1["type"] == "SOA")) |> to_string()
     changed = put_in(changed, ["records", soa_index, "data", "serial"], 2)
     view |> form("#zone-form", zone: changed) |> render_submit()
-    render_click(view, "confirm_zone", %{"id" => zone["id"]})
+    click_event(view, "confirm_zone", %{"id" => zone["id"]})
     assert length(Domain.list_versions(zone["id"])) == 2
 
     assert Enum.all?(
@@ -106,7 +174,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
            )
 
     removed = Enum.find(snapshot["assignments"], &(&1["worker_id"] == a["worker_id"]))
-    render_click(view, "remove_assignment_row", %{"key" => removed["id"]})
+    click_event(view, "remove_assignment_row", %{"key" => removed["id"]})
     view |> form("#zone-assignments-form") |> render_submit()
     assert Domain.list_assignments(a["worker_id"]) == []
     assert length(Domain.list_assignments(b["worker_id"])) == 1
@@ -126,7 +194,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     a = assignment_service("ui-stale-a")
     b = assignment_service("ui-stale-b")
     {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/edit")
-    render_click(view, "add_assignment_worker", %{"id" => a["worker_id"]})
+    click_event(view, "add_assignment_worker", %{"id" => a["worker_id"]})
 
     mutate("assign", %{
       "worker_id" => b["worker_id"],
@@ -144,6 +212,19 @@ defmodule YellowDog.Management.ZonesLiveTest do
     view |> form("#zone-assignments-form") |> render_submit()
     assert snapshot() == rejected
     assert has_element?(view, "#zone-assignment-error")
+  end
+
+  defp intent(view) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#submission-intent")
+    |> LazyHTML.attribute("value")
+    |> List.first()
+  end
+
+  defp click_event(view, event, params \\ %{}) do
+    render_click(view, event, Map.put(params, "_submission", intent(view)))
   end
 
   defp assignment_service(worker_id) do
@@ -404,10 +485,10 @@ defmodule YellowDog.Management.ZonesLiveTest do
     {:ok, view, _html} = live(conn, "/management/zones")
     before_selection = snapshot()
 
-    render_click(view, "confirm_delete", %{"id" => zone["id"]})
+    click_event(view, "confirm_delete", %{"id" => zone["id"]})
     assert render(view) =~ "confirm its deletion first"
-    render_click(view, "confirm_delete", %{})
-    render_click(view, "delete_zone", %{"id" => "missing"})
+    click_event(view, "confirm_delete", %{})
+    click_event(view, "delete_zone", %{"id" => "missing"})
     refute has_element?(view, "#zone-delete-confirmation")
     view |> element("#zone-#{zone["id"]} button[phx-click='delete_zone']") |> render_click()
 
@@ -416,7 +497,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
              "#zone-delete-confirmation[data-zone-id='#{zone["id"]}'][data-revision='1']"
            )
 
-    render_click(view, "confirm_delete", %{"id" => other["id"]})
+    click_event(view, "confirm_delete", %{"id" => other["id"]})
     assert has_element?(view, "#zone-delete-confirmation[data-zone-id='#{zone["id"]}']")
     view |> element("#zone-cancel-delete") |> render_click()
     refute has_element?(view, "#zone-delete-confirmation")
@@ -426,7 +507,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     view |> element("a", "New Zone") |> render_click()
     assert_patch(view, "/management/zones/new")
     refute has_element?(view, "#zone-delete-confirmation")
-    render_click(view, "confirm_delete", %{"id" => zone["id"]})
+    click_event(view, "confirm_delete", %{"id" => zone["id"]})
     assert snapshot() == before_selection
   end
 

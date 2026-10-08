@@ -13,7 +13,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     assign(socket,
+     assign(Submission.new(socket),
        page_title: "DNS Views",
        worker: nil,
        workers: [],
@@ -43,6 +43,16 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   end
 
   @impl true
+  def handle_event(event, params, socket) when event in ~w(save toggle_enabled confirm_delete) do
+    if Submission.current?(
+         socket,
+         params["_submission"],
+         submitted_editor(socket, event, params)
+       ),
+       do: handle_submission(event, params, socket),
+       else: {:noreply, socket}
+  end
+
   def handle_event("refresh", _params, socket) do
     {:noreply, socket |> load(socket.assigns.scope_params) |> reset_form()}
   end
@@ -92,7 +102,14 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   end
 
   def handle_event("validate", %{"view" => params} = payload, socket) when is_map(params) do
-    {:noreply, socket |> retain_fields(params, payload) |> validate_form()}
+    updated = retain_fields(socket, params, payload)
+
+    updated =
+      if updated.assigns.form.params != socket.assigns.form.params,
+        do: Submission.edit(updated, ~w(create_dns_view update_dns_view)),
+        else: updated
+
+    {:noreply, validate_form(updated)}
   end
 
   def handle_event("toggle_country", %{"code" => code}, socket) when is_binary(code) do
@@ -108,61 +125,6 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   def handle_event("clear_country_search", _params, socket),
     do: {:noreply, assign(socket, country_search: "")}
 
-  def handle_event("save", %{"operation" => operation, "view" => params} = payload, socket)
-      when operation in ~w(apply_preset append_countries) and is_map(params) do
-    socket = retain_fields(socket, params, payload)
-
-    with :ok <- selected_scope(socket),
-         false <- default_edit?(socket),
-         text when is_binary(text) <- socket.assigns.form.params["client_rules"],
-         {:ok, updated} <- editor_operation(operation, text, socket) do
-      {:noreply,
-       socket
-       |> retain_fields(%{"client_rules" => updated}, payload)
-       |> assign(selected_countries: [])
-       |> validate_form()}
-    else
-      {:error, error} -> failure(socket, error)
-      _ -> failure(socket, "Default View client rules are read-only")
-    end
-  end
-
-  def handle_event("save", %{"operation" => _unknown}, socket),
-    do: failure(socket, "Invalid editor operation")
-
-  def handle_event("save", %{"view" => params} = payload, socket) when is_map(params) do
-    socket = socket |> retain_fields(params, payload) |> validate_form()
-
-    with :ok <- selected_scope(socket),
-         {:ok, fields} <- validated_fields(socket) do
-      {operation, fields} =
-        case socket.assigns.editing do
-          nil -> {"create_dns_view", fields}
-          view -> {"update_dns_view", Map.merge(fields, identity_fields(view))}
-        end
-
-      mutate(socket, operation, fields, "Desired View saved; not executed/exported")
-    else
-      {:error, {_field, error}} -> failure(socket, error)
-      {:error, error} -> failure(socket, error)
-    end
-  end
-
-  def handle_event("toggle_enabled", %{"id" => id}, socket) do
-    with {:ok, view} <- scoped_view(socket, id) do
-      fields = Map.put(identity_fields(view), "enabled", not view["enabled"])
-
-      mutate(
-        socket,
-        "update_dns_view",
-        fields,
-        "Desired View status saved; not executed/exported"
-      )
-    else
-      {:error, error} -> failure(socket, error)
-    end
-  end
-
   def handle_event("delete", %{"id" => id}, socket) do
     with {:ok, view} <- scoped_view(socket, id),
          false <- view["is_default"] do
@@ -175,21 +137,6 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
   def handle_event("cancel_delete", _params, socket),
     do: {:noreply, assign(socket, deleting: nil, error: nil)}
-
-  def handle_event("confirm_delete", %{"id" => id}, socket) do
-    with :ok <- selected_scope(socket),
-         %{"id" => ^id, "is_default" => false} = view <- socket.assigns.deleting do
-      mutate(
-        socket,
-        "delete_dns_view",
-        identity_fields(view),
-        "Desired View deleted; not executed/exported"
-      )
-    else
-      {:error, error} -> failure(socket, error)
-      _ -> failure(socket, "Select a non-default View and confirm deletion first")
-    end
-  end
 
   def handle_event("export_csv", _params, socket) do
     with :ok <- selected_scope(socket),
@@ -222,9 +169,104 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
   def handle_event(_event, _params, socket), do: failure(socket, "Invalid View action")
 
-  defp mutate(socket, operation, fields, feedback) do
+  defp submitted_editor(socket, "save", %{"view" => params}) when is_map(params) do
+    disabled =
+      if socket.assigns.editing,
+        do: ["name"] ++ if(default_edit?(socket), do: ["priority", "client_rules"], else: []),
+        else: []
+
+    fields = @fields -- disabled
+
+    if Map.take(params, fields) == Map.take(socket.assigns.form.params, fields),
+      do: if(socket.assigns.editing, do: "update_dns_view", else: "create_dns_view")
+  end
+
+  defp submitted_editor(_socket, _event, _params), do: nil
+
+  defp handle_submission("save", %{"operation" => operation, "view" => params} = payload, socket)
+       when operation in ~w(apply_preset append_countries) and is_map(params) do
+    socket = retain_fields(socket, params, payload)
+
+    with :ok <- selected_scope(socket),
+         false <- default_edit?(socket),
+         text when is_binary(text) <- socket.assigns.form.params["client_rules"],
+         {:ok, updated} <- editor_operation(operation, text, socket) do
+      {:noreply,
+       socket
+       |> Submission.edit(~w(create_dns_view update_dns_view))
+       |> retain_fields(%{"client_rules" => updated}, payload)
+       |> assign(selected_countries: [])
+       |> validate_form()}
+    else
+      {:error, error} -> failure(socket, error)
+      _ -> failure(socket, "Default View client rules are read-only")
+    end
+  end
+
+  defp handle_submission("save", %{"operation" => _unknown}, socket),
+    do: failure(socket, "Invalid editor operation")
+
+  defp handle_submission("save", %{"view" => params} = payload, socket) when is_map(params) do
+    socket = socket |> retain_fields(params, payload) |> validate_form()
+
+    with :ok <- selected_scope(socket),
+         {:ok, fields} <- validated_fields(socket) do
+      {operation, fields} =
+        case socket.assigns.editing do
+          nil -> {"create_dns_view", fields}
+          view -> {"update_dns_view", Map.merge(fields, identity_fields(view))}
+        end
+
+      mutate(
+        socket,
+        operation,
+        fields,
+        payload["_submission"],
+        "Desired View saved; not executed/exported"
+      )
+    else
+      {:error, {_field, error}} -> failure(socket, error)
+      {:error, error} -> failure(socket, error)
+    end
+  end
+
+  defp handle_submission("toggle_enabled", %{"id" => id} = payload, socket) do
+    with {:ok, view} <- scoped_view(socket, id) do
+      fields = Map.put(identity_fields(view), "enabled", not view["enabled"])
+
+      mutate(
+        socket,
+        "update_dns_view",
+        fields,
+        payload["_submission"],
+        "Desired View status saved; not executed/exported"
+      )
+    else
+      {:error, error} -> failure(socket, error)
+    end
+  end
+
+  defp handle_submission("confirm_delete", %{"id" => id} = payload, socket) do
+    with :ok <- selected_scope(socket),
+         %{"id" => ^id, "is_default" => false} = view <- socket.assigns.deleting do
+      mutate(
+        socket,
+        "delete_dns_view",
+        identity_fields(view),
+        payload["_submission"],
+        "Desired View deleted; not executed/exported"
+      )
+    else
+      {:error, error} -> failure(socket, error)
+      _ -> failure(socket, "Select a non-default View and confirm deletion first")
+    end
+  end
+
+  defp handle_submission(_event, _params, socket), do: failure(socket, "Invalid View action")
+
+  defp mutate(socket, operation, fields, token, feedback) do
     params = Map.merge(fields, scope_fields(socket))
-    {socket, key} = Submission.prepare(socket, operation, params)
+    {socket, key} = Submission.prepare(socket, operation, params, token)
 
     case Domain.mutate(operation, params, "operator", key) do
       {:ok, _view} ->
@@ -356,7 +398,9 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   end
 
   defp clear_editor(socket) do
-    assign(socket,
+    socket
+    |> Submission.new()
+    |> assign(
       editing: nil,
       dirty: false,
       pending_scope: nil,
@@ -675,6 +719,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
+      <input id="submission-intent" type="hidden" value={@submission_id} />
       <.card title="DNS Views">
         <p class="management-help">
           Desired configuration only. Views do not execute DNS, enforce client rules or change Worker exports.
@@ -792,6 +837,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
                     type="button"
                     class="btn btn-ghost btn-sm"
                     phx-click="toggle_enabled"
+                    phx-value-_submission={@submission_id}
                     phx-disable-with="Saving…"
                     phx-value-id={view["id"]}
                   >{status(view)}</button>
@@ -838,6 +884,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
           phx-change="validate"
           phx-hook="ResetForm"
         >
+          <input type="hidden" name="_submission" value={@submission_id} />
           <div class="management-actions">
             <button
               id="dns-view-save"
@@ -1016,6 +1063,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
             type="button"
             class="btn btn-error"
             phx-click="confirm_delete"
+            phx-value-_submission={@submission_id}
             phx-disable-with="Deleting…"
             phx-value-id={@deleting["id"]}
           >Confirm Delete</button><button

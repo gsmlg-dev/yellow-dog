@@ -12,7 +12,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     assign(socket,
+     assign(Submission.new(socket),
        workers: assignment_workers(),
        zones: [],
        filter: "",
@@ -38,7 +38,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     case base_path(path_params) do
       {:ok, base_path} ->
-        {:noreply, apply_action(socket, path_params, base_path)}
+        {:noreply, apply_action(Submission.new(socket), path_params, base_path)}
 
       {:error, error} ->
         {:noreply, socket |> put_flash(:error, error.message) |> push_navigate(to: "/server")}
@@ -90,6 +90,17 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   end
 
   @impl true
+  def handle_event(event, params, socket)
+      when event in ~w(save save_assignments confirm_delete confirm_zone) do
+    if Submission.current?(
+         socket,
+         params["_submission"],
+         submitted_editor(socket, event, params)
+       ),
+       do: handle_submission(event, params, socket),
+       else: {:noreply, socket}
+  end
+
   def handle_event("filter", %{"filter" => %{"name" => name}}, socket) when is_binary(name) do
     {:noreply, assign(socket, :filter, String.slice(name, 0, 253))}
   end
@@ -141,7 +152,14 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   end
 
   def handle_event("validate", %{"zone" => params}, socket) do
-    {:noreply, assign_form(socket, params, record_rows(params))}
+    rows = record_rows(params)
+
+    socket =
+      if params != socket.assigns.form.params or rows != socket.assigns.rows,
+        do: Submission.edit(socket, ~w(create_zone update_zone)),
+        else: socket
+
+    {:noreply, assign_form(socket, params, rows)}
   end
 
   def handle_event("add_assignment_worker", %{"id" => worker_id}, socket) do
@@ -174,7 +192,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         }
 
         {:noreply,
-         assign(socket,
+         assign(Submission.edit(socket, ["set_zone_assignments"]),
            assignment_rows: socket.assigns.assignment_rows ++ [row],
            assignments_dirty: true,
            assignment_error: nil
@@ -186,50 +204,32 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     rows = Enum.reject(socket.assigns.assignment_rows, &(&1["key"] == key))
 
     {:noreply,
-     assign(socket, assignment_rows: rows, assignments_dirty: true, assignment_error: nil)}
+     assign(Submission.edit(socket, ["set_zone_assignments"]),
+       assignment_rows: rows,
+       assignments_dirty: true,
+       assignment_error: nil
+     )}
   end
 
   def handle_event("validate_assignments", %{"assignments" => params}, socket)
       when is_map(params) do
-    {:noreply, retain_assignments(socket, params)}
-  end
+    updated = retain_assignments(socket, params)
 
-  def handle_event("save_assignments", params, socket) do
-    socket = retain_assignments(socket, params["assignments"] || %{})
+    socket =
+      if updated.assigns.assignment_rows != socket.assigns.assignment_rows,
+        do: Submission.edit(updated, ["set_zone_assignments"]),
+        else: updated
 
-    if socket.assigns.zone do
-      payload = %{
-        "zone_id" => socket.assigns.zone["id"],
-        "expected_assignment_token" => socket.assigns.assignment_token,
-        "expected_worker_revisions" => socket.assigns.assignment_worker_revisions,
-        "assignments" =>
-          Enum.map(
-            socket.assigns.assignment_rows,
-            &Map.take(&1, ~w(worker_id service_id resource_version_id))
-          )
-      }
-
-      {socket, key} = Submission.prepare(socket, "set_zone_assignments", payload)
-
-      case Domain.mutate("set_zone_assignments", payload, "operator", key) do
-        {:ok, _result} ->
-          {:noreply,
-           socket
-           |> load_assignments(socket.assigns.zone["id"])
-           |> put_flash(:info, "Worker assignments saved. No target was prepared or delivered.")}
-
-        {:error, error} ->
-          {:noreply, assign(socket, assignment_error: error[:message] || error["message"])}
-      end
-    else
-      {:noreply,
-       assign(socket, assignment_error: "Save and confirm a Zone version before assigning it.")}
-    end
+    {:noreply, socket}
   end
 
   def handle_event("refresh_assignments", _params, socket) do
     if socket.assigns.zone do
-      {:noreply, load_assignments(socket, socket.assigns.zone["id"])}
+      {:noreply,
+       load_assignments(
+         Submission.new(socket),
+         socket.assigns.zone["id"]
+       )}
     else
       {:noreply, socket}
     end
@@ -237,7 +237,13 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
   def handle_event("add_record", _params, socket) do
     rows = socket.assigns.rows ++ [new_record("A")]
-    {:noreply, assign_form(socket, socket.assigns.form.params, rows)}
+
+    {:noreply,
+     assign_form(
+       Submission.edit(socket, ~w(create_zone update_zone)),
+       socket.assigns.form.params,
+       rows
+     )}
   end
 
   def handle_event("remove_record", %{"index" => index}, socket) do
@@ -247,38 +253,12 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       |> Enum.reject(fn {_row, ordinal} -> to_string(ordinal) == index end)
       |> Enum.map(&elem(&1, 0))
 
-    {:noreply, assign_form(socket, socket.assigns.form.params, rows)}
-  end
-
-  def handle_event("save", %{"zone" => params}, socket) do
-    rows = record_rows(params)
-    payload = %{"name" => params["name"], "records" => Enum.map(rows, &normalize_record/1)}
-    zone = socket.assigns.zone
-    operation = if zone, do: "update_zone", else: "create_zone"
-
-    payload =
-      if zone,
-        do: Map.merge(payload, %{"id" => zone["id"], "expected_revision" => zone["revision"]}),
-        else: payload
-
-    {socket, key} = Submission.prepare(socket, operation, payload)
-
-    case Domain.mutate(operation, payload, "operator", key) do
-      {:ok, saved} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "Zone draft saved. Confirm a version before assigning it to a service."
-         )
-         |> push_patch(to: "#{socket.assigns.base_path}/#{saved["id"]}/edit")}
-
-      {:error, error} ->
-        {:noreply,
-         socket
-         |> assign_form(params, rows)
-         |> put_flash(:error, error.message)}
-    end
+    {:noreply,
+     assign_form(
+       Submission.edit(socket, ~w(create_zone update_zone)),
+       socket.assigns.form.params,
+       rows
+     )}
   end
 
   def handle_event("delete_zone", %{"id" => id}, socket) do
@@ -295,16 +275,129 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     {:noreply, assign(socket, :deleting, nil)}
   end
 
-  def handle_event("confirm_delete", %{"id" => id}, socket) do
+  defp cached_zone(socket, id) do
+    if socket.assigns.zone && socket.assigns.zone["id"] == id,
+      do: socket.assigns.zone,
+      else: Enum.find(socket.assigns.zones, &(&1["id"] == id))
+  end
+
+  defp visible_zones(zones, filter) do
+    query = String.downcase(filter)
+    Enum.filter(zones, &String.contains?(String.downcase(&1["name"]), query))
+  end
+
+  defp csv_cell(value) do
+    value = if Regex.match?(~r/\A(?:[\t\r\n]|\s*[=+\-@])/u, value), do: "'" <> value, else: value
+
+    if String.contains?(value, [",", "\"", "\r", "\n"]),
+      do: "\"" <> String.replace(value, "\"", "\"\"") <> "\"",
+      else: value
+  end
+
+  defp submitted_editor(socket, "save", %{"zone" => params}) when is_map(params) do
+    records = params["records"]
+
+    if is_map(records) and
+         Enum.all?(records, fn {index, record} ->
+           is_binary(index) and is_map(record) and
+             (is_nil(record["data"]) or is_map(record["data"]))
+         end) and
+         params["name"] == socket.assigns.form.params["name"] and
+         record_rows(params) == socket.assigns.rows,
+       do: if(socket.assigns.zone, do: "update_zone", else: "create_zone")
+  end
+
+  defp submitted_editor(socket, "save_assignments", %{"assignments" => params})
+       when is_map(params) do
+    current =
+      Map.new(
+        socket.assigns.assignment_rows,
+        &{&1["key"], Map.take(&1, ~w(service_id resource_version_id))}
+      )
+
+    if params == current, do: "set_zone_assignments"
+  end
+
+  defp submitted_editor(_socket, _event, _params), do: nil
+
+  defp handle_submission("save_assignments", params, socket) do
+    socket = retain_assignments(socket, params["assignments"] || %{})
+
+    if socket.assigns.zone do
+      payload = %{
+        "zone_id" => socket.assigns.zone["id"],
+        "expected_assignment_token" => socket.assigns.assignment_token,
+        "expected_worker_revisions" => socket.assigns.assignment_worker_revisions,
+        "assignments" =>
+          Enum.map(
+            socket.assigns.assignment_rows,
+            &Map.take(&1, ~w(worker_id service_id resource_version_id))
+          )
+      }
+
+      {socket, key} =
+        Submission.prepare(socket, "set_zone_assignments", payload, params["_submission"])
+
+      case Domain.mutate("set_zone_assignments", payload, "operator", key) do
+        {:ok, _result} ->
+          {:noreply,
+           socket
+           |> Submission.new()
+           |> load_assignments(socket.assigns.zone["id"])
+           |> put_flash(:info, "Worker assignments saved. No target was prepared or delivered.")}
+
+        {:error, error} ->
+          {:noreply, assign(socket, assignment_error: error[:message] || error["message"])}
+      end
+    else
+      {:noreply,
+       assign(socket, assignment_error: "Save and confirm a Zone version before assigning it.")}
+    end
+  end
+
+  defp handle_submission("save", %{"zone" => params} = event, socket) do
+    rows = record_rows(params)
+    payload = %{"name" => params["name"], "records" => Enum.map(rows, &normalize_record/1)}
+    zone = socket.assigns.zone
+    operation = if zone, do: "update_zone", else: "create_zone"
+
+    payload =
+      if zone,
+        do: Map.merge(payload, %{"id" => zone["id"], "expected_revision" => zone["revision"]}),
+        else: payload
+
+    {socket, key} = Submission.prepare(socket, operation, payload, event["_submission"])
+
+    case Domain.mutate(operation, payload, "operator", key) do
+      {:ok, saved} ->
+        {:noreply,
+         socket
+         |> Submission.new()
+         |> put_flash(
+           :info,
+           "Zone draft saved. Confirm a version before assigning it to a service."
+         )
+         |> push_patch(to: "#{socket.assigns.base_path}/#{saved["id"]}/edit")}
+
+      {:error, error} ->
+        {:noreply,
+         socket
+         |> assign_form(params, rows)
+         |> put_flash(:error, error.message)}
+    end
+  end
+
+  defp handle_submission("confirm_delete", %{"id" => id} = event, socket) do
     case socket.assigns.deleting do
       %{"id" => ^id} = zone ->
         payload = %{"id" => id, "expected_revision" => zone["revision"]}
-        {socket, key} = Submission.prepare(socket, "delete_zone", payload)
+        {socket, key} = Submission.prepare(socket, "delete_zone", payload, event["_submission"])
 
         case Domain.mutate("delete_zone", payload, "operator", key) do
           {:ok, _result} ->
             socket =
               socket
+              |> Submission.new()
               |> assign(zones: Domain.list_zones(), deleting: nil)
               |> put_flash(:info, "Zone draft deleted. Historical versions are retained.")
 
@@ -324,21 +417,22 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     end
   end
 
-  def handle_event("confirm_delete", _params, socket) do
+  defp handle_submission("confirm_delete", _params, socket) do
     {:noreply, put_flash(socket, :error, "Select a Zone and confirm its deletion first.")}
   end
 
-  def handle_event("confirm_zone", %{"id" => id}, socket) do
+  defp handle_submission("confirm_zone", %{"id" => id} = event, socket) do
     zone = cached_zone(socket, id)
 
     if zone do
       payload = %{"id" => id, "expected_revision" => zone["revision"]}
-      {socket, key} = Submission.prepare(socket, "confirm_zone", payload)
+      {socket, key} = Submission.prepare(socket, "confirm_zone", payload, event["_submission"])
 
       case Domain.mutate("confirm_zone", payload, "operator", key) do
         {:ok, _result} ->
           socket =
             socket
+            |> Submission.new()
             |> assign(:zones, Domain.list_zones())
             |> put_flash(
               :info,
@@ -360,24 +454,8 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     end
   end
 
-  defp cached_zone(socket, id) do
-    if socket.assigns.zone && socket.assigns.zone["id"] == id,
-      do: socket.assigns.zone,
-      else: Enum.find(socket.assigns.zones, &(&1["id"] == id))
-  end
-
-  defp visible_zones(zones, filter) do
-    query = String.downcase(filter)
-    Enum.filter(zones, &String.contains?(String.downcase(&1["name"]), query))
-  end
-
-  defp csv_cell(value) do
-    value = if Regex.match?(~r/\A(?:[\t\r\n]|\s*[=+\-@])/u, value), do: "'" <> value, else: value
-
-    if String.contains?(value, [",", "\"", "\r", "\n"]),
-      do: "\"" <> String.replace(value, "\"", "\"\"") <> "\"",
-      else: value
-  end
+  defp handle_submission(_event, _params, socket),
+    do: {:noreply, put_flash(socket, :error, "Invalid submission")}
 
   defp load_zone(socket, zone) do
     preserve_assignments =
@@ -546,6 +624,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       current_path={@current_path}
       servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
     >
+      <input id="submission-intent" type="hidden" value={@submission_id} />
       <h1>{@page_title}</h1>
       <p class="management-help">
         Global reusable Zone library: Management-owned DNS drafts and immutable versions, not View-owned content. Actual Worker runtime state is unknown. SOA, NS and A records are supported by the current shared contract.
@@ -592,6 +671,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                     <button
                       class="btn btn-primary"
                       phx-click="confirm_zone"
+                      phx-value-_submission={@submission_id}
                       phx-disable-with="Confirming…"
                       phx-value-id={zone["id"]}
                     >Confirm Version</button>
@@ -609,6 +689,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       </.card>
       <.card :if={@live_action in [:new, :edit]} title="Zone Draft">
         <.form for={@form} id="zone-form" phx-change="validate" phx-submit="save">
+          <input type="hidden" name="_submission" value={@submission_id} />
           <label class="management-field"><span>Zone name (fully qualified)</span><input
             id="zone-name"
             class="input"
@@ -685,6 +766,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           <button
             class="btn btn-primary"
             phx-click="confirm_zone"
+            phx-value-_submission={@submission_id}
             phx-disable-with="Confirming…"
             phx-value-id={@zone["id"]}
           >Confirm Version</button>
@@ -728,6 +810,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           phx-change="validate_assignments"
           phx-submit="save_assignments"
         >
+          <input type="hidden" name="_submission" value={@submission_id} />
           <fieldset
             :for={row <- @assignment_rows}
             id={"zone-assignment-#{row["key"]}"}
@@ -801,6 +884,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
               id="zone-delete-confirm"
               class="btn btn-error"
               phx-click="confirm_delete"
+              phx-value-_submission={@submission_id}
               phx-disable-with="Deleting…"
               phx-value-id={@deleting["id"]}
             >Confirm Delete</button>

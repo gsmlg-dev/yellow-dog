@@ -98,10 +98,11 @@ async function submit(form, button, event) {
 const zonePath = id => `/management/zones/${id}/edit`;
 const assignments = id => api(`/zones/${id}/assignments`);
 
-function submissionCounts() {
+function submissionCounts(operation = 'update_zone') {
+  assert.ok(['update_zone', 'update_dns_view'].includes(operation));
   const result = execFileSync('psql', [process.env.YELLOW_DOG_MANAGEMENT_DATABASE_URL,
     '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
-    "SELECT (SELECT count(*) FROM management_idempotency), (SELECT count(*) FROM management_audits WHERE operation = 'update_zone')"], { encoding: 'utf8' });
+    `SELECT (SELECT count(*) FROM management_idempotency), (SELECT count(*) FROM management_audits WHERE operation = '${operation}')`], { encoding: 'utf8' });
   return result.trim().split('|').map(Number);
 }
 
@@ -129,6 +130,7 @@ async function verifyCatalog() {
   await click('#ip-database-refresh', 'refresh');
   for (const kind of ['city', 'country']) {
     assert.equal(await evaluate(`document.querySelector('#ip-database-${kind} div[data-digest]').dataset.digest`), digests[kind]);
+    await until(() => evaluate(`document.querySelector('#ip-database-${kind} [data-status]').dataset.status === 'Available'`), `Selected ${kind} artifact did not finish verification`);
     assert.equal(await evaluate(`document.querySelector('#ip-database-${kind} [data-status]').dataset.status`), 'Available');
   }
   assert.equal(await evaluate(`document.querySelector('[id^="ip-database-reload"], [id^="ip-database-unload"]') === null`), true);
@@ -229,7 +231,26 @@ try {
     const viewPath = `/workers/${workers[0]}/dns-services/${services[0].id}/views`;
     await until(async () => (await api(viewPath)).some(view => view.name === 'configured'), 'Scoped View did not persist');
     const viewsBeforeSwitch = await api(viewPath);
-    const view = viewsBeforeSwitch.find(view => view.name === 'configured');
+    const originalView = viewsBeforeSwitch.find(view => view.name === 'configured');
+    const receiptCounts = () => execFileSync('psql', [process.env.YELLOW_DOG_MANAGEMENT_DATABASE_URL,
+      '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+      "SELECT (SELECT count(*) FROM management_idempotency), (SELECT count(*) FROM management_audits WHERE operation = 'create_dns_view')"], { encoding: 'utf8' }).trim().split('|').map(Number);
+    await click(`#dns-view-${originalView.id} [phx-click="delete"]`, 'delete');
+    await click('#dns-view-confirm-delete', 'confirm_delete');
+    assert.equal((await api(viewPath)).some(view => view.id === originalView.id), false);
+    const beforeRecreation = receiptCounts();
+    await change('#dns-view-form', { 'view[name]': 'configured', 'view[priority]': '7' });
+    await submit('#dns-view-form', '#dns-view-save', 'save');
+    const recreatedViews = await api(viewPath);
+    const view = recreatedViews.find(view => view.name === 'configured');
+    assert.ok(view, 'Identical creation after deletion must persist in the same mounted LiveView');
+    assert.notEqual(view.id, originalView.id);
+    assert.equal(recreatedViews.some(view => view.id === originalView.id), false);
+    assert.deepEqual(receiptCounts(), beforeRecreation.map(count => count + 1));
+    await click('#dns-view-refresh', 'refresh');
+    assert.equal(await evaluate(`!!document.querySelector('#dns-view-${view.id}')`), true);
+    await writeFile(join(dirname(evidencePath), 'view-recreation.json'), JSON.stringify({ original_id: originalView.id, recreated_id: view.id, before: beforeRecreation, after: receiptCounts() }, null, 2));
+    const viewsAfterRecreation = await api(viewPath);
     await change('#dns-view-form', { 'view[name]': 'unsaved' });
     await change('#dns-view-worker-selector', { 'scope[worker_id]': workers[1] }, 'select_worker');
     assert.equal(await evaluate(`!!document.querySelector('#dns-view-unsaved-scope')`), true);
@@ -237,7 +258,7 @@ try {
     assert.equal(await evaluate(`document.querySelector('[name="view[name]"]').value`), 'unsaved');
     await change('#dns-view-worker-selector', { 'scope[worker_id]': workers[1] }, 'select_worker');
     await click('[phx-click="confirm_scope"]', 'confirm_scope');
-    assert.deepEqual(await api(viewPath), viewsBeforeSwitch);
+    assert.deepEqual(await api(viewPath), viewsAfterRecreation);
     await navigate(zonePath(zone.id), '#zone-form');
     await click(`[phx-click="confirm_zone"][phx-value-id="${zone.id}"]`, 'confirm_zone');
     const version = (await api(`/zones/${zone.id}/versions`))[0];
@@ -286,14 +307,42 @@ try {
       assert.deepEqual(failed, before.map(count => count + 1));
       await submit('#zone-form', '#zone-save', 'save');
       assert.deepEqual(submissionCounts(), failed);
-      await change('#zone-form', { [addressName]: '192.0.2.100' });
-      await submit('#zone-form', '#zone-save', 'save');
+      // A real user can submit an edit before the preceding change reply patches the form.
+      await action('save', `(() => {
+        const form = document.querySelector('#zone-form');
+        const field = form.elements.namedItem(${JSON.stringify(addressName)});
+        field.value = '192.0.2.100';
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        form.requestSubmit(document.querySelector('#zone-save'));
+      })()`);
       assert.equal(await evaluate(`document.querySelector('[name=${JSON.stringify(addressName)}]').value`), '192.0.2.100');
       assert.equal(await evaluate(`document.body.textContent.includes('Zone draft saved')`), false);
       const edited = submissionCounts();
       assert.deepEqual(edited, failed.map(count => count + 1));
       assert.deepEqual(await api(`/zones/${saved.zone_id}`), original);
-      await writeFile(join(dirname(evidencePath), 'editor-failures.json'), JSON.stringify({ before, failed, retry: failed, edited, unchanged_zone: original }, null, 2));
+      const viewPath = `/workers/${saved.workers[0]}/dns-services/${saved.service_ids[0]}/views`;
+      const originalViews = await api(viewPath);
+      await navigate(`/server/${saved.workers[0]}/dns/views/${saved.service_ids[0]}`, '#dns-views-table');
+      await click(`#dns-view-${saved.view_id} [phx-click="edit"]`, 'edit');
+      const viewBefore = submissionCounts('update_dns_view');
+      await change('#dns-view-form', { 'view[priority]': '8' });
+      await submit('#dns-view-form', '#dns-view-save', 'save');
+      assert.equal(await evaluate(`document.querySelector('#dns-view-error').textContent.includes('Database constraint')`), true);
+      const viewFailed = submissionCounts('update_dns_view');
+      assert.deepEqual(viewFailed, viewBefore.map(count => count + 1));
+      assert.equal(await evaluate(`document.querySelector('[name="view[name]"]').disabled`), true);
+      await action('save', `(() => {
+        const form = document.querySelector('#dns-view-form');
+        const field = form.elements.namedItem('view[priority]');
+        field.value = '9';
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        form.requestSubmit(document.querySelector('#dns-view-save'));
+      })()`);
+      const viewEdited = submissionCounts('update_dns_view');
+      assert.deepEqual(viewEdited, viewFailed.map(count => count + 1));
+      assert.equal(await evaluate(`document.querySelector('[name="view[priority]"]').value`), '9');
+      assert.deepEqual(await api(viewPath), originalViews);
+      await writeFile(join(dirname(evidencePath), 'editor-failures.json'), JSON.stringify({ before, failed, retry: failed, edited, unchanged_zone: original, view_before: viewBefore, view_failed: viewFailed, view_edited: viewEdited, unchanged_views: originalViews }, null, 2));
     } else if (phase === 'advance') {
       const before = await assignments(saved.zone_id);
       await navigate(zonePath(saved.zone_id), '#zone-form');
