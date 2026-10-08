@@ -4,7 +4,7 @@ defmodule YellowDog.Umbrella.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "1.2.0",
+      version: "1.2.1",
       start_permanent: Mix.env() == :prod,
       description: "Independent YellowDog Management and TOML-driven Worker",
       apps: [:yellow_dog_config_spec, :yellow_dog_management, :yellow_dog_worker, :abyss, :ex_dns],
