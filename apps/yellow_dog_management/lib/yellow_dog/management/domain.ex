@@ -1129,7 +1129,9 @@ defmodule YellowDog.Management.Domain do
   defp canonical(value), do: value
 
   defp digest(value),
-    do: :crypto.hash(:sha256, :erlang.term_to_binary(value)) |> Base.encode16(case: :lower)
+    do:
+      :crypto.hash(:sha256, :erlang.term_to_binary(value, [:deterministic]))
+      |> Base.encode16(case: :lower)
 
   defp json_safe(map) when is_map(map),
     do: Map.new(map, fn {key, value} -> {to_string(key), json_safe(value)} end)

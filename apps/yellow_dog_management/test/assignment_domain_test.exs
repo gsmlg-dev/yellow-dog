@@ -26,6 +26,39 @@ defmodule YellowDog.Management.AssignmentDomainTest do
     assert {:error, %{code: "invalid_request"}} = Domain.get_zone_assignments("invalid")
   end
 
+  @tag :independent_connections
+  test "assignment snapshots and recorded command receipts survive different VM atom initialization" do
+    Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+      actor = Ecto.UUID.generate()
+      {zone, version} = confirmed_zone("cross-vm.example.test.", actor)
+      service = worker_service("cross-vm-worker", actor)
+
+      try do
+        command = request(zone, snapshot(zone), [selection(service, version)])
+        key = actor <> ":cross-vm"
+        assert {:ok, saved} = Domain.mutate("set_zone_assignments", command, actor, key)
+        before_receipts = receipts()
+
+        atoms =
+          ~w(__struct__ calendar year month day hour minute second microsecond utc_offset std_offset zone_abbr time_zone)
+
+        first = assignment_vm(zone, command, actor, key, atoms)
+        second = assignment_vm(zone, command, actor, key, Enum.reverse(atoms))
+
+        # Ensure the subprocesses really exercise distinct nondeterministic encodings.
+        refute first["raw_snapshot_digest"] == second["raw_snapshot_digest"]
+        assert first["snapshot"] == second["snapshot"]
+        assert first["snapshot"] == saved
+        assert first["replayed"] == saved
+        assert second["replayed"] == saved
+        assert first["request_digest"] == second["request_digest"]
+        assert receipts() == before_receipts
+      after
+        cleanup_committed([zone], [service], actor)
+      end
+    end)
+  end
+
   test "one bulk submission persists shared assignments, selective removal and immutable targets" do
     {zone, version} = confirmed_zone()
     a = worker_service("worker-a")
@@ -328,6 +361,40 @@ defmodule YellowDog.Management.AssignmentDomainTest do
 
       assert receipts() == before_receipts
     end)
+  end
+
+  defp assignment_vm(zone, command, actor, key, atoms) do
+    config =
+      Repo.config()
+      |> Keyword.put(:pool, DBConnection.ConnectionPool)
+      |> Keyword.put(:pool_size, 1)
+
+    input = %{config: config, zone_id: zone["id"], command: command, actor: actor, key: key}
+    script = Path.join(__DIR__, "support/assignment_vm.exs")
+
+    expression = """
+    lists:foreach(fun erlang:list_to_atom/1, string:tokens(os:getenv("YD_ATOM_ORDER"), ",")),
+    {ok, _} = application:ensure_all_started(elixir),
+    'Elixir.Code':eval_file(list_to_binary(os:getenv("YD_ASSIGNMENT_VM_SCRIPT"))),
+    init:stop().
+    """
+
+    {output, status} =
+      System.cmd(
+        System.find_executable("erl"),
+        ["+S", "2:2", "+A", "2", "-noshell", "-pa"] ++
+          Enum.map(:code.get_path(), &List.to_string/1) ++ ["-eval", expression],
+        env: [
+          {"YD_ATOM_ORDER", Enum.join(atoms, ",")},
+          {"YD_ASSIGNMENT_VM_SCRIPT", script},
+          {"YD_ASSIGNMENT_VM_INPUT", input |> :erlang.term_to_binary() |> Base.encode64()}
+        ],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, output
+    [_, result] = Regex.run(~r/YD_ASSIGNMENT_VM:([^\n]+)/, output)
+    Jason.decode!(result)
   end
 
   defp concurrent_commands(commands, actor) do

@@ -45,6 +45,39 @@ defmodule YellowDog.Management.DomainTest do
     assert Domain.list_workers() == []
   end
 
+  test "recorded canonical command fingerprints retain exact receipt replay" do
+    params = %{
+      "id" => "fingerprint-stable",
+      "name" => "Stable",
+      "expected_capabilities" => ["dns"]
+    }
+
+    actor = "fingerprint-test"
+    assert {:ok, worker} = Domain.mutate("create_worker", params, actor, key())
+    receipt_key = key()
+
+    # Captured from the existing serializer before deterministic map encoding.
+    receipt =
+      Repo.insert!(%YellowDog.Management.Idempotency{
+        key: receipt_key,
+        request_digest: "abf46d6defa61f59f997ec2e9b33295fcda4fc46549a5fcd5e429906806fcc0c",
+        result: %{"ok" => worker}
+      })
+
+    audits = Repo.all(YellowDog.Management.Audit)
+    assert {:ok, ^worker} = Domain.mutate("create_worker", params, actor, receipt_key)
+    assert Repo.get!(YellowDog.Management.Idempotency, receipt_key) == receipt
+    assert Repo.all(YellowDog.Management.Audit) == audits
+    assert {:ok, persisted} = Domain.get_worker(worker["id"])
+    assert persisted == Map.merge(worker, %{"services" => [], "assignments" => []})
+
+    assert {:error, %{code: "idempotency_conflict"}} =
+             Domain.mutate("create_worker", %{params | "name" => "Changed"}, actor, receipt_key)
+
+    assert Repo.get!(YellowDog.Management.Idempotency, receipt_key) == receipt
+    assert Repo.all(YellowDog.Management.Audit) == audits
+  end
+
   test "four unconnected Workers share one selected version and export complete independent targets" do
     zone = create_zone("shared.example.test.")
     unused = create_zone("unused.example.test.")
