@@ -1,5 +1,49 @@
 # Management configuration and IP artifact increment
 
+## 2026-10-08 assignment-token restart repair
+
+The official Management 1.2.2 configuration harness failed its exact restart
+comparison. Recovery of its original disposable PostgreSQL fixture identified
+only `assignments.assignment_token` changing; all other API fields and exported
+bytes were identical. SQL snapshots of business, audit and idempotency records
+before and after recovery were unchanged. The token hashed an Erlang term
+containing DateTime maps, whose default serialization depends on VM atom-table
+initialization.
+
+The existing Domain digest now uses deterministic Erlang term encoding. Command
+fingerprints retain their existing bytes because command parameters are already
+canonicalized into lists and tuples. Regression coverage starts two real Erlang
+VMs with opposite DateTime atom initialization, verifies that their raw encodings
+differ, and requires identical public assignment snapshots and exact receipt
+replays without additional audits. A stored fingerprint captured from the prior
+serializer also replays unchanged and rejects a different request. The browser
+harness retains `after-restart.json` before its unchanged exact comparison.
+
+Local verification at baseline `c364a59d` plus this repair used the root devenv
+shell and `.trees/fix-release-native-cache`:
+
+| Command | Actual result |
+| --- | --- |
+| `mix deps.get` | Dependencies installed. |
+| `scripts/e2e/phase1_postgres.sh bash -c 'cd .trees/fix-release-native-cache/apps/yellow_dog_management && mix test test/assignment_domain_test.exs:30'` | Before the fix: one failure; identical assignments returned different tokens across VMs. |
+| `scripts/e2e/phase1_postgres.sh bash -c 'cd .trees/fix-release-native-cache/apps/yellow_dog_management && mix compile --warnings-as-errors && mix test --warnings-as-errors test/assignment_domain_test.exs test/domain_test.exs'` | Strict compilation passed; 20 tests, 0 failures. |
+| `scripts/e2e/phase1_postgres.sh bash -c 'cd .trees/fix-release-native-cache/apps/yellow_dog_management && mix test --warnings-as-errors'` | Full Management suite: 476 tests, 0 failures. |
+| `MIX_ENV=prod mix compile --warnings-as-errors && MIX_ENV=prod mix release yellow_dog_management --overwrite` | Strict production compilation and local Management release build passed. |
+| `mix format --check-formatted lib/yellow_dog/management/domain.ex test/assignment_domain_test.exs test/domain_test.exs test/support/assignment_vm.exs` | Scoped formatting passed. |
+| `python3 /tmp/yellow-dog-release-1.2.2/management/instrumented/recover_fixed.py` | Original UUID fixture replayed on two fixed release boots with SIGKILL between; exact state diff and business-row diff both empty. |
+
+The fixed original-fixture token was
+`bd9e5ba2bb64e447a729fbf05c57cabb2f8cdd796b1acafea3b234913821d632`
+on both boots. Logs and before/after receipts are retained under
+`/tmp/yellow-dog-release-1.2.2/management/instrumented/`, including
+`assignment-cross-vm-red.log`, `assignment-fixed-scoped.log`,
+`assignment-fixed-management-full.log`, `assignment-fixed-release-build.log`,
+`assignment-fixed-original-boots.log`, and `fixed-original-boot1.json` /
+`fixed-original-boot2.json`. All owned processes and test databases stopped.
+These are local source/release checks; the final official v1.2.3 artifact's
+six-phase browser/restart acceptance and delivery remain the release coordinator's
+checks.
+
 ## 2026-10-08 operator scope decision: FlakeHub deferred
 
 **FlakeHub: outside this CI repair scope; feature verification stopped by the

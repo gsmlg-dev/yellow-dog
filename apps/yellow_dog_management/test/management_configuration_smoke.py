@@ -193,7 +193,9 @@ def main():
         (directory / "before-restart.json").write_text(json.dumps({"state": before, "runtime": runtime_before}, indent=2))
         stop(force=True)
         start()
-        assert persistent_state() == before, "Management restart changed persisted configuration or historical export"
+        after = persistent_state()
+        (directory / "after-restart.json").write_text(json.dumps({"state": after}, indent=2))
+        assert after == before, "Management restart changed persisted configuration or historical export"
         assert probe()["catalog"] == runtime_before["catalog"], "Restart changed durable artifact catalog"
         browser("verify")
         assert persistent_state() == before, "Fresh-session readback changed persistent configuration"
