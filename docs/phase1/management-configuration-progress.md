@@ -1,5 +1,82 @@
 # Management configuration and IP artifact increment
 
+## 2026-10-08 upstream MAC fix integration
+
+The operator reported the upstream fix and resumed CI repair. Upstream
+[gsmlg_umbrella#8](https://github.com/gsmlg-dev/gsmlg_umbrella/issues/8) is now
+closed, and Hex publishes `gsmlg_mac` 0.1.2. Management requires `~> 0.1.2` and
+the lockfile updates only this package; its telemetry dependency uses the existing
+locked telemetry. The historical dependency blocker below applies to 0.1.1.
+
+Management delegates lookup to the new upstream `Vendor.lookup/2` API and accepts
+overlapping /24, /28 and /36 prefixes. Strict input/file parsing, 64 MiB and
+loader resource limits, unique parsed-versus-compiled prefix count equality, and
+failure retention of the previous valid snapshot remain enforced. No local
+replacement compiler is introduced. Regression fixtures verify longest-prefix
+lookup and broader-prefix fallback in both source orders. Packaged-source checks
+assert all **48,087 unique prefixes** survive compilation/loading and compare a
+query for every source prefix against the upstream lookup result.
+
+Verification commands run inside
+`devenv shell -- bash -c 'cd .trees/fix-ci-management && ...'`:
+
+| Command | Actual result |
+| --- | --- |
+| `mix deps.update gsmlg_mac` | Published 0.1.2 installed; only its lock entry changes. |
+| `MIX_ENV=test mix compile --warnings-as-errors` | Exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management test test/mac_database_test.exs test/mac_database_live_test.exs --seed 0` | 19 tests, 0 failures, exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management test --warnings-as-errors --seed 0` | 474 tests, 0 failures, exit 0. |
+| Same full Management command with `--seed 635407` | 474 tests, 0 failures, exit 0. |
+| `mix format --check-formatted && mix compile --warnings-as-errors && mix credo --strict` | All supported formatter/compile/Credo checks pass, exit 0. |
+| `python3 scripts/e2e/check_ui_source_migration.py` | 203 retained files pass, exit 0. |
+| `node --test apps/yellow_dog_management/test/management_ui_test.mjs` | 10 tests, 0 failures, exit 0. |
+| `nix build .#docker-management .#docker-worker .#yellow_dog_management .#yellow_dog_worker --no-link --print-out-paths --print-build-logs` | Both x86_64 images and releases build, exit 0. |
+| Actual Nix Management release: `migrate`, MDEx HTML evaluation, packaged MAC load/reload/count/query, `python3 apps/yellow_dog_management/test/release_smoke.py <nix-release-binary>` | Native HTML renders; MAC retains 48,087 entries; PostgreSQL/HTTP/concurrency/restart pass, exit 0. |
+| `python3 apps/yellow_dog_worker/test/release_smoke.py <nix-release-binary>` | UDP/TCP, reload, SIGKILL recovery and stopped-state persistence pass, exit 0. |
+| `scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py <nix-release-binary>` | All six Chromium phases and forced-restart/configuration/artifact persistence gates pass, exit 0. |
+
+Updating the dependency before adapting Management reproduced three failing MAC
+regressions (12 tests): obsolete lookup-table representation, packaged load, and
+mixed-width load. The new implementation resolves them. Only the complete
+packaged-file test observation window follows the unchanged production 30-second
+load budget; small synthetic fixture waits and all integrity assertions remain.
+An existing test-only Abyss compile-environment cache mismatch required rebuilding
+that dependency in `MIX_ENV=test`; no source/configuration checks were disabled.
+
+Nix's production Mix dependency hash was recomputed by an actual fixed-output
+build with an intentionally invalid discovery hash. Its reported content hash is
+`sha256-LEFPmWZw7Cu/GH28kJOyPY3xMYAeL4J55o5LJeBqwoo=`; the final source contains
+this real hash. Logs: `/tmp/yellow-dog-ci-mac-deps-update.log`,
+`/tmp/yellow-dog-mac-upstream-{before,after}.log`,
+`/tmp/yellow-dog-mac-full-seed{0,635407}.log`,
+`/tmp/yellow-dog-ci-mac-checks.log`, and
+`/tmp/yellow-dog-ci-mac-nix-new-hash.log`.
+
+Runtime commands use the disposable release-cookie/distribution settings
+documented below and fresh isolated PostgreSQL. The rebuilt release outputs are
+`/nix/store/y74a8xgda8g5xn5h4mkr373056vdnqbm-yellow_dog_management-1.2.1` and
+`/nix/store/i349znw72fqgxyjq22nqfkj8a6716qvf-yellow_dog_worker-1.2.1`. Logs:
+`/tmp/yellow-dog-ci-mac-nix-images.log`,
+`/tmp/yellow-dog-ci-mac-nix-runtime.log`,
+`/tmp/yellow-dog-ci-mac-worker-runtime.log`, and
+`/tmp/yellow-dog-ci-mac-configuration-browser.log`.
+
+The optional older `scripts/e2e/management_browser.sh` harness was also run
+against this Nix release. Its MAC lookup/reload/failure-retention/recovery
+assertions completed, but the harness then failed at `live_browser_smoke.mjs:346`
+trying to submit the absent `#geoip-lookup-form`. The routed GeoIP page explicitly
+declares Worker-backed lookup unavailable; this script and page are unchanged
+from the starting revision. This is not a passing full legacy browser run or
+permission to reconnect a Management query runtime. Its broader failure remains
+outside this CI repair; the current configuration acceptance command above
+passed in full. Evidence: `/tmp/yellow-dog-ci-mac-browser.log`.
+
+Code integration is commit `cf0cf7432dcf3e195c9fed258617693f053e4ec1` on
+`codex/fix-ci-management`; remote CI for the new revision remains pending at this
+checkpoint. FlakeHub organization authorization is a separate external gate;
+the upstream MAC release does not establish that it has been resolved. No
+workflow YAML, published prerelease tag or existing image digest is changed.
+
 ## 2026-10-08 CI repair after release 1.2.1
 
 The operator expanded the work to all current CI failures after the `v1.2.1`
