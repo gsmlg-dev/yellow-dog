@@ -12,19 +12,29 @@ defmodule YellowDog.Management.TaskArtifacts do
   }
 
   @kinds ~w(city country)
+  @page_size 20
 
-  def catalog do
+  @doc "Bounded metadata-only history. Availability requires a separate byte check."
+  def catalog(opts \\ []) do
     selections = Repo.all(GeoIPSelection) |> Map.new(&{&1.type, &1})
+    pages = Keyword.get(opts, :pages, %{})
 
     Enum.map(@kinds, fn kind ->
+      page = max(Map.get(pages, kind, 1), 1)
+
       versions =
         Repo.all(
           from(a in GeoIPArtifact,
             where: a.kind == ^kind,
-            order_by: [desc: a.inserted_at, desc: a.digest]
+            order_by: [desc: a.inserted_at, desc: a.digest],
+            limit: ^(@page_size + 1),
+            offset: ^((page - 1) * @page_size)
           )
         )
         |> Enum.map(&artifact_map/1)
+
+      has_more = length(versions) > @page_size
+      versions = Enum.take(versions, @page_size)
 
       selection = selections[kind]
 
@@ -42,7 +52,14 @@ defmodule YellowDog.Management.TaskArtifacts do
           })
         end
 
-      %{kind: kind, format: "mmdb", selected: selected, versions: versions}
+      %{
+        kind: kind,
+        format: "mmdb",
+        selected: selected,
+        versions: versions,
+        page: page,
+        has_more: has_more
+      }
     end)
   end
 
@@ -51,9 +68,17 @@ defmodule YellowDog.Management.TaskArtifacts do
   def get(kind, digest) when kind in @kinds and is_binary(digest) do
     case Repo.get(GeoIPArtifact, digest) do
       %GeoIPArtifact{kind: ^kind} = artifact ->
-        case artifact_map(artifact) do
-          %{available: true} = entry -> {:ok, entry}
-          %{availability_error: reason} -> {:error, reason}
+        case check_artifact(artifact) do
+          :ok ->
+            {:ok,
+             Map.merge(artifact_map(artifact), %{
+               available: true,
+               verification: :verified,
+               checked_at: DateTime.utc_now()
+             })}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       _other ->
@@ -203,17 +228,6 @@ defmodule YellowDog.Management.TaskArtifacts do
   end
 
   defp artifact_map(artifact) do
-    status =
-      if artifact.kind in @kinds and artifact.format == "mmdb",
-        do: GeoIPDownload.check_artifact(artifact),
-        else: {:error, :unsupported_artifact}
-
-    reason =
-      case status do
-        :ok -> nil
-        {:error, reason} -> reason
-      end
-
     %{
       kind: artifact.kind,
       format: artifact.format,
@@ -222,9 +236,17 @@ defmodule YellowDog.Management.TaskArtifacts do
       source_url: artifact.source_url,
       metadata: artifact.metadata,
       published_at: artifact.inserted_at,
-      available: is_nil(reason),
-      availability_error: reason
+      available: nil,
+      verification: :unverified,
+      checked_at: nil,
+      availability_error: nil
     }
+  end
+
+  defp check_artifact(artifact) do
+    if artifact.kind in @kinds and artifact.format == "mmdb",
+      do: GeoIPDownload.check_artifact(artifact),
+      else: {:error, :unsupported_artifact}
   end
 
   defp type_atom("city"), do: :city

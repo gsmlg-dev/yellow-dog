@@ -22,6 +22,81 @@ defmodule YellowDog.Management.TaskArtifactsTest do
     %{directory: directory}
   end
 
+  test "catalog reads bound history in SQL and never hash file bytes", context do
+    artifact = download(context.directory, :city)
+    job = executing_job(:city, artifact.source_url)
+    assert :ok = TaskArtifacts.publish(job, :city, artifact)
+    timestamp = DateTime.add(DateTime.utc_now(), 10, :second)
+
+    for number <- 1..25 do
+      Repo.insert!(%GeoIPArtifact{
+        digest: number |> Integer.to_string(16) |> String.pad_leading(64, "0"),
+        kind: "city",
+        format: "mmdb",
+        path: "missing-history-#{number}",
+        size: 1,
+        source_url: "https://fixture.invalid/history",
+        metadata: %{},
+        inserted_at: timestamp
+      })
+    end
+
+    owner = self()
+    handler = "catalog-query-#{Ecto.UUID.generate()}"
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:yellow_dog, :management, :repo, :query],
+        &__MODULE__.record_catalog_query/4,
+        owner
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    worker =
+      spawn(fn ->
+        receive do
+          :catalog -> send(owner, {:catalog, TaskArtifacts.catalog()})
+        end
+
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    :erlang.trace_pattern({GeoIPDownload, :check_artifact, 1}, true, [:local])
+    :erlang.trace(worker, true, [:call, {:tracer, self()}])
+
+    on_exit(fn ->
+      :erlang.trace_pattern({GeoIPDownload, :check_artifact, 1}, false, [:local])
+      send(worker, :stop)
+    end)
+
+    send(worker, :catalog)
+    assert_receive {:catalog, [%{selected: selected, versions: versions}, _]}, 2_000
+    delivered = :erlang.trace_delivered(worker)
+    assert_receive {:trace_delivered, ^worker, ^delivered}
+    refute_received {:trace, ^worker, :call, {GeoIPDownload, :check_artifact, _}}
+    assert_receive {:catalog_query, query, {:ok, %{num_rows: 21}}}
+    assert query =~ "LIMIT"
+    assert query =~ "OFFSET"
+    assert length(versions) == 20
+    assert selected.digest == artifact.digest
+    refute Enum.any?(versions, &(&1.digest == artifact.digest))
+    assert selected.available == nil
+    assert selected.verification == :unverified
+    assert Enum.map(versions, & &1.digest) == Enum.sort(Enum.map(versions, & &1.digest), :desc)
+    send(worker, :stop)
+
+    [%{page: 2, has_more: false, versions: next, selected: selected}, _] =
+      TaskArtifacts.catalog(pages: %{"city" => 2})
+
+    assert length(next) == 6
+    assert selected.digest == artifact.digest
+    assert MapSet.disjoint?(MapSet.new(versions, & &1.digest), MapSet.new(next, & &1.digest))
+  end
+
   test "Country and City are durable independent catalog selections without a query server",
        context do
     assert is_nil(Process.whereis(YellowDog.Management.GeoIP))
@@ -34,8 +109,8 @@ defmodule YellowDog.Management.TaskArtifactsTest do
     assert :ok = TaskArtifacts.publish(country_job, :country, country)
 
     assert [
-             %{kind: "city", selected: %{digest: city_digest, available: true, format: "mmdb"}},
-             %{kind: "country", selected: %{digest: country_digest, available: true}}
+             %{kind: "city", selected: %{digest: city_digest, available: nil, format: "mmdb"}},
+             %{kind: "country", selected: %{digest: country_digest, available: nil}}
            ] = TaskArtifacts.catalog()
 
     assert city_digest == city.digest
@@ -200,7 +275,7 @@ defmodule YellowDog.Management.TaskArtifactsTest do
     File.chmod!(artifact.path, 0o444)
     assert {:error, :artifact_digest_mismatch} = TaskArtifacts.get(:city, artifact.digest)
 
-    assert [%{selected: %{available: false, availability_error: :artifact_digest_mismatch}}, _] =
+    assert [%{selected: %{available: nil, verification: :unverified}}, _] =
              TaskArtifacts.catalog()
 
     File.rm!(artifact.path)
@@ -282,6 +357,11 @@ defmodule YellowDog.Management.TaskArtifactsTest do
     }
 
     Repo.insert!(job, prefix: "management_jobs")
+  end
+
+  def record_catalog_query(_event, _measurements, metadata, owner) do
+    if metadata.source == "management_geoip_artifacts" and metadata.params == ["city", 21, 0],
+      do: send(owner, {:catalog_query, metadata.query, metadata.result})
   end
 
   defp download(directory, type, contents \\ nil) do

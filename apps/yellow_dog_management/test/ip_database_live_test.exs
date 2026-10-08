@@ -6,6 +6,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
 
   alias YellowDog.Management.{
     Domain,
+    GeoIPArtifact,
     GeoIPDownload,
     GeoIPDownloadFixture,
     GeoIPFixtures,
@@ -28,9 +29,189 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     %{conn: build_conn(), directory: directory}
   end
 
+  test "pending checks leave events responsive, deduplicate refreshes and reject stale results",
+       context do
+    first = publish_fixture(context.directory)
+    pause_checks()
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    assert_receive {:check_pending, first_pid, first_digest}
+    assert first_digest == first.digest
+    first_monitor = Process.monitor(first_pid)
+    first_check = :sys.get_state(view.pid).socket.assigns.checks["city"]
+    assert has_element?(view, "#ip-database-city [data-status='Checking']")
+    refute has_element?(view, "#ip-database-city [role='alert']")
+
+    for _ <- 1..5 do
+      render_click(view, "refresh")
+      send(view.pid, {:task_updated, "ip_city"})
+      assert render_click(view, "invalid") =~ "Invalid catalog action"
+      state = :sys.get_state(view.pid).socket
+      assert state.assigns.checks["city"] == first_check
+      assert map_size(state.private.live_async) == 1
+    end
+
+    refute_received {:check_pending, _, _}
+
+    second =
+      publish_fixture(
+        context.directory,
+        :binary.replace(GeoIPFixtures.binary(), "London", "Londox")
+      )
+
+    send(view.pid, {:task_updated, "ip_city"})
+    assert has_element?(view, "#ip-database-city [data-digest='#{second.digest}']")
+    assert_receive {:DOWN, ^first_monitor, :process, ^first_pid, _reason}
+    assert_receive {:check_pending, second_pid, second_digest}
+    assert second_digest == second.digest
+    socket = :sys.get_state(view.pid).socket
+    assert map_size(socket.assigns.checks) == 1
+    assert map_size(socket.private.live_async) <= 2
+
+    assert {:noreply, ^socket} =
+             YellowDog.ManagementUI.IpDatabaseLive.handle_async(
+               {:artifact_check, "city", first_check.token},
+               {:ok, {:ok, %{}}},
+               socket
+             )
+
+    assert has_element?(view, "#ip-database-city [data-status='Checking']")
+    send(second_pid, :finish_check)
+    render_async(view)
+    assert has_element?(view, "#ip-database-city [data-status='Available']")
+    assert has_element?(view, "#ip-database-city [data-checked-at]")
+    assert Repo.get!(GeoIPSelection, "city").digest == second.digest
+
+    # Task updates reuse only the current selection's recent result.
+    send(view.pid, {:task_updated, "ip_city"})
+    assert has_element?(view, "#ip-database-city [data-status='Available']")
+    refute_received {:check_pending, _, _}
+
+    # Explicit refresh revalidates instead of treating cached availability as permanent.
+    render_click(view, "refresh")
+    assert_receive {:check_pending, refresh_pid, ^second_digest}
+    render_click(view, "refresh")
+    refute_received {:check_pending, _, _}
+    send(refresh_pid, :finish_check)
+    render_async(view)
+
+    # Expired page-local results revalidate on task updates without sleeping.
+    :sys.replace_state(view.pid, fn state ->
+      check = state.socket.assigns.checks["city"]
+      check = %{check | checked_at: DateTime.add(check.checked_at, -61, :second)}
+      put_in(state.socket.assigns.checks["city"], check)
+    end)
+
+    send(view.pid, {:task_updated, "ip_city"})
+    assert has_element?(view, "#ip-database-city [data-status='Checking']")
+    assert_receive {:check_pending, expired_pid, ^second_digest}
+    send(expired_pid, :finish_check)
+    render_async(view)
+
+    # The mounted cache cannot bypass the artifact consumer's byte check.
+    File.rm!(second.path)
+    assert {:error, {:file_error, :enoent}} = TaskArtifacts.get(:city, second.digest)
+  end
+
+  test "City and Country checks are bounded independently and cancellation precedes replacement",
+       context do
+    city = publish_fixture(context.directory)
+
+    country = publish_fixture(context.directory, country_database(), :country)
+    pause_checks()
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    assert_receive {:check_pending, first_pid, first_digest}
+    assert_receive {:check_pending, second_pid, second_digest}
+    assert MapSet.new([first_digest, second_digest]) == MapSet.new([city.digest, country.digest])
+    city_pid = if first_digest == city.digest, do: first_pid, else: second_pid
+    country_pid = if first_digest == city.digest, do: second_pid, else: first_pid
+    monitor = Process.monitor(city_pid)
+    assert map_size(:sys.get_state(view.pid).socket.private.live_async) == 2
+
+    newer =
+      publish_fixture(
+        context.directory,
+        :binary.replace(GeoIPFixtures.binary(), "London", "Londox")
+      )
+
+    send(view.pid, {:task_updated, "ip_city"})
+    assert_receive {:DOWN, ^monitor, :process, ^city_pid, _reason}
+    assert_receive {:check_pending, newer_pid, newer_digest}
+    assert newer_digest == newer.digest
+    refute Process.alive?(city_pid)
+    assert Process.alive?(country_pid)
+    assert map_size(:sys.get_state(view.pid).socket.private.live_async) == 2
+    render_click(view, "refresh")
+    refute_received {:check_pending, _, _}
+    send(newer_pid, :finish_check)
+    send(country_pid, :finish_check)
+    render_async(view)
+
+    for kind <- ~w(city country),
+        do: assert(has_element?(view, "#ip-database-#{kind} [data-status='Available']"))
+  end
+
+  test "history navigation keeps a selected artifact outside the SQL page visible", context do
+    artifact = publish_fixture(context.directory)
+    timestamp = DateTime.add(DateTime.utc_now(), 10, :second)
+
+    for number <- 1..25 do
+      Repo.insert!(%GeoIPArtifact{
+        digest: number |> Integer.to_string(16) |> String.pad_leading(64, "0"),
+        kind: "city",
+        format: "mmdb",
+        path: "unverified-history-#{number}",
+        size: 1,
+        source_url: "https://fixture.invalid/history",
+        metadata: %{},
+        inserted_at: timestamp
+      })
+    end
+
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    render_async(view)
+    assert has_element?(view, "#ip-database-city [data-status='Available']")
+    assert has_element?(view, "#ip-database-city [data-digest='#{artifact.digest}']")
+    refute has_element?(view, "#ip-database-versions-city tr[data-digest='#{artifact.digest}']")
+
+    assert length(
+             :sys.get_state(view.pid).socket.assigns.databases
+             |> hd()
+             |> Map.fetch!(:versions)
+           ) == 20
+
+    view |> element("#ip-database-next-city") |> render_click()
+    assert has_element?(view, "#ip-database-city", "Page 2")
+
+    assert has_element?(
+             view,
+             "#ip-database-versions-city tr[data-digest='#{artifact.digest}']",
+             "Available"
+           )
+
+    assert has_element?(view, "#ip-database-next-city[disabled]")
+    view |> element("#ip-database-previous-city") |> render_click()
+    assert has_element?(view, "#ip-database-city", "Page 1")
+    assert has_element?(view, "#ip-database-city [data-digest='#{artifact.digest}']")
+    assert has_element?(view, "#ip-database-versions-city", "Unverified")
+  end
+
+  test "corrupt selected bytes are reported after asynchronous verification", context do
+    artifact = publish_fixture(context.directory)
+    File.chmod!(artifact.path, 0o644)
+    File.write!(artifact.path, :binary.replace(GeoIPFixtures.binary(), "London", "Londox"))
+    File.chmod!(artifact.path, 0o444)
+    {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    render_async(view)
+    assert has_element?(view, "#ip-database-city [data-status='Unavailable']")
+    assert has_element?(view, "#ip-database-city [role='alert']", "artifact_digest_mismatch")
+    assert has_element?(view, "#ip-database-city [data-sync-state='completed']")
+    assert Repo.get!(GeoIPSelection, "city").digest == artifact.digest
+  end
+
   test "durable catalog metadata and versions survive a fresh LiveView session", context do
     artifact = publish_fixture(context.directory)
     {:ok, view, html} = live(context.conn, "/system/ip-database")
+    render_async(view)
     assert has_element?(view, "#ip-database-city [data-status='Available']")
     assert has_element?(view, "#ip-database-city [data-digest='#{artifact.digest}']")
     assert has_element?(view, "#ip-database-city", "#{artifact.size} bytes")
@@ -62,6 +243,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     assert html =~ "Synchronization does not mean delivery or loading on a Worker"
 
     {:ok, fresh, _html} = live(build_conn(), "/system/ip-database")
+    render_async(fresh)
     assert has_element?(fresh, "#ip-database-city [data-digest='#{artifact.digest}']")
     assert has_element?(fresh, "#ip-database-city [data-status='Available']")
   end
@@ -140,6 +322,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     artifact = publish_fixture(context.directory)
     catalog = TaskArtifacts.catalog()
     {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    render_async(view)
     view |> element("#ip-database-download-city") |> render_click()
     assert has_element?(view, "#ip-database-download-result")
     before_failure = Domain.list_audit()
@@ -164,6 +347,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
        context do
     artifact = publish_fixture(context.directory)
     {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    render_async(view)
 
     {:ok, _queued} =
       SyncGeoIPWorker.new(%{
@@ -176,6 +360,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
              Oban.drain_queue(queue: :management_sync, with_safety: true)
 
     view |> element("#ip-database-refresh") |> render_click()
+    render_async(view)
 
     assert has_element?(view, "#ip-database-city [data-sync-state='retryable']")
     assert has_element?(view, "#ip-database-city [data-status='Available']")
@@ -191,8 +376,10 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
        context do
     artifact = publish_fixture(context.directory)
     {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    render_async(view)
     File.rm!(artifact.path)
     view |> element("#ip-database-refresh") |> render_click()
+    render_async(view)
 
     assert has_element?(view, "#ip-database-city [data-sync-state='completed']")
     assert has_element?(view, "#ip-database-city [data-status='Unavailable']")
@@ -211,6 +398,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
        context do
     first = publish_fixture(context.directory)
     {:ok, view, _html} = live(context.conn, "/system/ip-database")
+    render_async(view)
     changed = :binary.replace(GeoIPFixtures.binary(), "London", "Londox")
     second = publish_fixture(context.directory, changed)
     send(view.pid, {:task_updated, "ip_city"})
@@ -227,16 +415,16 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     assert {:ok, %{available: true}} = TaskArtifacts.get(:city, second.digest)
   end
 
-  defp publish_fixture(directory, contents \\ GeoIPFixtures.binary()) do
+  defp publish_fixture(directory, contents \\ GeoIPFixtures.binary(), type \\ :city) do
     {url, _server} = GeoIPDownloadFixture.start(200, :zlib.gzip(contents))
-    {:ok, artifact} = GeoIPDownload.fetch(:city, directory, url: url)
+    {:ok, artifact} = GeoIPDownload.fetch(type, directory, url: url)
 
     job =
       Repo.insert!(
         %Oban.Job{
           worker: "YellowDog.Management.SyncGeoIPWorker",
           queue: "management_sync",
-          args: %{"task_key" => "ip_city", "source_url" => url},
+          args: %{"task_key" => "ip_#{type}", "source_url" => url},
           state: "executing",
           attempt: 1,
           max_attempts: 3,
@@ -245,12 +433,72 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
         prefix: "management_jobs"
       )
 
-    assert :ok = TaskArtifacts.publish(job, :city, artifact)
+    assert :ok = TaskArtifacts.publish(job, type, artifact)
 
     job
     |> Ecto.Changeset.change(state: "completed", completed_at: DateTime.utc_now())
     |> Repo.update!()
 
     artifact
+  end
+
+  defp pause_checks do
+    handler = "ip-database-check-#{Ecto.UUID.generate()}"
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:yellow_dog, :management, :repo, :query],
+        &__MODULE__.pause_artifact_query/4,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+  end
+
+  # The same pointer-free synthetic Country fixture used by TaskArtifactsTest.
+  # Changing strings in the real City fixture would invalidate its metadata pointers.
+  defp country_database do
+    metadata = %{
+      "binary_format_major_version" => 2,
+      "binary_format_minor_version" => 0,
+      "build_epoch" => 1_750_000_000,
+      "database_type" => "GeoIP2-Country",
+      "description" => %{"en" => "Synthetic test database"},
+      "ip_version" => 4,
+      "languages" => ["en"],
+      "node_count" => 1,
+      "record_size" => 24
+    }
+
+    <<0, 0, 1, 0, 0, 1>> <>
+      :binary.copy(<<0>>, 16) <>
+      <<0xAB, 0xCD, 0xEF>> <> "MaxMind.com" <> encode_mmdb(metadata)
+  end
+
+  defp encode_mmdb(value) when is_map(value),
+    do:
+      <<7::3, map_size(value)::5>> <>
+        Enum.map_join(value, fn {key, item} -> encode_mmdb(key) <> encode_mmdb(item) end)
+
+  defp encode_mmdb(value) when is_binary(value), do: <<2::3, byte_size(value)::5>> <> value
+  defp encode_mmdb(value) when is_integer(value), do: <<6::3, 4::5, value::32>>
+
+  defp encode_mmdb(value) when is_list(value),
+    do: <<0::3, length(value)::5, 4>> <> Enum.map_join(value, &encode_mmdb/1)
+
+  def pause_artifact_query(_event, _measurements, metadata, owner) do
+    {:current_stacktrace, stack} = Process.info(self(), :current_stacktrace)
+
+    if metadata.source == "management_geoip_artifacts" and
+         Enum.any?(stack, fn {module, _, _, _} -> module == Phoenix.LiveView.Async end) do
+      send(owner, {:check_pending, self(), hd(metadata.params)})
+
+      receive do
+        :finish_check -> :ok
+      after
+        10_000 -> raise "artifact check was not released by test"
+      end
+    end
   end
 end
