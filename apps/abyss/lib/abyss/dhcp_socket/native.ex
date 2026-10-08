@@ -28,6 +28,8 @@ defmodule Abyss.DhcpSocket.Native do
     otp_app: :abyss,
     crate: "dhcp_socket"
 
+  @external_resource Path.expand("../../../priv/native/dhcp_socket.so", __DIR__)
+
   @spec open(String.t(), pid()) :: {:ok, reference()} | {:error, term()}
   def open(_interface, _owner), do: :erlang.nif_error(:nif_not_loaded)
 
