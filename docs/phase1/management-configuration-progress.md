@@ -83,8 +83,27 @@ Additional logs: `/tmp/yellow-dog-ci-parent-checks.log`,
 `/tmp/yellow-dog-ci-nix-images-verified.log`,
 `/tmp/yellow-dog-ci-nix-runtime-verified.log` and
 `/tmp/yellow-dog-release-1.2.1/management-full-seed635407.log`.
-Remote CI will be inspected for the pushed repair revision; local checks do not
-establish all-green CI or resolve the two external blockers.
+Initial repair revision `0927d502` has inspected remote results:
+
+- [Nix Product Images 37734994510](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734994510): all four Management/Worker amd64/arm64 builds and image uploads pass. Optional publication was not requested.
+- [Phase 1 37734982212](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982212): seven jobs pass, including both releases, architecture, Node and offline export; Management reports 474/1, only MAC parity.
+- [E2E 37734982155](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982155): both product release jobs pass.
+- [Test 37734982150](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982150): Management 474/1, only MAC parity.
+- [CI 37734982176](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982176): compile/format/Credo/Rust pass; Management reports 474/2, adding an intermittent BackupsLive timeout at seed 699.
+
+That last failure was a `render_async` wait using ExUnit's incidental 100 ms
+default while real native `pg_restore --list` was still running after integrity
+hashing. The three successful native verification waits now have a bounded
+5-second allowance. Missing/corrupt-package and cancellation waits, integrity
+assertions and production timeouts are unchanged. Scoped fresh PostgreSQL
+verification with the failing remote seed 699 passes **14 tests, 0 failures**,
+exit 0 (`/tmp/yellow-dog-backups-native-wait.log`). Parent reran full formatting,
+strict Credo and full Management with seed 699: formatting/Credo pass and
+Management returns 474/1, only MAC parity
+(`/tmp/yellow-dog-ci-native-wait-full.log`). The next CI iteration checks
+this patch; [draft PR #30](https://github.com/gsmlg-dev/yellow-dog/pull/30) tracks
+the current revision and remaining external blockers. ARM build success does
+not establish ARM runtime acceptance.
 
 
 ## 2026-10-08 release 1.2.1 preparation
