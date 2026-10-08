@@ -8,6 +8,8 @@ defmodule YellowDog.Management.BackupsLiveTest do
   alias YellowDog.ManagementUI.BackupsLive
 
   @endpoint YellowDog.ManagementUI.Endpoint
+  # Real pg_restore verification needs a bounded process wait beyond ExUnit's 100 ms default.
+  @native_verification_timeout 5_000
 
   setup tags do
     if tags[:unboxed] do
@@ -260,7 +262,7 @@ defmodule YellowDog.Management.BackupsLiveTest do
     assert has_element?(view, "a[href='/api/backups/#{backup.id}/download']", "Download")
     html = render_click(view, "verify", %{"id" => backup.id})
     assert html =~ "Verifying checksums and package contents"
-    render_async(view)
+    render_async(view, @native_verification_timeout)
     assert has_element?(view, "#backup-verification[data-backup-id='#{backup.id}']")
     assert has_element?(view, "#backup-verification", value(result, :dump_digest))
     assert has_element?(view, "#backup-verification", "byte_integrity")
@@ -285,7 +287,7 @@ defmodule YellowDog.Management.BackupsLiveTest do
     {:ok, view, _html} = live(conn, "/system/backups/restore")
     before_restore = snapshot()
     view |> form("#backup-restore-form", id: backup.id) |> render_submit()
-    render_async(view)
+    render_async(view, @native_verification_timeout)
     assert has_element?(view, "#backup-verification[data-backup-id='#{backup.id}']")
     refute has_element?(view, "#backup-restore-command")
     render_click(view, "confirm_restore", %{"id" => Ecto.UUID.generate()})
@@ -331,7 +333,7 @@ defmodule YellowDog.Management.BackupsLiveTest do
     backup = ready_package()
     {:ok, view, _html} = live(conn, "/system/backups/restore")
     render_submit(view, "select_restore", %{"id" => backup.id})
-    render_async(view)
+    render_async(view, @native_verification_timeout)
     render_click(view, "confirm_restore", %{"id" => backup.id})
     assert has_element?(view, "#backup-restore-unavailable")
     backup |> Ecto.Changeset.change(state: "deleting") |> Repo.update!()

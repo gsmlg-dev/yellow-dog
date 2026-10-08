@@ -1,5 +1,211 @@
 # Management configuration and IP artifact increment
 
+## 2026-10-08 operator scope decision: FlakeHub deferred
+
+**FlakeHub: outside this CI repair scope; feature verification stopped by the
+operator; not a completion blocker.** Organization registration/authorization and
+FlakeHub publication are deferred until the operator explicitly resumes them.
+The existing FlakeHub workflows remain unchanged. Historical authentication
+failures below remain evidence of prior runs, not current acceptance gates.
+
+At revision `52f35a7cf6dbf4f015dfd6672b20a8f606ccb95d`, the in-scope remote
+workflows all pass:
+
+| Workflow | Verified result |
+| --- | --- |
+| [CI 37754571953](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571953) | All six jobs pass; Management 474/0. |
+| [Test 37754571946](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571946) | Pass; Management 474/0. |
+| [Phase 1 37754571972](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571972) | All eight jobs pass. |
+| [E2E 37754571956](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571956) | Both product release jobs pass. |
+| [Nix Product Images 37754609586](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754609586) | All four amd64/arm64 product builds and artifact uploads pass; optional registry publication was not requested. |
+
+The following upstream-integration section records the local checks and remaining
+legacy-harness limitation. Existing `v1.2.1` tags and published images are retained;
+the new artifacts belong to the CI repair branch tracked by PR #30.
+
+## 2026-10-08 upstream MAC fix integration
+
+The operator reported the upstream fix and resumed CI repair. Upstream
+[gsmlg_umbrella#8](https://github.com/gsmlg-dev/gsmlg_umbrella/issues/8) is now
+closed, and Hex publishes `gsmlg_mac` 0.1.2. Management requires `~> 0.1.2` and
+the lockfile updates only this package; its telemetry dependency uses the existing
+locked telemetry. The historical dependency blocker below applies to 0.1.1.
+
+Management delegates lookup to the new upstream `Vendor.lookup/2` API and accepts
+overlapping /24, /28 and /36 prefixes. Strict input/file parsing, 64 MiB and
+loader resource limits, unique parsed-versus-compiled prefix count equality, and
+failure retention of the previous valid snapshot remain enforced. No local
+replacement compiler is introduced. Regression fixtures verify longest-prefix
+lookup and broader-prefix fallback in both source orders. Packaged-source checks
+assert all **48,087 unique prefixes** survive compilation/loading and compare a
+query for every source prefix against the upstream lookup result.
+
+Verification commands run inside
+`devenv shell -- bash -c 'cd .trees/fix-ci-management && ...'`:
+
+| Command | Actual result |
+| --- | --- |
+| `mix deps.update gsmlg_mac` | Published 0.1.2 installed; only its lock entry changes. |
+| `MIX_ENV=test mix compile --warnings-as-errors` | Exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management test test/mac_database_test.exs test/mac_database_live_test.exs --seed 0` | 19 tests, 0 failures, exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management test --warnings-as-errors --seed 0` | 474 tests, 0 failures, exit 0. |
+| Same full Management command with `--seed 635407` | 474 tests, 0 failures, exit 0. |
+| `mix format --check-formatted && mix compile --warnings-as-errors && mix credo --strict` | All supported formatter/compile/Credo checks pass, exit 0. |
+| `python3 scripts/e2e/check_ui_source_migration.py` | 203 retained files pass, exit 0. |
+| `node --test apps/yellow_dog_management/test/management_ui_test.mjs` | 10 tests, 0 failures, exit 0. |
+| `nix build .#docker-management .#docker-worker .#yellow_dog_management .#yellow_dog_worker --no-link --print-out-paths --print-build-logs` | Both x86_64 images and releases build, exit 0. |
+| Actual Nix Management release: `migrate`, MDEx HTML evaluation, packaged MAC load/reload/count/query, `python3 apps/yellow_dog_management/test/release_smoke.py <nix-release-binary>` | Native HTML renders; MAC retains 48,087 entries; PostgreSQL/HTTP/concurrency/restart pass, exit 0. |
+| `python3 apps/yellow_dog_worker/test/release_smoke.py <nix-release-binary>` | UDP/TCP, reload, SIGKILL recovery and stopped-state persistence pass, exit 0. |
+| `scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py <nix-release-binary>` | All six Chromium phases and forced-restart/configuration/artifact persistence gates pass, exit 0. |
+
+Updating the dependency before adapting Management reproduced three failing MAC
+regressions (12 tests): obsolete lookup-table representation, packaged load, and
+mixed-width load. The new implementation resolves them. Only the complete
+packaged-file test observation window follows the unchanged production 30-second
+load budget; small synthetic fixture waits and all integrity assertions remain.
+An existing test-only Abyss compile-environment cache mismatch required rebuilding
+that dependency in `MIX_ENV=test`; no source/configuration checks were disabled.
+
+Nix's production Mix dependency hash was recomputed by an actual fixed-output
+build with an intentionally invalid discovery hash. Its reported content hash is
+`sha256-LEFPmWZw7Cu/GH28kJOyPY3xMYAeL4J55o5LJeBqwoo=`; the final source contains
+this real hash. Logs: `/tmp/yellow-dog-ci-mac-deps-update.log`,
+`/tmp/yellow-dog-mac-upstream-{before,after}.log`,
+`/tmp/yellow-dog-mac-full-seed{0,635407}.log`,
+`/tmp/yellow-dog-ci-mac-checks.log`, and
+`/tmp/yellow-dog-ci-mac-nix-new-hash.log`.
+
+Runtime commands use the disposable release-cookie/distribution settings
+documented below and fresh isolated PostgreSQL. The rebuilt release outputs are
+`/nix/store/y74a8xgda8g5xn5h4mkr373056vdnqbm-yellow_dog_management-1.2.1` and
+`/nix/store/i349znw72fqgxyjq22nqfkj8a6716qvf-yellow_dog_worker-1.2.1`. Logs:
+`/tmp/yellow-dog-ci-mac-nix-images.log`,
+`/tmp/yellow-dog-ci-mac-nix-runtime.log`,
+`/tmp/yellow-dog-ci-mac-worker-runtime.log`, and
+`/tmp/yellow-dog-ci-mac-configuration-browser.log`.
+
+The optional older `scripts/e2e/management_browser.sh` harness was also run
+against this Nix release. Its MAC lookup/reload/failure-retention/recovery
+assertions completed, but the harness then failed at `live_browser_smoke.mjs:346`
+trying to submit the absent `#geoip-lookup-form`. The routed GeoIP page explicitly
+declares Worker-backed lookup unavailable; this script and page are unchanged
+from the starting revision. This is not a passing full legacy browser run or
+permission to reconnect a Management query runtime. Its broader failure remains
+outside this CI repair; the current configuration acceptance command above
+passed in full. Evidence: `/tmp/yellow-dog-ci-mac-browser.log`.
+
+Code integration is commit `cf0cf7432dcf3e195c9fed258617693f053e4ec1` on
+`codex/fix-ci-management`; all five in-scope remote workflows pass at the
+subsequent documented revision `52f35a7c`, as linked above. FlakeHub verification
+is deferred by the operator's scope decision above. No workflow YAML, published
+prerelease tag or existing image digest is changed.
+
+## 2026-10-08 CI repair after release 1.2.1
+
+The operator expanded the work to all current CI failures after the `v1.2.1`
+release build succeeded. Repairs are isolated in `.trees/fix-ci-management`,
+branch `codex/fix-ci-management`, starting from
+`a7a60dfa6226f159702d28fc69a9a2023c4875af`. The release remains a prerelease;
+its existing tag and published artifacts are not rewritten.
+
+Two independent-connection assignment tests committed fixtures outside the SQL
+sandbox, then left 21 audit/idempotency records behind. This polluted later
+Events, Tasks, Backups, Zone import and other test expectations depending on
+execution order. Regression assertions reproduced both leaks (9 tests, 2
+failures). Each test now uses a unique actor/request-key namespace and removes
+only its committed fixture records. Audit cleanup disables its immutable trigger
+inside one teardown transaction and reenables it before commit; the trigger is
+asserted enabled and the exact prior receipt state is asserted restored before
+and after each test. Production migrations and command invariants are unchanged.
+The same assignment regressions now pass (9 tests, 0 failures).
+
+Five synthetic Zone/Worker submissions now carry the actual rendered hidden
+`_submission` value, preserving forged-field, validation and CAS assertions.
+The Events UI test selects its actual audit record in the audit group, where the
+page also renders separate receipt/job detail buttons. The missing Node CI
+entrypoint is supplied by 10 behavioral tests of the current LiveView hooks;
+these execute the current entrypoint with package/browser boundaries stubbed,
+without restoring the obsolete native UI. These are Node checks, not Chromium
+acceptance.
+
+Supported child applications now declare their own development/test Credo
+dependency so the root per-app alias can run. The two resulting Credo warnings
+are repaired with a SQL sigil and a credential-free reraised ArgumentError.
+Two retained presentations receive formatting-only adjustments recorded as exact
+manifest transformations; all 203 source-retention files still pass provenance.
+Nix packaging updates the production Mix dependency hash to the value reproduced
+by both CI architectures and the local fixed-output build. MDEx's checksum-pinned
+native artifact is declared as a Nix input and placed in Rustler's cache before
+dependency compilation, instead of attempting a download inside the sandbox.
+
+Full Management testing with disposable PostgreSQL and both seed 0 and the
+original Phase 1 seed 635407 reports **474 tests, 1 failure**: packaged MAC source parity. Upstream
+[gsmlg_umbrella#8](https://github.com/gsmlg-dev/gsmlg_umbrella/issues/8) is still
+open, and Hex still publishes only `gsmlg_mac` 0.1.1/0.1.0. The lossless import
+check remains enabled and the task stays blocked by this dependency; no local
+replacement compiler or lossy acceptance is introduced. The FlakeHub rolling
+workflow separately returns **401 Unauthorized**, explicitly requiring the
+`gsmlg-dev` organization to register/authorize in FlakeHub. These external
+blockers prevent a claim that all CI is green.
+
+Evidence: `/tmp/yellow-dog-release-1.2.1/assignment-isolation-{before,after}.log`,
+`management-full-seed0.log`, `/tmp/yellow-dog-ci-node-parent.log`,
+`/tmp/yellow-dog-ci-nix-deps.log` and `/tmp/yellow-dog-flakehub.log`.
+Completed local verification (commands run from the worktree inside the root
+`devenv shell -- bash -c 'cd .trees/fix-ci-management; ...'` context):
+
+| Command | Actual result |
+| --- | --- |
+| `mix format --check-formatted` | Exit 0, full supported formatter scope. |
+| `mix compile --warnings-as-errors` and `MIX_ENV=test mix compile --warnings-as-errors` | Both exit 0. |
+| `mix credo --strict` | All five supported child applications pass, exit 0. |
+| `mix cmd --app yellow_dog_config_spec --app yellow_dog_worker mix test` | ConfigSpec 15/0; Worker 95/0 with its existing 1 skipped test, exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test --warnings-as-errors test/assignment_domain_test.exs test/ui_test.exs test/worker_profiles_live_test.exs test/zone_validation_live_test.exs test/backups_test.exs test/postgres_tools_test.exs` | 58/0, exit 0. |
+| `scripts/e2e/phase1_postgres.sh mix cmd --app yellow_dog_management mix test --seed 0` and the same command with `--seed 635407` | Each 474/1, exit 1 from the command wrapper; only the MAC upstream blocker. No filters/skips applied. |
+| `node --test apps/yellow_dog_management/test/management_ui_test.mjs` | 10/0, exit 0. |
+| `python3 scripts/e2e/check_ui_source_migration.py` | 203 files, exit 0. |
+| `scripts/e2e/architecture_smoke.sh` | Positive architecture and four negative fixtures pass, exit 0. |
+| `nix build .#yellow_dog_management.mixFodDeps --no-link --print-build-logs` | Corrected fixed-output hash passes, exit 0. |
+| `nix build .#docker-management .#docker-worker --no-link --print-build-logs` | Both x86_64 product images build, exit 0. |
+| Actual Nix Management release: `migrate`, MDEx HTML evaluation, `python3 apps/yellow_dog_management/test/release_smoke.py <nix-release-binary>` | Native artifact loads and renders HTML; PostgreSQL/HTTP/concurrency/restart gates pass, exit 0. |
+| `python3 apps/yellow_dog_worker/test/release_smoke.py <nix-release-binary>` | Real UDP/TCP, atomic reload, SIGKILL and stopped-state persistence pass, exit 0. |
+| `git diff --check` and supplied-plan SHA-256 | Exit 0; original plan hash unchanged. |
+
+Nix runtime smoke uses `RELEASE_DISTRIBUTION=none`, a disposable
+`RELEASE_COOKIE=yellow_dog_ci_smoke`, and `ERL_FLAGS='+S 2:2 +A 2'`. nixpkgs
+removes the generated release cookie from the immutable store by default;
+operators must supply `RELEASE_COOKIE`, including for nondistributed startup.
+Management was migrated through the disposable PostgreSQL wrapper. Neither
+smoke deployed to NixOS/Podman nor exercised ARM runtime behavior.
+
+Additional logs: `/tmp/yellow-dog-ci-parent-checks.log`,
+`/tmp/yellow-dog-ci-architecture.log`,
+`/tmp/yellow-dog-ci-nix-images-verified.log`,
+`/tmp/yellow-dog-ci-nix-runtime-verified.log` and
+`/tmp/yellow-dog-release-1.2.1/management-full-seed635407.log`.
+Initial repair revision `0927d502` has inspected remote results:
+
+- [Nix Product Images 37734994510](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734994510): all four Management/Worker amd64/arm64 builds and image uploads pass. Optional publication was not requested.
+- [Phase 1 37734982212](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982212): seven jobs pass, including both releases, architecture, Node and offline export; Management reports 474/1, only MAC parity.
+- [E2E 37734982155](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982155): both product release jobs pass.
+- [Test 37734982150](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982150): Management 474/1, only MAC parity.
+- [CI 37734982176](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37734982176): compile/format/Credo/Rust pass; Management reports 474/2, adding an intermittent BackupsLive timeout at seed 699.
+
+That last failure was a `render_async` wait using ExUnit's incidental 100 ms
+default while real native `pg_restore --list` was still running after integrity
+hashing. The three successful native verification waits now have a bounded
+5-second allowance. Missing/corrupt-package and cancellation waits, integrity
+assertions and production timeouts are unchanged. Scoped fresh PostgreSQL
+verification with the failing remote seed 699 passes **14 tests, 0 failures**,
+exit 0 (`/tmp/yellow-dog-backups-native-wait.log`). Parent reran full formatting,
+strict Credo and full Management with seed 699: formatting/Credo pass and
+Management returns 474/1, only MAC parity
+(`/tmp/yellow-dog-ci-native-wait-full.log`). The next CI iteration checks
+this patch; [draft PR #30](https://github.com/gsmlg-dev/yellow-dog/pull/30) tracks
+the current revision and remaining external blockers. ARM build success does
+not establish ARM runtime acceptance.
+
+
 ## 2026-10-08 release 1.2.1 preparation
 
 The operator authorized committing the local fixes, fresh verification and a new

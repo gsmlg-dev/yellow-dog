@@ -233,7 +233,7 @@ defmodule YellowDog.Management.Backups do
             quoted_table = String.replace(table, "\"", "\"\"")
 
             %{rows: [[count]]} =
-              Repo.query!("SELECT count(*) FROM \"#{quoted_schema}\".\"#{quoted_table}\"")
+              Repo.query!(~s|SELECT count(*) FROM "#{quoted_schema}"."#{quoted_table}"|)
 
             {"#{schema}.#{table}", count}
           end)

@@ -252,19 +252,24 @@ defmodule YellowDog.Management.AssignmentDomainTest do
   @tag :independent_connections
   test "concurrent bulk edits lock overlapping Workers consistently across distinct Zones" do
     Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
-      {one, v1} = confirmed_zone("parallel-one.example.test.")
-      {two, v2} = confirmed_zone("parallel-two.example.test.")
-      a = worker_service("parallel-worker-a")
-      b = worker_service("parallel-worker-b")
+      before_receipts = receipts()
+      actor = Ecto.UUID.generate()
+      {one, v1} = confirmed_zone("parallel-one.example.test.", actor)
+      {two, v2} = confirmed_zone("parallel-two.example.test.", actor)
+      a = worker_service("parallel-worker-a", actor)
+      b = worker_service("parallel-worker-b", actor)
 
       try do
         results =
-          concurrent_commands([
-            {"set_zone_assignments",
-             request(one, snapshot(one), [selection(a, v1), selection(b, v1)])},
-            {"set_zone_assignments",
-             request(two, snapshot(two), [selection(b, v2), selection(a, v2)])}
-          ])
+          concurrent_commands(
+            [
+              {"set_zone_assignments",
+               request(one, snapshot(one), [selection(a, v1), selection(b, v1)])},
+              {"set_zone_assignments",
+               request(two, snapshot(two), [selection(b, v2), selection(a, v2)])}
+            ],
+            actor
+          )
 
         assert Enum.count(results, &match?({:ok, _}, &1)) == 1
         assert Enum.count(results, &match?({:error, %{code: "revision_conflict"}}, &1)) == 1
@@ -274,31 +279,38 @@ defmodule YellowDog.Management.AssignmentDomainTest do
                  length(snapshot(two)["assignments"])
                ]) == [0, 2]
       after
-        cleanup_committed([one, two], [a, b])
+        cleanup_committed([one, two], [a, b], actor)
       end
+
+      assert receipts() == before_receipts
     end)
   end
 
   @tag :independent_connections
   test "a simultaneous Worker assignment always survives a competing bulk snapshot save" do
     Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
-      {zone, version} = confirmed_zone("parallel-shared.example.test.")
-      a = worker_service("parallel-worker-a")
-      b = worker_service("parallel-worker-b")
+      before_receipts = receipts()
+      actor = Ecto.UUID.generate()
+      {zone, version} = confirmed_zone("parallel-shared.example.test.", actor)
+      a = worker_service("parallel-worker-a", actor)
+      b = worker_service("parallel-worker-b", actor)
       before = snapshot(zone)
 
       try do
         [single, bulk] =
-          concurrent_commands([
-            {"assign",
-             %{
-               "worker_id" => a["worker_id"],
-               "service_id" => a["id"],
-               "resource_version_id" => version["id"],
-               "expected_revision" => a["worker_revision"]
-             }},
-            {"set_zone_assignments", request(zone, before, [selection(b, version)])}
-          ])
+          concurrent_commands(
+            [
+              {"assign",
+               %{
+                 "worker_id" => a["worker_id"],
+                 "service_id" => a["id"],
+                 "resource_version_id" => version["id"],
+                 "expected_revision" => a["worker_revision"]
+               }},
+              {"set_zone_assignments", request(zone, before, [selection(b, version)])}
+            ],
+            actor
+          )
 
         assert {:ok, _} = single
         assert length(Domain.list_assignments(a["worker_id"])) == 1
@@ -311,12 +323,14 @@ defmodule YellowDog.Management.AssignmentDomainTest do
             assert Domain.list_assignments(b["worker_id"]) == []
         end
       after
-        cleanup_committed([zone], [a, b])
+        cleanup_committed([zone], [a, b], actor)
       end
+
+      assert receipts() == before_receipts
     end)
   end
 
-  defp concurrent_commands(commands) do
+  defp concurrent_commands(commands, actor) do
     owner = self()
 
     tasks =
@@ -328,7 +342,7 @@ defmodule YellowDog.Management.AssignmentDomainTest do
 
             receive do
               :go ->
-                Domain.mutate(operation, request, "concurrent-operator", Ecto.UUID.generate())
+                Domain.mutate(operation, request, actor, actor <> ":" <> Ecto.UUID.generate())
             after
               5_000 -> flunk("Concurrent command did not receive its start signal")
             end
@@ -348,7 +362,7 @@ defmodule YellowDog.Management.AssignmentDomainTest do
     Enum.map(tasks, &Task.await(&1, 10_000))
   end
 
-  defp cleanup_committed(zones, services) do
+  defp cleanup_committed(zones, services, actor) do
     zone_ids = Enum.map(zones, & &1["id"])
     service_ids = Enum.map(services, & &1["id"])
     worker_ids = Enum.map(services, & &1["worker_id"])
@@ -358,18 +372,41 @@ defmodule YellowDog.Management.AssignmentDomainTest do
     Repo.delete_all(from(w in YellowDog.Management.Worker, where: w.id in ^worker_ids))
 
     Enum.each(zones, fn zone ->
-      mutate("delete_zone", %{"id" => zone["id"], "expected_revision" => zone["revision"]})
+      mutate("delete_zone", %{"id" => zone["id"], "expected_revision" => zone["revision"]}, actor)
     end)
+
+    key_prefix = actor <> ":%"
+
+    # Committed concurrency fixtures cannot roll back. Keep immutable audits protected
+    # during the test, then restore only its receipts with transactional trigger teardown.
+    assert {:ok, :ok} =
+             Repo.transaction(fn ->
+               Repo.query!(
+                 "ALTER TABLE management_audits DISABLE TRIGGER management_audits_immutable"
+               )
+
+               Repo.delete_all(from(a in YellowDog.Management.Audit, where: a.actor == ^actor))
+
+               Repo.delete_all(
+                 from(i in YellowDog.Management.Idempotency, where: like(i.key, ^key_prefix))
+               )
+
+               Repo.query!(
+                 "ALTER TABLE management_audits ENABLE TRIGGER management_audits_immutable"
+               )
+
+               :ok
+             end)
   end
 
-  defp confirmed_zone(name \\ "example.test.") do
-    zone = mutate("create_zone", Fixtures.zone(name))
-    {zone, mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1})}
+  defp confirmed_zone(name \\ "example.test.", actor \\ "operator") do
+    zone = mutate("create_zone", Fixtures.zone(name), actor)
+    {zone, mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1}, actor)}
   end
 
-  defp worker_service(id) do
-    worker = mutate("create_worker", %{"id" => id, "name" => id})
-    mutate("put_service", Fixtures.service(id, worker["revision"]))
+  defp worker_service(id, actor \\ "operator") do
+    worker = mutate("create_worker", %{"id" => id, "name" => id}, actor)
+    mutate("put_service", Fixtures.service(id, worker["revision"]), actor)
   end
 
   defp selection(service, version),
@@ -378,6 +415,16 @@ defmodule YellowDog.Management.AssignmentDomainTest do
       "service_id" => service["id"],
       "resource_version_id" => version["id"]
     }
+
+  defp receipts do
+    assert %{rows: [["O"]]} =
+             Repo.query!(
+               "SELECT tgenabled FROM pg_trigger WHERE tgrelid = 'management_audits'::regclass AND tgname = 'management_audits_immutable'"
+             )
+
+    {Repo.all(YellowDog.Management.Audit) |> Enum.sort_by(& &1.id),
+     Repo.all(YellowDog.Management.Idempotency) |> Enum.sort_by(& &1.key)}
+  end
 
   defp snapshot(zone) do
     assert {:ok, snapshot} = Domain.get_zone_assignments(zone["id"])
@@ -392,8 +439,10 @@ defmodule YellowDog.Management.AssignmentDomainTest do
       "assignments" => selections
     }
 
-  defp mutate(operation, request) do
-    assert {:ok, result} = Domain.mutate(operation, request, "operator", Ecto.UUID.generate())
+  defp mutate(operation, request, actor \\ "operator") do
+    assert {:ok, result} =
+             Domain.mutate(operation, request, actor, actor <> ":" <> Ecto.UUID.generate())
+
     result
   end
 end

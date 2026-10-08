@@ -774,9 +774,9 @@
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_live/management_components.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_live/management_components.ex",
       "revision": "working-tree",
-      "adaptation": "namespace-only",
+      "adaptation": "namespace-only-audited-format",
       "source_sha256": "3af1c0093a48d42b639d64b315c01dff7e7ff2f56edefbb41c7e2d182b704da5",
-      "target_sha256": "3bb9b33e6cb337f52e7138638a123b671ce665ef654b736fd0bb287fc48ea862",
+      "target_sha256": "84bcf7afa91045819e85c2fb83858a4f6afb19d695c79842a0b2587e6545c49c",
       "selection_reason": "new_current_source",
       "replacements": [
         [
@@ -790,6 +790,14 @@
         [
           "lib/yellow_dog/console",
           "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "    do: YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv4_pool, pool_id})\n",
+          "    do:\n      YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv4_pool, pool_id})\n"
+        ],
+        [
+          "    do: YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv6_pool, pool_id})\n",
+          "    do:\n      YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv6_pool, pool_id})\n"
         ]
       ]
     },
@@ -6656,11 +6664,24 @@
         [
           "defmodule YellowDog.ManagementUI.Redesign.",
           "defmodule YellowDog.ManagementUI.Redesign.Current."
+        ],
+        [
+          "              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(@selected_server.id, :mdns_services)\n",
+          "              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(\n                @selected_server.id,\n                :mdns_services\n              )\n"
+        ],
+        [
+          "              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(@selected_server.id, :mdns_discovery)\n",
+          "              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(\n                @selected_server.id,\n                :mdns_discovery\n              )\n"
+        ],
+        [
+          "              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(@selected_server.id, :mdns_monitor)\n",
+          "              YellowDog.ManagementUI.Redesign.ServicePaths.server_path(\n                @selected_server.id,\n                :mdns_monitor\n              )\n"
         ]
       ],
       "source_sha256": "b85656b25082c1212955802ee8a47c7ee8b951771437f38d88de37e3bbb4a69c",
-      "target_sha256": "301bdbd5352fd1ee393c6f0fe6829357ffaf51b9550300c51ef6f5fa2292bf74",
-      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58"
+      "target_sha256": "69891d9469f01b116d751ab2e12165d50db8d648d8cb8e38a6bdb06e8f0c40e0",
+      "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
+      "adaptation": "namespace-only-audited-format"
     },
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.ex",

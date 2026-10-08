@@ -186,9 +186,14 @@ defmodule YellowDog.Management.UITest do
 
   test "Management events read durable audit entries and expose their details", %{conn: conn} do
     mutate("create_worker", %{"id" => "ui-audit", "name" => "Audited Worker"})
+    assert [%{"id" => audit_id}] = Domain.list_audit()
     {:ok, view, _html} = live(conn, "/management/events")
     assert has_element?(view, "#management-events", "create_worker")
-    view |> element("button[phx-click='show']") |> render_click()
+
+    view
+    |> element("#management-events button[phx-click='show'][phx-value-id='#{audit_id}']")
+    |> render_click()
+
     assert has_element?(view, "#event-details", "Audited Worker")
     assert has_element?(view, "#event-details", "operator")
   end

@@ -41,7 +41,8 @@ defmodule YellowDog.Management.PostgresTools do
 
     if query["sslmode"], do: [{"PGSSLMODE", query["sslmode"]} | env], else: env
   rescue
-    _exception -> raise ArgumentError, "A PostgreSQL database URL is required"
+    _exception ->
+      reraise ArgumentError, [message: "A PostgreSQL database URL is required"], __STACKTRACE__
   end
 
   defp valid_host?(host) do

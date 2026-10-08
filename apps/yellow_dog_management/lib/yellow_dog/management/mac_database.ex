@@ -65,21 +65,8 @@ defmodule YellowDog.Management.MacDatabase do
     {:reply, Map.drop(state, [:table, :loader]), state}
   end
 
-  def handle_call({:lookup, <<key::bits-size(24), _rest::bits-size(24)>> = address}, _from, state) do
-    result =
-      case state.table[key] do
-        vendor when is_list(vendor) ->
-          vendor_result(vendor)
-
-        {width, entries} when width in 24..48 ->
-          <<prefix::bits-size(width), _rest::bits>> = address
-          vendor_result(entries[prefix])
-
-        _entry ->
-          :error
-      end
-
-    {:reply, result, state}
+  def handle_call({:lookup, <<_address::bits-size(48)>> = address}, _from, state) do
+    {:reply, Vendor.lookup(Base.encode16(address), state.table), state}
   end
 
   def handle_call(:reload, _from, %{configured: false} = state),
@@ -180,7 +167,6 @@ defmodule YellowDog.Management.MacDatabase do
          {:ok, read_result} <- File.open(path, [:read, :binary, :raw], &read_bounded(&1, [], 0)),
          {:ok, contents} <- read_result,
          {:ok, expected_count} <- validate_contents(contents) do
-      # TODO(upstream): gsmlg-dev/gsmlg_umbrella#8
       table = Compiler.build_lookup_table(contents)
       count = Compiler.count_entries(table)
 
@@ -221,9 +207,9 @@ defmodule YellowDog.Management.MacDatabase do
       contents
       |> String.split("\n")
       |> Enum.with_index(1)
-      |> Enum.reduce_while({:ok, %{}, MapSet.new()}, &validate_line/2)
+      |> Enum.reduce_while({:ok, MapSet.new()}, &validate_line/2)
       |> case do
-        {:ok, _widths, prefixes} ->
+        {:ok, prefixes} ->
           if MapSet.size(prefixes) > 0,
             do: {:ok, MapSet.size(prefixes)},
             else: {:error, :empty_database}
@@ -236,21 +222,15 @@ defmodule YellowDog.Management.MacDatabase do
     end
   end
 
-  defp validate_line({line, line_number}, {:ok, widths, prefixes}) do
+  defp validate_line({line, line_number}, {:ok, prefixes}) do
     line = String.trim(line)
 
     if line == "" or String.starts_with?(line, "#") do
-      {:cont, {:ok, widths, prefixes}}
+      {:cont, {:ok, prefixes}}
     else
       case parse_record(line) do
-        {:ok, <<key::bits-size(24), _rest::bits>> = prefix} ->
-          width = bit_size(prefix)
-
-          if Map.has_key?(widths, key) and widths[key] != width do
-            {:halt, {:error, :inconsistent_prefix_lengths}}
-          else
-            {:cont, {:ok, Map.put(widths, key, width), MapSet.put(prefixes, prefix)}}
-          end
+        {:ok, prefix} ->
+          {:cont, {:ok, MapSet.put(prefixes, prefix)}}
 
         :error ->
           {:halt, {:error, {:invalid_entry, line_number}}}
@@ -285,9 +265,4 @@ defmodule YellowDog.Management.MacDatabase do
   end
 
   defp parse_mac(_mac), do: {:error, :invalid_mac}
-
-  defp vendor_result(vendor) when is_list(vendor),
-    do: {:ok, Enum.at(vendor, 0), Enum.at(vendor, 1)}
-
-  defp vendor_result(_vendor), do: :error
 end
