@@ -104,7 +104,10 @@ defmodule YellowDog.Management.Settings do
         ]
     end
   rescue
-    ArgumentError -> raise "Management external origin must be an HTTPS origin without a path"
+    ArgumentError ->
+      reraise RuntimeError,
+              [message: "Management external origin must be an HTTPS origin without a path"],
+              __STACKTRACE__
   end
 
   defp trusted_proxy_ip do
