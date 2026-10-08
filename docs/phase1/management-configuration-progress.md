@@ -1,5 +1,28 @@
 # Management configuration and IP artifact increment
 
+## 2026-10-08 operator scope decision: FlakeHub deferred
+
+**FlakeHub: outside this CI repair scope; feature verification stopped by the
+operator; not a completion blocker.** Organization registration/authorization and
+FlakeHub publication are deferred until the operator explicitly resumes them.
+The existing FlakeHub workflows remain unchanged. Historical authentication
+failures below remain evidence of prior runs, not current acceptance gates.
+
+At revision `52f35a7cf6dbf4f015dfd6672b20a8f606ccb95d`, the in-scope remote
+workflows all pass:
+
+| Workflow | Verified result |
+| --- | --- |
+| [CI 37754571953](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571953) | All six jobs pass; Management 474/0. |
+| [Test 37754571946](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571946) | Pass; Management 474/0. |
+| [Phase 1 37754571972](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571972) | All eight jobs pass. |
+| [E2E 37754571956](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754571956) | Both product release jobs pass. |
+| [Nix Product Images 37754609586](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37754609586) | All four amd64/arm64 product builds and artifact uploads pass; optional registry publication was not requested. |
+
+The following upstream-integration section records the local checks and remaining
+legacy-harness limitation. Existing `v1.2.1` tags and published images are retained;
+the new artifacts belong to the CI repair branch tracked by PR #30.
+
 ## 2026-10-08 upstream MAC fix integration
 
 The operator reported the upstream fix and resumed CI repair. Upstream
@@ -72,10 +95,10 @@ outside this CI repair; the current configuration acceptance command above
 passed in full. Evidence: `/tmp/yellow-dog-ci-mac-browser.log`.
 
 Code integration is commit `cf0cf7432dcf3e195c9fed258617693f053e4ec1` on
-`codex/fix-ci-management`; remote CI for the new revision remains pending at this
-checkpoint. FlakeHub organization authorization is a separate external gate;
-the upstream MAC release does not establish that it has been resolved. No
-workflow YAML, published prerelease tag or existing image digest is changed.
+`codex/fix-ci-management`; all five in-scope remote workflows pass at the
+subsequent documented revision `52f35a7c`, as linked above. FlakeHub verification
+is deferred by the operator's scope decision above. No workflow YAML, published
+prerelease tag or existing image digest is changed.
 
 ## 2026-10-08 CI repair after release 1.2.1
 
