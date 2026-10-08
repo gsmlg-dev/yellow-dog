@@ -19,7 +19,8 @@ defmodule YellowDog.ConfigSpec.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
-      {:toml, "== 0.7.0"}
+      {:toml, "== 0.7.0"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 end

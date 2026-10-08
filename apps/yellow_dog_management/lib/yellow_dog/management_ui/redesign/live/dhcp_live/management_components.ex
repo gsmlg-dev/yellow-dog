@@ -488,8 +488,10 @@ defmodule YellowDog.ManagementUI.Redesign.DhcpLive.ManagementComponents do
   defp state_color(_state), do: "ghost"
 
   defp pool_path(server_id, :ipv4, pool_id),
-    do: YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv4_pool, pool_id})
+    do:
+      YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv4_pool, pool_id})
 
   defp pool_path(server_id, :ipv6, pool_id),
-    do: YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv6_pool, pool_id})
+    do:
+      YellowDog.ManagementUI.Redesign.ServicePaths.server_path(server_id, {:dhcpv6_pool, pool_id})
 end

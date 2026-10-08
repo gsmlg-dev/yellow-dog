@@ -35,7 +35,8 @@ defmodule YellowDog.Management.MixProject do
         {:gsmlg_mac, "~> 0.1"},
         {:gsmlg_whois, "~> 0.5"},
         {:mmdb2_decoder, "~> 3.0"},
-        {:lazy_html, "~> 0.1", only: :test}
+        {:lazy_html, "~> 0.1", only: :test},
+        {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       ]
     ]
   end
