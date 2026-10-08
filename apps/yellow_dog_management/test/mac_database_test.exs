@@ -39,14 +39,13 @@ defmodule YellowDog.Management.MacDatabaseTest do
 
   test "compiled 24, 28 and 36-bit entries retain library lookup semantics" do
     server = start_database()
-    table = GSMLG.MAC.Vendor.mac_lookup_table()
+    records = packaged_records()
 
     for width <- [24, 28, 36] do
       prefix =
-        Enum.find_value(table, fn
-          {prefix, vendor} when width == 24 and is_list(vendor) -> prefix
-          {_key, {^width, entries}} -> entries |> Map.keys() |> List.first()
-          _entry -> nil
+        Enum.find_value(records, fn
+          {prefix, _vendor} when bit_size(prefix) == width -> prefix
+          _record -> nil
         end)
 
       assert is_bitstring(prefix)
@@ -70,23 +69,24 @@ defmodule YellowDog.Management.MacDatabaseTest do
   test "packaged GSMLG manuf artifact reload preserves source parity" do
     path = Application.app_dir(:gsmlg_mac, "priv/manuf.txt")
 
-    expected_count =
-      path
-      |> File.read!()
-      |> GSMLG.MAC.Parser.parse_file()
-      |> Enum.map(&elem(&1, 0))
-      |> MapSet.new()
-      |> MapSet.size()
+    records = packaged_records() |> Enum.uniq_by(&elem(&1, 0))
+    expected_count = length(records)
+    assert expected_count == GSMLG.MAC.Vendor.entries()
+    assert expected_count == GSMLG.MAC.Compiler.count_entries(GSMLG.MAC.Vendor.mac_lookup_table())
 
     server = start_database(path: path)
-    info = wait_loaded(server)
+    # Allow the packaged source the loader's 30-second budget plus observation time.
+    info = wait_loaded(server, 3_100)
     assert info.status == :loaded
     assert info.source == :file
     assert info.entry_count == expected_count
     assert :ok = MacDatabase.reload(server)
 
-    assert MacDatabase.lookup("00:00:0A:BB:28:FC", server) ==
-             GSMLG.MAC.Vendor.lookup("00:00:0A:BB:28:FC")
+    for {prefix, _vendor} <- records do
+      address = <<prefix::bits, 0::size(48 - bit_size(prefix))>> |> Base.encode16()
+      assert {:ok, _short, _full} = expected = GSMLG.MAC.Vendor.lookup(address)
+      assert MacDatabase.lookup(address, server) == expected
+    end
   end
 
   test "configured real manuf artifact supports 24, 28 and 36-bit records", %{path: path} do
@@ -228,20 +228,36 @@ defmodule YellowDog.Management.MacDatabaseTest do
     assert_snapshot(server, original)
   end
 
-  test "mixed prefix widths within one OUI explicitly fail rather than dropping records", %{
+  test "overlapping prefix widths retain longest-prefix lookup and broader fallbacks", %{
     path: path
   } do
     File.write!(path, @artifact)
     server = start_database(path: path)
-    original = wait_loaded(server)
+    wait_loaded(server)
 
-    for contents <- [
-          "02:11:22:30:00:00/28\tBroad\tBroad Vendor\n02:11:22:33:40:00/36\tPrecise\tPrecise Vendor\n",
-          "02:11:22\tBroad\tBroad Vendor\n02:11:22:30:00:00/28\tPrecise\tPrecise Vendor\n"
-        ] do
+    records = [
+      "02:11:22\tBroad24\tBroad 24-bit Vendor\n",
+      "02:11:22:30:00:00/28\tBroad28\tBroad 28-bit Vendor\n",
+      "02:11:22:33:40:00/36\tPrecise36\tPrecise 36-bit Vendor\n"
+    ]
+
+    for contents <- [Enum.join(records), records |> Enum.reverse() |> Enum.join()] do
       File.write!(path, contents)
-      assert {:error, :inconsistent_prefix_lengths} = MacDatabase.reload(server)
-      assert_snapshot(server, original)
+      assert :ok = MacDatabase.reload(server)
+
+      assert %{source: :file, status: :loaded, entry_count: 3, last_error: nil} =
+               MacDatabase.info(server)
+
+      assert {:ok, "Precise36", "Precise 36-bit Vendor"} =
+               MacDatabase.lookup("02:11:22:33:4F:AA", server)
+
+      assert {:ok, "Broad28", "Broad 28-bit Vendor"} =
+               MacDatabase.lookup("02:11:22:3F:AA:BB", server)
+
+      assert {:ok, "Broad24", "Broad 24-bit Vendor"} =
+               MacDatabase.lookup("02:11:22:4F:AA:BB", server)
+
+      assert :error = MacDatabase.lookup("02:11:23:33:4F:AA", server)
     end
   end
 
@@ -278,6 +294,13 @@ defmodule YellowDog.Management.MacDatabaseTest do
 
   defp start_database(opts \\ []),
     do: start_supervised!({MacDatabase, Keyword.put(opts, :name, nil)})
+
+  defp packaged_records do
+    :gsmlg_mac
+    |> Application.app_dir("priv/manuf.txt")
+    |> File.read!()
+    |> GSMLG.MAC.Parser.parse_file()
+  end
 
   defp wait_loaded(server, attempts \\ 200)
   defp wait_loaded(_server, 0), do: raise("MAC artifact did not finish loading")

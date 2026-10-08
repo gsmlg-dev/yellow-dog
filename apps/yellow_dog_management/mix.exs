@@ -32,7 +32,7 @@ defmodule YellowDog.Management.MixProject do
         {:phoenix_html, "~> 4.3"},
         {:phoenix_duskmoon, "~> 9.12"},
         {:gettext, "~> 1.0"},
-        {:gsmlg_mac, "~> 0.1"},
+        {:gsmlg_mac, "~> 0.1.2"},
         {:gsmlg_whois, "~> 0.5"},
         {:mmdb2_decoder, "~> 3.0"},
         {:lazy_html, "~> 0.1", only: :test},
