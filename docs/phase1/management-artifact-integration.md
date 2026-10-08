@@ -38,9 +38,24 @@ File publication precedes the database transaction: a failed transaction may
 leave an unreferenced immutable file but cannot select partial bytes. Duplicate
 content reuses its artifact, and job claims and selection ordering prevent an
 older retry or receipt from replacing a newer selection. No resident Management
-GeoIP query process is required. Catalog availability verifies actual immutable
-file bytes, so a missing or changed file is unavailable even when metadata and
-a successful historical job remain present. A later failed synchronization can
+GeoIP query process is required. Catalog reads return metadata only, with
+unverified availability, and query a deterministic page of 20 historical rows
+per kind (one extra SQL row detects the next page). The selected artifact is
+fetched separately when outside that page.
+
+The IP Database LiveView checks only selected files asynchronously, with at most
+one pending check and one retained result per kind per mounted page. It shows
+unverified/checking/available/unavailable states and the last integrity-check
+time. Explicit Refresh revalidates; task updates reuse a result for up to 60
+seconds and then revalidate on the next update. Pending checks are deduplicated;
+selection changes cancel the prior task and reject stale results. Historical
+rows remain unverified. These page-local results are discarded on unmount and
+never authorize artifact access.
+
+`TaskArtifacts.get/2` always checks actual immutable bytes, and publication
+retains full size/digest/MMDB/kind validation. A missing or changed selected file
+is reported unavailable after the asynchronous check even when metadata and a
+successful historical job remain present. A later failed synchronization can
 coexist with an available earlier selection.
 
 No aggressive artifact garbage collection is implemented. Selections and

@@ -1,5 +1,239 @@
 # Management configuration and IP artifact increment
 
+## 2026-10-08 release 1.2.1 preparation
+
+The operator authorized committing the local fixes, fresh verification and a new
+release/build. The root release version is now `1.2.1`; application versions and
+Worker implementation remain unchanged. The supplied untracked Management plan
+is preserved locally with its original SHA-256.
+
+Pre-commit review found one additional submission regression: after a rejected
+request, changing fields and reverting them allowed a delayed original token to
+create a second receipt/audit. The new database-backed regression failed before
+the repair (26 tests, 1 failure, 25 excluded). The bounded previous intent now
+retains its original canonical request/key, and all callers pass the submitted
+token explicitly to `Submission.prepare/4`. A matching retired request replays
+its original key without installing that key into the current intent. An
+intentional submission with the current token still obtains a new key. No Domain
+transaction, schema, protocol or generic submission framework was changed.
+
+Fresh final-source commands on 2026-10-08:
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test --warnings-as-errors test/assignment_domain_test.exs test/domain_test.exs test/web_test.exs test/dns_views_test.exs test/dns_views_web_test.exs test/dns_views_live_test.exs test/zones_live_test.exs test/worker_submission_live_test.exs test/task_artifacts_test.exs test/geo_ip_download_test.exs test/ip_database_live_test.exs test/geoip_live_test.exs test/export_scope_test.exs'
+devenv shell -- scripts/e2e/architecture_smoke.sh
+devenv shell -- scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py _build/prod/rel/yellow_dog_management/bin/yellow_dog_management
+devenv shell -- scripts/e2e/phase1_postgres.sh env BUILD_RELEASE=0 scripts/e2e/release_smoke.sh yellow_dog_management
+devenv shell -- python3 scripts/e2e/check_ui_source_migration.py
+git diff --check
+sha256sum -c /tmp/yellow-dog-release-1.2.1/local-plan.sha256
+```
+
+All commands passed. Strict compilation and **151 scoped tests** passed; the
+intentional refused-loopback connection regression remains expected evidence.
+Changed Elixir sources plus root `mix.exs` passed `mix format --check-formatted`;
+the browser script passed `node --check`, and the Python harness passed AST
+parsing. Source retention passed **203 files**. Production architecture rebuilt
+both release assemblies and passed the positive/four negative fixtures. The
+Management release's `start_erl.data` identifies version `1.2.1`.
+
+The six real Chromium phases and SIGKILL recovery passed again, including
+same-session View recreation, immediate change/submit, durable artifact bytes,
+immutable exports and failed-sync preservation. The separate release smoke
+passed real HTTP/database behavior and process restart. These do not establish
+target NixOS/Podman deployment, HTTPS proxy readiness, full-suite CI success, or
+Worker connectivity/delivery/runtime acceptance.
+
+Evidence: `/tmp/yellow-dog-release-1.2.1/{final-scoped-tests,architecture,
+format-syntax,browser-restart,release-smoke,provenance}.log`; the new red/green
+logs are `submission-edit-revert-{red,green}.log` there. Browser evidence is
+`/tmp/yellow-dog-management-configuration-a2xiq3a4/`. Disposable PostgreSQL
+wrappers finished and stopped their owned clusters. Commit/tag and published
+artifacts are recorded in the ensuing GitHub release, after publication rather
+than inferred from these local checks. Earlier sections remain historical
+evidence, including the starting-commit CI failures and uncommitted snapshot.
+
+## 2026-10-07 correctness/performance follow-up
+
+This follow-up addresses logical editor submission identity and catalog refresh
+cost. Starting HEAD is `8725b765653fd9300523e62888caaf9ed3bedb16` on the current
+checkout. The only starting worktree change is the untracked supplied
+`docs/yellow-dog-codex-management-plan.md`; its SHA-256 is
+`07fab5d348a6085de7870f95d528e0977d80f4f0ef67c8e05c6995c4834a2069`.
+It remains preserved and unmodified. No Worker execution, delivery, GeoIP runtime,
+shared ConfigSpec change or retained-page redevelopment is authorized here.
+
+### Starting baseline and inspected CI
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test test/assignment_domain_test.exs test/domain_test.exs test/web_test.exs test/dns_views_test.exs test/dns_views_live_test.exs test/zones_live_test.exs test/worker_submission_live_test.exs test/task_artifacts_test.exs test/geo_ip_download_test.exs test/ip_database_live_test.exs test/geoip_live_test.exs test/export_scope_test.exs'
+devenv shell -- node --test apps/yellow_dog_management/test/management_ui_test.mjs
+gh run view 37413145962 --json jobs
+gh run view 37413145962 --log-failed
+```
+
+Starting strict compilation and all 129 scoped tests pass. The Node command
+fails because the workflow names a nonexistent `management_ui_test.mjs`.
+The actual starting-commit [Phase 1 CI run](https://github.com/gsmlg-dev/yellow-dog/actions/runs/37413145962)
+was inspected directly: Management reports 454 tests with 21 failures; Node
+reports the same missing file. The two release jobs, architecture job, ConfigSpec,
+Worker and offline export jobs passed in that run. These are CI results for the
+starting commit, not acceptance of the follow-up worktree.
+
+The 21 baseline CI failures occur in MAC database (1), Events UI (1), Overview
+(4), Backups (2), Tasks (3), Worker profiles (1), and Zone import (9) tests.
+They remain outside this follow-up's editor/catalog scope and are not repaired
+or counted as passes. Their attribution as starting-baseline failures rests on
+the inspected commit-specific logs, rather than the earlier progress report.
+Full-suite green CI is not claimed.
+
+Baseline evidence: `/tmp/yellow-dog-management-review-fixes/baseline-scoped.log`,
+`baseline-node.log`, `baseline-ci-jobs.json`, and `baseline-ci-failed.log` in the
+same directory. Disposable PostgreSQL evidence:
+`/tmp/yellow-dog-phase1-pg.Iia8zR`.
+
+### Reproductions before production edits
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix test test/dns_views_live_test.exs:32'
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix test test/task_artifacts_test.exs:26'
+```
+
+The first regression fails at the canonical lookup of `office` following
+create/delete/recreate with identical parameters in one mounted session
+(19 tests, 1 failure, 18 excluded). The existing helper's parameter-based key
+survives editor reset; Domain correctly replays the original successful result
+instead of inserting a new View. The second regression fails because a
+deterministic call trace captures `GeoIPDownload.check_artifact/1` on historical
+artifact `missing-history-25` during ordinary `catalog/0` construction
+(12 tests, 1 failure, 11 excluded). The catalog query also has no SQL limit.
+These results establish both findings on the starting checkout, independent
+of flashes and wall-clock timing. Logs: `submission-red.log` and `catalog-red.log`
+under `/tmp/yellow-dog-management-review-fixes`.
+
+An additional real-browser regression dispatches a changed Zone form and its
+submit in the same JavaScript turn, before the change response can patch a new
+intent marker. The initial token implementation incorrectly ignored that submit:
+receipt/audit counts stayed `[14, 1]` instead of `[15, 2]`. This failure was
+introduced by this work, not present in the parameter-only starting helper.
+It is recorded in `browser-pipelined-red.log`. The final rebuilt release passes
+this case for both Zone edits and View updates whose immutable name is omitted
+by the real browser form. Rejected retries retain their original receipts;
+changed input creates exactly one additional receipt and audit.
+
+### Implemented lifecycle and verification behavior
+
+Editor intent markers and Domain request keys have separate lifetimes. View,
+Zone and Worker forms carry the current intent marker. An unresolved request
+keeps its operation/parameters/key; retries replay the existing Domain result.
+Confirmed success, explicit reopening/reset, and scope changes retire the old
+intent and keys. Missing or stale submit markers are ignored before retaining
+fields or invoking Domain, preventing delayed duplicates from becoming new
+writes or overwriting newly entered input. Canonical command parameters retain
+Worker, Service, Zone and revision/assignment scope.
+
+Input edits retire the relevant pending key. One bounded previous intent marker
+permits a submit already queued behind `phx-change`, only for its edited operation
+and current authoritative editable fields/record rows. Readonly View fields
+omitted by browsers are excluded from this comparison. Removed records cannot
+be restored by stale payloads, and explicit Service reopening/assignment reset
+clears this alias. Database connection failures remain unconfirmed, preserve
+input and retain the same request key for retry. No Domain, schema, constraint,
+immutable-table or command transaction semantics changed.
+
+Catalog reads are metadata-only. Each kind queries deterministic descending
+`inserted_at`/`digest` order with SQL `LIMIT 21` and `OFFSET`, displaying 20 rows
+and using the extra row to detect another page. The current selected artifact
+is independently fetched if outside the page. Metadata starts unverified.
+
+The IP Database page uses existing LiveView `start_async` checks for selected
+files only. Each mounted page retains at most one checker/result per kind (two
+total). Repeated refreshes/task updates deduplicate pending work. Replacing a
+selection cancels its checker and waits for its completion/exit callback before
+starting the latest selection; token and selection identity guards reject stale
+results. The UI distinguishes Unverified, Checking, Available and Unavailable,
+shows the last check time, and keeps job state separate. Explicit Refresh always
+revalidates unless that check is already pending. Other metadata refreshes reuse
+only the current selection's result for up to 60 seconds, revalidating on the
+next refresh after expiry. Idle pages show the check time; no periodic timer
+claims ongoing verification. Cache storage disappears on unmount.
+
+Historical rows are not hashed. `TaskArtifacts.get/2` still validates actual file
+bytes on every access; cached UI availability never authorizes a consumer.
+Publication retains full size/digest/MMDB/kind verification and all existing
+downloader limits. Failed synchronization preserves prior selections. Neither
+the downloader nor any Worker, ConfigSpec, application supervision, router,
+dependency, global configuration or migration source changed.
+
+### Changed files and regression coverage
+
+All application paths below are under `apps/yellow_dog_management/`:
+
+| Files | Change and evidence |
+| --- | --- |
+| `lib/yellow_dog/management_ui/submission.ex`; `lib/yellow_dog/management_ui/live/dns_views_live.ex`, `zones_live.ex`, `worker_live.ex` | Submission lifecycle, form/button intent markers, consistent reset/edit handling and delayed-event guards. |
+| `test/dns_views_live_test.exs`, `zones_live_test.exs`, `worker_submission_live_test.exs` | Same-session recreation with new IDs and fresh reads; retry receipts/audits; duplicate/delayed writes; edited input and scope isolation; actual unavailable PostgreSQL connection and confirmed retry; immediate change/submit; readonly View fields; explicit Service reopening; removed Zone records and malformed events. |
+| `lib/yellow_dog/management/task_artifacts.ex`; `lib/yellow_dog/management_ui/live/ip_database_live.ex` | SQL pagination, metadata-only catalog, selected-only asynchronous checks and bounded page-local state. |
+| `test/task_artifacts_test.exs`, `ip_database_live_test.exs` | Actual SQL row/limit telemetry, deterministic no-hashing call trace, outside-page selection, pending-event responsiveness, deduplication, dual-kind concurrency, cancellation, stale results, 60-second expiry, missing/corrupt bytes and consumer validation despite a positive UI cache. Existing publication/rollback/receipt/prior-selection cases remain passing. |
+| `test/management_configuration_browser_smoke.mjs`, `management_configuration_smoke.py` | Real Chromium same-mounted-session recreation, distinct object IDs, canonical API reads, exact receipt/audit counts, immediate Zone/View change-submit and independent durable file-byte/digest checks. Disposable View rejection trigger added beside the existing Zone trigger. |
+| `docs/phase1/management-configuration-progress.md`, `management-artifact-integration.md` | Actual evidence, availability timing/revalidation and preserved integration limits. |
+
+### Final verification and completion audit
+
+Executed on the final source, through Nix/devenv and disposable PostgreSQL:
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh bash -c 'cd apps/yellow_dog_management && mix compile --warnings-as-errors && mix test --warnings-as-errors test/assignment_domain_test.exs test/domain_test.exs test/web_test.exs test/dns_views_test.exs test/dns_views_web_test.exs test/dns_views_live_test.exs test/zones_live_test.exs test/worker_submission_live_test.exs test/task_artifacts_test.exs test/geo_ip_download_test.exs test/ip_database_live_test.exs test/geoip_live_test.exs test/export_scope_test.exs'
+devenv shell -- scripts/e2e/architecture_smoke.sh
+devenv shell -- scripts/e2e/phase1_postgres.sh python3 apps/yellow_dog_management/test/management_configuration_smoke.py _build/prod/rel/yellow_dog_management/bin/yellow_dog_management
+devenv shell -- python3 scripts/e2e/check_ui_source_migration.py
+devenv shell -- bash -c 'cd apps/yellow_dog_management && mix format --check-formatted lib/yellow_dog/management/task_artifacts.ex lib/yellow_dog/management_ui/live/dns_views_live.ex lib/yellow_dog/management_ui/live/ip_database_live.ex lib/yellow_dog/management_ui/live/worker_live.ex lib/yellow_dog/management_ui/live/zones_live.ex lib/yellow_dog/management_ui/submission.ex test/dns_views_live_test.exs test/ip_database_live_test.exs test/task_artifacts_test.exs test/worker_submission_live_test.exs test/zones_live_test.exs'
+devenv shell -- bash -c 'node --check apps/yellow_dog_management/test/management_configuration_browser_smoke.mjs && python3 -B -c "import ast,pathlib; ast.parse(pathlib.Path(\"apps/yellow_dog_management/test/management_configuration_smoke.py\").read_text())"'
+git diff --check
+```
+
+Every command passed. Strict compilation and all **150 scoped tests**
+passed. The single logged refused-loopback connection error is intentional
+unconfirmed-outcome regression evidence, not a compiler warning or test failure.
+The architecture script strictly compiled production source, rebuilt both
+independent release assemblies, and passed the positive/four negative boundary
+fixtures. It did not start an execution Worker. Source provenance passed all
+**203 retained files**; retained presentations remain unrouted.
+
+The rebuilt Management release passed Chromium create/sync/verify/editor-failures/
+advance/failed-sync phases, including SIGKILL and a new Management process.
+View recreation changed ID from `02dc0afa-4ba2-4207-9196-c1fb6548f773` to
+`a93da889-1697-4db8-85a3-6de61f634317`; recreation receipt/create-audit counts
+increased from `[7, 1]` to `[8, 2]`. Zone failed/retry/edited counts were
+`[14, 1]`/`[14, 1]`/`[15, 2]`; View failed/edited counts were `[16, 1]`/`[17, 2]`.
+Canonical Zone/View state remained unchanged under the rejection triggers.
+City/Country file bytes, catalog selection, configuration, assignments and
+historical target export survived restart. A subsequent failed synchronization
+retained both selected artifacts. Actual supervisor/application probes showed
+no GeoIP query process or execution Worker/legacy runtime; the harness verified
+only Management's ephemeral loopback HTTP listener. Owned browser, release,
+fixture HTTP and PostgreSQL processes were cleaned up.
+
+Final evidence is under `/tmp/yellow-dog-management-review-fixes/`:
+`final-scoped.log`, `final-format.log`, `architecture-final.log`,
+`browser-restart-final.log`, `provenance-final.log`, `harness-syntax-final.log`.
+Browser/runtime evidence is `/tmp/yellow-dog-management-configuration-nsto_sic/`
+(`view-recreation.json`, `editor-failures.json`, `before-restart.json`,
+`final-runtime.json`, phase screenshots and release log). Final PostgreSQL
+directories are `/tmp/yellow-dog-phase1-pg.BfgluY` and
+`/tmp/yellow-dog-phase1-pg.o4e5Vc`; both clusters stopped successfully.
+
+Completion audit on 2026-10-08 verified the unchanged final sources and these
+results. Both requested fixes and all scoped gates are complete. No scoped
+failure remains. Failures introduced during implementation, including the
+immediate-submit race, were repaired and covered by the final tests/browser
+run. The 21 starting-commit CI failures and missing Node test remain documented
+above; the full unrelated suite was not rerun or repaired, and no CI run of this
+uncommitted worktree is claimed. Worker connectivity, artifact transfer/loading,
+full View/GeoIP export and unrelated retained-page redevelopment remain deferred.
+Starting and ending HEAD are both `8725b765653fd9300523e62888caaf9ed3bedb16`;
+the 15 follow-up files remain uncommitted. The supplied untracked plan is unchanged.
+
 ## Scope and baseline
 
 The active task is `docs/yellow-dog-codex-management-plan.md`. The operator
