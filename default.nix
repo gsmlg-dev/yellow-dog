@@ -28,8 +28,23 @@
   mixFodDeps = beam28Packages.fetchMixDeps {
     pname = "yellow-dog-phase1-mix-deps";
     inherit src version;
-    hash = "sha256-z7gfXCRlr30IZwvCTdFaqkx4HG7NwoAkyXXVbhjAJzI=";
+    hash = "sha256-29Xmw8SMUhjj9omSnf5s+CRqW4eFp5j70YC0iI2PNPQ=";
     mixEnv = "prod";
+  };
+
+  # Rustler precompiled downloads must be declared inputs to the sandboxed build.
+  mdexTarget = {
+    x86_64-linux = "x86_64-unknown-linux-gnu";
+    aarch64-linux = "aarch64-unknown-linux-gnu";
+  }.${pkgs.stdenv.hostPlatform.system};
+  mdexHashes = {
+    x86_64-linux = "963238414ea5a6bb4545986c09c825dffcd75e9327db9ab7306fb1aa6cbd4cec";
+    aarch64-linux = "1aa43e45b47d5cf3e0f1b7aed8bfd24fdbcc7e2f4a976f9ad53bfc7af92facf7";
+  };
+  mdexArtifact = pkgs.fetchurl {
+    name = "libmdex_native_nif-v0.2.8-nif-2.15-${mdexTarget}.so.tar.gz";
+    url = "https://github.com/leandrocp/mdex_native/releases/download/v0.2.8/libmdex_native_nif-v0.2.8-nif-2.15-${mdexTarget}.so.tar.gz";
+    sha256 = mdexHashes.${pkgs.stdenv.hostPlatform.system};
   };
 
   cargoDeps = rustPlatform.fetchCargoVendor {
@@ -44,6 +59,11 @@ in
       mixReleaseName = releaseName;
       compileFlags = ["--warnings-as-errors"];
       nativeBuildInputs = [rustPlatform.cargoSetupHook pkgs.cargo pkgs.rustc];
+      preConfigure = ''
+        export RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH="$TMPDIR/rustler-precompiled"
+        mkdir -p "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH"
+        cp ${mdexArtifact} "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH/${mdexArtifact.name}"
+      '';
       passthru = {inherit mixFodDeps;};
       meta = {
         description = "Independent YellowDog Phase 1 ${releaseName}";
