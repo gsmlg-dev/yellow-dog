@@ -28,13 +28,32 @@ cd yellow-dog-worker
 
 ## Connect to Management
 
-Open Management → Workers (`/management/servers`), create a Worker using its name,
-and save the generated connection configuration as `bootstrap.toml` in this directory.
-It contains the Worker ID, Management URL, token and local data directory.
-Use the generated values; `examples/managed-bootstrap.toml` is illustrative only.
+Upgrade Management to this release and apply its database migrations first.
+In Management → Workers (`/management/servers`), enable **Allow anonymous Worker
+initialization** (off by default). For direct VPN access, save this as `bootstrap.toml`:
+
+```toml
+management_url = "http://VPN_MANAGEMENT_ADDRESS:4270"
+```
+
+Management must listen on an address reachable from the VPN. No client certificate
+is required for direct VPN HTTP access. HTTPS, private CA and mutual TLS are optional;
+an HTTPS gateway that requires client certificates still requires them.
+
+Worker generates its ID and token once and saves private `connection.toml` (0600)
+in its state directory (0700). The default is `$STATE_DIRECTORY`, otherwise
+`$XDG_STATE_HOME/yellow-dog-worker` or `~/.local/state/yellow-dog-worker`.
+You can set an absolute `data_dir` in the bootstrap. Preserve the entire directory
+between restarts and upgrades; do not copy credentials to initialize another host.
+Retries and restarts reuse the identity. Closing anonymous initialization prevents
+new registrations while existing Workers continue authenticating.
+
+Alternatively, create a Worker using its name in Management and save its generated
+connection configuration as `bootstrap.toml`. It supplies the ID, URL and token;
+use a persistent absolute `data_dir`. `examples/managed-bootstrap.toml` is illustrative.
 Keep the bootstrap and optional TLS private key readable only by the Worker user.
-For a private CA or mutual TLS, set `tls_ca_file`, `tls_cert_file`, and `tls_key_file`
-to local file paths in the bootstrap. Paths resolve relative to the bootstrap file.
+For private CA or mutual TLS, set `tls_ca_file`, `tls_cert_file`, and `tls_key_file`
+to local file paths (relative paths resolve against the bootstrap file).
 
 ```sh
 chmod 600 bootstrap.toml
@@ -47,7 +66,9 @@ The command runs in the foreground. Worker waits for a confirmed target on first
 boot. Configure and publish DNS services in Management; saving a draft does not
 start them. Worker reports actual execution state to Management. If Management is
 unavailable, Worker preserves its committed services and recovers them on restart.
-After rotating the token in Management, replace the bootstrap token and restart.
+After rotating the token in Management, use its new manual connection configuration,
+preserving the same Worker ID and state directory, and restart. Revoked credentials
+cannot register again, even when anonymous initialization is enabled.
 
 Use a local Linux filesystem for `data_dir`; keep it between restarts and upgrades.
 Only one Worker may own a data directory. DNS ports below 1024 require OS privileges;

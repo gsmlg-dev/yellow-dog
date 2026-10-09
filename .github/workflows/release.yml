@@ -270,6 +270,7 @@ jobs:
           image_name="${base_image_name}${IMAGE_SUFFIX}"
           echo "name=${image_name}" >> "$GITHUB_OUTPUT"
           echo "ref=${REGISTRY}/${image_name}" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -298,7 +299,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.image.outputs.revision }}
             org.opencontainers.image.title=${{ matrix.image_title }}
           tags: |
             ${{ steps.image.outputs.ref }}:${{ env.VERSION }}

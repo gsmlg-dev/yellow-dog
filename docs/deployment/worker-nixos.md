@@ -7,12 +7,11 @@ Worker 执行网络服务；Management 保存配置、管理 Worker 凭据并接
 ## 引入 flake 和模块
 
 将 Yellow Dog 加入目标仓库的 flake inputs，并导入 `nixosModules.worker`。
-生产部署应将 `YELLOW_DOG_REVISION` 替换成包含本模块的完整 Git 提交 SHA；
-`v1.2.6` 标签包含 Worker 连接功能，但尚未导出此 NixOS 模块。
+`v1.2.7` 包含本模块和匿名初始化功能；保留 flake.lock 中固定的提交。
 
 ```nix
 # flake.nix
-inputs.yellow-dog.url = "github:gsmlg-dev/yellow-dog/YELLOW_DOG_REVISION";
+inputs.yellow-dog.url = "github:gsmlg-dev/yellow-dog/v1.2.7";
 
 # 目标主机的 nixosSystem modules 中
 modules = [

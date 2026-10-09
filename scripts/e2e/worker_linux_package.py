@@ -2,6 +2,8 @@
 """Clean Linux archive acceptance using only the bundled release and OS tools."""
 import os
 import errno
+import base64
+import json
 import pathlib
 import shutil
 import signal
@@ -10,7 +12,11 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import tomllib
+import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 def rpc(binary, env, expression):
@@ -119,18 +125,26 @@ class Worker:
         return rpc(self.binary, self.env, expression)
 
     def stop(self, crash=False):
-        if self.process and self.process.poll() is None:
+        process, self.process = self.process, None
+        if process:
+            assert process.poll() is None, f"release unexpectedly exited {process.returncode}"
             start = time.monotonic()
-            os.killpg(self.process.pid, signal.SIGKILL if crash else signal.SIGTERM)
+            if crash:
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                # Keep lock helpers alive while BEAM performs owned shutdown.
+                os.kill(process.pid, signal.SIGTERM)
             try:
-                self.process.wait(timeout=45)
+                process.wait(timeout=45)
             except subprocess.TimeoutExpired:
-                os.killpg(self.process.pid, signal.SIGKILL)
-                self.process.wait(timeout=5)
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
                 raise AssertionError(f"release graceful shutdown exceeded 45 seconds; logs in {self.root}")
             if not crash:
+                assert process.returncode == 0, f"release shutdown exited {process.returncode}"
+                evidence = pathlib.Path(self.logs[-1].name).read_text()
+                assert "owned_shutdown_failed" not in evidence and "lock_lost" not in evidence, evidence
                 print(f"PASS graceful shutdown ({time.monotonic() - start:.2f}s)", flush=True)
-        self.process = None
         time.sleep(0.2)
 
     def close(self):
@@ -147,6 +161,7 @@ def main():
     release = binary.parent.parent
     assert list(release.glob("erts-*/bin/beam.smp")), "archive must contain its ERTS runtime"
     assert (release / "README.md").is_file(), "archive must include operator instructions"
+    assert (release / "examples/anonymous-bootstrap.toml").is_file(), "archive must include URL-only example"
     assert not shutil.which("elixir") and not shutil.which("mix") and not pathlib.Path("/nix").exists()
     native = list(release.glob("lib/abyss-*/priv/native/dhcp_socket.so"))
     assert native, "archive must include Abyss native socket library"
@@ -173,6 +188,9 @@ def main():
     bootstrap.write_text(f'worker_id = "edge-01"\ndata_dir = "{root / "state"}"\nsource = "{source}"\n')
     local = Worker(binary, bootstrap, root, "local")
     managed = None
+    anonymous = None
+    endpoint = None
+    endpoint_thread = None
     try:
         local.start()
         answers(port, "192.0.2.53")
@@ -216,9 +234,83 @@ def main():
         assert "WAITING" in managed.eval('if YellowDog.Worker.status().desired == nil and YellowDog.Worker.status().error == nil, do: IO.puts("WAITING")')
         managed.stop()
         print("PASS managed package boot waits safely when Management is unavailable", flush=True)
+
+        requests = []
+        request_lock = threading.Lock()
+
+        class Capture(BaseHTTPRequestHandler):
+            def do_POST(self):
+                report = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                with request_lock:
+                    requests.append((self.path, self.headers.get("Authorization"), report))
+                body = json.dumps({"worker_id": report["worker_id"], "target": None}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_):
+                pass
+
+        endpoint = HTTPServer(("127.0.0.1", 0), Capture)
+        endpoint_thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
+        endpoint_thread.start()
+        url = f"http://127.0.0.1:{endpoint.server_port}"
+        anonymous_bootstrap = root / "anonymous-bootstrap.toml"
+        # Exactly the URL is configured; the package must resolve XDG state itself.
+        anonymous_bootstrap.write_text(f'management_url = "{url}"\n')
+        anonymous = Worker(binary, anonymous_bootstrap, root, "anonymous")
+        anonymous.env.pop("STATE_DIRECTORY", None)
+        anonymous.env["XDG_STATE_HOME"] = str(root / "xdg-state")
+        anonymous.start("YellowDog.Worker.status().live and YellowDog.Worker.status().origin == :awaiting_connection")
+        credential = root / "xdg-state/yellow-dog-worker/connection.toml"
+        assert credential.is_file() and not credential.is_symlink()
+        before = credential.read_bytes()
+        auth = tomllib.loads(before.decode())
+        assert set(auth) == {"management_url", "worker_id", "token"}
+        assert auth["management_url"] == url
+        identity = uuid.UUID(auth["worker_id"])
+        assert identity.version == 4 and str(identity) == auth["worker_id"]
+        assert credential.stat().st_mode & 0o777 == 0o600
+        assert credential.parent.stat().st_mode & 0o777 == 0o700
+        token_bytes = base64.urlsafe_b64decode(auth["token"] + "=")
+        assert len(token_bytes) == 32
+        assert base64.urlsafe_b64encode(token_bytes).decode().rstrip("=") == auth["token"]
+
+        def checked_requests(minimum):
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                with request_lock:
+                    observed = list(requests)
+                if len(observed) >= minimum:
+                    for path, authorization, report in observed:
+                        assert path == "/api/worker/connect"
+                        assert authorization == "Bearer " + auth["token"]
+                        assert report == {"worker_id": auth["worker_id"], "capabilities": ["dns"],
+                                          "services": {}, "applied_revision": None,
+                                          "applied_digest": None, "apply_error": None}
+                    return len(observed)
+                time.sleep(0.1)
+            raise AssertionError("anonymous package did not send repeated authenticated reports")
+
+        count = checked_requests(2)
+        connected = ('pid = Enum.find_value(Supervisor.which_children(YellowDog.Worker.Supervisor), '
+                     'fn {id, pid, _, _} -> if id == YellowDog.Worker.Connection, do: pid end); '
+                     'if YellowDog.Worker.Connection.status(pid) == '
+                     '%{connected: true, connection_error: nil, apply_error: nil}, '
+                     'do: IO.puts("CONNECTED"), else: raise("connection response was not accepted")')
+        assert "CONNECTED" in anonymous.eval(connected)
+        anonymous.stop()
+        anonymous.start("YellowDog.Worker.status().live and YellowDog.Worker.status().origin == :awaiting_connection")
+        checked_requests(count + 1)
+        assert "CONNECTED" in anonymous.eval(connected)
+        assert credential.read_bytes() == before
+        assert credential.stat().st_mode & 0o777 == 0o600
+        anonymous.stop()
+        print("PASS URL-only package initialization: private stable identity, repeated Bearer reports and graceful restart", flush=True)
         print("LINUX WORKER PACKAGE SMOKE PASSED", flush=True)
     except BaseException:
-        for worker in [local, managed]:
+        for worker in [local, managed, anonymous]:
             if worker:
                 for log in worker.logs:
                     print(f"Runtime evidence {log.name}:\n" + pathlib.Path(log.name).read_text()[-16384:],
@@ -226,11 +318,22 @@ def main():
         raise
     finally:
         try:
-            if managed:
-                managed.close()
+            try:
+                if anonymous:
+                    anonymous.close()
+            finally:
+                if managed:
+                    managed.close()
         finally:
-            local.close()
-            shutil.rmtree(root)
+            try:
+                local.close()
+            finally:
+                if endpoint:
+                    endpoint.shutdown()
+                    endpoint.server_close()
+                if endpoint_thread:
+                    endpoint_thread.join(timeout=5)
+                shutil.rmtree(root)
 
 
 if __name__ == "__main__":
