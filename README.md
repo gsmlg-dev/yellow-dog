@@ -261,8 +261,13 @@ services.yellow-dog-worker = {
 };
 ```
 
-Keep the bootstrap outside the Nix store and set its `data_dir` to
-`/var/lib/yellow-dog-worker`. The module supplies a dedicated systemd service,
+For VPN deployment, enable **Allow anonymous Worker initialization** on Management's
+Workers page and use a bootstrap containing only
+`management_url = "http://VPN_MANAGEMENT_ADDRESS:4270"`. Worker saves its identity
+and credential before registration and reuses them across retries and restarts.
+The module defaults state to `/var/lib/yellow-dog-worker`; set explicit `data_dir`
+to that absolute path for manually provisioned bootstrap configurations.
+Keep credentials outside the Nix store. The module supplies a dedicated systemd service,
 runtime credentials and release cookie, persistent state and DNS low-port access.
 See [NixOS deployment instructions](docs/deployment/worker-nixos.md) for flake
 pinning, SOPS, private CA/mTLS, Management prerequisites and actual DNS validation.

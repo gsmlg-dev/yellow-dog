@@ -33,6 +33,65 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
     assert has_element?(detail, "#worker-applied-revision", "None")
   end
 
+  test "anonymous initialization defaults off, persists on reload and ignores stale submission",
+       %{conn: conn} do
+    {:ok, view, _} = live(conn, "/management/servers")
+    refute has_element?(view, "#worker-enrollment-form input[type=checkbox][checked]")
+
+    intent =
+      view
+      |> element("#worker-enrollment-form input[name='_submission']")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("input")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    view
+    |> form("#worker-enrollment-form", enrollment: %{allow_anonymous: "true"})
+    |> render_submit()
+
+    assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => true}
+    {:ok, reloaded, _} = live(conn, "/management/servers")
+    assert has_element?(reloaded, "#worker-enrollment-form input[type=checkbox][checked]")
+
+    render_submit(view, "save_enrollment", %{
+      "_submission" => intent,
+      "enrollment" => %{"allow_anonymous" => "false"}
+    })
+
+    assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => true}
+
+    reloaded
+    |> form("#worker-enrollment-form", enrollment: %{allow_anonymous: "false"})
+    |> render_submit()
+
+    assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => false}
+    send(view.pid, :refresh_workers)
+    refute has_element?(view, "#worker-enrollment-form input[type=checkbox][checked]")
+  end
+
+  test "invalid enrollment checkbox value leaves persisted setting unchanged", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/management/servers")
+
+    intent =
+      view
+      |> element("#worker-enrollment-form input[name='_submission']")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("input")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    render_submit(view, "save_enrollment", %{
+      "_submission" => intent,
+      "enrollment" => %{"allow_anonymous" => "invalid"}
+    })
+
+    assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => false}
+    assert render(view) =~ "Invalid initialization setting"
+  end
+
   test "reset generates one-time configuration and invalidates the old token", %{
     conn: conn,
     worker: worker,

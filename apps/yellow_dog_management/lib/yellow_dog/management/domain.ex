@@ -11,6 +11,7 @@ defmodule YellowDog.Management.Domain do
     Audit,
     DnsAcls,
     DnsViews,
+    EnrollmentSettings,
     Idempotency,
     Netmans,
     ProfileCatalog,
@@ -29,7 +30,7 @@ defmodule YellowDog.Management.Domain do
   @backup_operations ~w(create_backup delete_backup)
   @dns_acl_operations ~w(create_dns_acl update_dns_acl delete_dns_acl)
   @dns_view_operations ~w(create_dns_view update_dns_view delete_dns_view)
-  @operations ~w(create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign set_zone_assignments confirm_target) ++
+  @operations ~w(set_worker_enrollment create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign set_zone_assignments confirm_target) ++
                 @netman_operations ++
                 @task_operations ++
                 @backup_operations ++ @dns_acl_operations ++ @dns_view_operations
@@ -78,6 +79,8 @@ defmodule YellowDog.Management.Domain do
     Repo.all(from(w in Worker, order_by: w.id))
     |> Enum.map(&worker_map/1)
   end
+
+  defdelegate worker_enrollment_settings(), to: EnrollmentSettings, as: :get
 
   defdelegate list_netmans(), to: Netmans, as: :list
   defdelegate get_netman(id), to: Netmans, as: :get
@@ -336,6 +339,16 @@ defmodule YellowDog.Management.Domain do
 
   defp dispatch(operation, params) when operation in @dns_view_operations,
     do: DnsViews.dispatch(operation, params)
+
+  defp dispatch("set_worker_enrollment", params) do
+    allowed_keys(params, ~w(allow_anonymous))
+    allow_anonymous = params["allow_anonymous"]
+
+    unless is_boolean(allow_anonymous),
+      do: abort("invalid_request", "allow_anonymous must be a boolean")
+
+    EnrollmentSettings.set(allow_anonymous)
+  end
 
   defp dispatch("create_worker", params) do
     id = required_string(params, "id", 64)

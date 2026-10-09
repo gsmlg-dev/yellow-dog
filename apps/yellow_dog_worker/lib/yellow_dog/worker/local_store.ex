@@ -19,6 +19,7 @@ defmodule YellowDog.Worker.LocalStore do
   def prepare(pid, plan), do: GenServer.call(pid, {:prepare, plan}, 30_000)
   def commit(pid, candidate), do: GenServer.call(pid, {:commit, candidate}, 30_000)
   def status(pid), do: GenServer.call(pid, :status)
+  def connection_credentials(pid, url), do: GenServer.call(pid, {:connection_credentials, url})
 
   def begin_transition(pid, candidate, kind, base),
     do: GenServer.call(pid, {:begin_transition, candidate, kind, base}, 30_000)
@@ -65,6 +66,10 @@ defmodule YellowDog.Worker.LocalStore do
   end
 
   @impl true
+  def handle_call({:connection_credentials, url}, _from, state) do
+    {:reply, YellowDog.Worker.Credentials.resolve(state.dir, url, state.ops), state}
+  end
+
   def handle_call(:recover, _from, %{uncertain: error} = state) when not is_nil(error) do
     # Readable bytes do not establish durability after a failed sync and failed
     # rollback. Only a new successful commit may clear this state.

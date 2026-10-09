@@ -9,15 +9,19 @@ defmodule YellowDog.Worker.ServiceManager do
   def submit_plan(server, plan), do: GenServer.call(server, {:submit, plan}, 120_000)
   def status(server), do: GenServer.call(server, :status, 30_000)
   def check(server), do: GenServer.call(server, :check, 30_000)
+  @doc false
+  def connection_credentials(server), do: GenServer.call(server, :connection_credentials)
 
   @impl true
   def init(opts) do
     Process.flag(:trap_exit, true)
 
-    with {:ok, store} <- LocalStore.start_link(Keyword.take(opts, [:data_dir, :file_ops])) do
+    with {:ok, store} <- LocalStore.start_link(Keyword.take(opts, [:data_dir, :file_ops])),
+         {:ok, worker_id} <- resolve_identity(store, opts) do
       state = %{
         store: store,
-        worker_id: Keyword.fetch!(opts, :worker_id),
+        worker_id: worker_id,
+        connection_bootstrap: opts[:connection_bootstrap],
         source: Keyword.fetch!(opts, :source),
         plan: nil,
         candidate: nil,
@@ -74,7 +78,31 @@ defmodule YellowDog.Worker.ServiceManager do
   end
 
   def handle_call(:status, _from, state), do: {:reply, inspect_state(state), state}
+
+  def handle_call(:connection_credentials, _from, state) do
+    {:reply, credentials(state.store, state.connection_bootstrap), state}
+  end
+
   def handle_call(:check, _from, state), do: {:reply, differences(state), state}
+
+  defp resolve_identity(store, opts) do
+    if opts[:worker_id] do
+      {:ok, opts[:worker_id]}
+    else
+      with {:ok, auth} <- credentials(store, opts[:connection_bootstrap]),
+           do: {:ok, auth.worker_id}
+    end
+  end
+
+  defp credentials(store, path) do
+    with {:ok, bootstrap} <- YellowDog.Worker.Bootstrap.load(path) do
+      if bootstrap[:connection][:token] do
+        {:ok, %{worker_id: bootstrap[:worker_id], token: bootstrap[:connection][:token]}}
+      else
+        LocalStore.connection_credentials(store, bootstrap[:connection][:management_url])
+      end
+    end
+  end
 
   @impl true
   def handle_info({:runtime_ownership, pid, owned}, state) do

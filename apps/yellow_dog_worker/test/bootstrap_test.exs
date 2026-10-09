@@ -1,8 +1,56 @@
 defmodule YellowDog.Worker.BootstrapTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   alias YellowDog.Worker.Bootstrap
   @moduletag :tmp_dir
   @token String.duplicate("a", 43)
+
+  test "default state directory uses systemd then XDG", %{tmp_dir: dir} do
+    previous = Map.new(~w(STATE_DIRECTORY XDG_STATE_HOME), &{&1, System.get_env(&1)})
+
+    try do
+      System.put_env("STATE_DIRECTORY", Path.join(dir, "systemd"))
+      System.put_env("XDG_STATE_HOME", Path.join(dir, "xdg"))
+      path = write(dir, "management_url = \"http://10.8.0.1\"\n")
+      assert {:ok, options} = Bootstrap.load(path)
+      assert options[:data_dir] == Path.join(dir, "systemd")
+      System.delete_env("STATE_DIRECTORY")
+      assert {:ok, options} = Bootstrap.load(path)
+      assert options[:data_dir] == Path.join([dir, "xdg", "yellow-dog-worker"])
+      System.delete_env("XDG_STATE_HOME")
+      assert {:ok, options} = Bootstrap.load(path)
+
+      assert options[:data_dir] ==
+               Path.join(System.user_home!(), ".local/state/yellow-dog-worker")
+    after
+      Enum.each(previous, fn {key, value} ->
+        if value, do: System.put_env(key, value), else: System.delete_env(key)
+      end)
+    end
+  end
+
+  test "URL-only bootstrap accepts VPN HTTP and paired credentials", %{tmp_dir: dir} do
+    assert {:ok, options} =
+             Bootstrap.load(write(dir, "management_url = \"http://10.8.0.1:4270\"\n"))
+
+    assert options[:source] == nil
+    refute options[:worker_id]
+    assert Path.type(options[:data_dir]) == :absolute
+
+    assert {:ok, options} =
+             Bootstrap.load(
+               write(
+                 dir,
+                 "management_url = \"https://management.example\"\ndata_dir = \"state\"\n"
+               )
+             )
+
+    assert options[:data_dir] == Path.join(dir, "state")
+
+    for extra <- ["worker_id = \"edge-01\"\n", "token = \"#{@token}\"\n"] do
+      assert {:error, :invalid_bootstrap} =
+               Bootstrap.load(write(dir, "management_url = \"http://10.8.0.1:4270\"\n" <> extra))
+    end
+  end
 
   test "original local mode remains exact and resolves machine-local files", %{tmp_dir: dir} do
     path = write(dir, "worker_id = \"edge-01\"\ndata_dir = \"state\"\nsource = \"plan.toml\"\n")
@@ -37,7 +85,6 @@ defmodule YellowDog.Worker.BootstrapTest do
     end
 
     for url <- [
-          "http://example.com",
           "https://user:password@example.com",
           "https://example.com/path",
           "https://example.com?token=secret",

@@ -1,0 +1,3 @@
+# Enable anonymous initialization in Management's Workers page first.
+# The VPN endpoint can use HTTP; HTTPS and optional TLS settings are also supported.
+management_url = "http://VPN_MANAGEMENT_ADDRESS:4270"

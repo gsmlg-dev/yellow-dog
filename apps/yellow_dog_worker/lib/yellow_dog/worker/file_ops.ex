@@ -13,9 +13,16 @@ defmodule YellowDog.Worker.FileOps do
   end
 
   def write_synced(path, bytes, backend \\ :file) do
+    write(path, bytes, backend, nil)
+  end
+
+  def write_private_synced(path, bytes), do: write(path, bytes, :file, 0o600)
+
+  defp write(path, bytes, backend, mode) do
     with {:ok, file} <- backend.open(path, [:write, :binary, :exclusive, :raw]) do
       result =
-        with :ok <- backend.write(file, bytes),
+        with :ok <- if(mode, do: File.chmod(path, mode), else: :ok),
+             :ok <- backend.write(file, bytes),
              :ok <- backend.sync(file) do
           :ok
         end

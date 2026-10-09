@@ -64,6 +64,15 @@ try {
   await cdp('Page.navigate', { url: `${base}/management/servers` });
   await cdp('Page.bringToFront');
   await until(() => evaluate(`!!document.querySelector('.phx-connected #worker-form')`), 'Worker form did not connect');
+  assert.equal(await evaluate(`document.querySelector('#worker-enrollment-form input[type="checkbox"]').checked`), false);
+  await evaluate(`(() => { document.querySelector('#worker-enrollment-form input[type="checkbox"]').click(); document.querySelector('#worker-enrollment-form').requestSubmit(); })()`);
+  await until(() => evaluate(`document.body.textContent.includes('Worker initialization setting saved.')`), 'Enrollment toggle did not save');
+  await cdp('Page.navigate', { url: `${base}/management/servers` });
+  await until(() => evaluate(`!!document.querySelector('.phx-connected #worker-enrollment-form input[type="checkbox"]:checked')`), 'Enrollment toggle did not persist after reload');
+  await evaluate(`(() => { document.querySelector('#worker-enrollment-form input[type="checkbox"]').click(); document.querySelector('#worker-enrollment-form').requestSubmit(); })()`);
+  await until(() => evaluate(`document.body.textContent.includes('Worker initialization setting saved.')`), 'Enrollment toggle did not disable');
+  await cdp('Page.navigate', { url: `${base}/management/servers` });
+  await until(() => evaluate(`!!document.querySelector('.phx-connected #worker-enrollment-form') && !document.querySelector('#worker-enrollment-form input[type="checkbox"]').checked`), 'Disabled enrollment did not persist');
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#worker-form [name^="worker["]')).map(field => field.name)`), ['worker[name]']);
   await evaluate(`(() => { const name = document.querySelector('[name="worker[name]"]'); name.value = 'Browser Worker'; document.querySelector('#worker-form').requestSubmit(); })()`);
   await until(() => evaluate(`!!document.querySelector('#worker-bootstrap')`), 'Creation did not show the configuration');
@@ -85,7 +94,7 @@ try {
   await cdp('Page.navigate', { url: `${base}/management/servers` });
   await until(() => evaluate(`!!document.querySelector('.phx-connected #worker-form')`), 'Worker list did not reconnect');
   assert.equal(await evaluate(`document.querySelector('#worker-bootstrap') === null`), true);
-  await writeFile(`${directory}/browser-result.json`, JSON.stringify({ result: 'PASS', worker_id: workerId, checks: ['name-only creation', 'generated configuration', 'copy hook', 'one-time token', 'empty services', 'dashboard'] }));
+  await writeFile(`${directory}/browser-result.json`, JSON.stringify({ result: 'PASS', worker_id: workerId, checks: ['persistent anonymous enrollment toggle', 'name-only creation', 'generated configuration', 'copy hook', 'one-time token', 'empty services', 'dashboard'] }));
   console.log('Chromium Worker management: PASS');
 } finally {
   socket?.close();

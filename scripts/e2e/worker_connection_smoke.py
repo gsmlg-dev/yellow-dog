@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import urllib.error
 import urllib.request
 import uuid
@@ -57,14 +58,18 @@ def stop(name):
     process = processes.pop(name, None)
     if process:
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            # BEAM owns the store-lock helper; let it close children itself.
+            os.kill(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
         try:
-            process.wait(timeout=20)
+            status = process.wait(timeout=20)
+            if name != "browser":
+                assert status == 0, f"{name} failed to stop cleanly; logs: {evidence}"
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=10)
+            raise AssertionError(f"{name} timed out stopping; logs: {evidence}")
         finally:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
@@ -250,9 +255,72 @@ try:
         assert applied(stopped_revision, "stopped") and stopped()
         assert worker()["applied_revision"] < bad_revision
     print("Failed target preserves last committed stopped runtime and revision: PASS", flush=True)
+
+    stop("worker")
+    before_ids = {value["id"] for value in request("/api/workers")}
+    anonymous_bootstrap = evidence / "anonymous-bootstrap.toml"
+    anonymous_dir = evidence / "anonymous-data"
+    anonymous_bootstrap.write_text(f'management_url = "{base}"\n')
+    env["YELLOW_DOG_WORKER_BOOTSTRAP"] = str(anonymous_bootstrap)
+    env["STATE_DIRECTORY"] = str(anonymous_dir)
+    start("worker", worker_binary)
+    until(lambda: len(list(anonymous_dir.glob("*connection*.toml"))) == 1,
+          "URL-only Worker did not persist its identity")
+    identity_file = next(anonymous_dir.glob("*connection*.toml"))
+    identity_before = identity_file.read_bytes()
+    identity = tomllib.loads(identity_before.decode())
+    # A live HTTP exchange must be rejected while anonymous enrollment is disabled.
+    initial_report = {"worker_id": identity["worker_id"], "capabilities": ["dns"], "services": {},
+                      "applied_revision": None, "applied_digest": None, "apply_error": None}
+    try:
+        urllib.request.urlopen(urllib.request.Request(base + "/api/worker/connect",
+            data=json.dumps(initial_report).encode(),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer " + identity["token"]}), timeout=5)
+    except urllib.error.HTTPError as error:
+        assert error.code == 401
+    else:
+        raise AssertionError("Anonymous initialization was accepted by default")
+    assert {value["id"] for value in request("/api/workers")} == before_ids
+    mutate("set_worker_enrollment", {"allow_anonymous": True})
+    until(lambda: len(request("/api/workers")) == len(before_ids) + 1, "Anonymous Worker did not enroll")
+    worker_id = next(value["id"] for value in request("/api/workers") if value["id"] not in before_ids)
+    until(lambda: worker()["connection_status"] == "connected", "Anonymous Worker did not connect")
+    assert worker()["services"] == [] and worker()["reported_services"] == {}
+    assert identity["worker_id"] == worker_id and len(identity["token"]) == 43
+    assert identity_file.stat().st_mode & 0o777 == 0o600
+    assert anonymous_dir.stat().st_mode & 0o777 == 0o700
+
+    service = mutate("put_service", {"worker_id": worker_id, "expected_revision": worker()["revision"],
+                                     "id": "dns", "type": "dns", "desired_state": "stopped",
+                                     "config": {"listen_address": "127.0.0.1", "port": dns_port}})
+    mutate("assign", {"worker_id": worker_id, "expected_revision": worker()["revision"],
+                      "service_id": service["id"], "resource_version_id": version["id"]})
+    anonymous_running = publish("running")
+    until(lambda: applied(anonymous_running, "running"), "URL-only Worker did not apply published DNS")
+    dns_query()
+    dns_query(tcp=True)
+    mutate("set_worker_enrollment", {"allow_anonymous": False})
+    stop("worker")
+    start("worker", worker_binary)
+    until(lambda: applied(anonymous_running, "running") and dns_query(tcp=True) is None,
+          "Registered Worker did not restore while enrollment was disabled")
+    assert identity_file.read_bytes() == identity_before
+    assert len(request("/api/workers")) == len(before_ids) + 1
+    anonymous_stopped = publish("stopped")
+    until(lambda: applied(anonymous_stopped, "stopped") and stopped(), "URL-only Worker did not stop DNS")
+    stop("worker")
+    start("worker", worker_binary)
+    until(lambda: applied(anonymous_stopped, "stopped") and stopped(), "URL-only stopped state did not survive restart")
+    assert identity_file.read_bytes() == identity_before
+    assert len(request("/api/workers")) == len(before_ids) + 1
+    for log_path in evidence.glob("*.log"):
+        assert identity["token"] not in log_path.read_text(), "Automatic credential leaked to logs"
+    print("URL-only initialization gate, stable private credentials, published DNS and stopped restart: PASS", flush=True)
     (evidence / "result.json").write_text(json.dumps({"result": "PASS", "worker_id": worker_id,
                                                    "running_revision": running_revision,
-                                                   "stopped_revision": stopped_revision}))
+                                                   "stopped_revision": stopped_revision,
+                                                   "anonymous_running_revision": anonymous_running,
+                                                   "anonymous_stopped_revision": anonymous_stopped}))
     print(f"Worker connection smoke: PASS; evidence: {evidence}", flush=True)
 finally:
     stop("browser")

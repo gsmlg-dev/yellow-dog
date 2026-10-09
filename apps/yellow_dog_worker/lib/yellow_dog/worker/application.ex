@@ -13,6 +13,7 @@ defmodule YellowDog.Worker.Application do
               {YellowDog.Worker.ServiceManager,
                options
                |> Keyword.delete(:connection)
+               |> Keyword.put(:connection_bootstrap, if(options[:connection], do: path))
                |> Keyword.put(:name, YellowDog.Worker.ServiceManager)}
             ]
 
@@ -26,7 +27,6 @@ defmodule YellowDog.Worker.Application do
                     {YellowDog.Worker.Connection,
                      [
                        bootstrap_path: path,
-                       worker_id: options[:worker_id],
                        manager: YellowDog.Worker.ServiceManager
                      ]}
                   ]

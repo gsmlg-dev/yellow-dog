@@ -15,6 +15,8 @@ defmodule YellowDog.ManagementUI.WorkersLive do
        bootstrap: nil,
        management_url: nil,
        submission_id: Ecto.UUID.generate(),
+       enrollment_intent: Ecto.UUID.generate(),
+       enrollment: Domain.worker_enrollment_settings(),
        form: to_form(%{"name" => ""}, as: "worker")
      )}
   end
@@ -27,7 +29,42 @@ defmodule YellowDog.ManagementUI.WorkersLive do
   @impl true
   def handle_info(:refresh_workers, socket) do
     Process.send_after(self(), :refresh_workers, 5000)
-    {:noreply, assign(socket, :workers, Domain.list_workers())}
+
+    {:noreply,
+     assign(socket,
+       workers: Domain.list_workers(),
+       enrollment: Domain.worker_enrollment_settings()
+     )}
+  end
+
+  @impl true
+  def handle_event("save_enrollment", %{"enrollment" => params, "_submission" => intent}, socket)
+      when is_map(params) do
+    if intent == socket.assigns.enrollment_intent do
+      case params["allow_anonymous"] do
+        value when value in ["true", "false"] ->
+          case Domain.mutate(
+                 "set_worker_enrollment",
+                 %{"allow_anonymous" => value == "true"},
+                 "operator",
+                 intent
+               ) do
+            {:ok, settings} ->
+              {:noreply,
+               socket
+               |> assign(enrollment: settings, enrollment_intent: Ecto.UUID.generate())
+               |> put_flash(:info, "Worker initialization setting saved.")}
+
+            {:error, error} ->
+              {:noreply, put_flash(socket, :error, message(error))}
+          end
+
+        _ ->
+          {:noreply, put_flash(socket, :error, "Invalid initialization setting")}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -80,7 +117,7 @@ defmodule YellowDog.ManagementUI.WorkersLive do
   def handle_event("copy_failed", _params, socket),
     do: {:noreply, put_flash(socket, :error, "Select and copy the configuration text manually.")}
 
-  def handle_event(event, _params, socket) when event in ~w(save rotate_token),
+  def handle_event(event, _params, socket) when event in ~w(save rotate_token save_enrollment),
     do: {:noreply, socket}
 
   defp show_connection(socket, %{"worker" => worker, "token" => token}) do
@@ -110,6 +147,27 @@ defmodule YellowDog.ManagementUI.WorkersLive do
             Add a Worker, connect it, then choose the services it should run.
           </p>
         </div>
+        <.card title="Worker initialization">
+          <p class="management-help">
+            Allow new Workers to register using only this Management address.
+            Disabling this keeps registered Workers connected. New Workers have no services until you configure and publish them.
+          </p>
+          <.form for={%{}} id="worker-enrollment-form" phx-submit="save_enrollment">
+            <input type="hidden" name="_submission" value={@enrollment_intent} />
+            <input type="hidden" name="enrollment[allow_anonymous]" value="false" />
+            <label class="label">
+              <input
+                type="checkbox"
+                class="checkbox"
+                name="enrollment[allow_anonymous]"
+                value="true"
+                checked={@enrollment["allow_anonymous"]}
+              />
+              <span>Allow anonymous Worker initialization</span>
+            </label>
+            <button type="submit" class="btn btn-primary" phx-disable-with="Saving…">Save</button>
+          </.form>
+        </.card>
         <.card title="Workers">
           <p :if={@workers == []} class="management-help">
             No Workers yet. Add one using its name below.

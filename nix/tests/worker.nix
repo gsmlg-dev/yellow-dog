@@ -129,19 +129,14 @@ pkgs.testers.runNixOSTest {
         assert worker.succeed("cat /var/lib/yellow-dog-worker/current") == pointer
         stopped()
 
-    with subtest("managed bootstrap without Management awaits and safely retries"):
+    with subtest("URL-only bootstrap persists identity and awaits Management"):
         stop()
         worker.succeed("rm -rf /var/lib/yellow-dog-worker")
-        # Generate the connection token in the VM so it cannot enter a Nix store derivation.
-        worker.succeed("python3 -c " + shlex.quote("""
-    import pathlib, secrets
-    token = secrets.token_urlsafe(32)
-    path = pathlib.Path('/run/secrets/worker-bootstrap.toml')
-    path.write_text('worker_id = "edge-01"\\ndata_dir = "/var/lib/yellow-dog-worker"\\nmanagement_url = "http://127.0.0.1:4270"\\ntoken = "' + token + '"\\npoll_interval_ms = 100\\ntls_ca_file = "/etc/ssl/certs/ca-certificates.crt"\\n')
-    path.chmod(0o600)
-    """))
+        write("/run/secrets/worker-bootstrap.toml", 'management_url = "http://127.0.0.1:4270"\n')
         worker.succeed("systemctl start yellow-dog-worker")
         ready()
+        worker.wait_until_succeeds("test -f /var/lib/yellow-dog-worker/connection.toml")
+        identity = worker.succeed("sha256sum /var/lib/yellow-dog-worker/connection.toml")
         pid = worker.succeed("systemctl show yellow-dog-worker -p MainPID --value")
         stopped()
         # Record real authenticated polling after an initial outage. The fake
@@ -149,18 +144,19 @@ pkgs.testers.runNixOSTest {
         write("/run/unavailable-management.py", """
     from http.server import BaseHTTPRequestHandler, HTTPServer
     import json, pathlib, tomllib
-    token = tomllib.loads(pathlib.Path('/run/secrets/worker-bootstrap.toml').read_text())['token']
+    identity = tomllib.loads(pathlib.Path('/var/lib/yellow-dog-worker/connection.toml').read_text())
+    token, worker_id = identity['token'], identity['worker_id']
     class Unavailable(BaseHTTPRequestHandler):
         def do_POST(self):
             report = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             assert self.path == '/api/worker/connect'
             assert self.headers['Authorization'] == 'Bearer ' + token
-            assert report['worker_id'] == 'edge-01' and report['capabilities'] == ['dns']
+            assert report['worker_id'] == worker_id and report['capabilities'] == ['dns']
             assert report['services'] == {} and report['applied_revision'] is None
             assert report['applied_digest'] is None and report['apply_error'] is None
             path = pathlib.Path('/run/worker-polls')
             path.write_text(str(int(path.read_text()) + 1) if path.exists() else '1')
-            body = b'{"worker_id":"edge-01","target":null}'
+            body = json.dumps({'worker_id': worker_id, 'target': None}).encode()
             self.send_response(200)
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
@@ -172,15 +168,21 @@ pkgs.testers.runNixOSTest {
         worker.succeed("systemd-run --unit=unavailable-management python3 /run/unavailable-management.py")
         worker.wait_until_succeeds("test -f /run/worker-polls && test $(cat /run/worker-polls) -ge 3")
         assert worker.succeed("systemctl show yellow-dog-worker -p MainPID --value") == pid
+        polls = int(worker.succeed("cat /run/worker-polls").strip())
+        restart()
+        assert worker.succeed("sha256sum /var/lib/yellow-dog-worker/connection.toml") == identity
+        worker.wait_until_succeeds(f"test $(cat /run/worker-polls) -gt {polls}")
         worker.succeed("test -z \"$(find /var/lib/yellow-dog-worker/snapshots -name '*.toml' -print -quit)\"")
         stopped()
         worker.succeed("systemctl stop unavailable-management")
         stopped()
-        assert worker.succeed("systemctl show yellow-dog-worker -p MainPID --value") == pid
         worker.succeed("python3 -c " + shlex.quote("""
     import pathlib, subprocess, tomllib
     bootstrap = pathlib.Path('/run/secrets/worker-bootstrap.toml')
-    token = tomllib.loads(bootstrap.read_text())['token']
+    identity = pathlib.Path('/var/lib/yellow-dog-worker/connection.toml')
+    token = tomllib.loads(identity.read_text())['token']
+    assert identity.stat().st_mode & 0o777 == 0o600
+    assert pathlib.Path('/var/lib/yellow-dog-worker').stat().st_mode & 0o777 == 0o700
     assert bootstrap.stat().st_uid == 0 and bootstrap.stat().st_mode & 0o777 == 0o600
     assert token not in subprocess.check_output(['journalctl', '-u', 'yellow-dog-worker'], text=True)
     assert token not in subprocess.check_output(['systemctl', 'cat', 'yellow-dog-worker'], text=True)

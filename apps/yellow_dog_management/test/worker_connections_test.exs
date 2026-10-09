@@ -2,6 +2,7 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
   use ExUnit.Case, async: false
   import Plug.Conn
   import Plug.Test
+  import Ecto.Query
 
   alias YellowDog.Management.{
     Audit,
@@ -16,10 +17,221 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
 
   alias YellowDog.ManagementUI.Router
 
-  setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+  setup tags do
+    unless tags[:unboxed], do: :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
     :ok
   end
+
+  test "anonymous enrollment is disabled by default without business or credential writes" do
+    id = Ecto.UUID.generate()
+    assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => false}
+    assert request(anonymous_token(), anonymous_report(id)).status == 401
+    assert Repo.aggregate(Worker, :count) == 0
+    assert Repo.aggregate(Audit, :count) == 0
+    assert Repo.aggregate(Idempotency, :count) == 0
+  end
+
+  test "enrollment setting is an audited idempotent strict boolean command" do
+    key = Ecto.UUID.generate()
+    params = %{"allow_anonymous" => true}
+    assert {:ok, ^params} = Domain.mutate("set_worker_enrollment", params, "operator", key)
+    assert {:ok, ^params} = Domain.mutate("set_worker_enrollment", params, "operator", key)
+    assert Domain.worker_enrollment_settings() == params
+    assert Repo.aggregate(Audit, :count) == 1
+    assert Repo.aggregate(Idempotency, :count) == 1
+
+    assert {:error, %{code: "idempotency_conflict"}} =
+             Domain.mutate(
+               "set_worker_enrollment",
+               %{"allow_anonymous" => false},
+               "operator",
+               key
+             )
+
+    for invalid <- [
+          %{},
+          %{"allow_anonymous" => "true"},
+          %{"allow_anonymous" => nil},
+          %{"allow_anonymous" => false, "extra" => true}
+        ] do
+      assert {:error, _} =
+               Domain.mutate("set_worker_enrollment", invalid, "operator", Ecto.UUID.generate())
+
+      assert Domain.worker_enrollment_settings() == params
+    end
+  end
+
+  test "anonymous first contact and lost-response retry preserve one hash-only Worker" do
+    mutate("set_worker_enrollment", %{"allow_anonymous" => true})
+    id = Ecto.UUID.generate()
+    token = anonymous_token()
+    report = anonymous_report(id)
+    assert request(token, report, Router, "/api/worker/connect").status == 200
+    assert request(token, report).status == 200
+    assert Repo.aggregate(Worker, :count) == 1
+    assert Repo.get!(Worker, id).connection_token_hash == :crypto.hash(:sha256, token)
+    assert {:ok, worker} = Domain.get_worker(id)
+    assert worker["name"] == "Worker #{id}"
+    assert worker["services"] == []
+    assert worker["assignments"] == []
+    assert worker["connection_status"] == "connected"
+    assert Repo.aggregate(Audit, :count) == 2
+    assert Repo.aggregate(Idempotency, :count) == 2
+
+    refute Jason.encode!([
+             Domain.list_workers(),
+             Domain.list_audit(),
+             Enum.map(Repo.all(Idempotency), & &1.result)
+           ]) =~ token
+
+    mutate("set_worker_enrollment", %{"allow_anonymous" => false})
+    assert request(token, report).status == 200
+    assert request(anonymous_token(), anonymous_report(Ecto.UUID.generate())).status == 401
+  end
+
+  test "anonymous enrollment cannot replace existing or revoked credentials" do
+    mutate("set_worker_enrollment", %{"allow_anonymous" => true})
+    id = Ecto.UUID.generate()
+    token = anonymous_token()
+    report = anonymous_report(id)
+    assert request(token, report).status == 200
+    before = Repo.get!(Worker, id)
+    assert request(anonymous_token(), report).status == 401
+    assert Repo.get!(Worker, id) == before
+    assert {:ok, rotated} = WorkerConnections.rotate(id)
+    assert request(token, report).status == 401
+    assert request(rotated["token"], report).status == 200
+    assert Repo.aggregate(Worker, :count) == 1
+  end
+
+  test "new identity requires UUID, canonical credential and an empty initial report" do
+    mutate("set_worker_enrollment", %{"allow_anonymous" => true})
+    report = anonymous_report(Ecto.UUID.generate())
+
+    invalid = [
+      Map.put(report, "worker_id", "not-a-uuid"),
+      Map.put(report, "services", %{"dns" => %{"state" => "running"}}),
+      Map.put(report, "applied_revision", 1),
+      Map.put(report, "apply_error", "apply_failed"),
+      Map.put(report, "token", "unsafe"),
+      Map.put(report, "capabilities", ["dns", "dhcpv4"])
+    ]
+
+    for report <- invalid, do: assert(request(anonymous_token(), report).status == 401)
+
+    for token <- [String.duplicate("!", 43), String.duplicate("A", 42), nil],
+        do: assert(request(token, report).status == 401)
+
+    assert Repo.aggregate(Worker, :count) == 0
+    assert Repo.aggregate(Audit, :count) == 1
+    assert Repo.aggregate(Idempotency, :count) == 1
+  end
+
+  @tag :unboxed
+  test "independent simultaneous requests enroll exactly once and disable blocks admission" do
+    Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+      id = Ecto.UUID.generate()
+      token = anonymous_token()
+      setting_key = Ecto.UUID.generate()
+      disable_key = Ecto.UUID.generate()
+      parent = self()
+      assert Repo.aggregate(Audit, :count) == 0
+
+      try do
+        assert {:ok, _} =
+                 Domain.mutate(
+                   "set_worker_enrollment",
+                   %{"allow_anonymous" => true},
+                   "operator",
+                   setting_key
+                 )
+
+        tasks =
+          for _ <- 1..4 do
+            Task.async(fn ->
+              Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+                WorkerConnections.connect(token, anonymous_report(id))
+              end)
+            end)
+          end
+
+        for task <- tasks,
+            do: assert({:ok, %{"worker_id" => ^id, "target" => nil}} = Task.await(task))
+
+        assert Repo.aggregate(from(w in Worker, where: w.id == ^id), :count) == 1
+
+        assert Repo.aggregate(
+                 from(a in Audit,
+                   where: a.operation == "create_worker" and a.request["id"] == ^id
+                 ),
+                 :count
+               ) == 1
+
+        disabling =
+          Task.async(fn ->
+            Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+              Repo.transaction(fn ->
+                assert {:ok, _} =
+                         Domain.mutate(
+                           "set_worker_enrollment",
+                           %{"allow_anonymous" => false},
+                           "operator",
+                           disable_key
+                         )
+
+                send(parent, :disable_locked)
+
+                receive do
+                  :commit_disable -> :ok
+                end
+              end)
+            end)
+          end)
+
+        assert_receive :disable_locked
+        blocked_id = Ecto.UUID.generate()
+
+        connecting =
+          Task.async(fn ->
+            Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+              %{rows: [[backend]]} = Repo.query!("SELECT pg_backend_pid()")
+              send(parent, {:connecting, backend})
+              WorkerConnections.connect(anonymous_token(), anonymous_report(blocked_id))
+            end)
+          end)
+
+        assert_receive {:connecting, backend}
+        assert Task.yield(connecting, 100) == nil
+
+        assert %{rows: [["Lock"]]} =
+                 Repo.query!("SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1", [
+                   backend
+                 ])
+
+        send(disabling.pid, :commit_disable)
+        assert {:ok, :ok} = Task.await(disabling)
+        assert {:error, %{code: "unauthorized"}} = Task.await(connecting)
+        assert Repo.get(Worker, blocked_id) == nil
+        assert {:ok, _} = WorkerConnections.connect(token, anonymous_report(id))
+      after
+        # These independent connections commit outside Sandbox. Audits are immutable,
+        # so reset the disposable test database rather than deleting audit rows.
+        Repo.query!("TRUNCATE management_audits")
+
+        Repo.delete_all(
+          from(i in Idempotency,
+            where: i.key in ^[setting_key, disable_key, "anonymous_worker:#{id}"]
+          )
+        )
+
+        Repo.delete_all(from(w in Worker, where: w.id == ^id))
+        Repo.query!("UPDATE management_worker_enrollment_settings SET allow_anonymous = false")
+      end
+    end)
+  end
+
+  defp anonymous_token, do: :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+  defp anonymous_report(id), do: report(%{"worker" => %{"id" => id}})
 
   test "name-only enrollment generates unique identities and stores only credential hashes" do
     {:ok, first} = WorkerConnections.create("Office")

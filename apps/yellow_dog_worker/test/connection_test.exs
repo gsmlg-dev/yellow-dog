@@ -5,6 +5,44 @@ defmodule YellowDog.Worker.ConnectionTest do
   @moduletag :tmp_dir
   @token String.duplicate("a", 43)
 
+  test "URL-only initialization retries a lost response and restart with the same private credential",
+       ctx do
+    {url, replies} = server()
+    path = Path.join(ctx.tmp_dir, "bootstrap.toml")
+
+    File.write!(
+      path,
+      "management_url = #{inspect(url)}\ndata_dir = #{inspect(Path.join(ctx.tmp_dir, "state"))}\npoll_interval_ms = 15000\n"
+    )
+
+    {:ok, bootstrap} = YellowDog.Worker.Bootstrap.load(path)
+    options = Keyword.put(bootstrap, :connection_bootstrap, path) |> Keyword.delete(:connection)
+    manager = start_supervised!({ServiceManager, options})
+    {:ok, auth} = ServiceManager.connection_credentials(manager)
+    respond(replies, {0, %{}})
+    client = start_supervised!({Connection, bootstrap_path: path, manager: manager})
+    assert_receive {:request, headers, %{"worker_id" => id, "applied_revision" => nil}}, 3000
+    assert id == auth.worker_id
+    assert headers =~ "Bearer #{auth.token}"
+    assert headers =~ "POST /api/worker/connect"
+    assert %{connected: false} = Connection.status(client)
+    respond(replies, %{"worker_id" => id, "target" => nil})
+    assert %{connected: true} = Connection.poll(client)
+    assert_receive {:request, retry_headers, %{"worker_id" => ^id}}, 3000
+    assert retry_headers =~ "Bearer #{auth.token}"
+    refute inspect(:sys.get_status(manager)) =~ auth.token
+    refute inspect(ServiceManager.status(manager)) =~ auth.token
+    refute inspect(:sys.get_status(client)) =~ auth.token
+    :ok = stop_supervised(Connection)
+    :ok = stop_supervised(ServiceManager)
+    manager = start_supervised!({ServiceManager, options})
+    assert {:ok, ^auth} = ServiceManager.connection_credentials(manager)
+    start_supervised!({Connection, bootstrap_path: path, manager: manager})
+    assert_receive {:request, restarted_headers, %{"worker_id" => ^id}}, 3000
+    assert restarted_headers =~ "Bearer #{auth.token}"
+    assert ServiceManager.status(manager).origin == :awaiting_connection
+  end
+
   test "real HTTP polling applies DNS, reports observations and keeps runtime on disconnect",
        ctx do
     {url, replies} = server()
@@ -328,19 +366,23 @@ defmodule YellowDog.Worker.ConnectionTest do
         {code, value} = if is_tuple(reply), do: reply, else: {200, reply}
         bytes = if is_binary(value), do: value, else: Jason.encode!(value)
 
-        if chunked? do
-          :gen_tcp.send(socket, [
-            "HTTP/1.1 #{code} Test\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
-            Integer.to_string(byte_size(bytes), 16),
-            "\r\n",
-            bytes,
-            "\r\n0\r\n\r\n"
-          ])
+        if code == 0 do
+          :ok
         else
-          :gen_tcp.send(socket, [
-            "HTTP/1.1 #{code} Test\r\ncontent-type: application/json\r\ncontent-length: #{byte_size(bytes)}\r\nconnection: close\r\n\r\n",
-            bytes
-          ])
+          if chunked? do
+            :gen_tcp.send(socket, [
+              "HTTP/1.1 #{code} Test\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+              Integer.to_string(byte_size(bytes), 16),
+              "\r\n",
+              bytes,
+              "\r\n0\r\n\r\n"
+            ])
+          else
+            :gen_tcp.send(socket, [
+              "HTTP/1.1 #{code} Test\r\ncontent-type: application/json\r\ncontent-length: #{byte_size(bytes)}\r\nconnection: close\r\n\r\n",
+              bytes
+            ])
+          end
         end
 
         :gen_tcp.close(socket)

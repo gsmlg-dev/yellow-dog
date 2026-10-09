@@ -1,7 +1,7 @@
 defmodule YellowDog.Management.WorkerConnections do
   @moduledoc "Worker enrollment credentials and authenticated runtime observations."
   import Ecto.Query
-  alias YellowDog.Management.{Audit, Domain, Repo, Worker}
+  alias YellowDog.Management.{Audit, Domain, EnrollmentSettings, Repo, Worker}
 
   @report_keys ~w(worker_id capabilities services applied_revision applied_digest apply_error)
   @id ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
@@ -100,7 +100,7 @@ defmodule YellowDog.Management.WorkerConnections do
 
   def connect(token, report) when is_binary(token) and is_map(report) do
     Repo.transaction(fn ->
-      worker = locked_worker(report["worker_id"])
+      worker = locked_worker(report["worker_id"]) || initialize_worker(token, report)
 
       unless worker && is_binary(worker.connection_token_hash) &&
                Plug.Crypto.secure_compare(worker.connection_token_hash, hash(token)),
@@ -131,6 +131,58 @@ defmodule YellowDog.Management.WorkerConnections do
   end
 
   def connect(_, _), do: {:error, error("unauthorized", "Invalid Worker credential")}
+
+  defp initialize_worker(token, report) do
+    unless valid_initial_report?(report) && valid_initial_token?(token),
+      do: Repo.rollback(error("unauthorized", "Invalid Worker credential"))
+
+    settings = EnrollmentSettings.lock()
+    id = report["worker_id"]
+
+    case locked_worker(id) do
+      %Worker{} = worker ->
+        worker
+
+      nil ->
+        unless settings.allow_anonymous,
+          do: Repo.rollback(error("unauthorized", "Invalid Worker credential"))
+
+        case Domain.mutate(
+               "create_worker",
+               %{"id" => id, "name" => "Worker #{id}", "expected_capabilities" => ["dns"]},
+               "anonymous_worker",
+               "anonymous_worker:#{id}"
+             ) do
+          {:ok, _} ->
+            Repo.get!(Worker, id)
+            |> Ecto.Changeset.change(connection_token_hash: hash(token))
+            |> Repo.update!()
+
+          {:error, error} ->
+            Repo.rollback(error)
+        end
+    end
+  end
+
+  defp valid_initial_report?(report) do
+    id = report["worker_id"]
+
+    valid_report?(report) && is_binary(id) && match?({:ok, ^id}, Ecto.UUID.cast(id)) &&
+      report["services"] == %{} && is_nil(report["applied_revision"]) &&
+      is_nil(report["applied_digest"]) && is_nil(report["apply_error"])
+  end
+
+  defp valid_initial_token?(token) when byte_size(token) == 43 do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, bytes} when byte_size(bytes) == 32 ->
+        Base.url_encode64(bytes, padding: false) == token
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_initial_token?(_), do: false
 
   defp valid_report?(report) do
     Map.keys(report) -- @report_keys == [] &&

@@ -19,8 +19,19 @@ defmodule YellowDog.Worker.Connection do
 
         path ->
           case YellowDog.Worker.Bootstrap.load(path) do
-            {:ok, bootstrap} -> Keyword.merge(options, bootstrap[:connection] || [])
-            {:error, _} -> []
+            {:ok, bootstrap} ->
+              case ServiceManager.connection_credentials(options[:manager] || ServiceManager) do
+                {:ok, credentials} ->
+                  options
+                  |> Keyword.merge(bootstrap[:connection] || [])
+                  |> Keyword.merge(Map.to_list(credentials))
+
+                _ ->
+                  []
+              end
+
+            {:error, _} ->
+              []
           end
       end
 
