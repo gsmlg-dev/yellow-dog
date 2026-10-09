@@ -251,12 +251,29 @@ nix build .#docker-management
 nix build .#docker-worker
 ```
 
+The flake also exports `nixosModules.worker` for managed Worker deployment:
+
+```nix
+imports = [ inputs.yellow-dog.nixosModules.worker ];
+services.yellow-dog-worker = {
+  enable = true;
+  bootstrapFile = "/run/secrets/yellow-dog-worker-bootstrap";
+};
+```
+
+Keep the bootstrap outside the Nix store and set its `data_dir` to
+`/var/lib/yellow-dog-worker`. The module supplies a dedicated systemd service,
+runtime credentials and release cookie, persistent state and DNS low-port access.
+See [NixOS deployment instructions](docs/deployment/worker-nixos.md) for flake
+pinning, SOPS, private CA/mTLS, Management prerequisites and actual DNS validation.
+The scoped VM check is `nix build .#checks.x86_64-linux.worker`.
+
 `default` aliases Worker; it is not a third product. Both x86_64 and aarch64 Linux
 are supported. The Worker Nix wrapper supplies util-linux, GNU coreutils and Bash
 on `PATH`, including inside its Nix image. The images provide `/bin/sh`; neither
 contains a PostgreSQL server or baked database/operator credentials.
 
-Set `RELEASE_COOKIE` to a deployment-specific secret before running either Nix
+When running a package or image directly, set `RELEASE_COOKIE` to a deployment-specific secret before running either Nix
 package, including `setup` or `migrate`. The immutable Nix store cannot generate
 `releases/COOKIE` at startup; `RELEASE_DISTRIBUTION=none` does not remove this
 bootstrap requirement. Do not bake the cookie into an image.
