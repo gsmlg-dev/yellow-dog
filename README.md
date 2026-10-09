@@ -6,7 +6,7 @@ Phase 1 has exactly two independent business releases:
 
 - `yellow_dog_management`: PostgreSQL-backed DNS data UI/API, logical Workers,
   immutable resource versions, complete target preview/confirmation, and TOML export.
-- `yellow_dog_worker`: local TOML-only desired-state execution, durable committed
+- `yellow_dog_worker`: local TOML or authenticated Management target polling, durable committed
   snapshots, explicit reload, and authoritative DNS over UDP/TCP.
 
 Service configuration belongs to Management; network services execute on Worker.
@@ -18,11 +18,26 @@ redesign, with compilation/runtime failure accepted. Source coverage and provena
 are in `docs/phase1/ui-source-migration.md`; backend redevelopment and Worker
 runtime failures remain deferred and are not claimed fixed.
 
-Management can create data without any Worker records. A logical Worker is not a
-connected runtime: its actual state remains unknown. Operators explicitly export
-and transfer a complete confirmed target to the appropriate local Worker.
-There is no enrollment, heartbeat, remote delivery, or connected reconciliation in
-Phase 1. Legacy business-data migration and mixed-runtime compatibility are excluded.
+Management can create data without any Worker records. Under Management → Workers
+(`/management/servers`), create a Worker using its name and copy the generated token
+configuration to the Worker host. Workers poll confirmed targets and report actual
+execution state. Local exported TOML remains supported. Legacy business-data
+migration and mixed-runtime compatibility are excluded.
+
+## Download Worker for Linux x86_64
+
+The [GitHub Releases page](https://github.com/gsmlg-dev/yellow-dog/releases) provides
+`yellow-dog-worker-vVERSION-linux-x86_64.tar.gz` and its `.sha256` checksum.
+The package includes the Erlang runtime, native socket library, configuration
+examples and startup instructions. It does not require Elixir or Nix on the host.
+The supported baseline is Debian 12 x86_64 (glibc 2.36/OpenSSL 3), with the system
+libraries and `flock`/GNU `sync` listed in the packaged README.
+Only authoritative DNS is currently executable.
+
+See [Worker download instructions](scripts/release/worker-linux-README.md).
+The release workflow builds this package in Debian and verifies its extracted
+executable, DNS UDP/TCP, committed recovery, stopped state and managed bootstrap
+inside a clean Linux container before uploading the Worker asset.
 
 ## Build From This Checkout
 

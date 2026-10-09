@@ -14,6 +14,24 @@ failures. This ownership decision is not a claim of functional acceptance.
 
 ## Build and run
 
+### Linux x86_64 download
+
+Download `yellow-dog-worker-vVERSION-linux-x86_64.tar.gz` and its `.sha256` from
+[GitHub Releases](https://github.com/gsmlg-dev/yellow-dog/releases). The package
+bundles ERTS and the native socket library; no Elixir/Nix installation is needed.
+Debian 12 x86_64 (glibc 2.36/OpenSSL 3) is the supported baseline.
+Follow its included `README.md` for system libraries, checksum verification,
+extraction and the generated Management bootstrap. The same instructions are in
+[`scripts/release/worker-linux-README.md`](../../scripts/release/worker-linux-README.md).
+
+From the repository, build the committed HEAD and validate the downloadable package with:
+
+```sh
+devenv shell -- scripts/release/build_worker_linux.sh 1.2.6 /tmp/worker-release
+devenv shell -- scripts/e2e/worker_linux_package.sh \
+  /tmp/worker-release/yellow-dog-worker-v1.2.6-linux-x86_64.tar.gz
+```
+
 ### Managed connection
 
 Create a Worker under Management → Workers using its name, then save the generated
