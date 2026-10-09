@@ -75,21 +75,44 @@ defmodule YellowDog.Management.UITest do
     assert has_element?(view, "#management-overview", "actual runtime state remains unknown")
   end
 
-  test "registration persists logical Workers and resets the form", %{conn: conn} do
+  test "name-only registration persists a generated Worker and shows its connection configuration",
+       %{conn: conn} do
     {:ok, view, _html} = live(conn, "/server")
 
     view
-    |> form("#worker-form", worker: %{id: "ui-worker", name: "UI Worker"})
+    |> form("#worker-form", worker: %{name: "UI Worker"})
     |> render_submit()
 
-    assert has_element?(view, "#server-selector-ui-worker", "UI Worker")
+    assert [worker] = Domain.list_workers()
+    assert {:ok, _} = Ecto.UUID.cast(worker["id"])
+    assert has_element?(view, "#server-selector-#{worker["id"]}", "UI Worker")
     assert_push_event(view, "reset_form", %{id: "worker-form"})
-    assert has_element?(view, "#worker-form input[name='worker[id]'][value='']")
+    assert has_element?(view, "#worker-form input[name='worker[name]'][value='']")
+    refute has_element?(view, "#worker-form input[name='worker[id]']")
 
     assert {:ok, %{"name" => "UI Worker", "actual_state" => "unknown"}} =
-             Domain.get_worker("ui-worker")
+             Domain.get_worker(worker["id"])
 
-    assert render(view) =~ "not_yet_connected"
+    assert worker["connection_status"] == "not_yet_connected"
+    assert has_element?(view, "#server-selector-#{worker["id"]}", "Not connected")
+    assert has_element?(view, "#worker-bootstrap[readonly]")
+    assert has_element?(view, "#worker-bootstrap-copy[phx-hook='CopyToClipboard']")
+
+    assert {:ok, config} =
+             view
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("#worker-bootstrap")
+             |> LazyHTML.text()
+             |> Toml.decode()
+
+    assert config["worker_id"] == worker["id"]
+    assert byte_size(config["token"]) == 43
+    assert config["data_dir"] == "data"
+    assert config["poll_interval_ms"] == 10_000
+    refute Jason.encode!(Domain.list_audit()) =~ config["token"]
+    render_click(view, "dismiss_connection")
+    refute has_element?(view, "#worker-bootstrap")
   end
 
   test "Worker service, version assignment, preview and export use PostgreSQL", %{conn: conn} do

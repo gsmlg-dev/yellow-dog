@@ -1,8 +1,8 @@
 # Independent Yellow Dog Management (Phase 1 Track A)
 
-Management owns editable DNS data in PostgreSQL. It prepares complete configuration
-for logical allocation targets; it neither contacts nor starts a Worker. There is
-no legacy import, dual write, delivery loop, or fake runtime observation.
+Management owns editable DNS data in PostgreSQL and publishes complete confirmed
+configuration. Workers actively connect with their own Bearer tokens, retrieve
+their targets and report runtime observations. Network services execute on Worker.
 
 Management owns configuration authoring; network services run exclusively on
 Worker. Netboot provisioning and Identity enrollment/trust authority belong to
@@ -80,19 +80,17 @@ and Netman apply modes. These are historical catalog metadata, not an assertion
 that the current Worker supports every preset; reading them never starts Agents,
 enables services or writes PostgreSQL. Netman network-profile editing is separate
 from these catalog presets and stores desired configuration in PostgreSQL.
-Worker registration and dashboard editing also persist the six Server catalog
-profiles as descriptive `profile_name` metadata, defaulting to `custom`. The
-selector displays the chosen Profile; registration resets it to `custom`.
+Worker registration requires only a name and defaults descriptive `profile_name`
+metadata to `custom`. Dashboard editing retains the six Server catalog profiles.
 Profile edits use the existing Worker revision CAS and never change capabilities,
 services, assignments, immutable targets or historical TOML exports. They do not
 enable the services described by a preset. Arbitrary Worker metadata editing is
 not implemented.
 
-Focused profile acceptance uses disposable PostgreSQL and real Chromium:
+Focused metadata and registration tests use disposable PostgreSQL:
 
 ```sh
 devenv shell -- scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management cmd mix test test/worker_profiles_test.exs test/worker_profiles_live_test.exs
-devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_worker_profiles.sh
 ```
 
 The release check covers registration/reset, persisted display/editing, concurrent
@@ -420,15 +418,65 @@ GeoIP/OUI artifacts, with no development database mutations:
 devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_browser.sh
 ```
 
-The browser workflow builds before startup, uses a random loopback HTTP port, and
-stops the release and removes its synthetic artifacts on exit. Never rebuild or
-overwrite that release while its smoke process is running.
+The historical profile browser workflow assumes the superseded ID/Profile
+registration form. Current registration and real connection acceptance use the
+Worker connection workflow below.
+
+## Worker management and connection
+
+Open `/management/servers` under Management. **Add Worker** requires only its
+name; the ID and random token are generated automatically. Save the displayed
+`bootstrap.toml` on the Worker with mode `0600`. The token is shown once. **Reset
+token** revokes the old token and displays a replacement configuration.
+
+```toml
+worker_id = "generated-worker-id"
+data_dir = "data"
+management_url = "https://yellow-dog.gsmlg.net"
+token = "generated-worker-token"
+poll_interval_ms = 10000
+# Optional local PEM files for a private CA or mutual-TLS gateway:
+# tls_ca_file = "/etc/yellow-dog/ca.pem"
+# tls_cert_file = "/etc/yellow-dog/client.pem"
+# tls_key_file = "/etc/yellow-dog/client-key.pem"
+```
+
+Start the independent Worker release:
+
+```sh
+YELLOW_DOG_WORKER_BOOTSTRAP=/absolute/path/bootstrap.toml bin/yellow_dog_worker start
+```
+
+New Workers have no services. Configure a DNS instance and its Zone assignments,
+save the desired state, then **Publish configuration**. Saving a service draft
+does not publish it. The Worker validates and applies the complete confirmed
+target through its existing durable execution path. DNS is the only currently
+implemented service; historical profiles do not establish other runtime support.
+
+The table and dashboard refresh connection and actual service reports. No contact
+for 45 seconds changes the connection to Offline; older service reports are
+labelled as the last report. Desired state, applied revision and actual state
+remain distinct. An outage leaves the last committed Worker configuration running;
+Worker restart restores that snapshot even when Management is unavailable.
+
+`POST /api/worker/connect` is a dedicated Bearer-authenticated machine endpoint.
+The credential permits only its own Worker identity, target and report. Tokens
+are SHA-256 hashes in PostgreSQL and are excluded from ordinary Worker queries,
+audit and idempotency records. Configure an external gateway to allow this route
+with the Worker authentication and any required TLS client certificate; browser
+session authentication cannot be supplied by the polling client.
+
+Verify separate releases and real DNS UDP/TCP behavior with disposable PostgreSQL:
+
+```sh
+devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/worker_connection_smoke.sh
+```
 
 ### Deployment database
 
-Use a dedicated PostgreSQL database. The UI and all API routes are unauthenticated:
+Use a dedicated PostgreSQL database. The UI and operator API routes are unauthenticated:
 there is no login or operator token, and reachable clients have full
-read/write/export access. Logical Worker IDs do not authenticate physical nodes.
+read/write/export access. The dedicated Worker machine API requires its own token.
 The listener binds to loopback on port `4270` by default; use an external
 authentication/TLS reverse proxy for non-local browser or API access.
 
@@ -630,6 +678,6 @@ compatibility, legacy-record adapter or old-backup import requirement. Future
 backup work must instead prove current-dataset integrity, immutable history and
 safe destructive restore; the operations proposal is still pending implementation.
 
-Future authenticated attachment, observation reports and remote delivery belong to
-Phase 2. They must consume confirmed targets and leave this data ownership and
-single ConfigSpec boundary intact.
+Authenticated Worker attachment, observation reports and confirmed-target delivery
+are implemented by the Worker connection workflow above. Other network services
+remain deferred; the data ownership and single ConfigSpec boundary remain intact.

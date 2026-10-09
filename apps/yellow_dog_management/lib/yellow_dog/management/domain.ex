@@ -959,6 +959,7 @@ defmodule YellowDog.Management.Domain do
       "actual_state" => "unknown",
       "revision" => worker.revision
     }
+    |> Map.merge(YellowDog.Management.WorkerConnections.connection_fields(worker))
   end
 
   defp worker_profile(params, current) do

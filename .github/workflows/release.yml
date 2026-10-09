@@ -127,13 +127,8 @@ jobs:
           - product_slug: yellow-dog-worker
             mix_release: yellow_dog_worker
             platform: linux
-            arch: amd64
+            arch: x86_64
             runner: ubuntu-latest
-          - product_slug: yellow-dog-worker
-            mix_release: yellow_dog_worker
-            platform: linux
-            arch: arm64
-            runner: ubuntu-24.04-arm
     env:
       MIX_ENV: prod
       VERSION: ${{ needs.create-release.outputs.version }}
@@ -150,19 +145,22 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Elixir
+        if: matrix.mix_release == 'yellow_dog_management'
         uses: erlef/setup-beam@v1
         with:
           elixir-version: '1.18'
           otp-version: '28'
 
       - name: Install Rust toolchain
+        if: matrix.mix_release == 'yellow_dog_management'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
+        if: matrix.mix_release == 'yellow_dog_management' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y util-linux coreutils
 
       - name: Restore build cache
+        if: matrix.mix_release == 'yellow_dog_management'
         uses: actions/cache@v5
         with:
           path: |
@@ -177,6 +175,7 @@ jobs:
             release-${{ runner.os }}-${{ matrix.arch }}-
 
       - name: Install dependencies
+        if: matrix.mix_release == 'yellow_dog_management'
         run: |
           set -euo pipefail
           mix local.hex --force
@@ -184,12 +183,14 @@ jobs:
           mix deps.get --only prod
 
       - name: Build Mix release
+        if: matrix.mix_release == 'yellow_dog_management'
         run: |
           set -euo pipefail
           mix compile --warnings-as-errors
           mix release "${MIX_RELEASE_NAME}" --version "${VERSION}" --overwrite
 
       - name: Package release tarball
+        if: matrix.mix_release == 'yellow_dog_management'
         id: package
         run: |
           set -euo pipefail
@@ -197,13 +198,34 @@ jobs:
           tar -czf "${artifact}" -C "_build/prod/rel/${MIX_RELEASE_NAME}" .
           echo "artifact=${artifact}" >> "$GITHUB_OUTPUT"
 
+      - name: Build Linux x86_64 Worker archive
+        if: matrix.mix_release == 'yellow_dog_worker'
+        id: worker-package
+        run: |
+          set -euo pipefail
+          scripts/release/build_worker_linux.sh "${VERSION}" dist
+          artifact="dist/${PRODUCT_SLUG}-v${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
+          echo "artifact=${artifact}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify runnable Worker archive
+        if: matrix.mix_release == 'yellow_dog_worker'
+        env:
+          ARTIFACT: ${{ steps.worker-package.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          scripts/e2e/worker_linux_package.sh "${ARTIFACT}"
+
       - name: Upload release tarball
         env:
           GH_TOKEN: ${{ github.token }}
-          ARTIFACT: ${{ steps.package.outputs.artifact }}
+          ARTIFACT: ${{ steps.worker-package.outputs.artifact || steps.package.outputs.artifact }}
         run: |
           set -euo pipefail
-          gh release upload "${RELEASE_TAG}" "${ARTIFACT}" --clobber
+          artifacts=("${ARTIFACT}")
+          if [[ "${MIX_RELEASE_NAME}" == yellow_dog_worker ]]; then
+            artifacts+=("${ARTIFACT}.sha256")
+          fi
+          gh release upload "${RELEASE_TAG}" "${artifacts[@]}" --clobber
 
   docker-image:
     name: Build and publish ${{ matrix.image_label }} Docker image

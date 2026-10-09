@@ -1,12 +1,17 @@
 defmodule YellowDog.ManagementUI.WorkerLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Domain, ExportScope, ProfileCatalog}
+  alias YellowDog.Management.{Domain, ExportScope, ProfileCatalog, WorkerConnections}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
   alias YellowDog.ManagementUI.Submission
+  alias YellowDog.ManagementUI.WorkerConnection
+
+  @observation_fields ~w(connection_status last_seen_at reported_capabilities reported_services applied_revision applied_digest apply_error actual_state)
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Process.send_after(self(), :refresh_connection, 5000)
+
     {:ok,
      assign(Submission.new(socket),
        page_title: "Server",
@@ -14,6 +19,8 @@ defmodule YellowDog.ManagementUI.WorkerLive do
        preview: nil,
        target: nil,
        profiles: ProfileCatalog.list_server_profiles(),
+       bootstrap: nil,
+       management_url: nil,
        navigation_servers: []
      )}
   end
@@ -21,10 +28,62 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   @impl true
   def handle_params(_params, uri, socket) do
     {:noreply,
-     load(Submission.new(socket), CurrentPath.route_path_params(socket, uri)["server_id"])}
+     socket
+     |> Submission.new()
+     |> assign(bootstrap: nil, management_url: WorkerConnection.origin(uri))
+     |> load(CurrentPath.route_path_params(socket, uri)["server_id"])}
   end
 
   @impl true
+  def handle_info(:refresh_connection, socket) do
+    Process.send_after(self(), :refresh_connection, 5000)
+
+    with %{"id" => id} <- socket.assigns.worker,
+         {:ok, worker} <- Domain.get_worker(id) do
+      {:noreply,
+       assign(
+         socket,
+         :worker,
+         Map.merge(socket.assigns.worker, Map.take(worker, @observation_fields))
+       )}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("rotate_token", %{"_submission" => intent}, socket) do
+    if Submission.current?(socket, intent) do
+      case WorkerConnections.rotate(socket.assigns.worker["id"]) do
+        {:ok, %{"worker" => worker, "token" => token}} ->
+          {:noreply,
+           socket
+           |> Submission.new()
+           |> assign(
+             bootstrap:
+               WorkerConnections.bootstrap(worker, token, socket.assigns.management_url)
+               |> WorkerConnection.protect()
+           )
+           |> put_flash(:info, "Token reset. Update this Worker's connection configuration.")}
+
+        {:error, error} ->
+          {:noreply, put_flash(socket, :error, message(error))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("rotate_token", _params, socket), do: {:noreply, socket}
+
+  def handle_event("dismiss_connection", _params, socket),
+    do: {:noreply, assign(socket, :bootstrap, nil)}
+
+  def handle_event("copied", _params, socket),
+    do: {:noreply, put_flash(socket, :info, "Connection configuration copied.")}
+
+  def handle_event("copy_failed", _params, socket),
+    do: {:noreply, put_flash(socket, :error, "Select and copy the configuration text manually.")}
 
   def handle_event(event, params, socket)
       when event in ~w(save_worker save_service assign unassign confirm_target) do
@@ -192,14 +251,17 @@ defmodule YellowDog.ManagementUI.WorkerLive do
     end
   end
 
-  defp success_message("assign"), do: "Assignment saved. Worker actual state remains unknown."
-  defp success_message("unassign"), do: "Assignment removed. Worker actual state remains unknown."
+  defp success_message("assign"),
+    do: "Assignment saved. Publish the service configuration to apply it."
+
+  defp success_message("unassign"),
+    do: "Assignment removed. Publish the service configuration to apply it."
 
   defp success_message("confirm_target"),
-    do: "Target prepared. Worker actual state remains unknown."
+    do: "Target prepared and published. Waiting for the Worker to apply it."
 
   defp success_message(_operation),
-    do: "Configuration saved. Worker actual state remains unknown."
+    do: "Configuration saved. Publish the service configuration to apply service changes."
 
   defp load(socket, worker_id) do
     case Domain.get_worker(worker_id) do
@@ -251,10 +313,33 @@ defmodule YellowDog.ManagementUI.WorkerLive do
       <div :if={@worker} class="max-w-7xl space-y-6" id="server-dashboard">
         <div>
           <h1 class="text-3xl font-bold">{@worker["name"]}</h1><p class="text-on-surface-variant">
-            Actual runtime state is unknown. Desired configuration does not report service health.
+            <%= if @worker["connection_status"] == "connected" do %>
+              Service state is reported by the connected Worker.
+            <% else %>
+              Actual runtime state is unknown. Connect the Worker to receive service reports.
+            <% end %>
           </p>
         </div>
-        <.card title="Server configuration">
+        <.card title="Worker connection">
+          <p id="worker-connection-status">Connection: {WorkerConnection.status(@worker)}</p>
+          <p>Last contact: {@worker["last_seen_at"] || "Never"}</p>
+          <p>Supported services: {Enum.join(@worker["reported_capabilities"] || [], ", ")}</p>
+          <p id="worker-applied-revision">
+            Applied configuration: {@worker["applied_revision"] || "None"}
+          </p>
+          <p :if={@worker["apply_error"]} class="text-error">
+            Last reported error: {@worker["apply_error"]}
+          </p>
+          <button
+            class="btn btn-outline"
+            type="button"
+            phx-click="rotate_token"
+            phx-value-_submission={@submission_id}
+            data-confirm="Reset this Worker's token? Its current token will stop working."
+          >Reset token</button>
+        </.card>
+        <WorkerConnection.configuration :if={@bootstrap} bootstrap={@bootstrap} />
+        <.card title="Worker configuration">
           <.form
             for={@worker_form}
             id="worker-edit-form"
@@ -293,6 +378,9 @@ defmodule YellowDog.ManagementUI.WorkerLive do
           <.link navigate={"/server/#{@worker["id"]}/dns/zones"} class="btn btn-outline mt-4">DNS Zones</.link>
         </.card>
         <.card title="DNS service instances">
+          <p class="management-help">
+            DNS is currently supported. Save the desired service state, then publish the configuration below.
+          </p>
           <div class="overflow-x-auto">
             <table class="table" id="dns-services">
               <thead>
@@ -302,7 +390,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               </thead><tbody>
                 <tr :for={service <- @worker["services"]}>
                   <td>{service["instance_id"]}</td><td>{service["desired_state"]}</td><td>
-                    {service["actual_state"]}
+                    {WorkerConnection.service_state(@worker, service["instance_id"])}
                   </td><td>{service["config"]["listen_address"]}:{service["config"]["port"]}</td><td>
                     <button
                       class="btn btn-ghost btn-sm"
@@ -412,7 +500,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             <button class="btn btn-primary" type="submit" phx-disable-with="Saving…">Assign version</button>
           </.form>
         </.card>
-        <.card title="Target preview and export">
+        <.card title="Publish service configuration">
           <p id="target-export-scope" class="management-help">{ExportScope.description()}</p>
           <div class="flex flex-wrap gap-4">
             <button class="btn btn-outline" type="button" phx-click="preview">Preview target</button><button
@@ -421,7 +509,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               phx-click="confirm_target"
               phx-value-_submission={@submission_id}
               phx-disable-with="Preparing…"
-            >Confirm prepared target</button>
+            >Publish configuration</button>
             <.link
               :if={@target}
               href={"/api/workers/#{@worker["id"]}/targets/#{@target["revision"]}/export"}
@@ -430,7 +518,8 @@ defmodule YellowDog.ManagementUI.WorkerLive do
           </div>
           <pre :if={@preview} id="target-preview" class="mt-4 overflow-auto">{Jason.encode!(@preview, pretty: true)}</pre>
           <p :if={@target} class="mt-4">
-            Status: {@target["status"]}; runtime: {@target["actual_state"]}
+            Published revision: {@target["revision"]}; applied revision: {@worker["applied_revision"] ||
+              "None"}
           </p>
         </.card>
       </div>

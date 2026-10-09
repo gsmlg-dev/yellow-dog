@@ -1,0 +1,11 @@
+# Copy the generated configuration from Management; these are illustrative values.
+worker_id = "00000000-0000-4000-8000-000000000001"
+data_dir = "./state"
+management_url = "https://yellow-dog.gsmlg.net"
+token = "REPLACE_WITH_THE_TOKEN_GENERATED_BY_MANAGEMENT"
+poll_interval_ms = 10000
+
+# Optional private CA and mutual TLS client credentials (paths are bootstrap-relative).
+# tls_ca_file = "./ca.pem"
+# tls_cert_file = "./worker.pem"
+# tls_key_file = "./worker.key"

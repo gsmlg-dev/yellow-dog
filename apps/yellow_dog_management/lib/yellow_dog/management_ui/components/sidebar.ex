@@ -172,7 +172,7 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
     <li>
       <.link navigate="/management/servers" class={active?(@current_path, "/management/servers")}>
         <.dm_mdi name="server-network" class="w-5 h-5" />
-        <span>Servers</span>
+        <span>Workers</span>
       </.link>
     </li>
     <li>
