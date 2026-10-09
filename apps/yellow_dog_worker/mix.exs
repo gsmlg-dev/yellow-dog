@@ -17,7 +17,7 @@ defmodule YellowDog.Worker.MixProject do
         {:abyss, in_umbrella: true},
         {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
-        {:mint, "~> 1.9"},
+        {:mint, "~> 1.10"},
         {:toml, "== 0.7.0"},
         {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       ]
