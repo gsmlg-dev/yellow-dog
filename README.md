@@ -106,8 +106,10 @@ devenv processes list
 ```
 
 This starts PostgreSQL, initializes/migrates the development database, then starts
-Management at `http://127.0.0.1:4270` and a separate Worker that automatically
-connects to it. The first start creates **Devenv Worker** using the existing token
+Management on all IPv4 interfaces at port `4270` and a separate Worker that
+automatically connects to it. Open `http://HOST_IP:4270/management` from the LAN
+or `http://127.0.0.1:4270/management` locally.
+The first start creates **Devenv Worker** using the existing token
 enrollment flow; anonymous initialization remains controlled by the Workers page.
 Its private bootstrap and durable state persist under `.devenv/state/worker/`,
 and subsequent starts reuse the same identity and token. Configure and confirm a

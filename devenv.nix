@@ -30,7 +30,7 @@ in {
     after = ["devenv:processes:postgres"];
     cwd = "${config.devenv.root}/apps/yellow_dog_management";
     env = {
-      YELLOW_DOG_MANAGEMENT_BIND_ADDRESS = "127.0.0.1";
+      YELLOW_DOG_MANAGEMENT_BIND_ADDRESS = "0.0.0.0";
       YELLOW_DOG_WORKER_BOOTSTRAP = "${config.devenv.state}/worker/bootstrap.toml";
       YELLOW_DOG_MANAGEMENT_ARTIFACT_DIRECTORY = "${config.devenv.state}/management/artifacts";
       YELLOW_DOG_MANAGEMENT_BACKUP_DIRECTORY = "${config.devenv.state}/management/backups";
