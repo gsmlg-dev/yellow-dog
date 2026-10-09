@@ -101,13 +101,22 @@ For development, devenv supplies a project-specific PostgreSQL Unix socket and
 database environment variables; it does not bind a TCP port:
 
 ```sh
-devenv up -d postgres
-devenv shell -- mix ecto.setup
+devenv processes up -d
+devenv processes list
 ```
 
-Then run `devenv shell -- mix management.run` to start only Management and its
-dependencies. No operator token is required. Database data persists under
-`.devenv/state/postgres/`. See the Management README for connection and stop commands.
+This starts PostgreSQL, initializes/migrates the development database, then starts
+Management at `http://127.0.0.1:4270` and a separate Worker that automatically
+connects to it. The first start creates **Devenv Worker** using the existing token
+enrollment flow; anonymous initialization remains controlled by the Workers page.
+Its private bootstrap and durable state persist under `.devenv/state/worker/`,
+and subsequent starts reuse the same identity and token. Configure and confirm a
+target in Management to start its services.
+
+Database data persists under `.devenv/state/postgres/`; Management artifacts and
+backups stay under `.devenv/state/management/`. Stop all three processes with
+`devenv processes down`. To run Management alone, use
+`devenv processes up -d management`.
 
 ### Management Overview and Events
 

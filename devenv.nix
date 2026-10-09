@@ -10,6 +10,7 @@ in {
   env.GREET = "YellowDog";
   env.PGDATABASE = "yellow_dog_management_dev";
   env.YELLOW_DOG_MANAGEMENT_DATABASE_URL = "postgresql://yellow_dog@localhost:${toString config.env.PGPORT}/${config.env.PGDATABASE}?socket_dir=${config.env.PGHOST}";
+  env.YELLOW_DOG_MANAGEMENT_PORT = "4270";
 
   services.postgres = {
     enable = true;
@@ -25,6 +26,51 @@ in {
     '';
   };
 
+  processes.management = {
+    after = ["devenv:processes:postgres"];
+    cwd = "${config.devenv.root}/apps/yellow_dog_management";
+    env = {
+      YELLOW_DOG_MANAGEMENT_BIND_ADDRESS = "127.0.0.1";
+      YELLOW_DOG_WORKER_BOOTSTRAP = "${config.devenv.state}/worker/bootstrap.toml";
+      YELLOW_DOG_MANAGEMENT_ARTIFACT_DIRECTORY = "${config.devenv.state}/management/artifacts";
+      YELLOW_DOG_MANAGEMENT_BACKUP_DIRECTORY = "${config.devenv.state}/management/backups";
+    };
+    exec = ''
+      set -euo pipefail
+      umask 077
+      mix run --no-start -e 'YellowDog.Management.Release.setup()'
+      exec mix run --no-halt ../../scripts/devenv/management.exs
+    '';
+    ready = {
+      exec = ''
+        test -s "$YELLOW_DOG_WORKER_BOOTSTRAP" &&
+        curl --fail --silent --max-time 2 http://127.0.0.1:$YELLOW_DOG_MANAGEMENT_PORT/api/workers > /dev/null
+      '';
+      initial_delay = 2;
+      period = 2;
+      probe_timeout = 3;
+      failure_threshold = 60;
+    };
+  };
+
+  processes.worker = {
+    after = ["devenv:processes:management"];
+    cwd = "${config.devenv.root}/apps/yellow_dog_worker";
+    env.YELLOW_DOG_WORKER_BOOTSTRAP = "${config.devenv.state}/worker/bootstrap.toml";
+    exec = "exec mix run --no-halt";
+    ready = {
+      exec = ''
+        worker_id=$(sed -n 's/^worker_id = "\([^"]*\)"$/\1/p' "$YELLOW_DOG_WORKER_BOOTSTRAP")
+        curl --fail --silent --max-time 2 "http://127.0.0.1:$YELLOW_DOG_MANAGEMENT_PORT/api/workers/$worker_id" |
+          jq -e '.data.connection_status == "connected"' > /dev/null
+      '';
+      initial_delay = 2;
+      period = 2;
+      probe_timeout = 3;
+      failure_threshold = 60;
+    };
+  };
+
   packages = with pkgs-stable;
     [
       git
@@ -33,6 +79,8 @@ in {
       watchman
       beam28Packages.elixir-ls
       coreutils
+      curl
+      jq
     ]
     ++ lib.optionals stdenv.isLinux [
       inotify-tools

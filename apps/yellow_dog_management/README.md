@@ -370,24 +370,24 @@ not a TCP connection. Existing PostgreSQL services on TCP port 5432 are untouche
 
 ```sh
 # From the repository root:
-devenv up -d postgres
-devenv shell -- mix ecto.setup
+devenv processes up -d
+devenv processes list
 devenv shell -- psql -U yellow_dog
-devenv processes status postgres
-devenv processes stop postgres
+devenv processes down
 ```
 
-`mix ecto.setup` creates `yellow_dog_management_dev` and applies existing
-migrations, without starting Management, Worker or HTTP. It can also run directly
-inside `apps/yellow_dog_management`. Repeating it is safe. PostgreSQL creates the
-local `yellow_dog` role with database-creation permission on first initialization;
-Ecto owns database creation and migrations. Data persists in
-`.devenv/state/postgres/` after stopping the service.
+Startup waits for PostgreSQL, creates `yellow_dog_management_dev` if needed and
+applies pending migrations, then runs Management and Worker as separate processes.
+The first start registers **Devenv Worker** and saves its private token bootstrap
+under `.devenv/state/worker/`; subsequent starts reuse that identity. The Worker
+automatically connects to Management. PostgreSQL creates the local `yellow_dog`
+role with database-creation permission on first initialization. Data persists in
+`.devenv/state/postgres/` after stopping the processes.
 
 Local socket authentication uses trust with owner-only socket permissions (`0700`);
 this is a development-only configuration, not a production authentication policy.
-To run Management, start PostgreSQL as above and run
-`devenv shell -- mix management.run`. Open `http://127.0.0.1:4270` directly.
+To start only PostgreSQL and Management, use `devenv processes up -d management`.
+Open `http://127.0.0.1:4270` directly.
 The UI/API has no authentication or login and requires no operator token.
 
 `YELLOW_DOG_MANAGEMENT_BIND_ADDRESS` defaults to `127.0.0.1` and
