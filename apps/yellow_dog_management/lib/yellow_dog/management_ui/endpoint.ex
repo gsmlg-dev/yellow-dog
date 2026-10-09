@@ -11,6 +11,8 @@ defmodule YellowDog.ManagementUI.Endpoint do
 
   socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
+  plug YellowDog.ManagementUI.TrustedProxy
+
   plug Plug.Static,
     at: "/",
     from: :yellow_dog_management,

@@ -328,6 +328,31 @@ a LAN address. Set `YELLOW_DOG_MANAGEMENT_SECRET_KEY_BASE` to at least 64 bytes
 for stable sessions across restarts; without it startup generates an ephemeral
 key and existing browser sessions reconnect after a reload.
 
+For HTTPS terminated by a local Caddy proxy, configure the public origin and the
+exact proxy socket peer before startup:
+
+```sh
+export YELLOW_DOG_MANAGEMENT_EXTERNAL_ORIGIN=https://yellow-dog.gsmlg.net
+export YELLOW_DOG_MANAGEMENT_TRUSTED_PROXY_IP=127.0.0.1
+```
+
+The origin must be HTTPS without a path, credentials, query or fragment; include
+the explicit port if it is not 443. This sets the Endpoint URL and a precise
+WebSocket Origin allowlist. Foreign hosts, schemes and ports remain rejected.
+Without an external origin, connection-based Origin checking remains unchanged.
+
+Proxy trust is disabled by default and accepts only `127.0.0.1` or `::1`, compared
+against the actual socket peer, independently of client/forwarded IP headers.
+Trusted HTTP requests rewrite only scheme and port; the proxy must overwrite
+`X-Forwarded-Proto` with `https` and `X-Forwarded-Port` with the public port instead
+of forwarding client-supplied values. Preserve the public Host header. Management
+does not trust `X-Forwarded-For` or `X-Forwarded-Host`; WebSockets use the explicit
+origin allowlist independently of these HTTP rewrites.
+
+Keep the backend bound to loopback. Caddy authentication, such as mandatory client
+certificates, must protect every UI, WebSocket, API, export and download route;
+these settings do not add application login or make plain TLS an access control.
+
 The browser CSP permits same-origin scripts/styles, inline style attributes
 needed by LiveView/native anchor positioning, and only the exact hash of the
 upstream dropdown toggle handler. The latter is a temporary integration allowance

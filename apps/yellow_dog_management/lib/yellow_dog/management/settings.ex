@@ -75,7 +75,51 @@ defmodule YellowDog.Management.Settings do
     [
       server: Application.get_env(:yellow_dog_management, :http_enabled, true),
       http: Keyword.drop(listener(), [:plug]),
-      secret_key_base: secret
-    ]
+      secret_key_base: secret,
+      trusted_proxy_ip: trusted_proxy_ip()
+    ] ++ external_endpoint()
+  end
+
+  defp external_endpoint do
+    case System.get_env("YELLOW_DOG_MANAGEMENT_EXTERNAL_ORIGIN") do
+      nil ->
+        [check_origin: :conn]
+
+      origin ->
+        uri = URI.parse(origin)
+
+        unless uri.scheme == "https" and is_binary(uri.host) and
+                 Regex.match?(
+                   ~r/\Ahttps:\/\/(?:[a-zA-Z0-9.-]+|\[[a-fA-F0-9:]+\])(?::[0-9]+)?\z/,
+                   origin
+                 ) and
+                 uri.port in 1..65535 and uri.path in [nil, ""] and
+                 is_nil(uri.userinfo) and is_nil(uri.query) and is_nil(uri.fragment) do
+          raise "Management external origin must be an HTTPS origin without a path"
+        end
+
+        [
+          url: [scheme: "https", host: uri.host, port: uri.port],
+          check_origin: [URI.to_string(uri)]
+        ]
+    end
+  rescue
+    ArgumentError ->
+      reraise RuntimeError,
+              [message: "Management external origin must be an HTTPS origin without a path"],
+              __STACKTRACE__
+  end
+
+  defp trusted_proxy_ip do
+    case System.get_env("YELLOW_DOG_MANAGEMENT_TRUSTED_PROXY_IP") do
+      nil ->
+        nil
+
+      address ->
+        case :inet.parse_address(String.to_charlist(address)) do
+          {:ok, ip} when ip in [{127, 0, 0, 1}, {0, 0, 0, 0, 0, 0, 0, 1}] -> ip
+          _ -> raise "Management trusted proxy IP must be 127.0.0.1 or ::1"
+        end
+    end
   end
 end
