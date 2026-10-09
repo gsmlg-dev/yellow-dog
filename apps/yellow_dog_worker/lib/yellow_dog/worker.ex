@@ -6,6 +6,6 @@ defmodule YellowDog.Worker do
   def status(server \\ ServiceManager), do: ServiceManager.status(server)
   def check(server \\ ServiceManager), do: ServiceManager.check(server)
 
-  @doc "Internal attachment point for a future authenticated Agent; no Agent runs in Phase 1."
+  @doc "Complete-plan attachment point shared by local reload and authenticated Management polling."
   def submit_plan(plan, server \\ ServiceManager), do: ServiceManager.submit_plan(server, plan)
 end

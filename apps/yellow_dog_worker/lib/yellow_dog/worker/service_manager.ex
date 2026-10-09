@@ -40,8 +40,12 @@ defmodule YellowDog.Worker.ServiceManager do
   def handle_continue(:boot, state) do
     case LocalStore.reconcile(state.store) do
       {:ok, nil} ->
-        {_reply, state} = load_source(state)
-        {:noreply, %{state | origin: :source}}
+        if state.source == nil do
+          {:noreply, %{state | origin: :awaiting_connection}}
+        else
+          {_reply, state} = load_source(state)
+          {:noreply, %{state | origin: :source}}
+        end
 
       {:ok, plan} ->
         case validate(plan, state) do
@@ -139,7 +143,8 @@ defmodule YellowDog.Worker.ServiceManager do
       same = base_digest == digest
 
       {reply, next} =
-        if same and LocalStore.recover(state.store) == {:ok, state.plan} and
+        if same and (state.source != nil or state.plan["revision"] == plan["revision"]) and
+             LocalStore.recover(state.store) == {:ok, state.plan} and
              LocalStore.status(state.store).error == nil do
           if healthy_projection?(state.plan, state) do
             {{:ok, :unchanged}, state}

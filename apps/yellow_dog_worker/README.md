@@ -1,10 +1,10 @@
 # Yellow Dog Worker (Phase 1)
 
-An independent Linux service host. It reads the shared ConfigSpec WorkerPlan from
-local TOML, runs authoritative DNS, and recovers from its own committed snapshots.
-It has no PostgreSQL, Management URL, credentials, enrollment, Agent, or management
-connection. `YellowDog.Worker.submit_plan/2` is the sole internal future-Agent
-attachment point; it uses exactly the same path as local reload.
+An independent Linux service host. It obtains the shared ConfigSpec WorkerPlan from
+local TOML or Management, runs authoritative DNS, and recovers from its own committed snapshots.
+It has no PostgreSQL or Management application dependency. It supports either
+local TOML or an opt-in authenticated Management connection. Both submit complete
+WorkerPlans through `YellowDog.Worker.submit_plan/2`, the same path as local reload.
 
 Worker owns network-service execution, including Netboot and Identity. Management
 authors service configuration but does not run provisioning or identity/trust
@@ -13,6 +13,32 @@ architecture does not require adding the remaining services or fixing runtime
 failures. This ownership decision is not a claim of functional acceptance.
 
 ## Build and run
+
+### Managed connection
+
+Create a Worker under Management → Workers using its name, then save the generated
+bootstrap on the Worker host and set `YELLOW_DOG_WORKER_BOOTSTRAP` to that file.
+The managed file uses `worker_id`, `data_dir`, `management_url`, and `token`; it has
+no `source`. See `examples/managed-bootstrap.toml`. Protect this file as a credential.
+
+The Worker polls `POST /api/worker/connect` every 10 seconds, authenticates using
+its Bearer token, fetches only confirmed targets, and reports observed DNS states.
+Optional `poll_interval_ms` accepts 100–15000 milliseconds so regular polling stays
+within Management's 45-second contact expiry.
+Only authoritative DNS is executable. HTTPS verifies the server certificate and
+hostname. Optional `tls_ca_file`, `tls_cert_file`, and `tls_key_file` configure a
+private CA and client certificate; client certificate and key must be provided
+together. TLS file paths resolve relative to the bootstrap. Plain HTTP is allowed
+only for loopback development. Redirects are refused; replies are bounded to 1 MiB.
+
+An empty first boot waits for Management without starting services. Restart restores
+the last committed snapshot before reconnecting. Connection loss or a rejected
+target leaves existing services running; a committed stopped service stays stopped.
+Target identity, semantic digest, and monotonic revision are checked before applying.
+Token rotation requires replacing the token in the bootstrap and restarting Worker.
+Management saves and target preparation are distinct from real execution reports.
+
+### Local TOML
 
 The integrated root build uses the same `apps/yellow_dog_config_spec/` as Management.
 Build the real product directly from the repository root in the devenv shell:

@@ -158,8 +158,9 @@ yellow_dog_worker     → yellow_dog_config_spec + abyss + ex_dns
 yellow_dog_config_spec → jason + toml (pure contract; no business runtime)
 ```
 
-There is no runtime dependency between the two products. Operators transfer a
-confirmed Management export as a local Worker TOML file.
+There is no application dependency between the two products. Workers support
+local exported TOML or opt-in authenticated polling of confirmed Management
+targets; managed connection credentials and TLS files stay in the local bootstrap.
 
 ### Legacy Dependency Graph (Outside Phase 1 Build)
 

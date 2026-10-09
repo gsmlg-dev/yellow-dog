@@ -9,10 +9,28 @@ defmodule YellowDog.Worker.Application do
 
         case YellowDog.Worker.Bootstrap.load(path) do
           {:ok, options} ->
-            [
+            services = [
               {YellowDog.Worker.ServiceManager,
-               Keyword.put(options, :name, YellowDog.Worker.ServiceManager)}
+               options
+               |> Keyword.delete(:connection)
+               |> Keyword.put(:name, YellowDog.Worker.ServiceManager)}
             ]
+
+            case options[:connection] do
+              nil ->
+                services
+
+              _connection ->
+                services ++
+                  [
+                    {YellowDog.Worker.Connection,
+                     [
+                       bootstrap_path: path,
+                       worker_id: options[:worker_id],
+                       manager: YellowDog.Worker.ServiceManager
+                     ]}
+                  ]
+            end
 
           {:error, reason} ->
             raise "Worker bootstrap failed: #{inspect(reason)}"

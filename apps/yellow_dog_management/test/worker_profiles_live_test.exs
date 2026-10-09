@@ -29,89 +29,85 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
     %{conn: build_conn()}
   end
 
-  test "both unauthenticated selectors read all six pure presets without writes", %{conn: conn} do
+  test "Worker management has a name-only form and reads without writes", %{conn: conn} do
     before_read = read_snapshot()
 
     for path <- ["/server", "/management/servers"] do
-      {:ok, view, html} = live(conn, path)
-      assert_catalog(view, "worker-profile", "custom")
+      {:ok, view, _html} = live(conn, path)
       assert has_element?(view, "#worker-form[phx-hook='ResetForm']")
-      assert html =~ "descriptive catalog metadata, not service enablement"
-      assert html =~ "not observed runtime support"
-      refute has_element?(view, "input[type='password']")
-      refute has_element?(view, "#worker-form input[type='hidden'][name^='worker[']")
+      assert has_element?(view, "#worker-form input[name='worker[name]']")
+      refute has_element?(view, "#worker-form input[name='worker[id]']")
+      refute has_element?(view, "#worker-profile")
+      assert has_element?(view, "#server-selector-records")
+      refute has_element?(view, "#worker-bootstrap")
       assert get_resp_header(get(conn, path), "www-authenticate") == []
     end
 
     assert read_snapshot() == before_read
   end
 
-  test "actual registration displays every profile and resets to custom without enabling services",
+  test "name-only creation generates identity and one-time bootstrap without enabling services",
        %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/server")
+    {:ok, view, _html} = live(conn, "/management/servers")
     before_side_effects = non_worker_snapshot()
+    name = "<script>alert('name')</script> & Worker"
+    view |> form("#worker-form", worker: %{name: name}) |> render_submit()
 
-    for profile <- ProfileCatalog.list_server_profiles() do
-      profile_name = to_string(profile.name)
-      id = "profile-#{profile_name}"
-      name = "<script>alert('name')</script> & #{profile_name}"
-
-      view
-      |> form("#worker-form", worker: %{id: id, name: name, profile_name: profile_name})
-      |> render_submit()
-
-      assert_push_event(view, "reset_form", %{id: "worker-form"})
-      assert has_element?(view, "#worker-form input[name='worker[id]'][value='']")
-      assert has_element?(view, "#worker-form input[name='worker[name]'][value='']")
-      assert_catalog(view, "worker-profile", "custom")
-      assert {:ok, worker} = Domain.get_worker(id)
-      assert worker["profile_name"] == profile_name
-      assert worker["name"] == name
-      assert worker["expected_capabilities"] == ["dns"]
-      assert worker["services"] == []
-      assert worker["assignments"] == []
-      assert worker["actual_state"] == "unknown"
-      assert worker["status"] == "not_yet_connected"
-      assert {:error, %{code: "not_found"}} = Domain.get_target(id)
-      row = "#server-selector-#{id}[data-profile-name='#{profile_name}']"
-      assert has_element?(view, row)
-      assert text(view, "#{row} > td:nth-child(2)") == profile_name
-      assert text(view, "#{row} > td:nth-child(3)") == "dns"
-      assert text(view, "#{row} > td:nth-child(4)") == "not_yet_connected"
-      assert text(view, "#{row} > td:nth-child(5)") == "unknown"
-      assert has_element?(view, "#{row} a[href='/server/#{id}/dashboard']", "Manage")
-      refute has_element?(view, "#{row} script")
-      assert render(view) =~ "&lt;script&gt;"
-    end
-
-    assert length(Domain.list_workers()) == 6
+    assert_push_event(view, "reset_form", %{id: "worker-form"})
+    assert has_element?(view, "#worker-form input[name='worker[name]'][value='']")
+    [worker] = Domain.list_workers()
+    assert {:ok, _} = Ecto.UUID.cast(worker["id"])
+    assert worker["name"] == name
+    assert {:ok, detail} = Domain.get_worker(worker["id"])
+    assert detail["services"] == []
+    assert detail["assignments"] == []
+    assert detail["actual_state"] == "unknown"
+    assert worker["connection_status"] == "not_yet_connected"
+    assert {:error, %{code: "not_found"}} = Domain.get_target(worker["id"])
     assert non_worker_snapshot() == before_side_effects
+    row = "#server-selector-#{worker["id"]}"
+    assert has_element?(view, "#{row} a[href='/server/#{worker["id"]}/dashboard']", "Manage")
+    refute has_element?(view, "#{row} script")
+    assert render(view) =~ "&lt;script&gt;"
+    assert {:ok, config} = Toml.decode(text(view, "#worker-bootstrap"))
+    assert config["worker_id"] == worker["id"]
+    assert config["management_url"] == "http://www.example.com"
+    assert byte_size(config["token"]) == 43
+    refute Jason.encode!(Domain.list_workers()) =~ config["token"]
+    refute Jason.encode!(Domain.list_audit()) =~ config["token"]
+    {:ok, fresh, _} = live(conn, "/management/servers")
+    refute has_element?(fresh, "#worker-bootstrap")
   end
 
-  test "forged registration enablement flags are not profile side effects", %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/server")
+  test "forged registration identity, profile and enablement are ignored", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/management/servers")
     before_side_effects = non_worker_snapshot()
 
-    render_submit(view, "save", %{
+    [intent] =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#worker-form input[name='_submission']")
+      |> LazyHTML.attribute("value")
+
+    request = %{
       "worker" => %{
-        "id" => "profile-flags",
-        "name" => "Descriptive DHCP profile",
+        "id" => "forged-id",
+        "name" => "Name only",
         "profile_name" => "dhcp_only",
-        "expected_capabilities" => ["dhcpv4", "dhcpv6"],
-        "services" => %{"dhcpv4" => %{"desired_state" => "running"}},
-        "server_agent" => true
-      }
-    })
+        "expected_capabilities" => ["dhcpv4"],
+        "services" => %{"dhcpv4" => %{"desired_state" => "running"}}
+      },
+      "_submission" => intent
+    }
 
-    assert {:ok, worker} = Domain.get_worker("profile-flags")
-    assert worker["profile_name"] == "dhcp_only"
+    render_submit(view, "save", request)
+    render_submit(view, "save", request)
+    [worker] = Domain.list_workers()
+    assert worker["id"] != "forged-id"
+    assert worker["profile_name"] == "custom"
     assert worker["expected_capabilities"] == ["dns"]
-    assert worker["services"] == []
-    assert worker["actual_state"] == "unknown"
     assert non_worker_snapshot() == before_side_effects
-
-    assert Map.keys(hd(Domain.list_audit())["request"]) |> Enum.sort() ==
-             ~w(expected_capabilities id name profile_name)
   end
 
   test "name and profile edits preserve DNS, assignments, immutable targets and export bytes", %{
@@ -188,23 +184,14 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
     assert non_worker_snapshot() == preserved
   end
 
-  test "invalid profiles reject registration and edits atomically with an actionable error", %{
+  test "invalid profile edits reject atomically with an actionable error", %{
     conn: conn
   } do
     %{worker: worker} = configured_worker("profile-invalid")
-    {:ok, registration, _html} = live(conn, "/server")
     {:ok, edit, _html} = live(conn, "/server/#{worker["id"]}/dashboard")
     before_rejections = configuration_snapshot()
 
     for invalid <- ["unknown", "", nil, ["custom"], %{"name" => "custom"}] do
-      assert render_submit(registration, "save", %{
-               "worker" => %{
-                 "id" => "profile-rejected",
-                 "name" => "Rejected",
-                 "profile_name" => invalid
-               }
-             }) =~ "Choose a known Server profile from the catalog"
-
       assert render_submit(edit, "save_worker", %{
                "worker" => %{"name" => "Rejected rename", "profile_name" => invalid},
                "_submission" => intent(edit)

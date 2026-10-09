@@ -17,6 +17,7 @@ defmodule YellowDog.Worker.MixProject do
         {:abyss, in_umbrella: true},
         {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
+        {:mint, "~> 1.9"},
         {:toml, "== 0.7.0"},
         {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       ]
@@ -24,6 +25,9 @@ defmodule YellowDog.Worker.MixProject do
   end
 
   def application do
-    [mod: {YellowDog.Worker.Application, []}, extra_applications: [:logger, :crypto]]
+    [
+      mod: {YellowDog.Worker.Application, []},
+      extra_applications: [:logger, :crypto, :ssl]
+    ]
   end
 end

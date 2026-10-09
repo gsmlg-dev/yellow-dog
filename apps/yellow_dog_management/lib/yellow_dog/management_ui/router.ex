@@ -74,5 +74,6 @@ defmodule YellowDog.ManagementUI.Router do
     end
   end
 
+  forward "/api/worker", YellowDog.Management.WorkerAPI
   forward "/", YellowDog.Management.Web
 end

@@ -85,7 +85,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 | Category | Apps Path | Description / Key Modules |
 | :--- | :--- | :--- |
 | **Management (Phase 1)** | `apps/yellow_dog_management` | Independent PostgreSQL configuration domain, DuskMoon UI/API without built-in login on port 4270, checked-in local CSS, logical Workers, immutable versions and TOML export; no Worker service execution. |
-| **Worker (Phase 1)** | `apps/yellow_dog_worker` | Owns network-service execution, including Netboot and Identity; current implementation has local TOML, durable snapshots and authoritative DNS, no Management/PG/Agent. Other service implementations are deferred. |
+| **Worker (Phase 1)** | `apps/yellow_dog_worker` | Owns network-service execution, including Netboot and Identity; local TOML or opt-in token-authenticated Management target polling, durable snapshots and authoritative DNS; no Management application/PG/legacy Agent dependency. Other service implementations are deferred. |
 | **Shared contract** | `apps/yellow_dog_config_spec` | One pure WorkerPlan codec, validator, digest and shared fixtures for both products. |
 | **Legacy Management** | `apps/yellow_dog_management_core`, `apps/yellow_dog_server_agent`, `apps/yellow_dog_netman_agent`, `apps/yellow_dog_sync`, `apps/yellow_dog_tasks` | Retained reusable source outside the supported Phase 1 build. |
 | **Core & Store** | `apps/yellow_dog`, `apps/yellow_dog_config`, `apps/yellow_dog_store`, `apps/yellow_dog_telemetry` | Service orchestration, TOML/config lifecycle, Concord + ETS storage facades, and telemetry. |
