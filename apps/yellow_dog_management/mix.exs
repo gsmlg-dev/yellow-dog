@@ -33,8 +33,7 @@ defmodule YellowDog.Management.MixProject do
         {:phoenix_duskmoon, "~> 9.12"},
         {:gettext, "~> 1.0"},
         {:gsmlg_mac, "~> 0.1.2"},
-        # TODO(upstream): gsmlg-dev/gsmlg_umbrella#10 - ETS-only Whois must not require Concord.
-        {:gsmlg_whois, "~> 0.5"},
+        {:gsmlg_whois, "~> 0.5.2"},
         {:mmdb2_decoder, "~> 3.0"},
         {:lazy_html, "~> 0.1", only: :test},
         {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
