@@ -1,6 +1,7 @@
 defmodule YellowDog.ManagementUI.Layouts do
   use YellowDog.ManagementUI, :html
 
+  alias YellowDog.Management.BuildInfo
   alias YellowDog.ManagementUI.Components.Sidebar
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
@@ -58,7 +59,10 @@ defmodule YellowDog.ManagementUI.Layouts do
   ]
 
   defp navbar(assigns) do
-    assigns = assign(assigns, :nav_sections, @nav_sections)
+    assigns =
+      assigns
+      |> assign(:nav_sections, @nav_sections)
+      |> assign(:build_info, BuildInfo.info())
 
     ~H"""
     <.dm_navbar class="navbar-primary">
@@ -75,6 +79,25 @@ defmodule YellowDog.ManagementUI.Layouts do
           <span>Yellow</span>
           <span class="text-warning">Dog</span>
         </.link>
+        <.dm_tooltip
+          :let={trigger_attrs}
+          id="app-version-details"
+          content={version_details(@build_info)}
+          color="secondary"
+          position="bottom"
+          class="tooltip-rich"
+        >
+          <button
+            id="app-version"
+            type="button"
+            class="badge badge-secondary badge-md rounded-full shrink-0"
+            aria-label={"Version #{@build_info.display_version}; build details"}
+            aria-description={version_details(@build_info)}
+            {trigger_attrs}
+          >
+            {@build_info.display_version}
+          </button>
+        </.dm_tooltip>
       </:start_part>
       <:center_part>
         <nav aria-label="Main navigation" class="hidden lg:block">
@@ -112,6 +135,20 @@ defmodule YellowDog.ManagementUI.Layouts do
       </:end_part>
     </.dm_navbar>
     """
+  end
+
+  defp version_details(info) do
+    Enum.join(
+      [
+        "Version: #{info.version}",
+        "Environment: #{info.environment}",
+        "Git ref: #{info.git_ref}",
+        "Git commit: #{info.git_commit}",
+        "Release time: #{info.release_time}",
+        "Built at: #{info.built_at}"
+      ],
+      "\n"
+    )
   end
 
   defp nav_active?(nil, _section), do: nil

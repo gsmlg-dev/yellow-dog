@@ -29,6 +29,7 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
+      release_time: ${{ steps.release.outputs.release_time }}
     env:
       VERSION: ${{ inputs.version }}
       RELEASE_TAG: v${{ inputs.version }}
@@ -101,8 +102,11 @@ jobs:
               --verify-tag
           fi
 
-          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=${RELEASE_TAG}"
+            echo "version=${VERSION}"
+            echo "release_time=$(gh release view "${RELEASE_TAG}" --json publishedAt --jq .publishedAt)"
+          } >> "$GITHUB_OUTPUT"
 
   build-release-assets:
     name: Build ${{ matrix.product_slug }} ${{ matrix.platform }} ${{ matrix.arch }}
@@ -137,6 +141,8 @@ jobs:
       PRODUCT_SLUG: ${{ matrix.product_slug }}
       PLATFORM: ${{ matrix.platform }}
       ARCH: ${{ matrix.arch }}
+      YELLOW_DOG_BUILD_GIT_REF: ${{ needs.create-release.outputs.tag }}
+      YELLOW_DOG_RELEASE_TIME: ${{ needs.create-release.outputs.release_time }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v6
@@ -296,6 +302,9 @@ jobs:
           build-args: |
             RELEASE_VERSION=${{ env.VERSION }}
             MIX_RELEASE_NAME=${{ matrix.mix_release }}
+            YELLOW_DOG_BUILD_GIT_REF=${{ env.RELEASE_TAG }}
+            YELLOW_DOG_BUILD_GIT_COMMIT=${{ steps.image.outputs.revision }}
+            YELLOW_DOG_RELEASE_TIME=${{ needs.create-release.outputs.release_time }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ env.VERSION }}

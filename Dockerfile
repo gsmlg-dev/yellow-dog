@@ -4,6 +4,9 @@ ENV MIX_ENV=prod
 WORKDIR /app
 ARG MIX_RELEASE_NAME=yellow_dog_worker
 ARG RELEASE_VERSION=1.2.0
+ARG YELLOW_DOG_BUILD_GIT_REF
+ARG YELLOW_DOG_BUILD_GIT_COMMIT
+ARG YELLOW_DOG_RELEASE_TIME
 
 RUN case "${MIX_RELEASE_NAME}" in \
       yellow_dog_management|yellow_dog_worker) ;; \
