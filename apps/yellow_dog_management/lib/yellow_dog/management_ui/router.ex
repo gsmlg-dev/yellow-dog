@@ -29,7 +29,6 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/netman", NetmansLive, :index
       live "/management/events", EventsLive, :index
       live "/management/config", ConfigLive, :index
-      live "/management/profiles", ManagementLive.ProfilesLive, :index
       live "/management/dns/views", DnsViewsLive, :selector
       live "/server", WorkersLive, :index
       live "/server/:server_id/dashboard", WorkerLive, :show

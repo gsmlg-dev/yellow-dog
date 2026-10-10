@@ -74,12 +74,9 @@ or its legacy Agents. `/management`, `/server`, and the DNS Zone routes adapt
 existing PostgreSQL domain operations rather than calling a legacy Server.
 Logical Worker service configuration, version assignments, prepared targets,
 TOML export, and `/management/events` remain available without a live Worker.
-`/management/profiles` restores the original read-only Server/Netman preset
-catalog: six Server and seven Netman presets with exact descriptions/default flags
-and Netman apply modes. These are historical catalog metadata, not an assertion
-that the current Worker supports every preset; reading them never starts Agents,
-enables services or writes PostgreSQL. Netman network-profile editing is separate
-from these catalog presets and stores desired configuration in PostgreSQL.
+Server/Netman presets remain descriptive metadata in their respective editors;
+there is no separate Management Profiles page. Netman network-profile editing
+stores desired configuration in PostgreSQL.
 Worker registration requires only a name and defaults descriptive `profile_name`
 metadata to `custom`. Dashboard editing retains the six Server catalog profiles.
 Profile edits use the existing Worker revision CAS and never change capabilities,

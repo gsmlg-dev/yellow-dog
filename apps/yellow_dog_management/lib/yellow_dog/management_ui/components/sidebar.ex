@@ -194,12 +194,6 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
       </.link>
     </li>
     <li>
-      <.link navigate="/management/profiles" class={active?(@current_path, "/management/profiles")}>
-        <.dm_mdi name="playlist-check" class="w-5 h-5" />
-        <span>Profiles</span>
-      </.link>
-    </li>
-    <li>
       <.link navigate="/management/config" class={active?(@current_path, "/management/config")}>
         <.dm_mdi name="cog" class="w-5 h-5" />
         <span>Config</span>

@@ -4,7 +4,7 @@ defmodule YellowDog.Management.OverviewLiveTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias YellowDog.Management.{Audit, Domain, Idempotency, ProfileCatalog, Repo}
+  alias YellowDog.Management.{Audit, Domain, Idempotency, Repo}
 
   @endpoint YellowDog.ManagementUI.Endpoint
 
@@ -14,12 +14,11 @@ defmodule YellowDog.Management.OverviewLiveTest do
     %{conn: build_conn()}
   end
 
-  test "empty overview reads pure catalogs without login, writes or runtime fabrication", %{
-    conn: conn
-  } do
+  test "empty overview renders designed resources without login, writes or runtime fabrication",
+       %{
+         conn: conn
+       } do
     before_read = footprint()
-    profiles = ProfileCatalog.list_server_profiles() ++ ProfileCatalog.list_netman_profiles()
-    assert length(profiles) == 13
 
     for path <- ["/", "/management"] do
       {:ok, view, html} = live(conn, path)
@@ -27,20 +26,21 @@ defmodule YellowDog.Management.OverviewLiveTest do
       assert has_element?(view, "#management-worker-count", "0")
       assert has_element?(view, "#management-netman-count", "0")
       assert has_element?(view, "#management-zone-count", "0")
-      assert has_element?(view, "#management-profile-count", to_string(length(profiles)))
+      refute has_element?(view, "#management-profile-count")
+      refute has_element?(view, "a[href='/management/profiles']")
+      refute has_element?(view, "#management-overview h2", "Profiles")
       assert has_element?(view, "#management-recent-event-count", "0")
       assert has_element?(view, "#management-recent-events-empty", "No management events yet")
       refute has_element?(view, "#management-recent-events [data-event-id]")
       refute has_element?(view, "input[type='password'], #login")
       assert html =~ "Actual runtime state is unknown"
-      assert html =~ "Read-only Server and Netman presets"
+      refute html =~ "Read-only Server and Netman presets"
 
       for {path, label} <- [
             {"/management/servers", "Manage Servers"},
             {"/management/netman", "Manage Netman"},
             {"/management/zones", "Manage DNS Zones"},
             {"/management/config", "Manage Configuration"},
-            {"/management/profiles", "View Profiles"},
             {"/management/events", "View All Events"}
           ] do
         assert has_element?(view, "#management-overview a[href='#{path}']", label)
@@ -49,9 +49,6 @@ defmodule YellowDog.Management.OverviewLiveTest do
       view |> element("#management-overview-refresh") |> render_click()
       assert footprint() == before_read
     end
-
-    assert ProfileCatalog.list_server_profiles() ++ ProfileCatalog.list_netman_profiles() ==
-             profiles
 
     started = Enum.map(Application.started_applications(), &elem(&1, 0))
 
@@ -76,7 +73,7 @@ defmodule YellowDog.Management.OverviewLiveTest do
     assert has_element?(view, "#management-worker-count", "2")
     assert has_element?(view, "#management-netman-count", "1")
     assert has_element?(view, "#management-zone-count", "1")
-    assert has_element?(view, "#management-profile-count", "13")
+    refute has_element?(view, "#management-profile-count")
     assert has_element?(view, "#management-recent-event-count", "5")
 
     for event <- Enum.drop(events, 5) do
@@ -129,7 +126,7 @@ defmodule YellowDog.Management.OverviewLiveTest do
     assert has_element?(view, "#management-worker-count", "2")
     assert has_element?(view, "#management-netman-count", "1")
     assert has_element?(view, "#management-zone-count", "1")
-    assert has_element?(view, "#management-profile-count", "13")
+    refute has_element?(view, "#management-profile-count")
     refute has_element?(view, "#management-recent-events-empty")
     assert footprint() == before_refresh
     render_click(view, "refresh", %{"actor" => "forged", "operation" => "create_worker"})

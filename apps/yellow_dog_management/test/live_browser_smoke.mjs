@@ -137,13 +137,12 @@ try {
   await until(() => evaluate('document.documentElement.dataset.theme === "sunshine"'), 'Sunshine theme did not activate');
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.navbar-center a')).color !== getComputedStyle(document.querySelector('.navbar')).backgroundColor`), true, 'Navigation text must contrast with the primary header');
 
-  await navigate('/management/profiles');
-  assert.equal(await evaluate('document.querySelectorAll("#management-server-profiles > tr").length'), 6);
-  assert.equal(await evaluate('document.querySelectorAll("#management-netman-profiles > tr").length'), 7);
-  const profileText = await evaluate('document.body.innerText');
-  for (const name of ['cloud_dns', 'local_network', 'dns_only', 'dhcp_only', 'netboot_only', 'custom', 'local_server', 'cloud_server', 'bare_metal', 'vm', 'vpn_gateway', 'observe_only']) assert.ok(profileText.includes(name), `Original preset missing: ${name}`);
-  assert.equal(await evaluate('document.querySelector("#workspace form, #workspace input[type=password]") === null'), true, 'Profiles remains a read-only catalog without login');
-  assert.deepEqual(await api('/workers'), [], 'Reading Profiles must not register a Worker');
+  assert.equal(await evaluate('document.querySelector("a[href=\'/management/profiles\'], #management-profile-count") === null'), true, 'Profiles must not appear in navigation or the overview');
+  const removedProfiles = await fetch(`${base}/management/profiles`, { signal: AbortSignal.timeout(10000) });
+  assert.equal(removedProfiles.status, 404, 'Profiles route must be removed');
+  await navigate('/management/events');
+  assert.equal(await evaluate('!!document.querySelector("#management-events")'), true);
+  assert.deepEqual(await api('/workers'), [], 'Reading Management pages must not register a Worker');
   await navigate('/tool/whois');
   await submit('#whois-lookup-form', { query: ' ' });
   await until(() => evaluate('document.querySelector("#whois-lookup-form input").value === "" && !document.querySelector("#whois-lookup-form input").disabled'), 'Blank WHOIS query did not reset without blocking the form');

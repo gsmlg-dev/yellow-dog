@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.OverviewLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Domain, ProfileCatalog}
+  alias YellowDog.Management.Domain
 
   @impl true
   def mount(_params, _session, socket) do
@@ -18,9 +18,6 @@ defmodule YellowDog.ManagementUI.OverviewLive do
       workers: Domain.list_workers(),
       netmans: Domain.list_netmans(),
       zones: Domain.list_zones(),
-      profile_count:
-        length(ProfileCatalog.list_server_profiles()) +
-          length(ProfileCatalog.list_netman_profiles()),
       recent_events: Enum.take(Domain.list_audit(), 5)
     )
   end
@@ -61,13 +58,6 @@ defmodule YellowDog.ManagementUI.OverviewLive do
               Logical network managers; actual runtime state remains unknown.
             </p>
             <.link navigate="/management/netman" class="btn btn-primary">Manage Netman</.link>
-          </.card>
-          <.card title="Profiles">
-            <p class="text-3xl font-bold" id="management-profile-count">{@profile_count}</p>
-            <p class="mb-4 text-on-surface-variant">
-              Read-only Server and Netman presets; not actual Worker runtime support.
-            </p>
-            <.link navigate="/management/profiles" class="btn btn-primary">View Profiles</.link>
           </.card>
           <.card title="Recent Events">
             <p class="text-3xl font-bold" id="management-recent-event-count">

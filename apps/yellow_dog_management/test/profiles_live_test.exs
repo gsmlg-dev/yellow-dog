@@ -5,7 +5,6 @@ defmodule YellowDog.Management.ProfilesLiveTest do
   import Phoenix.LiveViewTest
 
   alias YellowDog.Management.{Audit, Domain, Idempotency, ProfileCatalog, Repo}
-  alias YellowDog.ManagementUI.ManagementLive.ProfilesLive
 
   @endpoint YellowDog.ManagementUI.Endpoint
 
@@ -71,74 +70,34 @@ defmodule YellowDog.Management.ProfilesLiveTest do
     assert ProfileCatalog.list_netman_profiles() == expected
   end
 
-  test "the page loads the original catalog tables with no Workers or login", %{conn: conn} do
-    assert Code.ensure_loaded?(ProfilesLive)
-    assert Domain.list_workers() == []
-    {:ok, view, _html} = live(conn, "/management/profiles")
-    assert has_element?(view, "h1", "Management Profiles")
-    assert has_element?(view, "h2", "Server Profiles")
-    assert has_element?(view, "h2", "Netman Profiles")
-
-    for {{name, description, enabled}, row_number} <- Enum.with_index(@server_specs, 1) do
-      row = "#management-server-profiles > tr:nth-child(#{row_number})"
-      assert has_element?(view, "#{row} > td:nth-child(1)", to_string(name))
-      assert has_element?(view, "#{row} > td:nth-child(2)", description)
-      assert has_element?(view, "#{row} > td:nth-child(3)", defaults(enabled))
-    end
-
-    for {{name, description, enabled, apply_mode}, row_number} <-
-          Enum.with_index(@netman_specs, 1) do
-      row = "#management-netman-profiles > tr:nth-child(#{row_number})"
-      assert has_element?(view, "#{row} > td:nth-child(1)", to_string(name))
-      assert has_element?(view, "#{row} > td:nth-child(2)", description)
-      assert has_element?(view, "#{row} > td:nth-child(3)", defaults(enabled))
-      assert has_element?(view, "#{row} > td:nth-child(4)", to_string(apply_mode))
-    end
-
-    refute has_element?(view, "#management-server-profiles > tr:nth-child(7)")
-    refute has_element?(view, "#management-netman-profiles > tr:nth-child(8)")
-    refute has_element?(view, "input[type='password']")
-  end
-
-  test "catalog metadata is explicitly read-only and never starts agents or changes desired state",
-       %{
-         conn: conn
-       } do
-    assert Code.ensure_loaded?(ProfilesLive)
-
+  test "the removed Profiles route returns 404 without changing durable state", %{conn: conn} do
     before_read = {
       Domain.list_workers(),
       Repo.aggregate(Audit, :count),
       Repo.aggregate(Idempotency, :count)
     }
 
-    {:ok, view, html} = live(conn, "/management/profiles")
-    assert has_element?(view, "#management-profiles-help", "Read-only catalog metadata")
-    assert html =~ "not actual Worker runtime support"
-    assert html =~ "does not start agents or enable services"
-    refute has_element?(view, "#management-profiles form")
-    refute has_element?(view, "#management-profiles button")
+    refute Enum.any?(Phoenix.Router.routes(YellowDog.ManagementUI.Router), fn route ->
+             route.path == "/management/profiles"
+           end)
+
+    assert get(conn, "/management/profiles").status == 404
 
     assert before_read == {
              Domain.list_workers(),
              Repo.aggregate(Audit, :count),
              Repo.aggregate(Idempotency, :count)
            }
+  end
 
-    started_apps = Enum.map(Application.started_applications(), &elem(&1, 0))
-
-    for legacy_app <- [
-          :yellow_dog_console,
-          :yellow_dog_management_core,
-          :yellow_dog_server_agent,
-          :yellow_dog_netman_agent
-        ] do
-      refute legacy_app in started_apps
+  test "Management pages do not expose Profiles in sidebar navigation", %{conn: conn} do
+    for path <- ["/management", "/management/servers", "/management/netman", "/management/events"] do
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, ".yd-sidebar a[href='/management']", "Overview")
+      refute has_element?(view, "a[href='/management/profiles']")
+      refute has_element?(view, ".yd-sidebar a", "Profiles")
     end
   end
 
   defp flags(keys, enabled), do: Map.new(keys, &{&1, &1 in enabled})
-
-  defp defaults([]), do: "—"
-  defp defaults(enabled), do: enabled |> Enum.map(&to_string/1) |> Enum.sort() |> Enum.join(", ")
 end

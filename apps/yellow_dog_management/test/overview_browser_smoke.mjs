@@ -103,7 +103,6 @@ async function verifyOverview(events) {
     worker_count: Number(document.querySelector('#management-worker-count').textContent.trim()),
     netman_count: Number(document.querySelector('#management-netman-count').textContent.trim()),
     zone_count: Number(document.querySelector('#management-zone-count').textContent.trim()),
-    profile_count: Number(document.querySelector('#management-profile-count').textContent.trim()),
     event_count: Number(document.querySelector('#management-recent-event-count').textContent.trim()),
     event_ids: Array.from(document.querySelectorAll('#management-recent-events [data-event-id]')).map(row => row.dataset.eventId),
     events: Array.from(document.querySelectorAll('#management-recent-events [data-event-id]')).map(row => ({ id: row.dataset.eventId, operation: row.children[0].textContent.trim(), actor: row.children[1].textContent.trim(), inserted_at: row.children[2].textContent.trim() }))
@@ -111,7 +110,7 @@ async function verifyOverview(events) {
   assert.equal(result.worker_count, workers.length);
   assert.equal(result.netman_count, netmans.length);
   assert.equal(result.zone_count, zones.length);
-  assert.equal(result.profile_count, 13);
+  assert.equal(await evaluate(`document.querySelector('#management-profile-count, a[href="/management/profiles"]') === null`), true, 'Profiles must not appear in the overview or navigation');
   assert.equal(result.event_count, events.length);
   assert.deepEqual(result.event_ids, events.map(event => event.id));
   assert.deepEqual(result.events, events);
@@ -119,7 +118,7 @@ async function verifyOverview(events) {
     const text = await evaluate(`document.querySelector('#management-recent-events [data-event-id="${event.id}"]').textContent`);
     assert.ok(text.includes(event.operation) && text.includes(event.actor), JSON.stringify(event));
   }
-  for (const path of ['/management/profiles', '/management/events', '/management/servers', '/management/netman', '/management/zones', '/management/config']) {
+  for (const path of ['/management/events', '/management/servers', '/management/netman', '/management/zones', '/management/config']) {
     assert.equal(await evaluate(`!!document.querySelector('#management-overview a[href="${path}"]')`), true, `Missing overview link: ${path}`);
   }
   return result;
@@ -214,10 +213,8 @@ try {
   const evidence = await verifyOverview(events);
   const outcomes = await verifyOutcomes();
   await navigate('/management', '#management-overview');
-  await evaluate(`document.querySelector('#management-overview a[href="/management/profiles"]').click()`);
-  await until(() => evaluate(`location.pathname === '/management/profiles' && !!document.querySelector('#management-server-profiles') && !!document.querySelector('.phx-connected')`), 'Overview Profiles navigation did not connect');
-  assert.equal(await evaluate(`document.querySelectorAll('#management-server-profiles > tr').length + document.querySelectorAll('#management-netman-profiles > tr').length`), 13);
-  await navigate('/management', '#management-overview');
+  const removedProfiles = await fetch(`${base}/management/profiles`, { signal: AbortSignal.timeout(10000) });
+  assert.equal(removedProfiles.status, 404, 'Profiles route must be removed');
   await evaluate(`document.querySelector('#management-overview a[href="/management/events"]').click()`);
   await until(() => evaluate(`location.pathname === '/management/events' && !!document.querySelector('#management-events') && !!document.querySelector('.phx-connected')`), 'Overview Events navigation did not connect');
   await navigate('/management', '#management-overview');
@@ -226,7 +223,7 @@ try {
   assert.deepEqual(await verifyOverview(events), evidence, 'Overview fields changed during read-only navigation');
   assert.deepEqual(errors, []);
   await writeFile(process.env.MANAGEMENT_OVERVIEW_EVIDENCE, JSON.stringify({ ...evidence, outcomes }));
-  console.log('PASS Chromium Overview/Events: actual counts, 13 presets, latest-five audits, grouped desired events, committed/rejected commands and details, read-only refresh/navigation, mobile/noauth and unknown runtime state');
+  console.log('PASS Chromium Overview/Events: actual counts, removed Profiles, latest-five audits, grouped desired events, committed/rejected commands and details, read-only refresh/navigation, mobile/noauth and unknown runtime state');
 } finally {
   for (const request of pending.values()) { clearTimeout(request.timeout); request.reject(new Error('Browser closed')); }
   socket?.close();
