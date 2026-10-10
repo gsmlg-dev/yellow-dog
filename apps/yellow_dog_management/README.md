@@ -57,7 +57,7 @@ devenv shell -- npm run assets.management
 ```
 
 The source is `apps/yellow_dog_management/assets/management.css`. Tailwind CSS and
-its CLI are pinned together to `4.1.18`; the compiler bundles DuskMoon core's
+its CLI are pinned together to `4.3.3`; the compiler bundles DuskMoon core's
 plugin, Sunshine/Moonlight themes, and components without overriding their tokens
 or internals. Management HEEx, HTML, JavaScript, and the Phoenix DuskMoon component
 source are scanned for utility classes. Bun bundles the Phoenix/LiveView clients

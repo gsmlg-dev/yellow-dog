@@ -8,13 +8,13 @@
     "assets.management": "tailwindcss --input apps/yellow_dog_management/assets/management.css --output apps/yellow_dog_management/priv/static/management.css --minify && bun build apps/yellow_dog_management/assets/app.js --outfile apps/yellow_dog_management/priv/static/management-live.js --minify"
   },
   "dependencies": {
-    "@duskmoon-dev/art-elements": "1.7.2",
-    "@duskmoon-dev/core": "1.18.1",
-    "@duskmoon-dev/css-art": "1.18.1",
-    "@duskmoon-dev/elements": "1.7.2"
+    "@duskmoon-dev/art-elements": "1.9.1",
+    "@duskmoon-dev/core": "1.20.4",
+    "@duskmoon-dev/css-art": "1.20.4",
+    "@duskmoon-dev/elements": "1.9.1"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "4.1.18",
-    "tailwindcss": "4.1.18"
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3"
   }
 }

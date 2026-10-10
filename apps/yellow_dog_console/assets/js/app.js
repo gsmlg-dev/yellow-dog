@@ -6,6 +6,8 @@ import { LiveSocket } from "phoenix_live_view";
 
 // Duskmoon hooks and element registration
 import * as DuskmoonHooks from "phoenix_duskmoon/hooks";
+// TODO(upstream): duskmoon-dev/duskmoon-elements#85
+// elements@1.9.1 still installs vulnerable KaTeX markdown dependencies.
 // WORKAROUND(upstream): duskmoon-dev/duskmoon-elements#50
 // @duskmoon-dev/elements@1.2.0 registerAll() imports el-code-engine eagerly and
 // crashes before LiveView hooks mount. The console currently uses CSS/HEEx
