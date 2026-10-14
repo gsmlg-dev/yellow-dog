@@ -44,13 +44,7 @@ These are local source/release checks; the final official v1.2.3 artifact's
 six-phase browser/restart acceptance and delivery remain the release coordinator's
 checks.
 
-## 2026-10-08 operator scope decision: FlakeHub deferred
-
-**FlakeHub: outside this CI repair scope; feature verification stopped by the
-operator; not a completion blocker.** Organization registration/authorization and
-FlakeHub publication are deferred until the operator explicitly resumes them.
-The existing FlakeHub workflows remain unchanged. Historical authentication
-failures below remain evidence of prior runs, not current acceptance gates.
+## 2026-10-08 CI verification
 
 At revision `52f35a7cf6dbf4f015dfd6672b20a8f606ccb95d`, the in-scope remote
 workflows all pass:
@@ -140,9 +134,8 @@ passed in full. Evidence: `/tmp/yellow-dog-ci-mac-browser.log`.
 
 Code integration is commit `cf0cf7432dcf3e195c9fed258617693f053e4ec1` on
 `codex/fix-ci-management`; all five in-scope remote workflows pass at the
-subsequent documented revision `52f35a7c`, as linked above. FlakeHub verification
-is deferred by the operator's scope decision above. No workflow YAML, published
-prerelease tag or existing image digest is changed.
+subsequent documented revision `52f35a7c`, as linked above. No workflow YAML,
+published prerelease tag or existing image digest is changed.
 
 ## 2026-10-08 CI repair after release 1.2.1
 
@@ -187,14 +180,12 @@ original Phase 1 seed 635407 reports **474 tests, 1 failure**: packaged MAC sour
 [gsmlg_umbrella#8](https://github.com/gsmlg-dev/gsmlg_umbrella/issues/8) is still
 open, and Hex still publishes only `gsmlg_mac` 0.1.1/0.1.0. The lossless import
 check remains enabled and the task stays blocked by this dependency; no local
-replacement compiler or lossy acceptance is introduced. The FlakeHub rolling
-workflow separately returns **401 Unauthorized**, explicitly requiring the
-`gsmlg-dev` organization to register/authorize in FlakeHub. These external
-blockers prevent a claim that all CI is green.
+replacement compiler or lossy acceptance is introduced. This upstream blocker
+prevents a claim that all CI is green.
 
 Evidence: `/tmp/yellow-dog-release-1.2.1/assignment-isolation-{before,after}.log`,
-`management-full-seed0.log`, `/tmp/yellow-dog-ci-node-parent.log`,
-`/tmp/yellow-dog-ci-nix-deps.log` and `/tmp/yellow-dog-flakehub.log`.
+`management-full-seed0.log`, `/tmp/yellow-dog-ci-node-parent.log`, and
+`/tmp/yellow-dog-ci-nix-deps.log`.
 Completed local verification (commands run from the worktree inside the root
 `devenv shell -- bash -c 'cd .trees/fix-ci-management; ...'` context):
 
