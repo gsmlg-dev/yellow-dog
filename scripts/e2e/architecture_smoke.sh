@@ -8,6 +8,8 @@ export ERL_FLAGS="${ERL_FLAGS:-+S 2:2 +A 2}"
 
 mix compile --warnings-as-errors
 for release in yellow_dog_management yellow_dog_worker; do
+  # --overwrite leaves obsolete applications in a reused release directory.
+  rm -rf "${MIX_BUILD_PATH:-$repo_root/_build/prod}/rel/$release"
   mix release "$release" --overwrite
 done
 

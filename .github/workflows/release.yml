@@ -193,6 +193,8 @@ jobs:
         run: |
           set -euo pipefail
           mix compile --warnings-as-errors
+          # Cached release directories retain removed dependencies with --overwrite.
+          rm -rf "_build/prod/rel/${MIX_RELEASE_NAME}"
           mix release "${MIX_RELEASE_NAME}" --version "${VERSION}" --overwrite
 
       - name: Package release tarball

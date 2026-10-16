@@ -72,7 +72,7 @@ def start():
         if proc.poll() is not None:
             raise AssertionError(f"release exited {proc.returncode}; logs in {root}")
         try:
-            if "PASS" in rpc('IO.puts(if Process.whereis(YellowDog.Worker.ServiceManager), do: "PASS", else: "WAIT")'):
+            if "PASS" in rpc('IO.puts(if YellowDog.Worker.status().ready, do: "PASS", else: "WAIT")'):
                 return
         except (AssertionError, subprocess.TimeoutExpired):
             pass
