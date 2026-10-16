@@ -3,7 +3,7 @@ defmodule YellowDog.Dns.Handler.TCPTest do
   Comprehensive unit tests for YellowDog.Dns.Handler.TCP.
 
   Tests cover:
-  - ThousandIsland.Handler behaviour compliance
+  - Hell.Handler behaviour compliance
   - DNS over TCP message framing (RFC 1035: 2-byte length prefix)
   - Buffer management for incomplete messages
   - Multiple message handling (pipelining)
@@ -20,7 +20,7 @@ defmodule YellowDog.Dns.Handler.TCPTest do
   alias DNS.Message.Question
 
   describe "Handler behaviour compliance" do
-    test "handler module uses ThousandIsland.Handler behaviour" do
+    test "handler module uses Hell.Handler behaviour" do
       assert Code.ensure_loaded?(Handler)
     end
 
@@ -225,10 +225,10 @@ defmodule YellowDog.Dns.Handler.TCPTest do
       {:module, _} = Code.ensure_loaded(Handler)
     end
 
-    test "uses ThousandIsland.Handler behaviour" do
+    test "uses Hell.Handler behaviour" do
       Code.ensure_loaded!(Handler)
       behaviours = Handler.__info__(:attributes)[:behaviour] || []
-      assert ThousandIsland.Handler in behaviours
+      assert Hell.Handler in behaviours
     end
 
     test "implements GenServer callbacks for handle_info" do

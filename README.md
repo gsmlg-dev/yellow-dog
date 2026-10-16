@@ -138,7 +138,7 @@ devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_overview.s
 ### Management Backups
 
 `/system/backups` provides optional labels (at most 128 UTF-8 bytes), catalog
-metadata, durable Oban creation/deletion jobs, asynchronous verification, and
+metadata, durable Styx creation/deletion jobs, asynchronous verification, and
 downloads at `/api/backups/:id/download`. Pending/deleting states refresh
 automatically; queued work is not successful completion. Deletion requires
 confirmation, can be canceled, and removes only the selected backup package,

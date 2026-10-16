@@ -364,7 +364,7 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
       Enum.map([Service, Assignment, Target, Zone, Rrset, ResourceVersion], &records/1),
       Domain.list_netmans(),
       Domain.list_tasks(),
-      Repo.all(Oban.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)
+      Repo.all(Styx.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)
     }
   end
 

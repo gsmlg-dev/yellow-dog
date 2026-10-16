@@ -141,7 +141,7 @@ defmodule YellowDog.Management.TaskArtifacts do
 
            claim =
              Repo.one!(
-               from(queued in Oban.Job,
+               from(queued in Styx.Job,
                  prefix: "management_jobs",
                  where: queued.id == ^job.id,
                  lock: "FOR UPDATE"

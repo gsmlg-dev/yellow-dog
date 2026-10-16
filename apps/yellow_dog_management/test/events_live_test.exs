@@ -402,6 +402,6 @@ defmodule YellowDog.Management.EventsLiveTest do
   defp footprint do
     {Domain.list_workers(), Domain.list_netmans(), Domain.list_zones(),
      Repo.all(Audit) |> Enum.sort_by(& &1.id), Repo.all(Idempotency) |> Enum.sort_by(& &1.key),
-     Repo.all(Oban.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)}
+     Repo.all(Styx.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)}
   end
 end

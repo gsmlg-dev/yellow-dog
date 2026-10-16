@@ -307,7 +307,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     })
 
     assert [job] = Domain.list_task_jobs("ip_city")
-    canonical = Repo.get!(Oban.Job, job["id"], prefix: "management_jobs")
+    canonical = Repo.get!(Styx.Job, job["id"], prefix: "management_jobs")
     assert canonical.args["source_url"] != "http://attacker.invalid/"
     refute Map.has_key?(canonical.args, "path")
     assert Domain.list_task_jobs("ip_country") == []
@@ -326,10 +326,10 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     view |> element("#ip-database-download-city") |> render_click()
     assert has_element?(view, "#ip-database-download-result")
     before_failure = Domain.list_audit()
-    Repo.query!("ALTER TABLE management_jobs.oban_jobs DROP CONSTRAINT positive_max_attempts")
+    Repo.query!("ALTER TABLE management_jobs.styx_jobs DROP CONSTRAINT positive_max_attempts")
 
     Repo.query!(
-      "ALTER TABLE management_jobs.oban_jobs ADD CONSTRAINT positive_max_attempts CHECK (false) NOT VALID"
+      "ALTER TABLE management_jobs.styx_jobs ADD CONSTRAINT positive_max_attempts CHECK (false) NOT VALID"
     )
 
     view |> element("#ip-database-download-country") |> render_click()
@@ -354,10 +354,10 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
         "task_key" => "ip_city",
         "source_url" => "http://127.0.0.1:1/missing"
       })
-      |> Oban.insert()
+      |> Styx.insert()
 
     assert %{failure: 1, success: 0} =
-             Oban.drain_queue(queue: :management_sync, with_safety: true)
+             Styx.drain_queue(queue: :management_sync, with_safety: true)
 
     view |> element("#ip-database-refresh") |> render_click()
     render_async(view)
@@ -421,7 +421,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
 
     job =
       Repo.insert!(
-        %Oban.Job{
+        %Styx.Job{
           worker: "YellowDog.Management.SyncGeoIPWorker",
           queue: "management_sync",
           args: %{"task_key" => "ip_#{type}", "source_url" => url},

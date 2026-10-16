@@ -2,7 +2,7 @@ defmodule YellowDog.Management.Repo.Migrations.CreateManagementTasks do
   use Ecto.Migration
 
   def up do
-    Oban.Migration.up(prefix: "management_jobs")
+    Styx.Migration.up(prefix: "management_jobs")
 
     create table(:management_task_definitions, primary_key: false) do
       add :key, :string, primary_key: true
@@ -48,7 +48,7 @@ defmodule YellowDog.Management.Repo.Migrations.CreateManagementTasks do
       add :token, :binary_id, null: false
 
       add :job_id,
-          references(:oban_jobs, prefix: "management_jobs", type: :bigint, on_delete: :restrict),
+          references(:styx_jobs, prefix: "management_jobs", type: :bigint, on_delete: :restrict),
           null: false
 
       add :attempt, :integer, null: false
@@ -61,7 +61,7 @@ defmodule YellowDog.Management.Repo.Migrations.CreateManagementTasks do
 
     create table(:management_task_receipts, primary_key: false) do
       add :job_id,
-          references(:oban_jobs, prefix: "management_jobs", type: :bigint, on_delete: :restrict),
+          references(:styx_jobs, prefix: "management_jobs", type: :bigint, on_delete: :restrict),
           primary_key: true
 
       add :task_key,
@@ -86,6 +86,6 @@ defmodule YellowDog.Management.Repo.Migrations.CreateManagementTasks do
     drop table(:management_geoip_selections)
     drop table(:management_geoip_artifacts)
     drop table(:management_task_definitions)
-    Oban.Migration.down(prefix: "management_jobs")
+    Styx.Migration.down(prefix: "management_jobs")
   end
 end

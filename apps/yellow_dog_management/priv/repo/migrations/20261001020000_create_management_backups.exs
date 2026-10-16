@@ -8,7 +8,7 @@ defmodule YellowDog.Management.Repo.Migrations.CreateManagementBackups do
       add :state, :string, null: false, default: "pending"
 
       add :job_id,
-          references(:oban_jobs, prefix: "management_jobs", type: :bigint, on_delete: :restrict)
+          references(:styx_jobs, prefix: "management_jobs", type: :bigint, on_delete: :restrict)
 
       add :manifest, :map
       add :digest, :string

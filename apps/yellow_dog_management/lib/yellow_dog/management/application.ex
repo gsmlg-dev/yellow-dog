@@ -9,7 +9,7 @@ defmodule YellowDog.Management.Application do
       {Phoenix.PubSub, name: YellowDog.ManagementUI.PubSub},
       LogStream,
       {MacDatabase, path: Settings.mac_database_path()},
-      {Oban, Application.fetch_env!(:yellow_dog_management, Oban)},
+      {Styx, Application.fetch_env!(:yellow_dog_management, Styx)},
       {YellowDog.Management.TaskScheduler, []},
       {YellowDog.ManagementUI.Endpoint, Settings.endpoint()}
     ]

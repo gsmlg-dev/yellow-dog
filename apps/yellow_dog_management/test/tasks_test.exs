@@ -71,7 +71,7 @@ defmodule YellowDog.Management.TasksTest do
     assert YellowDog.Management.Tasks.due(~U[2026-10-01 04:04:00Z]) == []
     assert [{:ok, first}] = YellowDog.Management.Tasks.due(~U[2026-10-01 04:05:30Z])
     assert [{:ok, ^first}] = YellowDog.Management.Tasks.due(~U[2026-10-01 04:05:59Z])
-    assert Repo.aggregate(from(job in Oban.Job, prefix: "management_jobs"), :count) == 1
+    assert Repo.aggregate(from(job in Styx.Job, prefix: "management_jobs"), :count) == 1
 
     assert {:error, %{code: "not_due"}} =
              Domain.mutate(

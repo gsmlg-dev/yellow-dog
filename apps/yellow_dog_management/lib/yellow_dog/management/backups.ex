@@ -36,7 +36,7 @@ defmodule YellowDog.Management.Backups do
     backup = Repo.insert!(%Backup{label: label})
 
     {:ok, job} =
-      BackupWorker.new(%{"backup_id" => backup.id, "operation" => "create"}) |> Oban.insert()
+      BackupWorker.new(%{"backup_id" => backup.id, "operation" => "create"}) |> Styx.insert()
 
     backup |> Ecto.Changeset.change(job_id: job.id) |> Repo.update!() |> backup_map()
   end
@@ -51,7 +51,7 @@ defmodule YellowDog.Management.Backups do
 
       state when state in ~w(ready failed) ->
         {:ok, job} =
-          BackupWorker.new(%{"backup_id" => backup.id, "operation" => "delete"}) |> Oban.insert()
+          BackupWorker.new(%{"backup_id" => backup.id, "operation" => "delete"}) |> Styx.insert()
 
         backup
         |> Ecto.Changeset.change(state: "deleting", job_id: job.id, error: nil)
@@ -319,7 +319,7 @@ defmodule YellowDog.Management.Backups do
   defp claim!(job) do
     claim =
       Repo.one!(
-        from(queued in Oban.Job,
+        from(queued in Styx.Job,
           prefix: "management_jobs",
           where: queued.id == ^job.id,
           lock: "FOR UPDATE"
@@ -342,7 +342,7 @@ defmodule YellowDog.Management.Backups do
   end
 
   defp effective_state(backup) do
-    job = if backup.job_id, do: Repo.get(Oban.Job, backup.job_id, prefix: "management_jobs")
+    job = if backup.job_id, do: Repo.get(Styx.Job, backup.job_id, prefix: "management_jobs")
     effective_state(backup, job)
   end
 
@@ -354,7 +354,7 @@ defmodule YellowDog.Management.Backups do
   end
 
   defp backup_map(backup) do
-    job = if backup.job_id, do: Repo.get(Oban.Job, backup.job_id, prefix: "management_jobs")
+    job = if backup.job_id, do: Repo.get(Styx.Job, backup.job_id, prefix: "management_jobs")
     last_error = if job, do: List.last(job.errors || [])
 
     %{

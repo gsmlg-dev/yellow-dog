@@ -3,7 +3,7 @@ defmodule YellowDog.Dns.Supervisor do
   Top-level supervisor for the DNS subsystem.
 
   Started by `YellowDog.Dns.Application`, this supervisor manages:
-  - `YellowDog.Dns.Server` - Network I/O servers (Abyss UDP + ThousandIsland TCP)
+  - `YellowDog.Dns.Server` - Network I/O servers (Abyss UDP + Hell TCP)
   - `YellowDog.Dns.ZoneController` - Supervises zone processes
   - `YellowDog.Dns.ViewManager` - Manages DNS views and routing
   - `YellowDog.Dns.ConnectionManager` - Manages connection processes for DNS resolution
@@ -13,7 +13,7 @@ defmodule YellowDog.Dns.Supervisor do
       YellowDog.Dns.Supervisor
       ├── YellowDog.Dns.Server (Supervisor)
       │   ├── Abyss (UDP Server)
-      │   └── ThousandIsland (TCP Server)
+      │   └── Hell (TCP Server)
       ├── ConnectionManager (DynamicSupervisor)
       │   └── Connection Processes (per-connection)
       ├── ViewManager (Supervisor)
@@ -126,7 +126,7 @@ defmodule YellowDog.Dns.Supervisor do
       # ConnectionManager - manages per-connection processes
       {YellowDog.Dns.ConnectionManager, name: YellowDog.Dns.ConnectionManager},
 
-      # Server - network I/O (Abyss UDP + ThousandIsland TCP)
+      # Server - network I/O (Abyss UDP + Hell TCP)
       {YellowDog.Dns.Server, Keyword.merge(opts, port: port, listen: listen)},
 
       # Observability services

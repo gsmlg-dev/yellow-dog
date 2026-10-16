@@ -4,7 +4,7 @@ defmodule YellowDog.Dns.Server do
 
   Supervises the network servers:
   - `Abyss` - UDP server for DNS queries
-  - `ThousandIsland` - TCP server for DNS queries
+  - `Hell` - TCP server for DNS queries
 
   This supervisor is a child of `YellowDog.Dns.Supervisor` and handles only
   network I/O. All DNS resolution logic is handled by ConnectionProcess,
@@ -13,7 +13,7 @@ defmodule YellowDog.Dns.Server do
   ## Handler Registration
 
   - UDP: `YellowDog.Dns.Handler.UDP` is registered with Abyss
-  - TCP: `YellowDog.Dns.Handler.TCP` is registered with ThousandIsland
+  - TCP: `YellowDog.Dns.Handler.TCP` is registered with Hell
 
   On each incoming packet/connection, handlers:
   1. Call ConnectionManager to start a connection process
@@ -79,10 +79,10 @@ defmodule YellowDog.Dns.Server do
         max_packet_size: 512
       },
 
-      # TCP settings (ThousandIsland)
+      # TCP settings (Hell)
       tcp: %{
         handler_module: YellowDog.Dns.Handler.TCP,
-        transport_module: ThousandIsland.Transports.TCP,
+        transport_module: Hell.Transports.TCP,
         transport_options: [
           ip: {0, 0, 0, 0},
           reuseaddr: true,
@@ -108,7 +108,7 @@ defmodule YellowDog.Dns.Server do
       udp: %{running: find_abyss_pid(__MODULE__) != nil},
       tcp: %{
         enabled: tcp_enabled,
-        running: tcp_enabled and find_thousand_island_pid(__MODULE__) != nil
+        running: tcp_enabled and find_hell_pid(__MODULE__) != nil
       }
     }
   end
@@ -166,11 +166,11 @@ defmodule YellowDog.Dns.Server do
 
   @spec get_tcp_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
   def get_tcp_port(supervisor) do
-    with ti_pid when ti_pid != nil <- find_thousand_island_pid(supervisor),
-         {:ok, {_ip, port}} when is_integer(port) <- ThousandIsland.listener_info(ti_pid) do
+    with hell_pid when hell_pid != nil <- find_hell_pid(supervisor),
+         {:ok, {_ip, port}} when is_integer(port) <- Hell.listener_info(hell_pid) do
       {:ok, port}
     else
-      nil -> {:error, :thousand_island_not_found}
+      nil -> {:error, :hell_not_found}
       {:ok, _} -> {:error, :invalid_listener_info}
       :error -> {:error, :port_not_available}
     end
@@ -212,13 +212,13 @@ defmodule YellowDog.Dns.Server do
     # Conditionally add TCP server
     children =
       if tcp_enabled do
-        tcp_config = build_thousand_island_config(opts)
+        tcp_config = build_hell_config(opts)
 
         children ++
           [
             %{
-              id: :thousand_island,
-              start: {ThousandIsland, :start_link, [tcp_config]},
+              id: :hell,
+              start: {Hell, :start_link, [tcp_config]},
               restart: :permanent,
               type: :supervisor
             }
@@ -265,7 +265,7 @@ defmodule YellowDog.Dns.Server do
     _e in [ArgumentError, RuntimeError] -> nil
   end
 
-  defp find_thousand_island_pid(supervisor) do
+  defp find_hell_pid(supervisor) do
     pid = resolve_pid(supervisor)
 
     case pid do
@@ -276,7 +276,7 @@ defmodule YellowDog.Dns.Server do
         children = Supervisor.which_children(pid)
 
         Enum.find_value(children, fn
-          {:thousand_island, child_pid, :supervisor, _} when is_pid(child_pid) -> child_pid
+          {:hell, child_pid, :supervisor, _} when is_pid(child_pid) -> child_pid
           _ -> nil
         end)
     end
@@ -316,7 +316,7 @@ defmodule YellowDog.Dns.Server do
     ]
   end
 
-  defp build_thousand_island_config(opts) do
+  defp build_hell_config(opts) do
     config = get_config()
     tcp_config = config.tcp
 

@@ -1,7 +1,7 @@
 defmodule YellowDog.Management.Tasks do
   @moduledoc "PostgreSQL task definitions and the Management-owned durable synchronization queue."
   import Ecto.Query
-  alias Oban.Cron.Expression
+  alias Styx.Cron.Expression
   alias YellowDog.Management.{Repo, Settings, SyncGeoIPWorker, TaskDefinition, TaskReceipt}
 
   def list,
@@ -18,7 +18,7 @@ defmodule YellowDog.Management.Tasks do
 
   def jobs(key) when is_binary(key) do
     query =
-      from(job in Oban.Job,
+      from(job in Styx.Job,
         where: fragment("?->>'task_key' = ?", job.args, ^key),
         order_by: [desc: job.id],
         limit: 100
@@ -31,7 +31,7 @@ defmodule YellowDog.Management.Tasks do
 
   def history do
     Repo.all(
-      from(job in Oban.Job,
+      from(job in Styx.Job,
         where: job.worker == "YellowDog.Management.SyncGeoIPWorker",
         order_by: [desc: job.id],
         limit: 100
@@ -93,7 +93,7 @@ defmodule YellowDog.Management.Tasks do
       "scheduled_for" => scheduled_for
     }
 
-    case args |> SyncGeoIPWorker.new() |> Oban.insert() do
+    case args |> SyncGeoIPWorker.new() |> Styx.insert() do
       {:ok, job} -> job_map(job)
       {:error, _changeset} -> abort("invalid_request", "Task could not be queued")
     end

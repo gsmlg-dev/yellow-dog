@@ -36,7 +36,7 @@ defmodule YellowDog.Dns.ServerTest do
 
       # Check TCP config
       tcp = config.tcp
-      assert tcp.transport_module == ThousandIsland.Transports.TCP
+      assert tcp.transport_module == Hell.Transports.TCP
       assert tcp.handler_module == YellowDog.Dns.Handler.TCP
       assert is_list(tcp.transport_options)
       assert is_integer(tcp.read_timeout)
@@ -160,13 +160,13 @@ defmodule YellowDog.Dns.ServerTest do
     end
   end
 
-  describe "Abyss and ThousandIsland integration" do
+  describe "Abyss and Hell integration" do
     setup do
       Code.ensure_loaded!(Server)
       :ok
     end
 
-    test "server is a Supervisor for Abyss and ThousandIsland" do
+    test "server is a Supervisor for Abyss and Hell" do
       # The server wraps both, so init should be defined
       assert Kernel.function_exported?(Server, :init, 1)
     end
@@ -186,10 +186,10 @@ defmodule YellowDog.Dns.ServerTest do
       assert Map.has_key?(udp, :num_connections)
     end
 
-    test "configuration includes all required ThousandIsland TCP options" do
+    test "configuration includes all required Hell TCP options" do
       config = Server.get_config()
 
-      # ThousandIsland TCP requires these options
+      # Hell TCP requires these options
       tcp = config.tcp
       assert Map.has_key?(tcp, :handler_module)
       assert Map.has_key?(tcp, :transport_options)
@@ -343,13 +343,13 @@ defmodule YellowDog.Dns.ServerTest do
 
       result = Server.get_tcp_port()
 
-      assert {:error, :thousand_island_not_found} = result
+      assert {:error, :hell_not_found} = result
     end
 
     test "get_tcp_port/1 accepts atom name" do
       result = Server.get_tcp_port(:nonexistent)
 
-      assert {:error, :thousand_island_not_found} = result
+      assert {:error, :hell_not_found} = result
     end
   end
 

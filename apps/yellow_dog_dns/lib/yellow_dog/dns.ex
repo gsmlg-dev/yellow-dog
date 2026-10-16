@@ -18,7 +18,7 @@ defmodule YellowDog.Dns do
   YellowDog.Dns.Supervisor
   ├── YellowDog.Dns.Server (Supervisor)
   │   ├── Abyss (UDP Server)
-  │   └── ThousandIsland (TCP Server)
+  │   └── Hell (TCP Server)
   ├── ConnectionManager (DynamicSupervisor)
   │   └── Connection Processes (per-connection)
   │       └── Tracks multiple in-flight queries concurrently
@@ -34,7 +34,7 @@ defmodule YellowDog.Dns do
   ## Process Responsibilities
 
   - **YellowDog.Dns.Supervisor**: Top-level supervisor for DNS service
-  - **YellowDog.Dns.Server**: Network I/O only (Abyss UDP + ThousandIsland TCP)
+  - **YellowDog.Dns.Server**: Network I/O only (Abyss UDP + Hell TCP)
   - **YellowDog.Dns.Handler**: Network I/O bridge, delegates to ConnectionManager
   - **YellowDog.Dns.ConnectionManager**: Supervises connection processes
   - **YellowDog.Dns.ConnectionProcess**: Per-connection query orchestration with telemetry

@@ -119,7 +119,7 @@ async function databaseSnapshot() {
     timeout: 10000,
     maxBuffer: 16 * 1024 * 1024,
   };
-  const catalog = await executeFile('psql', ['-XAt', '-v', 'ON_ERROR_STOP=1', '-c', "SELECT json_agg(json_build_array(schemaname, tablename) ORDER BY schemaname, tablename) FROM pg_tables WHERE schemaname IN ('public', 'management_jobs') AND tablename <> 'oban_peers'"], options);
+  const catalog = await executeFile('psql', ['-XAt', '-v', 'ON_ERROR_STOP=1', '-c', "SELECT json_agg(json_build_array(schemaname, tablename) ORDER BY schemaname, tablename) FROM pg_tables WHERE schemaname IN ('public', 'management_jobs') AND tablename <> 'styx_peers'"], options);
   const tables = JSON.parse(catalog.stdout);
   assert.ok(Array.isArray(tables) && tables.length > 0, 'Missing disposable tables');
   const identifier = value => '"' + value.replaceAll('"', '""') + '"';

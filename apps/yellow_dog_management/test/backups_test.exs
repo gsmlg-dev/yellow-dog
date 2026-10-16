@@ -38,7 +38,7 @@ defmodule YellowDog.Management.BackupsTest do
     assert [%{"id" => backup_id}] = Backups.list()
     assert backup_id == first["id"]
     backup = Repo.get!(Backup, backup_id)
-    assert Repo.get!(Oban.Job, backup.job_id, prefix: "management_jobs").state == "available"
+    assert Repo.get!(Styx.Job, backup.job_id, prefix: "management_jobs").state == "available"
     assert length(Domain.list_audit()) == 1
     assert {:error, %{code: "busy"}} = command("delete_backup", %{"id" => backup_id})
     assert {:error, %{code: "not_ready"}} = Backups.verify(backup_id)
@@ -84,7 +84,7 @@ defmodule YellowDog.Management.BackupsTest do
     assert {:ok, created} = command("create_backup", %{"label" => "failed"})
     backup = Repo.get!(Backup, created["id"])
 
-    Repo.get!(Oban.Job, backup.job_id, prefix: "management_jobs")
+    Repo.get!(Styx.Job, backup.job_id, prefix: "management_jobs")
     |> Ecto.Changeset.change(state: "discarded", discarded_at: DateTime.utc_now())
     |> Repo.update!()
 

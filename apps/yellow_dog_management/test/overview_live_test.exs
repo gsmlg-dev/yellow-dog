@@ -257,7 +257,7 @@ defmodule YellowDog.Management.OverviewLiveTest do
       Domain.list_audit(),
       Repo.all(Audit) |> Enum.sort_by(& &1.id),
       Repo.all(Idempotency) |> Enum.sort_by(& &1.key),
-      Repo.all(Oban.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)
+      Repo.all(Styx.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)
     }
   end
 end

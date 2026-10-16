@@ -92,7 +92,7 @@ defmodule YellowDog.DnsTest do
 
       # Check TCP defaults
       tcp = config.tcp
-      assert tcp.transport_module == ThousandIsland.Transports.TCP
+      assert tcp.transport_module == Hell.Transports.TCP
       assert tcp.handler_module == YellowDog.Dns.Handler.TCP
       assert tcp.read_timeout == 120_000
       assert tcp.shutdown_timeout == 15_000

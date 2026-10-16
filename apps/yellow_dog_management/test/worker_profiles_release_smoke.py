@@ -52,7 +52,7 @@ def sql(query):
 
 
 def database_state():
-    tables = json.loads(sql("SELECT json_agg(json_build_array(schemaname, tablename) ORDER BY schemaname, tablename) FROM pg_tables WHERE schemaname IN ('public', 'management_jobs') AND NOT (schemaname='management_jobs' AND tablename='oban_peers')"))
+    tables = json.loads(sql("SELECT json_agg(json_build_array(schemaname, tablename) ORDER BY schemaname, tablename) FROM pg_tables WHERE schemaname IN ('public', 'management_jobs') AND NOT (schemaname='management_jobs' AND tablename='styx_peers')"))
     state = {}
     for schema, table in tables:
         quoted = '.'.join('"' + identifier.replace('"', '""') + '"' for identifier in [schema, table])

@@ -1,5 +1,5 @@
 defmodule YellowDog.Management.SyncGeoIPWorker do
-  use Oban.Worker,
+  use Styx.Worker,
     queue: :management_sync,
     max_attempts: 3,
     unique: [
@@ -10,11 +10,11 @@ defmodule YellowDog.Management.SyncGeoIPWorker do
 
   alias YellowDog.Management.{GeoIPDownload, Settings, TaskArtifacts, Tasks}
 
-  @impl Oban.Worker
+  @impl Styx.Worker
   def timeout(_job), do: 180_000
 
-  @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"task_key" => key, "source_url" => url}} = job)
+  @impl Styx.Worker
+  def perform(%Styx.Job{args: %{"task_key" => key, "source_url" => url}} = job)
       when key in ~w(ip_city ip_country) do
     Tasks.broadcast(key)
 

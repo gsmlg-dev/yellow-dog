@@ -365,7 +365,7 @@ defmodule YellowDog.ManagementUI.TasksLive do
           </div>
         </div>
         <p class="text-on-surface-variant">
-          PostgreSQL schedules and durable Oban jobs. Queue states and result receipts report real attempts, not invented stdout or runtime success. Cloud-provider synchronization is not implemented.
+          PostgreSQL schedules and durable Styx jobs. Queue states and result receipts report real attempts, not invented stdout or runtime success. Cloud-provider synchronization is not implemented.
         </p>
         <div :if={@scope_error} id="task-scope-error" role="alert" class="alert alert-error">
           {@scope_error}

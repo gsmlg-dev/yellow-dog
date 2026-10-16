@@ -288,10 +288,15 @@ Commands, including rejected commands, retain the durable audit/idempotency cont
 All schedules start disabled. Cloud-provider tasks remain unimplemented; MAC
 synchronization is unavailable pending upstream issue #8.
 
-City/Country synchronization uses Oban with a PostgreSQL `management_jobs` prefix,
+City/Country synchronization uses Styx with a PostgreSQL `management_jobs` prefix,
 one `management_sync` consumer, three attempts and crash-claim recovery. Repeated
 active runs deduplicate by task; scheduler occurrence IDs deduplicate each UTC
 minute. Job history is retained, with no automatic pruning.
+
+The current migrations initialize `management_jobs.styx_jobs` and its receipt and
+backup foreign keys on a fresh PostgreSQL database. Development databases created
+with the previous queue dependency must be recreated; no legacy queue migration
+is provided during this design stage.
 
 Mint streams the actual HTTP response with peer/hostname-verified HTTPS. Downloads
 require status 200, reject redirects/partial responses, and enforce 64 MiB compressed,
@@ -317,7 +322,7 @@ devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_tasks.sh
 ```
 
 The app's `mix test` alias creates/migrates its test database before application
-startup so Oban can verify its schema. It does not run unrelated application tests.
+startup so Styx can verify its schema. It does not run unrelated application tests.
 
 LiveView uses a signed session for CSRF protection, not login authentication.
 WebSocket origins must match the request connection, including when browsing via

@@ -145,7 +145,7 @@ try:
     assert sql("SELECT count(*) FROM management_workers WHERE id='after-backup'") == "0"
     assert sql("SELECT count(*) FROM pg_trigger WHERE tgname='management_task_receipts_immutable' AND tgenabled='O'") == "1"
     assert sql("SELECT state FROM management_backups WHERE id='" + backup_id + "'") == "pending"
-    assert "public.schema_migrations" in manifest["tables"] and "management_jobs.oban_jobs" in manifest["tables"]
+    assert "public.schema_migrations" in manifest["tables"] and "management_jobs.styx_jobs" in manifest["tables"]
     print("PASS real PG snapshot restores into isolated DB: concurrent writer counts, precompletion capture, schema/queue/immutable triggers and artifact bytes", flush=True)
 
     source_pg_env = dict(pg_env, PGDATABASE="yellow_dog_phase1")
@@ -158,7 +158,7 @@ try:
     assert request(f"/backups/{fault_id}")["state"] == "pending"
     published = (directory / "backups" / fault_id / "package.tar").read_bytes()
     source_sql("DROP TRIGGER backup_smoke_fail_ready ON management_backups; DROP FUNCTION backup_smoke_fail_ready()")
-    source_sql("UPDATE management_jobs.oban_jobs SET scheduled_at=now() AT TIME ZONE 'UTC' WHERE id=(SELECT job_id FROM management_backups WHERE id='" + fault_id + "') AND state='retryable'")
+    source_sql("UPDATE management_jobs.styx_jobs SET scheduled_at=now() AT TIME ZONE 'UTC' WHERE id=(SELECT job_id FROM management_backups WHERE id='" + fault_id + "') AND state='retryable'")
     wait(lambda: request(f"/backups/{fault_id}")["state"] == "ready", "Published package was not adopted by a genuine retry")
     assert request(f"/backups/{fault_id}")["digest"] == hashlib.sha256(published).hexdigest()
     assert (directory / "backups" / fault_id / "package.tar").read_bytes() == published

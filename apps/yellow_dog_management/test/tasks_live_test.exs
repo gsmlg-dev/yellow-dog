@@ -295,7 +295,7 @@ defmodule YellowDog.Management.TasksLiveTest do
     attempted_at = DateTime.utc_now()
 
     job =
-      Repo.get!(Oban.Job, queued["id"], prefix: "management_jobs")
+      Repo.get!(Styx.Job, queued["id"], prefix: "management_jobs")
       |> Ecto.Changeset.change(
         state: "retryable",
         attempt: 1,
@@ -350,7 +350,7 @@ defmodule YellowDog.Management.TasksLiveTest do
     queued = mutate("run_task", %{"key" => "ip_city"})
 
     job =
-      Repo.get!(Oban.Job, queued["id"], prefix: "management_jobs")
+      Repo.get!(Styx.Job, queued["id"], prefix: "management_jobs")
       |> Ecto.Changeset.change(state: "executing", attempt: 1, attempted_at: DateTime.utc_now())
       |> Repo.update!()
 

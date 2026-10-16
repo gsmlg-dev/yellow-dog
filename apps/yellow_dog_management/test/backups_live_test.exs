@@ -125,7 +125,7 @@ defmodule YellowDog.Management.BackupsLiveTest do
     assert has_element?(view, "#backup-row-#{value(backup, :id)}", label)
     assert render(view) =~ "&lt;script&gt;"
     refute has_element?(view, "#backups-list script")
-    assert Repo.aggregate(Oban.Job, :count, prefix: "management_jobs") == 1
+    assert Repo.aggregate(Styx.Job, :count, prefix: "management_jobs") == 1
     assert :sys.get_state(view.pid).socket.assigns.poll_timer != nil
   end
 
@@ -413,6 +413,6 @@ defmodule YellowDog.Management.BackupsLiveTest do
   end
 
   defp snapshot do
-    {Backups.list(), Domain.list_audit(), Repo.all(Oban.Job, prefix: "management_jobs")}
+    {Backups.list(), Domain.list_audit(), Repo.all(Styx.Job, prefix: "management_jobs")}
   end
 end

@@ -2,8 +2,8 @@ defmodule YellowDog.Dns.CloudDnsSyncJob do
   @moduledoc """
   Background job boundary for pulling Cloud DNS records into a local zone.
 
-  Arguments use string keys so this module can move behind an Oban worker without
-  changing callers when Oban is introduced to the umbrella.
+  Arguments use string keys compatible with Styx jobs. This legacy adapter
+  currently runs tasks under its local Task.Supervisor.
   """
 
   require Logger

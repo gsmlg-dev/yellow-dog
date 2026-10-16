@@ -307,12 +307,12 @@ defmodule YellowDog.Management.TaskArtifactsTest do
         "task_key" => "ip_city",
         "source_url" => "http://127.0.0.1:1/missing"
       })
-      |> Oban.insert()
+      |> Styx.insert()
 
     assert %{failure: 1, success: 0} =
-             Oban.drain_queue(queue: :management_sync, with_safety: true)
+             Styx.drain_queue(queue: :management_sync, with_safety: true)
 
-    job = Repo.get!(Oban.Job, queued.id, prefix: "management_jobs")
+    job = Repo.get!(Styx.Job, queued.id, prefix: "management_jobs")
     assert job.state == "retryable"
     assert [%{}] = job.errors
     assert is_nil(TaskArtifacts.receipt(job))
@@ -332,10 +332,10 @@ defmodule YellowDog.Management.TaskArtifactsTest do
     {url, _server} = GeoIPDownloadFixture.start(200, :zlib.gzip(country_database()))
 
     {:ok, queued} =
-      SyncGeoIPWorker.new(%{"task_key" => "ip_country", "source_url" => url}) |> Oban.insert()
+      SyncGeoIPWorker.new(%{"task_key" => "ip_country", "source_url" => url}) |> Styx.insert()
 
     assert %{success: 1, failure: 0} =
-             Oban.drain_queue(queue: :management_sync, with_safety: true)
+             Styx.drain_queue(queue: :management_sync, with_safety: true)
 
     assert %TaskReceipt{result: %{"type" => "country", "digest" => digest}} =
              TaskArtifacts.receipt(queued)
@@ -346,7 +346,7 @@ defmodule YellowDog.Management.TaskArtifactsTest do
 
   defp executing_job(type, url) do
     # Insertion without queue uniqueness allows exercising two overlapping claims.
-    job = %Oban.Job{
+    job = %Styx.Job{
       worker: "YellowDog.Management.SyncGeoIPWorker",
       queue: "management_sync",
       args: %{"task_key" => "ip_#{type}", "source_url" => url},

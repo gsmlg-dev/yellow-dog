@@ -43,7 +43,7 @@ def sql(query):
 
 
 def snapshot():
-    tables = json.loads(sql("SELECT json_agg(json_build_array(schemaname,tablename) ORDER BY schemaname,tablename) FROM pg_tables WHERE schemaname IN ('public','management_jobs') AND tablename <> 'oban_peers'"))
+    tables = json.loads(sql("SELECT json_agg(json_build_array(schemaname,tablename) ORDER BY schemaname,tablename) FROM pg_tables WHERE schemaname IN ('public','management_jobs') AND tablename <> 'styx_peers'"))
     return {f"{schema}.{table}": json.loads(sql(f'SELECT COALESCE(json_agg(data ORDER BY data::text),\'[]\'::json) FROM (SELECT row_to_json(stored) data FROM "{schema}"."{table}" stored) records')) for schema, table in tables}
 
 

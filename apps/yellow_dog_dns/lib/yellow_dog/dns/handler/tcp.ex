@@ -1,6 +1,6 @@
 defmodule YellowDog.Dns.Handler.TCP do
   @moduledoc """
-  TCP DNS message handler implementing the ThousandIsland.Handler behaviour.
+  TCP DNS message handler implementing the Hell.Handler behaviour.
 
   This handler focuses ONLY on network I/O:
   - On connection: start connection process for tracking queries
@@ -24,16 +24,16 @@ defmodule YellowDog.Dns.Handler.TCP do
   - Connection reuse for efficiency
   """
 
-  use ThousandIsland.Handler
+  use Hell.Handler
 
   alias YellowDog.Dns.{ConnectionManager, IpFormat}
   alias YellowDog.Telemetry
 
-  ## ThousandIsland.Handler Callbacks
+  ## Hell.Handler Callbacks
 
-  @impl ThousandIsland.Handler
+  @impl Hell.Handler
   def handle_connection(socket, _state) do
-    case ThousandIsland.Socket.peername(socket) do
+    case Hell.Socket.peername(socket) do
       {:ok, {client_ip, client_port}} ->
         Telemetry.debug("DNS TCP connection established", %{
           client_ip: IpFormat.format(client_ip),
@@ -77,7 +77,7 @@ defmodule YellowDog.Dns.Handler.TCP do
   # Prevent unbounded buffer growth: reject connections that send junk
   @max_buffer_size 131_072
 
-  @impl ThousandIsland.Handler
+  @impl Hell.Handler
   def handle_data(data, socket, state) do
     buffer = state.buffer <> data
 
@@ -93,7 +93,7 @@ defmodule YellowDog.Dns.Handler.TCP do
     end
   end
 
-  @impl ThousandIsland.Handler
+  @impl Hell.Handler
   def handle_timeout(_socket, state) do
     Telemetry.debug("DNS TCP connection timeout", %{
       client_ip: IpFormat.format(state.client_ip)
@@ -107,7 +107,7 @@ defmodule YellowDog.Dns.Handler.TCP do
     {:close, state}
   end
 
-  @impl ThousandIsland.Handler
+  @impl Hell.Handler
   def handle_close(_socket, state) do
     Telemetry.debug("DNS TCP connection closed", %{
       client_ip: IpFormat.format(Map.get(state, :client_ip, :unknown))
@@ -210,7 +210,7 @@ defmodule YellowDog.Dns.Handler.TCP do
     # RFC 1035: 2-byte length prefix (big-endian) followed by message
     framed_message = [<<length::16>>, response_data]
 
-    case ThousandIsland.Socket.send(socket, framed_message) do
+    case Hell.Socket.send(socket, framed_message) do
       :ok ->
         Telemetry.debug("Sent DNS TCP response", %{
           size: length
