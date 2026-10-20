@@ -20,11 +20,20 @@ defmodule YellowDog.Management.UITest do
     assert html =~ "yd-layout"
     assert html =~ "management-live.js"
     assert html =~ "management.css"
-    assert has_element?(view, "a[href='/management']", "Management")
-    assert has_element?(view, "a[href='/server']", "Servers")
-    assert has_element?(view, "a[href='/netman']", "Netman")
-    assert has_element?(view, "a[href='/tool/geoip']", "Tools")
-    assert has_element?(view, "a[href='/system/process-map']", "System")
+
+    for {id, label, path} <- [
+          {"nodes", "Node Management", "/management/servers"},
+          {"data", "Data Configuration", "/management/zones"},
+          {"monitoring", "Monitoring", "/management"},
+          {"system", "System Configuration", "/system/process-map"}
+        ] do
+      assert has_element?(
+               view,
+               "nav[aria-label='Main navigation'] a[data-section='#{id}'][href='#{path}']",
+               label
+             )
+    end
+
     assert has_element?(view, "#workspace a[href='/management/config']", "Manage Configuration")
     assert html =~ "Actual runtime state is unknown"
     refute html =~ "Operator token"
@@ -38,30 +47,13 @@ defmodule YellowDog.Management.UITest do
     assert policy =~ "style-src-attr 'unsafe-inline'"
   end
 
-  test "unmigrated System shortcuts keep their labels and pending state without dangling links",
-       %{
-         conn: conn
-       } do
+  test "unavailable monitoring shortcuts are planned without dangling links", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/system/logs")
 
-    for {path, label} <- [
-          {"/system/logs/dns-query", "DNS Query Logs"},
-          {"/system/logs/dhcpv4-activity", "DHCPv4 Activity"},
-          {"/system/logs/dhcpv6-activity", "DHCPv6 Activity"},
-          {"/system/logs/netboot", "Netboot Log"},
-          {"/system/logs/identity-audit", "Identity Audit"},
-          {"/system/provider/cloud-dns", "Cloud DNS"},
-          {"/system/fingerprint/devices", "Device Inventory"},
-          {"/system/fingerprint/fingerprints", "Fingerprints"}
-        ] do
-      refute has_element?(view, "a[href='#{path}']")
-      refute has_element?(view, ".yd-sidebar a", label)
-
-      assert has_element?(
-               view,
-               ".yd-sidebar span[aria-disabled='true'][title='Not migrated']",
-               label
-             )
+    for label <- ["Node status", "Service status", "Configuration delivery/application status"] do
+      refute has_element?(view, "#app-sidebar-navigation a", label)
+      assert has_element?(view, "#app-sidebar-navigation [aria-disabled='true']", label)
+      assert has_element?(view, "#app-sidebar-navigation [aria-disabled='true']", "Planned")
     end
   end
 
@@ -127,7 +119,11 @@ defmodule YellowDog.Management.UITest do
     version = mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1})
     {:ok, view, _html} = live(conn, "/server/#{worker["id"]}/dashboard")
     assert has_element?(view, "#server-selection-form-select option[value='ui-export'][selected]")
-    assert has_element?(view, "a[href='/server/ui-export/dns/zones']", "Zones")
+
+    assert has_element?(
+             view,
+             "#app-sidebar-navigation a[data-nav-item='worker_services'][aria-current='page']"
+           )
 
     view
     |> form("#service-form",
@@ -279,7 +275,12 @@ defmodule YellowDog.Management.UITest do
            )
 
     {:ok, view, _html} = live(conn, "/server/settings/dashboard")
-    assert has_element?(view, "a[href='/server/settings/dns']", "Overview")
+
+    assert has_element?(
+             view,
+             "#app-sidebar-navigation a[href='/server/settings/dashboard'][data-nav-item='worker_services']",
+             "Services and basic configuration"
+           )
   end
 
   test "DNS overview preserves the requested Worker selection", %{conn: conn} do

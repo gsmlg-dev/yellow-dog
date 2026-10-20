@@ -3,8 +3,11 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
+import { navigationSmoke } from './navigation_browser_smoke.mjs';
 
 const base = process.env.MANAGEMENT_UI_URL || 'http://127.0.0.1:14281';
+const scope = process.env.MANAGEMENT_BROWSER_SCOPE || 'full';
+assert.ok(['full', 'navigation'].includes(scope), 'MANAGEMENT_BROWSER_SCOPE must be full or navigation');
 const macSmokePath = process.env.MANAGEMENT_MAC_SMOKE_PATH;
 assert.ok(macSmokePath && resolve(macSmokePath).startsWith(resolve(tmpdir()) + sep) && basename(macSmokePath) === 'mac-browser-fixture.txt', 'Use the temporary MAC artifact from scripts/e2e/management_browser.sh');
 const profile = await mkdtemp(join(tmpdir(), 'management-live-browser-'));
@@ -36,7 +39,7 @@ function canonicalRecordContents(records) {
   return records.map(record => JSON.stringify([record.name, record.type, record.ttl, Object.entries(record.data).sort()])).sort();
 }
 
-try {
+async function runSmoke() {
   assert.deepEqual(await api('/workers'), [], 'Use an empty disposable PostgreSQL database');
   assert.deepEqual(await api('/zones'), [], 'Use an empty disposable PostgreSQL database');
   const zone = await api('/commands/create_zone', {
@@ -127,7 +130,21 @@ try {
   assert.equal(await evaluate('document.querySelector("input[type=password], #login") === null'), true);
   assert.equal(await evaluate('!!document.querySelector("#yd-layout .navbar")'), true);
   assert.notEqual(await evaluate('getComputedStyle(document.querySelector(".navbar")).backgroundColor'), 'rgba(0, 0, 0, 0)');
-  assert.match(await evaluate('document.body.innerText'), /Management.*Servers.*Netman.*Tools.*System/s);
+  const navigation = navigationSmoke({ cdp, evaluate, navigate, until });
+  await navigation.global();
+  assert.deepEqual(await api('/workers'), [], 'Global navigation must remain usable without registering Workers');
+  assert.deepEqual((await api(`/zones/${zone.id}`)).records, zone.records, 'Navigation changed Zone data');
+  if (scope === 'navigation') {
+    const created = await api('/commands/create_worker', { id: 'navigation-worker', name: 'Navigation Worker' });
+    const service = await api('/commands/put_service', { worker_id: created.id, expected_revision: created.revision, id: 'dns', type: 'dns', desired_state: 'stopped', config: { listen_address: '127.0.0.1', port: 15353 } });
+    const worker = await api(`/workers/${created.id}`);
+    await navigation.scoped(created.id, service.id, zone.id);
+    assert.deepEqual(await api(`/workers/${created.id}`), worker, 'Navigation changed Worker configuration, target history or assignments');
+    assert.deepEqual((await api(`/zones/${zone.id}`)).records, zone.records, 'Scoped navigation changed Zone data');
+    assert.deepEqual(errors, [], 'JavaScript, CSP or asset errors');
+    console.log('PASS real Chromium navigation scope: four ordered desktop/mobile sections, zero-Worker global access, planned semantics, DNS scope and service selection, query/deep links, refresh/back-forward, no Worker or Zone mutations');
+    return;
+  }
   assert.equal(await evaluate('document.querySelector(".yd-sidebar").scrollWidth <= document.querySelector(".yd-sidebar").clientWidth'), true, 'Desktop sidebar must not overflow horizontally');
   await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").click()');
   await until(() => evaluate('document.querySelector("#notifications-dropdown-popover").matches(":popover-open")'), 'Original notifications dropdown did not open');
@@ -151,8 +168,8 @@ try {
   for (const id of ['settings', 'dns']) await api('/commands/create_worker', { id, name: `${id} Worker`, expected_capabilities: ['dns'] });
   await navigate('/server/settings/dashboard');
   assert.equal(await evaluate('document.querySelector("#server-selection-form-select").value'), 'settings');
-  assert.equal(await evaluate(`document.querySelector('a[href="/server/settings/dns"]').textContent.trim()`), 'Overview');
-  await evaluate(`document.querySelector('a[href="/server/settings/dns"]').click()`);
+  assert.equal(await evaluate(`!!document.querySelector('#app-sidebar-navigation a[data-nav-item="worker_services"]')`), true);
+  await navigate('/server/settings/dns');
   await until(() => evaluate('location.pathname === "/server/settings/dns" && document.querySelector("#server-selection-form-select").value === "settings"'), 'Worker DNS overview lost its explicit selection');
 
   await navigate('/management/zones?server_id[]=settings');
@@ -166,25 +183,28 @@ try {
   assert.deepEqual((await api(`/zones/${zone.id}`)).records, zone.records, 'Read-only routing checks changed the Zone');
 
   await navigate('/server');
-  await submit('#worker-form', { 'worker[id]': 'live-worker', 'worker[name]': 'Live Browser Worker' });
-  await until(() => evaluate('!!document.querySelector("#server-selector-live-worker")'), 'Logical Worker was not registered');
-  await until(() => evaluate(`document.querySelector('[name="worker[id]"]').value === ''`), 'Worker registration form did not reset');
-  await evaluate('document.querySelector("#server-selector-live-worker a").click()');
+  await submit('#worker-form', { 'worker[name]': 'Live Browser Worker' });
+  let liveWorkerId;
+  await until(async () => { liveWorkerId = (await api('/workers')).find(worker => worker.name === 'Live Browser Worker')?.id; return !!liveWorkerId; }, 'Logical Worker was not registered');
+  await until(() => evaluate(`document.querySelector('[name="worker[name]"]').value === ''`), 'Worker registration form did not reset');
+  await evaluate(`document.querySelector('#server-selector-${liveWorkerId} a').click()`);
   await until(() => evaluate('!!document.querySelector("#server-dashboard")'), 'Live navigation to dashboard failed');
   await submit('#service-form', { 'service[id]': 'dns', 'service[listen_address]': '127.0.0.1', 'service[port]': '5300', 'service[desired_state]': 'stopped' });
   await until(() => evaluate('document.querySelector("#dns-services").innerText.includes("stopped")'), 'Desired DNS service was not saved');
-  const worker = await api('/workers/live-worker');
+  const worker = await api(`/workers/${liveWorkerId}`);
+  await navigation.scoped(liveWorkerId, worker.services[0].id, zone.id);
+  assert.deepEqual(await api(`/workers/${liveWorkerId}`), worker, 'Navigation changed Worker configuration, target history or assignments');
   await submit('#assignment-form', { 'assignment[service_id]': worker.services[0].id, 'assignment[resource_version_id]': version.id });
-  await until(async () => (await api('/workers/live-worker')).assignments.length === 1, 'Immutable Zone version was not assigned');
+  await until(async () => (await api(`/workers/${liveWorkerId}`)).assignments.length === 1, 'Immutable Zone version was not assigned');
   await evaluate('document.querySelector("[phx-click=preview]").click()');
   await until(() => evaluate('!!document.querySelector("#target-preview")'), 'Target preview failed');
   assert.match(await evaluate('document.querySelector("#target-preview").innerText'), /prepared_preview/);
   await evaluate('document.querySelector("[phx-click=confirm_target]").click()');
   await until(() => evaluate(`!!document.querySelector('a[href*="/targets/1/export"]')`), 'Target confirmation failed');
-  const target = await api('/workers/live-worker/targets/1');
+  const target = await api(`/workers/${liveWorkerId}/targets/1`);
   assert.equal(target.actual_state, 'unknown');
   assert.equal(target.status, 'prepared');
-  const exported = await fetch(`${base}/api/workers/live-worker/targets/1/export`, { signal: AbortSignal.timeout(10000) });
+  const exported = await fetch(`${base}/api/workers/${liveWorkerId}/targets/1/export`, { signal: AbortSignal.timeout(10000) });
   assert.equal(exported.status, 200);
   const exportedToml = await exported.text();
   assert.match(exportedToml, /live\.test\./);
@@ -288,7 +308,7 @@ try {
   }
   assert.equal(nextDialogDecision, null, 'Record deletion must exercise the confirmation dialog');
   assert.equal((await api(`/zones/${zone.id}/versions`)).length, 1, 'Record editing must not confirm a new immutable version');
-  const afterRecordExport = await fetch(`${base}/api/workers/live-worker/targets/1/export`, { signal: AbortSignal.timeout(10000) });
+  const afterRecordExport = await fetch(`${base}/api/workers/${liveWorkerId}/targets/1/export`, { signal: AbortSignal.timeout(10000) });
   assert.equal(await afterRecordExport.text(), exportedToml, 'Draft edits changed a historical export');
   await navigate('/management/zones/import');
   await submit('#zone-import-form', { 'import[toml]': exportedToml });
@@ -296,8 +316,8 @@ try {
   const importedResourceId = await evaluate('document.querySelector("#zone-import-resource").value');
   await submit('#zone-import-selection-form', { 'import[resource_id]': importedResourceId });
   await until(() => evaluate('document.querySelector("#zone-import-errors")?.innerText.includes("already exists")'), 'Duplicate import must report the actual Zone name conflict');
-  const beforeUnassign = await api('/workers/live-worker');
-  await api('/commands/unassign', { worker_id: 'live-worker', expected_revision: beforeUnassign.revision, service_id: worker.services[0].id, zone_id: zone.id });
+  const beforeUnassign = await api(`/workers/${liveWorkerId}`);
+  await api('/commands/unassign', { worker_id: liveWorkerId, expected_revision: beforeUnassign.revision, service_id: worker.services[0].id, zone_id: zone.id });
   const beforeDelete = await api(`/zones/${zone.id}`);
   await api('/commands/delete_zone', { id: zone.id, expected_revision: beforeDelete.revision });
   await submit('#zone-import-form', { 'import[toml]': exportedToml });
@@ -308,7 +328,7 @@ try {
   assert.notEqual(importedZone.id, zone.id);
   assert.deepEqual(canonicalRecordContents(importedZone.records), canonicalRecordContents((await api(`/zones/${zone.id}/versions`))[0].content.records), 'Import must preserve the exported immutable record content, not the edited draft');
   assert.deepEqual(await api(`/zones/${importedZone.id}/versions`), [], 'Import must create only a draft');
-  const afterImportExport = await fetch(`${base}/api/workers/live-worker/targets/1/export`, { signal: AbortSignal.timeout(10000) });
+  const afterImportExport = await fetch(`${base}/api/workers/${liveWorkerId}/targets/1/export`, { signal: AbortSignal.timeout(10000) });
   assert.equal(await afterImportExport.text(), exportedToml, 'Import changed a historical export');
   await navigate('/tool/mac');
   await submit('form', { mac: '00:00:0A:BB:28:FC' });
@@ -449,7 +469,11 @@ try {
     await writeFile(`${process.env.MANAGEMENT_SCREENSHOT_PREFIX}-mobile.png`, Buffer.from(screenshot.data, 'base64'));
   }
   assert.deepEqual(errors, [], 'JavaScript, CSP or asset errors');
-  console.log('PASS real Chromium: Console layout, websocket, read-only Profiles, blank WHOIS form, selected Worker/Netman scopes, logical registration, typed Ethernet/Resolved desired editing, immutable history/desired rollback, observe-only mode, Worker target/export, Zone reset/records/import, OUI/MMDB tools, audit/Logger/Process Map/mobile drawer; no login');
+  console.log('PASS real Chromium: four-section desktop/mobile navigation, zero-Worker access, planned semantics, scoped DNS/query/reload/back-forward, Console layout, websocket, read-only Profiles, blank WHOIS form, selected Worker/Netman scopes, logical registration, typed Ethernet/Resolved desired editing, immutable history/desired rollback, observe-only mode, Worker target/export, Zone reset/records/import, OUI/MMDB tools, audit/Logger/Process Map/mobile drawer; no login');
+}
+
+try {
+  await runSmoke();
 } finally {
   socket?.close();
   chromium.kill('SIGTERM');

@@ -93,7 +93,13 @@ defmodule YellowDog.Management.ProfilesLiveTest do
   test "Management pages do not expose Profiles in sidebar navigation", %{conn: conn} do
     for path <- ["/management", "/management/servers", "/management/netman", "/management/events"] do
       {:ok, view, _html} = live(conn, path)
-      assert has_element?(view, ".yd-sidebar a[href='/management']", "Overview")
+
+      assert has_element?(
+               view,
+               "nav[aria-label='Main navigation'] a[href='/management']",
+               "Monitoring"
+             )
+
       refute has_element?(view, "a[href='/management/profiles']")
       refute has_element?(view, ".yd-sidebar a", "Profiles")
     end

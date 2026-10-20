@@ -718,7 +718,11 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
       )
 
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app
+      flash={@flash}
+      current_path={@current_path}
+      servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
+    >
       <input id="submission-intent" type="hidden" value={@submission_id} />
       <.card title="DNS Views">
         <p class="management-help">

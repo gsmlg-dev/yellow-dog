@@ -13,7 +13,9 @@ defmodule YellowDog.ManagementUI.AppbarVersionTest do
       render_component(&Layouts.app/1, flash: %{}, inner_content: "")
       |> LazyHTML.from_fragment()
 
-    trigger = LazyHTML.query(html, "a[href='/'] + button#app-version.badge-secondary")
+    trigger =
+      LazyHTML.query(html, "a[href='/management/servers'] + button#app-version.badge-secondary")
+
     assert LazyHTML.text(trigger) =~ info.display_version
     assert LazyHTML.attribute(trigger, "type") == ["button"]
 

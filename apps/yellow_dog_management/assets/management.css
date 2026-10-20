@@ -80,6 +80,20 @@ body {
   background-color: var(--color-scrim);
 }
 
+.yd-mobile-navigation {
+  display: block;
+}
+
+.yd-sidebar :where(a, button, select):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.navbar a:focus-visible {
+  outline: 2px solid var(--color-primary-content);
+  outline-offset: 2px;
+}
+
 .yd-main {
   flex: 1;
   min-width: 0;
@@ -99,6 +113,7 @@ body {
     display: block;
   }
 
+  .yd-mobile-navigation,
   .yd-menu-toggle,
   .yd-sidebar-open .yd-sidebar-overlay {
     display: none;

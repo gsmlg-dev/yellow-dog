@@ -4,6 +4,7 @@ defmodule YellowDog.ManagementUI.Layouts do
   alias YellowDog.Management.BuildInfo
   alias YellowDog.ManagementUI.Components.Sidebar
   alias YellowDog.ManagementUI.Hooks.CurrentPath
+  alias YellowDog.ManagementUI.Navigation
 
   embed_templates "layouts/*"
 
@@ -50,32 +51,33 @@ defmodule YellowDog.ManagementUI.Layouts do
     """
   end
 
-  @nav_sections [
-    %{label: "Management", icon: "account-cog", path: "/management"},
-    %{label: "Servers", icon: "server-network", path: "/server"},
-    %{label: "Netman", icon: "lan", path: "/netman"},
-    %{label: "Tools", icon: "wrench", path: "/tool/geoip"},
-    %{label: "System", icon: "cog", path: "/system/process-map"}
-  ]
-
   defp navbar(assigns) do
     assigns =
       assigns
-      |> assign(:nav_sections, @nav_sections)
+      |> assign(:nav_sections, Navigation.sections())
       |> assign(:build_info, BuildInfo.info())
 
     ~H"""
     <.dm_navbar class="navbar-primary">
       <:start_part>
         <button
+          id="mobile-navigation-toggle"
           type="button"
           class="btn btn-ghost text-primary-content yd-menu-toggle"
           aria-label="Open menu"
-          phx-click={JS.toggle_class("yd-sidebar-open", to: "#yd-layout")}
+          aria-controls="app-sidebar"
+          aria-expanded="false"
+          phx-click={
+            JS.toggle_class("yd-sidebar-open", to: "#yd-layout")
+            |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+          }
         >
           <.dm_mdi name="menu" width="24" height="24" />
         </button>
-        <.link navigate="/" class="btn btn-ghost text-xl font-bold text-primary-content">
+        <.link
+          navigate="/management/servers"
+          class="btn btn-ghost text-xl font-bold text-primary-content"
+        >
           <span>Yellow</span>
           <span class="text-warning">Dog</span>
         </.link>
@@ -105,11 +107,12 @@ defmodule YellowDog.ManagementUI.Layouts do
             <li :for={section <- @nav_sections}>
               <.link
                 navigate={section.path}
+                data-section={section.id}
                 class={[
                   "btn btn-ghost btn-sm text-primary-content",
-                  nav_active?(@current_path, section.label)
+                  nav_active?(@current_path, section.id)
                 ]}
-                aria-current={nav_active?(@current_path, section.label) && "page"}
+                aria-current={nav_active?(@current_path, section.id) && "page"}
               >
                 <.dm_mdi name={section.icon} width="20" height="20" />
                 <span>{section.label}</span>
@@ -154,7 +157,7 @@ defmodule YellowDog.ManagementUI.Layouts do
   defp nav_active?(nil, _section), do: nil
 
   defp nav_active?(current_path, section) do
-    if Sidebar.section_for_path(current_path) == section, do: "btn-active"
+    if Navigation.section_for_path(current_path) == section, do: "btn-active"
   end
 
   attr :flash, :map, required: true
