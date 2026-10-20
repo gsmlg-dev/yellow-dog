@@ -25,7 +25,8 @@ export function navigationSmoke({ cdp, evaluate, navigate, until }) {
     if (selector) await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
     const code = key === ' ' ? 'Space' : key;
     const windowsVirtualKeyCode = { Enter: 13, Escape: 27, ' ': 32 }[key];
-    await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode });
+    const text = key === 'Enter' ? '\r' : key === ' ' ? ' ' : undefined;
+    await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode, ...(text === undefined ? {} : { text }) });
     await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode });
   }
 

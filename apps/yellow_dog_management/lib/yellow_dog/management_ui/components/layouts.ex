@@ -77,8 +77,8 @@ defmodule YellowDog.ManagementUI.Layouts do
           aria-controls="app-sidebar"
           aria-expanded="false"
           phx-click={
-            JS.toggle_class("yd-sidebar-open", to: "#yd-layout")
-            |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+            JS.add_class("yd-sidebar-open", to: "#yd-layout")
+            |> JS.set_attribute({"aria-expanded", "true"})
             |> JS.dispatch("duskmoon:left-menu:set-collapsed",
               to: "#app-sidebar-navigation",
               detail: %{collapsed: false}

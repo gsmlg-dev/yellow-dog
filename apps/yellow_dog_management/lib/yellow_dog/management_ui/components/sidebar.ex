@@ -99,7 +99,6 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
                 selected_record={@selected_record}
               />
             </div>
-            <%!-- TODO(upstream): duskmoon-dev/phoenix-duskmoon-ui#207 — disabled entries need no href. --%>
             <.dm_left_menu_group
               :for={group <- @groups}
               id={"navigation-#{@section}-#{hd(group.items).id}"}
