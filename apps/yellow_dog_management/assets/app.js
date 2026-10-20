@@ -115,7 +115,7 @@ CustomHooks.PreserveScroll = {
   mounted() {
     this.saveScroll = () => {
       try {
-        sessionStorage.setItem(this.storageKey(), String(this.el.scrollTop));
+        sessionStorage.setItem(this.storageKey(), String(this.scrollElement().scrollTop));
       } catch (_err) {}
     };
 
@@ -125,12 +125,12 @@ CustomHooks.PreserveScroll = {
         const top = value === null ? 0 : Number.parseInt(value, 10);
 
         if (Number.isFinite(top)) {
-          this.el.scrollTop = top;
+          this.scrollElement().scrollTop = top;
         }
       } catch (_err) {}
     };
 
-    this.el.addEventListener("scroll", this.saveScroll, { passive: true });
+    this.el.addEventListener("scroll", this.saveScroll, { passive: true, capture: true });
     requestAnimationFrame(this.restoreScroll);
   },
   beforeUpdate() {
@@ -141,7 +141,10 @@ CustomHooks.PreserveScroll = {
   },
   destroyed() {
     this.saveScroll();
-    this.el.removeEventListener("scroll", this.saveScroll);
+    this.el.removeEventListener("scroll", this.saveScroll, { capture: true });
+  },
+  scrollElement() {
+    return this.el.querySelector(this.el.dataset.scrollTarget || ":scope") || this.el;
   },
   storageKey() {
     return `yellow-dog:${this.el.dataset.scrollKey || this.el.id}:scroll-top`;

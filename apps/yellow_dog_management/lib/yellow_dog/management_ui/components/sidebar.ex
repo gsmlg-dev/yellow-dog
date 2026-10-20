@@ -1,6 +1,6 @@
 defmodule YellowDog.ManagementUI.Components.Sidebar do
   @moduledoc """
-  Section navigation with a stable component and per-section scroll position.
+  Section navigation using DuskMoon's collapsible menu and icon rail.
   Selection comes from the route and existing page-provided records only.
   """
   use YellowDog.ManagementUI, :live_component
@@ -43,10 +43,9 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
       id={@id}
       class="yd-sidebar yd-sidebar-sticky"
       data-scroll-key={@scroll_key}
+      data-scroll-target="[data-left-menu-scroll]"
       data-section={@section}
       phx-hook="PreserveScroll"
-      role="navigation"
-      aria-label="Section navigation"
       hidden={is_nil(@section)}
     >
       <button
@@ -57,8 +56,10 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
       ></button>
       <div class="yd-sidebar-panel">
         <nav aria-label="Mobile navigation" class="yd-mobile-navigation">
-          <button type="button" class="btn btn-ghost" phx-click={close_menu()}>Close menu</button>
-          <ul class="nested-menu p-4">
+          <button type="button" class="btn btn-ghost btn-sm" phx-click={close_menu()}>
+            <.dm_mdi name="close" width="20" height="20" /> Close menu
+          </button>
+          <ul class="nested-menu nested-menu-sm">
             <li :for={section <- @sections}>
               <.link
                 navigate={section.path}
@@ -73,50 +74,58 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
             </li>
           </ul>
         </nav>
-        <ul
+        <.dm_left_menu
           id="app-sidebar-navigation"
           data-section={@section}
-          class="nested-menu nested-menu-bordered p-4"
+          class="yd-section-menu"
+          collapsible
+          storage_key="yellow-dog:sidebar-collapsed"
+          nav_label="Section navigation"
+          active={to_string(@active_item || "")}
         >
-          <.selection_control
-            :if={@section in [:nodes, :data] && @navigation_scope != nil && @records != []}
-            target_type={@target_type}
-            myself={@myself}
-            records={@records}
-            selected_record={@selected_record}
-          />
-          <%= for group <- @groups do %>
-            <li class="nested-menu-title">{group.label}</li>
-            <li :for={item <- group.items}>
-              <.link
-                :if={item.status == :available}
-                navigate={item.path}
-                data-nav-item={item.id}
-                class={@active_item == item.id && "active"}
-                aria-current={@active_item == item.id && "page"}
-                title={item.description}
-                phx-click={close_menu()}
+          <:header>
+            <.dm_mdi name={section_icon(@sections, @section)} class="size-6 shrink-0 text-primary" />
+            <span data-left-menu-label class="font-semibold">
+              {section_label(@sections, @section)}
+            </span>
+          </:header>
+          <:menu>
+            <div data-left-menu-label>
+              <.selection_control
+                :if={@section in [:nodes, :data] && @navigation_scope != nil && @records != []}
+                target_type={@target_type}
+                myself={@myself}
+                records={@records}
+                selected_record={@selected_record}
+              />
+            </div>
+            <%!-- TODO(upstream): duskmoon-dev/phoenix-duskmoon-ui#207 — disabled entries need no href. --%>
+            <.dm_left_menu_group
+              :for={group <- @groups}
+              id={"navigation-#{@section}-#{hd(group.items).id}"}
+              data-nav-group
+              active={to_string(@active_item || "")}
+            >
+              <:title>{group.label}</:title>
+              <:menu
+                :for={item <- group.items}
+                id={to_string(item.id)}
+                to={item.path}
+                icon={item.icon}
+                label={item.label}
+                disabled={item.status != :available}
+                rest={item_attributes(item)}
               >
-                <.dm_mdi name={item.icon} width="20" height="20" />
-                <span>{item.label}</span>
-              </.link>
-              <span
-                :if={item.status != :available}
-                data-nav-item={item.id}
-                aria-disabled="true"
-                title={item.description}
-                aria-label={"#{item.label}: #{item.description}"}
-              >
-                <.dm_mdi name={item.icon} width="20" height="20" />
-                <span>{item.label}</span>
-                <span class="badge badge-ghost">
-                  {if item.status == :planned, do: "Planned", else: "Requires scope"}
+                <span class="yd-menu-label">
+                  <span>{item.label}</span>
+                  <span :if={item.status != :available} class="badge badge-ghost badge-xs">
+                    {if item.status == :planned, do: "Planned", else: "Requires scope"}
+                  </span>
                 </span>
-              </span>
-              <p :if={item.description} class="management-help">{item.description}</p>
-            </li>
-          <% end %>
-        </ul>
+              </:menu>
+            </.dm_left_menu_group>
+          </:menu>
+        </.dm_left_menu>
       </div>
     </div>
     """
@@ -134,10 +143,9 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
       |> assign(:label, if(assigns.target_type == :server, do: "Worker", else: "Netman"))
 
     ~H"""
-    <li class="nested-menu-title">Selected {@label}</li>
-    <li>
+    <div class="yd-node-selection">
       <form id={@id} phx-change={"select_#{@target_type}"} phx-target={@myself}>
-        <label for={"#{@id}-select"} class="sr-only">Select {@label}</label>
+        <label for={"#{@id}-select"} class="label">Selected {@label}</label>
         <select
           id={"#{@id}-select"}
           name="selection[id]"
@@ -154,7 +162,7 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
           </option>
         </select>
       </form>
-    </li>
+    </div>
     """
   end
 
@@ -193,8 +201,29 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
     "#{name} (#{Map.get(record, :status, :unknown)})"
   end
 
+  defp section_icon(sections, id), do: section_value(sections, id, :icon)
+  defp section_label(sections, id), do: section_value(sections, id, :label)
+
+  defp section_value(sections, id, key) do
+    case Enum.find(sections, &(&1.id == id)) do
+      nil -> ""
+      section -> Map.fetch!(section, key)
+    end
+  end
+
+  defp item_attributes(item) do
+    attrs = %{
+      "data-nav-item" => item.id,
+      "title" => item.description,
+      "aria-label" => Enum.join(Enum.reject([item.label, item.description], &is_nil/1), ": ")
+    }
+
+    if item.status == :available, do: Map.put(attrs, "phx-click", close_menu()), else: attrs
+  end
+
   defp close_menu do
-    JS.remove_class("yd-sidebar-open", to: "#yd-layout")
+    JS.focus(to: "#yd-layout.yd-sidebar-open #mobile-navigation-toggle")
+    |> JS.remove_class("yd-sidebar-open", to: "#yd-layout")
     |> JS.set_attribute({"aria-expanded", "false"}, to: "#mobile-navigation-toggle")
   end
 end

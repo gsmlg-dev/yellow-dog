@@ -50,7 +50,7 @@ defmodule YellowDog.Management.UITest do
   test "unavailable monitoring shortcuts are planned without dangling links", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/system/logs")
 
-    for label <- ["Node status", "Service status", "Configuration delivery/application status"] do
+    for label <- ["Node status", "Service status", "Configuration delivery"] do
       refute has_element?(view, "#app-sidebar-navigation a", label)
       assert has_element?(view, "#app-sidebar-navigation [aria-disabled='true']", label)
       assert has_element?(view, "#app-sidebar-navigation [aria-disabled='true']", "Planned")
@@ -279,7 +279,7 @@ defmodule YellowDog.Management.UITest do
     assert has_element?(
              view,
              "#app-sidebar-navigation a[href='/server/settings/dashboard'][data-nav-item='worker_services']",
-             "Services and basic configuration"
+             "Services & configuration"
            )
   end
 

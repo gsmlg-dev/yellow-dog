@@ -91,7 +91,7 @@ defmodule YellowDog.ManagementUI.Navigation do
         available(:workers, "Workers", "server-network", "/management/servers"),
         scoped(
           :worker_services,
-          "Services and basic configuration",
+          "Services & configuration",
           "cog",
           selection,
           :server,
@@ -100,13 +100,13 @@ defmodule YellowDog.ManagementUI.Navigation do
         ),
         available(
           :config_targets,
-          "Configuration targets and history",
+          "Configuration history",
           "history",
           "/management/config",
           "Prepared configuration targets and history; these do not establish applied runtime state."
         )
       ]),
-      group("Netman configuration", [
+      group("Netman", [
         available(:netmans, "Netman nodes", "lan", "/management/netman"),
         scoped(:netman_overview, "Overview", "view-dashboard", selection, :netman, :overview),
         scoped(:netman_config, "Configuration", "cog", selection, :netman, :config),
@@ -165,12 +165,12 @@ defmodule YellowDog.ManagementUI.Navigation do
         available(:overview, "Overview", "view-dashboard", "/management"),
         planned(:node_status, "Node status", "server-network"),
         planned(:service_status, "Service status", "monitor-eye"),
-        planned(:delivery_status, "Configuration delivery/application status", "cloud-sync")
+        planned(:delivery_status, "Configuration delivery", "cloud-sync")
       ]),
       group("History", [
         available(
           :tasks,
-          "Tasks and execution history",
+          "Tasks & history",
           "clipboard-list",
           "/system/tasks",
           "Existing task pages include task settings and execution history."
@@ -178,7 +178,7 @@ defmodule YellowDog.ManagementUI.Navigation do
         available(:logs, "Logs", "text-box", "/system/logs"),
         available(:events, "Events and audit", "timeline-text", "/management/events")
       ]),
-      group("Network tools / diagnostics", [
+      group("Network tools", [
         available(:tool_mac, "MAC lookup", "ethernet", "/tool/mac"),
         available(:tool_whois, "Whois", "magnify", "/tool/whois"),
         available(:tool_geoip, "GeoIP", "earth", "/tool/geoip")
@@ -193,16 +193,16 @@ defmodule YellowDog.ManagementUI.Navigation do
         planned(:api_mcp, "API & MCP integration", "api"),
         planned(
           :platform_access,
-          "Management access / external authentication integration",
+          "Access & authentication",
           "shield-lock"
         ),
-        planned(:storage_retention, "Storage and retention settings", "database")
+        planned(:storage_retention, "Storage & retention", "database")
       ]),
       group("Maintenance", [
         available(:backups, "Backups and restore", "backup-restore", "/system/backups"),
         available(
           :process_map,
-          "System information / runtime diagnostics",
+          "System diagnostics",
           "graph",
           "/system/process-map"
         )

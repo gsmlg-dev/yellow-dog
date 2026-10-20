@@ -50,6 +50,19 @@ defmodule YellowDog.Management.NavigationLiveTest do
                "#mobile-navigation-toggle[aria-controls='app-sidebar'][aria-expanded='false']"
              )
 
+      assert has_element?(
+               view,
+               "#app-sidebar-navigation[phx-hook='DuskmoonLeftMenu'][data-storage-key]"
+             )
+
+      assert has_element?(
+               view,
+               "#app-sidebar-navigation [data-left-menu-toggle][aria-expanded='true'][aria-controls='app-sidebar-navigation-scroll']"
+             )
+
+      assert has_element?(view, "#app-sidebar-navigation details[id][data-nav-group] > summary")
+      refute has_element?(view, "#app-sidebar-navigation .management-help")
+
       refute has_element?(view, "#app-sidebar-navigation a[href='#']")
 
       refute has_element?(

@@ -24,7 +24,16 @@ defmodule YellowDog.ManagementUI.Layouts do
       |> assign(:navigation_scope, CurrentPath.selection_for_path(assigns[:current_path]))
 
     ~H"""
-    <div id="yd-layout" class="yd-layout">
+    <div
+      id="yd-layout"
+      class="yd-layout"
+      phx-window-keydown={
+        JS.focus(to: "#yd-layout.yd-sidebar-open #mobile-navigation-toggle")
+        |> JS.remove_class("yd-sidebar-open", to: "#yd-layout")
+        |> JS.set_attribute({"aria-expanded", "false"}, to: "#mobile-navigation-toggle")
+      }
+      phx-key="Escape"
+    >
       <.navbar current_path={@current_path} />
       <div class="yd-body">
         <.live_component
@@ -58,25 +67,29 @@ defmodule YellowDog.ManagementUI.Layouts do
       |> assign(:build_info, BuildInfo.info())
 
     ~H"""
-    <.dm_navbar class="navbar-primary">
+    <.dm_navbar class="navbar-bordered bg-surface text-on-surface">
       <:start_part>
         <button
           id="mobile-navigation-toggle"
           type="button"
-          class="btn btn-ghost text-primary-content yd-menu-toggle"
+          class="btn btn-ghost btn-square yd-menu-toggle"
           aria-label="Open menu"
           aria-controls="app-sidebar"
           aria-expanded="false"
           phx-click={
             JS.toggle_class("yd-sidebar-open", to: "#yd-layout")
             |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+            |> JS.dispatch("duskmoon:left-menu:set-collapsed",
+              to: "#app-sidebar-navigation",
+              detail: %{collapsed: false}
+            )
           }
         >
           <.dm_mdi name="menu" width="24" height="24" />
         </button>
         <.link
           navigate="/management/servers"
-          class="btn btn-ghost text-xl font-bold text-primary-content"
+          class="btn btn-ghost text-xl font-bold"
         >
           <span>Yellow</span>
           <span class="text-warning">Dog</span>
@@ -109,7 +122,7 @@ defmodule YellowDog.ManagementUI.Layouts do
                 navigate={section.path}
                 data-section={section.id}
                 class={[
-                  "btn btn-ghost btn-sm text-primary-content",
+                  "btn btn-ghost btn-sm",
                   nav_active?(@current_path, section.id)
                 ]}
                 aria-current={nav_active?(@current_path, section.id) && "page"}
@@ -124,7 +137,7 @@ defmodule YellowDog.ManagementUI.Layouts do
       <:end_part>
         <.dm_theme_switcher id="theme-toggle" />
         <.dm_dropdown id="notifications-dropdown">
-          <:trigger class="btn btn-ghost btn-circle text-primary-content">
+          <:trigger class="btn btn-ghost btn-circle">
             <span class="sr-only">Notifications</span>
             <.dm_mdi name="bell-outline" width="24" height="24" />
           </:trigger>

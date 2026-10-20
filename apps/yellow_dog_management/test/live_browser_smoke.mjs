@@ -142,10 +142,10 @@ async function runSmoke() {
     assert.deepEqual(await api(`/workers/${created.id}`), worker, 'Navigation changed Worker configuration, target history or assignments');
     assert.deepEqual((await api(`/zones/${zone.id}`)).records, zone.records, 'Scoped navigation changed Zone data');
     assert.deepEqual(errors, [], 'JavaScript, CSP or asset errors');
-    console.log('PASS real Chromium navigation scope: four ordered desktop/mobile sections, zero-Worker global access, planned semantics, DNS scope and service selection, query/deep links, refresh/back-forward, no Worker or Zone mutations');
+    console.log('PASS real Chromium navigation scope: four ordered desktop/mobile sections, keyboard/pointer sidebar and group collapse, saved preferences, mobile Escape/overlay, sunshine/moonlight themes, zero-Worker global access, planned semantics, DNS scope and service selection, query/deep links, refresh/back-forward, no Worker or Zone mutations');
     return;
   }
-  assert.equal(await evaluate('document.querySelector(".yd-sidebar").scrollWidth <= document.querySelector(".yd-sidebar").clientWidth'), true, 'Desktop sidebar must not overflow horizontally');
+  assert.equal(await evaluate('document.querySelector("#app-sidebar").scrollWidth <= document.querySelector("#app-sidebar").clientWidth'), true, 'Desktop sidebar must not overflow horizontally');
   await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").click()');
   await until(() => evaluate('document.querySelector("#notifications-dropdown-popover").matches(":popover-open")'), 'Original notifications dropdown did not open');
   assert.equal(await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded")'), 'true');
