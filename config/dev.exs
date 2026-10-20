@@ -107,10 +107,6 @@ config :yellow_dog_telemetry,
 config :abyss,
   log_level: :debug
 
-# Abyss DHCP socket NIF: skip Rust compilation in dev unless cargo is available.
-# In production, remove this config to enable NIF compilation.
-config :abyss, Abyss.DhcpSocket.Native, skip_compilation?: true
-
 # macOS does not provide Linux netlink or the production DHCP socket setup.
 # Keep Netman bootable in dev with mock kernel state and writable local paths.
 if :os.type() == {:unix, :darwin} do

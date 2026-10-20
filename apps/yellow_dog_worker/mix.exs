@@ -14,7 +14,7 @@ defmodule YellowDog.Worker.MixProject do
       releases: [yellow_dog_worker: [include_executables_for: [:unix]]],
       deps: [
         {:yellow_dog_config_spec, in_umbrella: true},
-        {:abyss, in_umbrella: true},
+        {:abyss, "~> 0.8"},
         {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
         {:mint, "~> 1.10"},

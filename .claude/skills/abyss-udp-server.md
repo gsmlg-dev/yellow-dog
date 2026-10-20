@@ -302,8 +302,8 @@ Abyss.Server (Supervisor)
 
 ## Files Reference
 
-- `apps/abyss/lib/abyss.ex` - Main API
-- `apps/abyss/lib/abyss/handler.ex` - Handler behaviour
-- `apps/abyss/lib/abyss/transport/udp/unicast.ex` - Unicast transport
-- `apps/abyss/lib/abyss/transport/udp/broadcast.ex` - Broadcast transport
-- `apps/abyss/lib/abyss/server_config.ex` - Configuration validation
+- `deps/abyss/lib/abyss.ex` - Main API
+- `deps/abyss/lib/abyss/handler.ex` - Handler behaviour
+- `deps/abyss/lib/abyss/transport/udp/unicast.ex` - Unicast transport
+- `deps/abyss/lib/abyss/transport/udp/broadcast.ex` - Broadcast transport
+- `deps/abyss/lib/abyss/server_config.ex` - Configuration validation

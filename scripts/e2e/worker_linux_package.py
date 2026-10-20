@@ -163,17 +163,28 @@ def main():
     assert (release / "README.md").is_file(), "archive must include operator instructions"
     assert (release / "examples/anonymous-bootstrap.toml").is_file(), "archive must include URL-only example"
     assert not shutil.which("elixir") and not shutil.which("mix") and not pathlib.Path("/nix").exists()
-    native = list(release.glob("lib/abyss-*/priv/native/dhcp_socket.so"))
-    assert native, "archive must include Abyss native socket library"
-    for elf in [*release.glob("erts-*/bin/beam.smp"), *native]:
+    abyss_apps = list(release.glob("lib/abyss-*/ebin/abyss.app"))
+    assert len(abyss_apps) == 1, "archive must include the Abyss runtime"
+    abyss_version = abyss_apps[0].parent.parent.name.removeprefix("abyss-")
+    for elf in release.glob("erts-*/bin/beam.smp"):
         result = subprocess.run(["ldd", str(elf)], capture_output=True, text=True)
         links = result.stdout + result.stderr
         assert result.returncode == 0 and "not found" not in links, links
     version = subprocess.run([str(binary), "eval",
-        'Application.load(:yellow_dog_worker); {:module, Abyss.DhcpSocket.Native} = Code.ensure_loaded(Abyss.DhcpSocket.Native); IO.puts("NIF=loaded"); IO.puts("WORKER=" <> to_string(Application.spec(:yellow_dog_worker, :vsn))); IO.puts("ERTS=" <> to_string(:erlang.system_info(:version))); IO.puts("RELEASE=" <> System.get_env("RELEASE_VSN"))'],
+        'Application.load(:yellow_dog_worker); Application.load(:abyss); '
+        '{:module, Abyss.Server} = Code.ensure_loaded(Abyss.Server); '
+        '{:module, Abyss.Transport.UDP} = Code.ensure_loaded(Abyss.Transport.UDP); '
+        '{:error, {:missing_optional_dependency, :abyss_dhcp_socket}} = Abyss.DhcpSocket.Native.open("package-check", self()); '
+        'IO.puts("ABYSS=" <> to_string(Application.spec(:abyss, :vsn))); '
+        'IO.puts("DHCP=optional_dependency_absent"); '
+        'IO.puts("WORKER=" <> to_string(Application.spec(:yellow_dog_worker, :vsn))); '
+        'IO.puts("ERTS=" <> to_string(:erlang.system_info(:version))); '
+        'IO.puts("RELEASE=" <> System.get_env("RELEASE_VSN"))'],
         env=dict(os.environ, ERL_FLAGS="+S 2:2 +A 2"), capture_output=True, text=True, timeout=30)
     assert version.returncode == 0, version.stdout + version.stderr
-    assert "NIF=loaded" in version.stdout and "WORKER=" in version.stdout and "ERTS=" in version.stdout and "RELEASE=" in version.stdout
+    assert f"ABYSS={abyss_version}" in version.stdout
+    assert "DHCP=optional_dependency_absent" in version.stdout
+    assert "WORKER=" in version.stdout and "ERTS=" in version.stdout and "RELEASE=" in version.stdout
     print("PASS bundled executable version/eval: " + version.stdout.strip().replace("\n", "; "), flush=True)
     fixture = (release / "examples/plan.toml").read_text()
     with socket.socket() as selector:

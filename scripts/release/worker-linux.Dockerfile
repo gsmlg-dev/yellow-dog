@@ -1,11 +1,6 @@
 # Build on the oldest supported runtime, independent of the host's Nix paths.
-FROM docker.io/library/rust:1.85.1-slim-bookworm AS rust
 FROM docker.io/hexpm/elixir:1.19.6-erlang-28.3.3-debian-bookworm-20261005-slim AS builder
 
-COPY --from=rust /usr/local/cargo /usr/local/cargo
-COPY --from=rust /usr/local/rustup /usr/local/rustup
-ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup
-ENV PATH=/usr/local/cargo/bin:$PATH
 ENV MIX_ENV=prod LANG=C.UTF-8 ERL_FLAGS="+S 2:2 +A 2"
 WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends \

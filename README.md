@@ -66,8 +66,10 @@ to an existing database. Repeated runs preserve existing data and report
 Worker services, and normal `start` does not automatically migrate or create a
 database. There is no sample-data seed step.
 
-The existing umbrella selects the two products plus `yellow_dog_config_spec`,
-`abyss`, and `ex_dns`. Both products use the same ConfigSpec and fixtures under
+The umbrella selects the two products plus `yellow_dog_config_spec` and `ex_dns`.
+Worker uses the Hex `abyss` package (`~> 0.8`) for UDP infrastructure; core Abyss
+does not compile a DHCP Rust NIF. Both products use the same ConfigSpec and
+fixtures under
 `apps/yellow_dog_config_spec/`. No source assembly, pending documentation patch,
 Node/console asset build, or legacy service startup is needed.
 

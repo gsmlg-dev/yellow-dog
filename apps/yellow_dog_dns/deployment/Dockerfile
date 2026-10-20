@@ -28,7 +28,6 @@ COPY config config
 COPY apps/yellow_dog/mix.exs apps/yellow_dog/
 COPY apps/yellow_dog_dns/mix.exs apps/yellow_dog_dns/
 COPY apps/yellow_dog_telemetry/mix.exs apps/yellow_dog_telemetry/
-COPY apps/abyss/mix.exs apps/abyss/
 COPY apps/ex_dns/mix.exs apps/ex_dns/
 
 # Install dependencies
@@ -39,7 +38,6 @@ RUN mix deps.get --only prod && \
 COPY apps/yellow_dog apps/yellow_dog
 COPY apps/yellow_dog_dns apps/yellow_dog_dns
 COPY apps/yellow_dog_telemetry apps/yellow_dog_telemetry
-COPY apps/abyss apps/abyss
 COPY apps/ex_dns apps/ex_dns
 
 # Compile application

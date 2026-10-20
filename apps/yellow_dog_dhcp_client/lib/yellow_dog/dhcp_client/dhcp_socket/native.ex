@@ -1,9 +1,9 @@
 defmodule YellowDog.DhcpClient.DhcpSocket.Native do
   @moduledoc """
-  DHCP client adapter for the Abyss-owned production socket NIF.
+  DHCP client adapter for the optional upstream production socket NIF.
 
-  The Rustler dependency and native crate live in `:abyss`; this module keeps
-  the DHCP client's swappable `DhcpSocket` behaviour surface stable.
+  The Rustler dependency and native crate live in `:abyss_dhcp_socket`;
+  core `:abyss` supplies the facade used by this adapter.
   """
 
   @behaviour YellowDog.DhcpClient.DhcpSocket

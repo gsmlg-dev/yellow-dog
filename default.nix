@@ -2,7 +2,6 @@
   lib,
   pkgs,
   beam28Packages,
-  rustPlatform,
   releaseName ? "yellow_dog_worker",
   ...
 }: let
@@ -10,7 +9,6 @@
   versionLines = lib.splitString "\n" (builtins.readFile ./mix.exs);
   versionLine = builtins.head (builtins.filter (line: builtins.match "[[:space:]]+version:.*" line != null) versionLines);
   version = builtins.elemAt (lib.splitString "\"" versionLine) 1;
-  cargoRoot = "apps/abyss/native/dhcp_socket";
 
   src = lib.cleanSourceWith {
     src = ./.;
@@ -21,14 +19,13 @@
       lib.cleanSourceFilter path type
       && !(builtins.elem topLevel ["_build" "deps" "node_modules" ".trees" ".devenv" ".direnv" "data" "tmp" "nonode@nohost"])
       && !(lib.hasPrefix ".env" topLevel)
-      && !(lib.hasInfix "/native/" relative && (lib.hasInfix "/target/" relative || lib.hasSuffix "/target" relative))
-      && relative != "apps/abyss/priv/native/dhcp_socket.so";
+      && !(lib.hasInfix "/native/" relative && (lib.hasInfix "/target/" relative || lib.hasSuffix "/target" relative));
   };
 
   mixFodDeps = beam28Packages.fetchMixDeps {
     pname = "yellow-dog-phase1-mix-deps";
     inherit src version;
-    hash = "sha256-wje9mrT09vYNgTrJOilW2641ZF5Vf5FGHX29O1soMes=";
+    hash = "sha256-XQfRjF1WAjiiHDzaMQNGWSEPswJOd9ShbZ5ouFppRKI=";
     mixEnv = "prod";
   };
 
@@ -46,19 +43,13 @@
     url = "https://github.com/leandrocp/mdex_native/releases/download/v0.2.11/libmdex_native_nif-v0.2.11-nif-2.15-${mdexTarget}.so.tar.gz";
     sha256 = mdexHashes.${pkgs.stdenv.hostPlatform.system};
   };
-
-  cargoDeps = rustPlatform.fetchCargoVendor {
-    inherit src cargoRoot;
-    hash = "sha256-VnGOU+mS57W5Z4Vbi0GmVVZiuPrmph14ocST+dQJSvk=";
-  };
 in
   assert builtins.elem releaseName supportedReleases;
     (beam28Packages.mixRelease {
       pname = releaseName;
-      inherit version src mixFodDeps cargoDeps cargoRoot;
+      inherit version src mixFodDeps;
       mixReleaseName = releaseName;
       compileFlags = ["--warnings-as-errors"];
-      nativeBuildInputs = [rustPlatform.cargoSetupHook pkgs.cargo pkgs.rustc];
       preConfigure = ''
         export RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH="$TMPDIR/rustler-precompiled"
         mkdir -p "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH"

@@ -1,10 +1,15 @@
 ---
 name: cmd-sync-abyss
-description: Reconcile the Yellow Dog umbrella Abyss app with its standalone sibling for publishable releases. Use only when explicitly asked to synchronize the two repositories.
+description: Retired vendored Abyss synchronization workflow. Yellow Dog now consumes Hex abyss; use the standalone repository for library development.
 disable-model-invocation: true
 ---
 
 # Synchronize Abyss
+
+This workflow is retired following the migration to Hex `abyss` (`~> 0.8`).
+There is no `apps/abyss` development copy to reconcile. If invoked, report this
+change and stop; library work belongs in `gsmlg-dev/abyss`, followed by a package
+release and dependency update here. The instructions below are historical only.
 
 Synchronize the first-development copy at `apps/abyss` with the standalone Abyss project. The umbrella copy is the primary development source because Yellow Dog uses `in_umbrella` for fast iteration; the standalone project is the distributable project. This skill is manual-only: an explicit invocation authorizes reconciliation, but does not authorize publishing.
 

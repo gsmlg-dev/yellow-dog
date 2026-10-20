@@ -30,7 +30,7 @@ defmodule YellowDog.Netboot.MixProject do
     [
       {:yellow_dog, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
-      {:abyss, in_umbrella: true},
+      {:abyss, "~> 0.8"},
       {:telemetry, "~> 1.2"},
       {:toml, "~> 0.7"},
       {:jason, "~> 1.4"},

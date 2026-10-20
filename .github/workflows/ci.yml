@@ -111,12 +111,6 @@ jobs:
           - name: netlink_helper
             path: apps/yellow_dog_netman/native/netlink_helper
             run-tests: true
-          - name: dhcp_socket
-            path: apps/abyss/native/dhcp_socket
-            # Rustler test binaries reference enif_* symbols and cannot load
-            # outside the BEAM on Linux; clippy --all-targets still
-            # type-checks the test code. `cargo test` runs on macOS locally.
-            run-tests: false
 
     steps:
       - name: Checkout code

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sovereign DHCPv4 client implementing the full DORA lifecycle as a supervised OTP application. Uses `:gen_statem` for the state machine, an Abyss-owned Rust NIF for platform-specific broadcast socket operations, and `ex_dhcp` for packet codec.
+Sovereign DHCPv4 client implementing the full DORA lifecycle as a supervised OTP application. Uses `:gen_statem` for the state machine, the optional upstream Abyss DHCP Rust NIF for platform-specific broadcast socket operations, and `ex_dhcp` for packet codec.
 
 ## Architecture
 
@@ -56,7 +56,8 @@ mix test test/vendor_options_test.exs
 ## Dependencies
 
 - `ex_dhcp` (in-umbrella) — DHCP packet codec
-- `abyss` (in-umbrella) — Production DHCP socket NIF owner
+- `abyss` (Hex `~> 0.8`) — UDP infrastructure and DHCP facade
+- `abyss_dhcp_socket` (production-only sparse Git dependency pinned to Abyss 0.8.1) — Native DHCP/ARP socket implementation; not part of the supported DNS-only Worker
 - `yellow_dog` (in-umbrella) — Core config
 - `yellow_dog_telemetry` (in-umbrella) — Telemetry
 - `telemetry`, `file_system`, `toml` (Hex)
@@ -64,7 +65,7 @@ mix test test/vendor_options_test.exs
 ## Gotchas
 
 - `DhcpSocket.UdpFallback` cannot broadcast from `0.0.0.0:68` — use Rust NIF for production
-- The production Rust NIF lives in `apps/abyss/native/dhcp_socket` and needs a Rust toolchain to compile
+- The production Rust NIF lives in upstream `packages/abyss_dhcp_socket` and needs a Rust toolchain to compile. It is not bundled in core Hex Abyss; the production-only dependency is explicit in this app manifest.
 - Yellow Dog PEN is placeholder `99999` — replace after IANA registration
 - `:gen_statem` `state_enter` events fire on every state transition — watch for side effects
 - `select_best_offer/1` reverses the offers list since they accumulate in reverse order

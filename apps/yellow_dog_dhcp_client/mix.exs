@@ -26,7 +26,12 @@ defmodule YellowDog.DhcpClient.MixProject do
     [
       {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
-      {:abyss, in_umbrella: true},
+      {:abyss, "~> 0.8"},
+      {:abyss_dhcp_socket,
+       git: "https://github.com/gsmlg-dev/abyss.git",
+       ref: "71ecf7883c0aaf666406d24634ff5c022382029d",
+       sparse: "packages/abyss_dhcp_socket",
+       only: :prod},
       {:ex_dhcp, in_umbrella: true},
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},

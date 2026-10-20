@@ -33,7 +33,7 @@ Pi is a terminal-based agent that thrives on concise context. When initiated:
     *   *Confirm*: Work autonomously but ask for confirmation when modifying database schemas (Mnesia), changing shared protocols in `abyss`, `ex_dns`, `ex_dhcp`, or altering global configuration loading.
 
 ### Restrictions & Safety Rules
-*   **CRITICAL**: NEVER use `:gen_udp` outside `apps/abyss/` (except inside `ex_dns`/`ex_dhcp` protocol libraries, or the `DhcpSocket.UdpFallback` dev/test fallback in `yellow_dog_dhcp_client`). All UDP servers must use the `Abyss` UDP abstraction.
+*   **CRITICAL**: NEVER use `:gen_udp` directly in product code (except inside `ex_dns`/`ex_dhcp` protocol libraries, or the `DhcpSocket.UdpFallback` dev/test fallback in `yellow_dog_dhcp_client`). All UDP servers must use the Hex `:abyss` abstraction.
 *   **CRITICAL**: NEVER override UI design tokens or replicate component internals of `@duskmoon-dev/core` or `phoenix_duskmoon`. Adhere strictly to the Upstream Issue Protocol when bugs are found in these components.
 *   **CRITICAL**: Avoid raw Tailwind CSS utility classes in Phoenix LiveView templates if they are not provided by `@duskmoon-dev/core` tokens.
 
@@ -92,7 +92,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 | **Protocols** | `apps/yellow_dog_dns`, `_dns_provider`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | DNS providers, protocol servers, packet handlers, zone/lease management, and network boot. |
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity`, `_fingerprint` | DHCP client, Linux network management, DNS stub caching, host trust, and device identification. |
 | **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DuskMoon UI templates, asset compilation via DuskmoonBundler. |
-| **Libraries** | `apps/abyss`, `apps/ex_dns`, `apps/ex_dhcp`, `apps/geo_ip_db` | Infrastructure libraries (UDP core/native sockets, DNS protocol, DHCP messages). |
+| **Libraries** | Hex `:abyss`, `apps/ex_dns`, `apps/ex_dhcp`, `apps/geo_ip_db` | UDP infrastructure from Hex; local DNS protocol, DHCP messages, and GeoIP libraries. Native DHCP sockets require the separate upstream `:abyss_dhcp_socket` package. |
 
 ### Storage Patterns
 *   **Server Store**: `YellowDog.Store.*` uses Concord as the source of truth and a write-through ETS cache for local reads. Server apps must use these typed facades instead of calling Concord directly.

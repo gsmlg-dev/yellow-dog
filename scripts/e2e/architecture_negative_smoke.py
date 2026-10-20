@@ -90,4 +90,20 @@ original_manifest = replace_once(
 check("wrong_startup_mode", "startup mode mismatch")
 manifest.write_text(original_manifest)
 
-print("ARCHITECTURE NEGATIVE SMOKE PASSED: positive fixture and four rejected mutations")
+worker = fixture_root / "yellow_dog_worker"
+_erts, version = (worker / "releases/start_erl.data").read_text().split()
+manifest = worker / f"releases/{version}/yellow_dog_worker.rel"
+[abyss_app] = worker.glob("lib/abyss-*/ebin/abyss.app")
+original_manifest = replace_once(
+    manifest, r'\{abyss,\s*"[^"]+",\s*\w+\},?', '')
+original_abyss_app = abyss_app.read_text()
+abyss_app.unlink()
+check("missing_abyss", "Abyss runtime dependency is missing")
+manifest.write_text(original_manifest)
+abyss_app.write_text(original_abyss_app)
+
+replace_once(abyss_app, r'(\{vsn,\s*)"[^"]+"', r'\1"0.0.0"')
+check("wrong_abyss_version", "packaged Abyss does not match the Hex lock")
+abyss_app.write_text(original_abyss_app)
+
+print("ARCHITECTURE NEGATIVE SMOKE PASSED: positive fixture and six rejected mutations")

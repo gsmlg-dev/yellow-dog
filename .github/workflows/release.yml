@@ -174,7 +174,6 @@ jobs:
             ~/.cache/rebar3
             deps
             _build
-            apps/abyss/native/dhcp_socket/target
           key: release-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.product_slug }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}
           restore-keys: |
             release-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.product_slug }}-

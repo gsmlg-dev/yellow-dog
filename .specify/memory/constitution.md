@@ -116,7 +116,7 @@ apps/yellow_dog_dns/lib/yellow_dog/dns/
 
 ## Transport Layer Standards
 
-### UDP Transport (`apps/abyss`)
+### UDP Transport (Hex `abyss`)
 
 **MANDATORY RULE:** ALL UDP servers MUST use the Abyss library.
 
@@ -279,13 +279,13 @@ HTTP.fetch("http://localhost/containers/json", [
 
 ### Infrastructure Library Integration
 
-**MANDATORY:** Infrastructure libraries are umbrella applications with shared build paths:
+**MANDATORY:** Use Hex `abyss` (`~> 0.8`) for UDP infrastructure. Local protocol libraries remain umbrella applications with shared build paths:
 
 ```elixir
-# In apps/abyss/mix.exs, apps/ex_dns/mix.exs, apps/ex_dhcp/mix.exs
+# In apps/ex_dns/mix.exs or apps/ex_dhcp/mix.exs
 def project do
   [
-    app: :abyss,  # or :ex_dns, :ex_dhcp
+    app: :ex_dns,  # or :ex_dhcp
     build_path: "../../_build",
     config_path: "../../config/config.exs",
     deps_path: "../../deps",
@@ -297,7 +297,7 @@ end
 ### Cross-Application Dependencies
 
 **MANDATORY PATTERNS:**
-1. All protocol apps depend on infrastructure libs with `in_umbrella: true`
+1. Protocol apps use Hex `abyss`; local protocol libraries use `in_umbrella: true`
 2. All apps use `yellow_dog_telemetry` for telemetry
 3. Console app depends on all protocol apps
 4. Core `yellow_dog` app orchestrates all services
@@ -308,7 +308,7 @@ end
 defp deps do
   [
     {:ex_dns, in_umbrella: true},
-    {:abyss, in_umbrella: true},
+    {:abyss, "~> 0.8"},
     {:yellow_dog_telemetry, in_umbrella: true}
   ]
 end
@@ -710,7 +710,7 @@ mix test --exclude privileged_port
 **MANDATORY:** Infrastructure libraries MUST achieve 100% unit test pass rate:
 
 **Scope:** This requirement applies to:
-- `apps/abyss` - UDP server library
+- Hex `abyss` - validate integration through Worker DNS tests
 - `apps/ex_dns` - DNS protocol library
 - `apps/ex_dhcp` - DHCP protocol library
 
@@ -719,7 +719,7 @@ mix test --exclude privileged_port
 **Enforcement:**
 ```bash
 # All unit tests must pass (exit code 0)
-cd apps/abyss && mix test
+mix cmd --app yellow_dog_worker mix test test/yellow_dog/worker/dns_adapter_test.exs
 cd apps/ex_dns && mix test
 cd apps/ex_dhcp && mix test
 ```

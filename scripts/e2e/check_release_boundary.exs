@@ -1,8 +1,14 @@
 defmodule YellowDog.ReleaseBoundary do
   def check!(root) do
     products = [:yellow_dog_management, :yellow_dog_worker]
-    expected_apps = products ++ [:yellow_dog_config_spec, :abyss, :ex_dns]
+    expected_apps = products ++ [:yellow_dog_config_spec, :ex_dns]
     config = Mix.Project.config()
+
+    abyss_version =
+      case Mix.Dep.Lock.read()[:abyss] do
+        {:hex, :abyss, version, _, _, _, "hexpm", _} -> version
+        _ -> raise "Abyss must be locked to a Hex dependency"
+      end
 
     require!(
       Enum.sort(Map.keys(Mix.Project.apps_paths())) == Enum.sort(expected_apps),
@@ -94,6 +100,20 @@ defmodule YellowDog.ReleaseBoundary do
         require!(Enum.all?(names, &(&1 not in forbidden)), "#{product}: forbidden dependency")
 
         {_, product_specification} = Map.fetch!(specifications, product)
+
+        if product == :yellow_dog_worker do
+          require!(
+            :abyss in names and :abyss in product_specification[:applications],
+            "#{product}: Abyss runtime dependency is missing"
+          )
+
+          {_, abyss_specification} = Map.fetch!(specifications, :abyss)
+
+          require!(
+            to_string(abyss_specification[:vsn]) == abyss_version,
+            "#{product}: packaged Abyss does not match the Hex lock"
+          )
+        end
 
         {expected_callback, forbidden_modules} =
           if product == :yellow_dog_management do
