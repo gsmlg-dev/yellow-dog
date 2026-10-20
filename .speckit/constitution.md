@@ -119,7 +119,7 @@ end
 
 ### TCP Transport (DNS only)
 
-**MANDATORY RULE:** DNS TCP and TLS connections MUST use `:thousand_island`.
+**MANDATORY RULE:** DNS TCP and TLS connections MUST use `:hell`.
 
 **Prohibited:**
 - ❌ Direct `:gen_tcp` usage
@@ -612,7 +612,7 @@ devenv shell        # Manual activation
 ### ❌ NEVER DO:
 
 1. **Disable CI jobs** - All jobs must remain active
-2. **Use direct socket libraries** - Use Abyss for UDP, :thousand_island for TCP
+2. **Use direct socket libraries** - Use Abyss for UDP, :hell for TCP
 3. **Skip warnings** - Code must compile with `--warnings-as-errors`
 4. **Commit without tests** - New features require tests
 5. **Hardcode configuration** - Use YellowDog.Config
