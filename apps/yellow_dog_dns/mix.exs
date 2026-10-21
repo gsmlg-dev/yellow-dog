@@ -36,7 +36,7 @@ defmodule YellowDog.Dns.MixProject do
       {:geo_ip_db, in_umbrella: true},
 
       # External dependencies for DNS functionality
-      {:abyss, "~> 0.8"},
+      {:abyss, "~> 0.9.0"},
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
 

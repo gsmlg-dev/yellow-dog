@@ -165,6 +165,10 @@ def main():
     assert not shutil.which("elixir") and not shutil.which("mix") and not pathlib.Path("/nix").exists()
     abyss_apps = list(release.glob("lib/abyss-*/ebin/abyss.app"))
     assert len(abyss_apps) == 1, "archive must include the Abyss runtime"
+    for optional in ("abyss_raw", "abyss_dhcp_socket", "rustler", "rustler_precompiled"):
+        assert not list(release.glob(f"lib/{optional}-*")), f"archive must exclude {optional}"
+    assert not list(release.glob("lib/**/Elixir.AbyssDhcpSocket.Native.beam")), "archive must exclude native DHCP implementation"
+    assert not list(release.glob("lib/**/priv/**/*dhcp_socket*.so")), "archive must exclude native DHCP artifacts"
     abyss_version = abyss_apps[0].parent.parent.name.removeprefix("abyss-")
     for elf in release.glob("erts-*/bin/beam.smp"):
         result = subprocess.run(["ldd", str(elf)], capture_output=True, text=True)
@@ -174,7 +178,7 @@ def main():
         'Application.load(:yellow_dog_worker); Application.load(:abyss); '
         '{:module, Abyss.Server} = Code.ensure_loaded(Abyss.Server); '
         '{:module, Abyss.Transport.UDP} = Code.ensure_loaded(Abyss.Transport.UDP); '
-        '{:error, {:missing_optional_dependency, :abyss_dhcp_socket}} = Abyss.DhcpSocket.Native.open("package-check", self()); '
+        '{:error, {:missing_optional_dependency, :abyss_raw}} = Abyss.DhcpSocket.Native.open("package-check", self()); '
         'IO.puts("ABYSS=" <> to_string(Application.spec(:abyss, :vsn))); '
         'IO.puts("DHCP=optional_dependency_absent"); '
         'IO.puts("WORKER=" <> to_string(Application.spec(:yellow_dog_worker, :vsn))); '

@@ -1,4 +1,6 @@
 defmodule YellowDog.ReleaseBoundary do
+  @optional_native_apps [:abyss_raw, :abyss_dhcp_socket, :rustler]
+
   def check!(root) do
     products = [:yellow_dog_management, :yellow_dog_worker]
     expected_apps = products ++ [:yellow_dog_config_spec, :ex_dns]
@@ -9,6 +11,13 @@ defmodule YellowDog.ReleaseBoundary do
         {:hex, :abyss, version, _, _, _, "hexpm", _} -> version
         _ -> raise "Abyss must be locked to a Hex dependency"
       end
+
+    active_dependencies = Mix.Dep.load_and_cache()
+
+    require!(
+      Enum.all?(active_dependencies, &(&1.app not in @optional_native_apps)),
+      "default products: optional native dependency in active graph"
+    )
 
     require!(
       Enum.sort(Map.keys(Mix.Project.apps_paths())) == Enum.sort(expected_apps),
@@ -99,6 +108,19 @@ defmodule YellowDog.ReleaseBoundary do
 
         require!(Enum.all?(names, &(&1 not in forbidden)), "#{product}: forbidden dependency")
 
+        require!(
+          Enum.all?(names, &(&1 not in @optional_native_apps)),
+          "#{product}: optional native dependency is packaged"
+        )
+
+        native_artifacts =
+          directory
+          |> Path.join("lib/**/priv/**/*dhcp_socket*")
+          |> Path.wildcard()
+          |> Enum.filter(&(Path.extname(&1) in [".so", ".dylib", ".dll"]))
+
+        require!(native_artifacts == [], "#{product}: optional native artifact is packaged")
+
         {_, product_specification} = Map.fetch!(specifications, product)
 
         if product == :yellow_dog_worker do
@@ -139,6 +161,11 @@ defmodule YellowDog.ReleaseBoundary do
           |> Path.join("lib/*/ebin/*.beam")
           |> Path.wildcard()
           |> Enum.map(&Path.basename(&1, ".beam"))
+
+        require!(
+          "Elixir.AbyssDhcpSocket.Native" not in packaged_modules,
+          "#{product}: optional native implementation is packaged"
+        )
 
         require!(
           Enum.all?(packaged_modules, fn module ->

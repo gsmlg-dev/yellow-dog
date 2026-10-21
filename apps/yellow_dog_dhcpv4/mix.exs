@@ -34,7 +34,7 @@ defmodule YellowDog.Dhcpv4.MixProject do
 
       # External dependencies for DHCPv4 functionality
       {:ex_dhcp, in_umbrella: true},
-      {:abyss, "~> 0.8"},
+      {:abyss, "~> 0.9.0"},
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},
       {:toml, "~> 0.7"},

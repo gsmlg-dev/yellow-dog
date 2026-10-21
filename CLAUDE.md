@@ -18,7 +18,7 @@ source outside the supported root build.
 The supported root umbrella releases are `yellow_dog_management` (Ecto/PostgreSQL,
 UI/API, logical targets and TOML exports) and `yellow_dog_worker` (local TOML-only
 service execution and authoritative DNS). Both use one pure `yellow_dog_config_spec`.
-The root build selects these products plus `ex_dns`. Worker depends on Hex `abyss` (`~> 0.8`); legacy apps remain
+The root build selects these products plus `ex_dns`. Worker depends on Hex `abyss` (`~> 0.9.0`); legacy apps remain
 reusable source outside the supported product build. Mixed releases/startup aliases
 are retired. Phase 1 excludes live Agents, delivery and connected reconciliation.
 
@@ -29,7 +29,7 @@ are retired. Phase 1 excludes live Agents, delivery and connected reconciliation
 | **YellowDog.Management** | `apps/yellow_dog_management/` | PostgreSQL domain, UI/API without built-in login on port 4270, immutable target export; no service execution |
 | **YellowDog.Worker** | `apps/yellow_dog_worker/` | Local TOML bootstrap, durable snapshots and authoritative DNS; no PostgreSQL/UI/Agent |
 | **YellowDog.ConfigSpec** | `apps/yellow_dog_config_spec/` | Shared pure WorkerPlan validation, normalization, digests, TOML codec and fixtures |
-| **Abyss** | Hex `:abyss` (`~> 0.8`) | Worker UDP/server infrastructure; optional native DHCP is a separate upstream package |
+| **Abyss** | Hex `:abyss` (`~> 0.9.0`) | Worker UDP/server infrastructure; optional native DHCP is a separate upstream package |
 | **ExDns** | `apps/ex_dns/` | Worker DNS protocol library (messages, zones, records) |
 
 The following applications are legacy source, excluded from the supported root build:
@@ -72,7 +72,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 - Runtime `Application` modules exist for `yellow_dog_management_core`, `yellow_dog`, `yellow_dog_netman`, `yellow_dog_console`, `yellow_dog_server_agent`, `yellow_dog_netman_agent`, and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Most protocol apps remain library applications started by `YellowDog.Application`
 - Server services are conditionally started by `YellowDog.Application` through `YellowDog.Server.ProfileResolver`, which supports `[yellow_dog_server]` profiles and falls back to legacy `[core]` flags
-- `ex_dns` and `ex_dhcp` are **in-umbrella** with shared build paths; `abyss` is a Hex dependency. The retained DHCP client explicitly adds upstream `abyss_dhcp_socket` in production.
+- `ex_dns` and `ex_dhcp` are **in-umbrella** with shared build paths; `abyss` is a Hex dependency. The retained DHCP client explicitly adds upstream `abyss_raw` in production.
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
 - **Store** (`yellow_dog_store`) wraps Concord (Raft-based embedded KV) behind typed facade modules. Concord is the source of truth; ETS is the always-on local read cache (write-through). See `apps/yellow_dog_store/CLAUDE.md` for the full data-flow contract
 - **Netman apps never depend on `yellow_dog_store`** — netman is a separate product with its own persistence (TOML lease files via `LeaseStore`)
@@ -80,7 +80,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ## Constitution (Architectural Constraints)
 
-- **Do not use `:gen_udp` directly in product code** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`, or `Abyss.DhcpSocket.Native`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp`; production DHCP client sockets use the optional upstream `abyss_dhcp_socket` Rust NIF via the `Abyss.DhcpSocket.Native` facade.
+- **Do not use `:gen_udp` directly in product code** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`, or `Abyss.DhcpSocket.Native`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp`; production DHCP client sockets use the optional upstream `abyss_raw` Rust NIF via the `Abyss.DhcpSocket.Native` facade.
 - **No legacy server app calls `Concord.*` directly** — all access goes through `YellowDog.Store.*` facade modules; Phase 1 Management and Worker do not use this Store.
 
 ## Common Commands

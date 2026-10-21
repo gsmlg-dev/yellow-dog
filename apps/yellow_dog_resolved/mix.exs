@@ -24,7 +24,7 @@ defmodule YellowDog.Resolved.MixProject do
 
   defp deps do
     [
-      {:abyss, "~> 0.8"},
+      {:abyss, "~> 0.9.0"},
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},

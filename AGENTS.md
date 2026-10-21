@@ -92,7 +92,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 | **Protocols** | `apps/yellow_dog_dns`, `_dns_provider`, `_dhcpv4`, `_dhcpv6`, `_mdns`, `_netboot` | DNS providers, protocol servers, packet handlers, zone/lease management, and network boot. |
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity`, `_fingerprint` | DHCP client, Linux network management, DNS stub caching, host trust, and device identification. |
 | **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DuskMoon UI templates, asset compilation via DuskmoonBundler. |
-| **Libraries** | Hex `:abyss`, `apps/ex_dns`, `apps/ex_dhcp`, `apps/geo_ip_db` | UDP infrastructure from Hex; local DNS protocol, DHCP messages, and GeoIP libraries. Native DHCP sockets require the separate upstream `:abyss_dhcp_socket` package. |
+| **Libraries** | Hex `:abyss`, `apps/ex_dns`, `apps/ex_dhcp`, `apps/geo_ip_db` | UDP infrastructure from Hex; local DNS protocol, DHCP messages, and GeoIP libraries. Native DHCP sockets require the separate upstream `:abyss_raw` package. |
 
 ### Storage Patterns
 *   **Server Store**: `YellowDog.Store.*` uses Concord as the source of truth and a write-through ETS cache for local reads. Server apps must use these typed facades instead of calling Concord directly.

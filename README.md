@@ -67,9 +67,11 @@ Worker services, and normal `start` does not automatically migrate or create a
 database. There is no sample-data seed step.
 
 The umbrella selects the two products plus `yellow_dog_config_spec` and `ex_dns`.
-Worker uses the Hex `abyss` package (`~> 0.8`) for UDP infrastructure; core Abyss
-does not compile a DHCP Rust NIF. Both products use the same ConfigSpec and
-fixtures under
+Worker uses the Hex `abyss` package (`~> 0.9.0`) for UDP infrastructure; core Abyss
+does not compile a DHCP Rust NIF. The retained, excluded DHCP client selects
+Hex `abyss_raw` 0.9.0 only in production; neither default product selects or ships
+that native package. See [the migration and validation guide](docs/phase1/abyss-raw-migration.md).
+Both products use the same ConfigSpec and fixtures under
 `apps/yellow_dog_config_spec/`. No source assembly, pending documentation patch,
 Node/console asset build, or legacy service startup is needed.
 

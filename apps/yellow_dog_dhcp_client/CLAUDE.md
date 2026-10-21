@@ -53,11 +53,28 @@ mix test test/vendor_options_test.exs
 - DAD is disabled in tests via `dad_enabled: false` config
 - LeaseStore uses temp dirs in tests
 
+The retained app is excluded from the default root build. Validate its production
+socket path separately, from the repository root:
+
+```bash
+devenv shell -- python3 scripts/e2e/dhcp_client_native.py
+```
+
+This creates a fresh isolated consumer from the actual socket and adapter source,
+resolves the production manifest's coordinated Hex versions, checks native loading
+and socket contracts, builds and evaluates an explicit native consumer release,
+and runs the upstream isolated DHCP/ARP packet and cleanup checks through the
+YellowDog adapter. It prints the stage directory and writes `evidence.json` there.
+Namespace setup requires passwordless sudo; inability to create the topology is
+reported as `BLOCKED_ENV` after the other gates run. `--no-wire` explicitly marks
+packet checks as unrun. These checks do not build a complete retained client
+release or enable/deploy the client in the default products.
+
 ## Dependencies
 
 - `ex_dhcp` (in-umbrella) — DHCP packet codec
-- `abyss` (Hex `~> 0.8`) — UDP infrastructure and DHCP facade
-- `abyss_dhcp_socket` (production-only sparse Git dependency pinned to Abyss 0.8.1) — Native DHCP/ARP socket implementation; not part of the supported DNS-only Worker
+- `abyss` (Hex `~> 0.9.0`) — UDP infrastructure and DHCP facade
+- `abyss_raw` (Hex `~> 0.9.0`, production only) — Native DHCP/ARP socket implementation; not part of the supported DNS-only Worker
 - `yellow_dog` (in-umbrella) — Core config
 - `yellow_dog_telemetry` (in-umbrella) — Telemetry
 - `telemetry`, `file_system`, `toml` (Hex)
@@ -65,7 +82,7 @@ mix test test/vendor_options_test.exs
 ## Gotchas
 
 - `DhcpSocket.UdpFallback` cannot broadcast from `0.0.0.0:68` — use Rust NIF for production
-- The production Rust NIF lives in upstream `packages/abyss_dhcp_socket` and needs a Rust toolchain to compile. It is not bundled in core Hex Abyss; the production-only dependency is explicit in this app manifest.
+- The production Rust NIF comes from Hex `abyss_raw` and needs a Rust toolchain to compile. Its native artifact belongs to `:abyss_raw`; the adapter keeps the core `Abyss.DhcpSocket.Native` facade and wraps its successful resource in `{:ok, resource}` for the client behaviour.
 - Yellow Dog PEN is placeholder `99999` — replace after IANA registration
 - `:gen_statem` `state_enter` events fire on every state transition — watch for side effects
 - `select_best_offer/1` reverses the offers list since they accumulate in reverse order
