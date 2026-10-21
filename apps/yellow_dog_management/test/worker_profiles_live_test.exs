@@ -122,10 +122,10 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
     {:ok, view, html} = live(conn, "/server/#{worker["id"]}/dashboard")
     assert_catalog(view, "worker-edit-profile", "dns_only")
     assert has_element?(view, "#worker-edit-form button", "Save name and profile")
-    assert has_element?(view, "#service-form")
-    assert has_element?(view, "#assignment-form")
-    assert has_element?(view, "a[href='#{export_path}']", "Export TOML")
-    assert has_element?(view, "a[href='/server/#{worker["id"]}/dns/zones']", "DNS Zones")
+    refute has_element?(view, "#service-form")
+    refute has_element?(view, "#assignment-form")
+    assert has_element?(view, "a[href='/server/#{worker["id"]}/targets']", "Configuration target")
+    assert has_element?(view, "a[href='/server/#{worker["id"]}/services']", "Services")
     assert html =~ "Actual runtime state is unknown"
     assert html =~ "not service enablement"
     assert read_snapshot() == before_read

@@ -25,6 +25,7 @@ defmodule YellowDog.ManagementUI.Router do
       layout: false do
       live "/", OverviewLive, :overview
       live "/management", OverviewLive, :overview
+      live "/management/servers/enrollment", WorkersLive, :enrollment
       live "/management/servers", WorkersLive, :index
       live "/management/netman", NetmansLive, :index
       live "/management/events", EventsLive, :index
@@ -32,7 +33,13 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/dns/views", DnsViewsLive, :selector
       live "/server", WorkersLive, :index
       live "/server/:server_id/dashboard", WorkerLive, :show
-      live "/server/:server_id/dns", WorkerLive, :show
+      live "/server/:server_id/connection", WorkerLive, :connection
+      live "/server/:server_id/services/new", WorkerLive, :new_service
+      live "/server/:server_id/services/:service_id/edit", WorkerLive, :edit_service
+      live "/server/:server_id/services", WorkerLive, :services
+      live "/server/:server_id/targets/:revision", WorkerLive, :target
+      live "/server/:server_id/targets", WorkerLive, :targets
+      live "/server/:server_id/dns", WorkerLive, :services
       live "/server/:server_id/dns/acl", DnsAclsLive, :selector
       live "/server/:server_id/dns/acl/:service_id", DnsAclsLive, :index
       live "/server/:server_id/dns/views", DnsViewsLive, :selector

@@ -108,3 +108,27 @@ Screenshots: `/tmp/yellow-dog-navigation-step1/navigation-desktop-nodes.png`,
 `navigation-desktop-data.png`, `navigation-desktop-monitoring.png`,
 `navigation-desktop-system.png`, `navigation-mobile-navigation.png` in the same
 directory. Browser log: `/tmp/yellow-dog-navigation-step1/navigation-browser-final.log`.
+
+## Step 2 node workflow route additions
+
+Starting at `c93175b122c413b7bfe4c7d27b921d002e4f4399`, node details have four
+stable tabs. `/server/:server_id/dashboard` is Basic information;
+`/connection` is Authentication & connection; `/services` lists DNS instances;
+`/targets` is the review/publication workspace. Service creation uses
+`/services/new` and editing uses `/services/:service_id/edit` with the database
+service UUID scoped to the selected Worker. Historical targets load at
+`/targets/:revision`. `/server/:server_id/dns` delegates narrowly to Services.
+All these routes are owned by Node Management and the Selected Worker entry.
+
+The global anonymous admission policy now has a separate Node Management entry
+at `/management/servers/enrollment`. The Workers list retains name-only logical
+registration and canonical transient bootstrap presentation; individual token
+reset lives on the selected Worker's connection tab. Policy is not administrator
+login and disabling it does not revoke registered Workers. Netman, cross-node
+history, Data route ownership, and the four primary sections are unchanged.
+
+Node pages link to existing Data editors and show service-scoped references.
+They no longer provide a duplicate Zone assignment form. DNS View/ACL scope
+continues to use the selected service UUID. No planned service or platform menu
+entry gains a fabricated destination. See [management-node-workflow.md](management-node-workflow.md)
+for the application contract, final evidence and limitations.

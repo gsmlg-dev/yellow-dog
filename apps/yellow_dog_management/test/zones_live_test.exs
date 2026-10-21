@@ -151,13 +151,16 @@ defmodule YellowDog.Management.ZonesLiveTest do
                Domain.list_assignments(service["worker_id"])
 
       assert version_id == version["id"]
-      {:ok, worker_view, _} = live(build_conn(), "/server/#{service["worker_id"]}/dashboard")
-      assert has_element?(worker_view, "#resource-assignments tbody tr", zone["id"])
+
+      {:ok, worker_view, _} =
+        live(build_conn(), "/server/#{service["worker_id"]}/services/#{service["id"]}/edit")
+
+      assert has_element?(worker_view, "#service-references", zone["id"])
 
       assert has_element?(
                worker_view,
-               "#resource-assignments td:nth-child(2)",
-               to_string(version["version"])
+               "#service-references",
+               "version #{version["version"]}"
              )
     end
 

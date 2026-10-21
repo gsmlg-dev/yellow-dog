@@ -103,7 +103,8 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
   test "explicitly reopening a Service retires an unresolved submit even with identical fields",
        %{conn: conn, worker: worker} do
     service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
-    {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
+    path = "/server/submission-worker/services/#{service["id"]}/edit"
+    {:ok, view, _} = live(conn, path)
 
     mutate("update_worker", %{
       "id" => worker["id"],
@@ -123,7 +124,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
 
     render_submit(view, "save_service", request)
     failed = counts()
-    render_click(view, "edit_service", %{"id" => service["id"]})
+    render_patch(view, path)
     render_submit(view, "save_service", request)
     assert counts() == failed
     assert has_element?(view, "#service-form input[value='#{service["instance_id"]}']")
@@ -132,11 +133,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
   test "invalid service ports preserve every typed field and make no database command", %{
     conn: conn
   } do
-    {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
-
-    assert submit_event(view, "save_worker", %{
-             "worker" => %{"name" => "Saved before validation", "profile_name" => "dns_only"}
-           }) =~ "Configuration saved"
+    {:ok, view, _} = live(conn, "/server/submission-worker/services/new")
 
     before = counts()
 
@@ -166,7 +163,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
   end
 
   test "database-rejected service saves retain input and stable retry results", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
+    {:ok, view, _} = live(conn, "/server/submission-worker/services/new")
     reject_inserts("management_services", "reject_service_submission")
 
     request = %{
@@ -196,106 +193,28 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
     assert counts() == increment(failed)
   end
 
-  test "failed assignment selections persist, retries are stable and edited saves survive fresh sessions",
-       %{conn: conn, worker: worker} do
-    service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
-    first = confirmed_zone("first.example.test.")
-    second = confirmed_zone("second.example.test.")
-    {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
-    reject_inserts("management_assignments", "reject_assignment_submission")
-
-    request = %{
-      "assignment" => %{"service_id" => service["id"], "resource_version_id" => second["id"]}
-    }
-
-    before = counts()
-    html = submit_event(view, "assign", request)
-    assert html =~ "Database constraint"
-
-    assert has_element?(
-             view,
-             "#assignment-form select[name='assignment[service_id]'] option[value='#{service["id"]}'][selected]"
-           )
-
-    assert has_element?(
-             view,
-             "#assignment-form select[name='assignment[resource_version_id]'] option[value='#{second["id"]}'][selected]"
-           )
-
-    failed = counts()
-    assert failed == increment(before)
-    Repo.query!("DROP TRIGGER reject_assignment_submission ON management_assignments")
-    submit_event(view, "assign", request)
-    assert counts() == failed
-    assert Domain.list_assignments(worker["id"]) == []
-
-    pipelined =
-      request
-      |> Map.put("_submission", intent(view))
-      |> put_in(["assignment", "resource_version_id"], first["id"])
-
-    render_change(view, "validate_assignment", pipelined)
-    html = render_submit(view, "assign", pipelined)
-
-    assert html =~ "Assignment saved"
-    assert counts() == increment(failed)
-    assert [%{"resource_version_id" => version_id}] = Domain.list_assignments(worker["id"])
-    assert version_id == first["id"]
-    {:ok, fresh, _} = live(build_conn(), "/server/submission-worker/dashboard")
-    assert has_element?(fresh, "#resource-assignments", first["resource_id"])
-    html = fresh |> element("button[phx-click='confirm_target']") |> render_click()
-    assert html =~ "Target prepared"
-
-    assert {:ok, %{"status" => "prepared", "actual_state" => "unknown"}} =
-             Domain.get_target(worker["id"])
-
-    {:ok, fresh, _} = live(build_conn(), "/server/submission-worker/dashboard")
-    assert has_element?(fresh, "a[href='/api/workers/submission-worker/targets/1/export']")
-
-    assert has_element?(
-             fresh,
-             "#target-export-scope",
-             "DNS Views and IP database artifacts are not serialized"
-           )
-
-    assert has_element?(fresh, "#target-export-scope", "Valid drafts can still be saved")
-    html = fresh |> element("button[phx-click='unassign']") |> render_click()
-    assert html =~ "Assignment removed"
-    assert Domain.list_assignments(worker["id"]) == []
-  end
-
-  test "mutation controls disable duplicate submissions while pending", %{
-    conn: conn,
-    worker: worker
+  test "service and target mutation controls prevent repeated submissions while pending", %{
+    conn: conn
   } do
-    service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
-    version = confirmed_zone("controls.example.test.")
-
-    mutate("assign", %{
-      "worker_id" => worker["id"],
-      "service_id" => service["id"],
-      "resource_version_id" => version["id"],
-      "expected_revision" => service["worker_revision"]
-    })
-
     {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
+    assert has_element?(view, "#worker-edit-form button[type='submit'][phx-disable-with]")
+    render_patch(view, "/server/submission-worker/services/new")
+    assert has_element?(view, "#service-form button[type='submit'][phx-disable-with]")
+    render_patch(view, "/server/submission-worker/targets")
+    refute has_element?(view, "button[phx-click='confirm_target']")
+    view |> element("button[phx-click='preview']") |> render_click()
 
-    for selector <- [
-          "#worker-edit-form button[type='submit']",
-          "#service-form button[type='submit']",
-          "#assignment-form button[type='submit']",
-          "button[phx-click='unassign']",
-          "button[phx-click='confirm_target']"
-        ] do
-      assert has_element?(view, selector <> "[phx-disable-with]")
-    end
+    assert has_element?(
+             view,
+             "button[phx-click='confirm_target'][phx-disable-with][data-confirm]"
+           )
   end
 
   test "malformed validation events preserve Worker input without a command", %{conn: conn} do
     {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
     before = counts()
 
-    for event <- ~w(validate_worker validate_service validate_assignment),
+    for event <- ~w(validate_worker validate_service),
         params <- [
           %{},
           %{"worker" => nil, "service" => nil, "assignment" => nil},
@@ -319,11 +238,6 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
 
   defp submit_event(view, event, params) do
     render_submit(view, event, Map.put(params, "_submission", intent(view)))
-  end
-
-  defp confirmed_zone(name) do
-    zone = mutate("create_zone", DomainFixtures.zone(name))
-    mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => zone["revision"]})
   end
 
   defp reject_inserts(table, name) do

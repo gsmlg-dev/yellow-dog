@@ -35,7 +35,7 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
 
   test "anonymous initialization defaults off, persists on reload and ignores stale submission",
        %{conn: conn} do
-    {:ok, view, _} = live(conn, "/management/servers")
+    {:ok, view, _} = live(conn, "/management/servers/enrollment")
     refute has_element?(view, "#worker-enrollment-form input[type=checkbox][checked]")
 
     intent =
@@ -52,7 +52,7 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
     |> render_submit()
 
     assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => true}
-    {:ok, reloaded, _} = live(conn, "/management/servers")
+    {:ok, reloaded, _} = live(conn, "/management/servers/enrollment")
     assert has_element?(reloaded, "#worker-enrollment-form input[type=checkbox][checked]")
 
     render_submit(view, "save_enrollment", %{
@@ -72,7 +72,7 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
   end
 
   test "invalid enrollment checkbox value leaves persisted setting unchanged", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/management/servers")
+    {:ok, view, _} = live(conn, "/management/servers/enrollment")
 
     intent =
       view
@@ -97,10 +97,10 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
     worker: worker,
     token: token
   } do
-    {:ok, view, _} = live(conn, "/management/servers")
+    {:ok, view, _} = live(conn, "/server/#{worker["id"]}/connection")
 
     view
-    |> element("#server-selector-#{worker["id"]} button[phx-click='rotate_token']")
+    |> element("button[phx-click='rotate_token']")
     |> render_click()
 
     assert has_element?(view, "#worker-bootstrap")

@@ -12,6 +12,10 @@ defmodule YellowDog.ManagementUI.ServicePaths do
 
   @server_paths %{
     dashboard: "/dashboard",
+    connection: "/connection",
+    services: "/services",
+    service_new: "/services/new",
+    targets: "/targets",
     dns: "/dns",
     dns_zones: "/dns/zones",
     dns_zone_new: "/dns/zones/new",
@@ -90,6 +94,12 @@ defmodule YellowDog.ManagementUI.ServicePaths do
       :error -> raise ArgumentError, "unknown Server destination: #{inspect(destination)}"
     end
   end
+
+  defp server_suffix!({:service_edit, service_id}),
+    do: "/services/#{resource_segment!(service_id)}/edit"
+
+  defp server_suffix!({:target, revision}),
+    do: "/targets/#{resource_segment!(revision)}"
 
   defp server_suffix!({:dns_zone_edit, zone_id}),
     do: "/dns/zones/#{resource_segment!(zone_id)}/edit"

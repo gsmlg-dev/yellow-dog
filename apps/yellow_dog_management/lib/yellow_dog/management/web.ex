@@ -17,6 +17,25 @@ defmodule YellowDog.Management.Web do
     respond(conn, Domain.get_worker(id))
   end
 
+  get "/api/workers/:worker_id/services" do
+    case Domain.get_worker(worker_id) do
+      {:ok, worker} -> json(conn, 200, %{"data" => worker["services"]})
+      error -> respond(conn, error)
+    end
+  end
+
+  get "/api/workers/:worker_id/services/:service_id" do
+    respond(conn, Domain.get_service(worker_id, service_id))
+  end
+
+  get "/api/workers/:worker_id/services/:service_id/references" do
+    respond(conn, Domain.list_service_references(worker_id, service_id))
+  end
+
+  get "/api/workers/:worker_id/targets" do
+    json(conn, 200, %{"data" => Domain.list_worker_target_history(worker_id)})
+  end
+
   get "/api/workers/:worker_id/dns-services/:service_id/acls" do
     respond(conn, Domain.list_dns_acls(worker_id, service_id))
   end

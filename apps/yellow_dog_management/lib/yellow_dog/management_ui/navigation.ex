@@ -46,8 +46,18 @@ defmodule YellowDog.ManagementUI.Navigation do
        ["server", :server_id, "dns", "acl", :service_id]
      ]},
     {:nodes, :workers, [["management", "servers"], ["server"]]},
+    {:nodes, :enrollment, [["management", "servers", "enrollment"]]},
     {:nodes, :worker_services,
-     [["server", :server_id, "dashboard"], ["server", :server_id, "dns"]]},
+     [
+       ["server", :server_id, "dashboard"],
+       ["server", :server_id, "connection"],
+       ["server", :server_id, "services"],
+       ["server", :server_id, "services", "new"],
+       ["server", :server_id, "services", :service_id, "edit"],
+       ["server", :server_id, "targets"],
+       ["server", :server_id, "targets", :revision],
+       ["server", :server_id, "dns"]
+     ]},
     {:nodes, :netmans, [["management", "netman"], ["netman"]]},
     {:nodes, :netman_overview, [["netman", :netman_id]]},
     {:nodes, :netman_config, [["netman", :netman_id, "config"]]},
@@ -89,14 +99,20 @@ defmodule YellowDog.ManagementUI.Navigation do
     [
       group("Workers", [
         available(:workers, "Workers", "server-network", "/management/servers"),
+        available(
+          :enrollment,
+          "Enrollment policy",
+          "shield-lock",
+          "/management/servers/enrollment"
+        ),
         scoped(
           :worker_services,
-          "Services & configuration",
+          "Selected Worker",
           "cog",
           selection,
           :server,
           :dashboard,
-          "Worker authentication and connections, service instances and desired enabled state, listen addresses, protocols, ports, and basic parameters are configured in Worker details."
+          "Select a Worker for identity, authentication and connections, DNS instances, desired state, listen addresses and configuration targets."
         ),
         available(
           :config_targets,

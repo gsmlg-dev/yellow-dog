@@ -3,11 +3,12 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
+import { nodeWorkflowSmoke } from './node_workflow_browser_smoke.mjs';
 import { navigationSmoke } from './navigation_browser_smoke.mjs';
 
 const base = process.env.MANAGEMENT_UI_URL || 'http://127.0.0.1:14281';
 const scope = process.env.MANAGEMENT_BROWSER_SCOPE || 'full';
-assert.ok(['full', 'navigation'].includes(scope), 'MANAGEMENT_BROWSER_SCOPE must be full or navigation');
+assert.ok(['full', 'navigation', 'nodes', 'nodes-restart'].includes(scope), 'MANAGEMENT_BROWSER_SCOPE must be full, navigation, nodes or nodes-restart');
 const macSmokePath = process.env.MANAGEMENT_MAC_SMOKE_PATH;
 assert.ok(macSmokePath && resolve(macSmokePath).startsWith(resolve(tmpdir()) + sep) && basename(macSmokePath) === 'mac-browser-fixture.txt', 'Use the temporary MAC artifact from scripts/e2e/management_browser.sh');
 const profile = await mkdtemp(join(tmpdir(), 'management-live-browser-'));
@@ -40,9 +41,11 @@ function canonicalRecordContents(records) {
 }
 
 async function runSmoke() {
+  if (scope !== 'nodes-restart') {
   assert.deepEqual(await api('/workers'), [], 'Use an empty disposable PostgreSQL database');
   assert.deepEqual(await api('/zones'), [], 'Use an empty disposable PostgreSQL database');
-  const zone = await api('/commands/create_zone', {
+  }
+  const zone = scope === 'nodes-restart' ? null : await api('/commands/create_zone', {
     name: 'live.test.',
     records: [
       { name: 'live.test.', type: 'SOA', ttl: 300, data: { mname: 'ns.live.test.', rname: 'hostmaster.live.test.', serial: 1, refresh: 3600, retry: 600, expire: 86400, minimum: 300 } },
@@ -50,7 +53,7 @@ async function runSmoke() {
       { name: 'ns.live.test.', type: 'A', ttl: 300, data: { address: '192.0.2.10' } },
     ],
   });
-  const version = await api('/commands/confirm_zone', { id: zone.id, expected_revision: zone.revision });
+  const version = scope === 'nodes-restart' ? null : await api('/commands/confirm_zone', { id: zone.id, expected_revision: zone.revision });
   let port;
   await until(async () => {
     try { port = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]; return true; }
@@ -127,6 +130,11 @@ async function runSmoke() {
   await cdp('Page.setLifecycleEventsEnabled', { enabled: true });
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await navigate('/management');
+  if (scope === 'nodes-restart') {
+    await nodeWorkflowSmoke({api, cdp, evaluate, navigate, until, submit, base, restart:true});
+    assert.deepEqual(errors, [], 'Restart browser errors');
+    return;
+  }
   assert.equal(await evaluate('document.querySelector("input[type=password], #login") === null'), true);
   assert.equal(await evaluate('!!document.querySelector("#yd-layout .navbar")'), true);
   assert.notEqual(await evaluate('getComputedStyle(document.querySelector(".navbar")).backgroundColor'), 'rgba(0, 0, 0, 0)');
@@ -134,6 +142,11 @@ async function runSmoke() {
   await navigation.global();
   assert.deepEqual(await api('/workers'), [], 'Global navigation must remain usable without registering Workers');
   assert.deepEqual((await api(`/zones/${zone.id}`)).records, zone.records, 'Navigation changed Zone data');
+  if (scope === 'nodes') {
+    await nodeWorkflowSmoke({api, cdp, evaluate, navigate, until, submit, base, confirmNext: decision => { nextDialogDecision = decision; }});
+    assert.deepEqual(errors, [], 'Node workflow JavaScript, CSP or asset errors');
+    return;
+  }
   if (scope === 'navigation') {
     const created = await api('/commands/create_worker', { id: 'navigation-worker', name: 'Navigation Worker' });
     const service = await api('/commands/put_service', { worker_id: created.id, expected_revision: created.revision, id: 'dns', type: 'dns', desired_state: 'stopped', config: { listen_address: '127.0.0.1', port: 15353 } });
@@ -189,16 +202,22 @@ async function runSmoke() {
   await until(() => evaluate(`document.querySelector('[name="worker[name]"]').value === ''`), 'Worker registration form did not reset');
   await evaluate(`document.querySelector('#server-selector-${liveWorkerId} a').click()`);
   await until(() => evaluate('!!document.querySelector("#server-dashboard")'), 'Live navigation to dashboard failed');
+  await navigate(`/server/${liveWorkerId}/services/new`);
   await submit('#service-form', { 'service[id]': 'dns', 'service[listen_address]': '127.0.0.1', 'service[port]': '5300', 'service[desired_state]': 'stopped' });
-  await until(() => evaluate('document.querySelector("#dns-services").innerText.includes("stopped")'), 'Desired DNS service was not saved');
+  await until(async () => (await api(`/workers/${liveWorkerId}`)).services.length === 1, 'Desired DNS service was not saved');
   const worker = await api(`/workers/${liveWorkerId}`);
   await navigation.scoped(liveWorkerId, worker.services[0].id, zone.id);
   assert.deepEqual(await api(`/workers/${liveWorkerId}`), worker, 'Navigation changed Worker configuration, target history or assignments');
-  await submit('#assignment-form', { 'assignment[service_id]': worker.services[0].id, 'assignment[resource_version_id]': version.id });
+  await navigate(`/management/zones/${zone.id}/edit`);
+  await evaluate(`document.querySelector('[phx-click="add_assignment_worker"][phx-value-id="${liveWorkerId}"]').click()`);
+  await until(() => evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 1`), 'Data assignment row missing');
+  await evaluate(`document.querySelector('#zone-assignments-form').requestSubmit()`);
   await until(async () => (await api(`/workers/${liveWorkerId}`)).assignments.length === 1, 'Immutable Zone version was not assigned');
+  await navigate(`/server/${liveWorkerId}/targets`);
   await evaluate('document.querySelector("[phx-click=preview]").click()');
   await until(() => evaluate('!!document.querySelector("#target-preview")'), 'Target preview failed');
   assert.match(await evaluate('document.querySelector("#target-preview").innerText'), /prepared_preview/);
+  nextDialogDecision = true;
   await evaluate('document.querySelector("[phx-click=confirm_target]").click()');
   await until(() => evaluate(`!!document.querySelector('a[href*="/targets/1/export"]')`), 'Target confirmation failed');
   const target = await api(`/workers/${liveWorkerId}/targets/1`);

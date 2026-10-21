@@ -17,7 +17,18 @@ defmodule YellowDog.ManagementUI.NavigationTest do
 
   @owned_routes [
     {:nodes, :workers, ["/management/servers", "/server"]},
-    {:nodes, :worker_services, ["/server/:server_id/dashboard", "/server/:server_id/dns"]},
+    {:nodes, :enrollment, ["/management/servers/enrollment"]},
+    {:nodes, :worker_services,
+     [
+       "/server/:server_id/dashboard",
+       "/server/:server_id/dns",
+       "/server/:server_id/connection",
+       "/server/:server_id/services",
+       "/server/:server_id/services/new",
+       "/server/:server_id/services/:service_id/edit",
+       "/server/:server_id/targets",
+       "/server/:server_id/targets/:revision"
+     ]},
     {:nodes, :netmans, ["/management/netman", "/netman"]},
     {:nodes, :netman_overview, ["/netman/:netman_id"]},
     {:nodes, :netman_config, ["/netman/:netman_id/config"]},

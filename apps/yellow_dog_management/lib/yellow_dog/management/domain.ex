@@ -9,7 +9,9 @@ defmodule YellowDog.Management.Domain do
     Assignment,
     Backups,
     Audit,
+    DnsAcl,
     DnsAcls,
+    DnsView,
     DnsViews,
     EnrollmentSettings,
     Idempotency,
@@ -30,7 +32,7 @@ defmodule YellowDog.Management.Domain do
   @backup_operations ~w(create_backup delete_backup)
   @dns_acl_operations ~w(create_dns_acl update_dns_acl delete_dns_acl)
   @dns_view_operations ~w(create_dns_view update_dns_view delete_dns_view)
-  @operations ~w(set_worker_enrollment create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service assign unassign set_zone_assignments confirm_target) ++
+  @operations ~w(set_worker_enrollment create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service create_service update_service assign unassign set_zone_assignments confirm_target) ++
                 @netman_operations ++
                 @task_operations ++
                 @backup_operations ++ @dns_acl_operations ++ @dns_view_operations
@@ -160,6 +162,67 @@ defmodule YellowDog.Management.Domain do
     |> Enum.map(&service_map/1)
   end
 
+  @doc "Read a service by its database identity within the selected Worker."
+  def get_service(worker_id, service_id) do
+    Repo.transaction(fn -> scoped_service!(worker_id, service_id) |> service_map() end)
+  end
+
+  @doc "Bounded metadata references; only pinned Zones enter the Worker target contract."
+  def list_service_references(worker_id, service_id, limit \\ 100) do
+    Repo.transaction(fn ->
+      limit = query_limit!(limit, 100)
+      service = scoped_service!(worker_id, service_id)
+
+      zones =
+        Repo.all(
+          from(a in Assignment,
+            join: z in Zone,
+            on: z.id == a.zone_id,
+            join: v in ResourceVersion,
+            on: v.id == a.resource_version_id,
+            where: a.service_id == ^service.id,
+            order_by: [z.name, z.id],
+            limit: ^limit,
+            select: %{
+              "id" => a.id,
+              "zone_id" => z.id,
+              "name" => z.name,
+              "resource_version_id" => v.id,
+              "version" => v.version,
+              "digest" => v.digest
+            }
+          )
+        )
+
+      views =
+        Repo.all(
+          from(v in DnsView,
+            where: v.service_id == ^service.id,
+            order_by: [v.name, v.id],
+            limit: ^limit,
+            select: %{
+              "id" => v.id,
+              "name" => v.name,
+              "revision" => v.revision,
+              "is_default" => v.is_default
+            }
+          )
+        )
+
+      acls =
+        Repo.all(
+          from(a in DnsAcl,
+            where: a.service_id == ^service.id,
+            order_by: [a.name, a.id],
+            limit: ^limit,
+            select: %{"id" => a.id, "name" => a.name, "revision" => a.revision}
+          )
+        )
+
+      %{"zones" => zones, "views" => views, "acls" => acls, "limit" => limit}
+    end)
+  end
+
   def list_assignments(worker_id) do
     Repo.all(
       from(a in Assignment,
@@ -226,6 +289,35 @@ defmodule YellowDog.Management.Domain do
     end)
   end
 
+  @doc "Newest immutable targets for one Worker, bounded in SQL (at most 100)."
+  def list_worker_target_history(worker_id, limit \\ 50)
+
+  def list_worker_target_history(worker_id, limit) when is_integer(limit) and limit in 1..100 do
+    Repo.all(
+      from(t in Target,
+        where: t.worker_id == ^worker_id,
+        order_by: [desc: t.revision],
+        limit: ^limit,
+        select: %{
+          "id" => t.id,
+          "worker_id" => t.worker_id,
+          "revision" => t.revision,
+          "digest" => t.digest,
+          "prepared_at" => t.inserted_at
+        }
+      )
+    )
+    |> Enum.map(fn target ->
+      target
+      |> Map.update!("prepared_at", &DateTime.to_iso8601/1)
+      |> Map.put("status", "prepared")
+      |> Map.put("actual_state", "unknown")
+    end)
+  end
+
+  def list_worker_target_history(_worker_id, _limit),
+    do: {:error, error("invalid_request", "limit must be an integer from 1 through 100")}
+
   def preview_target(worker_id) do
     Repo.transaction(fn ->
       worker = lock_worker(worker_id)
@@ -244,6 +336,7 @@ defmodule YellowDog.Management.Domain do
         "worker_id" => worker.id,
         "worker_revision" => worker.revision,
         "next_target_revision" => next_revision,
+        "previous_plan" => if(latest, do: latest.plan),
         "plan" => plan,
         "diff" => diff,
         "status" => "prepared_preview",
@@ -486,24 +579,57 @@ defmodule YellowDog.Management.Domain do
     end
   end
 
-  defp dispatch("put_service", params) do
-    allowed_keys(params, ~w(worker_id expected_revision id instance_id type desired_state config))
+  defp dispatch(operation, params)
+       when operation in ~w(put_service create_service update_service) do
+    fields = ~w(worker_id expected_revision instance_id type desired_state config)
+
+    allowed_keys(
+      params,
+      fields ++
+        case operation do
+          "put_service" -> ["id"]
+          "update_service" -> ["service_id"]
+          "create_service" -> []
+        end
+    )
+
     worker = lock_worker(required_string(params, "worker_id", 64))
     expect_revision(worker.revision, params)
-    instance_id = Map.get(params, "instance_id", Map.get(params, "id", "dns"))
+
+    existing =
+      if operation == "update_service",
+        do: scoped_service!(worker.id, required_string(params, "service_id", 64))
+
+    instance_id =
+      case operation do
+        "put_service" -> Map.get(params, "instance_id", Map.get(params, "id", "dns"))
+        "create_service" -> required_string(params, "instance_id", 64)
+        "update_service" -> Map.get(params, "instance_id", existing.instance_id)
+      end
+
+    if existing && instance_id != existing.instance_id,
+      do: abort("invalid_request", "Service instance ID cannot be changed")
 
     if not (is_binary(instance_id) and Regex.match?(@worker_id, instance_id)),
       do: abort("invalid_service_id", "Service instance ID is invalid")
 
-    type = Map.get(params, "type", "dns")
-    state = Map.get(params, "desired_state", "stopped")
-    config = stringify_keys(Map.get(params, "config", %{}))
+    type = Map.get(params, "type", if(existing, do: existing.type, else: "dns"))
+
+    state =
+      Map.get(params, "desired_state", if(existing, do: existing.desired_state, else: "stopped"))
+
+    config =
+      stringify_keys(Map.get(params, "config", if(existing, do: existing.config, else: %{})))
+
     validate_service(worker.id, instance_id, type, state, config)
 
     service =
       Repo.one(
         from(s in Service, where: s.worker_id == ^worker.id and s.instance_id == ^instance_id)
       )
+
+    if operation == "create_service" and service != nil,
+      do: abort("conflict", "Service instance ID already exists in Worker")
 
     service =
       case service do
@@ -748,6 +874,22 @@ defmodule YellowDog.Management.Domain do
       version -> version
     end
   end
+
+  defp scoped_service!(worker_id, service_id) do
+    unless match?({:ok, _}, Ecto.UUID.cast(service_id)),
+      do: abort("invalid_request", "Service ID must be a UUID")
+
+    case Repo.one(from(s in Service, where: s.worker_id == ^worker_id and s.id == ^service_id)) do
+      nil -> abort("not_found", "Worker service not found")
+      service -> service
+    end
+  end
+
+  defp query_limit!(limit, maximum) when is_integer(limit) and limit > 0 and limit <= maximum,
+    do: limit
+
+  defp query_limit!(_limit, maximum),
+    do: abort("invalid_request", "limit must be an integer from 1 through #{maximum}")
 
   defp required_service(worker_id, params) do
     id = Map.get(params, "service_id", "dns")

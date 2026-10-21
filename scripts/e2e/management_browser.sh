@@ -58,4 +58,18 @@ for attempt in $(seq 1 100); do
   sleep 0.1
 done
 curl -fsS --max-time 5 "$MANAGEMENT_UI_URL/management" >/dev/null
-timeout 120 node apps/yellow_dog_management/test/live_browser_smoke.mjs
+export MANAGEMENT_NODE_STATE_FILE="$artifact_dir/node-state.json"
+timeout 180 node apps/yellow_dog_management/test/live_browser_smoke.mjs
+
+if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = nodes ]; then
+  kill "$server_pid"
+  wait "$server_pid" || true
+  "$release" start >> "$artifact_dir/server.log" 2>&1 &
+  server_pid=$!
+  for attempt in $(seq 1 100); do
+    if curl -fsS --max-time 1 "$MANAGEMENT_UI_URL/management" >/dev/null 2>&1; then break; fi
+    kill -0 "$server_pid"
+    sleep 0.1
+  done
+  MANAGEMENT_BROWSER_SCOPE=nodes-restart timeout 120 node apps/yellow_dog_management/test/live_browser_smoke.mjs
+fi
