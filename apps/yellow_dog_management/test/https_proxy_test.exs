@@ -141,11 +141,11 @@ defmodule YellowDog.Management.HTTPSProxyTest do
     csrf = attribute(document, "meta[name='csrf-token']", "content")
 
     server =
-      start_supervised!({Bandit, plug: Endpoint, ip: {127, 0, 0, 1}, port: 0},
+      start_supervised!({Gaoxy.HTTP, plug: {Endpoint, []}, ip: {127, 0, 0, 1}, port: 0},
         id: make_ref()
       )
 
-    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    %{local: {:ok, {_address, port}}} = Gaoxy.info(server, :http)
 
     {:ok, socket} =
       :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false, packet: :line])

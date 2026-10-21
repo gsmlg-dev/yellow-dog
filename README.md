@@ -68,7 +68,11 @@ database. There is no sample-data seed step.
 
 The umbrella selects the two products plus `yellow_dog_config_spec` and `ex_dns`.
 Worker uses the Hex `abyss` package (`~> 0.9.0`) for UDP infrastructure; core Abyss
-does not compile a DHCP Rust NIF. The retained, excluded DHCP client selects
+does not compile a DHCP Rust NIF. Management serves HTTP/LiveView through Hex
+`gaoxy_http` and its `gaoxy_websock_adapter`, using Hell TCP and core Abyss
+infrastructure without starting Worker services. Neither product requires Bandit
+or ThousandIsland. See [the HTTP migration guide](docs/phase1/gaoxy-http-migration.md).
+The retained, excluded DHCP client selects
 Hex `abyss_raw` 0.9.0 only in production; neither default product selects or ships
 that native package. See [the migration and validation guide](docs/phase1/abyss-raw-migration.md).
 Both products use the same ConfigSpec and fixtures under

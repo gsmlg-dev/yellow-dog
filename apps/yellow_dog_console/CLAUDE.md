@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 YellowDogConsole is the Phoenix LiveView web console for managing and monitoring YellowDog network services (DNS, mDNS, DHCPv4, DHCPv6). It uses the DuskMoon design system (`@duskmoon-dev/core` + `phoenix_duskmoon`) and DuskmoonBundler for JavaScript/CSS bundling.
 
+This is retained source outside the supported Management/Worker root build.
+Its development and test listener definitions select `Gaoxy.PhoenixAdapter`,
+limit active requests with `limits: %{max_active: 128}`, and list the existing
+LiveView, Netman and Server WebSocket transport paths explicitly. These source
+settings do not enable the Console in either supported product.
+
 ## Common Commands
 
 ```bash
@@ -200,7 +206,8 @@ mix npm.install
 ## Key Dependencies
 
 - `phoenix` ~> 1.8.1, `phoenix_live_view` ~> 1.0
-- `bandit` ~> 1.5 (HTTP server)
+- `gaoxy_http` ~> 0.5.5 (HTTP server), with `Gaoxy.PhoenixAdapter`
+- `websock_adapter` ~> 0.5.5 from Hex `gaoxy_websock_adapter` (`override: true`)
 - `phoenix_duskmoon` ~> 9.7
 - `duskmoon_bundler_runtime` ~> 9.7, `duskmoon_bundler` ~> 9.7 (dev only)
 - `@duskmoon-dev/core`, `@duskmoon-dev/elements`, `@duskmoon-dev/css-art`, `@duskmoon-dev/art-elements` (npm)

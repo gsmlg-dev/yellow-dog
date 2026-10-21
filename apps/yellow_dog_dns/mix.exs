@@ -40,7 +40,7 @@ defmodule YellowDog.Dns.MixProject do
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
 
-      # TCP server for DNS over TCP (Bandit retains its own ThousandIsland dependency)
+      # TCP server for DNS over TCP
       {:hell, "~> 0.1.1"},
 
       # HTTP client for root zone fetching

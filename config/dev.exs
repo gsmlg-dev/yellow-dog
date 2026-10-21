@@ -14,7 +14,6 @@ import Config
 #
 #     https: [
 #       port: 4001,
-#       cipher_suite: :strong,
 #       keyfile: "priv/cert/selfsigned_key.pem",
 #       certfile: "priv/cert/selfsigned.pem"
 #     ],
@@ -30,15 +29,14 @@ import Config
 # watchers to your application. The console uses DuskmoonBundler
 # to bundle .js and .css sources.
 config :yellow_dog_console, YellowDog.Console.Endpoint,
+  adapter: Gaoxy.PhoenixAdapter,
+  websocket_paths: ["/live/websocket", "/netman/ws/websocket", "/server/ws/websocket"],
   # Binding to all interfaces to allow access from other machines.
   # Use `ip: {127, 0, 0, 1}` to bind only to localhost.
   http: [
     ip: {0, 0, 0, 0, 0, 0, 0, 0},
     port: String.to_integer(System.get_env("PORT") || "4270"),
-    thousand_island_options: [
-      num_acceptors: 8,
-      num_connections: 128
-    ]
+    limits: %{max_active: 128}
   ],
   check_origin: false,
   code_reloader: System.get_env("YELLOW_DOG_CODE_RELOADER") == "true",

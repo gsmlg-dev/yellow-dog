@@ -98,23 +98,35 @@ manifest.write_text(original_manifest)
 
 worker = fixture_root / "yellow_dog_worker"
 _erts, version = (worker / "releases/start_erl.data").read_text().split()
-manifest = worker / f"releases/{version}/yellow_dog_worker.rel"
-[abyss_app] = worker.glob("lib/abyss-*/ebin/abyss.app")
-original_manifest = replace_once(
-    manifest, r'\{abyss,\s*"[^"]+",\s*\w+\},?', '')
-original_abyss_app = abyss_app.read_text()
-abyss_app.unlink()
-check("missing_abyss", "Abyss runtime dependency is missing")
-manifest.write_text(original_manifest)
-abyss_app.write_text(original_abyss_app)
-
-replace_once(abyss_app, r'(\{vsn,\s*)"[^"]+"', r'\1"0.0.0"')
-check("wrong_abyss_version", "packaged Abyss does not match the Hex lock")
-abyss_app.write_text(original_abyss_app)
-
 for product in (management, worker):
     _erts, version = (product / "releases/start_erl.data").read_text().split()
     manifest = product / f"releases/{version}/{product.name}.rel"
+
+    [abyss_app] = product.glob("lib/abyss-*/ebin/abyss.app")
+    original_manifest = replace_once(
+        manifest, r'\{abyss,\s*"[^"]+",\s*\w+\},?', '')
+    original_abyss_app = abyss_app.read_text()
+    abyss_app.unlink()
+    check(f"{product.name}_missing_abyss", "Abyss runtime dependency is missing")
+    manifest.write_text(original_manifest)
+    abyss_app.write_text(original_abyss_app)
+
+    replace_once(abyss_app, r'(\{vsn,\s*)"[^"]+"', r'\1"0.0.0"')
+    check(f"{product.name}_wrong_abyss_version", "packaged Abyss does not match the Hex lock")
+    abyss_app.write_text(original_abyss_app)
+
+    for retired in ("bandit", "thousand_island"):
+        retired_ebin = product / f"lib/{retired}-0.0.0/ebin"
+        retired_ebin.mkdir(parents=True)
+        (retired_ebin / f"{retired}.app").write_text(
+            f'{{application,{retired},[{{vsn,"0.0.0"}},{{modules,[]}},'
+            '{applications,[kernel,stdlib]}]}.\n')
+        original_manifest = replace_once(
+            manifest, r'(\{erts,\s*"[^"]+"\},\s*\[)',
+            rf'\1{{{retired},"0.0.0",load}},')
+        check(f"{product.name}_{retired}", "retired HTTP dependency is packaged")
+        manifest.write_text(original_manifest)
+        shutil.rmtree(retired_ebin.parent)
 
     for optional in ("abyss_raw", "abyss_dhcp_socket", "rustler"):
         optional_ebin = product / f"lib/{optional}-0.0.0/ebin"
@@ -141,7 +153,38 @@ for product in (management, worker):
     check(f"{product.name}_native_artifact", "optional native artifact is packaged")
     native_artifact.unlink()
 
-for optional in ("abyss_raw", "abyss_dhcp_socket", "rustler"):
+for app in ("gaoxy_http", "gaoxy", "websock_adapter"):
+    [cohort_app] = management.glob(f"lib/{app}-*/ebin/{app}.app")
+    original_app = replace_once(cohort_app, r'(\{vsn,\s*)"[^"]+"', r'\1"0.0.0"')
+    check(f"wrong_{app}_version", "packaged Gaoxy HTTP cohort does not match the Hex lock")
+    cohort_app.write_text(original_app)
+
+[management_app] = management.glob("lib/*/ebin/yellow_dog_management.app")
+original_app = replace_once(
+    management_app, r'(\{applications,\s*\[[^\]]*),\s*gaoxy_http\b', r'\1')
+check("missing_direct_http_dependency", "Gaoxy HTTP runtime dependency is missing")
+management_app.write_text(original_app)
+
+[gaoxy_app] = management.glob("lib/gaoxy-*/ebin/gaoxy.app")
+original_app = replace_once(
+    gaoxy_app, r'(\{applications,\s*\[[^\]]*),\s*abyss\b', r'\1')
+check("missing_gaoxy_transport_dependency", "Gaoxy HTTP runtime links are missing")
+gaoxy_app.write_text(original_app)
+
+_erts, version = (worker / "releases/start_erl.data").read_text().split()
+manifest = worker / f"releases/{version}/yellow_dog_worker.rel"
+worker_http = worker / "lib/gaoxy_http-0.0.0/ebin"
+worker_http.mkdir(parents=True)
+(worker_http / "gaoxy_http.app").write_text(
+    '{application,gaoxy_http,[{vsn,"0.0.0"},{modules,[]},'
+    '{applications,[kernel,stdlib]}]}.\n')
+original_manifest = replace_once(
+    manifest, r'(\{erts,\s*"[^"]+"\},\s*\[)', r'\1{gaoxy_http,"0.0.0",load},')
+check("worker_http_stack", "forbidden dependency")
+manifest.write_text(original_manifest)
+shutil.rmtree(worker_http.parent)
+
+for optional in ("abyss_raw", "abyss_dhcp_socket", "rustler", "bandit", "thousand_island"):
     project = fixture_root / f"graph_{optional}"
     native = project / "native"
     native.mkdir(parents=True)
@@ -163,6 +206,30 @@ for optional in ("abyss_raw", "abyss_dhcp_socket", "rustler"):
         'defmodule BoundaryGraph.MixProject do\n  use Mix.Project\n'
         '  def project, do: [app: :boundary_graph, version: "0.0.0",\n'
         f'    deps: [{dependency}]]\nend\n')
-    check(f"active_graph_{optional}", "optional native dependency in active graph", project)
+    error = ("retired HTTP dependency in active graph" if optional in ("bandit", "thousand_island")
+             else "optional native dependency in active graph")
+    check(f"active_graph_{optional}", error, project)
+
+
+def lock_fixture(label):
+    project = fixture_root / label
+    project.mkdir()
+    shutil.copy2(repo_root / "mix.exs", project / "mix.exs")
+    shutil.copy2(repo_root / "mix.lock", project / "mix.lock")
+    for directory in ("apps", "deps"):
+        (project / directory).symlink_to(repo_root / directory, target_is_directory=True)
+    return project
+
+
+project = lock_fixture("wrong_websock_package")
+replace_once(project / "mix.lock", r'("websock_adapter":\s*\{:hex,\s*):gaoxy_websock_adapter',
+             r'\1:websock_adapter')
+check("wrong_websock_package", "websock_adapter must be locked to Hex package gaoxy_websock_adapter",
+      project)
+
+project = lock_fixture("wrong_http_cohort")
+replace_once(project / "mix.lock", r'("gaoxy":\s*\{:hex,\s*:gaoxy,\s*)"[^"]+"',
+             r'\1"0.0.0"')
+check("wrong_http_cohort", "Gaoxy HTTP and WebSock cohort versions differ", project)
 
 print(f"ARCHITECTURE NEGATIVE SMOKE PASSED: positive fixture and {checks - 1} rejected mutations")

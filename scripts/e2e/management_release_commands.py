@@ -86,6 +86,7 @@ def main():
             "yellow_dog_dhcpv4", "yellow_dog_dhcpv6", "yellow_dog_mdns", "yellow_dog_netboot",
             "yellow_dog_identity", "yellow_dog_console", "yellow_dog_management_core",
             "yellow_dog_sync", "yellow_dog_server_agent", "yellow_dog_netman_agent", "abyss",
+            "gaoxy", "gaoxy_http", "bandit", "thousand_island",
         }
         for snapshot in json.loads(matches[0]).values():
             assert not snapshot["supervisor"] and not snapshot["endpoint"], snapshot

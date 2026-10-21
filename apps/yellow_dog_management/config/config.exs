@@ -5,7 +5,8 @@ config :yellow_dog_management, ecto_repos: [YellowDog.Management.Repo]
 config :phoenix, :json_library, Jason
 
 config :yellow_dog_management, YellowDog.ManagementUI.Endpoint,
-  adapter: Bandit.PhoenixAdapter,
+  adapter: Gaoxy.PhoenixAdapter,
+  websocket_paths: ["/live/websocket"],
   url: [host: "localhost"],
   check_origin: :conn,
   pubsub_server: YellowDog.ManagementUI.PubSub,

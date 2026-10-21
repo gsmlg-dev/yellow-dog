@@ -6,6 +6,7 @@ Yellow Dog is a distributed, umbrella-based network services suite written in El
 
 ### Key Principles
 *   **Runtime Ownership**: Management owns service configuration in PostgreSQL/UI/API; network services execute only on Worker. Netboot and Identity are Worker-only capabilities, not Management provisioning or trust-authority services. Configuration saved in Management is not evidence of Worker execution.
+*   **HTTP Transport**: Management uses Gaoxy HTTP/Phoenix with its WebSock adapter. Its Hell TCP and core Abyss infrastructure are allowed for HTTP transport; this does not authorize Worker network services, UDP/QUIC listeners, or `abyss_raw` in Management. Bandit and ThousandIsland are excluded from both supported products.
 *   **Current Migration Scope**: Historical architecture and UI-source retention evidence does not establish current runtime acceptance. The Management configuration plan authorizes the routed native DNS View scope, global Zone assignments, editor persistence, and IP artifact catalog, plus minimal build prerequisites. Preserve retained presentations in `ManagementUI.Redesign`; do not reconnect legacy services/Agents or redevelop unrelated retained pages. Worker runtime repair remains deferred.
 *   **Design Stage, No Compatibility**: The project has no released or deployed versions to support. Redevelop and retain business capabilities, not old routes, payloads, storage formats, or version-compatibility layers. Validate current architecture, business behavior, data integrity, and real runtime operation; obsolete compatibility tests and unrelated full-suite failures are not completion gates.
 *   **Minimalism & Focus**: Write tight, idiomatic Elixir. Avoid adding unnecessary dependencies or building bloated configurations.
@@ -93,6 +94,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 | **Client/Host** | `apps/yellow_dog_dhcp_client`, `_netman`, `_resolved`, `_identity`, `_fingerprint` | DHCP client, Linux network management, DNS stub caching, host trust, and device identification. |
 | **Web Console** | `apps/yellow_dog_console` | Phoenix LiveView controllers, DuskMoon UI templates, asset compilation via DuskmoonBundler. |
 | **Libraries** | Hex `:abyss`, `apps/ex_dns`, `apps/ex_dhcp`, `apps/geo_ip_db` | UDP infrastructure from Hex; local DNS protocol, DHCP messages, and GeoIP libraries. Native DHCP sockets require the separate upstream `:abyss_raw` package. |
+| **HTTP transport** | Hex `:gaoxy_http`, `:gaoxy`, `:hell`, `:gaoxy_websock_adapter` | Management HTTP/Phoenix/LiveView transport. The WebSock package retains OTP application `:websock_adapter`; core Abyss supplies infrastructure without starting UDP services. |
 
 ### Storage Patterns
 *   **Server Store**: `YellowDog.Store.*` uses Concord as the source of truth and a write-through ETS cache for local reads. Server apps must use these typed facades instead of calling Concord directly.

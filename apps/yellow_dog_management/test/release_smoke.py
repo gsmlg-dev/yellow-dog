@@ -79,8 +79,10 @@ def zone(name, address='192.0.2.1'):
 
 try:
     names = [path.name for path in (binary.parent.parent / 'lib').iterdir()]
-    forbidden = ('yellow_dog_worker-', 'yellow_dog_dns-', 'yellow_dog_dhcp', 'yellow_dog_console-', 'yellow_dog_management_core-', 'yellow_dog_server_agent-', 'yellow_dog_netman_agent-', 'abyss-', 'ex_dns-', 'concord-')
+    forbidden = ('yellow_dog_worker-', 'yellow_dog_dns-', 'yellow_dog_dhcp', 'yellow_dog_console-', 'yellow_dog_management_core-', 'yellow_dog_server_agent-', 'yellow_dog_netman_agent-', 'abyss_raw-', 'abyss_dhcp_socket-', 'rustler-', 'bandit-', 'thousand_island-', 'ex_dns-', 'ex_dhcp-', 'concord-', 'mnesia-', 'gaoxy_http3-', 'gaoxy_proxy-')
     assert not any(name.startswith(forbidden) for name in names), names
+    assert all(any(name.startswith(app + '-') for name in names)
+               for app in ('gaoxy_http', 'gaoxy', 'hell', 'abyss', 'websock_adapter')), names
     print('Release dependency boundary:', ', '.join(sorted(names)), flush=True)
     start()
     with urllib.request.urlopen(f'http://127.0.0.1:{port}/management.css', timeout=10) as stylesheet:
@@ -98,6 +100,22 @@ try:
     print('Packaged Console layout and LiveView client passed', flush=True)
     assert request('/workers') == []
     assert request('/zones') == []
+    large_zone = zone('large-body.test.')
+    large_zone['records'].extend(
+        {'name': f'host{i:03d}.large-body.test.', 'type': 'A', 'ttl': 300,
+         'data': {'address': f'192.0.2.{i % 254 + 1}'}}
+        for i in range(200))
+    payload_size = len(json.dumps(large_zone).encode())
+    assert payload_size > 16384, payload_size
+    created_large = mutate('create_zone', large_zone)
+    saved_large = request('/zones/' + created_large['id'])
+    assert saved_large == created_large
+    assert len(saved_large['records']) == len(large_zone['records'])
+    record_key = lambda record: (record['name'], record['type'])
+    assert sorted(saved_large['records'], key=record_key) == sorted(large_zone['records'], key=record_key)
+    assert mutate('delete_zone', {'id': saved_large['id'], 'expected_revision': saved_large['revision']})['deleted']
+    assert request('/zones') == []
+    print(f'HTTP JSON body: {payload_size} bytes persisted all 203 records through canonical GET', flush=True)
     a = mutate('create_zone', zone('example.test.'))
     edited = dict(zone('example.test.', '192.0.2.2'), id=a['id'], expected_revision=a['revision'])
     a = mutate('update_zone', edited)

@@ -50,8 +50,33 @@ def command(arguments, extra=None):
 def start(name, binary):
     log = open(evidence / f"{name}-{time.monotonic_ns()}.log", "w")
     logs.append(log)
-    processes[name] = subprocess.Popen([binary, "start"], env=env, stdout=log, stderr=log,
+    process_env = dict(env)
+    if name == "worker":
+        process_env.update(RELEASE_DISTRIBUTION="sname",
+                           RELEASE_NODE=f"connection_worker_{os.getpid()}_{len(logs)}",
+                           RELEASE_COOKIE=uuid.uuid4().hex)
+    processes[name] = subprocess.Popen([binary, "start"], env=process_env, stdout=log, stderr=log,
                                        start_new_session=True)
+    if name == "worker":
+        process = processes[name]
+        until(lambda: worker_booted(process, process_env), "New Worker VM did not finish booting")
+
+
+def worker_booted(process, process_env):
+    # Management may still report the previous VM's stopped revision. Require
+    # the new OS process to finish booting before any persisted-state predicate
+    # can succeed or shutdown can send SIGTERM during early BEAM initialization.
+    expression = (
+        "status = YellowDog.Worker.status(); "
+        "if List.keymember?(Application.started_applications(), :yellow_dog_worker, 0) and "
+        "(status.desired == nil or status.ready), do: IO.puts(System.pid())"
+    )
+    try:
+        result = subprocess.run([worker_binary, "rpc", expression], env=process_env,
+                                capture_output=True, text=True, timeout=5)
+        return result.returncode == 0 and result.stdout.strip() == str(process.pid)
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def stop(name):

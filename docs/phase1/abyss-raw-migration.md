@@ -22,7 +22,9 @@ The root umbrella still selects only `yellow_dog_config_spec`,
 `yellow_dog_management`, `yellow_dog_worker`, and `ex_dns`. It builds exactly the
 Management and Worker releases. The retained DHCP client is excluded.
 
-Worker uses core `abyss` for authoritative DNS. Management has no Abyss runtime.
+Worker uses core `abyss` for authoritative DNS. Management now also includes core
+Abyss through its [Gaoxy HTTP transport](gaoxy-http-migration.md); its registry/ETS
+infrastructure does not activate Worker DNS/DHCP or UDP listeners.
 Neither product selects or ships `abyss_raw`, the old `abyss_dhcp_socket`, or the
 DHCP native artifact. A raw package entry in the shared lockfile records optional
 consumer resolution; it does not activate that consumer. Management's unrelated

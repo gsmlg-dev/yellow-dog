@@ -153,7 +153,7 @@ direnv allow                # or: devenv shell
 ### Dependency Graph
 
 ```text
-yellow_dog_management → yellow_dog_config_spec + Ecto/PostgreSQL + Bandit/Plug
+yellow_dog_management → yellow_dog_config_spec + Ecto/PostgreSQL + Gaoxy/Plug
 yellow_dog_worker     → yellow_dog_config_spec + abyss + ex_dns
 yellow_dog_config_spec → jason + toml (pure contract; no business runtime)
 ```
@@ -161,6 +161,10 @@ yellow_dog_config_spec → jason + toml (pure contract; no business runtime)
 There is no application dependency between the two products. Workers support
 local exported TOML or opt-in authenticated polling of confirmed Management
 targets; managed connection credentials and TLS files stay in the local bootstrap.
+Management uses `gaoxy_http` and the `gaoxy_websock_adapter` Hex override for
+Phoenix/LiveView. Gaoxy's Hell TCP and core Abyss infrastructure do not activate
+Worker network services or the optional raw DHCP package. Bandit and ThousandIsland
+are excluded from both products. See `docs/phase1/gaoxy-http-migration.md`.
 
 ### Legacy Dependency Graph (Outside Phase 1 Build)
 

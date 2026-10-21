@@ -1,13 +1,18 @@
 defmodule YellowDog.ReleaseBoundary do
   @optional_native_apps [:abyss_raw, :abyss_dhcp_socket, :rustler]
+  @retired_http_apps [:bandit, :thousand_island]
+  @http_apps [:gaoxy_http, :gaoxy, :hell, :websock_adapter, :websock, :plug, :hpax]
+  @http_server_apps @http_apps -- [:hpax]
 
   def check!(root) do
     products = [:yellow_dog_management, :yellow_dog_worker]
     expected_apps = products ++ [:yellow_dog_config_spec, :ex_dns]
     config = Mix.Project.config()
 
+    lock = Mix.Dep.Lock.read()
+
     abyss_version =
-      case Mix.Dep.Lock.read()[:abyss] do
+      case lock[:abyss] do
         {:hex, :abyss, version, _, _, _, "hexpm", _} -> version
         _ -> raise "Abyss must be locked to a Hex dependency"
       end
@@ -20,6 +25,11 @@ defmodule YellowDog.ReleaseBoundary do
     )
 
     require!(
+      Enum.all?(active_dependencies, &(&1.app not in @retired_http_apps)),
+      "default products: retired HTTP dependency in active graph"
+    )
+
+    require!(
       Enum.sort(Map.keys(Mix.Project.apps_paths())) == Enum.sort(expected_apps),
       "unsupported umbrella applications"
     )
@@ -27,6 +37,22 @@ defmodule YellowDog.ReleaseBoundary do
     require!(
       Enum.sort(Keyword.keys(config[:releases])) == Enum.sort(products),
       "supported business releases must be exactly Management and Worker"
+    )
+
+    gaoxy_version = hex_version!(lock, :gaoxy_http, :gaoxy_http)
+
+    require!(
+      hex_version!(lock, :gaoxy, :gaoxy) == gaoxy_version and
+        hex_version!(lock, :websock_adapter, :gaoxy_websock_adapter) == gaoxy_version,
+      "Gaoxy HTTP and WebSock cohort versions differ"
+    )
+
+    websocket = Enum.find(active_dependencies, &(&1.app == :websock_adapter))
+
+    require!(
+      websocket != nil and websocket.opts[:override] == true and
+        to_string(websocket.opts[:hex]) == "gaoxy_websock_adapter",
+      "Gaoxy WebSock Hex override is missing"
     )
 
     contracts =
@@ -90,7 +116,7 @@ defmodule YellowDog.ReleaseBoundary do
 
         forbidden =
           if product == :yellow_dog_management do
-            [:abyss, :ex_dns, :ex_dhcp, :concord, :mnesia]
+            [:ex_dns, :ex_dhcp, :concord, :mnesia, :gaoxy_http3, :gaoxy_proxy]
           else
             [
               :ecto,
@@ -100,13 +126,17 @@ defmodule YellowDog.ReleaseBoundary do
               :phoenix,
               :phoenix_live_view,
               :plug,
-              :bandit,
               :concord,
               :mnesia
-            ]
+            ] ++ @http_server_apps ++ [:gaoxy_http3, :gaoxy_proxy]
           end
 
         require!(Enum.all?(names, &(&1 not in forbidden)), "#{product}: forbidden dependency")
+
+        require!(
+          Enum.all?(names, &(&1 not in @retired_http_apps)),
+          "#{product}: retired HTTP dependency is packaged"
+        )
 
         require!(
           Enum.all?(names, &(&1 not in @optional_native_apps)),
@@ -123,17 +153,43 @@ defmodule YellowDog.ReleaseBoundary do
 
         {_, product_specification} = Map.fetch!(specifications, product)
 
-        if product == :yellow_dog_worker do
+        require!(:abyss in names, "#{product}: Abyss runtime dependency is missing")
+
+        {_, abyss_specification} = Map.fetch!(specifications, :abyss)
+
+        require!(
+          to_string(abyss_specification[:vsn]) == abyss_version,
+          "#{product}: packaged Abyss does not match the Hex lock"
+        )
+
+        if product == :yellow_dog_management do
           require!(
-            :abyss in names and :abyss in product_specification[:applications],
-            "#{product}: Abyss runtime dependency is missing"
+            :gaoxy_http in product_specification[:applications] and
+              Enum.all?(@http_apps, &(&1 in names)),
+            "#{product}: Gaoxy HTTP runtime dependency is missing"
           )
 
-          {_, abyss_specification} = Map.fetch!(specifications, :abyss)
+          for app <- [:gaoxy_http, :gaoxy, :websock_adapter] do
+            {_, specification} = Map.fetch!(specifications, app)
+
+            require!(
+              to_string(specification[:vsn]) == gaoxy_version,
+              "#{product}: packaged Gaoxy HTTP cohort does not match the Hex lock"
+            )
+          end
+
+          {_, gaoxy} = Map.fetch!(specifications, :gaoxy)
+          {_, http} = Map.fetch!(specifications, :gaoxy_http)
 
           require!(
-            to_string(abyss_specification[:vsn]) == abyss_version,
-            "#{product}: packaged Abyss does not match the Hex lock"
+            Enum.all?([:abyss, :hell], &(&1 in gaoxy[:applications])) and
+              Enum.all?([:gaoxy, :websock_adapter], &(&1 in http[:applications])),
+            "#{product}: Gaoxy HTTP runtime links are missing"
+          )
+        else
+          require!(
+            :abyss in product_specification[:applications],
+            "#{product}: Abyss runtime dependency is missing"
           )
         end
 
@@ -205,6 +261,13 @@ defmodule YellowDog.ReleaseBoundary do
     )
 
     IO.puts("ARCHITECTURE BOUNDARY PASSED: two isolated business releases, one pure ConfigSpec")
+  end
+
+  defp hex_version!(lock, app, package) do
+    case lock[app] do
+      {:hex, ^package, version, _, _, _, "hexpm", _} -> version
+      _ -> raise "#{app} must be locked to Hex package #{package}"
+    end
   end
 
   defp require!(condition, message) do
