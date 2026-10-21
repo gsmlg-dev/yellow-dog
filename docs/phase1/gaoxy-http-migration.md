@@ -1,8 +1,8 @@
 # Gaoxy HTTP transport
 
-Management uses published Hex `gaoxy_http` 0.5.5 with
+Management uses published Hex `gaoxy_http` 0.8.0 with
 `Gaoxy.PhoenixAdapter`. Phoenix's `websock_adapter` dependency is explicitly
-resolved to Hex `gaoxy_websock_adapter` 0.5.5, retaining the OTP application and
+resolved to Hex `gaoxy_websock_adapter` 0.8.0, retaining the OTP application and
 `WebSockAdapter` module names. Both packages are required for LiveView upgrades.
 The Endpoint remains the sole owner of its HTTP listener and existing session,
 Origin and router policies.
@@ -27,7 +27,7 @@ negative mutations. Management release smoke verifies real HTTP, durable state
 and that its process opens only the configured HTTP listener. Database release
 tasks must leave the web transport and Worker runtimes stopped.
 
-Validated for this migration:
+Historical validation of the initial 0.5.5 migration:
 
 - Strict development/production compilation, changed-file formatting and scoped
   Management Credo checks.
@@ -55,6 +55,6 @@ acceptance.
 
 Upstream packages:
 
-- https://hex.pm/packages/gaoxy_http/0.5.5
-- https://hex.pm/packages/gaoxy/0.5.5
-- https://hex.pm/packages/gaoxy_websock_adapter/0.5.5
+- https://hex.pm/packages/gaoxy_http/0.8.0
+- https://hex.pm/packages/gaoxy/0.8.0
+- https://hex.pm/packages/gaoxy_websock_adapter/0.8.0
