@@ -136,7 +136,6 @@ defmodule YellowDog.ManagementUI.Layouts do
       </:center_part>
       <:end_part>
         <.dm_theme_switcher id="theme-toggle" />
-        <%!-- TODO(upstream): duskmoon-dev/phoenix-duskmoon-ui#209 --%>
         <.dm_dropdown id="notifications-dropdown">
           <:trigger class="btn btn-ghost btn-circle">
             <span class="sr-only">Notifications</span>

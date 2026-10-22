@@ -74,10 +74,12 @@ ephemeral loopback port, then runs `live_browser_smoke.mjs`, including
 `navigation_browser_smoke.mjs`. It exercises desktop/mobile section switching,
 zero-Worker access, disabled entries, scoped DNS routes with malformed query
 identities, refresh and browser back/forward. Omit `MANAGEMENT_BROWSER_SCOPE` to
-run the full existing page workflows as well. The full flow currently stops at
-the existing notification-trigger assertion (`aria-expanded` is absent after the
-native popover opens); navigation scope retains that assertion in full mode and
-does not change notification behavior.
+run the full existing page workflows as well. With `phoenix_duskmoon` 10.0.11,
+the full flow passes the notification-trigger expanded-state checks, including
+click close/reopen and Escape dismissal. On 2026-10-22 it then stopped at the
+later publish-preview assertion expecting `/prepared_preview/`; assertions after
+that point remain unverified. See the dependency follow-up in
+[management-data-workflow.md](management-data-workflow.md).
 The wrapper reports its artifact directory and stops its Management/PostgreSQL
 processes. Set `MANAGEMENT_SCREENSHOT_PREFIX=/absolute/path/navigation` to capture
 each desktop section, the mobile navigation and existing layout screenshots.

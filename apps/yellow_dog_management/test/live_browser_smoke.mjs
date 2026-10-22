@@ -182,10 +182,18 @@ async function runSmoke() {
     return;
   }
   assert.equal(await evaluate('document.querySelector("#app-sidebar").scrollWidth <= document.querySelector("#app-sidebar").clientWidth'), true, 'Desktop sidebar must not overflow horizontally');
+  assert.equal(await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded")'), 'false');
   await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").click()');
   await until(() => evaluate('document.querySelector("#notifications-dropdown-popover").matches(":popover-open")'), 'Original notifications dropdown did not open');
+  await until(() => evaluate('document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded") === "true"'), 'Notifications trigger did not acknowledge opening');
   assert.equal(await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded")'), 'true');
   await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").click()');
+  await until(() => evaluate('document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded") === "false"'), 'Notifications trigger did not acknowledge closing');
+  await evaluate('document.querySelector("#notifications-dropdown-popover-trigger").click()');
+  await until(() => evaluate('document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded") === "true"'), 'Notifications trigger did not acknowledge reopening');
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await until(() => evaluate('!document.querySelector("#notifications-dropdown-popover").matches(":popover-open") && document.querySelector("#notifications-dropdown-popover-trigger").getAttribute("aria-expanded") === "false"'), 'Notifications Escape dismissal did not reset expanded state');
   await evaluate(`document.querySelector('#theme-toggle input[value="sunshine"]').click()`);
   await until(() => evaluate('document.documentElement.dataset.theme === "sunshine"'), 'Sunshine theme did not activate');
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.navbar-center a')).color !== getComputedStyle(document.querySelector('.navbar')).backgroundColor`), true, 'Navigation text must contrast with the primary header');

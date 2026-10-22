@@ -175,10 +175,10 @@ and are not described as results for this patch.
 | Final export/offline Worker | Passed: zero-Worker edits, four immutable assignments, authentic exports, Management/PostgreSQL stopped, real UDP/TCP DNS and snapshot/lifecycle recovery; `final-offline-export.log`, evidence `/tmp/yellow-dog-file-gate-gdlz5oo5` |
 | Full Chromium scope | **Exit 1** at the retained notification expanded-state assertion (`null` versus `true`); `full-browser-final.log`, artifacts `/tmp/yellow-dog-management-browser.FC2yAZ`. Later full-scope assertions did not run. |
 
-The full-scope limitation is the same defect reproduced on pristine reviewed HEAD
-and the Step 2 repair with the current lock, recorded in
+The historical full-scope limitation was the same defect reproduced on pristine reviewed HEAD
+and the Step 2 repair with the 10.0.9 lock, recorded in
 [duskmoon-dev/phoenix-duskmoon-ui#209](https://github.com/duskmoon-dev/phoenix-duskmoon-ui/issues/209).
-The callsite retains the upstream TODO; no component internals, design tokens or
+The callsite retained the upstream TODO; no component internals, design tokens or
 acceptance assertions were replaced to hide it. Dedicated Data, Node and navigation
 scopes preserve their substantive browser assertions.
 
@@ -196,8 +196,29 @@ submit cannot overwrite the newer cron fields. Country and City remain independe
 All browser/release/database processes started by the checks are cleaned up by
 the disposable wrappers.
 
-
 D0–D5 are complete for the authorized Management Data scope. No Worker/ConfigSpec
 runtime, schema, dependency lock, retained redesign source, remote MCP, authentication
 or target-delivery capability was expanded. Verification created no commit, push or PR. The user subsequently authorized
 commit, worktree integration into `main`, and push as a separate delivery action.
+
+## Upstream dropdown fix follow-up
+
+On 2026-10-22, Management updated `phoenix_duskmoon` from 10.0.9 to 10.0.11,
+which includes the fix for upstream #209. The dependency requirement and lock
+now select the fixed release; the external JavaScript bundle was rebuilt and
+the obsolete callsite TODO removed. No local component or CSP workaround is used.
+
+Fresh verification on `main` before this follow-up commit:
+
+- Strict test compilation, scoped formatting and asset build passed
+  (`/tmp/yellow-dog-upstream-build.log`).
+- Management: **560 tests, 0 failures**, using disposable PostgreSQL
+  (`/tmp/yellow-dog-upstream-management.log`).
+- JavaScript: **30 tests, 0 failures** (`/tmp/yellow-dog-upstream-js.log`).
+- The rebuilt full Chromium flow passed notification initial closed state,
+  open, click close/reopen, and Escape dismissal, with explicit `aria-expanded`
+  values. It then exited 1 at the later publish-preview assertion expecting
+  `/prepared_preview/` in visible text. That assertion and downstream behavior
+  were not changed by this dependency update. No full-flow pass is claimed.
+  Log: `/tmp/yellow-dog-upstream-browser.log`; browser artifacts:
+  `/tmp/yellow-dog-management-browser.Jbb7bU`.

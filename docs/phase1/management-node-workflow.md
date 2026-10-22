@@ -229,16 +229,23 @@ architecture, release and offline-export jobs succeeded. These repair results we
 before Git delivery; **no CI run covered the repair at verification time**. Local
 green checks do not change the reviewed run's status.
 
-The unscoped browser command still fails the notifications trigger assertion
+At repair verification time, the unscoped browser command failed the notifications trigger assertion
 (`aria-expanded` is null, expected `true`, currently `live_browser_smoke.mjs:165`). It was
 reproduced on both pristine reviewed HEAD and this repair with the final lock;
 downstream full-browser assertions are not claimed. The native DuskMoon dropdown
 defect is filed as Bug, `internal request`, severity `needed`:
 [phoenix-duskmoon-ui#209](https://github.com/duskmoon-dev/phoenix-duskmoon-ui/issues/209).
-The callsite records the upstream TODO; no component internals, CSP rules or
+The callsite recorded the upstream TODO; no component internals, CSP rules or
 assertions were replaced. Logs: `/tmp/step2-baseline-full-browser.log` and
 `/tmp/step2-full-browser.log`. Historical retained-source provenance results below
 were not rerun in this repair and are not current acceptance evidence.
+
+Dependency follow-up on 2026-10-22: `phoenix_duskmoon` 10.0.11 includes the
+upstream #209 fix, and the obsolete callsite TODO has been removed. Rebuilt
+Chromium passed the notification open/close/reopen and Escape expanded-state
+checks. The full flow then stopped at the later publish-preview assertion
+expecting `/prepared_preview/`; downstream assertions remain unverified. See
+[the current evidence](management-data-workflow.md#upstream-dropdown-fix-follow-up).
 
 ## Historical Step 2 verification
 
