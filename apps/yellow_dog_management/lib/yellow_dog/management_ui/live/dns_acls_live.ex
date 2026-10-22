@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.Management.{Countries, DnsAcls, Domain}
-  alias YellowDog.ManagementUI.DnsRulesText
+  alias YellowDog.ManagementUI.{DnsRulesText, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
   @max_rules_bytes 262_144
@@ -11,7 +11,9 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     assign(socket,
+     assign(Submission.new(socket),
+       editor_reset: Ecto.UUID.generate(),
+       dirty: false,
        page_title: "DNS ACLs",
        workers: Domain.list_workers(),
        worker: nil,
@@ -39,6 +41,31 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   end
 
   @impl true
+  def handle_event("confirm_delete" = event, params, socket) do
+    if params["_submission"] == socket.assigns.row_submission_id,
+      do: handle_submission(event, params, socket),
+      else: {:noreply, socket}
+  end
+
+  def handle_event("save" = event, params, socket) do
+    operation = if socket.assigns.editing, do: "update_dns_acl", else: "create_dns_acl"
+    edited = if event == "save" and params["acl"] == form_fields(socket), do: operation
+
+    if Submission.current?(socket, params["_submission"], edited),
+      do: handle_submission(event, params, socket),
+      else: {:noreply, socket}
+  end
+
+  def handle_event("select_worker", %{"scope" => %{"worker_id" => worker_id}}, socket) do
+    case Domain.get_worker(worker_id) do
+      {:ok, worker} ->
+        {:noreply, push_patch(socket, to: ServicePaths.server_path(worker["id"], :dns_acl))}
+
+      {:error, error} ->
+        failure(socket, error)
+    end
+  end
+
   def handle_event("refresh", _params, socket) do
     {:noreply, socket |> load(socket.assigns.scope_params) |> reset_form()}
   end
@@ -62,7 +89,14 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   end
 
   def handle_event("validate", %{"acl" => params} = payload, socket) when is_map(params) do
-    {:noreply, socket |> retain_fields(params, payload) |> validate_form()}
+    updated = retain_fields(socket, params, payload)
+
+    updated =
+      if updated.assigns.form.params != socket.assigns.form.params,
+        do: Submission.edit(updated, ~w(create_dns_acl update_dns_acl)),
+        else: updated
+
+    {:noreply, validate_form(updated)}
   end
 
   def handle_event("filter", %{"filter" => filter}, socket)
@@ -74,7 +108,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
     if Countries.valid?(code) do
       selected = socket.assigns.selected_countries
       updated = if code in selected, do: List.delete(selected, code), else: [code | selected]
-      {:noreply, assign(socket, selected_countries: Enum.sort(updated), error: nil)}
+      {:noreply, assign(socket, selected_countries: Enum.sort(updated), error: nil, dirty: true)}
     else
       failure(socket, "Unknown ISO country code")
     end
@@ -82,99 +116,6 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
 
   def handle_event("clear_country_search", _params, socket) do
     {:noreply, assign(socket, country_search: "")}
-  end
-
-  def handle_event(
-        "save",
-        %{"operation" => "append_countries", "acl" => params} = payload,
-        socket
-      )
-      when is_map(params) do
-    socket = retain_fields(socket, params, payload)
-
-    with :ok <- selected_scope(socket),
-         true <- socket.assigns.country_action in ~w(allow deny),
-         [_country | _rest] <- socket.assigns.selected_countries,
-         text when is_binary(text) <- params["rules"] do
-      separator = if text == "" or String.ends_with?(text, "\n"), do: "", else: "\n"
-
-      rule =
-        socket.assigns.country_action <>
-          " countries " <> Enum.join(socket.assigns.selected_countries, ", ")
-
-      fields = Map.put(form_fields(socket), "rules", text <> separator <> rule)
-
-      {:noreply,
-       socket
-       |> retain_fields(fields, payload)
-       |> assign(selected_countries: [])
-       |> validate_form()}
-    else
-      {:error, error} -> failure(socket, error)
-      _ -> failure(socket, "Select countries and an allow/deny action before appending")
-    end
-  end
-
-  def handle_event("save", %{"operation" => "apply_preset", "acl" => params} = payload, socket)
-      when is_map(params) do
-    socket = retain_fields(socket, params, payload)
-
-    with :ok <- selected_scope(socket),
-         text when is_binary(text) <- params["rules"],
-         true <- String.trim(text) == "",
-         {:ok, rules} <- DnsAcls.preset_rules(socket.assigns.preset) do
-      {:noreply,
-       socket
-       |> retain_fields(Map.put(form_fields(socket), "rules", format_rules(rules)), payload)
-       |> validate_form()}
-    else
-      {:error, error} ->
-        failure(socket, error)
-
-      _ ->
-        failure(
-          socket,
-          "Presets apply only to an empty rules editor; existing rules were retained"
-        )
-    end
-  end
-
-  def handle_event("save", %{"operation" => _unknown}, socket),
-    do: failure(socket, "Invalid editor operation")
-
-  def handle_event("save", %{"acl" => params}, socket) when is_map(params) do
-    socket = socket |> retain_fields(params, %{}) |> validate_form()
-
-    with :ok <- selected_scope(socket),
-         {:ok, fields} <- validated_fields(form_fields(socket)) do
-      fields =
-        Map.merge(fields, scope_fields(socket))
-
-      {operation, fields} =
-        case socket.assigns.editing do
-          nil ->
-            {"create_dns_acl", fields}
-
-          acl ->
-            {"update_dns_acl",
-             Map.merge(fields, %{"id" => acl["id"], "expected_revision" => acl["revision"]})}
-        end
-
-      case Domain.mutate(operation, fields, "operator", Ecto.UUID.generate()) do
-        {:ok, _acl} ->
-          {:noreply,
-           socket
-           |> load(socket.assigns.scope_params)
-           |> clear_flash()
-           |> put_flash(:info, "Desired ACL saved; not enforced/exported")
-           |> reset_form()}
-
-        {:error, error} ->
-          failure(socket, error)
-      end
-    else
-      {:error, error} -> failure(socket, error)
-    end
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -209,20 +150,140 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
     end
   end
 
-  def handle_event("confirm_delete", %{"id" => id}, socket) do
+  def handle_event(_event, _params, socket), do: failure(socket, "Invalid ACL action")
+
+  defp handle_submission(
+         "save",
+         %{"operation" => "append_countries", "acl" => params} = payload,
+         socket
+       )
+       when is_map(params) do
+    socket = retain_fields(socket, params, payload)
+
+    with :ok <- selected_scope(socket),
+         true <- socket.assigns.country_action in ~w(allow deny),
+         [_country | _rest] <- socket.assigns.selected_countries,
+         text when is_binary(text) <- params["rules"] do
+      separator = if text == "" or String.ends_with?(text, "\n"), do: "", else: "\n"
+
+      rule =
+        socket.assigns.country_action <>
+          " countries " <> Enum.join(socket.assigns.selected_countries, ", ")
+
+      fields = Map.put(form_fields(socket), "rules", text <> separator <> rule)
+
+      {:noreply,
+       socket
+       |> retain_fields(fields, payload)
+       |> assign(selected_countries: [])
+       |> validate_form()}
+    else
+      {:error, error} -> failure(socket, error)
+      _ -> failure(socket, "Select countries and an allow/deny action before appending")
+    end
+  end
+
+  defp handle_submission(
+         "save",
+         %{"operation" => "apply_preset", "acl" => params} = payload,
+         socket
+       )
+       when is_map(params) do
+    socket = retain_fields(socket, params, payload)
+
+    with :ok <- selected_scope(socket),
+         text when is_binary(text) <- params["rules"],
+         true <- String.trim(text) == "",
+         {:ok, rules} <- DnsAcls.preset_rules(socket.assigns.preset) do
+      {:noreply,
+       socket
+       |> retain_fields(Map.put(form_fields(socket), "rules", format_rules(rules)), payload)
+       |> validate_form()}
+    else
+      {:error, error} ->
+        failure(socket, error)
+
+      _ ->
+        failure(
+          socket,
+          "Presets apply only to an empty rules editor; existing rules were retained"
+        )
+    end
+  end
+
+  defp handle_submission("save", %{"operation" => _unknown}, socket),
+    do: failure(socket, "Invalid editor operation")
+
+  defp handle_submission("save", %{"acl" => params} = payload, socket) when is_map(params) do
+    socket = socket |> retain_fields(params, %{}) |> validate_form()
+
+    with :ok <- selected_scope(socket),
+         {:ok, fields} <- validated_fields(form_fields(socket)) do
+      fields =
+        Map.merge(fields, scope_fields(socket))
+
+      {operation, fields} =
+        case socket.assigns.editing do
+          nil ->
+            {"create_dns_acl", fields}
+
+          acl ->
+            {"update_dns_acl",
+             Map.merge(fields, %{"id" => acl["id"], "expected_revision" => acl["revision"]})}
+        end
+
+      {socket, key} = Submission.prepare(socket, operation, fields, payload["_submission"])
+
+      case Domain.mutate(operation, fields, "operator", key) do
+        {:ok, _acl} ->
+          {:noreply,
+           socket
+           |> load(socket.assigns.scope_params)
+           |> clear_flash()
+           |> put_flash(:info, "Desired ACL saved; not enforced/exported")
+           |> reset_form()}
+
+        {:error, error} ->
+          failure(socket, error)
+      end
+    else
+      {:error, error} -> failure(socket, error)
+    end
+  end
+
+  defp handle_submission("confirm_delete", %{"id" => id}, socket) do
     with :ok <- selected_scope(socket),
          %{"id" => ^id} = acl <- socket.assigns.deleting do
       fields =
         Map.merge(scope_fields(socket), %{"id" => id, "expected_revision" => acl["revision"]})
 
-      case Domain.mutate("delete_dns_acl", fields, "operator", Ecto.UUID.generate()) do
+      key =
+        case socket.assigns.delete_request do
+          {^fields, key} -> key
+          _ -> Ecto.UUID.generate()
+        end
+
+      socket = assign(socket, :delete_request, {fields, key})
+
+      case Domain.mutate("delete_dns_acl", fields, "operator", key) do
         {:ok, _result} ->
+          socket =
+            assign(socket,
+              row_submission_id: Ecto.UUID.generate(),
+              delete_request: nil,
+              deleting: nil
+            )
+
+          socket =
+            if socket.assigns.editing && socket.assigns.editing["id"] == id,
+              do: socket |> clear_editor() |> reset_form(),
+              else: socket
+
           {:noreply,
            socket
-           |> load(socket.assigns.scope_params)
+           |> load_service(socket.assigns.service["id"])
            |> clear_flash()
-           |> put_flash(:info, "Desired ACL deleted; not enforced/exported")
-           |> reset_form()}
+           |> put_flash(:info, "Desired ACL deleted; not enforced/exported")}
 
         {:error, error} ->
           failure(socket, error)
@@ -233,11 +294,17 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
     end
   end
 
-  def handle_event(_event, _params, socket), do: failure(socket, "Invalid ACL action")
+  defp handle_submission(_event, _params, socket), do: failure(socket, "Invalid ACL action")
 
   defp load(socket, params) do
     socket =
-      assign(socket,
+      socket
+      |> Submission.new()
+      |> assign(
+        editor_reset: Ecto.UUID.generate(),
+        row_submission_id: Ecto.UUID.generate(),
+        delete_request: nil,
+        dirty: false,
         workers: Domain.list_workers(),
         worker: nil,
         service: nil,
@@ -255,6 +322,14 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
         form: new_form()
       )
 
+    if is_nil(params["server_id"]) do
+      socket
+    else
+      load_worker(socket, params)
+    end
+  end
+
+  defp load_worker(socket, params) do
     with true <- ServicePaths.valid_server_id?(params["server_id"]),
          {:ok, worker} <- Domain.get_worker(params["server_id"]) do
       services = Enum.filter(worker["services"], &(&1["type"] == "dns"))
@@ -304,7 +379,13 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   end
 
   defp clear_editor(socket) do
-    assign(socket,
+    socket
+    |> Submission.new()
+    |> assign(
+      editor_reset: Ecto.UUID.generate(),
+      row_submission_id: Ecto.UUID.generate(),
+      delete_request: nil,
+      dirty: false,
       editing: nil,
       deleting: nil,
       error: nil,
@@ -318,10 +399,11 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   end
 
   defp retain_fields(socket, params, payload) do
-    fields = Map.take(params, ~w(name description rules))
+    fields = Map.merge(socket.assigns.form.params, Map.take(params, ~w(name description rules)))
 
     assign(socket,
       form: to_form(fields, as: "acl"),
+      dirty: socket.assigns.dirty || fields != socket.assigns.form.params,
       error: nil,
       country_search: bounded_text(payload["country_search"], socket.assigns.country_search, 256),
       country_action: Map.get(payload, "country_action", socket.assigns.country_action),
@@ -428,232 +510,287 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
       current_path={@current_path}
       servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
     >
-      <h1>DNS ACLs</h1>
-      <p class="management-help">
-        Management-owned desired ACLs for one explicit DNS Service. Not enforced or exported to a Worker.
-        Empty rules and empty network sets are not catch-all rules. Rule order is retained as desired data, not evaluated here.
-      </p>
-      <div :if={@error} id="dns-acl-error" class="alert alert-error" role="alert">{@error}</div>
-      <div class="management-actions">
-        <button id="dns-acl-refresh" class="btn btn-secondary" phx-click="refresh">Refresh</button>
-        <button
-          :if={@service}
-          id="dns-acl-export"
-          class="btn btn-secondary"
-          phx-click="export_csv"
-          phx-hook="CsvDownload"
-        >Export CSV — All ACLs</button>
-        <.link
-          :if={@worker}
-          navigate={ServicePaths.server_path(@worker["id"], :dashboard)}
-          class="btn btn-ghost"
-        >Server Dashboard</.link>
-      </div>
-      <.card :if={@worker} title="Select DNS Service">
-        <div id="dns-acl-service-selector" class="management-actions">
-          <p>Select a DNS Service explicitly, even when only one exists.</p>
-          <p :if={@services == []}>No DNS Services configured. Add one on the Server Dashboard.</p>
-          <.link
-            :for={service <- @services}
-            patch={ServicePaths.server_path(@worker["id"], {:dns_acl_service, service["id"]})}
-            data-service-id={service["id"]}
-            aria-current={if @service && @service["id"] == service["id"], do: "page"}
-            class="btn btn-secondary"
-          >{service["instance_id"]} ({service["id"]})</.link>
-        </div>
-      </.card>
-      <.form :if={@service} for={%{}} id="dns-acl-filter-form" phx-change="filter" phx-submit="filter">
-        <label class="management-field"><span>Search name or description</span><input
-          id="dns-acl-filter"
-          class="input input-bordered"
-          name="filter"
-          value={@filter}
-          maxlength="512"
-          phx-debounce="300"
-        /></label>
-      </.form>
-      <.card :if={@service} title={"Desired ACLs — #{@service["instance_id"]}"}>
-        <p :if={@acls == []}>No desired ACLs for this DNS Service.</p>
-        <p :if={@acls != [] && @visible_acls == []}>No ACLs match the search.</p>
-        <p>
-          {length(@visible_acls)} of {length(@acls)} ACLs shown. CSV exports all ACLs in this Service.
-        </p>
-        <div :if={@visible_acls != []} class="overflow-x-auto">
-          <table id="dns-acls-table" class="table table-striped">
-            <thead>
-              <tr>
-                <th>Name</th><th>Description</th><th>Ordered Rules</th><th>Revision</th><th>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                :for={acl <- @visible_acls}
-                id={"dns-acl-#{acl["id"]}"}
-                data-acl-name={acl["name"]}
-                data-acl-description={acl["description"]}
-                data-acl-rules={Jason.encode!(acl["rules"])}
-                data-acl-revision={acl["revision"]}
-              >
-                <td>{acl["name"]}</td>
-                <td>{acl["description"]}</td>
-                <td>
-                  <p :if={acl["rules"] == []}>Empty rules (not catch-all)</p>
-                  <pre>{format_rules(acl["rules"])}</pre>
-                </td>
-                <td>{acl["revision"]}</td>
-                <td>
-                  <div class="management-actions">
-                    <button class="btn btn-secondary btn-sm" phx-click="edit" phx-value-id={acl["id"]}>Edit</button>
-                    <button class="btn btn-error btn-sm" phx-click="delete" phx-value-id={acl["id"]}>Delete</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </.card>
-      <.card :if={@service} title={if @editing, do: "Edit Desired ACL", else: "Create Desired ACL"}>
-        <p :if={@editing} class="management-help">
-          Editing {@editing["id"]}, revision {@editing["revision"]}. Renaming preserves its UUID.
-        </p>
-        <.form
-          for={@form}
-          id="dns-acl-form"
-          phx-submit="save"
-          phx-change="validate"
-          phx-hook="ResetForm"
-        >
-          <label class="management-field"><span>Name</span><input
-            class="input input-bordered"
-            name="acl[name]"
-            value={field_value(@form, :name)}
-            maxlength="128"
-            required
-          /></label>
-          <p :if={@field_errors[:name]} id="dns-acl-name-error" class="text-error">
-            {@field_errors[:name]}
-          </p>
-          <label class="management-field"><span>Description</span><input
-            class="input input-bordered"
-            name="acl[description]"
-            value={field_value(@form, :description)}
-          /></label>
-          <p :if={@field_errors[:description]} id="dns-acl-description-error" class="text-error">
-            {@field_errors[:description]}
-          </p>
-          <label class="management-field"><span>Ordered Rules (one per line)</span><textarea
-            id="dns-acl-rules"
-            class="textarea textarea-bordered"
-            name="acl[rules]"
-            rows="8"
-            maxlength={@max_rules_bytes}
-          >{field_value(@form, :rules)}</textarea></label>
-          <p :if={@field_errors[:rules]} id="dns-acl-rules-error" class="text-error">
-            {@field_errors[:rules]}
-          </p>
-          <p class="management-help">
-            Grammar: allow|deny any; allow|deny networks IP_OR_CIDR[, ...]; allow|deny countries ISO[, ...].
-            Country codes are uppercase. Bare "allow networks" or "deny networks" means an empty network set.
-            Blank text means zero rules. At most 128 rules and 128 networks total.
-          </p>
-          <div class="management-actions">
-            <button class="btn btn-primary" type="submit" disabled={@field_errors != %{}}>{if @editing,
-              do: "Save Desired ACL",
-              else: "Create Desired ACL"}</button>
-            <button id="dns-acl-cancel" class="btn btn-ghost" type="button" phx-click="cancel">Cancel / Reset</button>
-          </div>
-          <label class="management-field"><span>Built-in Preset</span><select
-            id="dns-acl-preset"
-            class="select select-bordered"
-            name="preset"
-          >
-            <option value="">Select a preset</option>
-            <option :for={preset <- @presets} value={preset} selected={@preset == preset}>
-              {preset}
-            </option>
-          </select></label>
-          <button
-            id="dns-acl-apply-preset"
-            class="btn btn-secondary"
-            type="submit"
-            name="operation"
-            value="apply_preset"
-            formnovalidate
-          >Apply Preset to Empty Editor</button>
-          <p class="management-help">
-            Presets fill an empty editor only; they never replace populated rules. They do not enable enforcement.
-          </p>
-          <details id="dns-acl-country-picker" open>
-            <summary>Append a Countries Rule</summary>
-            <label class="management-field"><span>Search countries by name or code</span><input
-              id="dns-acl-country-search"
-              class="input input-bordered"
-              name="country_search"
-              value={@country_search}
-              maxlength="256"
-              phx-debounce="300"
-            /></label>
-            <button class="btn btn-ghost" type="button" phx-click="clear_country_search">Clear Country Search</button>
-            <p>{length(@selected_countries)} countries selected; {length(@countries)} shown.</p>
-            <div class="management-actions">
-              <button
-                :for={code <- @selected_countries}
-                type="button"
-                class="badge badge-secondary"
-                data-selected-country-code={code}
-                phx-click="toggle_country"
-                phx-value-code={code}
-              >{code} ×</button>
-            </div>
-            <div class="management-actions">
-              <label :for={country <- @countries}>
-                <input
-                  id={"dns-acl-country-#{country.code}"}
-                  class="checkbox"
-                  type="checkbox"
-                  data-country-code={country.code}
-                  checked={country.code in @selected_countries}
-                  phx-click="toggle_country"
-                  phx-value-code={country.code}
-                />
-                {country.code} — {country.name}
-              </label>
-            </div>
-            <label class="management-field"><span>Countries Rule Action</span><select
-              id="dns-acl-country-action"
+      <div id="dns-acls-workflow" phx-hook="EditorGuard">
+        <input id="submission-intent" type="hidden" value={@submission_id} />
+        <h1>DNS ACLs</h1>
+        <form id="dns-acl-worker-selector" phx-change="select_worker">
+          <label class="management-field">
+            <span>Worker</span>
+            <select
               class="select select-bordered"
-              name="country_action"
+              name="scope[worker_id]"
+              data-editor-navigation="true"
             >
-              <option value="allow" selected={@country_action == "allow"}>Allow</option>
-              <option value="deny" selected={@country_action == "deny"}>Deny</option>
+              <option value="" selected={is_nil(@worker)}>Select a logical Worker</option>
+              <option
+                :for={worker <- @workers}
+                value={worker["id"]}
+                selected={@worker && @worker["id"] == worker["id"]}
+              >
+                {worker["name"]} ({worker["id"]})
+              </option>
+            </select>
+          </label>
+        </form>
+        <p :if={@workers == []}>Register a logical Worker before configuring a DNS ACL.</p>
+        <p :if={@worker}>Worker: {@worker["name"]} ({@worker["id"]})</p>
+        <p :if={@service}>DNS Service: {@service["instance_id"]} ({@service["id"]})</p>
+        <p class="management-help">
+          Saved in Management; not included in the current Worker target/export. ACLs belong to one explicit Worker DNS Service.
+          Empty rules and empty network sets are not catch-all rules. Rule order is retained as desired data, not evaluated here.
+        </p>
+        <div :if={@error} id="dns-acl-error" class="alert alert-error" role="alert">{@error}</div>
+        <div class="management-actions">
+          <button
+            id="dns-acl-refresh"
+            class="btn btn-secondary"
+            phx-click="refresh"
+            data-editor-discard="true"
+          >Refresh</button>
+          <button
+            :if={@service}
+            id="dns-acl-export"
+            class="btn btn-secondary"
+            phx-click="export_csv"
+            phx-hook="CsvDownload"
+          >Export CSV — All ACLs</button>
+          <.link
+            :if={@worker}
+            navigate={ServicePaths.server_path(@worker["id"], :dashboard)}
+            class="btn btn-ghost"
+          >Server Dashboard</.link>
+        </div>
+        <.card :if={@worker} title="Select DNS Service">
+          <div id="dns-acl-service-selector" class="management-actions">
+            <p>Select a DNS Service explicitly, even when only one exists.</p>
+            <p :if={@services == []}>No DNS Services configured. Add one on the Server Dashboard.</p>
+            <.link
+              :for={service <- @services}
+              patch={ServicePaths.server_path(@worker["id"], {:dns_acl_service, service["id"]})}
+              data-service-id={service["id"]}
+              aria-current={if @service && @service["id"] == service["id"], do: "page"}
+              class="btn btn-secondary"
+            >{service["instance_id"]} ({service["id"]})</.link>
+          </div>
+        </.card>
+        <.form
+          :if={@service}
+          for={%{}}
+          id="dns-acl-filter-form"
+          phx-change="filter"
+          phx-submit="filter"
+        >
+          <label class="management-field"><span>Search name or description</span><input
+            id="dns-acl-filter"
+            class="input input-bordered"
+            name="filter"
+            value={@filter}
+            maxlength="512"
+            phx-debounce="300"
+          /></label>
+        </.form>
+        <.card :if={@service} title={"Desired ACLs — #{@service["instance_id"]}"}>
+          <p :if={@acls == []}>No desired ACLs for this DNS Service.</p>
+          <p :if={@acls != [] && @visible_acls == []}>No ACLs match the search.</p>
+          <p>
+            {length(@visible_acls)} of {length(@acls)} ACLs shown. CSV exports all ACLs in this Service.
+          </p>
+          <div :if={@visible_acls != []} class="overflow-x-auto">
+            <table id="dns-acls-table" class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Description</th><th>Ordered Rules</th><th>Revision</th><th>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  :for={acl <- @visible_acls}
+                  id={"dns-acl-#{acl["id"]}"}
+                  data-acl-name={acl["name"]}
+                  data-acl-description={acl["description"]}
+                  data-acl-rules={Jason.encode!(acl["rules"])}
+                  data-acl-revision={acl["revision"]}
+                >
+                  <td>{acl["name"]}</td>
+                  <td>{acl["description"]}</td>
+                  <td>
+                    <p :if={acl["rules"] == []}>Empty rules (not catch-all)</p>
+                    <pre>{format_rules(acl["rules"])}</pre>
+                  </td>
+                  <td>{acl["revision"]}</td>
+                  <td>
+                    <div class="management-actions">
+                      <button
+                        class="btn btn-secondary btn-sm"
+                        phx-click="edit"
+                        data-editor-discard="true"
+                        phx-value-id={acl["id"]}
+                      >Edit</button>
+                      <button class="btn btn-error btn-sm" phx-click="delete" phx-value-id={acl["id"]}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+        <.card :if={@service} title={if @editing, do: "Edit Desired ACL", else: "Create Desired ACL"}>
+          <p :if={@editing} class="management-help">
+            Editing {@editing["id"]}, revision {@editing["revision"]}. Renaming preserves its UUID.
+          </p>
+          <.form
+            for={@form}
+            id="dns-acl-form"
+            phx-submit="save"
+            phx-change="validate"
+            phx-hook="ResetForm"
+            data-editor="true"
+            data-editor-dirty={to_string(@dirty)}
+            data-editor-reset={@editor_reset}
+          >
+            <input type="hidden" name="_submission" value={@submission_id} />
+            <label class="management-field"><span>Name</span><input
+              class="input input-bordered"
+              name="acl[name]"
+              value={field_value(@form, :name)}
+              maxlength="128"
+              required
+            /></label>
+            <p :if={@field_errors[:name]} id="dns-acl-name-error" class="text-error">
+              {@field_errors[:name]}
+            </p>
+            <label class="management-field"><span>Description</span><input
+              class="input input-bordered"
+              name="acl[description]"
+              value={field_value(@form, :description)}
+            /></label>
+            <p :if={@field_errors[:description]} id="dns-acl-description-error" class="text-error">
+              {@field_errors[:description]}
+            </p>
+            <label class="management-field"><span>Ordered Rules (one per line)</span><textarea
+              id="dns-acl-rules"
+              class="textarea textarea-bordered"
+              name="acl[rules]"
+              rows="8"
+              maxlength={@max_rules_bytes}
+            >{field_value(@form, :rules)}</textarea></label>
+            <p :if={@field_errors[:rules]} id="dns-acl-rules-error" class="text-error">
+              {@field_errors[:rules]}
+            </p>
+            <p class="management-help">
+              Grammar: allow|deny any; allow|deny networks IP_OR_CIDR[, ...]; allow|deny countries ISO[, ...].
+              Country codes are uppercase. Bare "allow networks" or "deny networks" means an empty network set.
+              Blank text means zero rules. At most 128 rules and 128 networks total.
+            </p>
+            <div class="management-actions">
+              <button class="btn btn-primary" type="submit" disabled={@field_errors != %{}}>{if @editing,
+                do: "Save Desired ACL",
+                else: "Create Desired ACL"}</button>
+              <button
+                id="dns-acl-cancel"
+                class="btn btn-ghost"
+                type="button"
+                phx-click="cancel"
+                data-editor-discard="true"
+              >Cancel / Reset</button>
+            </div>
+            <label class="management-field"><span>Built-in Preset</span><select
+              id="dns-acl-preset"
+              class="select select-bordered"
+              name="preset"
+            >
+              <option value="">Select a preset</option>
+              <option :for={preset <- @presets} value={preset} selected={@preset == preset}>
+                {preset}
+              </option>
             </select></label>
             <button
-              id="dns-acl-add-countries"
+              id="dns-acl-apply-preset"
               class="btn btn-secondary"
               type="submit"
               name="operation"
-              value="append_countries"
+              value="apply_preset"
               formnovalidate
-            >Append Selected Countries</button>
-          </details>
-        </.form>
-      </.card>
-      <.card :if={@service && @deleting} title="Confirm Desired ACL Deletion">
-        <p>
-          Delete {@deleting["name"]} at revision {@deleting["revision"]}? Only the desired ACL is removed; no Worker enforcement or export changes.
-        </p>
-        <div class="management-actions">
-          <button
-            id="dns-acl-confirm-delete"
-            class="btn btn-error"
-            phx-click="confirm_delete"
-            phx-value-id={@deleting["id"]}
-          >Confirm Delete</button>
-          <button id="dns-acl-cancel-delete" class="btn btn-ghost" phx-click="cancel_delete">Cancel</button>
-        </div>
-      </.card>
+            >Apply Preset to Empty Editor</button>
+            <p class="management-help">
+              Presets fill an empty editor only; they never replace populated rules. They do not enable enforcement.
+            </p>
+            <details id="dns-acl-country-picker" open>
+              <summary>Append a Countries Rule</summary>
+              <label class="management-field"><span>Search countries by name or code</span><input
+                id="dns-acl-country-search"
+                class="input input-bordered"
+                name="country_search"
+                value={@country_search}
+                maxlength="256"
+                phx-debounce="300"
+              /></label>
+              <button class="btn btn-ghost" type="button" phx-click="clear_country_search">Clear Country Search</button>
+              <p>{length(@selected_countries)} countries selected; {length(@countries)} shown.</p>
+              <div class="management-actions">
+                <button
+                  :for={code <- @selected_countries}
+                  type="button"
+                  class="badge badge-secondary"
+                  data-selected-country-code={code}
+                  phx-click="toggle_country"
+                  phx-value-code={code}
+                >{code} ×</button>
+              </div>
+              <div class="management-actions">
+                <label :for={country <- @countries}>
+                  <input
+                    id={"dns-acl-country-#{country.code}"}
+                    class="checkbox"
+                    type="checkbox"
+                    data-country-code={country.code}
+                    checked={country.code in @selected_countries}
+                    phx-click="toggle_country"
+                    phx-value-code={country.code}
+                  />
+                  {country.code} — {country.name}
+                </label>
+              </div>
+              <label class="management-field"><span>Countries Rule Action</span><select
+                id="dns-acl-country-action"
+                class="select select-bordered"
+                name="country_action"
+              >
+                <option value="allow" selected={@country_action == "allow"}>Allow</option>
+                <option value="deny" selected={@country_action == "deny"}>Deny</option>
+              </select></label>
+              <button
+                id="dns-acl-add-countries"
+                class="btn btn-secondary"
+                type="submit"
+                name="operation"
+                value="append_countries"
+                formnovalidate
+              >Append Selected Countries</button>
+            </details>
+          </.form>
+        </.card>
+        <.card :if={@service && @deleting} title="Confirm Desired ACL Deletion">
+          <p>
+            Delete {@deleting["name"]} at revision {@deleting["revision"]}? Only the desired ACL is removed; no Worker enforcement or export changes.
+          </p>
+          <div class="management-actions">
+            <button
+              id="dns-acl-confirm-delete"
+              class="btn btn-error"
+              phx-click="confirm_delete"
+              phx-value-id={@deleting["id"]}
+              phx-value-_submission={@row_submission_id}
+              data-editor-discard={
+                if @editing && @editing["id"] == @deleting["id"], do: "dns-acl-form"
+              }
+            >Confirm Delete</button>
+            <button id="dns-acl-cancel-delete" class="btn btn-ghost" phx-click="cancel_delete">Cancel</button>
+          </div>
+        </.card>
+      </div>
     </Layouts.app>
     """
   end

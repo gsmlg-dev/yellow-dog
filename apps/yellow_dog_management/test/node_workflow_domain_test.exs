@@ -270,7 +270,13 @@ defmodule YellowDog.Management.NodeWorkflowDomainTest do
     end
 
     refute Enum.any?(queries, &String.contains?(&1, "management_rrsets"))
-    refute Enum.any?(queries, &String.contains?(&1, ".\"content\""))
+    assert Enum.any?(queries, &String.contains?(&1, "\"content\"->>'name'"))
+
+    refute Enum.any?(queries, fn query ->
+             query
+             |> String.replace(".\"content\"->>'name'", "")
+             |> String.contains?(".\"content\"")
+           end)
   end
 
   defp drain_queries(acc) do

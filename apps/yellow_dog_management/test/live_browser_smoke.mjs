@@ -5,10 +5,13 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { nodeWorkflowSmoke } from './node_workflow_browser_smoke.mjs';
 import { navigationSmoke } from './navigation_browser_smoke.mjs';
+import { dataWorkflowSmoke } from './data_workflow_browser_smoke.mjs';
 
 const base = process.env.MANAGEMENT_UI_URL || 'http://127.0.0.1:14281';
 const scope = process.env.MANAGEMENT_BROWSER_SCOPE || 'full';
-assert.ok(['full', 'navigation', 'nodes', 'nodes-restart'].includes(scope), 'MANAGEMENT_BROWSER_SCOPE must be full, navigation, nodes or nodes-restart');
+assert.ok(['full', 'navigation', 'nodes', 'nodes-restart', 'data', 'data-restart'].includes(scope), 'Unknown MANAGEMENT_BROWSER_SCOPE');
+const restarting = scope === 'nodes-restart' || scope === 'data-restart';
+const dataScope = scope === 'data' || scope === 'data-restart';
 const macSmokePath = process.env.MANAGEMENT_MAC_SMOKE_PATH;
 assert.ok(macSmokePath && resolve(macSmokePath).startsWith(resolve(tmpdir()) + sep) && basename(macSmokePath) === 'mac-browser-fixture.txt', 'Use the temporary MAC artifact from scripts/e2e/management_browser.sh');
 const profile = await mkdtemp(join(tmpdir(), 'management-live-browser-'));
@@ -41,11 +44,11 @@ function canonicalRecordContents(records) {
 }
 
 async function runSmoke() {
-  if (scope !== 'nodes-restart') {
+  if (!restarting) {
   assert.deepEqual(await api('/workers'), [], 'Use an empty disposable PostgreSQL database');
   assert.deepEqual(await api('/zones'), [], 'Use an empty disposable PostgreSQL database');
   }
-  const zone = scope === 'nodes-restart' ? null : await api('/commands/create_zone', {
+  const zone = restarting || dataScope ? null : await api('/commands/create_zone', {
     name: 'live.test.',
     records: [
       { name: 'live.test.', type: 'SOA', ttl: 300, data: { mname: 'ns.live.test.', rname: 'hostmaster.live.test.', serial: 1, refresh: 3600, retry: 600, expire: 86400, minimum: 300 } },
@@ -53,7 +56,7 @@ async function runSmoke() {
       { name: 'ns.live.test.', type: 'A', ttl: 300, data: { address: '192.0.2.10' } },
     ],
   });
-  const version = scope === 'nodes-restart' ? null : await api('/commands/confirm_zone', { id: zone.id, expected_revision: zone.revision });
+  const version = restarting || dataScope ? null : await api('/commands/confirm_zone', { id: zone.id, expected_revision: zone.revision });
   let port;
   await until(async () => {
     try { port = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]; return true; }
@@ -131,6 +134,25 @@ async function runSmoke() {
   await cdp('Page.setLifecycleEventsEnabled', { enabled: true });
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await navigate('/management');
+  if (dataScope) {
+    try {
+      await dataWorkflowSmoke({api, cdp, evaluate, navigate, until, submit, base, restart:restarting,
+        confirmNext: decision => { nextDialogDecision = decision; }, dialogHandled: () => nextDialogDecision === null});
+    } catch (error) {
+      console.error('Data diagnostic', await evaluate(`({path:location.pathname,
+        errors:Array.from(document.querySelectorAll('#zone-assignment-error, #dns-view-error, #dns-acl-error, #ip-database-error, #flash-error')).map(element=>element.textContent),
+        contentDirty:document.querySelector('#zone-form')?.dataset.editorDirty,
+        assignmentDirty:document.querySelector('#zone-assignments-form')?.dataset.editorDirty,
+        address:document.querySelector('#zone-form [name$="[address]"]')?.value})`));
+      if (process.env.MANAGEMENT_SCREENSHOT_PREFIX && !await evaluate(`!!document.querySelector('#worker-bootstrap')`)) {
+        const screenshot=await cdp('Page.captureScreenshot',{format:'png'});
+        await writeFile(`${process.env.MANAGEMENT_SCREENSHOT_PREFIX}-data-failure.png`,Buffer.from(screenshot.data,'base64'));
+      }
+      throw error;
+    }
+    assert.deepEqual(errors, [], 'Data workflow JavaScript, CSP or asset errors');
+    return;
+  }
   if (scope === 'nodes-restart') {
     await nodeWorkflowSmoke({api, cdp, evaluate, navigate, until, submit, base, restart:true});
     assert.deepEqual(errors, [], 'Restart browser errors');

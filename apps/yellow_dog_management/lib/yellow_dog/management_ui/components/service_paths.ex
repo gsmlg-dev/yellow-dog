@@ -104,6 +104,12 @@ defmodule YellowDog.ManagementUI.ServicePaths do
   defp server_suffix!({:dns_zone_edit, zone_id}),
     do: "/dns/zones/#{resource_segment!(zone_id)}/edit"
 
+  defp server_suffix!({:dns_zone_versions, zone_id}),
+    do: "/dns/zones/#{resource_segment!(zone_id)}/versions"
+
+  defp server_suffix!({:dns_zone_application, zone_id}),
+    do: "/dns/zones/#{resource_segment!(zone_id)}/application"
+
   defp server_suffix!({:dns_zone_records, zone_id}),
     do: "/dns/zones/#{resource_segment!(zone_id)}/records"
 

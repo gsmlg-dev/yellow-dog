@@ -9,6 +9,8 @@ defmodule YellowDog.ManagementUI.NavigationTest do
     "/new",
     "/import",
     "/:zone_id/edit",
+    "/:zone_id/versions",
+    "/:zone_id/application",
     "/:zone_id/records",
     "/:zone_id/records/new",
     "/:zone_id/records/bulk",
@@ -46,7 +48,12 @@ defmodule YellowDog.ManagementUI.NavigationTest do
        "/server/:server_id/dns/views",
        "/server/:server_id/dns/views/:service_id"
      ]},
-    {:data, :dns_acls, ["/server/:server_id/dns/acl", "/server/:server_id/dns/acl/:service_id"]},
+    {:data, :dns_acls,
+     [
+       "/management/dns/acl",
+       "/server/:server_id/dns/acl",
+       "/server/:server_id/dns/acl/:service_id"
+     ]},
     {:data, :ip_database, ["/system/ip-database"]},
     {:data, :mac_database, ["/system/mac-database"]},
     {:monitoring, :overview, ["/", "/management"]},
@@ -147,7 +154,7 @@ defmodule YellowDog.ManagementUI.NavigationTest do
     assert item(:nodes, :netman_config).status == :requires_scope
     assert item(:data, :dns_zones).path == "/management/zones"
     assert item(:data, :dns_views).path == "/management/dns/views"
-    assert item(:data, :dns_acls).status == :requires_scope
+    assert item(:data, :dns_acls).path == "/management/dns/acl"
     assert item(:data, :ip_database).status == :available
     assert item(:monitoring, :overview).status == :available
     assert item(:system, :process_map).status == :available
@@ -189,7 +196,9 @@ defmodule YellowDog.ManagementUI.NavigationTest do
 
     for path <- ["/server/bad%2Fid/dns/views", "/server/%2E%2E/dns/acl"] do
       assert CurrentPath.selection_for_path(path) == nil
-      assert item(:data, :dns_acls, CurrentPath.selection_for_path(path)).path == nil
+
+      assert item(:data, :dns_acls, CurrentPath.selection_for_path(path)).path ==
+               "/management/dns/acl"
     end
 
     for selection <- [{:server, "bad/id"}, {:server, ".."}, {:netman, "bad/id"}] do

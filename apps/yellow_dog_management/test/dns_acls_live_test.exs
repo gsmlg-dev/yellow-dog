@@ -30,6 +30,89 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
     %{conn: build_conn()}
   end
 
+  test "global selector keeps scope empty and ignores query identities", %{conn: conn} do
+    selected = scope()
+
+    {:ok, view, _} =
+      live(
+        conn,
+        "/management/dns/acl?server_id=#{selected.worker["id"]}&service_id=#{selected.service["id"]}"
+      )
+
+    refute has_element?(view, "#dns-acl-form")
+    refute has_element?(view, "#dns-acl-error")
+    assert has_element?(view, "#dns-acl-worker-selector option[value='#{selected.worker["id"]}']")
+    render_change(view, "select_worker", %{"scope" => %{"worker_id" => selected.worker["id"]}})
+    assert_patch(view, selector_path(selected.worker))
+    refute has_element?(view, "#dns-acl-form")
+  end
+
+  test "ACL completed and delayed intents cannot replay into another editor", %{conn: conn} do
+    selected = scope()
+    {:ok, view, _} = live(conn, path(selected.worker, selected.service))
+
+    token =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#submission-intent")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    payload = %{"acl" => fields("office", "deny any"), "_submission" => token}
+    render_submit(view, "save", payload)
+    assert {:ok, [first]} = Domain.list_dns_acls(selected.worker["id"], selected.service["id"])
+    after_save = snapshot()
+    render_submit(view, "save", payload)
+    assert snapshot() == after_save
+    render_change(view, "validate", %{"acl" => fields("unsaved", "allow any")})
+    render_submit(view, "save", payload)
+    assert has_element?(view, "input[name='acl[name]'][value='unsaved']")
+    assert snapshot() == after_save
+    view |> element("#dns-acl-#{first["id"]} button[phx-click='delete']") |> render_click()
+    view |> element("#dns-acl-confirm-delete") |> render_click()
+    submit(view, "office", "deny any")
+    assert {:ok, [second]} = Domain.list_dns_acls(selected.worker["id"], selected.service["id"])
+    refute second["id"] == first["id"]
+  end
+
+  test "deleting another ACL preserves the current proposed fields and save intent", %{conn: conn} do
+    selected = scope("acl-independent-delete")
+    edited = create_acl(selected, "edited")
+    other = create_acl(selected, "other")
+    {:ok, view, _} = live(conn, path(selected.worker, selected.service))
+    view |> element("#dns-acl-#{edited["id"]} button[phx-click='edit']") |> render_click()
+    render_change(view, "validate", %{"acl" => fields("edited", "deny any", "unsaved proposal")})
+    view |> element("#dns-acl-#{other["id"]} button[phx-click='delete']") |> render_click()
+    refute has_element?(view, "#dns-acl-confirm-delete[data-editor-discard]")
+    view |> element("#dns-acl-confirm-delete") |> render_click()
+
+    assert {:error, %{code: "not_found"}} =
+             Domain.get_dns_acl(selected.worker["id"], selected.service["id"], other["id"])
+
+    assert has_element?(view, "input[name='acl[description]'][value='unsaved proposal']")
+    assert rules_text(view) == "deny any"
+    submit(view, "edited", "deny any", "unsaved proposal")
+
+    assert {:ok, saved} =
+             Domain.get_dns_acl(selected.worker["id"], selected.service["id"], edited["id"])
+
+    assert saved["description"] == "unsaved proposal"
+    assert saved["revision"] == edited["revision"] + 1
+  end
+
+  test "deleting the current ACL editor explicitly guards its reset", %{conn: conn} do
+    selected = scope("acl-current-delete")
+    edited = create_acl(selected, "edited")
+    {:ok, view, _} = live(conn, path(selected.worker, selected.service))
+    view |> element("#dns-acl-#{edited["id"]} button[phx-click='edit']") |> render_click()
+    render_change(view, "validate", %{"acl" => fields("edited", "deny any")})
+    view |> element("#dns-acl-#{edited["id"]} button[phx-click='delete']") |> render_click()
+    assert has_element?(view, "#dns-acl-confirm-delete[data-editor-discard='dns-acl-form']")
+    view |> element("#dns-acl-confirm-delete") |> render_click()
+    assert has_element?(view, "input[name='acl[name]'][value='']")
+  end
+
   test "zero Workers and unknown scope are unavailable without mutations", %{conn: conn} do
     before_read = snapshot()
 
@@ -38,7 +121,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
       assert has_element?(view, "#dns-acl-error")
       refute has_element?(view, "#dns-acl-form")
 
-      render_submit(view, "save", %{
+      save_event(view, %{
         "acl" => fields("forged", "")
       })
 
@@ -206,7 +289,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
           {"office", "", String.duplicate("e\u0301", 128)},
           {"office", "", "nul" <> <<0>>}
         ] do
-      render_submit(view, "save", %{
+      save_event(view, %{
         "acl" => fields(name, rules, description)
       })
 
@@ -214,7 +297,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
       assert {:ok, []} = Domain.list_dns_acls(selected.worker["id"], selected.service["id"])
     end
 
-    render_submit(view, "save", %{
+    save_event(view, %{
       "acl" => fields("retained", "allow networks bad-cidr", "Preserved")
     })
 
@@ -301,7 +384,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
 
     {:ok, view, _html} = live(conn, path(selected.worker, selected.service) <> query)
 
-    render_submit(view, "save", %{
+    save_event(view, %{
       "acl" => %{
         "name" => "route-authoritative",
         "description" => "Explicit route",
@@ -365,7 +448,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
       assert has_element?(view, "#dns-acl-error")
       refute has_element?(view, "#dns-acl-form")
 
-      render_submit(view, "save", %{
+      save_event(view, %{
         "acl" => fields("forged", "")
       })
 
@@ -446,7 +529,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
     for preset <- ~w(any none localhost localnets) do
       before_read = snapshot()
 
-      render_submit(view, "save", %{
+      save_event(view, %{
         "acl" => fields("preset-#{preset}", ""),
         "operation" => "apply_preset",
         "preset" => preset
@@ -461,7 +544,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
 
     before_read = snapshot()
 
-    render_submit(view, "save", %{
+    save_event(view, %{
       "acl" => fields("retained", "deny any", "Typed description"),
       "operation" => "apply_preset",
       "preset" => "any"
@@ -471,7 +554,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
     assert rules_text(view) == "deny any"
     assert has_element?(view, "input[name='acl[description]'][value='Typed description']")
 
-    render_submit(view, "save", %{
+    save_event(view, %{
       "acl" => fields("unknown", ""),
       "operation" => "apply_preset",
       "preset" => "unknown"
@@ -502,7 +585,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
     assert has_element?(view, "#dns-acl-country-US[checked]")
     assert has_element?(view, "#dns-acl-country-CA[checked]")
 
-    render_submit(view, "save", %{
+    save_event(view, %{
       "acl" => fields("countries", "deny networks 192.0.2.1", "Latest typed fields"),
       "operation" => "append_countries",
       "country_action" => "deny"
@@ -529,7 +612,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
     render_click(view, "toggle_country", %{"code" => "XX"})
     assert has_element?(view, "#dns-acl-error", "Unknown ISO")
 
-    render_submit(view, "save", %{
+    save_event(view, %{
       "acl" => fields("empty", "deny any"),
       "operation" => "append_countries",
       "country_action" => "allow"
@@ -570,6 +653,18 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
     refute csv =~ "excluded"
     assert filename =~ selected.service["id"]
     assert snapshot() == before_export
+  end
+
+  defp save_event(view, payload) do
+    token =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#submission-intent")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    render_submit(view, "save", Map.put(payload, "_submission", token))
   end
 
   defp submit(view, name, rules, description \\ "") do

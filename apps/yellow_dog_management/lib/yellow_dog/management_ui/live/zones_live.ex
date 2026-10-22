@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.ConfigSpec
-  alias YellowDog.Management.Domain
+  alias YellowDog.Management.{Database, Domain}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
   alias YellowDog.ManagementUI.Submission
 
@@ -15,11 +15,23 @@ defmodule YellowDog.ManagementUI.ZonesLive do
      assign(Submission.new(socket),
        workers: assignment_workers(),
        zones: [],
+       catalog: %{},
+       catalog_options: %{},
+       catalog_route: nil,
+       content_dirty: false,
+       content_reset: Ecto.UUID.generate(),
+       assignment_reset: Ecto.UUID.generate(),
+       assignment_submission_id: Ecto.UUID.generate(),
+       assignment_submission_previous: nil,
+       assignment_request: nil,
+       affected_workers: [],
        filter: "",
        deleting: nil,
        zone: nil,
        versions: [],
        assignment_zone_id: nil,
+       assignment_editable: false,
+       assignment_canonical_rows: [],
        assignment_rows: [],
        assignment_token: nil,
        assignment_worker_revisions: %{},
@@ -33,12 +45,23 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   end
 
   @impl true
-  def handle_params(_params, uri, socket) do
+  def handle_params(params, uri, socket) do
     path_params = CurrentPath.route_path_params(socket, uri)
+    route = URI.parse(uri).path
+    same_route? = route == socket.assigns.catalog_route
 
     case base_path(path_params) do
       {:ok, base_path} ->
-        {:noreply, apply_action(Submission.new(socket), path_params, base_path)}
+        {:noreply,
+         apply_action(
+           assign(socket,
+             catalog_options: Map.take(params, ~w(search page page_size sort)),
+             catalog_route: route
+           ),
+           path_params,
+           base_path,
+           same_route?
+         )}
 
       {:error, error} ->
         {:noreply, socket |> put_flash(:error, error.message) |> push_navigate(to: "/server")}
@@ -53,45 +76,79 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
   defp base_path(_params), do: {:ok, "/management/zones"}
 
-  defp apply_action(socket, params, base_path) do
-    socket =
-      assign(socket,
-        base_path: base_path,
-        zones: Domain.list_zones(),
-        zone: nil,
-        versions: [],
-        validation_errors: [],
-        zone_valid?: false,
-        deleting: nil
-      )
+  defp apply_action(socket, params, base_path, same_route?) do
+    socket = socket |> assign(:base_path, base_path) |> load_catalog()
 
     case socket.assigns.live_action do
+      action when action in [:index, :new] and same_route? ->
+        socket
+
       :index ->
-        socket |> reset_assignments() |> assign(page_title: "DNS Zones")
+        socket
+        |> Submission.new()
+        |> reset_assignments()
+        |> assign(page_title: "DNS Zones", zone: nil, content_dirty: false)
 
       :new ->
         socket
+        |> Submission.new()
         |> reset_assignments()
         |> assign(
           page_title: "New DNS Zone",
+          deleting: nil,
+          zone: nil,
+          content_dirty: false,
+          content_reset: Ecto.UUID.generate(),
           rows: [new_record("SOA"), new_record("NS")],
           form: to_form(%{"name" => ""}, as: "zone")
         )
 
-      :edit ->
-        case Domain.get_zone(params["zone_id"]) do
-          {:ok, zone} ->
-            load_zone(socket, zone)
+      action when action in [:edit, :versions, :application] ->
+        if socket.assigns.zone && socket.assigns.zone["id"] == params["zone_id"] do
+          socket
+        else
+          case Domain.get_zone(params["zone_id"]) do
+            {:ok, zone} ->
+              load_zone(Submission.new(socket), zone)
 
-          {:error, error} ->
-            socket |> put_flash(:error, error.message) |> push_patch(to: base_path)
+            {:error, error} ->
+              socket
+              |> put_flash(:error, error.message)
+              |> push_patch(to: query_path(base_path, socket.assigns.catalog_options))
+          end
         end
     end
   end
 
+  defp load_catalog(socket) do
+    catalog = Domain.list_zone_catalog(socket.assigns.catalog_options)
+    options = Map.take(catalog, Map.keys(socket.assigns.catalog_options))
+
+    assign(socket,
+      catalog: catalog,
+      catalog_options: options,
+      zones: catalog["zones"],
+      filter: catalog["search"]
+    )
+  end
+
   @impl true
+  def handle_event("save_assignments", params, socket) do
+    token = params["_submission"]
+
+    current? =
+      is_binary(token) and
+        (token == socket.assigns.assignment_submission_id or
+           (match?({^token, _}, socket.assigns.assignment_submission_previous) and
+              submitted_editor(socket, "save_assignments", params) == "set_zone_assignments"))
+
+    if current?,
+      do: handle_submission("save_assignments", params, socket),
+      else: {:noreply, socket}
+  end
+
   def handle_event(event, params, socket)
-      when event in ~w(save save_assignments confirm_delete confirm_zone) do
+      when event in ~w(save confirm_delete confirm_zone) do
     if Submission.current?(
          socket,
          params["_submission"],
@@ -102,17 +159,24 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   end
 
   def handle_event("filter", %{"filter" => %{"name" => name}}, socket) when is_binary(name) do
-    {:noreply, assign(socket, :filter, String.slice(name, 0, 253))}
+    options =
+      Map.merge(socket.assigns.catalog_options, %{
+        "search" => String.slice(name, 0, 253),
+        "page" => "1"
+      })
+
+    {:noreply,
+     push_patch(socket, to: query_path(socket.assigns.catalog_route, options), replace: true)}
   end
 
   def handle_event("refresh", _params, socket) do
-    socket = assign(socket, :zones, Domain.list_zones())
+    socket = load_catalog(socket)
 
     socket =
       if socket.assigns.zone do
         id = socket.assigns.zone["id"]
 
-        if Enum.any?(socket.assigns.zones, &(&1["id"] == id)) do
+        if match?({:ok, _}, Domain.get_zone(id)) do
           assign(socket, :versions, Domain.list_versions(id))
         else
           socket
@@ -121,7 +185,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             :error,
             "Zone draft is no longer available. Historical versions are retained."
           )
-          |> push_patch(to: socket.assigns.base_path)
+          |> push_patch(to: query_path(socket.assigns.base_path, socket.assigns.catalog_options))
         end
       else
         socket
@@ -144,7 +208,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     {:noreply,
      socket
-     |> assign(:zones, zones)
+     |> load_catalog()
      |> push_event("download_csv", %{
        content: "Name,Type,Record count,Query count\r\n" <> rows,
        filename: "management_zones.csv"
@@ -159,7 +223,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         do: Submission.edit(socket, ~w(create_zone update_zone)),
         else: socket
 
-    {:noreply, assign_form(socket, params, rows)}
+    {:noreply, socket |> assign_form(params, rows) |> assign(:content_dirty, true)}
   end
 
   def handle_event("add_assignment_worker", %{"id" => worker_id}, socket) do
@@ -177,6 +241,13 @@ defmodule YellowDog.ManagementUI.ZonesLive do
            assignment_error: "Configure a DNS Service for the selected Worker first."
          )}
 
+      length(socket.assigns.assignment_rows) >= 256 ->
+        {:noreply,
+         assign(socket,
+           assignment_error:
+             "At most 256 assignments can be edited. Remove a selection before adding another."
+         )}
+
       true ->
         service_id =
           case services do
@@ -188,11 +259,11 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           "key" => Ecto.UUID.generate(),
           "worker_id" => worker_id,
           "service_id" => service_id,
-          "resource_version_id" => hd(socket.assigns.versions)["id"]
+          "resource_version_id" => List.last(socket.assigns.versions)["id"]
         }
 
         {:noreply,
-         assign(Submission.edit(socket, ["set_zone_assignments"]),
+         assign(edit_assignment_intent(socket),
            assignment_rows: socket.assigns.assignment_rows ++ [row],
            assignments_dirty: true,
            assignment_error: nil
@@ -204,7 +275,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     rows = Enum.reject(socket.assigns.assignment_rows, &(&1["key"] == key))
 
     {:noreply,
-     assign(Submission.edit(socket, ["set_zone_assignments"]),
+     assign(edit_assignment_intent(socket),
        assignment_rows: rows,
        assignments_dirty: true,
        assignment_error: nil
@@ -217,7 +288,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     socket =
       if updated.assigns.assignment_rows != socket.assigns.assignment_rows,
-        do: Submission.edit(updated, ["set_zone_assignments"]),
+        do: edit_assignment_intent(updated),
         else: updated
 
     {:noreply, socket}
@@ -227,11 +298,22 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     if socket.assigns.zone do
       {:noreply,
        load_assignments(
-         Submission.new(socket),
+         reset_assignment_intent(socket),
          socket.assigns.zone["id"]
        )}
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_event("discard_content", _params, socket) do
+    case Domain.get_zone(socket.assigns.zone["id"]) do
+      {:ok, zone} ->
+        {:noreply,
+         load_zone(Submission.edit(socket, ~w(create_zone update_zone confirm_zone)), zone)}
+
+      {:error, error} ->
+        {:noreply, put_flash(socket, :error, error.message)}
     end
   end
 
@@ -240,7 +322,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     {:noreply,
      assign_form(
-       Submission.edit(socket, ~w(create_zone update_zone)),
+       socket |> Submission.edit(~w(create_zone update_zone)) |> assign(:content_dirty, true),
        socket.assigns.form.params,
        rows
      )}
@@ -255,7 +337,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     {:noreply,
      assign_form(
-       Submission.edit(socket, ~w(create_zone update_zone)),
+       socket |> Submission.edit(~w(create_zone update_zone)) |> assign(:content_dirty, true),
        socket.assigns.form.params,
        rows
      )}
@@ -285,6 +367,20 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     query = String.downcase(filter)
     Enum.filter(zones, &String.contains?(String.downcase(&1["name"]), query))
   end
+
+  defp catalog_path(base, catalog, page) do
+    base <>
+      "?" <>
+      URI.encode_query(%{
+        "search" => catalog["search"],
+        "sort" => catalog["sort"],
+        "page" => page,
+        "page_size" => catalog["page_size"]
+      })
+  end
+
+  defp query_path(path, options) when map_size(options) == 0, do: path
+  defp query_path(path, options), do: path <> "?" <> URI.encode_query(options)
 
   defp csv_cell(value) do
     value = if Regex.match?(~r/\A(?:[\t\r\n]|\s*[=+\-@])/u, value), do: "'" <> value, else: value
@@ -335,15 +431,21 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           )
       }
 
-      {socket, key} =
-        Submission.prepare(socket, "set_zone_assignments", payload, params["_submission"])
+      {socket, key} = prepare_assignment_intent(socket, payload, params["_submission"])
 
       case Domain.mutate("set_zone_assignments", payload, "operator", key) do
-        {:ok, _result} ->
+        {:ok, snapshot} ->
           {:noreply,
            socket
-           |> Submission.new()
-           |> load_assignments(socket.assigns.zone["id"])
+           |> reset_assignment_intent()
+           |> assign(
+             :affected_workers,
+             Enum.uniq(
+               Enum.map(socket.assigns.assignment_rows, & &1["worker_id"]) ++
+                 Enum.map(socket.assigns.assignment_canonical_rows, & &1["worker_id"])
+             )
+           )
+           |> apply_assignment_snapshot(snapshot)
            |> put_flash(:info, "Worker assignments saved. No target was prepared or delivered.")}
 
         {:error, error} ->
@@ -370,19 +472,44 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     case Domain.mutate(operation, payload, "operator", key) do
       {:ok, saved} ->
-        {:noreply,
-         socket
-         |> Submission.new()
-         |> put_flash(
-           :info,
-           "Zone draft saved. Confirm a version before assigning it to a service."
-         )
-         |> push_patch(to: "#{socket.assigns.base_path}/#{saved["id"]}/edit")}
+        read =
+          Database.read(fn ->
+            with {:ok, zone} <- Domain.get_zone(saved["id"]), do: {:ok, load_zone(socket, zone)}
+          end)
+
+        case read do
+          {:ok, {:ok, loaded}} ->
+            {:noreply,
+             loaded
+             |> Submission.edit(~w(create_zone update_zone))
+             |> put_flash(
+               :info,
+               "Zone draft saved. Confirm a version before assigning it to a service."
+             )
+             |> push_patch(
+               to:
+                 query_path(
+                   "#{socket.assigns.base_path}/#{saved["id"]}/edit",
+                   socket.assigns.catalog_options
+                 )
+             )}
+
+          _ ->
+            {:noreply,
+             socket
+             |> assign_form(params, rows)
+             |> assign(:content_dirty, true)
+             |> put_flash(
+               :error,
+               "Zone was saved, but its canonical draft could not be read. Your input and request are retained; retry to check the saved result."
+             )}
+        end
 
       {:error, error} ->
         {:noreply,
          socket
          |> assign_form(params, rows)
+         |> assign(:content_dirty, true)
          |> put_flash(:error, error.message)}
     end
   end
@@ -398,12 +525,16 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             socket =
               socket
               |> Submission.new()
-              |> assign(zones: Domain.list_zones(), deleting: nil)
+              |> load_catalog()
+              |> assign(deleting: nil)
               |> put_flash(:info, "Zone draft deleted. Historical versions are retained.")
 
             socket =
               if socket.assigns.zone && socket.assigns.zone["id"] == id,
-                do: push_patch(socket, to: socket.assigns.base_path),
+                do:
+                  push_patch(socket,
+                    to: query_path(socket.assigns.base_path, socket.assigns.catalog_options)
+                  ),
                 else: socket
 
             {:noreply, socket}
@@ -424,7 +555,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   defp handle_submission("confirm_zone", %{"id" => id} = event, socket) do
     zone = cached_zone(socket, id)
 
-    if zone do
+    if zone && !socket.assigns.content_dirty do
       payload = %{"id" => id, "expected_revision" => zone["revision"]}
       {socket, key} = Submission.prepare(socket, "confirm_zone", payload, event["_submission"])
 
@@ -432,8 +563,8 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         {:ok, _result} ->
           socket =
             socket
-            |> Submission.new()
-            |> assign(:zones, Domain.list_zones())
+            |> Submission.edit(["confirm_zone"])
+            |> load_catalog()
             |> put_flash(
               :info,
               "Immutable Zone version confirmed. No Worker runtime was changed."
@@ -450,7 +581,12 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           {:noreply, put_flash(socket, :error, error.message)}
       end
     else
-      {:noreply, put_flash(socket, :error, "Zone is no longer available. Reload the page.")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Save or explicitly discard unsaved content before confirming the saved draft."
+       )}
     end
   end
 
@@ -458,15 +594,23 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     do: {:noreply, put_flash(socket, :error, "Invalid submission")}
 
   defp load_zone(socket, zone) do
+    socket =
+      if socket.assigns.assignment_zone_id != zone["id"],
+        do: reset_assignments(socket),
+        else: socket
+
     preserve_assignments =
-      socket.assigns.assignment_zone_id == zone["id"] && socket.assigns.assignments_dirty
+      socket.assigns.assignment_zone_id == zone["id"] &&
+        (socket.assigns.assignments_dirty || not is_nil(socket.assigns.assignment_request))
 
     socket =
       socket
       |> assign(
         page_title: "Edit DNS Zone",
         zone: zone,
-        versions: Domain.list_versions(zone["id"])
+        versions: Domain.list_versions(zone["id"]),
+        content_dirty: false,
+        content_reset: Ecto.UUID.generate()
       )
       |> assign_form(%{"name" => zone["name"]}, zone["records"])
 
@@ -476,21 +620,30 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   defp load_assignments(socket, zone_id) do
     case Domain.get_zone_assignments(zone_id) do
       {:ok, snapshot} ->
-        rows = Enum.map(snapshot["assignments"], &Map.put(&1, "key", &1["id"]))
-
-        assign(socket,
-          workers: assignment_workers(),
-          assignment_zone_id: zone_id,
-          assignment_rows: rows,
-          assignment_token: snapshot["assignment_token"],
-          assignment_worker_revisions: snapshot["worker_revisions"],
-          assignments_dirty: false,
-          assignment_error: nil
-        )
+        socket |> assign(:workers, assignment_workers()) |> apply_assignment_snapshot(snapshot)
 
       {:error, error} ->
-        assign(socket, assignment_error: error[:message] || error["message"])
+        assign(socket,
+          assignment_editable: false,
+          assignment_error: error[:message] || error["message"]
+        )
     end
+  end
+
+  defp apply_assignment_snapshot(socket, snapshot) do
+    rows = Enum.map(snapshot["assignments"], &Map.put(&1, "key", &1["id"]))
+
+    assign(socket,
+      assignment_zone_id: snapshot["zone_id"],
+      assignment_editable: true,
+      assignment_rows: rows,
+      assignment_canonical_rows: rows,
+      assignment_reset: Ecto.UUID.generate(),
+      assignment_token: snapshot["assignment_token"],
+      assignment_worker_revisions: snapshot["worker_revisions"],
+      assignments_dirty: false,
+      assignment_error: nil
+    )
   end
 
   defp retain_assignments(socket, params) do
@@ -509,14 +662,59 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
   defp reset_assignments(socket),
     do:
-      assign(socket,
+      assign(reset_assignment_intent(socket),
         assignment_zone_id: nil,
+        assignment_editable: false,
+        affected_workers: [],
         assignment_rows: [],
+        assignment_canonical_rows: [],
+        assignment_reset: Ecto.UUID.generate(),
         assignment_token: nil,
         assignment_worker_revisions: %{},
         assignments_dirty: false,
         assignment_error: nil
       )
+
+  defp edit_assignment_intent(socket) do
+    if socket.assigns.assignment_request do
+      assign(socket,
+        assignment_submission_id: Ecto.UUID.generate(),
+        assignment_submission_previous:
+          {socket.assigns.assignment_submission_id, socket.assigns.assignment_request},
+        assignment_request: nil
+      )
+    else
+      socket
+    end
+  end
+
+  defp reset_assignment_intent(socket) do
+    assign(socket,
+      assignment_submission_id: Ecto.UUID.generate(),
+      assignment_submission_previous: nil,
+      assignment_request: nil
+    )
+  end
+
+  defp prepare_assignment_intent(socket, payload, token) do
+    socket = clear_flash(socket, :info)
+
+    case socket.assigns.assignment_submission_previous do
+      {^token, {^payload, key}} ->
+        {socket, key}
+
+      _ ->
+        case socket.assigns.assignment_request do
+          {^payload, key} ->
+            {socket, key}
+
+          previous ->
+            key = Ecto.UUID.generate()
+            socket = if previous, do: edit_assignment_intent(socket), else: socket
+            {assign(socket, :assignment_request, {payload, key}), key}
+        end
+    end
+  end
 
   defp dns_services(worker), do: Enum.filter(worker["services"], &(&1["type"] == "dns"))
 
@@ -616,7 +814,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :visible_zones, visible_zones(assigns.zones, assigns.filter))
+    assigns = assign(assigns, :visible_zones, assigns.zones)
 
     ~H"""
     <Layouts.app
@@ -624,295 +822,384 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       current_path={@current_path}
       servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
     >
-      <input id="submission-intent" type="hidden" value={@submission_id} />
-      <h1>{@page_title}</h1>
-      <p class="management-help">
-        Global reusable Zone library: Management-owned DNS drafts and immutable versions, not View-owned content. Actual Worker runtime state is unknown. SOA, NS and A records are supported by the current shared contract.
-      </p>
-      <p class="management-help">
-        Only authoritative Zones are supported. Forward, stub, cloud and additional record types remain pending. Runtime query counts are unavailable.
-      </p>
-      <div class="management-actions">
-        <.link patch={@base_path} class="btn btn-ghost">Zones</.link>
-        <.link patch={@base_path <> "/new"} class="btn btn-primary">New Zone</.link>
-        <.link navigate={@base_path <> "/import"} class="btn btn-ghost">Import Zone</.link>
-        <button id="zone-refresh" class="btn btn-ghost" phx-click="refresh">Refresh</button>
-        <button id="zone-export" class="btn btn-ghost" phx-hook="CsvDownload" phx-click="export_csv">Export filtered CSV</button>
-      </div>
-      <form id="zones-filter-form" phx-change="filter" phx-submit="filter">
-        <label class="management-field"><span>Filter Zone names</span><input
-          id="zone-filter"
-          class="input"
-          name="filter[name]"
-          value={@filter}
-          maxlength="253"
-        /></label>
-      </form>
-      <p id="zone-count" data-displayed={length(@visible_zones)} data-total={length(@zones)}>
-        {length(@visible_zones)} of {length(@zones)} Zones shown.
-      </p>
-      <.card :if={@live_action == :index} title="DNS Zones">
-        <p :if={@zones == []}>No zones configured. Create a Zone without registering a Worker.</p>
-        <p :if={@zones != [] and @visible_zones == []}>No Zone names match this filter.</p>
-        <div class="management-records">
-          <table id="zones-table" class="table table-striped">
-            <thead>
-              <tr>
-                <th>Zone</th><th>Draft revision</th><th>Records</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={zone <- @visible_zones} id={"zone-#{zone["id"]}"}>
-                <td>{zone["name"]}</td><td>{zone["revision"]}</td><td>{length(zone["records"])}</td>
-                <td>
-                  <div class="management-actions">
-                    <.link patch={"#{@base_path}/#{zone["id"]}/edit"} class="btn btn-ghost">Edit</.link>
-                    <.link navigate={"#{@base_path}/#{zone["id"]}/records"} class="btn btn-ghost">Records</.link>
-                    <button
-                      class="btn btn-primary"
-                      phx-click="confirm_zone"
-                      phx-value-_submission={@submission_id}
-                      phx-disable-with="Confirming…"
-                      phx-value-id={zone["id"]}
-                    >Confirm Version</button>
-                    <button
-                      class="btn btn-error"
-                      phx-click="delete_zone"
-                      phx-value-id={zone["id"]}
-                    >Delete</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </.card>
-      <.card :if={@live_action in [:new, :edit]} title="Zone Draft">
-        <.form for={@form} id="zone-form" phx-change="validate" phx-submit="save">
-          <input type="hidden" name="_submission" value={@submission_id} />
-          <label class="management-field"><span>Zone name (fully qualified)</span><input
-            id="zone-name"
-            class="input"
-            name="zone[name]"
-            value={@form[:name].value}
-            required
-          /></label>
-          <p :if={@zone}>Draft revision {@zone["revision"]}</p>
-          <div
-            :if={@validation_errors != []}
-            id="zone-validation-errors"
-            class="alert alert-error"
-            role="alert"
-          >
-            <ul>
-              <li :for={error <- @validation_errors}>
-                {Enum.map_join(error.path, ".", &to_string/1)}: {error.message}
-              </li>
-            </ul>
-          </div>
-          <fieldset :for={{record, index} <- Enum.with_index(@rows)} id={"zone-record-#{index}"}>
-            <legend>Record {index + 1}</legend>
-            <label class="management-field"><span>Record name</span><input
-              class="input"
-              name={"zone[records][#{index}][name]"}
-              value={record["name"]}
-              required
-            /></label>
-            <label class="management-field"><span>Type</span><select
-              class="select"
-              name={"zone[records][#{index}][type]"}
-            ><option :for={type <- ~w(SOA NS A)} value={type} selected={type == record["type"]}>
-              {type}
-            </option></select></label>
-            <label class="management-field"><span>TTL (seconds)</span><input
-              class="input"
-              type="number"
-              min="0"
-              name={"zone[records][#{index}][ttl]"}
-              value={record["ttl"]}
-              required
-            /></label>
-            <label :for={field <- data_fields(record["type"])} class="management-field">
-              <span>{field}</span><input
-                class="input"
-                type={if numeric_field?(field), do: "number", else: "text"}
-                min={if numeric_field?(field), do: "0"}
-                name={"zone[records][#{index}][data][#{field}]"}
-                value={record["data"][field]}
-                required
-              />
-            </label>
-            <button
-              type="button"
-              class="btn btn-ghost"
-              phx-click="remove_record"
-              phx-value-index={index}
-            >Remove Record</button>
-          </fieldset>
-          <div class="management-actions">
-            <button type="button" class="btn btn-ghost" phx-click="add_record">Add Record</button>
-            <button
-              id="zone-save"
-              type="submit"
-              class="btn btn-primary"
-              disabled={!@zone_valid?}
-              phx-disable-with="Saving…"
-            >Save Draft</button>
-            <.link patch={@base_path} class="btn btn-ghost">Cancel</.link>
-          </div>
-        </.form>
-        <div :if={@zone} class="management-actions">
-          <.link navigate={"#{@base_path}/#{@zone["id"]}/records"} class="btn btn-ghost">Records</.link>
-          <button
-            class="btn btn-primary"
-            phx-click="confirm_zone"
-            phx-value-_submission={@submission_id}
-            phx-disable-with="Confirming…"
-            phx-value-id={@zone["id"]}
-          >Confirm Version</button>
-          <button
-            class="btn btn-error"
-            phx-click="delete_zone"
-            phx-value-id={@zone["id"]}
-          >Delete</button>
-        </div>
-      </.card>
-      <.card :if={@zone} title="Worker assignments">
+      <div id="zone-workflow" phx-hook="EditorGuard">
+        <input id="submission-intent" type="hidden" value={@submission_id} />
+        <h1>{@page_title}</h1>
         <p class="management-help">
-          Zone data is global. Assign a confirmed version to each logical Worker and DNS Service; assignments do not report execution.
+          Global reusable Zone library: Management-owned DNS drafts and immutable versions, not View-owned content. Actual Worker runtime state is unknown. SOA, NS and A records are supported by the current shared contract.
         </p>
-        <p :if={@versions == []}>
-          Confirm a version before assigning this Zone. The draft remains editable.
-        </p>
-        <p :if={@assignment_error} id="zone-assignment-error" class="alert alert-error" role="alert">
-          {@assignment_error}
+        <p class="management-help">
+          Only authoritative Zones are supported. Forward, stub, cloud and additional record types remain pending. Runtime query counts are unavailable.
         </p>
         <div class="management-actions">
-          <button
-            :for={worker <- @workers}
-            class="btn btn-secondary"
-            phx-click="add_assignment_worker"
-            phx-value-id={worker["id"]}
-            disabled={@versions == [] || dns_services(worker) == []}
-          >
-            Assign {worker["name"]} ({worker["id"]})
-          </button>
+          <.link patch={query_path(@base_path, @catalog_options)} class="btn btn-ghost">Zones</.link>
+          <.link patch={query_path(@base_path <> "/new", @catalog_options)} class="btn btn-primary">New Zone</.link>
+          <.link navigate={@base_path <> "/import"} class="btn btn-ghost">Import Zone</.link>
+          <button id="zone-refresh" class="btn btn-ghost" phx-click="refresh">Refresh</button>
+          <button id="zone-export" class="btn btn-ghost" phx-hook="CsvDownload" phx-click="export_csv">Export all matching Zones CSV</button>
         </div>
-        <p :if={@workers == []}>
-          No logical Workers are registered. Zone drafts and versions remain global.
-        </p>
-        <p :for={worker <- @workers} :if={dns_services(worker) == []}>
-          {worker["name"]} has no DNS Services.
-          <.link navigate={ServicePaths.server_path(worker["id"], :dashboard)}>Configure a DNS Service</.link>
-        </p>
-        <form
-          id="zone-assignments-form"
-          phx-change="validate_assignments"
-          phx-submit="save_assignments"
-        >
-          <input type="hidden" name="_submission" value={@submission_id} />
-          <fieldset
-            :for={row <- @assignment_rows}
-            id={"zone-assignment-#{row["key"]}"}
-            data-worker-id={row["worker_id"]}
-          >
-            <legend>{assignment_worker(@workers, row)["name"]} ({row["worker_id"]})</legend>
-            <label class="management-field">
-              <span>DNS Service</span>
-              <select class="select" name={"assignments[#{row["key"]}][service_id]"} required>
-                <option value="" selected={row["service_id"] == ""}>Select a DNS Service</option>
-                <option
-                  :for={service <- dns_services(assignment_worker(@workers, row))}
-                  value={service["id"]}
-                  selected={row["service_id"] == service["id"]}
-                >
-                  {service["instance_id"]} ({service["id"]})
-                </option>
-              </select>
-            </label>
-            <label class="management-field">
-              <span>Confirmed Zone version</span>
-              <select class="select" name={"assignments[#{row["key"]}][resource_version_id]"} required>
-                <option
-                  :for={version <- @versions}
-                  value={version["id"]}
-                  selected={row["resource_version_id"] == version["id"]}
-                >
-                  Version {version["version"]} — {version["digest"]}
-                </option>
-              </select>
-            </label>
-            <button
-              type="button"
-              class="btn btn-error"
-              phx-click="remove_assignment_row"
-              phx-value-key={row["key"]}
-            >Remove assignment</button>
-          </fieldset>
-          <div class="management-actions">
-            <button
-              id="zone-save-assignments"
-              class="btn btn-primary"
-              type="submit"
-              phx-disable-with="Saving assignments…"
-              disabled={@versions == [] && @assignment_rows == []}
-            >Save assignments</button>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              phx-click="refresh_assignments"
-              data-confirm={
-                if @assignments_dirty,
-                  do: "Discard unsaved assignment changes and reload the assignment set?",
-                  else: nil
-              }
-            >Reload assignment set</button>
-          </div>
+        <form id="zones-filter-form" phx-change="filter" phx-submit="filter">
+          <label class="management-field"><span>Filter Zone names</span><input
+            id="zone-filter"
+            class="input"
+            name="filter[name]"
+            value={@filter}
+            maxlength="253"
+          /></label>
         </form>
-      </.card>
-      <.card :if={@deleting} title="Confirm Zone deletion">
-        <div
-          id="zone-delete-confirmation"
-          data-zone-id={@deleting["id"]}
-          data-revision={@deleting["revision"]}
-        >
-          <p>
-            Delete {@deleting["name"]} at draft revision {@deleting["revision"]}? Historical versions will be retained. No Worker runtime is changed.
-          </p>
-          <div class="management-actions">
-            <button
-              id="zone-delete-confirm"
-              class="btn btn-error"
-              phx-click="confirm_delete"
-              phx-value-_submission={@submission_id}
-              phx-disable-with="Deleting…"
-              phx-value-id={@deleting["id"]}
-            >Confirm Delete</button>
-            <button id="zone-cancel-delete" class="btn btn-ghost" phx-click="cancel_delete">Cancel Delete</button>
-          </div>
-        </div>
-      </.card>
-      <.card :if={@zone} title="Immutable Versions">
-        <p :if={@versions == []}>
-          No confirmed versions. Saving a draft does not change an assigned version.
+        <p id="zone-count" data-displayed={length(@zones)} data-total={@catalog["total"]}>
+          {length(@zones)} of {@catalog["total"]} Zones shown. Page {@catalog["page"]} (up to {@catalog[
+            "page_size"
+          ]} per page).
         </p>
-        <div class="management-records">
-          <table id="zone-versions" class="table">
-            <thead>
-              <tr>
-                <th>Version</th><th>Source revision</th><th>Digest</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={version <- @versions}>
-                <td>{version["version"]}</td><td>{version["source_revision"]}</td><td>
-                  {version["digest"]}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <nav aria-label="Zone catalog pages" class="management-actions">
+          <.link
+            :if={@catalog["page"] > 1}
+            patch={catalog_path(@base_path, @catalog, @catalog["page"] - 1)}
+          >Previous page</.link>
+          <.link
+            :if={@catalog["has_next"]}
+            patch={catalog_path(@base_path, @catalog, @catalog["page"] + 1)}
+          >Next page</.link>
+          <.link patch={catalog_path(@base_path, Map.put(@catalog, "sort", "name"), 1)}>Sort by name</.link>
+          <.link patch={catalog_path(@base_path, Map.put(@catalog, "sort", "revision"), 1)}>Sort by revision</.link>
+        </nav>
+        <nav :if={@zone} aria-label="Zone detail" class="management-actions">
+          <.link
+            data-editor-preserve="true"
+            patch={query_path("#{@base_path}/#{@zone["id"]}/edit", @catalog_options)}
+          >Content</.link>
+          <.link
+            data-editor-preserve="true"
+            patch={query_path("#{@base_path}/#{@zone["id"]}/versions", @catalog_options)}
+          >Versions</.link>
+          <.link
+            data-editor-preserve="true"
+            patch={query_path("#{@base_path}/#{@zone["id"]}/application", @catalog_options)}
+          >Application scope</.link>
+        </nav>
+        <.card :if={@live_action == :index} title="DNS Zones">
+          <p :if={@catalog["total"] == 0}>
+            No zones configured. Create a Zone without registering a Worker.
+          </p>
+          <p :if={@catalog["total"] > 0 and @visible_zones == []}>No Zone names match this filter.</p>
+          <div class="management-records">
+            <table id="zones-table" class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Zone / identity</th><th>Draft revision</th><th>Records</th><th>
+                    Latest confirmed
+                  </th><th>Usage</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={zone <- @visible_zones} id={"zone-#{zone["id"]}"}>
+                  <td>{zone["name"]}<br /><code>{zone["id"]}</code></td><td>{zone["revision"]}</td><td>
+                    {zone["record_count"]}
+                  </td>
+                  <td>{zone["latest_version"] || "No confirmed version"}</td>
+                  <td>{zone["worker_count"]} Workers / {zone["service_count"]} services</td>
+                  <td>
+                    <div class="management-actions">
+                      <.link
+                        patch={query_path("#{@base_path}/#{zone["id"]}/edit", @catalog_options)}
+                        class="btn btn-ghost"
+                      >Edit</.link>
+                      <.link navigate={"#{@base_path}/#{zone["id"]}/records"} class="btn btn-ghost">Records</.link>
+                      <button
+                        class="btn btn-primary"
+                        phx-click="confirm_zone"
+                        phx-value-_submission={@submission_id}
+                        phx-disable-with="Confirming…"
+                        phx-value-id={zone["id"]}
+                      >Confirm Version</button>
+                      <button
+                        class="btn btn-error"
+                        phx-click="delete_zone"
+                        phx-value-id={zone["id"]}
+                      >Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+        <div :if={@live_action != :index} hidden={@live_action not in [:new, :edit]}>
+          <.card title="Zone Draft">
+            <.form
+              for={@form}
+              id="zone-form"
+              phx-change="validate"
+              phx-submit="save"
+              data-editor="true"
+              data-editor-dirty={to_string(@content_dirty)}
+              data-editor-reset={@content_reset}
+            >
+              <input type="hidden" name="_submission" value={@submission_id} />
+              <label class="management-field"><span>Zone name (fully qualified)</span><input
+                id="zone-name"
+                class="input"
+                name="zone[name]"
+                value={@form[:name].value}
+                required
+              /></label>
+              <p :if={@zone}>Draft revision {@zone["revision"]}</p>
+              <div
+                :if={@validation_errors != []}
+                id="zone-validation-errors"
+                class="alert alert-error"
+                role="alert"
+              >
+                <ul>
+                  <li :for={error <- @validation_errors}>
+                    {Enum.map_join(error.path, ".", &to_string/1)}: {error.message}
+                  </li>
+                </ul>
+              </div>
+              <fieldset :for={{record, index} <- Enum.with_index(@rows)} id={"zone-record-#{index}"}>
+                <legend>Record {index + 1}</legend>
+                <label class="management-field"><span>Record name</span><input
+                  class="input"
+                  name={"zone[records][#{index}][name]"}
+                  value={record["name"]}
+                  required
+                /></label>
+                <label class="management-field"><span>Type</span><select
+                  class="select"
+                  name={"zone[records][#{index}][type]"}
+                ><option :for={type <- ~w(SOA NS A)} value={type} selected={type == record["type"]}>
+                  {type}
+                </option></select></label>
+                <label class="management-field"><span>TTL (seconds)</span><input
+                  class="input"
+                  type="number"
+                  min="0"
+                  name={"zone[records][#{index}][ttl]"}
+                  value={record["ttl"]}
+                  required
+                /></label>
+                <label :for={field <- data_fields(record["type"])} class="management-field">
+                  <span>{field}</span><input
+                    class="input"
+                    type={if numeric_field?(field), do: "number", else: "text"}
+                    min={if numeric_field?(field), do: "0"}
+                    name={"zone[records][#{index}][data][#{field}]"}
+                    value={record["data"][field]}
+                    required
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="btn btn-ghost"
+                  phx-click="remove_record"
+                  phx-value-index={index}
+                >Remove Record</button>
+              </fieldset>
+              <div class="management-actions">
+                <button type="button" class="btn btn-ghost" phx-click="add_record">Add Record</button>
+                <button
+                  id="zone-save"
+                  type="submit"
+                  class="btn btn-primary"
+                  disabled={!@zone_valid?}
+                  phx-disable-with="Saving…"
+                >Save Draft</button>
+                <.link patch={query_path(@base_path, @catalog_options)} class="btn btn-ghost">Cancel</.link>
+              </div>
+            </.form>
+            <div :if={@zone} class="management-actions">
+              <.link navigate={"#{@base_path}/#{@zone["id"]}/records"} class="btn btn-ghost">Records</.link>
+              <.link
+                data-editor-preserve="true"
+                patch={query_path("#{@base_path}/#{@zone["id"]}/versions", @catalog_options)}
+                class="btn btn-primary"
+              >Review saved versions</.link>
+              <button
+                :if={@zone}
+                type="button"
+                class="btn btn-ghost"
+                phx-click="discard_content"
+                data-editor-discard="zone-form"
+              >Discard content edits</button>
+              <button
+                class="btn btn-error"
+                phx-click="delete_zone"
+                phx-value-id={@zone["id"]}
+              >Delete</button>
+            </div>
+          </.card>
         </div>
-      </.card>
+        <div :if={@zone} hidden={@live_action != :application}>
+          <.card title="Application scope">
+            <p>
+              All DNS services on one Worker must pin the same version of this Zone. Saving does not publish a target.
+            </p>
+            <p :for={worker_id <- @affected_workers}>
+              <.link navigate={ServicePaths.server_path(worker_id, :targets)}>Review target for {worker_id}</.link>
+            </p>
+            <p class="management-help">
+              Zone data is global. Assign a confirmed version to each logical Worker and DNS Service; assignments do not report execution.
+            </p>
+            <p :if={@versions == []}>
+              Confirm a version before assigning this Zone. The draft remains editable.
+            </p>
+            <p
+              :if={@assignment_error}
+              id="zone-assignment-error"
+              class="alert alert-error"
+              role="alert"
+            >
+              {@assignment_error}
+            </p>
+            <div class="management-actions">
+              <button
+                :for={worker <- @workers}
+                class="btn btn-secondary"
+                phx-click="add_assignment_worker"
+                phx-value-id={worker["id"]}
+                disabled={!@assignment_editable || @versions == [] || dns_services(worker) == []}
+              >
+                Assign {worker["name"]} ({worker["id"]})
+              </button>
+            </div>
+            <p :if={@workers == []}>
+              No logical Workers are registered. Zone drafts and versions remain global.
+            </p>
+            <p :for={worker <- @workers} :if={dns_services(worker) == []}>
+              {worker["name"]} has no DNS Services.
+              <.link navigate={ServicePaths.server_path(worker["id"], :service_new)}>Configure a DNS Service</.link>
+            </p>
+            <form
+              id="zone-assignments-form"
+              data-editor="true"
+              data-editor-dirty={to_string(@assignments_dirty)}
+              data-editor-reset={@assignment_reset}
+              phx-change="validate_assignments"
+              phx-submit="save_assignments"
+            >
+              <input type="hidden" name="_submission" value={@assignment_submission_id} />
+              <fieldset
+                :for={row <- @assignment_rows}
+                id={"zone-assignment-#{row["key"]}"}
+                data-worker-id={row["worker_id"]}
+              >
+                <legend>{assignment_worker(@workers, row)["name"]} ({row["worker_id"]})</legend>
+                <label class="management-field">
+                  <span>DNS Service</span>
+                  <select class="select" name={"assignments[#{row["key"]}][service_id]"} required>
+                    <option value="" selected={row["service_id"] == ""}>Select a DNS Service</option>
+                    <option
+                      :for={service <- dns_services(assignment_worker(@workers, row))}
+                      value={service["id"]}
+                      selected={row["service_id"] == service["id"]}
+                    >
+                      {service["instance_id"]} ({service["id"]})
+                    </option>
+                  </select>
+                </label>
+                <label class="management-field">
+                  <span>Confirmed Zone version</span>
+                  <select
+                    class="select"
+                    name={"assignments[#{row["key"]}][resource_version_id]"}
+                    required
+                  >
+                    <option
+                      :for={version <- @versions}
+                      value={version["id"]}
+                      selected={row["resource_version_id"] == version["id"]}
+                    >
+                      Version {version["version"]} — {version["digest"]}
+                    </option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  class="btn btn-error"
+                  phx-click="remove_assignment_row"
+                  phx-value-key={row["key"]}
+                >Remove assignment</button>
+              </fieldset>
+              <div class="management-actions">
+                <button
+                  id="zone-save-assignments"
+                  class="btn btn-primary"
+                  type="submit"
+                  phx-disable-with="Saving assignments…"
+                  disabled={!@assignment_editable || (@versions == [] && @assignment_rows == [])}
+                >Save assignments</button>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  phx-click="refresh_assignments"
+                  data-editor-discard="zone-assignments-form"
+                >Reload assignment set</button>
+              </div>
+            </form>
+          </.card>
+        </div>
+        <.card :if={@deleting} title="Confirm Zone deletion">
+          <div
+            id="zone-delete-confirmation"
+            data-zone-id={@deleting["id"]}
+            data-revision={@deleting["revision"]}
+          >
+            <p>
+              Delete {@deleting["name"]} at draft revision {@deleting["revision"]}? Historical versions will be retained. No Worker runtime is changed.
+            </p>
+            <div class="management-actions">
+              <button
+                id="zone-delete-confirm"
+                class="btn btn-error"
+                phx-click="confirm_delete"
+                phx-value-_submission={@submission_id}
+                phx-disable-with="Deleting…"
+                phx-value-id={@deleting["id"]}
+              >Confirm Delete</button>
+              <button id="zone-cancel-delete" class="btn btn-ghost" phx-click="cancel_delete">Cancel Delete</button>
+            </div>
+          </div>
+        </.card>
+        <div :if={@zone} hidden={@live_action != :versions}>
+          <.card title="Immutable Versions">
+            <p>
+              Confirm saved draft revision {@zone["revision"]}. Save or explicitly discard content edits first.
+            </p>
+            <button
+              id="zone-confirm-version"
+              data-editor-confirm="zone-form"
+              phx-click="confirm_zone"
+              phx-value-id={@zone["id"]}
+              phx-value-_submission={@submission_id}
+              disabled={@content_dirty}
+              class="btn btn-primary"
+            >Confirm Version</button>
+            <p :if={@versions == []}>
+              No confirmed versions. Saving a draft does not change an assigned version.
+            </p>
+            <div class="management-records">
+              <table id="zone-versions" class="table">
+                <thead>
+                  <tr>
+                    <th>Version</th><th>Source revision</th><th>Digest / frozen content</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={version <- @versions}>
+                    <td>{version["version"]}</td><td>{version["source_revision"]}</td><td>
+                      {version["digest"]}
+                      <details>
+                        <summary>Frozen {version["content"]["name"]}</summary><pre>{Jason.encode!(version["content"], pretty: true)}</pre>
+                      </details>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </.card>
+        </div>
+      </div>
     </Layouts.app>
     """
   end

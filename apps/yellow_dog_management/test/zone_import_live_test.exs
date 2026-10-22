@@ -174,7 +174,11 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
     preview(view, worker_plan(["selection.test."]))
 
     for invalid_id <- ["missing", "", nil, 0, %{"id" => "fixture-zone-0"}, ["fixture-zone-0"]] do
-      render_submit(view, "import_zone", %{"import" => %{"resource_id" => invalid_id}})
+      render_submit(view, "import_zone", %{
+        "import" => %{"resource_id" => invalid_id},
+        "_preview" => preview_token(view)
+      })
+
       assert has_element?(view, "#zone-import-errors", "validated WorkerPlan")
       assert Domain.list_zones() == []
       assert Domain.list_audit() == []
@@ -195,6 +199,7 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
     preview(view, toml)
 
     render_submit(view, "import_zone", %{
+      "_preview" => preview_token(view),
       "import" => %{
         "resource_id" => resource["id"],
         "type" => "different_type",
@@ -248,6 +253,28 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
     assert Domain.list_audit() == []
   end
 
+  test "a delayed import cannot select replacement source with the same resource identity", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, "/management/zones/import")
+    preview(view, worker_plan(["original-preview.test."]))
+
+    original = %{
+      "import" => %{"resource_id" => "fixture-zone-0"},
+      "_preview" => preview_token(view)
+    }
+
+    preview(view, worker_plan(["replacement-preview.test."]))
+    render_submit(view, "import_zone", Map.delete(original, "_preview"))
+    render_submit(view, "import_zone", original)
+    assert Domain.list_zones() == []
+    assert Domain.list_audit() == []
+    assert has_element?(view, "#zone-import-preview", "replacement-preview.test.")
+    assert has_element?(view, "#zone-import-errors", "validated WorkerPlan")
+    import_resource(view, "fixture-zone-0")
+    assert [%{"name" => "replacement-preview.test."}] = Domain.list_zones()
+  end
+
   test "unknown selected Workers block all import mutations even for forged events", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/server/missing-worker/dns/zones/import")
     assert has_element?(view, "#zone-import-scope-error", "Worker not found")
@@ -292,6 +319,8 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
     preview(view, worker_plan(["idempotent.test."]))
     import_resource(view, "fixture-zone-0")
     [zone] = Domain.list_zones()
+    import_resource(view, "fixture-zone-0")
+    preview(view, worker_plan(["idempotent.test."]))
     import_resource(view, "fixture-zone-0")
     assert Domain.list_zones() == [zone]
     assert length(Domain.list_audit()) == 1
@@ -380,6 +409,15 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
 
   defp preview(view, toml),
     do: view |> form("#zone-import-form", import: %{toml: toml}) |> render_submit()
+
+  defp preview_token(view) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#zone-import-selection-form input[name='_preview']")
+    |> LazyHTML.attribute("value")
+    |> List.first()
+  end
 
   defp import_resource(view, resource_id),
     do:

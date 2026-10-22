@@ -683,6 +683,120 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert_rejected_command(before_stale, "update_dns_view")
   end
 
+  test "row status and deletion preserve another editor and retire completed row events", %{
+    conn: conn
+  } do
+    selected = scope("view-independent-row")
+    edited = create_view(selected, "edited")
+    other = create_view(selected, "other")
+    {:ok, view, _} = live(conn, path(selected))
+    click_event(view, "edit", %{"id" => edited["id"]})
+    proposed = fields("edited", %{"priority" => "42", "client_rules" => "deny any"})
+    render_change(view, "validate", %{"view" => proposed})
+    editor_token = intent(view)
+    toggle = %{"id" => other["id"], "_submission" => row_intent(view)}
+    render_click(view, "toggle_enabled", toggle)
+    assert find_view(selected, "other")["enabled"] == false
+    assert has_element?(view, "input[name='view[priority]'][value='42']")
+    assert textarea(view, "#dns-view-rules") == "deny any"
+    assert intent(view) == editor_token
+    after_toggle = snapshot()
+    render_click(view, "toggle_enabled", toggle)
+    assert snapshot() == after_toggle
+
+    click_event(view, "delete", %{"id" => other["id"]})
+    click_event(view, "confirm_delete", %{"id" => other["id"]})
+    refute Enum.any?(list(selected), &(&1["id"] == other["id"]))
+    assert has_element?(view, "input[name='view[priority]'][value='42']")
+    assert textarea(view, "#dns-view-rules") == "deny any"
+    assert intent(view) == editor_token
+    submit(view, proposed)
+    assert find_view(selected, "edited")["priority"] == 42
+  end
+
+  test "an unconfirmed row toggle retries its original fields and key after canonical data changes" do
+    selected = scope("view-unconfirmed-row")
+    saved = create_view(selected, "toggle")
+
+    {:ok, socket} =
+      YellowDog.ManagementUI.DnsViewsLive.mount(%{}, %{}, %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}, flash: %{}},
+        private: %{live_temp: %{}}
+      })
+
+    socket =
+      Phoenix.Component.assign(socket,
+        worker: selected.worker,
+        service: selected.service,
+        services: [selected.service],
+        views: [saved],
+        row_submission_id: Ecto.UUID.generate(),
+        row_requests: %{}
+      )
+
+    unavailable =
+      start_supervised!(
+        {UnavailableRepo,
+         [
+           name: nil,
+           pool: DBConnection.ConnectionPool,
+           pool_size: 1,
+           hostname: "127.0.0.1",
+           port: 0,
+           username: "postgres",
+           database: "unavailable",
+           connect_timeout: 10,
+           timeout: 50,
+           queue_target: 1,
+           queue_interval: 1
+         ]},
+        id: :unavailable_row_repo
+      )
+
+    previous_repo = Repo.get_dynamic_repo()
+    input = %{"id" => saved["id"], "_submission" => socket.assigns.row_submission_id}
+
+    failed =
+      try do
+        Repo.put_dynamic_repo(unavailable)
+
+        assert {:noreply, failed} =
+                 YellowDog.ManagementUI.DnsViewsLive.handle_event("toggle_enabled", input, socket)
+
+        failed
+      after
+        Repo.put_dynamic_repo(previous_repo)
+      end
+
+    assert failed.assigns.error =~ "submission was not confirmed"
+    {original, key} = failed.assigns.row_requests[{"update_dns_view", saved["id"]}]
+    assert original["expected_revision"] == saved["revision"]
+    assert original["enabled"] == false
+    # Model a committed command whose response was lost, followed by a canonical list update.
+    assert {:ok, committed} = Domain.mutate("update_dns_view", original, "operator", key)
+    pending = Phoenix.Component.assign(failed, :views, [committed])
+    before_retry = snapshot()
+
+    assert {:noreply, retried} =
+             YellowDog.ManagementUI.DnsViewsLive.handle_event("toggle_enabled", input, pending)
+
+    assert find_view(selected, "toggle") == committed
+    assert snapshot() == before_retry
+    assert retried.assigns.row_submission_id != input["_submission"]
+  end
+
+  test "deleting the current View editor explicitly guards its reset", %{conn: conn} do
+    selected = scope("view-current-delete")
+    edited = create_view(selected, "edited")
+    {:ok, view, _} = live(conn, path(selected))
+    click_event(view, "edit", %{"id" => edited["id"]})
+    render_change(view, "validate", %{"view" => fields("edited", %{"priority" => "42"})})
+    click_event(view, "delete", %{"id" => edited["id"]})
+    assert has_element?(view, "#dns-view-confirm-delete[data-editor-discard='dns-view-form']")
+    click_event(view, "confirm_delete", %{"id" => edited["id"]})
+    assert has_element?(view, "input[name='view[name]'][value='']")
+  end
+
   test "stale edits retain entered rules, preserve business data and record rejection", %{
     conn: conn
   } do
@@ -962,7 +1076,19 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
   end
 
   defp click_event(view, event, params \\ %{}) do
-    render_click(view, event, Map.put(params, "_submission", intent(view)))
+    token =
+      if event in ~w(toggle_enabled confirm_delete), do: row_intent(view), else: intent(view)
+
+    render_click(view, event, Map.put(params, "_submission", token))
+  end
+
+  defp row_intent(view) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#row-submission-intent")
+    |> LazyHTML.attribute("value")
+    |> hd()
   end
 
   defp fields(name, overrides \\ %{}) do

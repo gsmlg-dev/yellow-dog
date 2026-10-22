@@ -71,6 +71,10 @@ defmodule YellowDog.Management.Web do
     end
   end
 
+  get "/api/zone-catalog" do
+    json(conn, 200, %{"data" => Domain.list_zone_catalog(conn.params)})
+  end
+
   get "/api/zones" do
     json(conn, 200, %{"data" => Domain.list_zones()})
   end

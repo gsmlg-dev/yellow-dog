@@ -21,6 +21,8 @@ defmodule YellowDog.ManagementUI.Navigation do
     ["new"],
     ["import"],
     [:zone_id, "edit"],
+    [:zone_id, "versions"],
+    [:zone_id, "application"],
     [:zone_id, "records"],
     [:zone_id, "records", "new"],
     [:zone_id, "records", "bulk"],
@@ -42,6 +44,7 @@ defmodule YellowDog.ManagementUI.Navigation do
      ]},
     {:data, :dns_acls,
      [
+       ["management", "dns", "acl"],
        ["server", :server_id, "dns", "acl"],
        ["server", :server_id, "dns", "acl", :service_id]
      ]},
@@ -153,14 +156,13 @@ defmodule YellowDog.ManagementUI.Navigation do
           views_destination,
           "/management/dns/views"
         ),
-        scoped(
+        contextual(
           :dns_acls,
           "ACLs / matching rules",
           "shield-lock",
           selection,
-          :server,
           acls_destination,
-          "Select a Worker, then select its DNS service to configure ACLs and matching rules."
+          "/management/dns/acl"
         )
       ]),
       group("Service data", [

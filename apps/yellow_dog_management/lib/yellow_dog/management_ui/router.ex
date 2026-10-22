@@ -30,6 +30,7 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/netman", NetmansLive, :index
       live "/management/events", EventsLive, :index
       live "/management/config", ConfigLive, :index
+      live "/management/dns/acl", DnsAclsLive, :selector
       live "/management/dns/views", DnsViewsLive, :selector
       live "/server", WorkersLive, :index
       live "/server/:server_id/dashboard", WorkerLive, :show
@@ -52,6 +53,8 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/zones/new", ZonesLive, :new
       live "/management/zones/import", ZoneImportLive, :import
       live "/management/zones/:zone_id/edit", ZonesLive, :edit
+      live "/management/zones/:zone_id/versions", ZonesLive, :versions
+      live "/management/zones/:zone_id/application", ZonesLive, :application
       live "/management/zones/:zone_id/records", RecordsLive, :index
       live "/management/zones/:zone_id/records/new", RecordsLive, :new
       live "/management/zones/:zone_id/records/bulk", RecordsLive, :bulk
@@ -60,6 +63,8 @@ defmodule YellowDog.ManagementUI.Router do
       live "/server/:server_id/dns/zones/new", ZonesLive, :new
       live "/server/:server_id/dns/zones/import", ZoneImportLive, :import
       live "/server/:server_id/dns/zones/:zone_id/edit", ZonesLive, :edit
+      live "/server/:server_id/dns/zones/:zone_id/versions", ZonesLive, :versions
+      live "/server/:server_id/dns/zones/:zone_id/application", ZonesLive, :application
       live "/server/:server_id/dns/zones/:zone_id/records", RecordsLive, :index
       live "/server/:server_id/dns/zones/:zone_id/records/new", RecordsLive, :new
       live "/server/:server_id/dns/zones/:zone_id/records/bulk", RecordsLive, :bulk

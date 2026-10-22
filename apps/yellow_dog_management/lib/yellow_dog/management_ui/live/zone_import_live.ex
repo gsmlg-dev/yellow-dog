@@ -11,6 +11,8 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
+       editor_reset: Ecto.UUID.generate(),
+       dirty: false,
        page_title: "Import Zone",
        workers: Domain.list_workers(),
        server_id: nil,
@@ -21,6 +23,7 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
        plan: nil,
        resources: [],
        selected_resource: nil,
+       preview_id: nil,
        import_keys: %{},
        errors: [],
        imported_zone: nil
@@ -44,7 +47,9 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
        server_id: server_id,
        scope_error: scope_error(server_id),
        base_path: base_path,
-       workers: Domain.list_workers()
+       workers: Domain.list_workers(),
+       editor_reset: Ecto.UUID.generate(),
+       dirty: false
      )}
   end
 
@@ -71,8 +76,13 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
          plan: plan,
          resources: resources,
          selected_resource: selected_resource,
+         preview_id: socket.assigns.preview_id || Ecto.UUID.generate(),
          selection_form: to_form(%{"resource_id" => selected_id}, as: "import"),
-         import_keys: Map.new(resources, &{&1["id"], Ecto.UUID.generate()}),
+         import_keys:
+           Map.new(
+             resources,
+             &{&1["id"], Map.get(socket.assigns.import_keys, &1["id"]) || Ecto.UUID.generate()}
+           ),
          errors: errors
        )}
     else
@@ -86,6 +96,7 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
         {:noreply,
          assign(socket,
            selected_resource: resource,
+           dirty: true,
            selection_form: to_form(%{"resource_id" => resource["id"]}, as: "import"),
            errors: [],
            imported_zone: nil
@@ -102,10 +113,11 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
     end
   end
 
-  def handle_event("import_zone", %{"import" => params}, socket) when is_map(params) do
+  def handle_event("import_zone", %{"import" => params} = event, socket) when is_map(params) do
     worker_error = scope_error(socket.assigns.server_id)
 
     with nil <- worker_error,
+         true <- is_binary(event["_preview"]) && event["_preview"] == socket.assigns.preview_id,
          {:ok, resource} <- selected_resource(socket.assigns.resources, params["resource_id"]),
          {:ok, zone} <-
            Domain.mutate(
@@ -120,11 +132,21 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
          selected_resource: resource,
          selection_form: to_form(%{"resource_id" => resource["id"]}, as: "import"),
          imported_zone: zone,
+         dirty: false,
+         editor_reset: Ecto.UUID.generate(),
          errors: [],
          scope_error: nil
        )
        |> put_flash(:info, "Zone draft imported. No version was confirmed or applied.")}
     else
+      false ->
+        {:noreply,
+         assign(socket,
+           errors: [
+             "Select a DNS resource from the current validated WorkerPlan. The import preview changed; review it before importing."
+           ]
+         )}
+
       {:error, errors} ->
         {:noreply, assign(socket, :errors, error_messages(errors))}
 
@@ -138,6 +160,14 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
   end
 
   defp update_source(socket, toml) do
+    if toml == socket.assigns.source_form.params["toml"] do
+      socket
+    else
+      replace_source(socket, toml)
+    end
+  end
+
+  defp replace_source(socket, toml) do
     {value, errors} =
       case bounded_toml(toml) do
         :ok -> {toml, []}
@@ -146,7 +176,7 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
 
     socket
     |> clear_preview()
-    |> assign(source_form: to_form(%{"toml" => value}, as: "import"), errors: errors)
+    |> assign(source_form: to_form(%{"toml" => value}, as: "import"), dirty: true, errors: errors)
   end
 
   defp clear_preview(socket) do
@@ -154,6 +184,7 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
       plan: nil,
       resources: [],
       selected_resource: nil,
+      preview_id: nil,
       selection_form: to_form(%{"resource_id" => ""}, as: "import"),
       import_keys: %{},
       errors: [],
@@ -209,134 +240,143 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
       current_path={@current_path}
       servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
     >
-      <h1>Import Zone</h1>
-      <div class="management-actions">
-        <.link navigate={@base_path} class="btn btn-ghost">Zones</.link>
-        <.link navigate={@base_path <> "/new"} class="btn btn-primary">New Zone</.link>
-      </div>
-      <p class="management-help">
-        Import one DNS Zone draft from a shared WorkerPlan TOML export. No Worker is required on
-        the Management page. Import never confirms a version, assigns it, or applies a runtime change.
-      </p>
-      <div :if={@scope_error} id="zone-import-scope-error" class="alert alert-error" role="alert">
-        {@scope_error}
-      </div>
-      <div :if={@errors != []} id="zone-import-errors" class="alert alert-error" role="alert">
-        <ul>
-          <li :for={message <- @errors}>{message}</li>
-        </ul>
-      </div>
-      <.card title="Zone import">
-        <p id="zone-import-format-help" class="management-help">
-          Paste the complete WorkerPlan TOML downloaded from Management's Export TOML action
-          (schema_version = 1), including services and resources. Maximum size: 1 MiB (1048576 bytes).
-          The shared ConfigSpec validates every field and record; unsupported content is rejected,
-          not discarded. SOA, NS and A records are supported by the current shared contract.
-          BIND files and provider/snapshot source imports are not supported by this import page.
-        </p>
-        <.form
-          for={@source_form}
-          id="zone-import-form"
-          phx-change="change_toml"
-          phx-submit="preview_import"
-        >
-          <label for="zone-import-toml" class="management-field">
-            <span>WorkerPlan TOML</span>
-            <textarea
-              id="zone-import-toml"
-              class="textarea"
-              name="import[toml]"
-              rows="14"
-              maxlength="1048576"
-              required
-              aria-describedby="zone-import-format-help"
-            >{@source_form[:toml].value}</textarea>
-          </label>
-          <div class="management-actions">
-            <button
-              id="validate-zone-import"
-              type="submit"
-              class="btn btn-primary"
-              disabled={not is_nil(@scope_error)}
-              phx-disable-with="Validating…"
-            >Validate WorkerPlan</button>
-            <.link navigate={@base_path} class="btn btn-ghost">Cancel</.link>
-          </div>
-        </.form>
-      </.card>
-      <.card :if={@plan} title="Validated WorkerPlan">
-        <p id="zone-import-plan">
-          Worker {@plan["worker_id"]}, target revision {@plan["revision"]}, {length(@plan["services"])} services and {length(
-            @resources
-          )} DNS resources.
-          Only the selected Zone content will be copied into a new Management draft.
-        </p>
-        <.form
-          :if={@resources != []}
-          for={@selection_form}
-          id="zone-import-selection-form"
-          phx-change="select_resource"
-          phx-submit="import_zone"
-        >
-          <label class="management-field">
-            <span>DNS resource</span>
-            <select
-              id="zone-import-resource"
-              class="select"
-              name="import[resource_id]"
-              required
-            >
-              <option value="">Select a DNS resource</option>
-              <option
-                :for={resource <- @resources}
-                value={resource["id"]}
-                selected={resource["id"] == @selection_form[:resource_id].value}
-              >
-                {resource["content"]["name"]} — {resource["id"]} (version {resource["version"]})
-              </option>
-            </select>
-          </label>
-          <div :if={@selected_resource} id="zone-import-preview">
-            <h2>{@selected_resource["content"]["name"]}</h2>
-            <p>Source resource {@selected_resource["id"]}, version {@selected_resource["version"]}</p>
-            <p>Digest <code>{@selected_resource["digest"]}</code></p>
-            <div class="management-records">
-              <table class="table table-striped">
-                <thead>
-                  <tr>
-                    <th>Name</th><th>Type</th><th>TTL</th><th>Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr :for={record <- @selected_resource["content"]["records"]}>
-                    <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td>
-                    <td><code>{Jason.encode!(record["data"])}</code></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="management-actions">
-            <button
-              id="import-zone-draft"
-              type="submit"
-              class="btn btn-warning"
-              disabled={is_nil(@selected_resource) or not is_nil(@scope_error)}
-              phx-disable-with="Importing…"
-            >Import Zone</button>
-          </div>
-        </.form>
-      </.card>
-      <.card :if={@imported_zone} title="Imported Zone draft">
-        <div id="zone-import-result">
-          <p>{@imported_zone["name"]}, draft revision {@imported_zone["revision"]}</p>
-          <p>No version was confirmed or applied. Review the draft before confirming it.</p>
-          <.link
-            navigate={"#{@base_path}/#{@imported_zone["id"]}/edit"}
-            class="btn btn-primary"
-          >Edit Zone Draft</.link>
+      <div id="zone-import-workflow" phx-hook="EditorGuard">
+        <h1>Import Zone</h1>
+        <div class="management-actions">
+          <.link navigate={@base_path} class="btn btn-ghost">Zones</.link>
+          <.link navigate={@base_path <> "/new"} class="btn btn-primary">New Zone</.link>
         </div>
-      </.card>
+        <p class="management-help">
+          Import one DNS Zone draft from a shared WorkerPlan TOML export. No Worker is required on
+          the Management page. Import never confirms a version, assigns it, or applies a runtime change.
+        </p>
+        <div :if={@scope_error} id="zone-import-scope-error" class="alert alert-error" role="alert">
+          {@scope_error}
+        </div>
+        <div :if={@errors != []} id="zone-import-errors" class="alert alert-error" role="alert">
+          <ul>
+            <li :for={message <- @errors}>{message}</li>
+          </ul>
+        </div>
+        <.card title="Zone import">
+          <p id="zone-import-format-help" class="management-help">
+            Paste the complete WorkerPlan TOML downloaded from Management's Export TOML action
+            (schema_version = 1), including services and resources. Maximum size: 1 MiB (1048576 bytes).
+            The shared ConfigSpec validates every field and record; unsupported content is rejected,
+            not discarded. SOA, NS and A records are supported by the current shared contract.
+            BIND files and provider/snapshot source imports are not supported by this import page.
+          </p>
+          <.form
+            for={@source_form}
+            id="zone-import-form"
+            phx-change="change_toml"
+            phx-submit="preview_import"
+            data-editor="true"
+            data-editor-dirty={to_string(@dirty)}
+            data-editor-reset={@editor_reset}
+          >
+            <label for="zone-import-toml" class="management-field">
+              <span>WorkerPlan TOML</span>
+              <textarea
+                id="zone-import-toml"
+                class="textarea"
+                name="import[toml]"
+                rows="14"
+                maxlength="1048576"
+                required
+                aria-describedby="zone-import-format-help"
+              >{@source_form[:toml].value}</textarea>
+            </label>
+            <div class="management-actions">
+              <button
+                id="validate-zone-import"
+                type="submit"
+                class="btn btn-primary"
+                disabled={not is_nil(@scope_error)}
+                phx-disable-with="Validating…"
+              >Validate WorkerPlan</button>
+              <.link navigate={@base_path} class="btn btn-ghost">Cancel</.link>
+            </div>
+          </.form>
+        </.card>
+        <.card :if={@plan} title="Validated WorkerPlan">
+          <p id="zone-import-plan">
+            Worker {@plan["worker_id"]}, target revision {@plan["revision"]}, {length(
+              @plan["services"]
+            )} services and {length(@resources)} DNS resources.
+            Only the selected Zone content will be copied into a new Management draft.
+          </p>
+          <.form
+            :if={@resources != []}
+            for={@selection_form}
+            id="zone-import-selection-form"
+            phx-change="select_resource"
+            phx-submit="import_zone"
+            data-editor-submit="zone-import-form"
+          >
+            <input type="hidden" name="_preview" value={@preview_id} />
+            <label class="management-field">
+              <span>DNS resource</span>
+              <select
+                id="zone-import-resource"
+                class="select"
+                name="import[resource_id]"
+                required
+              >
+                <option value="">Select a DNS resource</option>
+                <option
+                  :for={resource <- @resources}
+                  value={resource["id"]}
+                  selected={resource["id"] == @selection_form[:resource_id].value}
+                >
+                  {resource["content"]["name"]} — {resource["id"]} (version {resource["version"]})
+                </option>
+              </select>
+            </label>
+            <div :if={@selected_resource} id="zone-import-preview">
+              <h2>{@selected_resource["content"]["name"]}</h2>
+              <p>
+                Source resource {@selected_resource["id"]}, version {@selected_resource["version"]}
+              </p>
+              <p>Digest <code>{@selected_resource["digest"]}</code></p>
+              <div class="management-records">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Name</th><th>Type</th><th>TTL</th><th>Data</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr :for={record <- @selected_resource["content"]["records"]}>
+                      <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td>
+                      <td><code>{Jason.encode!(record["data"])}</code></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="management-actions">
+              <button
+                id="import-zone-draft"
+                type="submit"
+                class="btn btn-warning"
+                disabled={is_nil(@selected_resource) or not is_nil(@scope_error)}
+                phx-disable-with="Importing…"
+              >Import Zone</button>
+            </div>
+          </.form>
+        </.card>
+        <.card :if={@imported_zone} title="Imported Zone draft">
+          <div id="zone-import-result">
+            <p>{@imported_zone["name"]}, draft revision {@imported_zone["revision"]}</p>
+            <p>No version was confirmed or applied. Review the draft before confirming it.</p>
+            <.link
+              navigate={"#{@base_path}/#{@imported_zone["id"]}/edit"}
+              class="btn btn-primary"
+            >Edit Zone Draft</.link>
+          </div>
+        </.card>
+      </div>
     </Layouts.app>
     """
   end

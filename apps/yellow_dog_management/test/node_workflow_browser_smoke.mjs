@@ -281,6 +281,7 @@ export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   });
   let zone;
   await until(async () => { zone = (await api('/zones')).find(item => item.name === 'node.test.'); return !!zone; }, 'Data Zone create failed');
+  await until(() => evaluate(`location.pathname === '/management/zones/${zone.id}/edit' && document.querySelector('#zone-form')?.dataset.editorDirty === 'false'`), 'Data Zone save was not acknowledged in the editor');
   await navigate(`/management/zones/${zone.id}/edit`);
   await evaluate(`document.querySelector('[phx-click="confirm_zone"]').click()`);
   await until(async () => (await api(`/zones/${zone.id}/versions`)).length === 1, 'Data version confirmation failed');
@@ -288,6 +289,7 @@ export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   await until(() => evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 1`), 'Assignment row missing');
   await evaluate(`document.querySelector('#zone-assignments-form').requestSubmit()`);
   await until(async () => (await api(`/workers/${a}`)).assignments.length === 1, 'Data assignment failed');
+  await until(() => evaluate(`document.querySelector('#zone-assignments-form')?.dataset.editorDirty === 'false'`), 'Data assignment save was not acknowledged in the editor');
   await navigate(`/server/${a}/services/${service}/edit`);
   assert.match(await evaluate(`document.querySelector('#service-references').innerText`), /node\.test\./);
   assert.equal(await evaluate(`!!document.querySelector('#assignment-form')`), false);

@@ -14,6 +14,48 @@ defmodule YellowDog.Management.RecordsLiveTest do
     %{conn: build_conn(), zone: zone, path: "/management/zones/#{zone["id"]}/records"}
   end
 
+  test "completed record submission is retired and revision-conflict retries reuse one receipt",
+       %{conn: conn, zone: zone} do
+    path = "/management/zones/#{zone["id"]}/records/new"
+    {:ok, view, _} = live(conn, path)
+
+    token =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#submission-intent")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    payload = %{"record" => address("www", "192.0.2.20"), "_submission" => token}
+    render_submit(view, "save", payload)
+    assert_patch(view, "/management/zones/#{zone["id"]}/records")
+    {:ok, saved} = Domain.get_zone(zone["id"])
+    after_save = read_snapshot()
+    render_submit(view, "save", payload)
+    assert {:ok, ^saved} = Domain.get_zone(zone["id"])
+    assert read_snapshot() == after_save
+
+    {:ok, stale, _} = live(build_conn(), path)
+
+    _concurrent =
+      append_record(saved, %{
+        "name" => "extra.example.test.",
+        "type" => "A",
+        "ttl" => 300,
+        "data" => %{"address" => "192.0.2.30"}
+      })
+
+    before_retry = Domain.list_audit()
+    stale |> form("#record-form", record: address("retry", "192.0.2.40")) |> render_submit()
+    assert has_element?(stale, "#record-error", "revision")
+    first_failure = Domain.list_audit()
+    assert length(first_failure -- before_retry) == 1
+    stale |> form("#record-form", record: address("retry", "192.0.2.40")) |> render_submit()
+    assert Domain.list_audit() == first_failure
+    assert has_element?(stale, "#record-form input[name='record[name]'][value='retry']")
+  end
+
   test "zero Worker record creation, editing and deletion persist drafts", %{
     conn: conn,
     zone: zone,
@@ -179,14 +221,14 @@ defmodule YellowDog.Management.RecordsLiveTest do
       {:ok, view, html} = live(conn, path <> "/#{ordinal}/edit")
       assert html =~ "Invalid record ordinal"
       refute has_element?(view, "#record-form")
-      render_click(view, "save", %{"record" => address("www", "192.0.2.20")})
+      mutation_event(view, "save", %{"record" => address("www", "192.0.2.20")})
       assert {:ok, ^zone} = Domain.get_zone(zone["id"])
     end
 
     {:ok, view, _html} = live(conn, path)
 
     for ordinal <- ["-1", "1x", "01", "999999999999999999999", "3"] do
-      assert render_click(view, "delete_record", %{"rr_index" => ordinal}) =~
+      assert mutation_event(view, "delete_record", %{"rr_index" => ordinal}) =~
                "Invalid record ordinal"
 
       assert {:ok, ^zone} = Domain.get_zone(zone["id"])
@@ -198,20 +240,20 @@ defmodule YellowDog.Management.RecordsLiveTest do
       {:ok, view, html} = live(conn, "/server/missing/dns/zones/#{zone["id"]}/records" <> suffix)
       assert html =~ "Worker"
       assert has_element?(view, "#record-scope-error")
-      render_click(view, "save", %{"record" => address("www", "192.0.2.20")})
+      mutation_event(view, "save", %{"record" => address("www", "192.0.2.20")})
 
-      render_click(view, "save_bulk", %{
+      mutation_event(view, "save_bulk", %{
         "bulk" => %{"records" => Jason.encode!([address("www.example.test.", "192.0.2.20")])}
       })
 
-      render_click(view, "delete_record", %{"rr_index" => "0"})
+      mutation_event(view, "delete_record", %{"rr_index" => "0"})
       assert {:ok, ^zone} = Domain.get_zone(zone["id"])
     end
 
     for id <- [Ecto.UUID.generate(), "not-a-uuid"] do
       {:ok, view, _html} = live(conn, "/management/zones/#{id}/records/new")
       assert has_element?(view, "#record-scope-error")
-      render_click(view, "save", %{"record" => address("www", "192.0.2.20")})
+      mutation_event(view, "save", %{"record" => address("www", "192.0.2.20")})
       assert {:ok, ^zone} = Domain.get_zone(zone["id"])
     end
   end
@@ -258,12 +300,15 @@ defmodule YellowDog.Management.RecordsLiveTest do
   } do
     {:ok, view, _html} = live(conn, path <> "/new")
 
-    assert render_submit(view, "save", %{
+    assert mutation_event(view, "save", %{
              "record" => %{"name" => "www", "type" => "A", "ttl" => "300", "data" => "invalid"}
            }) =~ "structured data"
 
     assert {:ok, ^zone} = Domain.get_zone(zone["id"])
-    assert render_submit(view, "save_bulk", %{"bulk" => %{"records" => "[]"}}) =~ "does not match"
+
+    assert mutation_event(view, "save_bulk", %{"bulk" => %{"records" => "[]"}}) =~
+             "does not match"
+
     assert {:ok, ^zone} = Domain.get_zone(zone["id"])
   end
 
@@ -342,13 +387,13 @@ defmodule YellowDog.Management.RecordsLiveTest do
       path = "/server/#{worker_id}/dns/zones/#{zone["id"]}/records/new?#{query}"
       {:ok, view, _html} = live(conn, path)
       assert has_element?(view, "#record-scope-error")
-      render_click(view, "save", %{"record" => address("www", "192.0.2.20")})
+      mutation_event(view, "save", %{"record" => address("www", "192.0.2.20")})
 
-      render_click(view, "save_bulk", %{
+      mutation_event(view, "save_bulk", %{
         "bulk" => %{"records" => Jason.encode!([address("www", "192.0.2.20")])}
       })
 
-      render_click(view, "delete_record", %{"rr_index" => "0"})
+      mutation_event(view, "delete_record", %{"rr_index" => "0"})
       assert {Domain.list_workers(), Domain.list_zones(), Domain.list_audit()} == before_visit
     end
   end
@@ -454,7 +499,7 @@ defmodule YellowDog.Management.RecordsLiveTest do
            )
 
     assert has_element?(view, "#record-form button[type=submit][disabled]")
-    render_submit(view, "save", %{"record" => address("ns1.example.test.", "192.0.2.40")})
+    mutation_event(view, "save", %{"record" => address("ns1.example.test.", "192.0.2.40")})
     assert {:ok, ^current} = Domain.get_zone(zone["id"])
     assert read_snapshot() == before_read
     view |> element("a", "Records") |> render_click()
@@ -545,6 +590,18 @@ defmodule YellowDog.Management.RecordsLiveTest do
     render_click(view, "export_bind", %{})
     assert Domain.list_versions(zone["id"]) == [version]
     assert read_snapshot() == before_read
+  end
+
+  defp mutation_event(view, event, params) do
+    token =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#submission-intent")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    render_submit(view, event, Map.put(params, "_submission", token))
   end
 
   defp filter(view, owner, type) do

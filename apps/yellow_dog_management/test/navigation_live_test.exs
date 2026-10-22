@@ -102,8 +102,8 @@ defmodule YellowDog.Management.NavigationLiveTest do
 
     assert has_element?(
              view,
-             "[data-nav-item='dns_acls'][aria-disabled='true']",
-             "Requires scope"
+             "[data-nav-item='dns_acls'][href='/management/dns/acl']",
+             "ACLs / matching rules"
            )
 
     assert has_element?(view, "[data-nav-item='dhcpv4_data'][aria-disabled='true']", "Planned")

@@ -18,7 +18,10 @@ try {
   }
 } catch (_err) {}
 
+import EditorGuard from "./editor_guard.js";
+
 let CustomHooks = {};
+CustomHooks.EditorGuard = EditorGuard;
 
 // Register before LiveSocket connects so rejected node traversals never reach
 // its popstate handler. Inactive pages retain no hook or DOM reference.
@@ -133,10 +136,10 @@ CustomHooks.NodeWorkflow = {
 CustomHooks.ResetForm = {
   mounted() {
     this.handleEvent("reset_form", ({ id }) => {
-      if (this.el.id === id) this.el.reset();
+      if (this.el.id === id && !EditorGuard.hasNewerInput(this.el)) this.el.reset();
     });
     this.handleEvent("set_form_values", ({ id, values }) => {
-      if (this.el.id !== id) return;
+      if (this.el.id !== id || EditorGuard.hasNewerInput(this.el)) return;
       for (const [name, value] of Object.entries(values)) {
         const field = this.el.elements.namedItem(name);
         if (field) field.value = value;

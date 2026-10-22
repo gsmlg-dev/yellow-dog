@@ -37,6 +37,7 @@ function browser(overrides = {}) {
       }
       connect() { this.connected = true; }
     },
+    EditorGuard: { hasNewerInput: () => false },
     DuskmoonHooks: { PackageHook: {} },
     ...overrides,
   });

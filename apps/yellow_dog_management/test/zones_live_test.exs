@@ -444,8 +444,9 @@ defmodule YellowDog.Management.ZonesLiveTest do
     refute has_element?(view, "#zones-table")
     assert snapshot() == before_refresh
 
-    view |> element("button[phx-click='confirm_zone']") |> render_click()
-    assert_rejected_command(before_refresh, "confirm_zone")
+    click_event(view, "confirm_zone", %{"id" => zone["id"]})
+    assert snapshot() == before_refresh
+    assert render(view) =~ "Save or explicitly discard"
     assert Domain.list_versions(zone["id"]) == [version]
     assert {:ok, ^changed} = Domain.get_zone(zone["id"])
     assert has_element?(view, "#zone-name[value='unsaved.test.']")
@@ -464,16 +465,16 @@ defmodule YellowDog.Management.ZonesLiveTest do
     assert snapshot() == before_refresh
 
     view |> element("#zone-#{zone["id"]} a", "Edit") |> render_click()
-    assert_patch(view, "/management/zones/#{zone["id"]}/edit")
+    assert_patch(view, "/management/zones/#{zone["id"]}/edit?page=1&search=EXAMPLE")
     mutate("delete_zone", %{"id" => zone["id"], "expected_revision" => 1})
     before_refresh = snapshot()
     view |> element("#zone-refresh") |> render_click()
-    assert_patch(view, "/management/zones")
+    assert_patch(view, "/management/zones?page=1&search=EXAMPLE")
     refute has_element?(view, "#zone-form")
     assert has_element?(view, "#zone-filter[value='EXAMPLE']")
     assert has_element?(view, "#zone-count[data-displayed='1'][data-total='1']")
     view |> element("a", "New Zone") |> render_click()
-    assert_patch(view, "/management/zones/new")
+    assert_patch(view, "/management/zones/new?page=1&search=EXAMPLE")
     assert has_element?(view, "#zone-name[value='']")
     view |> form("#zone-form", zone: %{name: "typed.test."}) |> render_change()
     view |> element("#zone-refresh") |> render_click()
@@ -736,7 +737,9 @@ defmodule YellowDog.Management.ZonesLiveTest do
   end
 
   defp filter(view, name) do
-    view |> form("#zones-filter-form", filter: %{name: name}) |> render_change()
+    result = view |> form("#zones-filter-form", filter: %{name: name}) |> render_change()
+    assert_patch(view)
+    result
   end
 
   defp history_fixture do

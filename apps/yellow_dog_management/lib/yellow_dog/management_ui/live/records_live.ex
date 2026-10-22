@@ -3,7 +3,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
 
   alias YellowDog.ConfigSpec
   alias YellowDog.Management.Domain
-  alias YellowDog.ManagementUI.DnsRecordExports
+  alias YellowDog.ManagementUI.{DnsRecordExports, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
   @max_bulk_bytes 1_048_576
@@ -13,7 +13,9 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     assign(socket,
+     assign(Submission.new(socket),
+       editor_reset: Ecto.UUID.generate(),
+       dirty: false,
        page_title: "DNS Records",
        workers: Domain.list_workers(),
        zone: nil,
@@ -43,7 +45,11 @@ defmodule YellowDog.ManagementUI.RecordsLive do
         else: "/management/zones/#{segment(zone_id)}"
 
     socket =
-      assign(socket,
+      socket
+      |> Submission.new()
+      |> assign(
+        editor_reset: Ecto.UUID.generate(),
+        dirty: false,
         workers: Domain.list_workers(),
         server_id: server_id,
         zone_id: zone_id,
@@ -74,6 +80,24 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   end
 
   @impl true
+  def handle_event(event, params, socket) when event in ~w(save save_bulk delete_record) do
+    edited =
+      case {event, params} do
+        {"save", %{"record" => input}} when is_map(input) ->
+          if record_form(input).params == socket.assigns.form.params, do: "update_zone"
+
+        {"save_bulk", %{"bulk" => %{"records" => input}}} ->
+          if input == socket.assigns.bulk_form.params["records"], do: "update_zone"
+
+        _ ->
+          nil
+      end
+
+    if Submission.current?(socket, params["_submission"], edited),
+      do: handle_submission(event, params, socket),
+      else: {:noreply, socket}
+  end
+
   def handle_event("filter", %{"filter" => filter, "type" => type}, socket)
       when is_binary(filter) and byte_size(filter) <= 512 and type in ~w(all SOA NS A) do
     if String.valid?(filter) do
@@ -143,36 +167,33 @@ defmodule YellowDog.ManagementUI.RecordsLive do
       defaults = new_record(params["type"])
       data = if is_map(params["data"]), do: params["data"], else: %{}
       data = Map.merge(defaults["data"], Map.take(data, data_fields(params["type"])))
-      {:noreply, assign(socket, :form, record_form(Map.put(params, "data", data)))}
+      form = record_form(Map.put(params, "data", data))
+
+      socket =
+        if form.params != socket.assigns.form.params,
+          do: Submission.edit(socket, ["update_zone"]),
+          else: socket
+
+      {:noreply,
+       assign(socket,
+         form: form,
+         dirty: socket.assigns.dirty || form.params != socket.assigns.form.params
+       )}
     else
       {:noreply, assign(socket, :error, "Only SOA, NS and A records are supported.")}
-    end
-  end
-
-  def handle_event("save", %{"record" => params}, socket) when is_map(params) do
-    socket = assign(socket, :form, record_form(params))
-
-    with :ok <- mutation_scope(socket),
-         :ok <- action_allowed(socket, [:new, :edit]),
-         {:ok, record} <- single_record(params, socket.assigns.zone["name"]) do
-      records = socket.assigns.zone["records"]
-
-      records =
-        case socket.assigns.live_action do
-          :new -> records ++ [record]
-          :edit -> List.replace_at(records, socket.assigns.rr_index, record)
-        end
-
-      persist(socket, records)
-    else
-      {:error, message} -> {:noreply, assign(socket, :error, message)}
     end
   end
 
   def handle_event("preview_bulk", %{"bulk" => %{"records" => input}}, socket)
       when is_binary(input) do
     socket =
+      if input != socket.assigns.bulk_form.params["records"],
+        do: Submission.edit(socket, ["update_zone"]),
+        else: socket
+
+    socket =
       assign(socket,
+        dirty: socket.assigns.dirty || input != socket.assigns.bulk_form.params["records"],
         bulk_form: to_form(%{"records" => input}, as: "bulk"),
         bulk_preview: nil
       )
@@ -190,15 +211,39 @@ defmodule YellowDog.ManagementUI.RecordsLive do
     {:noreply, assign(socket, bulk_preview: nil, error: "Invalid bulk preview request.")}
   end
 
-  def handle_event("save_bulk", %{"bulk" => %{"records" => input}}, socket)
-      when is_binary(input) do
+  def handle_event(_event, _params, socket) do
+    {:noreply, assign(socket, :error, "Invalid record action or form data.")}
+  end
+
+  defp handle_submission("save", %{"record" => params} = payload, socket) when is_map(params) do
+    socket = assign(socket, :form, record_form(params))
+
+    with :ok <- mutation_scope(socket),
+         :ok <- action_allowed(socket, [:new, :edit]),
+         {:ok, record} <- single_record(params, socket.assigns.zone["name"]) do
+      records = socket.assigns.zone["records"]
+
+      records =
+        case socket.assigns.live_action do
+          :new -> records ++ [record]
+          :edit -> List.replace_at(records, socket.assigns.rr_index, record)
+        end
+
+      persist(socket, records, payload["_submission"])
+    else
+      {:error, message} -> {:noreply, assign(socket, :error, message)}
+    end
+  end
+
+  defp handle_submission("save_bulk", %{"bulk" => %{"records" => input}} = payload, socket)
+       when is_binary(input) do
     socket = assign(socket, :bulk_form, to_form(%{"records" => input}, as: "bulk"))
 
     with :ok <- mutation_scope(socket),
          :ok <- action_allowed(socket, [:bulk]),
          %{source: ^input, revision: revision, content: content} <- socket.assigns.bulk_preview,
          true <- revision == socket.assigns.zone["revision"] do
-      persist(socket, content["records"])
+      persist(socket, content["records"], payload["_submission"])
     else
       {:error, message} ->
         {:noreply, assign(socket, bulk_preview: nil, error: message)}
@@ -212,21 +257,24 @@ defmodule YellowDog.ManagementUI.RecordsLive do
     end
   end
 
-  def handle_event("delete_record", %{"rr_index" => ordinal}, socket) do
+  defp handle_submission("delete_record", %{"rr_index" => ordinal} = payload, socket) do
     with :ok <- mutation_scope(socket),
          :ok <- action_allowed(socket, [:index]),
          {:ok, index} <- ordinal(ordinal, length(socket.assigns.zone["records"])) do
-      persist(socket, List.delete_at(socket.assigns.zone["records"], index))
+      persist(
+        socket,
+        List.delete_at(socket.assigns.zone["records"], index),
+        payload["_submission"]
+      )
     else
       {:error, message} -> {:noreply, assign(socket, :error, message)}
     end
   end
 
-  def handle_event(_event, _params, socket) do
-    {:noreply, assign(socket, :error, "Invalid record action or form data.")}
-  end
+  defp handle_submission(_event, _params, socket),
+    do: {:noreply, assign(socket, :error, "Invalid record action or form data.")}
 
-  defp persist(socket, records) do
+  defp persist(socket, records, token) do
     zone = socket.assigns.zone
 
     params = %{
@@ -236,7 +284,9 @@ defmodule YellowDog.ManagementUI.RecordsLive do
       "records" => records
     }
 
-    case Domain.mutate("update_zone", params, "operator", Ecto.UUID.generate()) do
+    {socket, key} = Submission.prepare(socket, "update_zone", params, token)
+
+    case Domain.mutate("update_zone", params, "operator", key) do
       {:ok, saved} ->
         {:noreply,
          socket
@@ -471,215 +521,232 @@ defmodule YellowDog.ManagementUI.RecordsLive do
       current_path={@current_path}
       servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
     >
-      <h1>DNS Records</h1>
-      <p class="management-help">
-        SOA, NS and A only. Other original Console record types are not migrated. These are Management-owned drafts; actual Worker runtime state is unknown.
-      </p>
-      <p :if={@scope_error} id="record-scope-error" role="alert">{@scope_error}</p>
-      <p :if={@error} id="record-error" role="alert">{@error}</p>
-      <div :if={@zone}>
-        <h2>{@zone["name"]}</h2>
-        <p>
-          Draft revision {@zone["revision"]}. Confirmed immutable versions are unchanged by record edits.
+      <div id="dns-records-workflow" phx-hook="EditorGuard">
+        <input id="submission-intent" type="hidden" value={@submission_id} />
+        <h1>DNS Records</h1>
+        <p class="management-help">
+          SOA, NS and A only. Other original Console record types are not migrated. These are Management-owned drafts; actual Worker runtime state is unknown.
         </p>
-        <div class="management-actions">
-          <.link patch={@records_path} class="btn btn-ghost">Records</.link>
-          <.link patch={@records_path <> "/new"} class="btn btn-primary">New Record</.link>
-          <.link patch={@records_path <> "/bulk"} class="btn btn-ghost">Bulk Add</.link>
-          <.link navigate={@zone_path <> "/edit"} class="btn btn-ghost">Zone Draft</.link>
-          <button id="record-refresh" type="button" class="btn btn-ghost" phx-click="refresh">Refresh</button>
-        </div>
-        <.card :if={@live_action == :index} title="Records">
-          <.form
-            for={to_form(%{"filter" => @filter, "type" => @type_filter})}
-            id="record-filter-form"
-            phx-change="filter"
-            phx-submit="filter"
-          >
-            <label class="management-field"><span>Filter owner</span><input
-              id="record-owner-filter"
-              class="input"
-              name="filter"
-              value={@filter}
-              maxlength="512"
-            /></label>
-            <label class="management-field"><span>Record type</span><select
-              id="record-type-filter"
-              name="type"
-              class="select"
-            >
-              <option :for={type <- ~w(all SOA NS A)} value={type} selected={type == @type_filter}>
-                {if type == "all", do: "All types", else: type}
-              </option>
-            </select></label>
-            <button type="submit" class="btn btn-ghost">Filter</button>
-          </.form>
-          <p id="record-count">
-            Showing {length(@visible_records)} of {length(@zone["records"])} records.
+        <p :if={@scope_error} id="record-scope-error" role="alert">{@scope_error}</p>
+        <p :if={@error} id="record-error" role="alert">{@error}</p>
+        <div :if={@zone}>
+          <h2>{@zone["name"]}</h2>
+          <p>
+            Draft revision {@zone["revision"]}. Confirmed immutable versions are unchanged by record edits.
           </p>
           <div class="management-actions">
-            <button
-              id="record-export-csv"
-              type="button"
-              class="btn btn-ghost"
-              phx-hook="CsvDownload"
-              phx-click="export_csv"
-            >Export Filtered CSV</button>
-            <button
-              id="record-export-bind"
-              type="button"
-              class="btn btn-ghost"
-              phx-hook="TextDownload"
-              phx-click="export_bind"
-            >Export Full Zone BIND</button>
+            <.link patch={@records_path} class="btn btn-ghost">Records</.link>
+            <.link patch={@records_path <> "/new"} class="btn btn-primary">New Record</.link>
+            <.link patch={@records_path <> "/bulk"} class="btn btn-ghost">Bulk Add</.link>
+            <.link navigate={@zone_path <> "/edit"} class="btn btn-ghost">Zone Draft</.link>
+            <button id="record-refresh" type="button" class="btn btn-ghost" phx-click="refresh">Refresh</button>
           </div>
-          <p class="management-help">
-            CSV includes the displayed records. BIND includes the full valid SOA/NS/A Zone draft, regardless of filters; it is not a Worker runtime snapshot.
-          </p>
-          <div class="management-records">
-            <table id="records-table" class="table table-striped">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Type</th><th>TTL</th><th>Data</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  :for={{record, index} <- @visible_records}
-                  id={"record-#{index}"}
-                  data-rr-index={index}
-                >
-                  <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td><td>
-                    <code>{Jason.encode!(record["data"])}</code>
-                  </td>
-                  <td>
-                    <div class="management-actions">
-                      <.link patch={"#{@records_path}/#{index}/edit"} class="btn btn-ghost">Edit</.link>
-                      <button
-                        class="btn btn-error"
-                        phx-click="delete_record"
-                        phx-value-rr_index={index}
-                        data-confirm="Delete this record from the draft? The Zone must remain valid."
-                      >Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p :if={@visible_records == []} id="record-empty">No records match these filters.</p>
-        </.card>
-        <.card
-          :if={@live_action in [:new, :edit]}
-          title={if @live_action == :new, do: "New Record", else: "Edit Record"}
-        >
-          <.form for={@form} id="record-form" phx-change="validate" phx-submit="save">
-            <label class="management-field"><span>Owner name</span><input
-              class="input"
-              name="record[name]"
-              value={@form[:name].value}
-            /></label>
-            <p class="management-help">
-              Use @ or an empty name for the apex, a relative owner such as www, or a fully qualified owner ending with a dot.
-            </p>
-            <label class="management-field"><span>Type</span><select
-              class="select"
-              name="record[type]"
-            ><option :for={type <- ~w(SOA NS A)} value={type} selected={type == @form[:type].value}>
-              {type}
-            </option></select></label>
-            <label class="management-field"><span>TTL (seconds)</span><input
-              class="input"
-              type="number"
-              min="0"
-              name="record[ttl]"
-              value={@form[:ttl].value}
-              required
-            /></label>
-            <label :for={field <- data_fields(@form[:type].value)} class="management-field">
-              <span>{field}</span><input
+          <.card :if={@live_action == :index} title="Records">
+            <.form
+              for={to_form(%{"filter" => @filter, "type" => @type_filter})}
+              id="record-filter-form"
+              phx-change="filter"
+              phx-submit="filter"
+            >
+              <label class="management-field"><span>Filter owner</span><input
+                id="record-owner-filter"
                 class="input"
-                type={if numeric_field?(field), do: "number", else: "text"}
-                min={if numeric_field?(field), do: "0"}
-                name={"record[data][#{field}]"}
-                value={(@form[:data].value || %{})[field]}
-                required
-              />
-            </label>
+                name="filter"
+                value={@filter}
+                maxlength="512"
+              /></label>
+              <label class="management-field"><span>Record type</span><select
+                id="record-type-filter"
+                name="type"
+                class="select"
+              >
+                <option :for={type <- ~w(all SOA NS A)} value={type} selected={type == @type_filter}>
+                  {if type == "all", do: "All types", else: type}
+                </option>
+              </select></label>
+              <button type="submit" class="btn btn-ghost">Filter</button>
+            </.form>
+            <p id="record-count">
+              Showing {length(@visible_records)} of {length(@zone["records"])} records.
+            </p>
             <div class="management-actions">
               <button
-                class="btn btn-primary"
-                type="submit"
-                disabled={@stale_editor}
-                phx-disable-with="Saving…"
-              >Save Record</button><.link
-                patch={@records_path}
+                id="record-export-csv"
+                type="button"
                 class="btn btn-ghost"
-              >Cancel</.link>
+                phx-hook="CsvDownload"
+                phx-click="export_csv"
+              >Export Filtered CSV</button>
+              <button
+                id="record-export-bind"
+                type="button"
+                class="btn btn-ghost"
+                phx-hook="TextDownload"
+                phx-click="export_bind"
+              >Export Full Zone BIND</button>
             </div>
-          </.form>
-        </.card>
-        <.card :if={@live_action == :bulk} title="Bulk Add Records">
-          <p class="management-help">
-            Preview and append a nonempty JSON array of canonical record objects, at most 1 MiB. Use fully qualified names and numeric TTL/SOA values. The complete candidate Zone is validated without writes; confirm only the reviewed input. BIND bulk import remains unavailable.
-          </p>
-          <pre id="bulk-record-example"><code>{Jason.encode!([%{"name" => "www." <> @zone["name"], "type" => "A", "ttl" => 300, "data" => %{"address" => "192.0.2.20"}}], pretty: true)}</code></pre>
-          <.form
-            for={@bulk_form}
-            id="bulk-record-form"
-            phx-change="preview_bulk"
-            phx-submit="save_bulk"
+            <p class="management-help">
+              CSV includes the displayed records. BIND includes the full valid SOA/NS/A Zone draft, regardless of filters; it is not a Worker runtime snapshot.
+            </p>
+            <div class="management-records">
+              <table id="records-table" class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Name</th><th>Type</th><th>TTL</th><th>Data</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    :for={{record, index} <- @visible_records}
+                    id={"record-#{index}"}
+                    data-rr-index={index}
+                  >
+                    <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td><td>
+                      <code>{Jason.encode!(record["data"])}</code>
+                    </td>
+                    <td>
+                      <div class="management-actions">
+                        <.link patch={"#{@records_path}/#{index}/edit"} class="btn btn-ghost">Edit</.link>
+                        <button
+                          class="btn btn-error"
+                          phx-click="delete_record"
+                          phx-value-_submission={@submission_id}
+                          phx-value-rr_index={index}
+                          data-confirm="Delete this record from the draft? The Zone must remain valid."
+                        >Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p :if={@visible_records == []} id="record-empty">No records match these filters.</p>
+          </.card>
+          <.card
+            :if={@live_action in [:new, :edit]}
+            title={if @live_action == :new, do: "New Record", else: "Edit Record"}
           >
-            <label class="management-field"><span>Records JSON</span><textarea
-              class="textarea"
-              name="bulk[records]"
-              rows="12"
-              maxlength="1048576"
-              phx-debounce="500"
-              required
-            >{@bulk_form[:records].value}</textarea></label>
-            <section :if={@bulk_preview} id="bulk-record-preview">
-              <h2>Bulk Preview</h2>
-              <p id="bulk-record-count">
-                Append {length(@bulk_preview.records)} records to {@bulk_preview.existing_count} existing records; total {@bulk_preview.total_count}. Draft revision {@bulk_preview.revision}
-              </p>
-              <ul id="bulk-record-types">
-                <li :for={{type, count} <- @bulk_preview.counts}>{type}: {count}</li>
-              </ul>
-              <div class="management-records">
-                <table id="bulk-record-preview-table" class="table table-striped">
-                  <thead>
-                    <tr>
-                      <th>Name</th><th>Type</th><th>TTL</th><th>Data</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr :for={record <- @bulk_preview.records}>
-                      <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td><td>
-                        <code>{Jason.encode!(record["data"])}</code>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            <.form
+              for={@form}
+              id="record-form"
+              phx-change="validate"
+              phx-submit="save"
+              data-editor="true"
+              data-editor-dirty={to_string(@dirty)}
+              data-editor-reset={@editor_reset}
+            >
+              <input type="hidden" name="_submission" value={@submission_id} />
+              <label class="management-field"><span>Owner name</span><input
+                class="input"
+                name="record[name]"
+                value={@form[:name].value}
+              /></label>
               <p class="management-help">
-                Preview is draft content only. Appending does not publish an immutable version or apply Worker configuration.
+                Use @ or an empty name for the apex, a relative owner such as www, or a fully qualified owner ending with a dot.
               </p>
-            </section>
-            <div class="management-actions">
-              <button
-                id="bulk-record-save"
-                class="btn btn-primary"
-                type="submit"
-                disabled={@stale_editor or is_nil(@bulk_preview)}
-                phx-disable-with="Appending…"
-              >Append Records</button><.link
-                patch={@records_path}
-                class="btn btn-ghost"
-              >Cancel</.link>
-            </div>
-          </.form>
-        </.card>
+              <label class="management-field"><span>Type</span><select
+                class="select"
+                name="record[type]"
+              ><option :for={type <- ~w(SOA NS A)} value={type} selected={type == @form[:type].value}>
+                {type}
+              </option></select></label>
+              <label class="management-field"><span>TTL (seconds)</span><input
+                class="input"
+                type="number"
+                min="0"
+                name="record[ttl]"
+                value={@form[:ttl].value}
+                required
+              /></label>
+              <label :for={field <- data_fields(@form[:type].value)} class="management-field">
+                <span>{field}</span><input
+                  class="input"
+                  type={if numeric_field?(field), do: "number", else: "text"}
+                  min={if numeric_field?(field), do: "0"}
+                  name={"record[data][#{field}]"}
+                  value={(@form[:data].value || %{})[field]}
+                  required
+                />
+              </label>
+              <div class="management-actions">
+                <button
+                  class="btn btn-primary"
+                  type="submit"
+                  disabled={@stale_editor}
+                  phx-disable-with="Saving…"
+                >Save Record</button><.link
+                  patch={@records_path}
+                  class="btn btn-ghost"
+                >Cancel</.link>
+              </div>
+            </.form>
+          </.card>
+          <.card :if={@live_action == :bulk} title="Bulk Add Records">
+            <p class="management-help">
+              Preview and append a nonempty JSON array of canonical record objects, at most 1 MiB. Use fully qualified names and numeric TTL/SOA values. The complete candidate Zone is validated without writes; confirm only the reviewed input. BIND bulk import remains unavailable.
+            </p>
+            <pre id="bulk-record-example"><code>{Jason.encode!([%{"name" => "www." <> @zone["name"], "type" => "A", "ttl" => 300, "data" => %{"address" => "192.0.2.20"}}], pretty: true)}</code></pre>
+            <.form
+              for={@bulk_form}
+              id="bulk-record-form"
+              phx-change="preview_bulk"
+              phx-submit="save_bulk"
+              data-editor="true"
+              data-editor-dirty={to_string(@dirty)}
+              data-editor-reset={@editor_reset}
+            >
+              <input type="hidden" name="_submission" value={@submission_id} />
+              <label class="management-field"><span>Records JSON</span><textarea
+                class="textarea"
+                name="bulk[records]"
+                rows="12"
+                maxlength="1048576"
+                phx-debounce="500"
+                required
+              >{@bulk_form[:records].value}</textarea></label>
+              <section :if={@bulk_preview} id="bulk-record-preview">
+                <h2>Bulk Preview</h2>
+                <p id="bulk-record-count">
+                  Append {length(@bulk_preview.records)} records to {@bulk_preview.existing_count} existing records; total {@bulk_preview.total_count}. Draft revision {@bulk_preview.revision}
+                </p>
+                <ul id="bulk-record-types">
+                  <li :for={{type, count} <- @bulk_preview.counts}>{type}: {count}</li>
+                </ul>
+                <div class="management-records">
+                  <table id="bulk-record-preview-table" class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Name</th><th>Type</th><th>TTL</th><th>Data</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr :for={record <- @bulk_preview.records}>
+                        <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td><td>
+                          <code>{Jason.encode!(record["data"])}</code>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="management-help">
+                  Preview is draft content only. Appending does not publish an immutable version or apply Worker configuration.
+                </p>
+              </section>
+              <div class="management-actions">
+                <button
+                  id="bulk-record-save"
+                  class="btn btn-primary"
+                  type="submit"
+                  disabled={@stale_editor or is_nil(@bulk_preview)}
+                  phx-disable-with="Appending…"
+                >Append Records</button><.link
+                  patch={@records_path}
+                  class="btn btn-ghost"
+                >Cancel</.link>
+              </div>
+            </.form>
+          </.card>
+        </div>
       </div>
     </Layouts.app>
     """

@@ -16,12 +16,17 @@ release="${MIX_BUILD_PATH:-$repo_root/_build/prod}/rel/yellow_dog_management/bin
 test -x "$release"
 artifact_dir=$(mktemp -d "${TMPDIR:-/tmp}/yellow-dog-management-browser.XXXXXX")
 server_pid=""
+fixture_pid=""
 cleanup() {
   status=$?
   trap - EXIT
   if [ -n "$server_pid" ]; then
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
+  fi
+  if [ -n "$fixture_pid" ]; then
+    kill "$fixture_pid" 2>/dev/null || true
+    wait "$fixture_pid" 2>/dev/null || true
   fi
   python3 -c 'import pathlib, sys; [pathlib.Path(name).unlink(missing_ok=True) for name in sys.argv[1:]]' \
     "$artifact_dir/city.mmdb" "$artifact_dir/mac-browser-fixture.txt"
@@ -47,6 +52,24 @@ export MANAGEMENT_MAC_SMOKE_PATH="$YELLOW_DOG_MANAGEMENT_MAC_DATABASE_PATH"
 export MANAGEMENT_UI_URL="http://127.0.0.1:$YELLOW_DOG_MANAGEMENT_PORT"
 unset YELLOW_DOG_MANAGEMENT_GEOIP_COUNTRY_PATH YELLOW_DOG_MANAGEMENT_OPERATOR_TOKEN
 
+if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ]; then
+  mkdir "$artifact_dir/source"
+  gzip -c "$artifact_dir/city.mmdb" > "$artifact_dir/source/city.mmdb.gz"
+  fixture_port=$(python3 -c 'import socket; listener = socket.socket(); listener.bind(("127.0.0.1", 0)); print(listener.getsockname()[1]); listener.close()')
+  python3 -u -m http.server "$fixture_port" --bind 127.0.0.1 --directory "$artifact_dir/source" > "$artifact_dir/source.log" 2>&1 &
+  fixture_pid=$!
+  for attempt in $(seq 1 100); do
+    if curl -fsS --max-time 1 "http://127.0.0.1:$fixture_port/city.mmdb.gz" >/dev/null 2>&1; then break; fi
+    kill -0 "$fixture_pid"
+    sleep 0.1
+  done
+  export YELLOW_DOG_MANAGEMENT_GEOIP_CITY_URL="http://127.0.0.1:$fixture_port/city.mmdb.gz"
+  export YELLOW_DOG_MANAGEMENT_ARTIFACT_DIRECTORY="$artifact_dir/artifacts"
+  export MANAGEMENT_DATA_CITY_FILE="$artifact_dir/city.mmdb"
+  export MANAGEMENT_DATA_SOURCE_FILE="$artifact_dir/source/city.mmdb.gz"
+  unset YELLOW_DOG_MANAGEMENT_GEOIP_CITY_PATH
+fi
+
 "$release" eval 'YellowDog.Management.Release.migrate()' > "$artifact_dir/migration.log" 2>&1
 "$release" start > "$artifact_dir/server.log" 2>&1 &
 server_pid=$!
@@ -59,9 +82,12 @@ for attempt in $(seq 1 100); do
 done
 curl -fsS --max-time 5 "$MANAGEMENT_UI_URL/management" >/dev/null
 export MANAGEMENT_NODE_STATE_FILE="$artifact_dir/node-state.json"
-timeout 180 node apps/yellow_dog_management/test/live_browser_smoke.mjs
+export MANAGEMENT_DATA_STATE_FILE="$artifact_dir/data-state.json"
+browser_timeout=180
+if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ]; then browser_timeout=300; fi
+timeout "${MANAGEMENT_BROWSER_TIMEOUT:-$browser_timeout}" node apps/yellow_dog_management/test/live_browser_smoke.mjs
 
-if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = nodes ]; then
+if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = nodes ] || [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ]; then
   kill "$server_pid"
   wait "$server_pid" || true
   "$release" start >> "$artifact_dir/server.log" 2>&1 &
@@ -71,5 +97,5 @@ if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = nodes ]; then
     kill -0 "$server_pid"
     sleep 0.1
   done
-  MANAGEMENT_BROWSER_SCOPE=nodes-restart timeout 120 node apps/yellow_dog_management/test/live_browser_smoke.mjs
+  MANAGEMENT_BROWSER_SCOPE="${MANAGEMENT_BROWSER_SCOPE}-restart" timeout 120 node apps/yellow_dog_management/test/live_browser_smoke.mjs
 fi

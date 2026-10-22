@@ -248,6 +248,150 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
     assert has_element?(fresh, "#ip-database-city [data-status='Available']")
   end
 
+  test "sync retries preserve one durable job and a later acknowledged intent creates another", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, "/system/ip-database")
+    token = sync_token(view, "city")
+    request = %{"type" => "city", "_submission" => token}
+    render_click(view, "download", request)
+    assert [first] = Domain.list_task_jobs("ip_city")
+    render_click(view, "download", request)
+    assert [^first] = Domain.list_task_jobs("ip_city")
+    # Preserve existing active-job deduplication, then model the completed job.
+    view |> element("#ip-database-download-city") |> render_click()
+    assert [^first] = Domain.list_task_jobs("ip_city")
+    first_job = Repo.get!(Styx.Job, first["id"], prefix: "management_jobs")
+
+    first_job
+    |> Ecto.Changeset.change(state: "completed", completed_at: DateTime.utc_now())
+    |> Repo.update!(prefix: "management_jobs")
+
+    view |> element("#ip-database-download-city") |> render_click()
+    assert [second, completed] = Domain.list_task_jobs("ip_city")
+    assert completed["id"] == first["id"]
+    assert completed["state"] == "completed"
+    refute second["id"] == first["id"]
+    assert has_element?(view, "a[href='/system/tasks/ip_city#task-job-#{second["id"]}']")
+  end
+
+  test "Data schedule saves canonically and task updates preserve independent unsaved settings",
+       %{conn: conn} do
+    {:ok, view, _} = live(conn, "/system/ip-database")
+    {:ok, city} = Domain.get_task("ip_city")
+
+    view
+    |> form("#ip-database-settings-city", task: %{enabled: "true", cron: "15 3 * * *"})
+    |> render_change()
+
+    send(view.pid, {:task_updated, "ip_country"})
+
+    assert has_element?(
+             view,
+             "#ip-database-settings-city input[name='task[cron]'][value='15 3 * * *']"
+           )
+
+    view
+    |> form("#ip-database-settings-country", task: %{enabled: "false", cron: "20 4 * * *"})
+    |> render_submit()
+
+    assert has_element?(
+             view,
+             "#ip-database-settings-city input[name='task[cron]'][value='15 3 * * *']"
+           )
+
+    view |> form("#ip-database-settings-city") |> render_submit()
+    assert {:ok, saved} = Domain.get_task("ip_city")
+    assert saved["cron"] == "15 3 * * *"
+    assert saved["revision"] == city["revision"] + 1
+    assert saved["enabled"]
+    {:ok, fresh, _} = live(build_conn(), "/system/ip-database")
+
+    assert has_element?(
+             fresh,
+             "#ip-database-settings-city input[name='task[cron]'][value='15 3 * * *']"
+           )
+  end
+
+  test "Data schedule conflict preserves proposed values and never rebases the revision", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, "/system/ip-database")
+    {:ok, city} = Domain.get_task("ip_city")
+
+    assert {:ok, concurrent} =
+             Domain.mutate(
+               "update_task",
+               %{
+                 "key" => "ip_city",
+                 "expected_revision" => city["revision"],
+                 "enabled" => false,
+                 "cron" => "10 2 * * *"
+               },
+               "operator",
+               Ecto.UUID.generate()
+             )
+
+    view
+    |> form("#ip-database-settings-city", task: %{enabled: "true", cron: "30 5 * * *"})
+    |> render_submit()
+
+    assert has_element?(view, "#ip-database-error", "changed")
+
+    assert has_element?(
+             view,
+             "#ip-database-settings-city input[name='task[cron]'][value='30 5 * * *']"
+           )
+
+    assert {:ok, ^concurrent} = Domain.get_task("ip_city")
+    view |> form("#ip-database-settings-city") |> render_submit()
+    assert {:ok, ^concurrent} = Domain.get_task("ip_city")
+  end
+
+  test "delayed schedule submissions cannot overwrite newer input or rotate another kind", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, "/system/ip-database")
+    {:ok, city} = Domain.get_task("ip_city")
+    before = :sys.get_state(view.pid).socket.assigns.schedules
+
+    original = %{
+      "type" => "city",
+      "task" => %{"enabled" => "true", "cron" => "invalid"},
+      "_submission" => before["city"].token
+    }
+
+    render_submit(view, "save_schedule", original)
+    assert has_element?(view, "#ip-database-error")
+    rejected = Repo.all(YellowDog.Management.Idempotency)
+    render_submit(view, "save_schedule", original)
+    assert Repo.all(YellowDog.Management.Idempotency) == rejected
+
+    changed = %{"enabled" => "true", "cron" => "35 6 * * *"}
+    render_change(view, "validate_schedule", %{"type" => "city", "task" => changed})
+    pending = :sys.get_state(view.pid).socket.assigns.schedules
+    assert pending["city"].token != before["city"].token
+    assert pending["city"].reset == before["city"].reset
+    assert pending["city"].revision == city["revision"]
+    assert pending["country"] == before["country"]
+    render_submit(view, "save_schedule", original)
+    assert has_element?(view, "#ip-database-settings-city input[value='35 6 * * *']")
+    assert Repo.all(YellowDog.Management.Idempotency) == rejected
+
+    queued = Map.put(original, "task", changed)
+    render_submit(view, "save_schedule", queued)
+    assert {:ok, saved} = Domain.get_task("ip_city")
+    assert saved["cron"] == "35 6 * * *"
+    assert saved["revision"] == city["revision"] + 1
+    assert :sys.get_state(view.pid).socket.assigns.schedules["city"].reset != before["city"].reset
+    committed = Repo.all(YellowDog.Management.Idempotency)
+    assert length(committed) == length(rejected) + 1
+    render_submit(view, "save_schedule", original)
+    render_submit(view, "save_schedule", queued)
+    assert Repo.all(YellowDog.Management.Idempotency) == committed
+    assert :sys.get_state(view.pid).socket.assigns.schedules["country"] == before["country"]
+  end
+
   test "direct sync buttons queue durable jobs while schedules and availability stay separate", %{
     conn: conn
   } do
@@ -301,6 +445,7 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
 
     render_click(view, "download", %{
       "type" => "city",
+      "_submission" => sync_token(view, "city"),
       "key" => "mac",
       "source_url" => "http://attacker.invalid/",
       "path" => "/etc/passwd"
@@ -414,6 +559,15 @@ defmodule YellowDog.Management.IpDatabaseLiveTest do
 
     assert {:ok, %{available: true}} = TaskArtifacts.get(:city, second.digest)
   end
+
+  defp sync_token(view, kind),
+    do:
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#ip-database-download-#{kind}")
+      |> LazyHTML.attribute("phx-value-_submission")
+      |> hd()
 
   defp publish_fixture(directory, contents \\ GeoIPFixtures.binary(), type \\ :city) do
     {url, _server} = GeoIPDownloadFixture.start(200, :zlib.gzip(contents))

@@ -662,6 +662,9 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               {zone["name"]} ({zone["zone_id"]}) · version {zone["version"]} · {zone[
                 "resource_version_id"
               ]}
+              <.link navigate={
+                ServicePaths.server_path(@worker["id"], {:dns_zone_application, zone["zone_id"]})
+              }>Edit application scope</.link>
             </p>
             <p :for={view <- @references["views"]}>Saved View: {view["name"]}</p>
             <p :for={acl <- @references["acls"]}>Saved ACL: {acl["name"]}</p>

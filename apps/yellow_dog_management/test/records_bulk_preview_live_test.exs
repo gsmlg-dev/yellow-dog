@@ -41,7 +41,7 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
     assert has_element?(view, "#bulk-record-save[disabled]")
     refute has_element?(view, "#bulk-record-preview")
     input = Jason.encode!([address("www.example.test.", "192.0.2.20")])
-    assert render_submit(view, "save_bulk", %{"bulk" => %{"records" => input}}) =~ ~r/preview/i
+    assert mutation_event(view, "save_bulk", %{"bulk" => %{"records" => input}}) =~ ~r/preview/i
     assert {:ok, ^zone} = Domain.get_zone(zone["id"])
     assert snapshot() == before_read
     assert Plug.Conn.get_resp_header(get(conn, path), "www-authenticate") == []
@@ -203,7 +203,7 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
     preview(view, input)
     before_read = snapshot()
 
-    assert render_submit(view, "save_bulk", %{"bulk" => %{"records" => different_source}}) =~
+    assert mutation_event(view, "save_bulk", %{"bulk" => %{"records" => different_source}}) =~
              ~r/preview/i
 
     assert has_element?(view, "#bulk-record-save[disabled]")
@@ -273,7 +273,7 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
       refute has_element?(view, "#bulk-record-preview")
       assert has_element?(view, "#bulk-record-save[disabled]")
       refute has_element?(view, "img[src='x']")
-      assert render_submit(view, "save_bulk", %{"bulk" => %{"records" => input}}) =~ ~r/preview/i
+      assert mutation_event(view, "save_bulk", %{"bulk" => %{"records" => input}}) =~ ~r/preview/i
       assert {:ok, ^zone} = Domain.get_zone(zone["id"])
       assert snapshot() == before_read
     end
@@ -332,7 +332,7 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
     assert has_element?(view, "#bulk-record-form textarea", input)
     refute has_element?(view, "#bulk-record-preview")
     assert has_element?(view, "#bulk-record-save[disabled]")
-    render_submit(view, "save_bulk", %{"bulk" => %{"records" => input}})
+    mutation_event(view, "save_bulk", %{"bulk" => %{"records" => input}})
     assert {:ok, ^current} = Domain.get_zone(zone["id"])
     assert snapshot() == before_read
   end
@@ -347,7 +347,7 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
     preview(view, input)
     current = append_concurrently(zone)
     before_receipts = receipts()
-    assert render_submit(view, "save_bulk", %{"bulk" => %{"records" => input}}) =~ "revision"
+    assert mutation_event(view, "save_bulk", %{"bulk" => %{"records" => input}}) =~ "revision"
     assert {:ok, ^current} = Domain.get_zone(zone["id"])
     audits = Repo.all(Audit) -- elem(before_receipts, 0)
     assert [audit] = audits
@@ -392,9 +392,21 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
       {:ok, view, _html} = live(conn, path)
       render_change(view, "preview_bulk", %{"bulk" => %{"records" => input}})
       refute has_element?(view, "#bulk-record-preview")
-      render_submit(view, "save_bulk", %{"bulk" => %{"records" => input}})
+      mutation_event(view, "save_bulk", %{"bulk" => %{"records" => input}})
       assert snapshot() == before_read
     end
+  end
+
+  defp mutation_event(view, event, params) do
+    token =
+      view
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#submission-intent")
+      |> LazyHTML.attribute("value")
+      |> hd()
+
+    render_submit(view, event, Map.put(params, "_submission", token))
   end
 
   defp preview(view, input),

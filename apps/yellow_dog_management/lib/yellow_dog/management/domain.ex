@@ -140,6 +140,8 @@ defmodule YellowDog.Management.Domain do
     end)
   end
 
+  defdelegate list_zone_catalog(options \\ %{}), to: YellowDog.Management.ZoneCatalog, as: :list
+
   def list_zones do
     Repo.all(from(z in Zone, where: is_nil(z.deleted_at), order_by: z.name, preload: [:rrsets]))
     |> Enum.map(&zone_map/1)
@@ -202,7 +204,7 @@ defmodule YellowDog.Management.Domain do
             select: %{
               "id" => a.id,
               "zone_id" => z.id,
-              "name" => z.name,
+              "name" => fragment("?->>'name'", v.content),
               "resource_version_id" => v.id,
               "version" => v.version,
               "digest" => v.digest
@@ -1206,8 +1208,8 @@ defmodule YellowDog.Management.Domain do
     }
   end
 
-  defp zone_assignment_rows(zone_id) do
-    Repo.all(
+  defp zone_assignment_rows(zone_id, limit \\ nil) do
+    query =
       from(a in Assignment,
         join: s in Service,
         on: a.service_id == s.id,
@@ -1215,11 +1217,20 @@ defmodule YellowDog.Management.Domain do
         order_by: [s.worker_id, s.instance_id],
         preload: [:resource_version, service: :worker]
       )
-    )
+
+    query = if limit, do: from(a in query, limit: ^limit), else: query
+    Repo.all(query)
   end
 
   defp zone_assignment_snapshot(zone_id) do
-    rows = zone_assignment_rows(zone_id)
+    rows = zone_assignment_rows(zone_id, 257)
+
+    if length(rows) > 256,
+      do:
+        abort(
+          "assignment_limit",
+          "This Zone has more than 256 assignments; complete-set editing is unavailable. No assignments were changed."
+        )
 
     %{
       "zone_id" => zone_id,

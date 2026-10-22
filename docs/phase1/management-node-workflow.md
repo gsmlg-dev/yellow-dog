@@ -333,3 +333,12 @@ full browser suite or historical source-provenance gate is green.
 - `docs/phase1/management-navigation.md`
 - `docs/phase1/management-node-workflow.md`
 - `scripts/e2e/management_browser.sh`
+
+## Step 3 Data cross-links
+
+Zone references use the immutable pinned version name and link directly to the
+Zone Application scope tab. Assignment editing remains owned by Data; Node
+publication remains explicit. Data now offers Content, Versions and Application
+scope routes, global View/ACL scope selectors, and IP synchronization settings
+with Monitoring job links. See [management-data-workflow.md](management-data-workflow.md)
+for the complete operation contract and combined verification evidence.

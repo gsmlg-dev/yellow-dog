@@ -25,9 +25,9 @@ the listed supported descendants, not arbitrary prefix matches.
 | Nodes / configuration targets and history | `/management/config` |
 | Nodes / Netman list | `/management/netman`, `/netman` |
 | Nodes / selected Netman overview, configuration, resolver | `/netman/:netman_id`, `/netman/:netman_id/config`, `/netman/:netman_id/resolved` |
-| Data / DNS zones and records | `/management/zones` and `/server/:server_id/dns/zones`; both support `/new`, `/import`, `/:zone_id/edit`, `/:zone_id/records`, `/:zone_id/records/new`, `/:zone_id/records/bulk`, `/:zone_id/records/:rr_index/edit` |
+| Data / DNS zones and records | `/management/zones` and `/server/:server_id/dns/zones`; both support `/new`, `/import`, `/:zone_id/edit`, `/:zone_id/versions`, `/:zone_id/application`, `/:zone_id/records`, `/:zone_id/records/new`, `/:zone_id/records/bulk`, `/:zone_id/records/:rr_index/edit` |
 | Data / DNS Views | `/management/dns/views`, `/server/:server_id/dns/views`, `/server/:server_id/dns/views/:service_id` |
-| Data / DNS ACLs | `/server/:server_id/dns/acl`, `/server/:server_id/dns/acl/:service_id` |
+| Data / DNS ACLs | `/management/dns/acl`, `/server/:server_id/dns/acl`, `/server/:server_id/dns/acl/:service_id` |
 | Data / database catalogs | `/system/ip-database`, `/system/mac-database` |
 | Monitoring / overview | `/`, `/management` |
 | Monitoring / events and audit | `/management/events` |
@@ -42,8 +42,8 @@ the listed supported descendants, not arbitrary prefix matches.
 Available entries link to the router destinations above. Worker service controls
 require an explicit Worker; authentication, connections, enabled state, listeners
 and service parameters remain capabilities of the existing Worker detail page.
-Netman detail links require a selected Netman. DNS ACLs require a selected Worker,
-then use the existing service selector. DNS Views retain their global selector.
+Netman detail links require a selected Netman. DNS Views and ACLs offer global
+Worker/service selectors, then retain the selected scope in their editor routes.
 Selected service View/ACL links preserve the service in the route. Scope-free
 navigation never selects the first Worker or constructs an invented ID.
 
@@ -132,3 +132,12 @@ They no longer provide a duplicate Zone assignment form. DNS View/ACL scope
 continues to use the selected service UUID. No planned service or platform menu
 entry gains a fabricated destination. See [management-node-workflow.md](management-node-workflow.md)
 for the application contract, final evidence and limitations.
+
+## Step 3 Data workflow
+
+Zone Content, Versions and Application scope have directly addressable tabs.
+Application scope owns complete, fixed-version assignment editing; Node service
+references link there and use the pinned version name. The Zone catalog is bounded
+and searchable. IP synchronization settings stay in Data; persistent job history
+links to Monitoring. See [management-data-workflow.md](management-data-workflow.md)
+for operation bounds, target exclusions and verification evidence.
