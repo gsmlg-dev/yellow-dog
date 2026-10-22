@@ -1,5 +1,8 @@
 # Management Data configuration workflow
 
+The [Step 3/4 acceptance report](management-step4-acceptance.md) records final
+combined-source verification after the API/MCP integration.
+
 Starting revision: `a7ebf9490d40520dc932e198fc5d71d681fc1dba`.
 Implementation was prepared on `codex/data-workflow-step3` for integration into
 `main`. The completed Step 2 review repairs are incorporated and verified with
@@ -19,9 +22,10 @@ changing the Data workflow; retained redesign templates are not its contract.
 | MAC Database | Existing global OUI catalog and synchronization | Existing task/catalog semantics | Global | Excluded |
 
 All saves are Management-only. Offline logical Workers are eligible for Zone
-assignments; no Worker process is needed for dataset authoring. API/MCP integration
-remains Planned. No new protocol, resource schema, authentication or delivery
-adapter is provided.
+assignments; no Worker process is needed for dataset authoring. Step 4 exposes
+these existing operations through the [HTTP/MCP contract](management-api-contract.md)
+and the [configured trust boundary](management-integration-security.md).
+Views, ACLs and IP artifacts remain excluded from Worker targets.
 
 ## Routes and editor lifetime
 

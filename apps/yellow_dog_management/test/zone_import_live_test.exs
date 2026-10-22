@@ -47,8 +47,12 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
 
     [audit] = Domain.list_audit()
     assert audit["operation"] == "create_zone"
-    assert audit["actor"] == "operator"
-    assert audit["request"] == %{"content" => resource["content"]}
+    assert "principal:" <> _digest = audit["actor"]
+    assert audit["context"]["source"] == "ui"
+    assert audit["context"]["authentication"] == "trusted_local"
+    assert audit["context"]["subject"] == YellowDog.Management.IntegrationSettings.get().operator
+    assert audit["request"] == %{}
+    refute Map.has_key?(audit["request"], "content")
     assert audit["result"]["id"] == zone["id"]
   end
 
@@ -219,7 +223,8 @@ defmodule YellowDog.Management.ZoneImportLiveTest do
     assert canonical_content(zone) == resource["content"]
     assert zone["name"] == "trusted.test."
     [audit] = Domain.list_audit()
-    assert audit["request"] == %{"content" => resource["content"]}
+    assert audit["request"] == %{}
+    refute Map.has_key?(audit["request"], "content")
   end
 
   test "the 1 MiB limit is inclusive and measured in bytes", %{conn: conn} do

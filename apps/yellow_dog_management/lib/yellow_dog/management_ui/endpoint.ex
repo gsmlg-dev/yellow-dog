@@ -9,7 +9,8 @@ defmodule YellowDog.ManagementUI.Endpoint do
     http_only: true
   ]
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [:x_headers, :peer_data, :uri, session: @session_options]]
 
   plug YellowDog.ManagementUI.TrustedProxy
 
@@ -20,6 +21,11 @@ defmodule YellowDog.ManagementUI.Endpoint do
 
   plug Plug.RequestId
   plug Plug.Head
-  plug Plug.Session, @session_options
+  plug :management_session
   plug YellowDog.ManagementUI.Router
+
+  defp management_session(conn, _) do
+    secure = YellowDog.Management.IntegrationSettings.get().mode == :protected_remote
+    Plug.Session.call(conn, Plug.Session.init(Keyword.put(@session_options, :secure, secure)))
+  end
 end

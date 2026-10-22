@@ -18,14 +18,18 @@ defmodule YellowDog.ManagementUI.OverviewLive do
       workers: Domain.list_workers(),
       netmans: Domain.list_netmans(),
       zones: Domain.list_zones(),
-      recent_events: Enum.take(Domain.list_audit(), 5)
+      recent_events:
+        if(YellowDog.Management.Access.authorize(socket.assigns.caller, "audit:read") == :ok,
+          do: Enum.take(Domain.list_audit(), 5),
+          else: []
+        )
     )
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div class="max-w-7xl space-y-6" id="management-overview">
         <div>
           <h1 class="text-3xl font-bold">Management</h1>

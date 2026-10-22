@@ -233,7 +233,7 @@ defmodule YellowDog.ManagementUI.LogsLive do
     assigns = assign(assigns, :visible_logs, visible_logs(assigns))
 
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <h1>{@page_title}</h1>
       <p class="text-on-surface-variant">
         Actual logs from this Management process. Worker logs are not ingested; service and task-log migration is not complete.

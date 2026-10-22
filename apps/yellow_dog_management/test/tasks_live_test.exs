@@ -408,18 +408,21 @@ defmodule YellowDog.Management.TasksLiveTest do
 
   defp snapshot, do: {Domain.list_tasks(), Domain.list_task_history(), Domain.list_audit()}
 
-  defp assert_rejected_schedule(before_request, cron) do
+  defp assert_rejected_schedule(before_request, _cron) do
     audit = Domain.list_audit()
     assert length(audit) == length(before_request) + 1
     receipt = Enum.find(audit, &(&1 not in before_request))
     assert receipt["operation"] == "update_task"
-    assert receipt["actor"] == "operator"
+    assert "principal:" <> _digest = receipt["actor"]
+    assert receipt["context"]["source"] == "ui"
+    assert receipt["context"]["authentication"] == "trusted_local"
+
+    assert receipt["context"]["subject"] ==
+             YellowDog.Management.IntegrationSettings.get().operator
 
     assert receipt["request"] == %{
              "key" => "ip_city",
-             "expected_revision" => 1,
-             "enabled" => true,
-             "cron" => cron
+             "expected_revision" => 1
            }
 
     assert receipt["result"]["error"]["code"] == "invalid_request"

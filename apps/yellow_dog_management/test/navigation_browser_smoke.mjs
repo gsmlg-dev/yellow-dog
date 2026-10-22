@@ -162,6 +162,7 @@ export function navigationSmoke({ cdp, evaluate, navigate, until }) {
       ['/system/tasks', 'monitoring', 'tasks'],
       ['/system/logs/tasks', 'monitoring', 'logs'],
       ['/system/backups/restore', 'system', 'backups'],
+      ['/system/integrations', 'system', 'api_mcp'],
     ]) {
       await navigate(path);
       await selected(section, item);

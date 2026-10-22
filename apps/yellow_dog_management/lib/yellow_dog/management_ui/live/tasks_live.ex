@@ -53,7 +53,12 @@ defmodule YellowDog.ManagementUI.TasksLive do
         "cron" => params["cron"]
       }
 
-      case Domain.mutate("update_task", command, "operator", Ecto.UUID.generate()) do
+      case YellowDog.ManagementUI.Commands.command(
+             socket,
+             "update_task",
+             command,
+             Ecto.UUID.generate()
+           ) do
         {:ok, _task} ->
           socket = refresh(socket, true)
           current = Enum.find(socket.assigns.tasks, &(&1["key"] == key))
@@ -75,7 +80,12 @@ defmodule YellowDog.ManagementUI.TasksLive do
   def handle_event("run_now", payload, socket) do
     with {:ok, task} <- selected_task(socket, payload["task"]),
          true <- task["available"] do
-      case Domain.mutate("run_task", %{"key" => task["key"]}, "operator", Ecto.UUID.generate()) do
+      case YellowDog.ManagementUI.Commands.command(
+             socket,
+             "run_task",
+             %{"key" => task["key"]},
+             Ecto.UUID.generate()
+           ) do
         {:ok, job} ->
           {:noreply,
            socket
@@ -354,7 +364,7 @@ defmodule YellowDog.ManagementUI.TasksLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div class="max-w-7xl space-y-6">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h1 class="text-3xl font-bold">{@page_title}</h1>

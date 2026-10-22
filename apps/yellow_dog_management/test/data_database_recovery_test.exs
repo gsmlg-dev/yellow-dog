@@ -101,7 +101,12 @@ defmodule YellowDog.Management.DataDatabaseRecoveryTest do
     refute has_element?(view, "#ip-database-error")
 
     assert {:ok, replayed} =
-             Domain.mutate("run_task", %{"key" => "ip_city"}, "operator", intent.key)
+             YellowDog.Management.ApplicationAPI.command(
+               socket(view).assigns.caller,
+               "ip_database_sync",
+               %{"key" => "ip_city"},
+               intent.key
+             )
 
     assert replayed == socket(view).assigns.download_result
     assert replayed["id"] == job["id"]
@@ -154,7 +159,12 @@ defmodule YellowDog.Management.DataDatabaseRecoveryTest do
     use_repo(view, Repo)
 
     assert {:ok, committed} =
-             Domain.mutate("run_task", %{"key" => "ip_city"}, "operator", intent.key)
+             YellowDog.Management.ApplicationAPI.command(
+               socket(view).assigns.caller,
+               "ip_database_sync",
+               %{"key" => "ip_city"},
+               intent.key
+             )
 
     Repo.get!(Styx.Job, committed["id"], prefix: "management_jobs")
     |> Ecto.Changeset.change(state: "completed", completed_at: DateTime.utc_now())
@@ -190,7 +200,14 @@ defmodule YellowDog.Management.DataDatabaseRecoveryTest do
     assert socket(view).assigns.schedules["city"] == pending
     use_repo(view, Repo)
     # Model a lost acknowledgement: the server committed this exact pending request.
-    assert {:ok, committed} = Domain.mutate("update_task", payload, "operator", key)
+    assert {:ok, committed} =
+             YellowDog.Management.ApplicationAPI.command(
+               socket(view).assigns.caller,
+               "task_update",
+               payload,
+               key
+             )
+
     before = effects()
     render_submit(view, "save_schedule", request)
     assert socket(view).assigns.schedules["city"].revision == committed["revision"]

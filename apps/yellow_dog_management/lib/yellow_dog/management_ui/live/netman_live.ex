@@ -35,7 +35,12 @@ defmodule YellowDog.ManagementUI.NetmanLive do
       |> NetmansLive.metadata_params()
       |> Map.merge(%{"id" => node["id"], "expected_revision" => node["revision"]})
 
-    case Domain.mutate("update_netman", command, "operator", Ecto.UUID.generate()) do
+    case YellowDog.ManagementUI.Commands.command(
+           socket,
+           "update_netman",
+           command,
+           Ecto.UUID.generate()
+         ) do
       {:ok, _node} ->
         {:noreply,
          socket

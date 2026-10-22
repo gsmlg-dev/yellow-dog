@@ -288,7 +288,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
         {socket, params, key}
       end
 
-    case Domain.mutate(operation, params, "operator", key) do
+    case YellowDog.ManagementUI.Commands.command(socket, operation, params, key) do
       {:ok, result} ->
         # Retain the acknowledged revision independently of the following display read.
         socket =

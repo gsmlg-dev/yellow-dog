@@ -27,6 +27,8 @@ defmodule YellowDog.Management.MixProject do
         {:websock_adapter, "~> 0.8.0", hex: :gaoxy_websock_adapter, override: true},
         {:plug, "~> 1.18"},
         {:jason, "~> 1.4"},
+        {:jose, "~> 1.11.12"},
+        {:jsv, "~> 0.26.1"},
         {:phoenix, "~> 1.8"},
         {:phoenix_pubsub, "~> 2.1"},
         {:phoenix_live_view, "~> 1.2"},

@@ -190,10 +190,11 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
 
   test "unconfirmed database outcome preserves fields and the pending request for a confirmed retry" do
     selected = scope("view-unconfirmed")
+    {:ok, caller} = YellowDog.Management.Auth.authenticate(build_conn(), :ui)
 
     {:ok, socket} =
       YellowDog.ManagementUI.DnsViewsLive.mount(%{}, %{}, %Phoenix.LiveView.Socket{
-        assigns: %{__changed__: %{}, flash: %{}},
+        assigns: %{__changed__: %{}, flash: %{}, caller: caller},
         private: %{live_temp: %{}}
       })
 
@@ -254,7 +255,8 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert saved.assigns.submission_id != failed.assigns.submission_id
     assert find_view(selected, "unconfirmed")
     assert [receipt] = snapshot().idempotency -- before.idempotency
-    assert receipt.key == key
+    assert {:ok, receipt_key} = YellowDog.Management.Caller.request_key(caller, key)
+    assert receipt.key == receipt_key
     assert length(snapshot().audit -- before.audit) == 1
 
     assert {:noreply, ^saved} =
@@ -717,10 +719,11 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
   test "an unconfirmed row toggle retries its original fields and key after canonical data changes" do
     selected = scope("view-unconfirmed-row")
     saved = create_view(selected, "toggle")
+    {:ok, caller} = YellowDog.Management.Auth.authenticate(build_conn(), :ui)
 
     {:ok, socket} =
       YellowDog.ManagementUI.DnsViewsLive.mount(%{}, %{}, %Phoenix.LiveView.Socket{
-        assigns: %{__changed__: %{}, flash: %{}},
+        assigns: %{__changed__: %{}, flash: %{}, caller: caller},
         private: %{live_temp: %{}}
       })
 
@@ -773,7 +776,14 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert original["expected_revision"] == saved["revision"]
     assert original["enabled"] == false
     # Model a committed command whose response was lost, followed by a canonical list update.
-    assert {:ok, committed} = Domain.mutate("update_dns_view", original, "operator", key)
+    assert {:ok, committed} =
+             YellowDog.Management.ApplicationAPI.ui_command(
+               caller,
+               "dns_view_update",
+               original,
+               key
+             )
+
     pending = Phoenix.Component.assign(failed, :views, [committed])
     before_retry = snapshot()
 

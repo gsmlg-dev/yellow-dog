@@ -36,6 +36,7 @@ the listed supported descendants, not arbitrary prefix matches.
 | Monitoring / network tools | `/tool/mac`, `/tool/whois`, `/tool/geoip` |
 | System / backups and restore | `/system/backups`, `/system/backups/restore` |
 | System / runtime diagnostics | `/system/process-map` |
+| System / API & MCP integration | `/system/integrations` |
 
 ## Availability and scope
 
@@ -49,9 +50,14 @@ navigation never selects the first Worker or constructs an invented ID.
 
 Planned entries have a visible **Planned** label and an accessible explanation,
 with no URL or event handler: DHCPv4 data, DHCPv6 data, mDNS data; dedicated node,
-service and configuration delivery/application status; platform settings, API/MCP
-integration, Management access/external authentication, and storage/retention
+service and configuration delivery/application status; platform settings,
+Management access/external authentication settings, and storage/retention
 settings. Retained `ManagementUI.Redesign` source is not a supported destination.
+
+Step 4 activates API & MCP integration at `/system/integrations`, backed by the
+versioned HTTP API and MCP endpoint. It reports sanitized deployment settings,
+canonical URLs, protocol versions and the finite operation catalog. See
+[Management MCP](management-mcp.md) and the [API contract](management-api-contract.md).
 
 Configuration target history describes prepared configuration, not observed
 application. Tasks temporarily retain their existing settings, schedules and

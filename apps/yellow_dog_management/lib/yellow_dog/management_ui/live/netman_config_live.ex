@@ -248,7 +248,12 @@ defmodule YellowDog.ManagementUI.NetmanConfigLive do
           "expected_revision" => socket.assigns.draft["revision"]
         })
 
-      case Domain.mutate(operation, params, "operator", Ecto.UUID.generate()) do
+      case YellowDog.ManagementUI.Commands.command(
+             socket,
+             operation,
+             params,
+             Ecto.UUID.generate()
+           ) do
         {:ok, _result} ->
           {:noreply,
            socket

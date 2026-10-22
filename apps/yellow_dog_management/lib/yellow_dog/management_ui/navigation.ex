@@ -76,6 +76,7 @@ defmodule YellowDog.ManagementUI.Navigation do
     {:monitoring, :tool_mac, [["tool", "mac"]]},
     {:monitoring, :tool_whois, [["tool", "whois"]]},
     {:monitoring, :tool_geoip, [["tool", "geoip"]]},
+    {:system, :api_mcp, [["system", "integrations"]]},
     {:system, :backups, [["system", "backups"], ["system", "backups", "restore"]]},
     {:system, :process_map, [["system", "process-map"]]}
   ]
@@ -208,7 +209,7 @@ defmodule YellowDog.ManagementUI.Navigation do
     [
       group("Management platform", [
         planned(:platform_settings, "Platform settings", "cog"),
-        planned(:api_mcp, "API & MCP integration", "api"),
+        available(:api_mcp, "API & MCP integration", "api", "/system/integrations"),
         planned(
           :platform_access,
           "Access & authentication",

@@ -25,7 +25,7 @@
   mixFodDeps = beam28Packages.fetchMixDeps {
     pname = "yellow-dog-phase1-mix-deps";
     inherit src version;
-    hash = "sha256-PzEJz+07iJMAe+HnomQF9AVTnrVOVZKMmK4JR8gkNbQ=";
+    hash = "sha256-FVYGe6e6XbnTGwd5nscfpguflwlIgnr/58VnWSl8YlU=";
     mixEnv = "prod";
   };
 

@@ -253,7 +253,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
   defp counts,
     do:
       {Repo.aggregate(Idempotency, :count),
-       Repo.aggregate(from(a in Audit, where: a.actor == "operator"), :count)}
+       Repo.aggregate(from(a in Audit, where: fragment("?->>'source' = 'ui'", a.context)), :count)}
 
   defp increment({keys, audits}), do: {keys + 1, audits + 1}
 

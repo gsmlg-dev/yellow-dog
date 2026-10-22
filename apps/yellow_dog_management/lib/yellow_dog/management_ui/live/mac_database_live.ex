@@ -160,7 +160,7 @@ defmodule YellowDog.ManagementUI.MacDatabaseLive do
     assigns = assign(assigns, :display_error, assigns.error || database_error(assigns.db_info))
 
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <h1>MAC Database</h1>
       <p class="text-on-surface-variant">
         Manage the OUI manufacturer database for MAC address lookups

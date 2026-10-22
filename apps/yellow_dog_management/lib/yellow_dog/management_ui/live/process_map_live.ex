@@ -209,7 +209,7 @@ defmodule YellowDog.ManagementUI.ProcessMapLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div id="process-map" class="flex flex-col gap-4 h-full">
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>

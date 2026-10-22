@@ -1,5 +1,11 @@
 # Management node configuration workflow
 
+Step 4 adds the [versioned HTTP API and MCP operation matrix](management-api-contract.md)
+over the same authorized commands and canonical objects. The
+[integration security guide](management-integration-security.md) describes the
+deployment trust boundary. Worker credentials, enrollment policy and other
+administrative operations remain UI-only; their existing behavior is preserved.
+
 The **Step 2 review repair** section below records pre-delivery verification of the repair
 against `a7ebf949`. The original Step 2 delivery and its older verification are
 retained as historical evidence. In particular, the earlier connected-Worker

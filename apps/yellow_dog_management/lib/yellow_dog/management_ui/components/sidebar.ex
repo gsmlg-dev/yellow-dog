@@ -31,10 +31,10 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
 
   @impl true
   def handle_event("select_server", %{"selection" => %{"id" => id}}, socket),
-    do: navigate_to_selection(socket, :server, id)
+    do: authorized_selection(socket, :server, id)
 
   def handle_event("select_netman", %{"selection" => %{"id" => id}}, socket),
-    do: navigate_to_selection(socket, :netman, id)
+    do: authorized_selection(socket, :netman, id)
 
   @impl true
   def render(assigns) do
@@ -180,6 +180,15 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
     do: Enum.find(records, &(&1.id == id))
 
   defp selected_record(_records, _scope, _target_type), do: nil
+
+  defp authorized_selection(socket, target_type, id) do
+    scope = if target_type == :netman, do: "ui:admin", else: "config:read"
+
+    case YellowDog.Management.Access.authorize(socket.assigns[:caller], scope) do
+      :ok -> navigate_to_selection(socket, target_type, id)
+      _ -> {:noreply, push_navigate(socket, to: "/management")}
+    end
+  end
 
   defp navigate_to_selection(socket, target_type, ""),
     do: {:noreply, push_navigate(socket, to: selector_path(target_type))}

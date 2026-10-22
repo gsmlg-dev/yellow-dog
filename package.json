@@ -5,6 +5,7 @@
   "type": "module",
   "workspaces": ["apps/*"],
   "scripts": {
+    "openapi:validate": "scripts/e2e/management_openapi.sh",
     "assets.management": "tailwindcss --input apps/yellow_dog_management/assets/management.css --output apps/yellow_dog_management/priv/static/management.css --minify && bun build apps/yellow_dog_management/assets/app.js --outfile apps/yellow_dog_management/priv/static/management-live.js --minify"
   },
   "dependencies": {
@@ -14,6 +15,8 @@
     "@duskmoon-dev/elements": "1.10.1"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@redocly/cli": "2.69.0",
     "@tailwindcss/cli": "4.3.3",
     "tailwindcss": "4.3.3"
   }

@@ -5,6 +5,7 @@ defmodule YellowDog.ManagementUI.Router do
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
+    plug YellowDog.ManagementUI.AccessPlug
     plug :fetch_live_flash
     plug :protect_from_forgery
     plug :put_root_layout, html: {YellowDog.ManagementUI.Layouts, :root}
@@ -21,7 +22,10 @@ defmodule YellowDog.ManagementUI.Router do
     pipe_through :browser
 
     live_session :management,
-      on_mount: [{YellowDog.ManagementUI.Hooks.CurrentPath, :default}],
+      on_mount: [
+        {YellowDog.ManagementUI.Hooks.Authorization, :default},
+        {YellowDog.ManagementUI.Hooks.CurrentPath, :default}
+      ],
       layout: false do
       live "/", OverviewLive, :overview
       live "/management", OverviewLive, :overview
@@ -80,11 +84,15 @@ defmodule YellowDog.ManagementUI.Router do
       live "/system/backups", BackupsLive, :index
       live "/system/backups/restore", BackupsLive, :restore
       live "/system/process-map", ProcessMapLive, :index
+      live "/system/integrations", IntegrationsLive, :index
       live "/system/ip-database", IpDatabaseLive, :index
       live "/system/mac-database", MacDatabaseLive, :index
     end
   end
 
   forward "/api/worker", YellowDog.Management.WorkerAPI
+  forward "/api/v1", YellowDog.Management.HTTPAPI
+  forward "/mcp", YellowDog.Management.MCP
+  forward "/.well-known", YellowDog.Management.ResourceMetadata
   forward "/", YellowDog.Management.Web
 end

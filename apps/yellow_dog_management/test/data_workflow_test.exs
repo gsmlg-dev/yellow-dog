@@ -284,6 +284,7 @@ defmodule YellowDog.Management.DataWorkflowTest do
   end
 
   test "assignment commit uses its canonical result when subsequent database reads are unavailable" do
+    {:ok, caller} = YellowDog.Management.Auth.authenticate(build_conn(), :ui)
     zone = mutate("create_zone", DomainFixtures.zone())
     version = mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1})
     worker = mutate("create_worker", %{"id" => "commit-data", "name" => "Commit"})
@@ -292,7 +293,7 @@ defmodule YellowDog.Management.DataWorkflowTest do
 
     {:ok, socket} =
       YellowDog.ManagementUI.ZonesLive.mount(%{}, %{}, %Phoenix.LiveView.Socket{
-        assigns: %{__changed__: %{}, flash: %{}},
+        assigns: %{__changed__: %{}, flash: %{}, caller: caller},
         private: %{live_temp: %{}}
       })
 

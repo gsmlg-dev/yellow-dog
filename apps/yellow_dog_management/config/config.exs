@@ -21,6 +21,15 @@ config :yellow_dog_management, Styx,
   plugins: [{Styx.Lifeline, rescue_after: 240_000}]
 
 if config_env() == :test do
+  config :yellow_dog_management, :integration, %{
+    mode: :trusted_local,
+    http_enabled: true,
+    mcp_enabled: true,
+    write_enabled: true,
+    allowed_hosts: ["www.example.com", "localhost", "127.0.0.1", "::1"],
+    policy_revision: "test-1"
+  }
+
   config :yellow_dog_management, :task_scheduler_enabled, false
   config :yellow_dog_management, :restore_geoip_selection, false
   config :yellow_dog_management, Styx, testing: :manual, queues: false, plugins: false

@@ -63,6 +63,7 @@ defmodule YellowDog.ManagementUI.NavigationTest do
     {:monitoring, :tool_mac, ["/tool/mac"]},
     {:monitoring, :tool_whois, ["/tool/whois"]},
     {:monitoring, :tool_geoip, ["/tool/geoip"]},
+    {:system, :api_mcp, ["/system/integrations"]},
     {:system, :backups, ["/system/backups", "/system/backups/restore"]},
     {:system, :process_map, ["/system/process-map"]}
   ]

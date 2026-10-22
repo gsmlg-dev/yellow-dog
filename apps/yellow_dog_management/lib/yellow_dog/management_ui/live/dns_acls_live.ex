@@ -237,7 +237,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
 
       {socket, key} = Submission.prepare(socket, operation, fields, payload["_submission"])
 
-      case Domain.mutate(operation, fields, "operator", key) do
+      case YellowDog.ManagementUI.Commands.command(socket, operation, fields, key) do
         {:ok, acl} ->
           socket =
             socket
@@ -280,7 +280,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
 
       socket = assign(socket, :delete_request, {fields, key})
 
-      case Domain.mutate("delete_dns_acl", fields, "operator", key) do
+      case YellowDog.ManagementUI.Commands.command(socket, "delete_dns_acl", fields, key) do
         {:ok, _result} ->
           socket =
             assign(socket,

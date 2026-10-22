@@ -40,16 +40,19 @@ defmodule YellowDog.Management.Domain do
   @worker_id ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
   @doc "Run an idempotent mutation. All successful effects and the recorded result commit together."
-  def mutate(operation, params, actor, idempotency_key)
+  def mutate(operation, params, actor, idempotency_key, opts \\ [])
+
+  def mutate(operation, params, actor, idempotency_key, opts)
       when is_binary(operation) and is_map(params) do
     with :ok <- bounded(operation, @operations, "operation"),
          :ok <- bounded(actor, 1..128, "actor"),
-         :ok <- bounded(idempotency_key, 1..128, "idempotency_key") do
+         :ok <- bounded(idempotency_key, 1..128, "idempotency_key"),
+         :ok <- authorize_context(opts) do
       params = stringify_keys(params)
       fingerprint = digest({operation, actor, canonical(params)})
 
       case Repo.transaction(fn ->
-             transact(operation, params, actor, idempotency_key, fingerprint)
+             transact(operation, params, actor, idempotency_key, fingerprint, opts)
            end) do
         {:ok, {:ok, result}} ->
           if operation in @task_operations, do: Tasks.broadcast(params["key"])
@@ -90,7 +93,7 @@ defmodule YellowDog.Management.Domain do
       end
   end
 
-  def mutate(_, _, _, _),
+  def mutate(_, _, _, _, _),
     do: {:error, error("invalid_request", "Operation and parameters are required")}
 
   def list_workers do
@@ -123,6 +126,7 @@ defmodule YellowDog.Management.Domain do
         "operation" => audit.operation,
         "request" => audit.request,
         "result" => audit.result,
+        "context" => audit.context,
         "inserted_at" => DateTime.to_iso8601(audit.inserted_at)
       }
     end)
@@ -255,10 +259,10 @@ defmodule YellowDog.Management.Domain do
   end
 
   @doc "Read the canonical Zone assignment set and its concurrency snapshot."
-  def get_zone_assignments(zone_id) do
+  def get_zone_assignments(zone_id, mode \\ :all) do
     Repo.transaction(fn ->
       zone = required_zone(zone_id)
-      zone_assignment_snapshot(zone.id)
+      zone_assignment_snapshot(zone.id, mode)
     end)
   end
 
@@ -363,18 +367,44 @@ defmodule YellowDog.Management.Domain do
     end)
   end
 
-  defp transact(operation, params, actor, key, fingerprint) do
+  defp authorize_context(opts) do
+    case Keyword.fetch(opts, :caller) do
+      {:ok, caller} -> YellowDog.Management.Access.authorize(caller, Keyword.fetch!(opts, :scope))
+      :error -> :ok
+    end
+  end
+
+  defp audit_fields(params, result, opts) do
+    case Keyword.fetch(opts, :caller) do
+      {:ok, caller} ->
+        {YellowDog.Management.AuditContext.project(params),
+         YellowDog.Management.AuditContext.project(result),
+         YellowDog.Management.Caller.audit_context(caller)}
+
+      :error ->
+        {params, result, %{}}
+    end
+  end
+
+  defp transact(operation, params, actor, key, fingerprint, opts) do
     Repo.insert!(%Idempotency{key: key, request_digest: fingerprint, result: %{}},
       on_conflict: :nothing
     )
 
     row = Repo.one!(from(i in Idempotency, where: i.key == ^key, lock: "FOR UPDATE"))
 
+    # Lock waits cannot extend a caller's authorization, including on replay.
+    case authorize_context(opts) do
+      :ok -> :ok
+      {:error, failure} -> Repo.rollback(failure)
+    end
+
     cond do
       row.request_digest != fingerprint ->
         Repo.rollback(error("idempotency_conflict", "Key was used for a different request"))
 
       Map.has_key?(row.result, "ok") ->
+        validate_result(row.result["ok"], opts)
         {:ok, row.result["ok"]}
 
       Map.has_key?(row.result, "error") ->
@@ -386,7 +416,7 @@ defmodule YellowDog.Management.Domain do
 
         outcome =
           try do
-            {:ok, dispatch(operation, params, actor)}
+            {:ok, dispatch(operation, params, actor, opts)}
           rescue
             _error in Ecto.InvalidChangesetError ->
               {:error, error("database_constraint", "Database constraint rejected the mutation")}
@@ -406,15 +436,23 @@ defmodule YellowDog.Management.Domain do
             Process.delete(:management_dispatch_savepoint)
           end
 
+        case authorize_context(opts) do
+          :ok -> :ok
+          {:error, failure} -> Repo.rollback(failure)
+        end
+
         case outcome do
           {:ok, result} ->
+            validate_result(result, opts)
             Repo.query!("RELEASE SAVEPOINT management_dispatch")
+            {audit_request, audit_result, context} = audit_fields(params, result, opts)
 
             Repo.insert!(%Audit{
               actor: actor,
               operation: operation,
-              request: params,
-              result: result
+              request: audit_request,
+              result: audit_result,
+              context: context
             })
 
             Repo.update_all(from(i in Idempotency, where: i.key == ^key),
@@ -428,11 +466,15 @@ defmodule YellowDog.Management.Domain do
             Repo.query!("RELEASE SAVEPOINT management_dispatch")
             safe_failure = json_safe(failure)
 
+            {audit_request, audit_result, context} =
+              audit_fields(params, %{"error" => safe_failure}, opts)
+
             Repo.insert!(%Audit{
               actor: actor,
               operation: operation,
-              request: params,
-              result: %{"error" => safe_failure}
+              request: audit_request,
+              result: audit_result,
+              context: context
             })
 
             Repo.update_all(from(i in Idempotency, where: i.key == ^key),
@@ -443,6 +485,24 @@ defmodule YellowDog.Management.Domain do
         end
     end
   end
+
+  defp validate_result(result, opts) do
+    case Keyword.get(opts, :validate_result) do
+      nil -> :ok
+      validate when is_function(validate, 1) -> validate.(result)
+    end
+  end
+
+  defp dispatch("set_zone_assignments", params, _actor, opts) do
+    mode =
+      if match?(%{source: source} when source in [:http, :mcp], opts[:caller]),
+        do: :selected,
+        else: :all
+
+    set_zone_assignments(params, mode)
+  end
+
+  defp dispatch(operation, params, actor, _opts), do: dispatch(operation, params, actor)
 
   defp dispatch(operation, params, actor) when operation in @task_operations,
     do: Tasks.dispatch(operation, params, actor)
@@ -750,99 +810,6 @@ defmodule YellowDog.Management.Domain do
           "removed" => true
         }
     end
-  end
-
-  defp dispatch("set_zone_assignments", params) do
-    allowed_keys(
-      params,
-      ~w(zone_id expected_assignment_token expected_worker_revisions assignments)
-    )
-
-    zone = lock_zone(required_string(params, "zone_id", 64))
-    existing = zone_assignment_rows(zone.id)
-    expected_token = required_string(params, "expected_assignment_token", 64)
-
-    if expected_token != assignment_token(zone.id, existing),
-      do: abort("revision_conflict", "Assignment set changed; reload before saving assignments")
-
-    submitted = params["assignments"]
-    revisions = params["expected_worker_revisions"]
-
-    unless is_list(submitted) and length(submitted) <= 256 and Enum.all?(submitted, &is_map/1),
-      do: abort("invalid_request", "assignments must be a list of at most 256 selections")
-
-    unless is_map(revisions),
-      do: abort("invalid_request", "expected_worker_revisions must be an object")
-
-    submitted_worker_ids = Enum.map(submitted, &required_string(&1, "worker_id", 64))
-
-    workers =
-      (Enum.map(existing, & &1.service.worker_id) ++ submitted_worker_ids)
-      |> Enum.uniq()
-      |> Enum.sort()
-      |> Enum.map(fn worker_id ->
-        worker = lock_worker(worker_id)
-        expect_revision(worker.revision, %{"expected_revision" => revisions[worker_id]})
-        worker
-      end)
-
-    selections =
-      Enum.map(submitted, fn selection ->
-        allowed_keys(selection, ~w(worker_id service_id resource_version_id))
-        required_string(selection, "service_id", 64)
-        service = required_service(selection["worker_id"], selection)
-        if service.type != "dns", do: abort("unsupported", "DNS Zones require a DNS service")
-        version = required_version(required_string(selection, "resource_version_id", 64))
-
-        if version.zone_id != zone.id,
-          do: abort("invalid_request", "Confirmed version must belong to the selected Zone")
-
-        {service, version}
-      end)
-
-    service_ids = Enum.map(selections, fn {service, _version} -> service.id end)
-
-    if length(Enum.uniq(service_ids)) != length(service_ids),
-      do: abort("invalid_request", "Select each DNS Service only once")
-
-    selections
-    |> Enum.group_by(fn {service, _version} -> service.worker_id end)
-    |> Enum.each(fn {worker_id, values} ->
-      versions = Enum.map(values, fn {_service, version} -> version.id end)
-      validate_assignment_versions(worker_id, zone.id, versions)
-    end)
-
-    existing_by_service = Map.new(existing, &{&1.service_id, &1})
-
-    Enum.each(existing, fn assignment ->
-      if assignment.service_id not in service_ids, do: Repo.delete!(assignment)
-    end)
-
-    Enum.each(selections, fn {service, version} ->
-      case existing_by_service[service.id] do
-        nil ->
-          Repo.insert!(%Assignment{
-            service_id: service.id,
-            zone_id: zone.id,
-            resource_version_id: version.id
-          })
-
-        %{resource_version_id: version_id} when version_id == version.id ->
-          :ok
-
-        assignment ->
-          assignment
-          |> Ecto.Changeset.change(resource_version_id: version.id)
-          |> Repo.update!()
-      end
-    end)
-
-    Enum.each(workers, fn worker ->
-      build_plan(worker.id, next_target_revision(worker.id))
-      bump_worker(worker)
-    end)
-
-    zone_assignment_snapshot(zone.id)
   end
 
   defp dispatch("confirm_target", params) do
@@ -1208,21 +1175,129 @@ defmodule YellowDog.Management.Domain do
     }
   end
 
-  defp zone_assignment_rows(zone_id, limit \\ nil) do
+  defp set_zone_assignments(params, snapshot_mode) do
+    allowed_keys(
+      params,
+      ~w(zone_id expected_assignment_token expected_worker_revisions assignments)
+    )
+
+    zone = lock_zone(required_string(params, "zone_id", 64))
+    existing = zone_assignment_rows(zone.id, 257)
+
+    if length(existing) > 256,
+      do:
+        abort(
+          "assignment_limit",
+          "Complete assignment set exceeds 256; no assignments were changed"
+        )
+
+    expected_token = required_string(params, "expected_assignment_token", 64)
+
+    if expected_token != assignment_token(zone.id, existing),
+      do: abort("revision_conflict", "Assignment set changed; reload before saving assignments")
+
+    submitted = params["assignments"]
+    revisions = params["expected_worker_revisions"]
+
+    unless is_list(submitted) and length(submitted) <= 256 and Enum.all?(submitted, &is_map/1),
+      do: abort("invalid_request", "assignments must be a list of at most 256 selections")
+
+    unless is_map(revisions),
+      do: abort("invalid_request", "expected_worker_revisions must be an object")
+
+    submitted_worker_ids = Enum.map(submitted, &required_string(&1, "worker_id", 64))
+
+    workers =
+      (Enum.map(existing, & &1.service.worker_id) ++ submitted_worker_ids)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map(fn worker_id ->
+        worker = lock_worker(worker_id)
+        expect_revision(worker.revision, %{"expected_revision" => revisions[worker_id]})
+        worker
+      end)
+
+    selections =
+      Enum.map(submitted, fn selection ->
+        allowed_keys(selection, ~w(worker_id service_id resource_version_id))
+        required_string(selection, "service_id", 64)
+        service = required_service(selection["worker_id"], selection)
+        if service.type != "dns", do: abort("unsupported", "DNS Zones require a DNS service")
+        version = required_version(required_string(selection, "resource_version_id", 64))
+
+        if version.zone_id != zone.id,
+          do: abort("invalid_request", "Confirmed version must belong to the selected Zone")
+
+        {service, version}
+      end)
+
+    service_ids = Enum.map(selections, fn {service, _version} -> service.id end)
+
+    if length(Enum.uniq(service_ids)) != length(service_ids),
+      do: abort("invalid_request", "Select each DNS Service only once")
+
+    selections
+    |> Enum.group_by(fn {service, _version} -> service.worker_id end)
+    |> Enum.each(fn {worker_id, values} ->
+      versions = Enum.map(values, fn {_service, version} -> version.id end)
+      validate_assignment_versions(worker_id, zone.id, versions)
+    end)
+
+    existing_by_service = Map.new(existing, &{&1.service_id, &1})
+
+    Enum.each(existing, fn assignment ->
+      if assignment.service_id not in service_ids, do: Repo.delete!(assignment)
+    end)
+
+    Enum.each(selections, fn {service, version} ->
+      case existing_by_service[service.id] do
+        nil ->
+          Repo.insert!(%Assignment{
+            service_id: service.id,
+            zone_id: zone.id,
+            resource_version_id: version.id
+          })
+
+        %{resource_version_id: version_id} when version_id == version.id ->
+          :ok
+
+        assignment ->
+          assignment
+          |> Ecto.Changeset.change(resource_version_id: version.id)
+          |> Repo.update!()
+      end
+    end)
+
+    Enum.each(workers, fn worker ->
+      build_plan(worker.id, next_target_revision(worker.id))
+      bump_worker(worker)
+    end)
+
+    zone_assignment_snapshot(zone.id, snapshot_mode)
+  end
+
+  defp zone_assignment_rows(zone_id, limit) do
     query =
       from(a in Assignment,
         join: s in Service,
         on: a.service_id == s.id,
         where: a.zone_id == ^zone_id,
         order_by: [s.worker_id, s.instance_id],
-        preload: [:resource_version, service: :worker]
+        preload: [
+          resource_version: ^from(v in ResourceVersion, select: [:id, :version]),
+          service:
+            ^from(s in Service,
+              select: [:id, :worker_id, :instance_id],
+              preload: [worker: ^from(w in Worker, select: [:id, :name])]
+            )
+        ]
       )
 
     query = if limit, do: from(a in query, limit: ^limit), else: query
     Repo.all(query)
   end
 
-  defp zone_assignment_snapshot(zone_id) do
+  defp zone_assignment_snapshot(zone_id, mode) do
     rows = zone_assignment_rows(zone_id, 257)
 
     if length(rows) > 256,
@@ -1232,10 +1307,16 @@ defmodule YellowDog.Management.Domain do
           "This Zone has more than 256 assignments; complete-set editing is unavailable. No assignments were changed."
         )
 
+    worker_ids = rows |> Enum.map(& &1.service.worker_id) |> Enum.uniq()
+    workers = from(w in Worker, select: {w.id, w.revision})
+
+    workers =
+      if mode == :selected, do: from(w in workers, where: w.id in ^worker_ids), else: workers
+
     %{
       "zone_id" => zone_id,
       "assignment_token" => assignment_token(zone_id, rows),
-      "worker_revisions" => Repo.all(from(w in Worker, select: {w.id, w.revision})) |> Map.new(),
+      "worker_revisions" => Repo.all(workers) |> Map.new(),
       "assignments" =>
         Enum.map(rows, fn row ->
           row

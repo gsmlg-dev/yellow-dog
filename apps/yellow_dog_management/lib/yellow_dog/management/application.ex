@@ -4,8 +4,11 @@ defmodule YellowDog.Management.Application do
 
   @impl true
   def start(_type, _args) do
+    YellowDog.Management.IntegrationSettings.validate!()
+
     children = [
       Repo,
+      YellowDog.Management.Limits,
       {Phoenix.PubSub, name: YellowDog.ManagementUI.PubSub},
       LogStream,
       {MacDatabase, path: Settings.mac_database_path()},

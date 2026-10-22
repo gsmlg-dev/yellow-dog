@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.BackupsLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Backups, Domain}
+  alias YellowDog.Management.Backups
 
   @poll_interval 2_000
   @deletable_states ~w(ready failed)
@@ -61,7 +61,12 @@ defmodule YellowDog.ManagementUI.BackupsLive do
     if socket.assigns.live_action == :index and valid_label?(label) do
       socket = assign(socket, :label, label)
 
-      case Domain.mutate("create_backup", %{"label" => label}, "operator", Ecto.UUID.generate()) do
+      case YellowDog.ManagementUI.Commands.command(
+             socket,
+             "create_backup",
+             %{"label" => label},
+             Ecto.UUID.generate()
+           ) do
         {:ok, _backup} ->
           {:noreply,
            socket
@@ -119,10 +124,10 @@ defmodule YellowDog.ManagementUI.BackupsLive do
     with true <- socket.assigns.live_action == :index and not is_nil(backup),
          true <- matching_id?(params, field(backup, :id)),
          {:ok, current} <- selected(socket, field(backup, :id), @deletable_states) do
-      case Domain.mutate(
+      case YellowDog.ManagementUI.Commands.command(
+             socket,
              "delete_backup",
              %{"id" => field(current, :id)},
-             "operator",
              Ecto.UUID.generate()
            ) do
         {:ok, _backup} ->
@@ -316,7 +321,7 @@ defmodule YellowDog.ManagementUI.BackupsLive do
     assigns = assign(assigns, :deletable_states, @deletable_states)
 
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <section id={if @live_action == :restore, do: "backup-restore-page", else: "backups-page"}>
         <h1>{@page_title}</h1>
         <div class="management-actions">

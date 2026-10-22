@@ -12,6 +12,7 @@ defmodule YellowDog.ManagementUI.Layouts do
   attr :current_path, :string, default: nil
   attr :servers, :list, default: []
   attr :netmans, :list, default: []
+  attr :caller, :any, default: nil
   slot :inner_block
 
   def app(assigns) do
@@ -44,6 +45,7 @@ defmodule YellowDog.ManagementUI.Layouts do
           navigation_scope={@navigation_scope}
           servers={@servers}
           netmans={@netmans}
+          caller={@caller}
         />
         <main id="workspace" class="yd-main">
           <div class="yd-page">

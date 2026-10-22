@@ -1,9 +1,10 @@
 defmodule YellowDog.Management.Web do
-  @moduledoc "Management API without built-in authentication."
+  @moduledoc "Legacy development API and authenticated UI downloads. Remote clients use /api/v1."
   use Plug.Router
   alias YellowDog.Management.{Backups, ConfigCompiler, Domain, ExportScope}
 
   plug(:headers)
+  plug(:authorize_legacy)
 
   plug(:match)
   plug(:parse_body)
@@ -174,7 +175,24 @@ defmodule YellowDog.Management.Web do
   post "/api/commands/:operation" do
     case get_req_header(conn, "idempotency-key") do
       [key] when byte_size(key) in 1..128 ->
-        respond(conn, Domain.mutate(operation, conn.body_params, "operator", key))
+        caller = conn.assigns.caller
+
+        with :ok <- YellowDog.Management.Access.ui_admin(caller),
+             {:ok, key} <- YellowDog.Management.Caller.request_key(caller, key) do
+          respond(
+            conn,
+            Domain.mutate(
+              operation,
+              conn.body_params,
+              YellowDog.Management.Caller.actor(caller),
+              key,
+              caller: caller,
+              scope: "ui:admin"
+            )
+          )
+        else
+          error -> respond(conn, error)
+        end
 
       _ ->
         respond(
@@ -198,6 +216,46 @@ defmodule YellowDog.Management.Web do
       "content-security-policy",
       "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
+  end
+
+  defp authorize_legacy(conn, _) do
+    config = YellowDog.Management.IntegrationSettings.get()
+
+    download? =
+      conn.method == "GET" and
+        (Regex.match?(~r{\A/api/workers/[^/]+/targets/[^/]+/export\z}, conn.request_path) or
+           Regex.match?(~r{\A/api/backups/[^/]+/download\z}, conn.request_path))
+
+    if config.mode == :protected_remote and not download? do
+      conn
+      |> json(410, %{
+        error: %{code: "legacy_disabled", message: "Use the versioned Management API"}
+      })
+      |> halt()
+    else
+      scope =
+        if String.starts_with?(conn.request_path, "/api/backups"),
+          do: "ui:admin",
+          else: "config:read"
+
+      with {:ok, caller} <- YellowDog.Management.Auth.authenticate(conn, :ui),
+           :ok <- YellowDog.Management.Access.authorize(caller, scope) do
+        assign(conn, :caller, caller)
+      else
+        {:error, error} ->
+          status =
+            case error.code do
+              "forbidden" -> 403
+              "adapters_disabled" -> 503
+              _ -> 401
+            end
+
+          conn
+          |> YellowDog.Management.Auth.challenge(error)
+          |> json(status, %{error: error})
+          |> halt()
+      end
+    end
   end
 
   defp parse_body(conn, _) do

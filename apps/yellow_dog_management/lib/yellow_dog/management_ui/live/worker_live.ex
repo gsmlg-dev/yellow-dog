@@ -81,7 +81,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
       # Retire this interaction even on an ambiguous failure; recovery requires an explicit reset.
       socket = socket |> Submission.new() |> assign(:bootstrap, nil)
 
-      case WorkerConnections.rotate(socket.assigns.worker["id"]) do
+      case YellowDog.ManagementUI.Commands.rotate_worker(socket, socket.assigns.worker["id"]) do
         {:ok, %{"worker" => worker, "token" => token}} ->
           {:noreply,
            assign(socket,
@@ -260,9 +260,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
         params
       )
 
+    params = if operation == "update_worker", do: Map.delete(params, "worker_id"), else: params
     {socket, key} = Submission.prepare(socket, operation, params, token)
 
-    case Domain.mutate(operation, params, "operator", key) do
+    case YellowDog.ManagementUI.Commands.command(socket, operation, params, key) do
       {:ok, _result} ->
         text =
           if operation == "confirm_target",
@@ -449,7 +450,12 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path} servers={@navigation_servers}>
+    <Layouts.app
+      caller={@caller}
+      flash={@flash}
+      current_path={@current_path}
+      servers={@navigation_servers}
+    >
       <p :if={@observation_error} id="node-observation-error" role="status">{@observation_error}</p>
       <button
         :if={@observation_error && is_nil(@worker)}

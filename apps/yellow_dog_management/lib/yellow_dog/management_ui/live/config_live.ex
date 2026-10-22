@@ -25,7 +25,7 @@ defmodule YellowDog.ManagementUI.ConfigLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div class="management-actions">
         <h1 class="text-3xl font-bold">Management Config</h1>
         <button id="management-config-refresh" class="btn btn-ghost" phx-click="refresh">

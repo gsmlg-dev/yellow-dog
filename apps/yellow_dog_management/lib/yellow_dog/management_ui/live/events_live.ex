@@ -23,7 +23,7 @@ defmodule YellowDog.ManagementUI.EventsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div class="max-w-7xl space-y-6">
         <div class="flex flex-wrap justify-between gap-4">
           <div>

@@ -462,7 +462,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
       {socket, key} = prepare_assignment_intent(socket, payload, params["_submission"])
 
-      case Domain.mutate("set_zone_assignments", payload, "operator", key) do
+      case YellowDog.ManagementUI.Commands.command(socket, "set_zone_assignments", payload, key) do
         {:ok, snapshot} ->
           {:noreply,
            socket
@@ -499,7 +499,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
     {socket, key} = Submission.prepare(socket, operation, payload, event["_submission"])
 
-    case Domain.mutate(operation, payload, "operator", key) do
+    case YellowDog.ManagementUI.Commands.command(socket, operation, payload, key) do
       {:ok, saved} ->
         read =
           Database.read(fn ->
@@ -549,7 +549,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         payload = %{"id" => id, "expected_revision" => zone["revision"]}
         {socket, key} = Submission.prepare(socket, "delete_zone", payload, event["_submission"])
 
-        case Domain.mutate("delete_zone", payload, "operator", key) do
+        case YellowDog.ManagementUI.Commands.command(socket, "delete_zone", payload, key) do
           {:ok, _result} ->
             socket =
               socket
@@ -588,7 +588,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       payload = %{"id" => id, "expected_revision" => zone["revision"]}
       {socket, key} = Submission.prepare(socket, "confirm_zone", payload, event["_submission"])
 
-      case Domain.mutate("confirm_zone", payload, "operator", key) do
+      case YellowDog.ManagementUI.Commands.command(socket, "confirm_zone", payload, key) do
         {:ok, _result} ->
           socket =
             socket

@@ -77,6 +77,57 @@ jobs:
           node-version: '24'
       - run: node --test apps/yellow_dog_management/test/management_ui_test.mjs apps/yellow_dog_management/test/editor_guard_test.mjs
 
+  management-integrations:
+    name: Management / OpenAPI and official MCP SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: browser-actions/setup-chrome@v2
+        id: chrome
+        with:
+          chrome-version: stable
+          install-dependencies: true
+      - name: Expose Chrome as the Chromium executable used by the browser fixture
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/management-browser-bin"
+          ln -s "$CHROME_PATH" "$RUNNER_TEMP/management-browser-bin/chromium"
+          echo "$RUNNER_TEMP/management-browser-bin" >> "$GITHUB_PATH"
+          "$CHROME_PATH" --version
+      - run: sudo apt-get update && sudo apt-get install -y postgresql util-linux coreutils
+      - run: pg_config --bindir >> "$GITHUB_PATH"
+      - run: mix deps.get
+      - run: npm ci
+      - name: Validate the generated OpenAPI document and checked contract artifact
+        run: env MIX_ENV=test scripts/e2e/management_openapi.sh --check | tee "$RUNNER_TEMP/management-openapi.log"
+      - name: Exercise protected OAuth, actual SDK lifecycle, cross-entry writes and restart
+        run: scripts/e2e/phase1_postgres.sh scripts/e2e/management_integration.sh | tee "$RUNNER_TEMP/management-integration.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase1-management-integration-evidence
+          path: |
+            ${{ runner.temp }}/management-openapi.log
+            ${{ runner.temp }}/management-integration.log
+            /tmp/yellow-dog-management-integration.*/*.log
+            /tmp/yellow-dog-management-integration.*/state.json
+            /tmp/yellow-dog-phase1-pg.*/init.log
+            /tmp/yellow-dog-phase1-pg.*/server.log
+          if-no-files-found: warn
+
   releases:
     name: Release / ${{ matrix.app }}
     runs-on: ubuntu-latest

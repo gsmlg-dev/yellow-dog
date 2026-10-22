@@ -24,7 +24,12 @@ defmodule YellowDog.ManagementUI.NetmansLive do
   end
 
   def handle_event("save_netman", %{"netman" => params}, socket) when is_map(params) do
-    case Domain.mutate("create_netman", metadata_params(params), "operator", Ecto.UUID.generate()) do
+    case YellowDog.ManagementUI.Commands.command(
+           socket,
+           "create_netman",
+           metadata_params(params),
+           Ecto.UUID.generate()
+         ) do
       {:ok, _node} ->
         {:noreply,
          socket

@@ -8,16 +8,16 @@ defmodule YellowDog.Management.WorkerConnections do
   @digest ~r/^[a-f0-9]{64}$/
   @errors ~w(request_failed invalid_response invalid_target apply_failed stale_target identity_mismatch digest_mismatch connection_failed)
 
-  def create(name) do
+  def create(name, caller \\ nil) do
     if is_binary(name) && byte_size(name) in 1..128 && String.valid?(name) &&
          String.trim(name) == name && not String.contains?(name, <<0>>) do
-      enroll(name)
+      enroll(name, caller)
     else
       {:error, error("invalid_request", "Name must be a bounded nonempty string")}
     end
   end
 
-  defp enroll(name) do
+  defp enroll(name, caller) do
     token = new_token()
     worker_id = Ecto.UUID.generate()
 
@@ -31,8 +31,9 @@ defmodule YellowDog.Management.WorkerConnections do
                         "name" => name,
                         "expected_capabilities" => ["dns"]
                       },
-                      "operator",
-                      Ecto.UUID.generate()
+                      credential_actor(caller),
+                      Ecto.UUID.generate(),
+                      credential_context(caller)
                     ) do
                  {:ok, worker} ->
                    Repo.get!(Worker, worker["id"])
@@ -53,13 +54,19 @@ defmodule YellowDog.Management.WorkerConnections do
     )
   end
 
-  def rotate(worker_id) do
+  def rotate(worker_id, caller \\ nil) do
     token = new_token()
 
     Database.credential(
       fn ->
         case Repo.transaction(fn ->
                worker = locked_worker(worker_id)
+
+               case credential_authorize(caller) do
+                 :ok -> :ok
+                 {:error, failure} -> Repo.rollback(failure)
+               end
+
                if is_nil(worker), do: Repo.rollback(error("not_found", "Worker not found"))
 
                worker
@@ -67,10 +74,12 @@ defmodule YellowDog.Management.WorkerConnections do
                |> Repo.update!()
 
                Repo.insert!(%Audit{
-                 actor: "operator",
+                 actor: credential_actor(caller),
                  operation: "rotate_worker_token",
                  request: %{"worker_id" => worker_id},
-                 result: %{"worker_id" => worker_id}
+                 result: %{"worker_id" => worker_id},
+                 context:
+                   if(caller, do: YellowDog.Management.Caller.audit_context(caller), else: %{})
                })
 
                {:ok, result} = Domain.get_worker(worker_id)
@@ -83,6 +92,13 @@ defmodule YellowDog.Management.WorkerConnections do
       worker_id
     )
   end
+
+  defp credential_actor(nil), do: "operator"
+  defp credential_actor(caller), do: YellowDog.Management.Caller.actor(caller)
+  defp credential_context(nil), do: []
+  defp credential_context(caller), do: [caller: caller, scope: "ui:admin"]
+  defp credential_authorize(nil), do: :ok
+  defp credential_authorize(caller), do: YellowDog.Management.Access.ui_admin(caller)
 
   def bootstrap(worker, token, management_url) do
     "worker_id = #{Jason.encode!(worker["id"])}\ndata_dir = \"data\"\n" <>

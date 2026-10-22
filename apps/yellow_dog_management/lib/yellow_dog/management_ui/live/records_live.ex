@@ -286,7 +286,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
 
     {socket, key} = Submission.prepare(socket, "update_zone", params, token)
 
-    case Domain.mutate("update_zone", params, "operator", key) do
+    case YellowDog.ManagementUI.Commands.command(socket, "update_zone", params, key) do
       {:ok, saved} ->
         {:noreply,
          socket

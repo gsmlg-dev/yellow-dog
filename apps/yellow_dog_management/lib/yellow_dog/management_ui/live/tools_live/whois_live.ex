@@ -25,7 +25,7 @@ defmodule YellowDog.ManagementUI.ToolsLive.WhoisLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div class="max-w-4xl">
         <h1 class="text-2xl font-bold mb-4">Whois Lookup</h1>
 

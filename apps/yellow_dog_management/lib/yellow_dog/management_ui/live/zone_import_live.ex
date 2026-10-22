@@ -120,10 +120,10 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
          true <- is_binary(event["_preview"]) && event["_preview"] == socket.assigns.preview_id,
          {:ok, resource} <- selected_resource(socket.assigns.resources, params["resource_id"]),
          {:ok, zone} <-
-           Domain.mutate(
+           YellowDog.ManagementUI.Commands.command(
+             socket,
              "create_zone",
              %{"content" => resource["content"]},
-             "operator",
              Map.fetch!(socket.assigns.import_keys, resource["id"])
            ) do
       {:noreply,

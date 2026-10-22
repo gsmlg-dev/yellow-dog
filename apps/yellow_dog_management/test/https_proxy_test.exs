@@ -3,12 +3,33 @@ defmodule YellowDog.Management.HTTPSProxyTest do
 
   import Plug.Conn
 
-  alias YellowDog.Management.{Repo, Settings}
+  alias YellowDog.Management.{IntegrationSecurityFixtures, Repo, Settings}
   alias YellowDog.ManagementUI.{Endpoint, TrustedProxy}
 
-  setup do
+  setup_all do
+    {:ok, keys: IntegrationSecurityFixtures.keys()}
+  end
+
+  setup %{keys: keys} do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
+
+    previous_integration = Application.get_env(:yellow_dog_management, :integration)
+    {integration, directory} = IntegrationSecurityFixtures.configure(keys)
+
+    integration = %{
+      integration
+      | resource: "https://management.example",
+        allowed_hosts: ["management.example"]
+    }
+
+    Application.put_env(:yellow_dog_management, :integration, integration)
+    assertion = IntegrationSecurityFixtures.token(keys, profile: :gateway)
+
+    on_exit(fn ->
+      Application.put_env(:yellow_dog_management, :integration, previous_integration)
+      File.rm_rf!(directory)
+    end)
 
     names = ["YELLOW_DOG_MANAGEMENT_EXTERNAL_ORIGIN", "YELLOW_DOG_MANAGEMENT_TRUSTED_PROXY_IP"]
     previous_env = Map.new(names, &{&1, System.get_env(&1)})
@@ -28,12 +49,12 @@ defmodule YellowDog.Management.HTTPSProxyTest do
       end)
     end)
 
-    %{original_config: original_config}
+    %{original_config: original_config, assertion: assertion, integration: integration}
   end
 
   test "forwarding trusts actual peer identity, not forwarded or rewritten client IP", context do
     configure_https(context)
-    conn = proxy_conn("/management")
+    conn = proxy_conn("/management", context)
     rewritten = TrustedProxy.call(conn, [])
     assert rewritten.scheme == :https
     assert rewritten.port == 443
@@ -63,12 +84,12 @@ defmodule YellowDog.Management.HTTPSProxyTest do
        context do
     configure_https(context)
     assert Endpoint.url() == "https://management.example"
-    conn = Endpoint.call(proxy_conn("/management"), Endpoint.init([]))
+    conn = Endpoint.call(proxy_conn("/management", context), Endpoint.init([]))
     assert conn.status == 200
     assert conn.scheme == :https
     assert conn.port == 443
 
-    {socket, status, document, csrf} = websocket(conn, "https://management.example")
+    {socket, status, document, csrf} = websocket(conn, "https://management.example", context)
     assert status =~ "101 Switching Protocols"
     topic = "lv:" <> attribute(document, "[data-phx-main]", "id")
 
@@ -93,28 +114,37 @@ defmodule YellowDog.Management.HTTPSProxyTest do
 
   test "foreign host, scheme and port Origins remain rejected with trusted forwarding", context do
     configure_https(context)
-    conn = Endpoint.call(proxy_conn("/management"), Endpoint.init([]))
+    conn = Endpoint.call(proxy_conn("/management", context), Endpoint.init([]))
 
     for origin <- [
           "https://attacker.example",
           "http://management.example",
           "https://management.example:8443"
         ] do
-      {_socket, status, _document, _csrf} = websocket(conn, origin)
+      {_socket, status, _document, _csrf} = websocket(conn, origin, context)
       assert status =~ "403 Forbidden"
     end
   end
 
-  test "default loopback mode keeps connection matching and ignores forwarded scheme", context do
+  test "trusted-local mode rejects a forwarding proxy and accepts a direct loopback request",
+       context do
+    Application.put_env(:yellow_dog_management, :integration, %{
+      context.integration
+      | mode: :trusted_local,
+        resource: "http://management.example:4270"
+    })
+
     configure_endpoint(context)
-    assert Endpoint.config(:check_origin) == :conn
-    conn = Endpoint.call(proxy_conn("/management"), Endpoint.init([]))
-    assert conn.scheme == :http
-    assert conn.port == 4270
-    {_socket, status, _document, _csrf} = websocket(conn, "http://management.example:4270")
-    assert status =~ "101 Switching Protocols"
-    {_socket, status, _document, _csrf} = websocket(conn, "https://management.example")
-    assert status =~ "403 Forbidden"
+    conn = Endpoint.call(proxy_conn("/management", context), Endpoint.init([]))
+    assert conn.status == 403
+
+    direct =
+      proxy_conn("/management", context)
+      |> delete_req_header("x-forwarded-proto")
+      |> delete_req_header("x-forwarded-port")
+      |> Endpoint.call(Endpoint.init([]))
+
+    assert direct.status == 200
   end
 
   defp configure_https(context) do
@@ -129,14 +159,15 @@ defmodule YellowDog.Management.HTTPSProxyTest do
     Endpoint.config_change([{Endpoint, config}], [])
   end
 
-  defp proxy_conn(path) do
+  defp proxy_conn(path, context) do
     Plug.Test.conn(:get, "http://management.example:4270" <> path)
     |> put_private(:phoenix_endpoint, Endpoint)
+    |> put_req_header("x-yellow-dog-gateway-assertion", context.assertion)
     |> put_req_header("x-forwarded-proto", "https")
     |> put_req_header("x-forwarded-port", "443")
   end
 
-  defp websocket(conn, origin) do
+  defp websocket(conn, origin, context) do
     document = LazyHTML.from_document(conn.resp_body)
     csrf = attribute(document, "meta[name='csrf-token']", "content")
 
@@ -164,6 +195,9 @@ defmodule YellowDog.Management.HTTPSProxyTest do
       "\r\nSec-WebSocket-Version: 13\r\nOrigin: ",
       origin,
       "\r\nX-Forwarded-Proto: https\r\nX-Forwarded-Port: 443\r\n",
+      "X-Yellow-Dog-Gateway-Assertion: ",
+      context.assertion,
+      "\r\n",
       "Cookie: _yellow_dog_management=",
       cookie,
       "\r\n\r\n"

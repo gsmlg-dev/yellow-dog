@@ -31,4 +31,7 @@ export YELLOW_DOG_MANAGEMENT_DATABASE_URL="postgres://postgres@127.0.0.1:$port/y
 export YELLOW_DOG_PHASE1_PG_DATA_DIR="$work_dir/data"
 export YELLOW_DOG_PHASE1_PG_PORT="$port"
 export ERL_FLAGS="${ERL_FLAGS:-+S 2:2 +A 2}"
+# Disposable checks explicitly opt into the single-operator loopback boundary.
+# Protected integration runners override this mode before starting Management.
+export YELLOW_DOG_MANAGEMENT_AUTH_MODE="${YELLOW_DOG_MANAGEMENT_AUTH_MODE:-trusted_local}"
 "$@"

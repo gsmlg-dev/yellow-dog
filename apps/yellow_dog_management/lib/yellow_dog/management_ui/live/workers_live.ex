@@ -81,10 +81,10 @@ defmodule YellowDog.ManagementUI.WorkersLive do
     if socket.assigns.live_action == :enrollment and intent == socket.assigns.enrollment_intent do
       case params["allow_anonymous"] do
         value when value in ["true", "false"] ->
-          case Domain.mutate(
+          case YellowDog.ManagementUI.Commands.command(
+                 socket,
                  "set_worker_enrollment",
                  %{"allow_anonymous" => value == "true"},
-                 "operator",
                  intent
                ) do
             {:ok, settings} ->
@@ -122,7 +122,7 @@ defmodule YellowDog.ManagementUI.WorkersLive do
           registered_worker: nil
         )
 
-      case WorkerConnections.create(params["name"]) do
+      case YellowDog.ManagementUI.Commands.create_worker(socket, params["name"]) do
         {:ok, connection} ->
           {:noreply,
            socket

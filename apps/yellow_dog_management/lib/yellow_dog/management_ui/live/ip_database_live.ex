@@ -52,7 +52,12 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
       intents = Map.put(socket.assigns.sync_intents, type, %{intent | attempted: true})
       socket = assign(socket, sync_intents: intents, download_result: nil, error: nil)
 
-      case Domain.mutate("run_task", %{"key" => "ip_#{type}"}, "operator", intent.key) do
+      case YellowDog.ManagementUI.Commands.command(
+             socket,
+             "run_task",
+             %{"key" => "ip_#{type}"},
+             intent.key
+           ) do
         {:ok, job} ->
           intents = Map.put(socket.assigns.sync_intents, type, sync_intent())
           {:noreply, socket |> assign(sync_intents: intents, download_result: job) |> refresh()}
@@ -123,7 +128,7 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
       schedule = %{schedule | request: request}
       socket = assign(socket, :schedules, Map.put(socket.assigns.schedules, kind, schedule))
 
-      case Domain.mutate("update_task", payload, "operator", key) do
+      case YellowDog.ManagementUI.Commands.command(socket, "update_task", payload, key) do
         {:ok, task} ->
           schedules = Map.put(socket.assigns.schedules, kind, schedule(task))
 
@@ -371,7 +376,7 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <div id="ip-database-workflow" phx-hook="EditorGuard">
         <h1>IP Database</h1>
         <button id="ip-database-refresh" class="btn btn-secondary" phx-click="refresh">Refresh</button>

@@ -252,8 +252,9 @@ defmodule YellowDog.Management.WorkerProfilesLiveTest do
       assert non_worker_snapshot() == preserved
       request = hd(Domain.list_audit())["request"]
       assert request["id"] == worker["id"]
-      assert request["worker_id"] == worker["id"]
+      refute Map.has_key?(request, "worker_id")
       assert request["expected_revision"] == current["revision"]
+      assert hd(Domain.list_audit())["context"]["source"] == "ui"
       refute Map.has_key?(request, "expected_capabilities")
       refute Map.has_key?(request, "services")
       refute Map.has_key?(request, "server_agent")

@@ -112,6 +112,7 @@ defmodule YellowDog.Management.Audit do
     field(:operation, :string)
     field(:request, :map)
     field(:result, :map)
+    field(:context, :map, default: %{})
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 end

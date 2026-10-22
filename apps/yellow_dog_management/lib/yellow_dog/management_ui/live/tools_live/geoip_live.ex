@@ -7,7 +7,7 @@ defmodule YellowDog.ManagementUI.ToolsLive.GeoipLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_path={@current_path}>
+    <Layouts.app caller={@caller} flash={@flash} current_path={@current_path}>
       <h1>IP Geo Lookup</h1>
       <p id="geoip-lookup-unavailable" role="status">
         Geographic lookup is unavailable until Worker-backed diagnostics are implemented. Management synchronizes database artifacts; it does not perform ongoing Worker lookups.
