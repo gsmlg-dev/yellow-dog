@@ -76,10 +76,11 @@ zero-Worker access, disabled entries, scoped DNS routes with malformed query
 identities, refresh and browser back/forward. Omit `MANAGEMENT_BROWSER_SCOPE` to
 run the full existing page workflows as well. With `phoenix_duskmoon` 10.0.11,
 the full flow passes the notification-trigger expanded-state checks, including
-click close/reopen and Escape dismissal. On 2026-10-22 it then stopped at the
-later publish-preview assertion expecting `/prepared_preview/`; assertions after
-that point remain unverified. See the dependency follow-up in
-[management-data-workflow.md](management-data-workflow.md).
+click close/reopen and Escape dismissal. The 2026-10-23 Step 3 repair run also
+passed the later publication, import, artifact, logging and mobile assertions.
+The obsolete visible `/prepared_preview/` expectation was migrated to the current
+review/publication workflow. See the current repair evidence and remaining ARM
+packaging limitation in [management-data-workflow.md](management-data-workflow.md).
 The wrapper reports its artifact directory and stops its Management/PostgreSQL
 processes. Set `MANAGEMENT_SCREENSHOT_PREFIX=/absolute/path/navigation` to capture
 each desktop section, the mobile navigation and existing layout screenshots.

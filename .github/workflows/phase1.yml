@@ -75,7 +75,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - run: node --test apps/yellow_dog_management/test/management_ui_test.mjs
+      - run: node --test apps/yellow_dog_management/test/management_ui_test.mjs apps/yellow_dog_management/test/editor_guard_test.mjs
 
   releases:
     name: Release / ${{ matrix.app }}

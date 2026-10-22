@@ -138,6 +138,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     a = assignment_service("ui-assignment-a")
     b = assignment_service("ui-assignment-b")
     {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/edit")
+    view |> element("a", "Application scope") |> render_click()
     click_event(view, "add_assignment_worker", %{"id" => a["worker_id"]})
     click_event(view, "add_assignment_worker", %{"id" => b["worker_id"]})
     assert Domain.list_assignments(a["worker_id"]) == []
@@ -197,6 +198,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     a = assignment_service("ui-stale-a")
     b = assignment_service("ui-stale-b")
     {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/edit")
+    view |> element("a", "Application scope") |> render_click()
     click_event(view, "add_assignment_worker", %{"id" => a["worker_id"]})
 
     mutate("assign", %{

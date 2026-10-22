@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.DnsAclsLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Countries, DnsAcls, Domain}
+  alias YellowDog.Management.{Countries, Database, DnsAcls, Domain}
   alias YellowDog.ManagementUI.{DnsRulesText, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
@@ -13,9 +13,11 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
     {:ok,
      assign(Submission.new(socket),
        editor_reset: Ecto.UUID.generate(),
+       row_submission_id: Ecto.UUID.generate(),
+       delete_request: nil,
        dirty: false,
        page_title: "DNS ACLs",
-       workers: Domain.list_workers(),
+       workers: [],
        worker: nil,
        services: [],
        service: nil,
@@ -24,6 +26,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
        deleting: nil,
        scope_params: %{},
        error: nil,
+       refresh_error: nil,
        field_errors: %{},
        filter: "",
        country_search: "",
@@ -37,7 +40,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   @impl true
   def handle_params(_params, uri, socket) do
     params = CurrentPath.route_path_params(socket, uri)
-    {:noreply, socket |> load(params) |> reset_form()}
+    {:noreply, load(socket, params)}
   end
 
   @impl true
@@ -67,7 +70,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   end
 
   def handle_event("refresh", _params, socket) do
-    {:noreply, socket |> load(socket.assigns.scope_params) |> reset_form()}
+    {:noreply, load(socket, socket.assigns.scope_params)}
   end
 
   def handle_event("cancel", _params, socket) do
@@ -235,13 +238,25 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
       {socket, key} = Submission.prepare(socket, operation, fields, payload["_submission"])
 
       case Domain.mutate(operation, fields, "operator", key) do
-        {:ok, _acl} ->
+        {:ok, acl} ->
+          socket =
+            socket
+            |> Submission.new()
+            |> assign(
+              editing: acl,
+              form: acl_form(acl),
+              dirty: false,
+              editor_reset: Ecto.UUID.generate()
+            )
+
           {:noreply,
            socket
            |> load(socket.assigns.scope_params)
            |> clear_flash()
-           |> put_flash(:info, "Desired ACL saved; not enforced/exported")
-           |> reset_form()}
+           |> put_flash(
+             :info,
+             "Desired ACL saved; not enforced/exported (revision #{acl["revision"]}, #{acl["id"]})."
+           )}
 
         {:error, error} ->
           failure(socket, error)
@@ -271,7 +286,8 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
             assign(socket,
               row_submission_id: Ecto.UUID.generate(),
               delete_request: nil,
-              deleting: nil
+              deleting: nil,
+              acls: Enum.reject(socket.assigns.acls, &(&1["id"] == id))
             )
 
           socket =
@@ -297,6 +313,30 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   defp handle_submission(_event, _params, socket), do: failure(socket, "Invalid ACL action")
 
   defp load(socket, params) do
+    # Retain an initial routed scope so Refresh can recover that same page.
+    socket =
+      if socket.assigns.scope_params == %{},
+        do: assign(socket, :scope_params, params),
+        else: socket
+
+    read_socket(socket, fn -> socket |> do_load(params) |> reset_form() end)
+  end
+
+  defp read_socket(socket, fun) do
+    case Database.read(fun) do
+      {:ok, updated} ->
+        assign(updated, refresh_error: nil)
+
+      {:error, _error} ->
+        assign(
+          socket,
+          :refresh_error,
+          "Data refresh unavailable: Management could not read PostgreSQL. Showing last known catalog; retained editor values have not been discarded."
+        )
+    end
+  end
+
+  defp do_load(socket, params) do
     socket =
       socket
       |> Submission.new()
@@ -336,7 +376,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
       socket = assign(socket, worker: worker, services: services)
 
       case params do
-        %{"service_id" => service_id} -> load_service(socket, service_id)
+        %{"service_id" => service_id} -> do_load_service(socket, service_id)
         _ -> socket
       end
     else
@@ -346,6 +386,10 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
   end
 
   defp load_service(socket, service_id) do
+    read_socket(socket, fn -> do_load_service(socket, service_id) end)
+  end
+
+  defp do_load_service(socket, service_id) do
     with {:ok, id} <- uuid(service_id),
          service when not is_nil(service) <-
            Enum.find(socket.assigns.services, &(&1["id"] == id)),
@@ -539,6 +583,7 @@ defmodule YellowDog.ManagementUI.DnsAclsLive do
           Saved in Management; not included in the current Worker target/export. ACLs belong to one explicit Worker DNS Service.
           Empty rules and empty network sets are not catch-all rules. Rule order is retained as desired data, not evaluated here.
         </p>
+        <p :if={@refresh_error} role="alert">{@refresh_error}</p>
         <div :if={@error} id="dns-acl-error" class="alert alert-error" role="alert">{@error}</div>
         <div class="management-actions">
           <button

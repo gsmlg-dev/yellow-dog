@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.IpDatabaseLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Domain, TaskArtifacts}
+  alias YellowDog.Management.{Database, Domain, TaskArtifacts}
 
   @verification_ttl 60
 
@@ -19,6 +19,7 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
        sync_intents: new_sync_intents(),
        schedules: %{},
        error: nil,
+       refresh_error: nil,
        pages: %{},
        checks: %{}
      )
@@ -141,10 +142,14 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
   end
 
   def handle_event("reload_schedule", %{"type" => kind}, socket) when kind in ~w(city country) do
-    {:ok, task} = Domain.get_task("ip_#{kind}")
+    case Database.read(fn -> Domain.get_task("ip_#{kind}") end) do
+      {:ok, {:ok, task}} ->
+        {:noreply,
+         assign(socket, schedules: Map.put(socket.assigns.schedules, kind, schedule(task)))}
 
-    {:noreply,
-     assign(socket, :schedules, Map.put(socket.assigns.schedules, kind, schedule(task)))}
+      {:error, _error} ->
+        {:noreply, refresh_unavailable(socket)}
+    end
   end
 
   def handle_event(_event, _params, socket),
@@ -170,16 +175,24 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
          |> apply_checks()}
 
       %{token: ^token, state: :checking} = check ->
-        {available, reason} =
+        {state, available, reason} =
           case outcome do
-            {:ok, {:ok, _artifact}} -> {true, nil}
-            {:ok, {:error, reason}} -> {false, reason}
-            {:exit, _reason} -> {false, :verification_interrupted}
+            {:ok, {:ok, {:ok, _artifact}}} ->
+              {:verified, true, nil}
+
+            {:ok, {:ok, {:error, reason}}} ->
+              {:verified, false, reason}
+
+            {:ok, {:error, %{code: "database_unavailable"}}} ->
+              {:unavailable, nil, :database_unavailable}
+
+            {:exit, _reason} ->
+              {:unavailable, nil, :verification_interrupted}
           end
 
         check =
           Map.merge(check, %{
-            state: :verified,
+            state: state,
             available: available,
             availability_error: reason,
             checked_at: DateTime.utc_now()
@@ -196,6 +209,30 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
   end
 
   defp refresh(socket, revalidate \\ false) do
+    case Database.read(fn -> refresh_data(socket) end) do
+      {:ok, {databases, schedules, result}} ->
+        apply_refresh(socket, databases, schedules, result, revalidate)
+
+      {:error, _error} ->
+        refresh_unavailable(socket)
+    end
+  end
+
+  defp refresh_unavailable(socket) do
+    detail =
+      if socket.assigns.databases == [],
+        do: "No catalog data has been loaded. Refresh to retry.",
+        else:
+          "Showing last known catalog and synchronization data; retained settings have not been discarded."
+
+    assign(
+      socket,
+      :refresh_error,
+      "Data refresh unavailable: Management could not read PostgreSQL. " <> detail
+    )
+  end
+
+  defp refresh_data(socket) do
     tasks = Map.new(Domain.list_tasks(), &{&1["key"], &1})
 
     databases =
@@ -217,7 +254,17 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
           result
       end
 
-    socket = assign(socket, databases: databases, schedules: schedules, download_result: result)
+    {databases, schedules, result}
+  end
+
+  defp apply_refresh(socket, databases, schedules, result, revalidate) do
+    socket =
+      assign(socket,
+        databases: databases,
+        schedules: schedules,
+        download_result: result,
+        refresh_error: nil
+      )
 
     socket =
       if connected?(socket) do
@@ -277,7 +324,9 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
 
           socket
           |> assign(:checks, Map.put(socket.assigns.checks, kind, check))
-          |> start_async({:artifact_check, kind, token}, fn -> TaskArtifacts.get(kind, digest) end)
+          |> start_async({:artifact_check, kind, token}, fn ->
+            Database.read(fn -> TaskArtifacts.get(kind, digest) end)
+          end)
         else
           socket
         end
@@ -339,6 +388,7 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
           Synchronization {result_state(@download_result)} (job {@download_result["id"]}). Queueing is not successful completion.
           <.link navigate={"/system/tasks/#{@download_result["task_key"]}#task-job-#{@download_result["id"]}"}>View this job in Monitoring</.link>
         </p>
+        <p :if={@refresh_error} id="ip-database-refresh-error" role="alert">{@refresh_error}</p>
         <p :if={@error} id="ip-database-error" class="alert alert-error" role="alert">{@error}</p>
         <section
           :for={database <- @databases}
@@ -430,6 +480,9 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
                 <dt>Build</dt><dd>{display(database.selected.metadata["build_epoch"])}</dd>
                 <dt>Metadata</dt><dd>{Jason.encode!(database.selected.metadata)}</dd>
               </dl>
+              <p :if={database.selected.verification == :unavailable} role="alert">
+                Integrity check unavailable; selected bytes have not been verified. Refresh to retry.
+              </p>
               <p :if={database.selected.available == false} role="alert">
                 Selected artifact unavailable: {inspect(database.selected.availability_error)}. Synchronize a valid durable file before distributing it.
               </p>
@@ -550,6 +603,7 @@ defmodule YellowDog.ManagementUI.IpDatabaseLive do
 
   defp availability(nil), do: "No selected artifact"
   defp availability(%{verification: :checking}), do: "Checking"
+  defp availability(%{verification: :unavailable}), do: "Check unavailable"
   defp availability(%{verification: :unverified}), do: "Unverified"
   defp availability(%{available: true}), do: "Available"
   defp availability(_artifact), do: "Unavailable"

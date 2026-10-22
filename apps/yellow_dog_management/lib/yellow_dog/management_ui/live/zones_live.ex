@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.ConfigSpec
-  alias YellowDog.Management.{Database, Domain}
+  alias YellowDog.Management.{Database, Domain, ZoneAssignmentChoices}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
   alias YellowDog.ManagementUI.Submission
 
@@ -13,7 +13,10 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   def mount(_params, _session, socket) do
     {:ok,
      assign(Submission.new(socket),
-       workers: assignment_workers(),
+       navigation_workers: ZoneAssignmentChoices.navigation(),
+       workers: [],
+       assignment_candidates: nil,
+       assignment_candidate_options: %{},
        zones: [],
        catalog: %{},
        catalog_options: %{},
@@ -50,7 +53,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     route = URI.parse(uri).path
     same_route? = route == socket.assigns.catalog_route
 
-    case base_path(path_params) do
+    case base_path(path_params, socket.assigns.navigation_workers) do
       {:ok, base_path} ->
         {:noreply,
          apply_action(
@@ -68,56 +71,62 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     end
   end
 
-  defp base_path(%{"server_id" => server_id}) do
-    with {:ok, _worker} <- Domain.get_worker(server_id) do
-      {:ok, "/server/#{URI.encode(server_id)}/dns/zones"}
-    end
+  defp base_path(%{"server_id" => server_id}, workers) do
+    if Enum.any?(workers, &(&1["id"] == server_id)),
+      do: {:ok, "/server/#{URI.encode(server_id)}/dns/zones"},
+      else: {:error, %{message: "Worker not found"}}
   end
 
-  defp base_path(_params), do: {:ok, "/management/zones"}
+  defp base_path(_params, _workers), do: {:ok, "/management/zones"}
 
   defp apply_action(socket, params, base_path, same_route?) do
     socket = socket |> assign(:base_path, base_path) |> load_catalog()
 
-    case socket.assigns.live_action do
-      action when action in [:index, :new] and same_route? ->
-        socket
-
-      :index ->
-        socket
-        |> Submission.new()
-        |> reset_assignments()
-        |> assign(page_title: "DNS Zones", zone: nil, content_dirty: false)
-
-      :new ->
-        socket
-        |> Submission.new()
-        |> reset_assignments()
-        |> assign(
-          page_title: "New DNS Zone",
-          deleting: nil,
-          zone: nil,
-          content_dirty: false,
-          content_reset: Ecto.UUID.generate(),
-          rows: [new_record("SOA"), new_record("NS")],
-          form: to_form(%{"name" => ""}, as: "zone")
-        )
-
-      action when action in [:edit, :versions, :application] ->
-        if socket.assigns.zone && socket.assigns.zone["id"] == params["zone_id"] do
+    socket =
+      case socket.assigns.live_action do
+        action when action in [:index, :new] and same_route? ->
           socket
-        else
-          case Domain.get_zone(params["zone_id"]) do
-            {:ok, zone} ->
-              load_zone(Submission.new(socket), zone)
 
-            {:error, error} ->
-              socket
-              |> put_flash(:error, error.message)
-              |> push_patch(to: query_path(base_path, socket.assigns.catalog_options))
+        :index ->
+          socket
+          |> Submission.new()
+          |> reset_assignments()
+          |> assign(page_title: "DNS Zones", zone: nil, content_dirty: false)
+
+        :new ->
+          socket
+          |> Submission.new()
+          |> reset_assignments()
+          |> assign(
+            page_title: "New DNS Zone",
+            deleting: nil,
+            zone: nil,
+            content_dirty: false,
+            content_reset: Ecto.UUID.generate(),
+            rows: [new_record("SOA"), new_record("NS")],
+            form: to_form(%{"name" => ""}, as: "zone")
+          )
+
+        action when action in [:edit, :versions, :application] ->
+          if socket.assigns.zone && socket.assigns.zone["id"] == params["zone_id"] do
+            socket
+          else
+            case Domain.get_zone(params["zone_id"]) do
+              {:ok, zone} ->
+                load_zone(Submission.new(socket), zone)
+
+              {:error, error} ->
+                socket
+                |> put_flash(:error, error.message)
+                |> push_patch(to: query_path(base_path, socket.assigns.catalog_options))
+            end
           end
-        end
-    end
+      end
+
+    if socket.assigns.live_action == :application and
+         is_nil(socket.assigns.assignment_candidates),
+       do: load_assignment_candidates(socket),
+       else: socket
   end
 
   defp load_catalog(socket) do
@@ -226,8 +235,31 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     {:noreply, socket |> assign_form(params, rows) |> assign(:content_dirty, true)}
   end
 
+  def handle_event(
+        "filter_assignment_candidates",
+        %{"candidates" => %{"search" => search}},
+        socket
+      )
+      when is_binary(search) do
+    {:noreply,
+     socket
+     |> assign(:assignment_candidate_options, %{"search" => search, "page" => "1"})
+     |> load_assignment_candidates()}
+  end
+
+  def handle_event("assignment_candidates_page", %{"page" => page}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       :assignment_candidate_options,
+       Map.put(socket.assigns.assignment_candidate_options, "page", page)
+     )
+     |> load_assignment_candidates()}
+  end
+
   def handle_event("add_assignment_worker", %{"id" => worker_id}, socket) do
-    worker = Enum.find(socket.assigns.workers, &(&1["id"] == worker_id))
+    candidates = socket.assigns.assignment_candidates
+    worker = candidates && Enum.find(candidates["workers"], &(&1["id"] == worker_id))
     services = if worker, do: dns_services(worker), else: []
 
     cond do
@@ -250,10 +282,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
       true ->
         service_id =
-          case services do
-            [service] -> service["id"]
-            _ -> ""
-          end
+          if worker["dns_service_count"] == 1, do: hd(services)["id"], else: ""
 
         row = %{
           "key" => Ecto.UUID.generate(),
@@ -620,7 +649,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   defp load_assignments(socket, zone_id) do
     case Domain.get_zone_assignments(zone_id) do
       {:ok, snapshot} ->
-        socket |> assign(:workers, assignment_workers()) |> apply_assignment_snapshot(snapshot)
+        socket |> apply_assignment_snapshot(snapshot) |> load_selected_assignment_workers()
 
       {:error, error} ->
         assign(socket,
@@ -664,6 +693,9 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     do:
       assign(reset_assignment_intent(socket),
         assignment_zone_id: nil,
+        workers: [],
+        assignment_candidates: nil,
+        assignment_candidate_options: %{},
         assignment_editable: false,
         affected_workers: [],
         assignment_rows: [],
@@ -718,11 +750,41 @@ defmodule YellowDog.ManagementUI.ZonesLive do
 
   defp dns_services(worker), do: Enum.filter(worker["services"], &(&1["type"] == "dns"))
 
-  defp assignment_workers do
-    Enum.map(Domain.list_workers(), fn summary ->
-      {:ok, worker} = Domain.get_worker(summary["id"])
-      worker
-    end)
+  defp load_assignment_candidates(socket) do
+    if socket.assigns.live_action == :application do
+      socket
+      |> assign(
+        :assignment_candidates,
+        ZoneAssignmentChoices.candidates(socket.assigns.assignment_candidate_options)
+      )
+      |> load_selected_assignment_workers()
+    else
+      socket
+    end
+  end
+
+  defp load_selected_assignment_workers(socket) do
+    selected = ZoneAssignmentChoices.selected(socket.assigns.assignment_rows)
+
+    candidates =
+      if socket.assigns.assignment_candidates,
+        do: socket.assigns.assignment_candidates["workers"],
+        else: []
+
+    workers =
+      (selected ++ candidates)
+      |> Enum.group_by(& &1["id"])
+      |> Enum.map(fn {_id, workers} ->
+        services =
+          workers
+          |> Enum.flat_map(& &1["services"])
+          |> Enum.uniq_by(& &1["id"])
+          |> Enum.sort_by(&{&1["instance_id"], &1["id"]})
+
+        Map.put(hd(workers), "services", services)
+      end)
+
+    assign(socket, :workers, workers)
   end
 
   defp assignment_worker(workers, row), do: Enum.find(workers, &(&1["id"] == row["worker_id"]))
@@ -820,7 +882,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     <Layouts.app
       flash={@flash}
       current_path={@current_path}
-      servers={Enum.map(@workers, &%{id: &1["id"], name: &1["name"]})}
+      servers={Enum.map(@navigation_workers, &%{id: &1["id"], name: &1["name"]})}
     >
       <div id="zone-workflow" phx-hook="EditorGuard">
         <input id="submission-intent" type="hidden" value={@submission_id} />
@@ -1052,9 +1114,55 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             >
               {@assignment_error}
             </p>
-            <div class="management-actions">
+            <form
+              :if={@assignment_candidates}
+              id="zone-assignment-candidates-filter"
+              phx-change="filter_assignment_candidates"
+              phx-submit="filter_assignment_candidates"
+            >
+              <label class="management-field">
+                <span>Find Workers or DNS Services</span>
+                <input
+                  class="input"
+                  name="candidates[search]"
+                  value={@assignment_candidates["search"]}
+                  maxlength="253"
+                />
+              </label>
+            </form>
+            <p
+              :if={@assignment_candidates}
+              id="zone-assignment-candidate-count"
+              data-displayed={@assignment_candidates["displayed"]}
+            >
+              {@assignment_candidates["displayed"]} of {@assignment_candidates["total"]} Worker / DNS Service choices. Page {@assignment_candidates[
+                "page"
+              ]}.
+              Selected assignments remain visible below. Service choices follow this search and page; selected services are always retained.
+            </p>
+            <div :if={@assignment_candidates} class="management-actions">
               <button
-                :for={worker <- @workers}
+                :if={@assignment_candidates["page"] > 1}
+                type="button"
+                class="btn btn-ghost"
+                phx-click="assignment_candidates_page"
+                phx-value-page={@assignment_candidates["page"] - 1}
+              >Previous choices</button>
+              <button
+                :if={@assignment_candidates["has_next"]}
+                type="button"
+                class="btn btn-ghost"
+                phx-click="assignment_candidates_page"
+                phx-value-page={@assignment_candidates["page"] + 1}
+              >Next choices</button>
+            </div>
+            <div
+              :if={@assignment_candidates}
+              id="zone-assignment-candidates"
+              class="management-actions"
+            >
+              <button
+                :for={worker <- @assignment_candidates["workers"]}
                 class="btn btn-secondary"
                 phx-click="add_assignment_worker"
                 phx-value-id={worker["id"]}
@@ -1063,10 +1171,13 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                 Assign {worker["name"]} ({worker["id"]})
               </button>
             </div>
-            <p :if={@workers == []}>
+            <p :if={@navigation_workers == []}>
               No logical Workers are registered. Zone drafts and versions remain global.
             </p>
-            <p :for={worker <- @workers} :if={dns_services(worker) == []}>
+            <p
+              :for={worker <- (@assignment_candidates && @assignment_candidates["workers"]) || []}
+              :if={dns_services(worker) == []}
+            >
               {worker["name"]} has no DNS Services.
               <.link navigate={ServicePaths.server_path(worker["id"], :service_new)}>Configure a DNS Service</.link>
             </p>

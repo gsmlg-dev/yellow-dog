@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.DnsViewsLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Countries, DnsAcls, Domain}
+  alias YellowDog.Management.{Countries, Database, DnsAcls, Domain}
   alias YellowDog.ManagementUI.{DnsRulesText, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
@@ -23,10 +23,13 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
        scope_params: %{},
        dirty: false,
        editor_reset: Ecto.UUID.generate(),
+       row_submission_id: Ecto.UUID.generate(),
+       row_requests: %{},
        pending_scope: nil,
        editing: nil,
        deleting: nil,
        error: nil,
+       refresh_error: nil,
        field_errors: %{},
        filter: "",
        status_filter: "all",
@@ -40,7 +43,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
   @impl true
   def handle_params(_params, uri, socket) do
-    {:noreply, socket |> load(CurrentPath.route_path_params(socket, uri)) |> reset_form()}
+    {:noreply, load(socket, CurrentPath.route_path_params(socket, uri))}
   end
 
   @impl true
@@ -61,7 +64,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   end
 
   def handle_event("refresh", _params, socket) do
-    {:noreply, socket |> load(socket.assigns.scope_params) |> reset_form()}
+    {:noreply, load(socket, socket.assigns.scope_params)}
   end
 
   def handle_event("cancel", _params, socket),
@@ -286,7 +289,24 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
       end
 
     case Domain.mutate(operation, params, "operator", key) do
-      {:ok, _view} ->
+      {:ok, result} ->
+        # Retain the acknowledged revision independently of the following display read.
+        socket =
+          if source == :editor do
+            socket
+            |> Submission.new()
+            |> assign(
+              editing: result,
+              form: view_form(result),
+              dirty: false,
+              editor_reset: Ecto.UUID.generate()
+            )
+          else
+            views = Enum.reject(socket.assigns.views, &(&1["id"] == fields["id"]))
+            views = if operation == "delete_dns_view", do: views, else: [result | views]
+            assign(socket, views: ordered_views(views))
+          end
+
         socket =
           if source == :row do
             socket =
@@ -303,8 +323,13 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
             load_service(assign(socket, deleting: nil), socket.assigns.service["id"])
           else
-            socket |> load(socket.assigns.scope_params) |> reset_form()
+            load(socket, socket.assigns.scope_params)
           end
+
+        feedback =
+          if source == :editor,
+            do: feedback <> " (revision #{result["revision"]}, #{result["id"]}).",
+            else: feedback
 
         {:noreply, socket |> clear_flash() |> put_flash(:info, feedback)}
 
@@ -327,6 +352,30 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   end
 
   defp load(socket, params) do
+    # Retain an initial routed scope so Refresh can recover that same page.
+    socket =
+      if socket.assigns.scope_params == %{},
+        do: assign(socket, :scope_params, params),
+        else: socket
+
+    read_socket(socket, fn -> socket |> do_load(params) |> reset_form() end)
+  end
+
+  defp read_socket(socket, fun) do
+    case Database.read(fun) do
+      {:ok, updated} ->
+        assign(updated, refresh_error: nil)
+
+      {:error, _error} ->
+        assign(
+          socket,
+          :refresh_error,
+          "Data refresh unavailable: Management could not read PostgreSQL. Showing last known catalog; retained editor values have not been discarded."
+        )
+    end
+  end
+
+  defp do_load(socket, params) do
     socket =
       socket
       |> clear_editor()
@@ -354,11 +403,11 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
 
       case params do
         %{"service_id" => service_id} ->
-          load_service(socket, service_id)
+          do_load_service(socket, service_id)
 
         _ ->
           case services do
-            [service] -> load_service(socket, service["id"])
+            [service] -> do_load_service(socket, service["id"])
             _ -> socket
           end
       end
@@ -408,6 +457,10 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
   end
 
   defp load_service(socket, service_id) do
+    read_socket(socket, fn -> do_load_service(socket, service_id) end)
+  end
+
+  defp do_load_service(socket, service_id) do
     with {:ok, id} <- uuid(service_id),
          service when not is_nil(service) <-
            Enum.find(socket.assigns.services, &(&1["id"] == id)),
@@ -782,6 +835,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
           <p class="management-help">
             Saved in Management; not included in the current Worker target/export. Views belong to one explicit Worker DNS Service.
           </p>
+          <p :if={@refresh_error} role="alert">{@refresh_error}</p>
           <p :if={@error} id="dns-view-error" class="text-error" role="alert">{@error}</p>
           <form id="dns-view-worker-selector" phx-change="select_worker">
             <input type="hidden" name="_discard" value="false" />

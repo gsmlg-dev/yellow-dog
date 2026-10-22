@@ -167,6 +167,10 @@ defmodule YellowDog.Management.UITest do
     assert_patch(data, "/server/ui-export/dns/zones/#{zone["id"]}/edit")
 
     data
+    |> element("a[href='/server/ui-export/dns/zones/#{zone["id"]}/application']")
+    |> render_click()
+
+    data
     |> element("button[phx-click='add_assignment_worker'][phx-value-id='ui-export']")
     |> render_click()
 

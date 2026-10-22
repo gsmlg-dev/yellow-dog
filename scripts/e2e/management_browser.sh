@@ -52,7 +52,7 @@ export MANAGEMENT_MAC_SMOKE_PATH="$YELLOW_DOG_MANAGEMENT_MAC_DATABASE_PATH"
 export MANAGEMENT_UI_URL="http://127.0.0.1:$YELLOW_DOG_MANAGEMENT_PORT"
 unset YELLOW_DOG_MANAGEMENT_GEOIP_COUNTRY_PATH YELLOW_DOG_MANAGEMENT_OPERATOR_TOKEN
 
-if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ]; then
+if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ] || [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = full ]; then
   mkdir "$artifact_dir/source"
   gzip -c "$artifact_dir/city.mmdb" > "$artifact_dir/source/city.mmdb.gz"
   fixture_port=$(python3 -c 'import socket; listener = socket.socket(); listener.bind(("127.0.0.1", 0)); print(listener.getsockname()[1]); listener.close()')

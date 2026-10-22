@@ -285,6 +285,7 @@ export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   await navigate(`/management/zones/${zone.id}/edit`);
   await evaluate(`document.querySelector('[phx-click="confirm_zone"]').click()`);
   await until(async () => (await api(`/zones/${zone.id}/versions`)).length === 1, 'Data version confirmation failed');
+  await navigate(`/management/zones/${zone.id}/application`);
   await evaluate(`document.querySelector('[phx-click="add_assignment_worker"][phx-value-id="${a}"]').click()`);
   await until(() => evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 1`), 'Assignment row missing');
   await evaluate(`document.querySelector('#zone-assignments-form').requestSubmit()`);

@@ -222,3 +222,106 @@ Fresh verification on `main` before this follow-up commit:
   were not changed by this dependency update. No full-flow pass is claimed.
   Log: `/tmp/yellow-dog-upstream-browser.log`; browser artifacts:
   `/tmp/yellow-dog-management-browser.Jbb7bU`.
+
+
+## Step 3 review repairs and acceptance (2026-10-23)
+
+The repair checkout is `/home/gao/Workspace/gsmlg-dev/yellow-dog` on
+`codex/step3-repairs-step4-integration`, starting from
+`67a1135e50d9a060f050a5183afbc2c917144b3c`. These results cover uncommitted Step 3
+repairs against `yellow-dog-step3-review-fixes.md`. Supplied untracked plans and
+unrelated changes were preserved. Earlier results above describe their original
+source revisions; the previously incomplete full-browser flow now passes locally.
+Logs below are under `/tmp/yellow-dog-step3-step4/`.
+
+- **R1:** A clean dependency derivation reproduced the fixed-output mismatch in
+  `r1-fod-clean.log`. `default.nix` now uses the observed
+  `sha256-PzEJz+07iJMAe+HnomQF9AVTnrVOVZKMmK4JR8gkNbQ=`. Strict integrity checks,
+  both products, both architecture declarations and the Gaoxy transport remain.
+  Both x86 packages and images built from the repair snapshot; the native ARM
+  artifact hash was checked separately. The ARM package/image matrix remains
+  blocked by the unavailable native builder, as detailed below.
+- **R2:** IP task notifications, explicit reloads and post-command display reads
+  use the existing narrow database-availability boundary. Failed reads retain
+  forms, revisions, tokens, request keys and last known observations. Known jobs
+  and canonical saved revisions remain visible independently of refresh failure.
+  View/ACL post-save and catalog reads follow the same rule; initial View row
+  state and initial routed scopes are retained for recovery. Infrastructure
+  failures leave artifact byte validity unknown. SQL/programming errors continue
+  to propagate. `data_database_recovery_test.exs` exercises deterministic read
+  failures, lost acknowledgements, committed results, replay effects and recovery.
+- **R3:** Catalog mount reads Worker IDs/names without fleet detail preloads.
+  Application loads searchable, stable 20-row Worker/DNS Service candidate pages;
+  selected identities remain visible independently of the page. Canonical
+  full-replacement snapshots retain the complete 256-assignment limit and reject
+  oversized sets. LiveView route SQL telemetry covers unrelated fleet growth
+  and a large valid immutable version; hidden assignments, multiple services,
+  wrong scope, atomicity and revision conflicts remain covered.
+- **R4:** CI explicitly runs both maintained JavaScript suites. Full Chromium
+  checks the selected Worker, reviewed revision, included service/pinned version,
+  no target before publication, stale-preview rejection and subsequent explicit
+  publication. Import retries preserve their request identity; changing the
+  source starts a new intent after resolving a duplicate-name conflict. GeoIP
+  acceptance checks a persistent fixture-backed sync job and verified selected
+  digest, while Worker diagnostics/runtime controls remain unavailable in
+  Management. Full/Data scopes use the disposable loopback MMDB source.
+
+| Check | Result and evidence |
+| --- | --- |
+| Strict test compilation and scoped formatting/syntax | Passed; `step3-compile.log`, `step3-format.log`; the final browser helper also passed `node --check` |
+| Full Management/PostgreSQL suite | **576 tests, 0 failures**; `step3-management-final.log`, PostgreSQL `/tmp/yellow-dog-phase1-pg.tywvr7` |
+| Both JavaScript suites | **30 tests, 0 failures**, none skipped; `step3-js-final.log` |
+| Chromium navigation | Passed; `step3-browser-navigation.log`, browser `/tmp/yellow-dog-management-browser.0hKycN` |
+| Chromium Nodes and restart | Passed; `step3-browser-nodes.log`, browser `/tmp/yellow-dog-management-browser.tDU8tQ` |
+| Chromium Data and restart | Passed; `step3-browser-data.log`, browser `/tmp/yellow-dog-management-browser.G5MQfw` |
+| Full Chromium, rebuilt final release | **Exit 0**; `step3-browser-final-rebuilt-retry.log`, browser `/tmp/yellow-dog-management-browser.hw6N05`, PostgreSQL `/tmp/yellow-dog-phase1-pg.b3C0NM` |
+| Release architecture | Passed, including positive fixture and **35 rejected dependency mutations**; `step3-architecture.log` |
+| Offline export/Worker gate | Passed, including PostgreSQL/Management shutdown, real UDP/TCP and snapshot/lifecycle recovery; `step3-offline-export.log`, evidence `/tmp/yellow-dog-file-gate-9ue2cxrd` |
+| x86 Nix packages and images | Both products passed for the source snapshot below; `r1-x86-clean-snapshot.log`, image metadata `step3-nix-images.json` |
+| ARM Nix packages and images | **Blocked/unverified**; `r1-aarch64-build.log`: required `aarch64-linux`, current `x86_64-linux`; no native builder configured |
+
+The final full-browser invocation reused the rebuilt release with:
+
+```sh
+devenv shell -- env BUILD_RELEASE=0 MANAGEMENT_BROWSER_SCOPE=full scripts/e2e/phase1_postgres.sh scripts/e2e/management_browser.sh
+```
+
+An earlier full run passed (`step3-browser-full.log`). A later rebuilt-release
+attempt (`step3-browser-final-rebuilt.log`) reached the auxiliary log-buffer
+browser but exited on CDP `Execution context was destroyed.` before the remaining
+assertions. The helper had started an asynchronous evaluation while the newly
+created tab was still replacing its document. It now creates the tab at
+`about:blank`, attaches CDP before explicit navigation, waits for load, and polls
+connectivity with short synchronous evaluations. The final rerun above completed
+the genuine second LiveView connection, pause/buffer/resume checks and all later
+assertions. No product assertion or JavaScript error gate was removed or relaxed.
+The disposable wrappers stopped their Management, PostgreSQL and fixture servers.
+
+The successful Nix command was:
+
+```sh
+nix build -L --no-link --print-out-paths \
+  path:/tmp/yellow-dog-step3-step4/nix-step3-source-cyq8b24j#packages.x86_64-linux.yellow_dog_management \
+  path:/tmp/yellow-dog-step3-step4/nix-step3-source-cyq8b24j#packages.x86_64-linux.yellow_dog_worker \
+  path:/tmp/yellow-dog-step3-step4/nix-step3-source-cyq8b24j#packages.x86_64-linux.docker-management \
+  path:/tmp/yellow-dog-step3-step4/nix-step3-source-cyq8b24j#packages.x86_64-linux.docker-worker
+```
+
+The clean snapshot includes tracked repair changes and new Management Elixir/test
+files, excluding supplied untracked plans. It predates the final View/ACL
+initial-recovery and harness refinements; its successful build proves packaging
+with the corrected dependency hash, not exact final-source image acceptance.
+The outputs are Management `/nix/store/773sz4avk373x3nqv1zhq1cxg4vp681y-yellow_dog_management-1.2.12`,
+Worker `/nix/store/76vfzwffypi6889lwd7ymvn8wn45nnfy-yellow_dog_worker-1.2.12`,
+Management image `/nix/store/7z9ksq1nxpgzs677rv9fwjbhbhkh00ng-yellow_dog_management.tar.gz`
+and Worker image `/nix/store/vk399ciygzjmig6cxia8amsg7brbd2hl-yellow_dog_worker.tar.gz`.
+Image metadata records Linux/amd64 and the corresponding product entrypoints.
+
+The same four attributes under `packages.aarch64-linux` were attempted and failed
+on platform mismatch. Independently,
+`sha256sum /tmp/yellow-dog-step3-step4/mdex-aarch64.so.tar.gz` produced
+`f321e6c8a121a9ca8f10dad784940c70440e4670d54e0d3ccd54eb30f489f5c4`, matching
+the declared native input hash. That verifies the downloaded input only; no ARM
+build, image execution or target-host runtime acceptance is claimed. ARM execution
+requires a configured native builder, and final delivery requires fresh-source
+package/image verification after subsequent changes.

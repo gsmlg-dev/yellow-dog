@@ -239,15 +239,32 @@ async function runSmoke() {
   const worker = await api(`/workers/${liveWorkerId}`);
   await navigation.scoped(liveWorkerId, worker.services[0].id, zone.id);
   assert.deepEqual(await api(`/workers/${liveWorkerId}`), worker, 'Navigation changed Worker configuration, target history or assignments');
-  await navigate(`/management/zones/${zone.id}/edit`);
+  await navigate(`/management/zones/${zone.id}/application`);
   await evaluate(`document.querySelector('[phx-click="add_assignment_worker"][phx-value-id="${liveWorkerId}"]').click()`);
   await until(() => evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 1`), 'Data assignment row missing');
   await evaluate(`document.querySelector('#zone-assignments-form').requestSubmit()`);
   await until(async () => (await api(`/workers/${liveWorkerId}`)).assignments.length === 1, 'Immutable Zone version was not assigned');
+  await until(() => evaluate(`document.querySelector('#zone-assignments-form')?.dataset.editorDirty === 'false'`), 'Assignment save was not acknowledged in the editor');
   await navigate(`/server/${liveWorkerId}/targets`);
   await evaluate('document.querySelector("[phx-click=preview]").click()');
   await until(() => evaluate('!!document.querySelector("#target-preview")'), 'Target preview failed');
-  assert.match(await evaluate('document.querySelector("#target-preview").innerText'), /prepared_preview/);
+  const reviewedWorker = await api(`/workers/${liveWorkerId}`);
+  const previewText = await evaluate('document.querySelector("#target-preview").innerText');
+  assert.equal(await evaluate('document.querySelector("#server-selection-form-select").value'), liveWorkerId);
+  assert.ok(previewText.includes('Review target revision 1'));
+  assert.ok(previewText.includes(`Bound saved configuration revision: ${reviewedWorker.revision}`));
+  assert.ok(previewText.includes('dns: stopped, 127.0.0.1:5300'));
+  assert.ok(previewText.includes(`${zone.id} · version ${version.version}`));
+  assert.deepEqual(await api(`/workers/${liveWorkerId}/targets`), [], 'Preview published a target');
+  // A second editor changes the reviewed input; publication must reject it.
+  await api('/commands/update_worker', { id: liveWorkerId, name: reviewedWorker.name, profile_name: reviewedWorker.profile_name, expected_revision: reviewedWorker.revision });
+  nextDialogDecision = true;
+  await evaluate('document.querySelector("[phx-click=confirm_target]").click()');
+  await until(() => evaluate('document.querySelector("#node-command-error")?.innerText.includes("revision")'), 'Stale target preview was not rejected');
+  assert.deepEqual(await api(`/workers/${liveWorkerId}/targets`), [], 'Stale preview published a target');
+  await evaluate('document.querySelector("[phx-click=preview]").click()');
+  const currentWorker = await api(`/workers/${liveWorkerId}`);
+  await until(() => evaluate(`document.querySelector('#target-preview')?.innerText.includes('Bound saved configuration revision: ${currentWorker.revision}')`), 'Fresh reviewed revision missing');
   nextDialogDecision = true;
   await evaluate('document.querySelector("[phx-click=confirm_target]").click()');
   await until(() => evaluate(`!!document.querySelector('a[href*="/targets/1/export"]')`), 'Target confirmation failed');
@@ -370,6 +387,10 @@ async function runSmoke() {
   await api('/commands/unassign', { worker_id: liveWorkerId, expected_revision: beforeUnassign.revision, service_id: worker.services[0].id, zone_id: zone.id });
   const beforeDelete = await api(`/zones/${zone.id}`);
   await api('/commands/delete_zone', { id: zone.id, expected_revision: beforeDelete.revision });
+  // The duplicate-name error belongs to the earlier logical request. Start a
+  // new import intent after resolving the conflict; retries keep cached results.
+  await submit('#zone-import-form', { 'import[toml]': '' });
+  await until(() => evaluate('!document.querySelector("#zone-import-preview")'), 'Previous import intent was not cleared');
   await submit('#zone-import-form', { 'import[toml]': exportedToml });
   await until(() => evaluate('!!document.querySelector("#zone-import-preview")'), 'Import revalidation failed');
   await submit('#zone-import-selection-form', { 'import[resource_id]': importedResourceId });
@@ -412,34 +433,21 @@ async function runSmoke() {
   await evaluate('document.querySelector("#mac-database-reload").click()');
   await until(() => evaluate('document.querySelector("#mac-database-status").dataset.entryCount === "2" && document.querySelector("#mac-database-status").dataset.status === "loaded" && !document.querySelector("#mac-database-error")'), 'MAC artifact recovery did not restore the configured snapshot');
   await navigate('/tool/geoip');
-  await submit('#geoip-lookup-form', { ip: '216.160.83.56', type: 'city' });
-  await until(() => evaluate('!!document.querySelector("#geoip-lookup-result")'), 'GeoIP lookup requires the real MMDB smoke fixture to be configured');
-  const geoipResult = await evaluate('document.querySelector("#geoip-lookup-result").innerText');
-  for (const value of ['United States', 'Milton', 'Washington', 'North America', 'America/Los_Angeles', '98354', '47.2513, -122.3149']) assert.ok(geoipResult.includes(value), `Real MMDB lookup missing ${value}`);
-  await submit('#geoip-lookup-form', { ip: 'invalid-ip', type: 'city' });
-  await until(() => evaluate('!!document.querySelector("#geoip-lookup-error")'), 'Invalid GeoIP address did not render an error');
-  assert.match(await evaluate('document.querySelector("#geoip-lookup-error").innerText'), /invalid.*IP|IP.*invalid/i);
+  assert.match(await evaluate('document.querySelector("#geoip-lookup-unavailable").innerText'), /Worker-backed diagnostics/);
+  assert.equal(await evaluate('!!document.querySelector("#geoip-lookup-form")'), false, 'Management must not execute Worker GeoIP queries');
   await navigate('/system/ip-database');
+  await evaluate('document.querySelector("#ip-database-download-city").click()');
+  await until(() => evaluate('!!document.querySelector("#ip-database-download-result")?.dataset.jobId'), 'IP synchronization did not retain its persistent job ID');
+  const syncJobId = Number(await evaluate('document.querySelector("#ip-database-download-result").dataset.jobId'));
+  await until(async () => (await api('/tasks/ip_city/jobs')).find(job => job.id === syncJobId)?.state === 'completed', 'Fixture-backed IP synchronization did not complete');
+  await evaluate('document.querySelector("#ip-database-refresh").click()');
+  await until(() => evaluate('document.querySelector("#ip-database-city [data-status]")?.dataset.status === "Available"'), 'Selected City artifact was not verified');
   assert.match(await evaluate('document.querySelector("#ip-database-city").innerText'), /GeoIP2-City/);
-  assert.equal(await evaluate('document.querySelector("#ip-database-city [data-status]").dataset.status'), 'loaded');
-  nextDialogDecision = false;
-  await evaluate('document.querySelector("#ip-database-unload-city").click()');
-  assert.equal(nextDialogDecision, null, 'GeoIP unload cancellation must exercise its confirmation dialog');
-  assert.equal(await evaluate('document.querySelector("#ip-database-city [data-status]").dataset.status'), 'loaded', 'Cancelled GeoIP unload changed the cache');
-  nextDialogDecision = true;
-  await evaluate('document.querySelector("#ip-database-unload-city").click()');
-  await until(() => evaluate('document.querySelector("#ip-database-city [data-status]").dataset.status === "unloaded"'), 'Accepted GeoIP unload failed');
-  assert.equal(nextDialogDecision, null, 'GeoIP unload must exercise one confirmation dialog');
+  assert.equal(await evaluate('document.querySelector("#ip-database-city div[data-digest]").dataset.digest'), 'ed972738e4e03a3e56e12041a6af4d91592249d110f7e4a647e5f2fa0e639c09');
+  assert.equal(await evaluate('!!document.querySelector("[id^=ip-database-unload], [id^=ip-database-reload]")'), false, 'Artifact management exposed Worker runtime controls');
+  assert.match(await evaluate('document.querySelector("#ip-database-workflow").innerText'), /not included in the current Worker target\/export/);
   await navigate('/tool/geoip');
-  await submit('#geoip-lookup-form', { ip: '216.160.83.56', type: 'city' });
-  await until(() => evaluate('!!document.querySelector("#geoip-lookup-error")'), 'Unloaded GeoIP lookup must report a real error');
-  assert.match(await evaluate('document.querySelector("#geoip-lookup-error").innerText'), /not loaded|unloaded/i);
-  await navigate('/system/ip-database');
-  await evaluate('document.querySelector("#ip-database-reload-city").click()');
-  await until(() => evaluate('document.querySelector("#ip-database-city [data-status]").dataset.status === "loaded"'), 'Configured MMDB reload failed');
-  await navigate('/tool/geoip');
-  await submit('#geoip-lookup-form', { ip: '216.160.83.56', type: 'city' });
-  await until(() => evaluate('document.querySelector("#geoip-lookup-result")?.innerText.includes("Milton")'), 'Reloaded GeoIP cache did not restore lookup');
+  assert.equal(await evaluate('!!document.querySelector("#geoip-lookup-unavailable")'), true, 'Artifact synchronization must not imply Worker diagnostics');
   await navigate('/management/events');
   assert.match(await evaluate('document.body.innerText'), /confirm_target/);
   await navigate('/system/logs/realtime');
@@ -459,23 +467,39 @@ async function runSmoke() {
   await evaluate('document.querySelector("button[phx-click=toggle_pause]").click()');
   await until(() => evaluate('document.querySelector("#log-buffer-status").dataset.paused === "true"'), 'Log pause did not activate');
   const visibleWhilePaused = await evaluate('document.querySelectorAll("#log-container [id^=log-row-]").length');
-  const auxiliaryPage = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`${base}/tool/mac`)}`, { method: 'PUT', signal: AbortSignal.timeout(10000) })).json();
+  const auxiliaryPage = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT', signal: AbortSignal.timeout(10000) })).json();
   const auxiliarySocket = new WebSocket(auxiliaryPage.webSocketDebuggerUrl);
   try {
     await new Promise(resolve => auxiliarySocket.addEventListener('open', resolve, { once: true }));
-    const auxiliaryConnected = new Promise((resolve, reject) => {
-      auxiliarySocket.addEventListener('message', event => {
-        const response = JSON.parse(event.data);
-        if (response.id !== 1) return;
-        if (response.error || response.result.exceptionDetails) reject(new Error(JSON.stringify(response)));
-        else resolve(response.result.result.value);
-      });
+    // Attach before navigation and wait for its load event. A long evaluation
+    // started in the initial document can be destroyed by document replacement.
+    let auxiliarySequence = 0;
+    const auxiliaryPending = new Map();
+    let resolveAuxiliaryLoad;
+    const auxiliaryLoaded = new Promise(resolve => { resolveAuxiliaryLoad = resolve; });
+    auxiliarySocket.addEventListener('message', event => {
+      const response = JSON.parse(event.data);
+      if (response.method === 'Page.loadEventFired') resolveAuxiliaryLoad();
+      if (!response.id) return;
+      const request = auxiliaryPending.get(response.id);
+      auxiliaryPending.delete(response.id);
+      if (response.error || response.result?.exceptionDetails) request.reject(new Error(JSON.stringify(response)));
+      else request.resolve(response.result);
     });
-    auxiliarySocket.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: {
-      expression: '(async () => { for (let attempt = 0; attempt < 100; attempt++) { if (document.querySelector(".phx-connected")) return true; await new Promise(resolve => setTimeout(resolve, 100)); } return false; })()',
-      awaitPromise: true, returnByValue: true,
-    } }));
-    assert.equal(await auxiliaryConnected, true, 'Auxiliary browser must actually connect its LiveView websocket');
+    const auxiliaryCdp = (method, params = {}) => new Promise((resolve, reject) => {
+      const id = ++auxiliarySequence;
+      auxiliaryPending.set(id, { resolve, reject });
+      auxiliarySocket.send(JSON.stringify({ id, method, params }));
+    });
+    await auxiliaryCdp('Page.enable');
+    await auxiliaryCdp('Page.navigate', { url: `${base}/tool/mac` });
+    await auxiliaryLoaded;
+    await until(async () => {
+      const response = await auxiliaryCdp('Runtime.evaluate', {
+        expression: '!!document.querySelector(".phx-connected")', returnByValue: true,
+      });
+      return response.result.value;
+    }, 'Auxiliary browser must actually connect its LiveView websocket');
     await until(() => evaluate('Number(document.querySelector("#log-buffer-status").dataset.pending) > 0'), 'Paused log view did not buffer a genuine second browser connection');
     assert.equal(await evaluate('document.querySelectorAll("#log-container [id^=log-row-]").length'), visibleWhilePaused, 'Paused view changed visible logs');
   } finally {
