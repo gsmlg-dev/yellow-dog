@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.WorkerConnection.Secret do
   @moduledoc false
   @derive {Inspect, except: [:text]}
-  defstruct [:text]
+  defstruct [:id, :text]
 end
 
 defmodule YellowDog.ManagementUI.WorkerConnection do
@@ -11,29 +11,31 @@ defmodule YellowDog.ManagementUI.WorkerConnection do
 
   def configuration(assigns) do
     ~H"""
-    <.card title="Worker connection configuration">
-      <p class="management-help">
-        Save this as bootstrap.toml on the Worker. This token is shown once; keep the file private.
-      </p>
-      <label class="form-control">
-        <span class="label">bootstrap.toml</span>
-        <textarea id="worker-bootstrap" class="textarea" rows="10" readonly spellcheck="false">{@bootstrap.text}</textarea>
-      </label>
-      <button
-        id="worker-bootstrap-copy"
-        class="btn btn-primary"
-        type="button"
-        phx-hook="CopyToClipboard"
-        data-target="worker-bootstrap"
-      >Copy configuration</button>
-      <pre>chmod 600 bootstrap.toml
+    <div id="worker-bootstrap-secret" phx-hook="TransientCredential" data-issuance={@bootstrap.id}>
+      <.card title="Worker connection configuration">
+        <p class="management-help">
+          Save this as bootstrap.toml on the Worker. This token is shown once; keep the file private.
+        </p>
+        <label class="form-control">
+          <span class="label">bootstrap.toml</span>
+          <textarea id="worker-bootstrap" class="textarea" rows="10" readonly spellcheck="false">{@bootstrap.text}</textarea>
+        </label>
+        <button
+          id="worker-bootstrap-copy"
+          class="btn btn-primary"
+          type="button"
+          phx-hook="CopyToClipboard"
+          data-target="worker-bootstrap"
+        >Copy configuration</button>
+        <pre>chmod 600 bootstrap.toml
     YELLOW_DOG_WORKER_BOOTSTRAP=/absolute/path/bootstrap.toml bin/yellow_dog_worker start</pre>
-      <p class="management-help">
-        If your Management gateway requires a client certificate, add tls_cert_file and tls_key_file.
-        Add tls_ca_file when using a private certificate authority. File paths are local to the Worker.
-      </p>
-      <button class="btn btn-outline" type="button" phx-click="dismiss_connection">I've saved this configuration</button>
-    </.card>
+        <p class="management-help">
+          If your Management gateway requires a client certificate, add tls_cert_file and tls_key_file.
+          Add tls_ca_file when using a private certificate authority. File paths are local to the Worker.
+        </p>
+        <button class="btn btn-outline" type="button" phx-click="dismiss_connection">I've saved this configuration</button>
+      </.card>
+    </div>
     """
   end
 
@@ -42,7 +44,7 @@ defmodule YellowDog.ManagementUI.WorkerConnection do
     URI.to_string(%URI{scheme: parsed.scheme, host: parsed.host, port: parsed.port})
   end
 
-  def protect(text), do: %__MODULE__.Secret{text: text}
+  def protect(text), do: %__MODULE__.Secret{id: Ecto.UUID.generate(), text: text}
 
   def status(worker) do
     case worker["connection_status"] do

@@ -132,6 +132,7 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
     assert render(view) =~ "Name must"
     assert Domain.list_workers() == before
     assert has_element?(view, "#worker-form input[value='   ']")
+    assert has_element?(view, "#workers-workflow[data-dirty='true']")
   end
 
   test "one-time configuration is redacted in actual LiveView crash logs", %{conn: conn} do
@@ -160,6 +161,40 @@ defmodule YellowDog.Management.WorkersConnectionLiveTest do
     Process.flag(:trap_exit, previous)
     assert log =~ "terminating"
     refute log =~ config["token"]
+  end
+
+  test "retiring a disconnected result clears only that issuance and never rotates credentials",
+       %{
+         conn: conn,
+         worker: worker
+       } do
+    {:ok, list, _} = live(conn, "/management/servers")
+    list |> form("#worker-form", worker: %{name: "Transient registration"}) |> render_submit()
+    first = :sys.get_state(list.pid).socket.assigns.bootstrap.id
+    audit = Domain.list_audit()
+    send(list.pid, :refresh_workers)
+    assert has_element?(list, "#worker-bootstrap-secret[data-issuance='#{first}']")
+    render_click(list, "retire_connection", %{"id" => "unrelated-issuance"})
+    assert has_element?(list, "#worker-bootstrap")
+    render_click(list, "retire_connection", %{"id" => first})
+    refute has_element?(list, "#worker-bootstrap")
+    send(list.pid, :refresh_workers)
+    refute has_element?(list, "#worker-bootstrap")
+    assert Domain.list_audit() == audit
+
+    {:ok, detail, _} = live(conn, "/server/#{worker["id"]}/connection")
+    detail |> element("button[phx-click='rotate_token']") |> render_click()
+    issuance = :sys.get_state(detail.pid).socket.assigns.bootstrap.id
+    audit = Domain.list_audit()
+    send(detail.pid, :refresh_connection)
+    assert has_element?(detail, "#worker-bootstrap-secret[data-issuance='#{issuance}']")
+    render_click(detail, "retire_connection", %{"id" => first})
+    assert has_element?(detail, "#worker-bootstrap")
+    render_click(detail, "retire_connection", %{"id" => issuance})
+    refute has_element?(detail, "#worker-bootstrap")
+    send(detail.pid, :refresh_connection)
+    refute has_element?(detail, "#worker-bootstrap")
+    assert Domain.list_audit() == audit
   end
 
   defp report(id) do

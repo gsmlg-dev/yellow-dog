@@ -7,6 +7,7 @@ defmodule YellowDog.Management.Domain do
 
   alias YellowDog.Management.{
     Assignment,
+    Database,
     Backups,
     Audit,
     DnsAcl,
@@ -69,9 +70,24 @@ defmodule YellowDog.Management.Domain do
       {:error,
        error("database_unavailable", "Database unavailable; your submission was not confirmed")}
 
-    error in [Ecto.InvalidChangesetError, Postgrex.Error] ->
-      _ = error
+    _error in Ecto.InvalidChangesetError ->
       {:error, error("database_constraint", "Database constraint rejected the mutation")}
+
+    exception in Postgrex.Error ->
+      cond do
+        Database.availability?(exception) ->
+          {:error,
+           error(
+             "database_unavailable",
+             "Database unavailable; your submission was not confirmed"
+           )}
+
+        Database.constraint?(exception) ->
+          {:error, error("database_constraint", "Database constraint rejected the mutation")}
+
+        true ->
+          reraise(exception, __STACKTRACE__)
+      end
   end
 
   def mutate(_, _, _, _),
@@ -370,8 +386,18 @@ defmodule YellowDog.Management.Domain do
           try do
             {:ok, dispatch(operation, params, actor)}
           rescue
-            _error in [Ecto.InvalidChangesetError, Postgrex.Error] ->
+            _error in Ecto.InvalidChangesetError ->
               {:error, error("database_constraint", "Database constraint rejected the mutation")}
+
+            exception in Postgrex.Error ->
+              if Database.constraint?(exception) do
+                {:error,
+                 error("database_constraint", "Database constraint rejected the mutation")}
+              else
+                # Availability failures must abort the transaction, not become
+                # durable validation receipts. Programming errors also escape.
+                reraise(exception, __STACKTRACE__)
+              end
           catch
             {:management_abort, error} -> {:error, error}
           after

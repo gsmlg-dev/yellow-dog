@@ -1,7 +1,7 @@
 defmodule YellowDog.Management.WorkerConnections do
   @moduledoc "Worker enrollment credentials and authenticated runtime observations."
   import Ecto.Query
-  alias YellowDog.Management.{Audit, Domain, EnrollmentSettings, Repo, Worker}
+  alias YellowDog.Management.{Audit, Database, Domain, EnrollmentSettings, Repo, Worker}
 
   @report_keys ~w(worker_id capabilities services applied_revision applied_digest apply_error)
   @id ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
@@ -19,58 +19,69 @@ defmodule YellowDog.Management.WorkerConnections do
 
   defp enroll(name) do
     token = new_token()
+    worker_id = Ecto.UUID.generate()
 
-    case Repo.transaction(fn ->
-           case Domain.mutate(
-                  "create_worker",
-                  %{
-                    "id" => Ecto.UUID.generate(),
-                    "name" => name,
-                    "expected_capabilities" => ["dns"]
-                  },
-                  "operator",
-                  Ecto.UUID.generate()
-                ) do
-             {:ok, worker} ->
-               Repo.get!(Worker, worker["id"])
-               |> Ecto.Changeset.change(connection_token_hash: hash(token))
-               |> Repo.update!()
+    Database.credential(
+      fn ->
+        case Repo.transaction(fn ->
+               case Domain.mutate(
+                      "create_worker",
+                      %{
+                        "id" => worker_id,
+                        "name" => name,
+                        "expected_capabilities" => ["dns"]
+                      },
+                      "operator",
+                      Ecto.UUID.generate()
+                    ) do
+                 {:ok, worker} ->
+                   Repo.get!(Worker, worker["id"])
+                   |> Ecto.Changeset.change(connection_token_hash: hash(token))
+                   |> Repo.update!()
 
-               worker
+                   worker
 
-             {:error, error} ->
-               Repo.rollback(error)
-           end
-         end) do
-      {:ok, worker} -> {:ok, %{"worker" => worker, "token" => token}}
-      {:error, error} -> {:error, error}
-    end
+                 {:error, error} ->
+                   Repo.rollback(error)
+               end
+             end) do
+          {:ok, worker} -> {:ok, %{"worker" => worker, "token" => token}}
+          {:error, error} -> {:error, error}
+        end
+      end,
+      worker_id
+    )
   end
 
   def rotate(worker_id) do
     token = new_token()
 
-    case Repo.transaction(fn ->
-           worker = locked_worker(worker_id)
-           if is_nil(worker), do: Repo.rollback(error("not_found", "Worker not found"))
+    Database.credential(
+      fn ->
+        case Repo.transaction(fn ->
+               worker = locked_worker(worker_id)
+               if is_nil(worker), do: Repo.rollback(error("not_found", "Worker not found"))
 
-           worker
-           |> Ecto.Changeset.change(connection_token_hash: hash(token), last_seen_at: nil)
-           |> Repo.update!()
+               worker
+               |> Ecto.Changeset.change(connection_token_hash: hash(token), last_seen_at: nil)
+               |> Repo.update!()
 
-           Repo.insert!(%Audit{
-             actor: "operator",
-             operation: "rotate_worker_token",
-             request: %{"worker_id" => worker_id},
-             result: %{"worker_id" => worker_id}
-           })
+               Repo.insert!(%Audit{
+                 actor: "operator",
+                 operation: "rotate_worker_token",
+                 request: %{"worker_id" => worker_id},
+                 result: %{"worker_id" => worker_id}
+               })
 
-           {:ok, result} = Domain.get_worker(worker_id)
-           result
-         end) do
-      {:ok, worker} -> {:ok, %{"worker" => worker, "token" => token}}
-      {:error, error} -> {:error, error}
-    end
+               {:ok, result} = Domain.get_worker(worker_id)
+               result
+             end) do
+          {:ok, worker} -> {:ok, %{"worker" => worker, "token" => token}}
+          {:error, error} -> {:error, error}
+        end
+      end,
+      worker_id
+    )
   end
 
   def bootstrap(worker, token, management_url) do

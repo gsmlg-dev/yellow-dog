@@ -1,7 +1,7 @@
 defmodule YellowDog.ManagementUI.WorkerLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Domain, ExportScope, ProfileCatalog, WorkerConnections}
+  alias YellowDog.Management.{Database, Domain, ExportScope, ProfileCatalog, WorkerConnections}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
   alias YellowDog.ManagementUI.{ServicePaths, Submission, WorkerConnection}
 
@@ -9,10 +9,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Process.send_after(self(), :refresh_connection, 5000)
-
     {:ok,
      assign(Submission.new(socket),
+       refresh_timer:
+         if(connected?(socket), do: Process.send_after(self(), :refresh_connection, 5000)),
        page_title: "Worker",
        worker: nil,
        service: nil,
@@ -21,9 +21,11 @@ defmodule YellowDog.ManagementUI.WorkerLive do
        target: nil,
        history: [],
        dirty: false,
+       observation_error: nil,
        error: nil,
        field_errors: [],
        scope: %{},
+       loaded_scope: nil,
        profiles: ProfileCatalog.list_server_profiles(),
        bootstrap: nil,
        management_url: nil,
@@ -43,25 +45,39 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   @impl true
   def handle_info(:refresh_connection, socket) do
-    Process.send_after(self(), :refresh_connection, 5000)
+    if socket.assigns.refresh_timer, do: Process.cancel_timer(socket.assigns.refresh_timer)
+    socket = assign(socket, :refresh_timer, Process.send_after(self(), :refresh_connection, 5000))
 
-    with %{"id" => id} <- socket.assigns.worker,
-         {:ok, worker} <- Domain.get_worker(id) do
-      # Polling changes observations only; editor revisions, input and preview stay fixed.
-      {:noreply,
-       assign(
-         socket,
-         :worker,
-         Map.merge(socket.assigns.worker, Map.take(worker, @observation_fields))
-       )}
-    else
-      _ -> {:noreply, socket}
+    case Database.read(fn ->
+           with %{"id" => id} <- socket.assigns.worker,
+                {:ok, worker} <- Domain.get_worker(id),
+                do: {:ok, worker}
+         end) do
+      {:ok, {:ok, worker}} ->
+        # Polling changes observations only; editor revisions, input and preview stay fixed.
+        {:noreply,
+         assign(socket,
+           worker: Map.merge(socket.assigns.worker, Map.take(worker, @observation_fields)),
+           observation_error: nil
+         )}
+
+      {:error, error} ->
+        {:noreply, assign(socket, :observation_error, message(error))}
+
+      {:ok, _} ->
+        {:noreply,
+         assign(
+           socket,
+           :observation_error,
+           "Worker observations could not be refreshed. Showing last known state."
+         )}
     end
   end
 
   @impl true
   def handle_event("rotate_token", %{"_submission" => intent}, socket) do
-    if socket.assigns.live_action == :connection and Submission.current?(socket, intent) do
+    if socket.assigns.worker != nil and socket.assigns.live_action == :connection and
+         Submission.current?(socket, intent) do
       # Retire this interaction even on an ambiguous failure; recovery requires an explicit reset.
       socket = socket |> Submission.new() |> assign(:bootstrap, nil)
 
@@ -90,6 +106,12 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   end
 
   def handle_event("rotate_token", _params, socket), do: {:noreply, socket}
+
+  def handle_event("retire_connection", %{"id" => id}, socket) do
+    if socket.assigns.bootstrap && socket.assigns.bootstrap.id == id,
+      do: {:noreply, assign(socket, :bootstrap, nil)},
+      else: {:noreply, socket}
+  end
 
   def handle_event("dismiss_connection", _params, socket),
     do: {:noreply, assign(socket, :bootstrap, nil)}
@@ -136,27 +158,36 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   end
 
   def handle_event("preview", _params, socket) do
-    if socket.assigns.live_action in [:targets, :target] do
-      case Domain.preview_target(socket.assigns.worker["id"]) do
-        {:ok, preview} ->
+    if socket.assigns.worker != nil and socket.assigns.live_action in [:targets, :target] do
+      case Database.read(fn -> Domain.preview_target(socket.assigns.worker["id"]) end) do
+        {:ok, {:ok, preview}} ->
           {:noreply,
-           socket |> Submission.new() |> assign(preview: preview, error: nil, field_errors: [])}
+           socket
+           |> Submission.new()
+           |> assign(preview: preview, observation_error: nil, error: nil, field_errors: [])}
+
+        {:ok, {:error, error}} ->
+          failure(socket, error)
 
         {:error, error} ->
-          failure(socket, error)
+          {:noreply, assign(socket, :observation_error, message(error))}
       end
     else
       {:noreply, socket}
     end
   end
 
-  defp allowed_event?(socket, "save_worker"), do: socket.assigns.live_action == :show
+  defp allowed_event?(socket, "save_worker"),
+    do: socket.assigns.worker != nil and socket.assigns.live_action == :show
 
   defp allowed_event?(socket, "save_service"),
-    do: socket.assigns.live_action in [:new_service, :edit_service]
+    do:
+      socket.assigns.worker != nil and socket.assigns.live_action in [:new_service, :edit_service]
 
   defp allowed_event?(socket, "confirm_target"),
-    do: socket.assigns.live_action in [:targets, :target] and socket.assigns.preview != nil
+    do:
+      socket.assigns.worker != nil and socket.assigns.live_action in [:targets, :target] and
+        socket.assigns.preview != nil
 
   defp submitted_editor(socket, "save_worker", params) do
     if params["worker"] == socket.assigns.worker_form.params, do: "update_worker"
@@ -256,6 +287,40 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   end
 
   defp load(socket) do
+    case Database.read(fn -> load_available(socket) end) do
+      {:ok, loaded} ->
+        assign(loaded, :loaded_scope, {socket.assigns.live_action, socket.assigns.scope})
+
+      {:error, error} ->
+        socket =
+          if socket.assigns.loaded_scope == {socket.assigns.live_action, socket.assigns.scope} do
+            socket
+          else
+            # A failed destination load cannot carry another route's editor or intent.
+            socket
+            |> Submission.new()
+            |> assign(
+              worker: nil,
+              service: nil,
+              references: nil,
+              preview: nil,
+              target: nil,
+              history: [],
+              worker_form: nil,
+              service_form: nil,
+              dirty: false,
+              bootstrap: nil,
+              loaded_scope: nil,
+              error: nil,
+              field_errors: []
+            )
+          end
+
+        assign(socket, :observation_error, message(error))
+    end
+  end
+
+  defp load_available(socket) do
     case Domain.get_worker(socket.assigns.scope["server_id"]) do
       {:ok, worker} ->
         socket =
@@ -263,6 +328,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
           |> Submission.new()
           |> assign(
             worker: worker,
+            observation_error: nil,
             page_title: worker["name"],
             preview: nil,
             target: target(worker["id"], socket.assigns.scope["revision"]),
@@ -384,6 +450,14 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path} servers={@navigation_servers}>
+      <p :if={@observation_error} id="node-observation-error" role="status">{@observation_error}</p>
+      <button
+        :if={@observation_error && is_nil(@worker)}
+        id="retry-node-load"
+        type="button"
+        class="btn btn-outline"
+        phx-click="reload"
+      >Retry loading this page</button>
       <input id="submission-intent" type="hidden" value={@submission_id} />
       <div
         :if={@worker}

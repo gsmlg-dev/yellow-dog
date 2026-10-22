@@ -151,7 +151,7 @@ defmodule YellowDog.Management.LogsLiveTest do
     view |> form("#log-search-form", search: marker) |> render_change()
     render_click(view, "select_no_apps")
     render_click(view, "toggle_pause")
-    view |> element("a[href='/system/logs']", "Logs") |> render_click()
+    view |> element("#logs-navigation a[href='/system/logs']", "Logs") |> render_click()
     assert_patch(view, "/system/logs")
     view |> element("#logs-navigation a[href='/system/logs/realtime']") |> render_click()
     assert_patch(view, "/system/logs/realtime")

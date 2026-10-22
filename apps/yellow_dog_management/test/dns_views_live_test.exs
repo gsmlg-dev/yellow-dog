@@ -155,7 +155,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     selected = scope("view-edit-revert")
 
     Repo.query!(
-      "CREATE FUNCTION pg_temp.reject_reverted_view() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture database failure'; END $$"
+      "CREATE FUNCTION pg_temp.reject_reverted_view() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture database failure' USING ERRCODE = '23514'; END $$"
     )
 
     Repo.query!(
@@ -303,7 +303,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
 
     Repo.query!("""
     CREATE FUNCTION pg_temp.reject_view_draft() RETURNS trigger LANGUAGE plpgsql AS $$
-    BEGIN RAISE EXCEPTION 'fixture database failure'; END $$
+    BEGIN RAISE EXCEPTION 'fixture database failure' USING ERRCODE = '23514'; END $$
     """)
 
     Repo.query!(

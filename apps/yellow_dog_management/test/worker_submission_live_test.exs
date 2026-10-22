@@ -242,7 +242,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
 
   defp reject_inserts(table, name) do
     Repo.query!(
-      "CREATE FUNCTION pg_temp.#{name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'submission rejected'; END $$"
+      "CREATE FUNCTION pg_temp.#{name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'submission rejected' USING ERRCODE = '23514'; END $$"
     )
 
     Repo.query!(

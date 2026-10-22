@@ -1,5 +1,10 @@
 # Management node configuration workflow
 
+The **Step 2 review repair** section below records pre-delivery verification of the repair
+against `a7ebf949`. The original Step 2 delivery and its older verification are
+retained as historical evidence. In particular, the earlier connected-Worker
+shutdown failure was superseded by a successful complete rerun during this repair.
+
 Step 2 starts at `c93175b122c413b7bfe4c7d27b921d002e4f4399` on 2026-10-21.
 The original checkout contained only two untracked supplied planning documents.
 Implementation was prepared on `codex/node-workflow-step2` in
@@ -112,7 +117,130 @@ API/MCP adapters must explicitly design authorization and specialized secret-res
 retry policy around these operations, separately from WorkerAPI Bearer credentials.
 No `/api/v1`, OpenAPI, remote MCP transport, OAuth or account system is delivered.
 
-## Verification
+## Step 2 review repair — 2026-10-22
+
+Committed HEAD during repair verification: `a7ebf9490d40520dc932e198fc5d71d681fc1dba`
+on `main`, with repair changes uncommitted during those checks. Subsequent
+Git delivery is recorded in commit history. The initial
+checkout had two untracked supplied plans; all supplied plans, including the later
+Step 3 and review-fixes documents, are preserved. The separate
+`.trees/data-workflow-step3` worktree was outside this repair verification.
+No Step 3 feature was included in the repair checks below.
+
+### Reproductions and changes
+
+Baseline reproductions used an isolated detached worktree at the exact reviewed
+HEAD, with its own rebuilt assets and release against the current dependency lock.
+An older release already present in the checkout was not accepted as baseline
+evidence. These are locally executed reproductions, distinct from the CI evidence
+below.
+
+| Finding | Baseline evidence and repair |
+| --- | --- |
+| R1 dirty history | Real Chromium reproduced retained editor/value with incorrect address and loss of the original history entry. `NodeWorkflow` observes installed LiveView 1.2.13's `phx:navigate` lifecycle and protects immediate local input. One application-owned `popstate` dispatcher is installed before LiveSocket connects; only the active node hook handles rejected traversals. It restores the original native entry by key and suppresses canceled/restoration events before LiveView can change scope. Hook-owned listeners detach on destruction, and the inactive dispatcher retains no hook/DOM reference. No synthetic history entry, router replacement or browser/LiveView monkey patch is used. |
+| R2 database recovery | Actual PostgreSQL failure injection reproduced an escaping credential error and termination of a dirty editor during observation refresh. A narrow application boundary now distinguishes availability failures, confirmed SQL rejection and unknown credential outcome; programming errors propagate. Observation failures retain input, revision, preview and last known connectivity, with explicit stale feedback and one refresh timer. Recovery merges observations without rebasing. |
+| R2 uncertain issuance | Registration generates a nonsecret identity before its transaction. Uncertain results retire the submission intent, retain nonsecret input and identify that exact Worker for explicit recovery. Names are not used to select a possible registration. Rotation never automatically retries or promises the previous token is valid. Secret results are not generic replay receipts. |
+| R3 transient credentials | Real Chromium reproduced secret-bearing DOM and a usable copy control while disconnected. A transient-credential hook now erases textarea value, default value and text immediately, disables copy, and retires the matching issuance on reconnection. Queued updates cannot restore that retired issuance. Connected polling retains it; explicit fresh issuance remains possible. No disconnect-induced rotation occurs. Tokens already deliberately copied by the operator cannot be erased. |
+| R4 affected acceptance | The exact baseline reproduced six affected Elixir failures and both PreserveScroll failures. Tests now follow dedicated service routes and scoped Data assignment navigation, retaining persistence, unusual IDs, immutable identity, publication and exact-export assertions. The DOM double implements `querySelector`; nested/fallback scrolling, restricted storage, identity, update and listener cleanup remain covered. The logs test selects the intended patch control. |
+
+Fault injection uses disposable PostgreSQL roles, row policies and functions. It
+covers dirty observation failure/recovery, failure before rotation, ambiguous
+registration, stale-intent suppression, exact-ID recovery, transaction/audit
+integrity and propagation of SQL programming errors. The lost-acknowledgment test
+commits a real issuance, then **models acknowledgment loss at the application
+boundary**; it does not inject a wire-level COMMIT fault. Explicit SQL rejection
+fixtures use `23514` rather than treating arbitrary PL/pgSQL programming exceptions
+as constraints. No schema or Worker protocol/runtime change is included.
+An explicit Preview read is covered by the same availability boundary: failure
+retains the reviewed preview, revision and intent; a successful retry clears the
+stale-observation message.
+
+Final review also reproduced a failed same-Worker route load retaining the old
+service editor. Loaded scope now includes both route parameters and action:
+identical-scope failures preserve edits and preview, while a failed destination
+load retires the previous submission and clears actionable stale content. An
+explicit retry loads the destination. Tests cover service A to B, edit to new,
+ignored old actions, and recovery without changing either service or its audit.
+
+Chromium disconnect acceptance found a second pre-existing behavior: LiveView
+automatically recovered the sidebar's navigation selector as a form change,
+redirecting the connection page to Basic. A minimal probe against the rebuilt
+reviewed HEAD reproduced it (`/tmp/yellow-dog-review-browser-baseline-reconnect.log`).
+The navigation selector now opts out of automatic form recovery; editor recovery
+is retained. Credential tests assert that reconnection preserves the route as well
+as erasing the retired result and leaving reset audits unchanged.
+
+History acceptance checks native entry identity and count, URL, selected Worker,
+editor value, delayed validation, repeated canceled Back and missing-position
+Forward. Both cancellation and acceptance exercise CDP's actual browser history
+action (`Page.navigateToHistoryEntry`), as well as scripted immediate input/Back.
+Script-only cancellation was insufficient: the browser-toolbar probe exposed
+incorrect URL restoration, and remains a required regression assertion. While an
+asynchronous restoration is pending, additional pops target the same saved entry
+without advancing the committed snapshot or prompting again. Legacy restoration
+uses known numeric history positions; a browser lacking both native entry identity
+and usable positions cannot deterministically restore an unknown traversal with
+the History API alone. Real-browser acceptance here covers Chromium.
+
+### Current local verification
+
+All commands run from this checkout through Nix/devenv. PostgreSQL checks use
+`scripts/e2e/phase1_postgres.sh`, never the user's database. Checked-in assets and
+the Management release were rebuilt before browser acceptance.
+
+| Command | Locally executed result / log |
+| --- | --- |
+| `devenv shell -- env MIX_ENV=test mix compile --warnings-as-errors` | Passed; `/tmp/step2-compile-final.log` |
+| `devenv shell -- scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management test` | **537 tests, 0 failures**; `/tmp/step2-management-full-final.log` |
+| `devenv shell -- node --test apps/yellow_dog_management/test/management_ui_test.mjs` | **17 tests, 0 failures**; `/tmp/node-r1-toolbar-unit-final.log`. The asynchronous model installs the simulated LiveView listener at connect, covers repeated pending restoration and owner replacement, and retains all 12 non-navigation tests. |
+| `devenv shell -- bun run assets.management` | Passed; `/tmp/step2-assets.log` |
+| `devenv shell -- env MIX_ENV=prod mix release yellow_dog_management --overwrite` | Passed; `/tmp/step2-release-rebuild.log` |
+| `BUILD_RELEASE=0 MANAGEMENT_BROWSER_SCOPE=navigation devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_browser.sh` | **Exit 0 PASS**; desktop/mobile navigation, actual scrolling and scope assertions; `/tmp/yellow-dog-review-browser-navigation-final.log`, browser artifacts `/tmp/yellow-dog-management-browser.2zc2Ml` |
+| `BUILD_RELEASE=0 MANAGEMENT_BROWSER_SCOPE=nodes devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_browser.sh` | **Exit 0 PASS, including restart**; actual toolbar cancellation/acceptance, missing-position Forward, delayed input/repeated Back, registration/reset disconnect lifetime and route retention, original service/assignment/preview/publication/exact-export workflow, desktop/mobile and canonical state after Management restart. `/tmp/yellow-dog-review-browser-nodes-final.log`, browser artifacts `/tmp/yellow-dog-management-browser.5SpCG6` |
+| `BUILD_RELEASE=0 devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/management_browser.sh` | **Exit 1**, same baseline notifications expanded-state assertion; final rebuilt release confirmed this remaining limitation. `/tmp/step2-full-browser.log`, browser artifacts `/tmp/yellow-dog-management-browser.e8msof`; downstream assertions did not execute. |
+| `devenv shell -- scripts/e2e/architecture_smoke.sh` | Passed: positive fixture and **35 rejected mutations**; `/tmp/step2-architecture.log` |
+| `BUILD_RELEASE=0 devenv shell -- scripts/e2e/file_gate.sh` | Passed: offline selected export, real DNS UDP/TCP, snapshot recovery and lifecycle; `/tmp/step2-file-gate.log` |
+| `BUILD_RELEASE=0 devenv shell -- scripts/e2e/phase1_postgres.sh scripts/e2e/worker_connection_smoke.sh` | **Complete exit 0 PASS**, including final cleanup; `/tmp/step2-connected-worker.log`, evidence `/tmp/yellow-dog-worker-connection-vt5b2dga`. Supersedes the historical shutdown limitation below. |
+
+Focused node/credential/Domain/API checks also passed (54 tests), affected
+UI/logs checks passed (21), and constraint-fixture suites passed (46 and 26).
+Changed Elixir formatting, JavaScript syntax and `git diff --check` passed.
+No test was skipped or assertion suppressed to obtain these results.
+The final same-scope/changed-scope fault checks passed 22 focused tests; explicit
+Preview failure/recovery passed the nine-test database recovery suite. Logs:
+`/tmp/node-r2-scope-final.log` and `/tmp/node-r2-preview-focused.log`.
+
+The bounded Step 2 review gate is satisfied locally. Expected failures preserve
+recovery UI, canceled operator navigation preserves scope/history, transient
+credentials obey their lifetime, and affected regression suites pass. This does
+not declare the unrelated full-browser suite green or authorize Step 3 integration.
+
+Reproduction logs: `/tmp/yellow-dog-review-browser-baseline.log` (R1/R3),
+`/tmp/step2-database-baseline-final.log` (two database baseline checks),
+`/tmp/yellow-dog-r4-tests-baseline.log` (six Elixir failures), and
+`/tmp/step2-js-baseline.log` (two JavaScript failures).
+
+### CI and remaining limits
+
+The actual logs of [Phase 1 run 39642011290](https://github.com/gsmlg-dev/yellow-dog/actions/runs/39642011290)
+at the exact reviewed HEAD were directly inspected: Management had 527 tests with
+six failures, and Node had ten tests with two failures. Worker, ConfigSpec,
+architecture, release and offline-export jobs succeeded. These repair results were collected
+before Git delivery; **no CI run covered the repair at verification time**. Local
+green checks do not change the reviewed run's status.
+
+The unscoped browser command still fails the notifications trigger assertion
+(`aria-expanded` is null, expected `true`, currently `live_browser_smoke.mjs:165`). It was
+reproduced on both pristine reviewed HEAD and this repair with the final lock;
+downstream full-browser assertions are not claimed. The native DuskMoon dropdown
+defect is filed as Bug, `internal request`, severity `needed`:
+[phoenix-duskmoon-ui#209](https://github.com/duskmoon-dev/phoenix-duskmoon-ui/issues/209).
+The callsite records the upstream TODO; no component internals, CSP rules or
+assertions were replaced. Logs: `/tmp/step2-baseline-full-browser.log` and
+`/tmp/step2-full-browser.log`. Historical retained-source provenance results below
+were not rerun in this repair and are not current acceptance evidence.
+
+## Historical Step 2 verification
 
 Validation on 2026-10-21 (Asia/Shanghai), against the Step 2 tree before integration:
 

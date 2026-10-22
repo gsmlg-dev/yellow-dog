@@ -261,7 +261,7 @@ defmodule YellowDog.Management.AssignmentDomainTest do
     before = snapshot(zone)
 
     Repo.query!(
-      "CREATE FUNCTION pg_temp.reject_assignment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'assignment write rejected'; END $$"
+      "CREATE FUNCTION pg_temp.reject_assignment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'assignment write rejected' USING ERRCODE = '23514'; END $$"
     )
 
     Repo.query!(

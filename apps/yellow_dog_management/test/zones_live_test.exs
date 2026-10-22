@@ -57,7 +57,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
   test "database rejection retains draft input and retries the same command", %{conn: conn} do
     Repo.query!("""
     CREATE FUNCTION pg_temp.reject_zone_draft() RETURNS trigger LANGUAGE plpgsql AS $$
-    BEGIN RAISE EXCEPTION 'fixture database failure'; END $$
+    BEGIN RAISE EXCEPTION 'fixture database failure' USING ERRCODE = '23514'; END $$
     """)
 
     Repo.query!(

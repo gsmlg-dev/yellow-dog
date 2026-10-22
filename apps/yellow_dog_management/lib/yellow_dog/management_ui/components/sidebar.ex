@@ -143,7 +143,12 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
 
     ~H"""
     <div class="yd-node-selection">
-      <form id={@id} phx-change={"select_#{@target_type}"} phx-target={@myself}>
+      <form
+        id={@id}
+        phx-change={"select_#{@target_type}"}
+        phx-target={@myself}
+        phx-auto-recover="ignore"
+      >
         <label for={"#{@id}-select"} class="label">Selected {@label}</label>
         <select
           id={"#{@id}-select"}

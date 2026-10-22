@@ -71,9 +71,10 @@ async function runSmoke() {
     const message = JSON.parse(event.data);
     if (message.method === 'Page.lifecycleEvent' && message.params.name === 'load') loadedPages.add(message.params.loaderId);
     if (message.method === 'Page.javascriptDialogOpening') {
-      if (nextDialogDecision === null) errors.push({ unexpectedDialog: message.params });
-      cdp('Page.handleJavaScriptDialog', { accept: nextDialogDecision === true }).catch(error => errors.push(error));
-      nextDialogDecision = null;
+      const decision = Array.isArray(nextDialogDecision) ? nextDialogDecision.shift() : nextDialogDecision;
+      if (decision == null) errors.push({ unexpectedDialog: message.params });
+      cdp('Page.handleJavaScriptDialog', { accept: decision === true }).catch(error => errors.push(error));
+      if (!Array.isArray(nextDialogDecision) || nextDialogDecision.length === 0) nextDialogDecision = null;
     }
     if (message.method === 'Runtime.exceptionThrown') errors.push(message.params);
     if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {

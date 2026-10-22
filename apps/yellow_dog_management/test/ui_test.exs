@@ -125,6 +125,12 @@ defmodule YellowDog.Management.UITest do
              "#app-sidebar-navigation a[data-nav-item='worker_services'][aria-current='page']"
            )
 
+    refute has_element?(view, "#service-form")
+    view |> element("#worker-tabs a[href='/server/ui-export/services']") |> render_click()
+    assert_patch(view, "/server/ui-export/services")
+    view |> element("a[href='/server/ui-export/services/new']") |> render_click()
+    assert_patch(view, "/server/ui-export/services/new")
+
     view
     |> form("#service-form",
       service: %{id: "dns", listen_address: "127.0.0.1", port: "5300", desired_state: "stopped"}
@@ -135,14 +141,44 @@ defmodule YellowDog.Management.UITest do
     [service] = Domain.list_services(worker["id"])
 
     view
-    |> form("#assignment-form",
-      assignment: %{service_id: service["id"], resource_version_id: version["id"]}
-    )
-    |> render_submit()
+    |> element("#dns-services a[href='/server/ui-export/services/#{service["id"]}/edit']")
+    |> render_click()
 
-    assert length(Domain.list_assignments(worker["id"])) == 1
+    assert_patch(view, "/server/ui-export/services/#{service["id"]}/edit")
+    refute has_element?(view, "#assignment-form")
+
+    {:ok, data, _html} =
+      view
+      |> element("#service-references a[href='/server/ui-export/dns/zones']")
+      |> render_click()
+      |> follow_redirect(conn, "/server/ui-export/dns/zones")
+
+    assert has_element?(data, "#server-selection-form-select option[value='ui-export'][selected]")
+
+    assert has_element?(
+             data,
+             "nav[aria-label='Main navigation'] a[data-section='data'][aria-current='page']"
+           )
+
+    data
+    |> element("#zone-#{zone["id"]} a[href='/server/ui-export/dns/zones/#{zone["id"]}/edit']")
+    |> render_click()
+
+    assert_patch(data, "/server/ui-export/dns/zones/#{zone["id"]}/edit")
+
+    data
+    |> element("button[phx-click='add_assignment_worker'][phx-value-id='ui-export']")
+    |> render_click()
+
+    data |> form("#zone-assignments-form") |> render_submit()
+
+    assert [assignment] = Domain.list_assignments(worker["id"])
+    assert assignment["service_id"] == service["id"]
+    assert assignment["resource_version_id"] == version["id"]
+    {:ok, view, _html} = live(conn, "/server/ui-export/targets")
     view |> element("button[phx-click='preview']") |> render_click()
-    assert has_element?(view, "#target-preview", "prepared_preview")
+    assert has_element?(view, "#target-preview", "Bound saved configuration revision")
+    assert has_element?(view, "#target-preview", "example.test.")
     view |> element("button[phx-click='confirm_target']") |> render_click()
     assert {:ok, target} = Domain.get_target(worker["id"])
     assert target["status"] == "prepared"
@@ -153,8 +189,20 @@ defmodule YellowDog.Management.UITest do
     assert exported.resp_body =~ "example.test."
     assert render(view) =~ "Export TOML revision 1"
 
-    view |> element("button[phx-click='unassign']") |> render_click()
+    # Publication advanced the Worker revision, so refresh the assignment preconditions.
+    data |> element("button[phx-click='refresh_assignments']") |> render_click()
+
+    data
+    |> element("button[phx-click='remove_assignment_row'][phx-value-key='#{assignment["id"]}']")
+    |> render_click()
+
+    data |> form("#zone-assignments-form") |> render_submit()
     assert Domain.list_assignments(worker["id"]) == []
+
+    # Later assignment changes cannot change an earlier immutable export.
+    earlier_export = get(conn, "/api/workers/ui-export/targets/1/export")
+    assert earlier_export.status == 200
+    assert earlier_export.resp_body == exported.resp_body
   end
 
   test "stale forms report conflicts rather than overwrite concurrent edits", %{conn: conn} do
@@ -226,11 +274,15 @@ defmodule YellowDog.Management.UITest do
       })
 
     service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
-    {:ok, view, _html} = live(conn, "/server/ui-service/dashboard")
+    {:ok, view, _html} = live(conn, "/server/ui-service/services")
 
     view
-    |> element("button[phx-click='edit_service'][phx-value-id='#{service["id"]}']")
+    |> element("#dns-services a[href='/server/ui-service/services/#{service["id"]}/edit']")
     |> render_click()
+
+    assert_patch(view, "/server/ui-service/services/#{service["id"]}/edit")
+    assert has_element?(view, "input[name='service[id]'][value='dns'][readonly]")
+    assert has_element?(view, "input[name='service[listen_address]'][value='127.0.0.1']")
 
     assert has_element?(
              view,
@@ -241,8 +293,12 @@ defmodule YellowDog.Management.UITest do
 
     view |> form("#service-form", service: %{desired_state: "stopped"}) |> render_submit()
 
-    assert [%{"desired_state" => "stopped", "actual_state" => "unknown"}] =
+    assert [%{"desired_state" => "stopped", "actual_state" => "unknown"} = persisted] =
              Domain.list_services(worker["id"])
+
+    assert persisted["id"] == service["id"]
+    assert persisted["instance_id"] == service["instance_id"]
+    assert persisted["config"] == service["config"]
   end
 
   defp mutate(operation, params) do
@@ -251,10 +307,31 @@ defmodule YellowDog.Management.UITest do
   end
 
   test "logical Worker selection follows the Domain ID contract", %{conn: conn} do
-    mutate("create_worker", %{"id" => "settings", "name" => "Settings Worker"})
+    worker = mutate("create_worker", %{"id" => "settings", "name" => "Settings Worker"})
+    service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
     {:ok, view, _html} = live(conn, "/server/settings/dashboard")
     assert has_element?(view, "#server-selection-form-select option[value='settings'][selected]")
-    assert has_element?(view, "a[href='/server/settings/dns/zones']", "Zones")
+    view |> element("#worker-tabs a[href='/server/settings/services']") |> render_click()
+    assert_patch(view, "/server/settings/services")
+
+    view
+    |> element("#dns-services a[href='/server/settings/services/#{service["id"]}/edit']")
+    |> render_click()
+
+    assert_patch(view, "/server/settings/services/#{service["id"]}/edit")
+
+    {:ok, data, _html} =
+      view
+      |> element("#service-references a[href='/server/settings/dns/zones']")
+      |> render_click()
+      |> follow_redirect(conn, "/server/settings/dns/zones")
+
+    assert has_element?(data, "#server-selection-form-select option[value='settings'][selected]")
+
+    assert has_element?(
+             data,
+             "#app-sidebar-navigation a[data-nav-item='dns_zones'][href='/server/settings/dns/zones'][aria-current='page']"
+           )
   end
 
   test "Worker IDs with service-like names retain explicit scoped links", %{conn: conn} do
@@ -279,14 +356,35 @@ defmodule YellowDog.Management.UITest do
     assert has_element?(
              view,
              "#app-sidebar-navigation a[href='/server/settings/dashboard'][data-nav-item='worker_services']",
-             "Services & configuration"
+             "Selected Worker"
            )
   end
 
   test "DNS overview preserves the requested Worker selection", %{conn: conn} do
-    mutate("create_worker", %{"id" => "settings", "name" => "Settings Worker"})
-    {:ok, view, _html} = live(conn, "/server/settings/dns")
+    worker = mutate("create_worker", %{"id" => "settings", "name" => "Settings Worker"})
+    other = mutate("create_worker", %{"id" => "dns", "name" => "DNS Worker"})
+    service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
+    mutate("put_service", DomainFixtures.service(other["id"], other["revision"]))
+    {:ok, view, _html} = live(conn, "/server/settings/dns?server_id=dns")
     assert has_element?(view, "#server-selection-form-select option[value='settings'][selected]")
-    assert has_element?(view, "a[href='/server/settings/dns/zones']", "Zones")
+
+    assert has_element?(
+             view,
+             "#worker-tabs a[href='/server/settings/services'][aria-current='page']"
+           )
+
+    view
+    |> element("#dns-services a[href='/server/settings/services/#{service["id"]}/edit']")
+    |> render_click()
+
+    assert_patch(view, "/server/settings/services/#{service["id"]}/edit")
+
+    assert has_element?(
+             view,
+             "#service-references a[href='/server/settings/dns/zones']",
+             "Edit Zone data and assignments"
+           )
+
+    refute has_element?(view, "#service-references a[href='/server/dns/dns/zones']")
   end
 end

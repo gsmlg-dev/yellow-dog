@@ -20,13 +20,25 @@ try {
 
 let CustomHooks = {};
 
+// Register before LiveSocket connects so rejected node traversals never reach
+// its popstate handler. Inactive pages retain no hook or DOM reference.
+let activeNodeWorkflow = null;
+window.addEventListener("popstate", event => activeNodeWorkflow?.onPop(event), true);
+
 // Guard only unsaved node forms; never persist form or credential values.
 CustomHooks.NodeWorkflow = {
   mounted() {
     this.localDirty = false;
     this.sawServerDirty = false;
     this.resetKey = this.el.dataset.resetKey;
-    this.allowLeave = () => (!this.localDirty && this.el.dataset.dirty !== "true") || window.confirm("Discard unsaved node changes?");
+    this.allowLeave = () => {
+      if (!this.localDirty && this.el.dataset.dirty !== "true") return true;
+      if (!window.confirm("Discard unsaved node changes?")) return false;
+      this.localDirty = false;
+      this.sawServerDirty = false;
+      this.el.dataset.dirty = "false";
+      return true;
+    };
     this.onInput = event => {
       if (event.target.closest("#worker-edit-form, #service-form, #worker-enrollment-form, #worker-form")) this.localDirty = true;
     };
@@ -35,8 +47,13 @@ CustomHooks.NodeWorkflow = {
     this.remember = () => {
       this.path = location.href;
       this.position = history.state?.position;
+      this.entryIndex = window.navigation?.currentEntry?.index;
+      this.entryKey = window.navigation?.currentEntry?.key;
     };
+    // LiveView commits patch history after updated(). This event observes the
+    // committed address; observation/validation diffs must not move the snapshot.
     this.remember();
+    window.addEventListener("phx:navigate", this.remember);
     this.onClick = event => {
       const link = event.target.closest("a[href]");
       if (!link || event.defaultPrevented || link.target === "_blank" || link.hasAttribute("download")) return;
@@ -59,29 +76,42 @@ CustomHooks.NodeWorkflow = {
       event.preventDefault();
       event.returnValue = "";
     };
-    this.onPop = event => {
-      if (this.restoring) {
-        this.restoring = false;
-        event.stopImmediatePropagation();
-        return;
-      }
-      if (this.allowLeave()) return;
-      event.stopImmediatePropagation();
-      const distance = this.position - event.state?.position;
-      if (Number.isFinite(distance) && distance !== 0) {
-        this.restoring = true;
-        history.go(distance);
+    this.atRememberedEntry = () => this.entryKey
+      ? window.navigation?.currentEntry?.key === this.entryKey
+      : location.href === this.path && history.state?.position === this.position;
+    this.restoreEntry = () => {
+      if (this.entryKey && window.navigation?.traverseTo) {
+        // Retarget the original entry even if another Back arrives before this
+        // restoration finishes. A newer traversal may abort an earlier request.
+        window.navigation.traverseTo(this.entryKey).finished.catch(() => {});
       } else {
-        history.pushState(history.state, "", this.path);
+        const currentIndex = window.navigation?.currentEntry?.index;
+        const currentPosition = history.state?.position;
+        const delta = Number.isInteger(this.entryIndex) && Number.isInteger(currentIndex)
+          ? this.entryIndex - currentIndex
+          : Number.isInteger(this.position) && Number.isInteger(currentPosition)
+            ? this.position - currentPosition
+            : 0;
+        if (delta) history.go(delta);
       }
     };
+    this.onPop = event => {
+      if (this.restoring) {
+        event.stopImmediatePropagation();
+        if (this.atRememberedEntry()) this.restoring = false;
+        else this.restoreEntry();
+      } else if (!this.allowLeave()) {
+        event.stopImmediatePropagation();
+        this.restoring = true;
+        this.restoreEntry();
+      }
+    };
+    activeNodeWorkflow = this;
     document.addEventListener("click", this.onClick, true);
     document.addEventListener("change", this.onSelection, true);
     window.addEventListener("beforeunload", this.onUnload);
-    window.addEventListener("popstate", this.onPop, true);
   },
   updated() {
-    this.remember();
     if (this.el.dataset.dirty === "true") this.sawServerDirty = true;
     else if (this.sawServerDirty || this.resetKey !== this.el.dataset.resetKey) {
       this.localDirty = false;
@@ -95,7 +125,8 @@ CustomHooks.NodeWorkflow = {
     document.removeEventListener("click", this.onClick, true);
     document.removeEventListener("change", this.onSelection, true);
     window.removeEventListener("beforeunload", this.onUnload);
-    window.removeEventListener("popstate", this.onPop, true);
+    window.removeEventListener("phx:navigate", this.remember);
+    if (activeNodeWorkflow === this) activeNodeWorkflow = null;
   },
 };
 
@@ -114,18 +145,65 @@ CustomHooks.ResetForm = {
   },
 };
 
+let retiredBootstrap = null;
+CustomHooks.TransientCredential = {
+  mounted() {
+    this.issuance = this.el.dataset.issuance;
+    this.retired = retiredBootstrap === this.issuance;
+    if (this.retired) {
+      this.erase();
+      this.pushEvent("retire_connection", { id: this.issuance });
+    }
+  },
+  erase() {
+    for (const field of this.el.querySelectorAll("textarea")) {
+      field.value = "";
+      field.defaultValue = "";
+      field.textContent = "";
+    }
+    for (const button of this.el.querySelectorAll("[data-target]")) button.disabled = true;
+    this.el.dataset.retired = "true";
+  },
+  disconnected() {
+    this.offline = true;
+    this.retired = true;
+    retiredBootstrap = this.issuance;
+    this.erase();
+  },
+  updated() {
+    if (this.issuance !== this.el.dataset.issuance) {
+      this.issuance = this.el.dataset.issuance;
+      this.retired = this.offline || retiredBootstrap === this.issuance;
+      if (this.retired) retiredBootstrap = this.issuance;
+      else {
+        delete this.el.dataset.retired;
+        for (const button of this.el.querySelectorAll("[data-target]")) button.disabled = false;
+      }
+    }
+    if (this.retired) this.erase();
+  },
+  reconnected() {
+    this.offline = false;
+    if (this.retired) {
+      this.erase();
+      this.pushEvent("retire_connection", { id: this.issuance });
+    }
+  },
+};
+
 CustomHooks.CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", (event) => {
       const target = this.el.dataset.target;
       const content = document.getElementById(target);
 
+      if (this.el.disabled || content?.closest?.('[data-retired="true"]')) return;
       if (!content) {
         console.error("Copy target not found:", target);
         return;
       }
 
-      const text = content.textContent || content.innerText;
+      const text = content.value ?? content.textContent ?? content.innerText;
 
       navigator.clipboard
         .writeText(text)

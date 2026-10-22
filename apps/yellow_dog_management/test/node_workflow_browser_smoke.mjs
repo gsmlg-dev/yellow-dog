@@ -1,6 +1,157 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 
+const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function credentialLifetime({ cdp, evaluate, until, base, resetIssued = false }) {
+  // Keep secret material inside Chromium; only booleans and audit counts leave it.
+  const resetCount = () => evaluate(`(async () => {
+    const html = await (await fetch('/management/events')).text();
+    return new DOMParser().parseFromString(html, 'text/html').querySelectorAll('[data-operation="rotate_worker_token"]').length;
+  })()`);
+  const path = await evaluate('location.pathname');
+  const before = await resetCount();
+  if (resetIssued) assert.ok(before > 0, 'Explicit reset audit record missing before disconnect');
+  await evaluate(`(async () => {
+    const text = document.querySelector('#worker-bootstrap').value;
+    window.nodeBootstrapDigest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))).join(',');
+  })()`);
+  await delay(5200);
+  const pollingRetained = await evaluate(`(async () => {
+    const field = document.querySelector('#worker-bootstrap');
+    return !!field && Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(field.value)))).join(',') === window.nodeBootstrapDigest;
+  })()`);
+  await cdp('Browser.grantPermissions', { origin: base, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
+  await evaluate(`navigator.clipboard.writeText('node-workflow-no-secret')`);
+  await evaluate('window.liveSocket.disconnect()');
+  await until(() => evaluate('!window.liveSocket.isConnected()'), 'LiveView socket did not disconnect');
+  const erasedOffline = await evaluate(`(() => {
+    const field = document.querySelector('#worker-bootstrap');
+    return !field || (field.value === '' && field.defaultValue === '' && field.textContent === '');
+  })()`);
+  const copyDisabled = await evaluate(`!document.querySelector('#worker-bootstrap-copy') || document.querySelector('#worker-bootstrap-copy').disabled`);
+  await evaluate(`document.querySelector('#worker-bootstrap-copy')?.click()`);
+  await delay(100);
+  const cannotCopyOffline = await evaluate(`(async () => (await navigator.clipboard.readText()) === 'node-workflow-no-secret')()`);
+  await evaluate('window.liveSocket.connect()');
+  await until(() => evaluate('window.liveSocket.isConnected() && !!document.querySelector(".phx-connected")'), 'LiveView socket did not reconnect');
+  await delay(5200);
+  assert.equal(await evaluate('location.pathname'), path, 'Reconnect changed the credential operation scope');
+  const notRestored = await evaluate(`!document.querySelector('#worker-bootstrap') || document.querySelector('#worker-bootstrap').value === ''`);
+  const after = await resetCount();
+  await evaluate('delete window.nodeBootstrapDigest');
+  assert.deepEqual({ pollingRetained, erasedOffline, copyDisabled, cannotCopyOffline, notRestored, noRotation: after === before }, {
+    pollingRetained: true, erasedOffline: true, copyDisabled: true, cannotCopyOffline: true, notRestored: true, noRotation: true,
+  }, 'Transient bootstrap lifetime across real socket disconnect/reconnect');
+  console.log('PASS credential lifetime: polling retained, offline DOM/default text/copy erased, reconnect retired, no extra reset audit');
+}
+
+async function dirtyHistory({ cdp, evaluate, navigate, until, confirmNext, worker, service }) {
+  const basic = `/server/${worker}/dashboard`;
+  const editor = `/server/${worker}/services/${service}/edit`;
+  const target = `/server/${worker}/targets`;
+  await navigate(basic);
+  // The public navigation event runs after history commits, immediately after the
+  // editor hook update. Delay validation acknowledgment, then traverse in that turn.
+  await evaluate(`document.querySelector('#worker-tabs a[href="/server/${worker}/services"]').click()`);
+  // Services is an intermediate patch; install the timing probe for the actual editor.
+  await until(() => evaluate(`location.pathname === '/server/${worker}/services'`), 'Services patch failed');
+  confirmNext(false);
+  await evaluate(`(() => {
+    window.nodeHistoryProbe = null;
+    window.addEventListener('phx:navigate', () => {
+      if (location.pathname !== '${editor}') return;
+      window.liveSocket.enableLatencySim(1200);
+      window.nodeHistoryProbe = { length: history.length, key: navigation.currentEntry.key };
+      const field = document.querySelector('[name="service[port]"]');
+      field.value = '15456';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      history.back();
+    }, { once: true });
+    document.querySelector('#dns-services a[href="${editor}"]').click();
+  })()`);
+  await until(() => evaluate('window.nodeHistoryProbe !== null'), 'Editor timing probe did not run');
+  await delay(300);
+  assert.deepEqual(await evaluate(`({
+    address: location.pathname === '${editor}',
+    scope: document.querySelector('#server-selection-form-select').value === '${worker}' && !!document.querySelector('[name="service[id]"][readonly]'),
+    value: document.querySelector('[name="service[port]"]')?.value === '15456',
+    entry: navigation.currentEntry.key === window.nodeHistoryProbe.key,
+    length: history.length === window.nodeHistoryProbe.length,
+  })`), { address: true, scope: true, value: true, entry: true, length: true }, 'Cancelled immediate dirty Back retains address, editor, value and history');
+  const cancelledBackHistory = await cdp('Page.getNavigationHistory');
+  assert.ok(cancelledBackHistory.currentIndex > 0, 'Browser Back cancellation entry missing');
+  confirmNext(false);
+  await cdp('Page.navigateToHistoryEntry', { entryId: cancelledBackHistory.entries[cancelledBackHistory.currentIndex - 1].id });
+  await delay(300);
+  assert.deepEqual(await evaluate(`({
+    address: location.pathname === '${editor}',
+    scope: document.querySelector('#server-selection-form-select')?.value === '${worker}',
+    value: document.querySelector('[name="service[port]"]')?.value === '15456',
+    entry: navigation.currentEntry.key === window.nodeHistoryProbe.key,
+    length: history.length === window.nodeHistoryProbe.length,
+  })`), { address: true, scope: true, value: true, entry: true, length: true }, 'Cancelled browser Back retains address, editor, value and history');
+  // Rapid repeated traversals must retain the same dirty editor and history entry.
+  confirmNext([false, false]);
+  await evaluate('history.back(); history.back()');
+  await delay(300);
+  assert.equal(await evaluate(`location.pathname === '${editor}' && document.querySelector('[name="service[port]"]')?.value === '15456' && navigation.currentEntry.key === window.nodeHistoryProbe.key`), true, 'Repeated Back escaped the dirty editor');
+  await evaluate('window.liveSocket.disableLatencySim()');
+  await delay(2600);
+  confirmNext(true);
+  const backHistory = await cdp('Page.getNavigationHistory');
+  assert.ok(backHistory.currentIndex > 0, 'Browser Back entry missing after repeated cancellation');
+  await cdp('Page.navigateToHistoryEntry', { entryId: backHistory.entries[backHistory.currentIndex - 1].id });
+  await until(() => evaluate(`location.pathname === '/server/${worker}/services' && !document.querySelector('#service-form')`), 'Accepted Back failed');
+  await evaluate('history.forward()');
+  await until(() => evaluate(`location.pathname === '${editor}' && !!document.querySelector('#service-form')`), 'Cancelled traversal discarded the editor forward entry');
+  assert.equal(await evaluate(`document.querySelector('[name="service[port]"]').value`), '15453', 'Discard was not limited to unsaved input');
+  // Leave a forward target entry, remove LiveView positions, and verify
+  // cancellation preserves the original entry without synthesizing history.
+  await evaluate(`document.querySelector('#worker-tabs a[href="${target}"]').click()`);
+  await until(() => evaluate(`location.pathname === '${target}'`), 'Target patch failed');
+  await evaluate(`(() => {
+    const state = {...history.state}; delete state.position; history.replaceState(state, '', location.href); history.back();
+  })()`);
+  await until(() => evaluate(`location.pathname === '${editor}' && !!document.querySelector('#service-form')`), 'Editor Back from target failed');
+  await evaluate(`(() => {
+    const state = {...history.state}; delete state.position; history.replaceState(state, '', location.href);
+    window.nodeForwardProbe = { length: history.length, key: navigation.currentEntry.key };
+    window.liveSocket.enableLatencySim(1200);
+    const field = document.querySelector('[name="service[port]"]'); field.value = '15457'; field.dispatchEvent(new Event('input', {bubbles:true}));
+  })()`);
+  confirmNext(false);
+  await evaluate('history.forward()');
+  await delay(300);
+  assert.equal(await evaluate(`location.pathname === '${editor}' && document.querySelector('#server-selection-form-select')?.value === '${worker}' && document.querySelector('[name="service[port]"]')?.value === '15457' && navigation.currentEntry.key === window.nodeForwardProbe.key && history.length === window.nodeForwardProbe.length`), true, 'Missing positions lost dirty Forward scope');
+  const cancelledForwardHistory = await cdp('Page.getNavigationHistory');
+  const cancelledTargetEntry = cancelledForwardHistory.entries.find((entry, index) => index > cancelledForwardHistory.currentIndex && new URL(entry.url).pathname === target);
+  assert.ok(cancelledTargetEntry, 'Browser Forward cancellation entry missing');
+  confirmNext(false);
+  await cdp('Page.navigateToHistoryEntry', { entryId: cancelledTargetEntry.id });
+  await delay(300);
+  assert.deepEqual(await evaluate(`({
+    address: location.pathname === '${editor}',
+    scope: document.querySelector('#server-selection-form-select')?.value === '${worker}',
+    value: document.querySelector('[name="service[port]"]')?.value === '15457',
+    entry: navigation.currentEntry.key === window.nodeForwardProbe.key,
+    length: history.length === window.nodeForwardProbe.length,
+  })`), { address: true, scope: true, value: true, entry: true, length: true }, 'Cancelled browser Forward without positions retains address, editor, value and history');
+  await evaluate('window.liveSocket.disableLatencySim()');
+  await delay(2600);
+  confirmNext(true);
+  // Exercise the actual browser Forward action after the rejected traversal.
+  const browserHistory = await cdp('Page.getNavigationHistory');
+  const targetEntry = browserHistory.entries.find((entry, index) => index > browserHistory.currentIndex && new URL(entry.url).pathname === target);
+  assert.ok(targetEntry, JSON.stringify({ finding: 'Browser target forward entry missing', currentIndex: browserHistory.currentIndex, targetIndices: browserHistory.entries.flatMap((entry, index) => new URL(entry.url).pathname === target ? [index] : []) }));
+  await cdp('Page.navigateToHistoryEntry', { entryId: targetEntry.id });
+  await delay(300);
+  await until(() => evaluate(`location.pathname === '${target}' && !!document.querySelector('[phx-click="preview"]')`), 'Accepted Forward did not preserve the target entry');
+  assert.equal(await evaluate('history.length === window.nodeForwardProbe.length'), true, 'Forward cancellation replaced browser history');
+  await evaluate('delete window.nodeHistoryProbe; delete window.nodeForwardProbe');
+  console.log('PASS history cancellation: immediate unacknowledged input, repeated Back, missing positions, Forward, retained address/scope/value and accepted discard');
+}
+
 export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, submit, confirmNext, base, restart = false }) {
   const stateFile = process.env.MANAGEMENT_NODE_STATE_FILE;
   assert.ok(stateFile, 'Node scope requires a disposable state artifact path');
@@ -24,9 +175,16 @@ export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   await until(() => evaluate(`document.body.textContent.includes('Name must')`), 'Invalid registration not rejected');
   confirmNext(false);
   await evaluate(`document.querySelector('a[href="/management/servers/enrollment"]').click()`);
+  await delay(300);
   assert.equal(await evaluate('location.pathname'), '/management/servers', 'Failed registration lost dirty guard');
   assert.equal(await evaluate(`document.querySelector('[name="worker[name]"]').value`), '   ');
+  assert.deepEqual(await evaluate(`(() => {
+    const expected = document.querySelector('#workers-workflow').dataset.resetKey.split(':')[0];
+    const intent = document.querySelector('#worker-form [name="_submission"]');
+    return { value: intent.value === expected, attribute: intent.getAttribute('value') === expected };
+  })()`), { value: true, attribute: true }, 'Registration form must reflect the retired attempt intent');
   const ids = [];
+  const reviewFailures = [];
   for (const name of ['Node Workflow A', 'Node Workflow B']) {
     await submit('#worker-form', { 'worker[name]': name });
     await until(() => evaluate(`!!document.querySelector('#worker-bootstrap')`), 'Registration result absent');
@@ -39,7 +197,13 @@ export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
     assert.deepEqual(await api(`/workers/${id}/targets`), []);
     // Credential text stays in Chromium; no token is returned to diagnostics/artifacts.
     assert.equal(await evaluate(`document.querySelector('#worker-bootstrap').value.includes('management_url = "${base}"')`), true);
-    await evaluate(`document.querySelector('[phx-click="dismiss_connection"]').click()`);
+    if (ids.length === 1) {
+      try { await credentialLifetime({ cdp, evaluate, until, base }); }
+      catch (error) { reviewFailures.push({ finding: 'R3', message: error.message }); }
+    }
+    if (await evaluate(`!!document.querySelector('[phx-click="dismiss_connection"]')`)) {
+      await evaluate(`document.querySelector('[phx-click="dismiss_connection"]').click()`);
+    }
     await until(() => evaluate(`!document.querySelector('#worker-bootstrap')`), 'Secret not dismissed');
   }
   const [a, b] = ids;
@@ -56,6 +220,25 @@ export async function nodeWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   const service = worker.services[0].id;
   const other = (await api(`/workers/${b}`)).services[0].id;
   assert.notEqual(service, other, 'DB identity cannot be instance label');
+  try { await dirtyHistory({ cdp, evaluate, navigate, until, confirmNext, worker: a, service }); }
+  catch (error) { reviewFailures.push({ finding: 'R1', message: error.message }); }
+  console.log('Node review regression outcomes', JSON.stringify(reviewFailures));
+  assert.deepEqual(reviewFailures, [], 'Node review regressions');
+  await navigate(`/server/${a}/connection`);
+  confirmNext(true);
+  await evaluate(`document.querySelector('[phx-click="rotate_token"]').click()`);
+  await until(() => evaluate(`!!document.querySelector('#worker-bootstrap')`), 'Reset bootstrap absent');
+  await credentialLifetime({ cdp, evaluate, until, base, resetIssued: true });
+  // A fresh explicit reset remains usable after retirement; changing tabs clears it.
+  confirmNext(true);
+  await evaluate(`document.querySelector('[phx-click="rotate_token"]').click()`);
+  await until(() => evaluate(`!!document.querySelector('#worker-bootstrap')`), 'Explicit fresh reset absent');
+  await evaluate(`document.querySelector('#worker-tabs a[href="/server/${a}/dashboard"]').click()`);
+  await until(() => evaluate(`location.pathname === '/server/${a}/dashboard' && !document.querySelector('#worker-bootstrap')`), 'Tab navigation retained bootstrap');
+  await evaluate(`document.querySelector('#worker-tabs a[href="/server/${a}/connection"]').click()`);
+  await until(() => evaluate(`location.pathname === '/server/${a}/connection'`), 'Connection tab return failed');
+  assert.equal(await evaluate(`!!document.querySelector('#worker-bootstrap')`), false, 'Returning to connection restored retired bootstrap');
+
   await cdp('Page.navigate', {url:`${base}/server/${a}/services/${other}/edit`});
   await until(() => evaluate(`location.pathname === '/server/${a}/services' && !!document.querySelector('.phx-connected')`), 'Cross-Worker edit did not reject scope');
   assert.equal(await evaluate(`!!document.querySelector('#service-form')`), false, 'Cross-Worker service editor exposed');
