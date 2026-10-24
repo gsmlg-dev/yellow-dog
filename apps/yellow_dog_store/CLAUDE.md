@@ -4,12 +4,12 @@ This file provides guidance to Claude Code when working in `apps/yellow_dog_stor
 
 ## Product Context
 
-YellowDog ships as **two applications** from the same umbrella, built as separate Mix releases:
+YellowDog builds exactly two supported business releases: Management owns PostgreSQL/configuration; Worker owns execution. Store is retained legacy source outside both builds:
 
 - **yellow-dog server** — DNS, DHCP, mDNS, netboot, identity, fingerprinting, web console. This is where `yellow_dog_store` lives.
-- **yellow-dog netman** — NetworkManager replacement (netman, dhcp_client, resolved). Does NOT depend on Store or Concord.
+- Retained DHCP client and resolver libraries do not depend on Store or Concord.
 
-`yellow_dog_store` is **server-side only**. Netman apps never import it.
+`yellow_dog_store` remains a legacy server library, outside both supported products.
 
 ## Purpose
 
@@ -156,7 +156,7 @@ All tests use `Backend.Ets` + Concord in single-node mode. No external infra nee
 ## Constitution Constraints
 
 - **No server app calls `Concord.*` directly** — always through `YellowDog.Store.*`
-- **Netman apps never depend on `yellow_dog_store`** — netman is a separate product with its own persistence (TOML lease files via `LeaseStore`)
+- DHCP client leases use TOML `LeaseStore` files without a Store dependency.
 - **ETS is read cache, Concord is source of truth** — never persist in ETS alone
 - **Zone files are import/export format only** — Concord (via Store.Zone) is authoritative
 - **No AXFR/IXFR** — zone replication is Raft-only

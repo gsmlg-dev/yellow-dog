@@ -1,6 +1,6 @@
 defmodule YellowDog.ManagementUI.Redesign.ServicePaths do
   @moduledoc """
-  Builds service paths from an explicit Server or Netman selection.
+  Builds service paths from an explicit Server selection.
 
   Every dynamic value is encoded as one complete path segment. This module
   deliberately exposes named destinations instead of rewriting an existing
@@ -9,7 +9,6 @@ defmodule YellowDog.ManagementUI.Redesign.ServicePaths do
 
   @max_id_bytes 128
   @reserved_server_ids ["settings"]
-  @reserved_netman_ids ["config"]
 
   @server_paths %{
     dashboard: "/dashboard",
@@ -59,32 +58,14 @@ defmodule YellowDog.ManagementUI.Redesign.ServicePaths do
     settings_netboot: "/settings/netboot"
   }
 
-  @netman_paths %{
-    overview: "",
-    dashboard: "",
-    config: "/config",
-    interfaces: "/interfaces",
-    resolved: "/resolved",
-    dhcp_client: "/dhcp-client"
-  }
-
   @spec server_path(String.t(), atom() | tuple()) :: String.t()
   def server_path(server_id, destination) do
     "/server/#{selected_segment!(server_id, :server)}#{server_suffix!(destination)}"
   end
 
-  @spec netman_path(String.t(), atom()) :: String.t()
-  def netman_path(netman_id, destination) do
-    "/netman/#{selected_segment!(netman_id, :netman)}#{netman_suffix!(destination)}"
-  end
-
   @spec valid_server_id?(term()) :: boolean()
   def valid_server_id?(server_id),
     do: valid_id?(server_id) and server_id not in @reserved_server_ids
-
-  @spec valid_netman_id?(term()) :: boolean()
-  def valid_netman_id?(netman_id),
-    do: valid_id?(netman_id) and netman_id not in @reserved_netman_ids
 
   defp server_suffix!(destination) when is_atom(destination) do
     case Map.fetch(@server_paths, destination) do
@@ -142,19 +123,8 @@ defmodule YellowDog.ManagementUI.Redesign.ServicePaths do
     raise ArgumentError, "unknown Server destination: #{inspect(destination)}"
   end
 
-  defp netman_suffix!(destination) do
-    case Map.fetch(@netman_paths, destination) do
-      {:ok, suffix} -> suffix
-      :error -> raise ArgumentError, "unknown Netman destination: #{inspect(destination)}"
-    end
-  end
-
   defp selected_segment!(value, :server) do
     if valid_server_id?(value), do: encode_segment(value), else: invalid_id!(:server, value)
-  end
-
-  defp selected_segment!(value, :netman) do
-    if valid_netman_id?(value), do: encode_segment(value), else: invalid_id!(:netman, value)
   end
 
   defp resource_segment!(value) when is_integer(value) and value >= 0,

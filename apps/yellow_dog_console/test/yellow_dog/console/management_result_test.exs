@@ -114,7 +114,7 @@ defmodule YellowDog.Console.ManagementResultTest do
   test "non-internal errors retain safe metadata but redact accidental local diagnostics" do
     invalid = %Error{
       code: :invalid,
-      message: "validation failed in /etc/yellowdog/netman.toml",
+      message: "validation failed in /etc/yellowdog/worker.toml",
       details: %{
         "field" => "interface",
         "reason" => "raised at lib/yellow_dog/private.ex:42",

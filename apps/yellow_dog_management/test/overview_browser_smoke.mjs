@@ -78,10 +78,10 @@ async function verifyOutcomes() {
   const auditIds = await evaluate(`Array.from(document.querySelectorAll('#management-events tbody tr button[phx-click="show"]')).map(button => button.getAttribute('phx-value-id'))`);
   const outcomes = await evaluate(`Array.from(document.querySelectorAll('#management-command-outcomes [data-event-id]')).map(row => ({ id: row.dataset.eventId, outcome: row.dataset.outcome, operation: row.dataset.operation }))`);
   assert.deepEqual(outcomes.map(row => row.id), auditIds);
-  assert.ok(outcomes.some(row => row.outcome === 'committed' && row.operation === 'create_netman'));
+  assert.ok(outcomes.some(row => row.outcome === 'committed' && row.operation === 'create_worker'));
   assert.ok(outcomes.some(row => row.outcome === 'rejected' && row.operation === 'create_worker'));
   assert.ok(outcomes.some(row => row.outcome === 'rejected' && row.operation === 'create_zone'));
-  for (const id of ['management-worker-events', 'management-netman-events']) {
+  for (const id of ['management-worker-events']) {
     assert.equal(await evaluate(`!!document.querySelector('#${id}')`), true);
   }
   const rejected = outcomes.find(row => row.outcome === 'rejected' && row.operation === 'create_worker');
@@ -98,18 +98,17 @@ async function verifyOutcomes() {
 }
 
 async function verifyOverview(events) {
-  const [workers, netmans, zones] = await Promise.all([api('/workers'), api('/netmans'), api('/zones')]);
+  const [workers, zones] = await Promise.all([api('/workers'), api('/zones')]);
   const result = await evaluate(`({
     worker_count: Number(document.querySelector('#management-worker-count').textContent.trim()),
-    netman_count: Number(document.querySelector('#management-netman-count').textContent.trim()),
     zone_count: Number(document.querySelector('#management-zone-count').textContent.trim()),
     event_count: Number(document.querySelector('#management-recent-event-count').textContent.trim()),
     event_ids: Array.from(document.querySelectorAll('#management-recent-events [data-event-id]')).map(row => row.dataset.eventId),
     events: Array.from(document.querySelectorAll('#management-recent-events [data-event-id]')).map(row => ({ id: row.dataset.eventId, operation: row.children[0].textContent.trim(), actor: row.children[1].textContent.trim(), inserted_at: row.children[2].textContent.trim() }))
   })`);
   assert.equal(result.worker_count, workers.length);
-  assert.equal(result.netman_count, netmans.length);
   assert.equal(result.zone_count, zones.length);
+  assert.equal(await evaluate(`document.querySelector('#management-netman-count, a[href="/management/netman"], a[href^="/netman"]') === null`), true, 'Retired network-manager controls must be absent');
   assert.equal(await evaluate(`document.querySelector('#management-profile-count, a[href="/management/profiles"]') === null`), true, 'Profiles must not appear in the overview or navigation');
   assert.equal(result.event_count, events.length);
   assert.deepEqual(result.event_ids, events.map(event => event.id));
@@ -118,7 +117,7 @@ async function verifyOverview(events) {
     const text = await evaluate(`document.querySelector('#management-recent-events [data-event-id="${event.id}"]').textContent`);
     assert.ok(text.includes(event.operation) && text.includes(event.actor), JSON.stringify(event));
   }
-  for (const path of ['/management/events', '/management/servers', '/management/netman', '/management/zones', '/management/config']) {
+  for (const path of ['/management/events', '/management/servers', '/management/zones', '/management/config']) {
     assert.equal(await evaluate(`!!document.querySelector('#management-overview a[href="${path}"]')`), true, `Missing overview link: ${path}`);
   }
   return result;
@@ -175,18 +174,10 @@ try {
 
   if (process.env.MANAGEMENT_OVERVIEW_VERIFY_ONLY !== '1') {
     const suffix = randomUUID().slice(0, 8);
-    const workerId = `overview-ui-${suffix}`;
+    const workerName = `Overview Browser Worker ${suffix}`;
     await navigate('/management/servers', '#worker-form');
-    await evaluate(`(() => { const form = document.querySelector('#worker-form'); form.elements.namedItem('worker[id]').value = '${workerId}'; form.elements.namedItem('worker[name]').value = 'Overview Browser Worker'; form.requestSubmit(); })()`);
-    await until(() => evaluate(`!!document.querySelector('#server-selector-${workerId}')`), 'Worker UI registration did not complete');
-    const netmanId = `overview-netman-${suffix}`;
-    await navigate('/management/netman', '#netman-form');
-    await evaluate(`(() => { const form = document.querySelector('#netman-form'); form.elements.namedItem('netman[id]').value = '${netmanId}'; form.elements.namedItem('netman[name]').value = 'Overview Browser Netman'; form.requestSubmit(); })()`);
-    await until(async () => (await api('/netmans')).some(node => node.id === netmanId), 'Netman UI registration did not complete');
-    const node = await api(`/netmans/${netmanId}`);
-    assert.equal(node.actual_state, 'unknown');
-    assert.equal(node.status, 'not_yet_connected');
-    assert.equal(node.last_seen_at, null);
+    await evaluate(`(() => { const form = document.querySelector('#worker-form'); form.elements.namedItem('worker[name]').value = '${workerName}'; form.requestSubmit(); })()`);
+    await until(async () => (await api('/workers')).some(worker => worker.name === workerName), 'Worker UI registration did not complete');
   }
 
   let events = await eventRows();
@@ -197,7 +188,7 @@ try {
     await verifyOverview(events);
   }
   if (process.env.MANAGEMENT_OVERVIEW_VERIFY_ONLY !== '1') {
-    const worker = (await api('/workers')).find(item => item.id.startsWith('overview-ui-'));
+    const worker = (await api('/workers')).find(item => item.name.startsWith('Overview Browser Worker '));
     await api('/commands/update_worker', { id: worker.id, name: 'Refreshed Overview Worker', expected_revision: worker.revision });
     const rejected = await api('/commands/create_worker', { id: worker.id, name: 'Duplicate Worker', expected_capabilities: ['dns'] }, 409);
     assert.equal(rejected.code, 'conflict');
@@ -215,6 +206,10 @@ try {
   await navigate('/management', '#management-overview');
   const removedProfiles = await fetch(`${base}/management/profiles`, { signal: AbortSignal.timeout(10000) });
   assert.equal(removedProfiles.status, 404, 'Profiles route must be removed');
+  for (const path of ['/management/netman', '/netman', '/netman/retired', '/netman/retired/config', '/netman/retired/resolved']) {
+    const response = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(10000) });
+    assert.equal(response.status, 404, `Retired entry must be unreachable: ${path}`);
+  }
   await evaluate(`document.querySelector('#management-overview a[href="/management/events"]').click()`);
   await until(() => evaluate(`location.pathname === '/management/events' && !!document.querySelector('#management-events') && !!document.querySelector('.phx-connected')`), 'Overview Events navigation did not connect');
   await navigate('/management', '#management-overview');

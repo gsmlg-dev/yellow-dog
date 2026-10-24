@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementCore do
   @moduledoc """
   Public facade for YellowDog management state.
 
-  Concrete server and Netman contexts persist their state without changing the
+  Concrete server contexts persist their state without changing the
   console-facing API.
   """
 
@@ -13,7 +13,6 @@ defmodule YellowDog.ManagementCore do
   alias YellowDog.Management.ConfigVersions
   alias YellowDog.Management.DisconnectedTransport
   alias YellowDog.Management.EventStore
-  alias YellowDog.Management.Netmans
   alias YellowDog.Management.Profiles
   alias YellowDog.Management.ServerConfigs
   alias YellowDog.Management.Servers
@@ -41,33 +40,17 @@ defmodule YellowDog.ManagementCore do
   @doc "Updates the status for a registered managed server."
   def update_server_status(id, status), do: Servers.update_status(id, status)
 
-  @doc "Lists registered Netman instances."
-  def list_netmans, do: Netmans.list()
-
-  @doc "Fetches a registered Netman instance by id."
-  def get_netman(id), do: Netmans.get(id)
-
-  @doc "Registers or replaces a Netman record."
-  def register_netman(attrs), do: Netmans.register(attrs)
-
-  @doc "Updates the status for a registered Netman instance."
-  def update_netman_status(id, status), do: Netmans.update_status(id, status)
-
   @doc "Lists concrete server profiles."
   def list_server_profiles, do: Profiles.list_server_profiles()
-
-  @doc "Lists concrete Netman profiles."
-  def list_netman_profiles, do: Profiles.list_netman_profiles()
 
   @doc "Lists management events in deterministic global order."
   def list_events, do: EventStore.list()
 
   @doc "Lists sanitized durable configuration lifecycle summaries."
   def list_config_versions do
-    with {:ok, server_versions} <- list_target_config_versions(:server, Servers.list()),
-         {:ok, netman_versions} <- list_target_config_versions(:netman, Netmans.list()) do
+    with {:ok, server_versions} <- list_target_config_versions(:server, Servers.list()) do
       versions =
-        (server_versions ++ netman_versions)
+        server_versions
         |> Enum.map(&config_version_summary/1)
         |> Enum.sort_by(fn version ->
           {target_rank(version.target_type), version.target_id, -version.version}
@@ -157,25 +140,9 @@ defmodule YellowDog.ManagementCore do
     end
   end
 
-  @doc "Publishes an immutable desired configuration for a registered Netman."
-  def publish_netman_config(netman_id, attrs) do
-    case ConfigVersions.publish_exclusive(:netman, netman_id, attrs) do
-      {:ok, version} ->
-        deliver_desired_config(version)
-        {:ok, version}
-
-      {:error, %Error{}} = error ->
-        error
-    end
-  end
-
   @doc "Fetches a concrete server configuration version."
   def get_server_config_version(server_id, version),
     do: ConfigVersions.get(:server, server_id, version)
-
-  @doc "Fetches a concrete Netman configuration version."
-  def get_netman_config_version(netman_id, version),
-    do: ConfigVersions.get(:netman, netman_id, version)
 
   @doc "Transitions a desired configuration using lifecycle CAS details."
   def transition_config(target_type, target_id, version, state, details),
@@ -187,7 +154,7 @@ defmodule YellowDog.ManagementCore do
 
   @doc "Accepts and durably receipts an exact canonical ConfigState publication."
   @spec accept_config_state_publication(
-          :server | :netman,
+          :server,
           String.t(),
           pos_integer(),
           binary()
@@ -199,7 +166,7 @@ defmodule YellowDog.ManagementCore do
         publication_sequence,
         encoded_message
       )
-      when target_type in [:server, :netman],
+      when target_type in [:server],
       do:
         ConfigVersions.accept_config_state_publication(
           target_type,
@@ -215,10 +182,6 @@ defmodule YellowDog.ManagementCore do
   def query_server(server_id, snapshot_domain, operation, payload),
     do: query(:server, server_id, snapshot_domain, operation, payload)
 
-  @doc "Queries a concrete Netman and durably stores its validated snapshot."
-  def query_netman(netman_id, snapshot_domain, operation, payload),
-    do: query(:netman, netman_id, snapshot_domain, operation, payload)
-
   @doc "Executes a durable command against a concrete server."
   def command_server(server_id, operation, payload, expected_revision, idempotency_key),
     do:
@@ -231,29 +194,10 @@ defmodule YellowDog.ManagementCore do
         idempotency_key
       )
 
-  @doc "Executes a durable command against a concrete Netman."
-  def command_netman(netman_id, operation, payload, expected_revision, idempotency_key),
-    do:
-      command(
-        :netman,
-        netman_id,
-        operation,
-        payload,
-        expected_revision,
-        idempotency_key
-      )
-
   @doc "Returns the latest durable snapshot for a concrete server and domain."
   def get_server_snapshot(server_id, domain) do
     with {:ok, _server} <- registered_target(:server, server_id) do
       Snapshots.get(:server, server_id, domain)
-    end
-  end
-
-  @doc "Returns the latest durable snapshot for a concrete Netman and domain."
-  def get_netman_snapshot(netman_id, domain) do
-    with {:ok, _netman} <- registered_target(:netman, netman_id) do
-      Snapshots.get(:netman, netman_id, domain)
     end
   end
 
@@ -350,7 +294,6 @@ defmodule YellowDog.ManagementCore do
   defp error_field(nil, _field), do: nil
 
   defp target_rank(:server), do: 0
-  defp target_rank(:netman), do: 1
 
   defp command(target_type, target_id, operation, payload, expected_revision, idempotency_key) do
     with {:ok, _target} <- registered_target(target_type, target_id),
@@ -488,7 +431,7 @@ defmodule YellowDog.ManagementCore do
   end
 
   defp deliver_desired_config(%{target_type: target_type} = version)
-       when target_type in [:server, :netman] do
+       when target_type in [:server] do
     case connected(version.target_type, version.target_id) do
       :ok ->
         with {:ok, envelope} <- config_envelope(version) do
@@ -589,7 +532,6 @@ defmodule YellowDog.ManagementCore do
   end
 
   defp registered_target(:server, target_id), do: registered_result(Servers.get(target_id))
-  defp registered_target(:netman, target_id), do: registered_result(Netmans.get(target_id))
   defp registered_target(_target_type, _target_id), do: invalid("invalid concrete target")
 
   defp registered_result({:ok, target}), do: {:ok, target}
@@ -599,9 +541,6 @@ defmodule YellowDog.ManagementCore do
 
   defp persist_status(:server, target_id, status),
     do: status_result(Servers.update_status(target_id, status))
-
-  defp persist_status(:netman, target_id, status),
-    do: status_result(Netmans.update_status(target_id, status))
 
   defp status_result({:ok, target}), do: {:ok, target}
   defp status_result({:error, :not_found}), do: not_found()
@@ -618,13 +557,6 @@ defmodule YellowDog.ManagementCore do
 
   defp valid_snapshot_domain(:server, target_id, domain) do
     case StoragePath.server_snapshot(EventStore.config().root, target_id, domain) do
-      {:ok, _path} -> :ok
-      {:error, %Error{}} = error -> error
-    end
-  end
-
-  defp valid_snapshot_domain(:netman, target_id, domain) do
-    case StoragePath.netman_snapshot(EventStore.config().root, target_id, domain) do
       {:ok, _path} -> :ok
       {:error, %Error{}} = error -> error
     end

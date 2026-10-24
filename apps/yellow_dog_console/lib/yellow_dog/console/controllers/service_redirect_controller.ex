@@ -2,7 +2,7 @@ defmodule YellowDog.Console.ServiceRedirectController do
   @moduledoc """
   Redirects legacy unscoped service URLs to an explicit selector.
 
-  Redirects never infer a Server or Netman ID. Unknown paths receive a bounded
+  Redirects never infer a Server ID. Unknown paths receive a bounded
   404 response instead of being treated as a legacy service route.
   """
 
@@ -59,13 +59,8 @@ defmodule YellowDog.Console.ServiceRedirectController do
 
   def server(conn, _params), do: redirect(conn, to: "/server")
 
-  def netman(conn, _params), do: redirect(conn, to: "/netman")
-
   def not_found(%{path_params: %{"service" => "server"}} = conn, _params),
     do: send_resp(conn, 404, "Server not found")
-
-  def not_found(%{path_params: %{"service" => "netman"}} = conn, _params),
-    do: send_resp(conn, 404, "Netman not found")
 
   def not_found(conn, _params), do: send_resp(conn, 404, "Service not found")
 

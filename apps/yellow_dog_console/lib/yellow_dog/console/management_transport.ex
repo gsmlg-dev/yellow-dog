@@ -5,7 +5,6 @@ defmodule YellowDog.Console.ManagementTransport do
 
   @behaviour YellowDog.Management.Transport
 
-  alias YellowDog.Console.NetmanConnections
   alias YellowDog.Console.ServerChannel.SyncCodec
   alias YellowDog.Console.ServerConnections
 
@@ -14,10 +13,6 @@ defmodule YellowDog.Console.ManagementTransport do
   @impl true
   def connected?(:server, server_id) when is_binary(server_id) and server_id != "" do
     ServerConnections.connected?(server_id)
-  end
-
-  def connected?(:netman, netman_id) when is_binary(netman_id) and netman_id != "" do
-    NetmanConnections.connected?(netman_id)
   end
 
   def connected?(_target_type, _target_id), do: false
@@ -49,16 +44,10 @@ defmodule YellowDog.Console.ManagementTransport do
   defp request_target(%{target_type: :server} = summary, encoded, timeout),
     do: ServerConnections.request(summary, encoded, timeout)
 
-  defp request_target(%{target_type: :netman} = summary, encoded, timeout),
-    do: NetmanConnections.request(summary, encoded, timeout)
-
   defp request_target(_summary, _encoded, _timeout), do: {:error, :invalid}
 
   defp deliver_target(%{target_type: :server} = summary, encoded),
     do: ServerConnections.deliver(summary, encoded)
-
-  defp deliver_target(%{target_type: :netman} = summary, encoded),
-    do: NetmanConnections.deliver(summary, encoded)
 
   defp deliver_target(_summary, _encoded), do: {:error, :invalid}
 

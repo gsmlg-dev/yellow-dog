@@ -24,7 +24,6 @@ defmodule YellowDog.Management.OverviewLiveTest do
       {:ok, view, html} = live(conn, path)
       assert has_element?(view, "#management-overview")
       assert has_element?(view, "#management-worker-count", "0")
-      assert has_element?(view, "#management-netman-count", "0")
       assert has_element?(view, "#management-zone-count", "0")
       refute has_element?(view, "#management-profile-count")
       refute has_element?(view, "a[href='/management/profiles']")
@@ -34,11 +33,14 @@ defmodule YellowDog.Management.OverviewLiveTest do
       refute has_element?(view, "#management-recent-events [data-event-id]")
       refute has_element?(view, "input[type='password'], #login")
       assert html =~ "Actual runtime state is unknown"
-      refute html =~ "Read-only Server and Netman presets"
+
+      refute has_element?(
+               view,
+               "a[href^='/netman'], a[href='/management/netman'], #management-netman-count"
+             )
 
       for {path, label} <- [
             {"/management/servers", "Manage Servers"},
-            {"/management/netman", "Manage Netman"},
             {"/management/zones", "Manage DNS Zones"},
             {"/management/config", "Manage Configuration"},
             {"/management/events", "View All Events"}
@@ -71,7 +73,6 @@ defmodule YellowDog.Management.OverviewLiveTest do
     {:ok, view, _html} = live(conn, "/management")
     assert_recent(view)
     assert has_element?(view, "#management-worker-count", "2")
-    assert has_element?(view, "#management-netman-count", "1")
     assert has_element?(view, "#management-zone-count", "1")
     refute has_element?(view, "#management-profile-count")
     assert has_element?(view, "#management-recent-event-count", "5")
@@ -81,7 +82,6 @@ defmodule YellowDog.Management.OverviewLiveTest do
     end
 
     for worker <- Domain.list_workers(), do: assert(worker["actual_state"] == "unknown")
-    for netman <- Domain.list_netmans(), do: assert(netman["actual_state"] == "unknown")
     assert footprint() == before_read
   end
 
@@ -118,13 +118,11 @@ defmodule YellowDog.Management.OverviewLiveTest do
     assert has_element?(view, "#management-recent-event-count", "0")
     seed_mutations()
     assert has_element?(view, "#management-worker-count", "0")
-    assert has_element?(view, "#management-netman-count", "0")
     assert has_element?(view, "#management-zone-count", "0")
     before_refresh = footprint()
     view |> element("#management-overview-refresh") |> render_click()
     assert_recent(view)
     assert has_element?(view, "#management-worker-count", "2")
-    assert has_element?(view, "#management-netman-count", "1")
     assert has_element?(view, "#management-zone-count", "1")
     refute has_element?(view, "#management-profile-count")
     refute has_element?(view, "#management-recent-events-empty")
@@ -184,13 +182,13 @@ defmodule YellowDog.Management.OverviewLiveTest do
       "expected_revision" => worker["revision"]
     })
 
-    netman = mutate("create_netman", %{"id" => "overview-netman", "name" => "Overview Netman"})
-
-    mutate("update_netman", %{
-      "id" => netman["id"],
-      "name" => "Updated Netman",
-      "expected_revision" => netman["revision"]
-    })
+    for revision <- [2, 3] do
+      mutate("update_worker", %{
+        "id" => worker["id"],
+        "name" => "Updated Worker #{revision}",
+        "expected_revision" => revision
+      })
+    end
 
     zone =
       mutate("create_zone", %{
@@ -252,7 +250,6 @@ defmodule YellowDog.Management.OverviewLiveTest do
   defp footprint do
     {
       Domain.list_workers(),
-      Domain.list_netmans(),
       Domain.list_zones(),
       Domain.list_audit(),
       Repo.all(Audit) |> Enum.sort_by(& &1.id),

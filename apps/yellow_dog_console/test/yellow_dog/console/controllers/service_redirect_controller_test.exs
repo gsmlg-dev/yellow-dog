@@ -68,14 +68,6 @@ defmodule YellowDog.Console.ServiceRedirectControllerTest do
     end
   end
 
-  test "legacy unscoped Netman config always redirects without selecting the reserved ID", %{
-    conn: conn
-  } do
-    redirected = get(conn, "/netman/config")
-
-    assert redirected_to(redirected, 302) == "/netman"
-  end
-
   test "former system service aliases redirect to the matching selector", %{conn: conn} do
     for path <- [
           "/system/logs/dns-query",
@@ -100,7 +92,6 @@ defmodule YellowDog.Console.ServiceRedirectControllerTest do
 
   test "stable service not-found endpoint returns a bounded deterministic body", %{conn: conn} do
     assert conn |> get("/service-not-found/server") |> response(404) == "Server not found"
-    assert conn |> get("/service-not-found/netman") |> response(404) == "Netman not found"
     assert conn |> get("/service-not-found/other") |> response(404) == "Service not found"
   end
 
@@ -116,21 +107,9 @@ defmodule YellowDog.Console.ServiceRedirectControllerTest do
           ]
       end)
 
-    netman_routes =
-      Enum.filter(routes, fn route ->
-        String.starts_with?(route.path, "/netman/") and
-          route.plug not in [
-            YellowDog.Console.ServiceRedirectController,
-            YellowDog.Console.NetmanLive.DashboardLive
-          ]
-      end)
-
     assert server_routes != []
-    assert netman_routes != []
     assert Enum.all?(server_routes, &String.contains?(&1.path, "/:server_id/"))
-    assert Enum.all?(netman_routes, &String.contains?(&1.path, "/:netman_id"))
 
     assert Enum.any?(routes, &(&1.path == "/server/:server_id/dashboard"))
-    assert Enum.any?(routes, &(&1.path == "/netman/:netman_id"))
   end
 end

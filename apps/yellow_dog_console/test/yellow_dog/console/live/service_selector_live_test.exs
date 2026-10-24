@@ -3,17 +3,14 @@ defmodule YellowDog.Console.ServiceSelectorLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias YellowDog.Management.Netmans
   alias YellowDog.Management.Servers
   alias YellowDog.ManagementCore
 
   setup do
     Servers.reset()
-    Netmans.reset()
 
     on_exit(fn ->
       Servers.reset()
-      Netmans.reset()
     end)
   end
 
@@ -53,45 +50,6 @@ defmodule YellowDog.Console.ServiceSelectorLiveTest do
     assert has_element?(view, "a[href='/server/server%20offline/dashboard']")
   end
 
-  test "Netman selector renders empty, online, and offline management records", %{conn: conn} do
-    {:ok, _view, empty_html} = live(conn, "/netman")
-    assert empty_html =~ "Select a Netman"
-    assert empty_html =~ "No Netman instances registered"
-
-    assert {:ok, _online} =
-             ManagementCore.register_netman(%{
-               id: "netman-online",
-               name: "Online Netman",
-               status: :online
-             })
-
-    assert {:ok, _offline} =
-             ManagementCore.register_netman(%{
-               id: "netman offline",
-               name: "Offline Netman",
-               status: :offline,
-               last_seen_at: ~U[2026-08-10 09:00:00Z]
-             })
-
-    {:ok, view, html} = live(conn, "/netman")
-
-    assert html =~ "Online Netman"
-    assert html =~ "Offline Netman"
-    assert has_element?(view, "a[href='/netman/netman-online']")
-    assert has_element?(view, "a[href='/netman/netman%20offline']")
-  end
-
-  test "reserved Netman config record is listed without a selectable link", %{conn: conn} do
-    assert {:ok, _netman} =
-             ManagementCore.register_netman(%{id: "config", name: "Reserved ID", status: :online})
-
-    {:ok, view, html} = live(conn, "/netman")
-
-    assert html =~ "Reserved ID"
-    assert html =~ "Reserved UI path"
-    refute has_element?(view, "#netman-selector-config a[href='/netman/config']")
-  end
-
   test "reserved Server settings record is listed without a selectable link", %{conn: conn} do
     assert {:ok, _server} =
              ManagementCore.register_server(%{
@@ -109,7 +67,6 @@ defmodule YellowDog.Console.ServiceSelectorLiveTest do
 
   test "unknown and malformed scoped IDs render deterministic not-found responses", %{conn: conn} do
     assert conn |> get("/server/missing/dashboard") |> response(404) == "Server not found"
-    assert conn |> get("/netman/missing") |> response(404) == "Netman not found"
 
     overlong = String.duplicate("a", 129)
     assert conn |> get("/server/#{overlong}/dashboard") |> response(404) == "Server not found"
@@ -128,23 +85,14 @@ defmodule YellowDog.Console.ServiceSelectorLiveTest do
              :sys.get_state(view.pid).socket.assigns
   end
 
-  test "encoded Server and Netman IDs resolve to their exact management records", %{conn: conn} do
+  test "encoded Server IDs resolve to their exact management records", %{conn: conn} do
     assert {:ok, _server} =
              ManagementCore.register_server(%{id: "server one@北京", status: :offline})
-
-    assert {:ok, _netman} =
-             ManagementCore.register_netman(%{id: "netman one@北京", status: :offline})
 
     {:ok, server_view, _html} =
       live(conn, "/server/server%20one%40%E5%8C%97%E4%BA%AC/dashboard")
 
     assert %{selected_server: %{id: "server one@北京"}} =
              :sys.get_state(server_view.pid).socket.assigns
-
-    {:ok, netman_view, _html} =
-      live(conn, "/netman/netman%20one%40%E5%8C%97%E4%BA%AC/config")
-
-    assert %{selected_netman: %{id: "netman one@北京"}} =
-             :sys.get_state(netman_view.pid).socket.assigns
   end
 end

@@ -4,9 +4,6 @@ defmodule YellowDog.ManagementCoreTest do
   alias YellowDog.Management.Event
   alias YellowDog.Management.EventStore
   alias YellowDog.Management.ManifestStore
-  alias YellowDog.Management.Netman
-  alias YellowDog.Management.Netmans
-  alias YellowDog.Management.NetmanProfile
   alias YellowDog.Management.Server
   alias YellowDog.Management.Servers
   alias YellowDog.Management.ServerProfile
@@ -16,7 +13,7 @@ defmodule YellowDog.ManagementCoreTest do
 
   setup do
     previous_env =
-      Map.new([:data_dir, :max_servers, :max_netmans, :max_events], fn key ->
+      Map.new([:data_dir, :max_servers, :max_events], fn key ->
         {key, Application.fetch_env(:yellow_dog_management_core, key)}
       end)
 
@@ -28,7 +25,6 @@ defmodule YellowDog.ManagementCoreTest do
 
     Application.put_env(:yellow_dog_management_core, :data_dir, data_dir)
     Application.delete_env(:yellow_dog_management_core, :max_servers)
-    Application.delete_env(:yellow_dog_management_core, :max_netmans)
     Application.delete_env(:yellow_dog_management_core, :max_events)
     restart_management_children()
 
@@ -71,37 +67,7 @@ defmodule YellowDog.ManagementCoreTest do
     assert {:error, :not_found} = ManagementCore.update_server_status("missing", :offline)
   end
 
-  test "registers, lists, fetches, and updates Netman instances in memory" do
-    assert [] = ManagementCore.list_netmans()
-
-    assert {:ok,
-            %Netman{
-              id: "netman-cloud-1",
-              name: "Cloud Netman 1",
-              profile: :cloud_server,
-              status: :registered,
-              features: %{interfaces: true}
-            }} =
-             ManagementCore.register_netman(%{
-               id: "netman-cloud-1",
-               name: "Cloud Netman 1",
-               profile: :cloud_server,
-               features: %{interfaces: true}
-             })
-
-    assert [%Netman{id: "netman-cloud-1"}] = ManagementCore.list_netmans()
-
-    assert {:ok, %Netman{id: "netman-cloud-1", status: :registered}} =
-             ManagementCore.get_netman("netman-cloud-1")
-
-    assert {:ok, %Netman{id: "netman-cloud-1", status: :online}} =
-             ManagementCore.update_netman_status("netman-cloud-1", :online)
-
-    assert {:error, :not_found} = ManagementCore.get_netman("missing")
-    assert {:error, :not_found} = ManagementCore.update_netman_status("missing", :offline)
-  end
-
-  test "lists concrete server and Netman profiles" do
+  test "lists concrete server profiles" do
     assert %ServerProfile{
              name: :cloud_dns,
              services: %{dns: true, server_agent: true, dhcpv4: false}
@@ -111,30 +77,6 @@ defmodule YellowDog.ManagementCoreTest do
              name: :local_network,
              services: %{dns: true, mdns: true, dhcpv4: true, server_agent: true}
            } = find_profile(ManagementCore.list_server_profiles(), :local_network)
-
-    assert %NetmanProfile{
-             name: :cloud_server,
-             features: %{interfaces: true, dhcp_client: true, routes: true, vpn: false},
-             apply_mode: :observe_first
-           } = find_profile(ManagementCore.list_netman_profiles(), :cloud_server)
-
-    assert %NetmanProfile{
-             name: :vpn_gateway,
-             features: %{interfaces: true, routes: true, dns_client: true, vpn: true},
-             apply_mode: :managed
-           } = find_profile(ManagementCore.list_netman_profiles(), :vpn_gateway)
-
-    assert %NetmanProfile{
-             name: :vm,
-             features: %{interfaces: true, dhcp_client: false, routes: true, vpn: false},
-             apply_mode: :managed
-           } = find_profile(ManagementCore.list_netman_profiles(), :vm)
-
-    assert %NetmanProfile{
-             name: :observe_only,
-             features: %{interfaces: true, link_state: true, routes: false},
-             apply_mode: :observe
-           } = find_profile(ManagementCore.list_netman_profiles(), :observe_only)
   end
 
   test "records concrete management events" do
@@ -147,17 +89,9 @@ defmodule YellowDog.ManagementCoreTest do
 
     assert {:ok, %Server{}} = ManagementCore.update_server_status("srv-1", :online)
 
-    assert {:ok, %Netman{}} =
-             ManagementCore.register_netman(%{
-               id: "netman-1",
-               name: "Netman 1",
-               profile: :vm
-             })
-
     assert [
              %Event{source: :server, source_id: "srv-1", type: :server_registered},
-             %Event{source: :server, source_id: "srv-1", type: :server_status_updated},
-             %Event{source: :netman, source_id: "netman-1", type: :netman_registered}
+             %Event{source: :server, source_id: "srv-1", type: :server_status_updated}
            ] = ManagementCore.list_events()
   end
 
@@ -195,7 +129,6 @@ defmodule YellowDog.ManagementCoreTest do
 
   test "uses configured service limits, allows replacement, and defaults invalid limits" do
     Application.put_env(:yellow_dog_management_core, :max_servers, 2)
-    Application.put_env(:yellow_dog_management_core, :max_netmans, 2)
 
     for index <- 1..2 do
       id = "srv-#{index}"
@@ -226,54 +159,19 @@ defmodule YellowDog.ManagementCoreTest do
 
     assert {:ok, %Server{id: "srv-3"}} =
              ManagementCore.register_server(%{id: "srv-3", profile: :dns_only})
-
-    for index <- 1..2 do
-      id = "netman-#{index}"
-
-      assert {:ok, %Netman{id: ^id}} =
-               ManagementCore.register_netman(%{
-                 id: id,
-                 name: "Netman #{index}",
-                 profile: :vm
-               })
-    end
-
-    assert {:error, :registry_full} =
-             ManagementCore.register_netman(%{
-               id: "netman-3",
-               name: "Netman 3",
-               profile: :vm
-             })
-
-    assert {:ok, %Netman{id: "netman-1", name: "Netman Replacement"}} =
-             ManagementCore.register_netman(%{
-               id: "netman-1",
-               name: "Netman Replacement",
-               profile: :bare_metal
-             })
-
-    Application.put_env(:yellow_dog_management_core, :max_netmans, "invalid")
-
-    assert {:ok, %Netman{id: "netman-3"}} =
-             ManagementCore.register_netman(%{id: "netman-3", profile: :vm})
   end
 
   test "oversized configured limits use the documented bounded defaults" do
     Application.put_env(:yellow_dog_management_core, :max_servers, 1_001)
-    Application.put_env(:yellow_dog_management_core, :max_netmans, 1_001)
     Application.put_env(:yellow_dog_management_core, :max_events, 1_001)
     restart_child(EventStore)
 
     for index <- 1..1_000 do
       assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-bound-#{index}"})
-      assert {:ok, %Netman{}} = ManagementCore.register_netman(%{id: "netman-bound-#{index}"})
     end
 
     assert {:error, :registry_full} =
              ManagementCore.register_server(%{id: "srv-bound-1001"})
-
-    assert {:error, :registry_full} =
-             ManagementCore.register_netman(%{id: "netman-bound-1001"})
 
     assert length(ManagementCore.list_events()) == 500
   end
@@ -345,30 +243,6 @@ defmodule YellowDog.ManagementCoreTest do
                id: String.duplicate("s", 129),
                profile: :dns_only
              })
-
-    assert {:ok, %Netman{} = netman} =
-             ManagementCore.register_netman(%{
-               id: "netman-sanitized",
-               name: long_name,
-               status: long_status,
-               profile: :unknown_netman_profile,
-               features: %{"interfaces" => true, "routes" => 1, "unknown" => true},
-               metadata: metadata,
-               last_seen_at: long_metadata_value
-             })
-
-    assert byte_size(netman.name) == 128
-    assert byte_size(netman.status) == 64
-    assert netman.profile == :custom
-    assert netman.features == %{interfaces: true}
-    assert map_size(netman.metadata) == 20
-    assert netman.last_seen_at == nil
-
-    assert {:error, {:invalid, :id}} =
-             ManagementCore.register_netman(%{
-               id: String.duplicate("n", 129),
-               profile: :vm
-             })
   end
 
   defp find_profile(profiles, name) do
@@ -376,11 +250,11 @@ defmodule YellowDog.ManagementCoreTest do
   end
 
   defp restart_management_children do
-    Enum.each([Servers, Netmans, EventStore, ManifestStore], fn child_id ->
+    Enum.each([Servers, EventStore, ManifestStore], fn child_id ->
       :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)
 
-    Enum.each([ManifestStore, EventStore, Servers, Netmans], fn child_id ->
+    Enum.each([ManifestStore, EventStore, Servers], fn child_id ->
       {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)
   end

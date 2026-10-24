@@ -133,40 +133,6 @@ defmodule YellowDog.Management.ConfigDeliveryTest do
     assert {:ok, ^version} = ManagementCore.latest_desired_config(:server, "server-offline")
   end
 
-  test "publishing a connected Netman configuration immediately delivers its committed version" do
-    register_netman("netman-connected")
-    :ok = FakeTransport.connect(:netman, "netman-connected")
-    :ok = FakeTransport.script_config([{:report_committed_version, self()}])
-
-    assert {:ok, %ConfigVersion{} = version} =
-             ManagementCore.publish_netman_config("netman-connected", netman_attrs())
-
-    assert_receive {:committed_version_during_delivery, {:ok, ^version}}
-
-    assert [%{kind: :config, timeout: nil, envelope: %Envelope{} = envelope}] =
-             FakeTransport.recorded()
-
-    assert envelope.target_type == :netman
-    assert envelope.target_id == version.target_id
-    assert envelope.operation == "netman.profiles.replace"
-    assert envelope.payload == version.payload
-    assert envelope.payload_digest == version.digest
-    assert envelope.config_version == version.version
-
-    assert {:ok, ^version} =
-             ManagementCore.get_netman_config_version("netman-connected", version.version)
-  end
-
-  test "publishing an offline Netman configuration leaves delivery to the desired queue" do
-    register_netman("netman-offline")
-
-    assert {:ok, %ConfigVersion{} = version} =
-             ManagementCore.publish_netman_config("netman-offline", netman_attrs())
-
-    assert FakeTransport.recorded() == []
-    assert {:ok, ^version} = ManagementCore.latest_desired_config(:netman, "netman-offline")
-  end
-
   defp attrs(index) do
     %{
       operation: "server.settings.update",
@@ -185,44 +151,6 @@ defmodule YellowDog.Management.ConfigDeliveryTest do
 
   defp register_server(id) do
     assert {:ok, _server} = ManagementCore.register_server(%{id: id, profile: :dns_only})
-  end
-
-  defp register_netman(id) do
-    assert {:ok, _netman} = ManagementCore.register_netman(%{id: id, profile: :vm})
-  end
-
-  defp netman_attrs do
-    %{
-      operation: "netman.profiles.replace",
-      payload: %{
-        "profiles" => [
-          %{
-            "profile_id" => "office",
-            "type" => "ethernet",
-            "interface" => "eth0",
-            "autoconnect" => true,
-            "autoconnect_priority" => 100,
-            "zone" => "trusted",
-            "ethernet" => %{"mtu" => 1_500},
-            "ipv4" => %{
-              "method" => "manual",
-              "address" => "192.0.2.10/24",
-              "gateway" => "192.0.2.1",
-              "dns" => ["192.0.2.53"],
-              "dns_search" => ["example.test"]
-            },
-            "ipv6" => %{
-              "method" => "manual",
-              "address" => "2001:db8::10/64",
-              "gateway" => "2001:db8::1",
-              "dns" => ["2001:db8::53"],
-              "dns_search" => ["example.test"]
-            }
-          }
-        ]
-      },
-      expected_revision: nil
-    }
   end
 
   defp restart_application do

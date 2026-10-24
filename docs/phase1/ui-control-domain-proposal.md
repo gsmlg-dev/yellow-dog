@@ -1,5 +1,11 @@
 # Standalone Management UI control-domain proposal
 
+Current scope (2026-10-24): the Netman product, node domain and dedicated
+presentations have been removed. Earlier Netman plans, inventories and test
+results below are historical evidence. They do not describe a current product
+or authorize restoring it. Other retained presentations remain unrouted. See
+[Netman removal](netman-removal.md) for the cleanup migration and current boundary.
+
 **Prior architecture-only scope (2026-10-04).** Subsequent source-only UI transfer
 is recorded in `ui-source-migration.md`; it does not implement the proposal below.
 This proposal's

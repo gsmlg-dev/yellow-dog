@@ -16,7 +16,6 @@ defmodule YellowDog.Management.Domain do
     DnsViews,
     EnrollmentSettings,
     Idempotency,
-    Netmans,
     ProfileCatalog,
     Repo,
     ResourceVersion,
@@ -28,13 +27,11 @@ defmodule YellowDog.Management.Domain do
     Zone
   }
 
-  @netman_operations ~w(create_netman update_netman update_netman_config confirm_netman_config rollback_netman_config)
   @task_operations ~w(update_task run_task)
   @backup_operations ~w(create_backup delete_backup)
   @dns_acl_operations ~w(create_dns_acl update_dns_acl delete_dns_acl)
   @dns_view_operations ~w(create_dns_view update_dns_view delete_dns_view)
   @operations ~w(set_worker_enrollment create_worker update_worker create_zone update_zone delete_zone confirm_zone put_service create_service update_service assign unassign set_zone_assignments confirm_target) ++
-                @netman_operations ++
                 @task_operations ++
                 @backup_operations ++ @dns_acl_operations ++ @dns_view_operations
   @worker_id ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
@@ -103,11 +100,6 @@ defmodule YellowDog.Management.Domain do
 
   defdelegate worker_enrollment_settings(), to: EnrollmentSettings, as: :get
 
-  defdelegate list_netmans(), to: Netmans, as: :list
-  defdelegate get_netman(id), to: Netmans, as: :get
-  defdelegate get_netman_config(id), to: Netmans, as: :get_config
-  defdelegate list_netman_versions(id), to: Netmans, as: :versions
-  defdelegate list_netman_history(), to: Netmans, as: :history
   defdelegate list_tasks(), to: Tasks, as: :list
   defdelegate get_task(key), to: Tasks, as: :get
   defdelegate list_task_jobs(key), to: Tasks, as: :jobs
@@ -508,9 +500,6 @@ defmodule YellowDog.Management.Domain do
     do: Tasks.dispatch(operation, params, actor)
 
   defp dispatch(operation, params, _actor), do: dispatch(operation, params)
-
-  defp dispatch(operation, params) when operation in @netman_operations,
-    do: Netmans.dispatch(operation, params)
 
   defp dispatch(operation, params) when operation in @backup_operations,
     do: Backups.dispatch(operation, params)

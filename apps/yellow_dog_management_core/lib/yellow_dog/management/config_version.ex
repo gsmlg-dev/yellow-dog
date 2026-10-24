@@ -74,7 +74,7 @@ defmodule YellowDog.Management.ConfigVersion do
                 :restored_revision
               ]
 
-  @type target_type :: :server | :netman
+  @type target_type :: :server
   @type state :: :desired | :delivered | :applying | :applied | :failed
   @type failure_phase :: :delivery | :validation | :apply | :rollback
   @type t :: %__MODULE__{
@@ -588,9 +588,7 @@ defmodule YellowDog.Management.ConfigVersion do
   end
 
   defp target_type(:server), do: {:ok, :server}
-  defp target_type(:netman), do: {:ok, :netman}
   defp target_type("server"), do: {:ok, :server}
-  defp target_type("netman"), do: {:ok, :netman}
   defp target_type(_value), do: invalid()
 
   defp target_id(value) do
@@ -614,10 +612,6 @@ defmodule YellowDog.Management.ConfigVersion do
 
   defp profile_allowed?(value, :server) do
     Enum.any?(Profiles.list_server_profiles(), &(Atom.to_string(&1.name) == value))
-  end
-
-  defp profile_allowed?(value, :netman) do
-    Enum.any?(Profiles.list_netman_profiles(), &(Atom.to_string(&1.name) == value))
   end
 
   defp version(value) when is_integer(value) and value >= 1 and value <= @max_version,
@@ -678,14 +672,8 @@ defmodule YellowDog.Management.ConfigVersion do
   defp storage_path(:server, target_id, version, digest),
     do: StoragePath.server_version(target_id, version, digest)
 
-  defp storage_path(:netman, target_id, version, digest),
-    do: StoragePath.netman_version(target_id, version, digest)
-
   defp storage_path(root, :server, target_id, version, digest),
     do: StoragePath.server_version(root, target_id, version, digest)
-
-  defp storage_path(root, :netman, target_id, version, digest),
-    do: StoragePath.netman_version(root, target_id, version, digest)
 
   defp encode_datetime(nil), do: nil
   defp encode_datetime(%DateTime{} = value), do: DateTime.to_iso8601(value)

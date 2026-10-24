@@ -1,6 +1,6 @@
 defmodule YellowDog.Console.Hooks.ServiceScope do
   @moduledoc """
-  Resolves an explicitly selected Server or Netman from management state.
+  Resolves an explicitly selected Server from management state.
 
   The module is both a scoped HTTP plug, which returns deterministic 404
   responses before a LiveView starts, and a global LiveView `on_mount` hook,
@@ -17,7 +17,7 @@ defmodule YellowDog.Console.Hooks.ServiceScope do
   alias YellowDog.ManagementCore
 
   @impl Plug
-  def init(target_type) when target_type in [:server, :netman], do: target_type
+  def init(target_type) when target_type == :server, do: target_type
 
   @impl Plug
   def call(conn, target_type) do
@@ -54,14 +54,8 @@ defmodule YellowDog.Console.Hooks.ServiceScope do
     end
   end
 
-  defp requested_scope(%{"server_id" => _server_id, "netman_id" => _netman_id}),
-    do: {:invalid, :service}
-
   defp requested_scope(%{"server_id" => server_id}),
     do: selected_scope(:server, server_id)
-
-  defp requested_scope(%{"netman_id" => netman_id}),
-    do: selected_scope(:netman, netman_id)
 
   defp requested_scope(_params), do: :unscoped
 
@@ -69,12 +63,6 @@ defmodule YellowDog.Console.Hooks.ServiceScope do
     if ServicePaths.valid_server_id?(server_id),
       do: {:selected, :server, server_id},
       else: {:invalid, :server}
-  end
-
-  defp selected_scope(:netman, netman_id) do
-    if ServicePaths.valid_netman_id?(netman_id),
-      do: {:selected, :netman, netman_id},
-      else: {:invalid, :netman}
   end
 
   defp assign_selected(socket, target_type, id) do
@@ -111,12 +99,6 @@ defmodule YellowDog.Console.Hooks.ServiceScope do
       else: {:error, :not_found}
   end
 
-  defp fetch(:netman, id) do
-    if ServicePaths.valid_netman_id?(id),
-      do: safe_get(:get_netman, id),
-      else: {:error, :not_found}
-  end
-
   defp safe_get(function, id) do
     case apply(ManagementCore, function, [id]) do
       {:ok, record} -> {:ok, record}
@@ -133,13 +115,8 @@ defmodule YellowDog.Console.Hooks.ServiceScope do
   end
 
   defp parameter_name(:server), do: "server_id"
-  defp parameter_name(:netman), do: "netman_id"
-
   defp selection_assign(:server), do: :selected_server
-  defp selection_assign(:netman), do: :selected_netman
-
   defp online?(%{status: status}), do: status in [:online, "online"]
 
   defp not_found_body(:server), do: "Server not found"
-  defp not_found_body(:netman), do: "Netman not found"
 end

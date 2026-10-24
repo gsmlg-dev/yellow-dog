@@ -8,7 +8,7 @@ defmodule YellowDog.Resolved do
   @doc """
   Set per-link DNS configuration for a network interface.
 
-  Called by YellowDog.Netman when a connection becomes activated.
+  Called by a network integration when a connection becomes activated.
   Higher-priority links' DNS servers are prepended to the upstream list.
 
   ## Parameters
@@ -25,7 +25,7 @@ defmodule YellowDog.Resolved do
   @doc """
   Remove per-link DNS configuration for a network interface.
 
-  Called by YellowDog.Netman when a connection is deactivated.
+  Called by a network integration when a connection is deactivated.
   """
   @spec reset_link_dns(String.t()) :: :ok
   def reset_link_dns(interface) do

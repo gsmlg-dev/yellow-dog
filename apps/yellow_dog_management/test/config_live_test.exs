@@ -20,7 +20,7 @@ defmodule YellowDog.Management.ConfigLiveTest do
     assert has_element?(view, "#management-config-empty", "No configuration versions")
     assert has_element?(view, "#management-config-versions")
     assert html =~ "not delivered or applied"
-    assert html =~ "Netman history records prepared desired configurations"
+    refute has_element?(view, "[data-netman-id], a[href^='/netman']")
     refute has_element?(view, "input[type='password']")
     assert has_element?(view, "a[href='/management/config']", "Config")
   end
@@ -68,40 +68,6 @@ defmodule YellowDog.Management.ConfigLiveTest do
     assert has_element?(view, "#config-version-#{later["id"]}", later["digest"])
     assert {:ok, original} == Domain.get_target("refresh-history", 1)
     assert Domain.list_audit() == before_read
-  end
-
-  test "Netman desired versions and rollback share history without fabricating applied state", %{
-    conn: conn
-  } do
-    mutate("create_netman", %{"id" => "history-netman", "name" => "History Netman"})
-    first = mutate("confirm_netman_config", %{"id" => "history-netman", "expected_revision" => 1})
-    {:ok, view, _html} = live(conn, "/management/config")
-
-    assert has_element?(
-             view,
-             "#config-version-#{first["id"]}[data-netman-id='history-netman'][data-actual-state='unknown']",
-             "prepared"
-           )
-
-    assert has_element?(
-             view,
-             "#config-version-#{first["id"]} a[href='/netman/history-netman/config']",
-             "History Netman"
-           )
-
-    refute has_element?(view, "#management-config-empty")
-
-    rollback =
-      mutate("rollback_netman_config", %{
-        "id" => "history-netman",
-        "expected_revision" => 1,
-        "target_version" => 1
-      })
-
-    view |> element("#management-config-refresh") |> render_click()
-    assert has_element?(view, "#config-version-#{rollback["id"]}", "rollback_netman_config")
-    assert has_element?(view, "#config-version-#{first["id"]}", first["digest"])
-    assert Domain.list_netman_versions("history-netman") == [rollback, first]
   end
 
   defp create_worker(id, name) do

@@ -66,15 +66,9 @@ defmodule YellowDog.Management.SnapshotsTest do
 
   test "missing concrete snapshots return typed not-found errors" do
     register_server("server-missing")
-    register_netman("netman-missing")
 
     assert_error(
       ManagementCore.get_server_snapshot("server-missing", "runtime.capabilities"),
-      :not_found
-    )
-
-    assert_error(
-      ManagementCore.get_netman_snapshot("netman-missing", "runtime.capabilities"),
       :not_found
     )
   end
@@ -104,27 +98,16 @@ defmodule YellowDog.Management.SnapshotsTest do
     data_dir: data_dir
   } do
     register_server("server-snapshot")
-    register_netman("netman-snapshot")
     :ok = FakeTransport.connect(:server, "server-snapshot")
-    :ok = FakeTransport.connect(:netman, "netman-snapshot")
 
     server_result = service_list(@revision_a, @observed_at, "dns")
-    netman_result = %{"capabilities" => ["network.links"]}
-    :ok = FakeTransport.script([{:ok, server_result}, {:ok, netman_result}])
+    :ok = FakeTransport.script([{:ok, server_result}])
 
     assert {:ok, ^server_result} =
              ManagementCore.query_server(
                "server-snapshot",
                "runtime.services",
                "server.runtime.services.list",
-               %{}
-             )
-
-    assert {:ok, ^netman_result} =
-             ManagementCore.query_netman(
-               "netman-snapshot",
-               "runtime.capabilities",
-               "netman.runtime.capabilities.get",
                %{}
              )
 
@@ -136,15 +119,10 @@ defmodule YellowDog.Management.SnapshotsTest do
               revision: @revision_a,
               value: ^server_result,
               observed_at: @observed_at
-            }} = ManagementCore.get_server_snapshot("server-snapshot", "runtime.services")
+            } = snapshot} =
+             ManagementCore.get_server_snapshot("server-snapshot", "runtime.services")
 
-    assert {:ok,
-            %{target_type: :netman, target_id: "netman-snapshot", value: ^netman_result} =
-              snapshot} =
-             ManagementCore.get_netman_snapshot("netman-snapshot", "runtime.capabilities")
-
-    assert {:ok, derived_revision} = Digest.calculate(netman_result)
-    assert snapshot.revision == derived_revision
+    assert snapshot.revision == @revision_a
     assert %DateTime{} = snapshot.requested_at
     assert %DateTime{} = snapshot.received_at
     assert %DateTime{} = snapshot.stored_at
@@ -480,26 +458,26 @@ defmodule YellowDog.Management.SnapshotsTest do
   end
 
   test "snapshot reads survive process restart" do
-    register_netman("netman-restart")
-    :ok = FakeTransport.connect(:netman, "netman-restart")
+    register_server("server-restart")
+    :ok = FakeTransport.connect(:server, "server-restart")
     result = %{"capabilities" => ["resolved.cache"]}
     :ok = FakeTransport.script([{:ok, result}])
 
     assert {:ok, ^result} =
-             ManagementCore.query_netman(
-               "netman-restart",
+             ManagementCore.query_server(
+               "server-restart",
                "runtime.capabilities",
-               "netman.runtime.capabilities.get",
+               "server.runtime.capabilities.get",
                %{}
              )
 
     assert {:ok, before_restart} =
-             ManagementCore.get_netman_snapshot("netman-restart", "runtime.capabilities")
+             ManagementCore.get_server_snapshot("server-restart", "runtime.capabilities")
 
     restart_child(Snapshots)
 
     assert {:ok, ^before_restart} =
-             ManagementCore.get_netman_snapshot("netman-restart", "runtime.capabilities")
+             ManagementCore.get_server_snapshot("server-restart", "runtime.capabilities")
   end
 
   test "malformed query success is invalid and creates no snapshot" do
@@ -560,10 +538,6 @@ defmodule YellowDog.Management.SnapshotsTest do
 
   defp register_server(id) do
     assert {:ok, _server} = ManagementCore.register_server(%{id: id, profile: :dns_only})
-  end
-
-  defp register_netman(id) do
-    assert {:ok, _netman} = ManagementCore.register_netman(%{id: id, profile: :vm})
   end
 
   defp assert_error(result, code) do

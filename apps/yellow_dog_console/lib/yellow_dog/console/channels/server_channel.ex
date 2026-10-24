@@ -343,7 +343,6 @@ defmodule YellowDog.Console.ServerChannel do
     @journal_module :"Elixir.YellowDog.Sync.Message.Journal"
     @event_module :"Elixir.YellowDog.Sync.Message.Event"
     @server_identity_module :"Elixir.YellowDog.Sync.Identity.Server"
-    @netman_identity_module :"Elixir.YellowDog.Sync.Identity.Netman"
     @envelope_module :"Elixir.YellowDog.Sync.Envelope"
     @operation_module :"Elixir.YellowDog.Sync.Operation"
     @error_module :"Elixir.YellowDog.Sync.Error"
@@ -397,10 +396,10 @@ defmodule YellowDog.Console.ServerChannel do
             {:ok, map()} | {:error, atom()}
     def reconcile_journal(encoded, server_id), do: reconcile_journal(encoded, :server, server_id)
 
-    @spec reconcile_journal(binary(), :server | :netman, String.t()) ::
+    @spec reconcile_journal(binary(), :server, String.t()) ::
             {:ok, map()} | {:error, atom()}
     def reconcile_journal(encoded, target_type, target_id)
-        when target_type in [:server, :netman] and is_binary(target_id) do
+        when target_type == :server and is_binary(target_id) do
       with true <- Code.ensure_loaded?(@message_module),
            {:ok, decoded} <- canonical_decode(encoded),
            true <- Map.get(decoded, :__struct__) == @journal_module,
@@ -431,7 +430,7 @@ defmodule YellowDog.Console.ServerChannel do
            true <- Code.ensure_loaded?(config_version_module),
            true <- is_map(version),
            ^config_version_module <- Map.get(version, :__struct__),
-           target_type when target_type in [:server, :netman] <-
+           target_type when target_type == :server <-
              Map.get(version, :target_type),
            wire = config_version_envelope_wire(version),
            {:ok, envelope} <- dynamic_apply(@envelope_module, :from_wire, [wire]) do
@@ -515,7 +514,7 @@ defmodule YellowDog.Console.ServerChannel do
       result_error = Map.get(message, :error)
 
       with true <- is_binary(request_id),
-           true <- target_type in [:server, :netman],
+           true <- target_type == :server,
            true <- is_binary(operation),
            {:ok, outcome} <- result_outcome(value, result_error) do
         {:ok,
@@ -554,7 +553,6 @@ defmodule YellowDog.Console.ServerChannel do
     defp summarize(_module, _message), do: {:error, :invalid}
 
     defp identity_target_type(@server_identity_module), do: {:ok, :server}
-    defp identity_target_type(@netman_identity_module), do: {:ok, :netman}
     defp identity_target_type(_module), do: {:error, :invalid}
 
     defp target_summary(tag, message) do
@@ -638,7 +636,7 @@ defmodule YellowDog.Console.ServerChannel do
       target_id = Map.get(envelope, :target_id)
       operation = Map.get(envelope, :operation)
 
-      if is_binary(request_id) and target_type in [:server, :netman] and is_binary(target_id) and
+      if is_binary(request_id) and target_type == :server and is_binary(target_id) and
            is_binary(operation) do
         {:ok,
          %{

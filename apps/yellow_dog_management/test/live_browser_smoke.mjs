@@ -47,6 +47,10 @@ async function runSmoke() {
   if (!restarting) {
   assert.deepEqual(await api('/workers'), [], 'Use an empty disposable PostgreSQL database');
   assert.deepEqual(await api('/zones'), [], 'Use an empty disposable PostgreSQL database');
+  for (const path of ['/management/netman', '/netman', '/netman/retired', '/netman/retired/config', '/netman/retired/resolved']) {
+    const response = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(10000) });
+    assert.equal(response.status, 404, `Retired entry must be unreachable: ${path}`);
+  }
   }
   const zone = restarting || dataScope ? null : await api('/commands/create_zone', {
     name: 'live.test.',
@@ -281,57 +285,6 @@ async function runSmoke() {
   assert.match(await evaluate('document.querySelector("#management-config-versions").innerText'), /prepared/);
   await evaluate('document.querySelector("#management-config-refresh").click()');
   await until(() => evaluate(`!!document.getElementById(${JSON.stringify(`config-version-${target.id}`)})`), 'Config refresh lost an immutable target');
-  assert.deepEqual(await api('/netmans'), []);
-  await navigate('/management/netman');
-  await submit('#netman-form', { 'netman[id]': 'live-netman', 'netman[name]': 'Live Netman' });
-  await until(() => evaluate('!!document.querySelector("#netman-selector-live-netman")'), 'Logical Netman registration failed');
-  await until(() => evaluate(`document.querySelector('[name="netman[id]"]').value === ''`), 'Netman registration form did not reset');
-  const netman = await api('/netmans/live-netman');
-  assert.equal(netman.actual_state, 'unknown');
-  assert.equal(netman.last_seen_at, null);
-  await navigate('/netman/live-netman?netman_id[]=other');
-  assert.equal(await evaluate('document.querySelector("#netman-selection-form-select").value'), 'live-netman', 'Query identities changed the scoped Netman');
-  await navigate('/netman/live-netman/config?netman_id[id]=other');
-  await submit('#netman-profile-form', { 'profile[profile_id]': 'wired', 'profile[interface]': 'eth0', 'profile[zone]': 'lan', 'profile[ipv4_method]': 'manual', 'profile[ipv4_address]': '192.0.2.10/24', 'profile[ipv4_gateway]': '192.0.2.1', 'profile[ipv4_dns]': '192.0.2.53', 'profile[ipv6_method]': 'disabled' });
-  await until(async () => (await api('/netmans/live-netman/config')).document.profiles.length === 1, 'Typed Ethernet desired profile was not saved');
-  await until(() => evaluate(`document.querySelector('[name="profile[profile_id]"]').value === ''`), 'Netman profile editor did not reset after save');
-  await evaluate('document.querySelector("#confirm-netman-config").click()');
-  await until(async () => (await api('/netmans/live-netman/versions')).length === 1, 'Immutable Netman desired version was not prepared');
-  const firstNetmanVersion = (await api('/netmans/live-netman/versions'))[0];
-  await evaluate('document.querySelector("#netman-desired-profiles [phx-click=edit_profile]").click()');
-  await until(() => evaluate(`document.querySelector('[name="profile[profile_id]"]').value === 'wired'`), 'Desired profile edit did not load');
-  const beforeInvalidNetman = await api('/netmans/live-netman/config');
-  await submit('#netman-profile-form', { 'profile[ipv4_address]': '2001:db8::1/64' });
-  await until(() => evaluate('document.querySelector("#yd-layout").innerText.includes("ipv4")'), 'Invalid address family did not show a validation result');
-  assert.deepEqual(await api('/netmans/live-netman/config'), beforeInvalidNetman, 'Invalid Ethernet edit mutated desired data');
-  await submit('#netman-profile-form', { 'profile[ipv4_address]': '192.0.2.11/24', 'profile[autoconnect_priority]': '20' });
-  await until(async () => (await api('/netmans/live-netman/config')).document.profiles[0].ipv4.address === '192.0.2.11/24', 'Ethernet profile editing failed');
-  await navigate('/netman/live-netman/resolved');
-  await submit('#netman-resolved-form', { 'resolved[upstreams]': '192.0.2.53, 2001:db8::53', 'resolved[search_domains]': 'example.test' });
-  await until(async () => (await api('/netmans/live-netman/config')).document.resolved.upstreams.length === 2, 'Desired Resolved settings were not saved');
-  assert.equal((await api('/netmans/live-netman/config')).document.profiles[0].ipv4.address, '192.0.2.11/24', 'Resolved editing dropped the Ethernet profile');
-  await evaluate('document.querySelector("#confirm-netman-config").click()');
-  await until(async () => (await api('/netmans/live-netman/versions')).length === 2, 'Second Netman desired version was not prepared');
-  nextDialogDecision = true;
-  await evaluate(`(() => { const form = document.querySelector('#netman-config-rollback-form'); form.elements.namedItem('rollback[target_version]').value = '1'; document.querySelector('#rollback-netman-config').click(); })()`);
-  await until(async () => (await api('/netmans/live-netman/versions')).length === 3, 'Desired Netman rollback failed');
-  assert.equal(nextDialogDecision, null, 'Desired rollback must use its confirmation dialog');
-  const rolledNetmanVersion = (await api('/netmans/live-netman/versions'))[0];
-  assert.deepEqual(rolledNetmanVersion.document, firstNetmanVersion.document);
-  assert.equal(rolledNetmanVersion.digest, firstNetmanVersion.digest);
-  assert.equal(rolledNetmanVersion.rollback_source_id, firstNetmanVersion.id);
-  assert.equal(rolledNetmanVersion.actual_state, 'unknown');
-  await navigate('/management/config');
-  assert.equal(await evaluate(`document.getElementById(${JSON.stringify(`config-version-${rolledNetmanVersion.id}`)}).dataset.netmanId`), 'live-netman');
-  await navigate('/netman/live-netman/config');
-  nextDialogDecision = true;
-  await evaluate('document.querySelector("#netman-desired-profiles [phx-click=delete_profile]").click()');
-  await until(async () => (await api('/netmans/live-netman/config')).document.profiles.length === 0, 'Desired Ethernet profile deletion failed');
-  assert.deepEqual((await api('/netmans/live-netman/versions'))[0], rolledNetmanVersion, 'Profile deletion mutated historical publications');
-  await api('/commands/create_netman', { id: 'live-observer', profile_name: 'observe_only' });
-  await navigate('/netman/live-observer/config');
-  assert.equal(await evaluate('document.querySelector("#confirm-netman-config").disabled'), true, 'Observe-only publication was not disabled');
-  assert.match(await evaluate('document.body.innerText'), /Observe mode is read-only/);
   await navigate('/management/zones');
   assert.match(await evaluate('document.body.innerText'), /live\.test\./);
   await navigate(`/management/zones/${zone.id}/edit`);
@@ -543,7 +496,7 @@ async function runSmoke() {
     await writeFile(`${process.env.MANAGEMENT_SCREENSHOT_PREFIX}-mobile.png`, Buffer.from(screenshot.data, 'base64'));
   }
   assert.deepEqual(errors, [], 'JavaScript, CSP or asset errors');
-  console.log('PASS real Chromium: four-section desktop/mobile navigation, zero-Worker access, planned semantics, scoped DNS/query/reload/back-forward, Console layout, websocket, read-only Profiles, blank WHOIS form, selected Worker/Netman scopes, logical registration, typed Ethernet/Resolved desired editing, immutable history/desired rollback, observe-only mode, Worker target/export, Zone reset/records/import, OUI/MMDB tools, audit/Logger/Process Map/mobile drawer; no login');
+  console.log('PASS real Chromium: four-section desktop/mobile navigation, zero-Worker access, planned semantics, scoped DNS/query/reload/back-forward, Console layout, websocket, read-only Profiles, blank WHOIS form, selected Worker scopes, logical registration, removed network-manager routes, immutable target history, Worker target/export, Zone reset/records/import, OUI/MMDB tools, audit/Logger/Process Map/mobile drawer; no login');
 }
 
 try {

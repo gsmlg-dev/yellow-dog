@@ -4,9 +4,7 @@ defmodule YellowDog.ManagementUI.Redesign.Original.ManagementLive.Data do
   @facade YellowDog.ManagementCore
 
   def list_servers, do: facade_list(:list_servers)
-  def list_netmans, do: facade_list(:list_netmans)
   def list_server_profiles, do: facade_list(:list_server_profiles)
-  def list_netman_profiles, do: facade_list(:list_netman_profiles)
   def list_events, do: facade_list(:list_events)
 
   defp facade_list(function) do

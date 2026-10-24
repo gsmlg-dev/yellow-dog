@@ -211,7 +211,7 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
   end
 
   test "retries deterministic collisions beyond ten stale temporary files" do
-    assert {:ok, path} = StoragePath.netman_manifest("netman-02")
+    assert {:ok, path} = StoragePath.server_manifest("srv-02")
     assert :ok = File.mkdir_p(Path.dirname(path))
 
     counter = :counters.new(1, [])
@@ -250,7 +250,7 @@ defmodule YellowDog.Management.Storage.AtomicJsonTest do
   end
 
   test "ignores interrupted stale temporary files during reads and replacements" do
-    assert {:ok, path} = StoragePath.netman_manifest("netman-01")
+    assert {:ok, path} = StoragePath.server_manifest("srv-01")
     assert {:ok, ^path} = AtomicJson.replace(path, %{"revision" => 1})
 
     stale_path = Path.join(Path.dirname(path), ".#{Path.basename(path)}.interrupted.tmp")

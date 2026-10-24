@@ -51,8 +51,6 @@ defmodule YellowDog.ManagementUI.Hooks.Authorization do
       ["system", "process-map" | _] -> "ui:admin"
       ["system", "mac-database" | _] -> "ui:admin"
       ["system", "tasks" | _] -> "ui:admin"
-      ["netman" | _] -> "ui:admin"
-      ["management", "netman" | _] -> "ui:admin"
       ["management", "servers", "enrollment" | _] -> "ui:admin"
       ["server", _, "connection" | _] -> "ui:admin"
       ["tool" | _] -> "ui:admin"
@@ -67,7 +65,7 @@ defmodule YellowDog.ManagementUI.Hooks.Authorization do
       module == "EventsLive" ->
         "audit:read"
 
-      module in ~w(LogsLive BackupsLive ProcessMapLive MacDatabaseLive TasksLive NetmansLive NetmanLive NetmanConfigLive MacLive WhoisLive GeoipLive) ->
+      module in ~w(LogsLive BackupsLive ProcessMapLive MacDatabaseLive TasksLive MacLive WhoisLive GeoipLive) ->
         "ui:admin"
 
       module == "WorkersLive" and socket.assigns.live_action == :enrollment ->

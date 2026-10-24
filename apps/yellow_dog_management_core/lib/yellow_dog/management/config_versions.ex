@@ -9,7 +9,6 @@ defmodule YellowDog.Management.ConfigVersions do
   alias YellowDog.Management.EventStore
   alias YellowDog.Management.EventStore.Config
   alias YellowDog.Management.ManifestStore
-  alias YellowDog.Management.Netmans
   alias YellowDog.Management.Servers
   alias YellowDog.Management.Storage.AtomicJson
   alias YellowDog.Management.Storage.Path, as: StoragePath
@@ -555,7 +554,7 @@ defmodule YellowDog.Management.ConfigVersions do
          target_type,
          target_id
        )
-       when target_type in [:server, :netman] do
+       when target_type in [:server] do
     with true <- map_size(receipts) == high_water,
          {:ok, _ledger} <-
            validate_ordered_publication_receipts(
@@ -1260,14 +1259,13 @@ defmodule YellowDog.Management.ConfigVersions do
          target_type,
          target_id
        )
-       when target_type in [:server, :netman],
+       when target_type in [:server],
        do: :ok
 
   defp publication_identity(_message, _target_type, _target_id),
     do: conflict("config publication identity mismatch")
 
   defp publication_target_type(:server), do: {:ok, :server}
-  defp publication_target_type(:netman), do: {:ok, :netman}
   defp publication_target_type(_target_type), do: invalid()
 
   defp expected_state_revision(version, expected) do
@@ -1291,8 +1289,6 @@ defmodule YellowDog.Management.ConfigVersions do
   defp publication_commit_result({:error, %Error{}}), do: internal()
 
   defp registered_target(:server, target_id), do: registered(Servers.get(target_id))
-  defp registered_target(:netman, target_id), do: registered(Netmans.get(target_id))
-
   defp registered({:ok, record}), do: {:ok, record}
   defp registered(_missing), do: not_found()
 
@@ -1300,7 +1296,6 @@ defmodule YellowDog.Management.ConfigVersions do
   defp profile(%{profile: profile}) when is_binary(profile), do: profile
 
   defp target_type(:server), do: {:ok, :server}
-  defp target_type(:netman), do: {:ok, :netman}
   defp target_type(_target_type), do: invalid()
 
   defp transition_state(state) when state in [:desired, :delivered, :applying, :applied, :failed],
@@ -1327,16 +1322,10 @@ defmodule YellowDog.Management.ConfigVersions do
   defp rollback_value(rollback, key), do: rollback[key]
 
   defp manifest_path(root, :server, target_id), do: StoragePath.server_manifest(root, target_id)
-  defp manifest_path(root, :netman, target_id), do: StoragePath.netman_manifest(root, target_id)
-
   defp versions_path(root, :server, target_id), do: StoragePath.server_versions(root, target_id)
-  defp versions_path(root, :netman, target_id), do: StoragePath.netman_versions(root, target_id)
 
   defp storage_version_path(root, :server, target_id, version, digest),
     do: StoragePath.server_version(root, target_id, version, digest)
-
-  defp storage_version_path(root, :netman, target_id, version, digest),
-    do: StoragePath.netman_version(root, target_id, version, digest)
 
   defp version_path(version, root),
     do:

@@ -10,7 +10,6 @@ defmodule YellowDog.Console.PageControllerTest do
       assert html =~ "Yellow"
       assert html =~ ~s(href="/management")
       assert html =~ ~s(href="/server")
-      assert html =~ ~s(href="/netman")
       refute html =~ ~s(href="/server/dashboard")
       refute html =~ ">Running<"
       refute html =~ ">Active<"

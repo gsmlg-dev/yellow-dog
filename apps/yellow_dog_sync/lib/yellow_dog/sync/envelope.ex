@@ -35,7 +35,7 @@ defmodule YellowDog.Sync.Envelope do
   ]
   defstruct @enforce_keys ++ [expected_revision: nil, config_version: nil]
 
-  @type target_type :: :server | :netman
+  @type target_type :: :server
 
   @type t :: %__MODULE__{
           protocol_version: 1,
@@ -64,7 +64,7 @@ defmodule YellowDog.Sync.Envelope do
   def decode(payload), do: decode(payload, nil)
 
   @spec decode(binary(), target_type() | nil) :: {:ok, t()} | {:error, Error.t()}
-  def decode(payload, expected_type) when expected_type in [:server, :netman, nil] do
+  def decode(payload, expected_type) when expected_type in [:server, nil] do
     with {:ok, wire} <- Codec.decode_envelope(payload),
          {:ok, envelope} <- from_wire(wire),
          :ok <- validate_target_type(envelope.target_type, expected_type) do
@@ -173,9 +173,7 @@ defmodule YellowDog.Sync.Envelope do
   defp protocol_version(_value), do: invalid_error()
 
   defp target_type("server"), do: {:ok, :server}
-  defp target_type("netman"), do: {:ok, :netman}
   defp target_type(:server), do: {:ok, :server}
-  defp target_type(:netman), do: {:ok, :netman}
   defp target_type(_value), do: invalid_error()
 
   defp uuid(value) do

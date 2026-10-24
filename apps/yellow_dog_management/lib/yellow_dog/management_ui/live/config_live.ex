@@ -8,8 +8,7 @@ defmodule YellowDog.ManagementUI.ConfigLive do
     {:ok,
      assign(socket,
        page_title: "Management Config",
-       versions: Domain.list_target_history(),
-       netman_versions: Domain.list_netman_history()
+       versions: Domain.list_target_history()
      )}
   end
 
@@ -17,8 +16,7 @@ defmodule YellowDog.ManagementUI.ConfigLive do
   def handle_event("refresh", _params, socket) do
     {:noreply,
      assign(socket,
-       versions: Domain.list_target_history(),
-       netman_versions: Domain.list_netman_history()
+       versions: Domain.list_target_history()
      )}
   end
 
@@ -36,9 +34,9 @@ defmodule YellowDog.ManagementUI.ConfigLive do
         <p class="management-help">
           These are immutable prepared configurations in PostgreSQL, not delivered or applied
           configurations. Actual Worker state, state-change time, failure phase and rollback are
-          unknown. Netman history records prepared desired configurations, not applied network changes.
+          unknown.
         </p>
-        <p :if={@versions == [] && @netman_versions == []} id="management-config-empty">
+        <p :if={@versions == []} id="management-config-empty">
           No configuration versions published yet.
         </p>
         <div class="overflow-x-auto">
@@ -66,24 +64,6 @@ defmodule YellowDog.ManagementUI.ConfigLive do
                 <td><span class="badge badge-info">{version["status"]}</span></td>
                 <td><code>{version["digest"]}</code></td>
                 <td><time datetime={version["prepared_at"]}>{version["prepared_at"]}</time></td>
-                <td>unknown</td><td>unknown</td><td>unknown</td>
-              </tr>
-              <tr
-                :for={version <- @netman_versions}
-                id={"config-version-#{version["id"]}"}
-                data-netman-id={version["netman_id"]}
-                data-revision={version["version"]}
-                data-actual-state={version["actual_state"]}
-              >
-                <td>
-                  <.link navigate={ServicePaths.netman_path(version["netman_id"], :config)}>
-                    {version["netman_name"]} ({version["netman_id"]})
-                  </.link>
-                </td>
-                <td>{version["version"]}</td><td>{version["operation"]}</td>
-                <td><span class="badge badge-info">{version["status"]}</span></td>
-                <td><code>{version["digest"]}</code></td>
-                <td><time datetime={version["inserted_at"]}>{version["inserted_at"]}</time></td>
                 <td>unknown</td><td>unknown</td><td>unknown</td>
               </tr>
             </tbody>

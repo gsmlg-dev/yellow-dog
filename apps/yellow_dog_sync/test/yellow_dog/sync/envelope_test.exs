@@ -34,17 +34,6 @@ defmodule YellowDog.Sync.EnvelopeTest do
     assert decoded.payload_digest == digest(decoded.payload)
   end
 
-  test "JSON round trips a Netman envelope with an expected revision" do
-    payload = %{"profile" => %{"name" => "office", "dns" => ["1.1.1.1"]}}
-    expected_revision = String.duplicate("a", 64)
-    envelope = envelope(:netman, "netman-edge-1", payload, expected_revision: expected_revision)
-
-    assert {:ok, encoded} = Envelope.encode(envelope)
-
-    assert {:ok, %Envelope{target_type: :netman, expected_revision: ^expected_revision}} =
-             Envelope.decode(encoded)
-  end
-
   test "round trips positive config version boundaries" do
     for version <- [1, @max_config_version] do
       envelope =
@@ -183,10 +172,11 @@ defmodule YellowDog.Sync.EnvelopeTest do
       |> Envelope.to_wire()
       |> Map.put("target_id", <<255>>)
 
-    netman = envelope(:netman, "netman-edge-1", %{}) |> Envelope.to_wire()
+    retired =
+      envelope(:server, "retired", %{}) |> Envelope.to_wire() |> Map.put("target_type", "netman")
 
     assert_invalid(Envelope.from_wire(invalid_target_id))
-    assert_invalid(Envelope.decode(Jason.encode!(netman), :server))
+    assert_invalid(Envelope.decode(Jason.encode!(retired), :server))
   end
 
   test "rejects payloads over the approved aggregate byte limit and incorrect digests" do

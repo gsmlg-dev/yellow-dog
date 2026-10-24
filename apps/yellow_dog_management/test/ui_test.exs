@@ -57,16 +57,6 @@ defmodule YellowDog.Management.UITest do
     end
   end
 
-  test "Management overview counts PostgreSQL Netman nodes without claiming them online", %{
-    conn: conn
-  } do
-    mutate("create_netman", %{"id" => "overview-node", "name" => "Overview Node"})
-    {:ok, view, _html} = live(conn, "/management")
-    assert has_element?(view, "#management-netman-count", "1")
-    assert has_element?(view, "a[href='/management/netman']", "Manage Netman")
-    assert has_element?(view, "#management-overview", "actual runtime state remains unknown")
-  end
-
   test "name-only registration persists a generated Worker and shows its connection configuration",
        %{conn: conn} do
     {:ok, view, _html} = live(conn, "/server")

@@ -10,7 +10,6 @@ defmodule YellowDog.ManagementCore.Application do
       YellowDog.Management.EventStore,
       YellowDog.Management.Servers,
       YellowDog.Management.DnsZones,
-      YellowDog.Management.Netmans,
       YellowDog.Management.ConfigVersions,
       YellowDog.Management.Commands,
       YellowDog.Management.Snapshots

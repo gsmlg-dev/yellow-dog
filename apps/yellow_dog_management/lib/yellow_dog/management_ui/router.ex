@@ -31,7 +31,6 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management", OverviewLive, :overview
       live "/management/servers/enrollment", WorkersLive, :enrollment
       live "/management/servers", WorkersLive, :index
-      live "/management/netman", NetmansLive, :index
       live "/management/events", EventsLive, :index
       live "/management/config", ConfigLive, :index
       live "/management/dns/acl", DnsAclsLive, :selector
@@ -49,10 +48,6 @@ defmodule YellowDog.ManagementUI.Router do
       live "/server/:server_id/dns/acl/:service_id", DnsAclsLive, :index
       live "/server/:server_id/dns/views", DnsViewsLive, :selector
       live "/server/:server_id/dns/views/:service_id", DnsViewsLive, :index
-      live "/netman", NetmansLive, :index
-      live "/netman/:netman_id", NetmanLive, :show
-      live "/netman/:netman_id/config", NetmanConfigLive, :config
-      live "/netman/:netman_id/resolved", NetmanConfigLive, :resolved
       live "/management/zones", ZonesLive, :index
       live "/management/zones/new", ZonesLive, :new
       live "/management/zones/import", ZoneImportLive, :import

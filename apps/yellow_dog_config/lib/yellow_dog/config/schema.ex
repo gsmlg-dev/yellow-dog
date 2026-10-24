@@ -31,8 +31,7 @@ defmodule YellowDog.Config.Schema do
         "mdns" => true,
         "dhcpv4" => true,
         "dhcpv6" => true,
-        "netboot" => false,
-        "netman" => true
+        "netboot" => false
       },
       "dns" => %{
         "listen" => "0.0.0.0",
@@ -85,11 +84,6 @@ defmodule YellowDog.Config.Schema do
         "tftp_root" => "data/netboot/tftp",
         "tftp_port" => 69,
         "default_profile" => ""
-      },
-      "netman" => %{
-        "profile_dir" => "/etc/yellowdog/netman/profiles",
-        "reconciliation_interval_ms" => 5000,
-        "socket_path" => "/run/yellowdog/netman.sock"
       }
     }
   end
@@ -105,8 +99,7 @@ defmodule YellowDog.Config.Schema do
         "mdns" => false,
         "dhcpv4" => false,
         "dhcpv6" => false,
-        "netboot" => false,
-        "netman" => false
+        "netboot" => false
       },
       "dns" => %{
         "listen" => "0.0.0.0",
@@ -184,8 +177,7 @@ defmodule YellowDog.Config.Schema do
       "dhcpv4" => "# DHCPv4 server configuration",
       "dhcpv6" => "# DHCPv6 server configuration",
       "identity" => "# Host Identity Registry configuration",
-      "netboot" => "# Network boot and TFTP configuration",
-      "netman" => "# Network Manager configuration"
+      "netboot" => "# Network boot and TFTP configuration"
     }
   end
 
@@ -258,8 +250,7 @@ defmodule YellowDog.Config.Schema do
     {"core.mdns", ["core", "mdns"]},
     {"core.dhcpv4", ["core", "dhcpv4"]},
     {"core.dhcpv6", ["core", "dhcpv6"]},
-    {"core.netboot", ["core", "netboot"]},
-    {"core.netman", ["core", "netman"]}
+    {"core.netboot", ["core", "netboot"]}
   ]
 
   defp validate_booleans(errors, config) do

@@ -53,25 +53,6 @@ defmodule YellowDog.Management.Web do
     respond(conn, Domain.get_dns_view(worker_id, service_id, id))
   end
 
-  get "/api/netmans" do
-    json(conn, 200, %{"data" => Domain.list_netmans()})
-  end
-
-  get "/api/netmans/:id" do
-    respond(conn, Domain.get_netman(id))
-  end
-
-  get "/api/netmans/:id/config" do
-    respond(conn, Domain.get_netman_config(id))
-  end
-
-  get "/api/netmans/:id/versions" do
-    case Domain.get_netman(id) do
-      {:ok, _node} -> json(conn, 200, %{"data" => Domain.list_netman_versions(id)})
-      error -> respond(conn, error)
-    end
-  end
-
   get "/api/zone-catalog" do
     json(conn, 200, %{"data" => Domain.list_zone_catalog(conn.params)})
   end

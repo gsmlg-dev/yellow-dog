@@ -297,7 +297,7 @@ defmodule YellowDog.Management.Snapshots do
 
   defp load_records(%Config{root: root} = config) when is_binary(root) do
     with :ok <- ensure_recovery_capacity(root, config) do
-      Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], {:ok, %{}}, fn
+      Enum.reduce_while([{:server, "servers"}], {:ok, %{}}, fn
         {target_type, directory}, {:ok, records} ->
           case load_target_type(root, target_type, directory, config, records) do
             {:ok, records} -> {:cont, {:ok, records}}
@@ -432,14 +432,10 @@ defmodule YellowDog.Management.Snapshots do
   defp decode_record(_document, _type, _id, _domain, _path, _root), do: invalid()
 
   defp decode_target_type("server"), do: {:ok, :server}
-  defp decode_target_type("netman"), do: {:ok, :netman}
   defp decode_target_type(_target_type), do: invalid()
 
   defp snapshot_path(root, :server, target_id, domain),
     do: StoragePath.server_snapshot(root, target_id, domain)
-
-  defp snapshot_path(root, :netman, target_id, domain),
-    do: StoragePath.netman_snapshot(root, target_id, domain)
 
   defp snapshot_path(_root, _target_type, _target_id, _domain), do: invalid()
 
@@ -478,7 +474,7 @@ defmodule YellowDog.Management.Snapshots do
   end
 
   defp count_candidate_snapshots(root, config) do
-    Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], {:ok, 0}, fn
+    Enum.reduce_while([{:server, "servers"}], {:ok, 0}, fn
       {target_type, target_directory}, {:ok, count} ->
         case count_target_type_snapshots(root, target_type, target_directory, config) do
           {:ok, target_count} -> {:cont, {:ok, count + target_count}}
@@ -522,11 +518,6 @@ defmodule YellowDog.Management.Snapshots do
       match?({:ok, _path}, StoragePath.server_snapshot(root, target_id, "runtime.capabilities"))
   end
 
-  defp safe_snapshot_target?(root, :netman, target_id) when is_binary(target_id) do
-    Path.basename(target_id) == target_id and
-      match?({:ok, _path}, StoragePath.netman_snapshot(root, target_id, "runtime.capabilities"))
-  end
-
   defp safe_snapshot_target?(_root, _target_type, _target_id), do: false
 
   defp safe_snapshot_file?(root, target_type, target_id, directory, filename)
@@ -554,7 +545,7 @@ defmodule YellowDog.Management.Snapshots do
   end
 
   defp cleanup_staging(%Config{root: root} = config) when is_binary(root) do
-    Enum.reduce_while([{:server, "servers"}, {:netman, "netmans"}], :ok, fn
+    Enum.reduce_while([{:server, "servers"}], :ok, fn
       {target_type, target_directory}, :ok ->
         case cleanup_target_type_staging(root, target_type, target_directory, config) do
           :ok -> {:cont, :ok}

@@ -1,5 +1,11 @@
 # Console functionality migration matrix
 
+Current scope (2026-10-24): the Netman product, node domain and dedicated
+presentations have been removed. Earlier Netman plans, inventories and test
+results below are historical evidence. They do not describe a current product
+or authorize restoring it. Other retained presentations remain unrouted. See
+[Netman removal](netman-removal.md) for the cleanup migration and current boundary.
+
 ## Current source-only task boundary (2026-10-04)
 
 After the architecture-only slice, the user explicitly authorized migrating UI

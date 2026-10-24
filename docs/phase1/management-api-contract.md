@@ -70,7 +70,7 @@ Replaying a receipt retains its original audit entry and verified source.
 
 Saving drafts, confirming a Zone, replacing assignments and publishing a Worker target are separate commands. Publication never occurs implicitly. Current target scope is DNS service settings plus confirmed DNS Zones; Views, ACLs and IP database artifacts remain configured-only and are excluded. Actual Worker application remains unknown absent a separately authenticated observation. Queued/completed sync state does not prove artifact byte availability; metadata reads report verification unknown.
 
-Remote credential issuance/rotation, enrollment policy, backup operations, runtime actions, arbitrary task/provider URLs, deployment settings and Netman configuration are deliberately excluded. WorkerAPI is separate and unchanged. The finite registry offers no arbitrary command dispatcher.
+Remote credential issuance/rotation, enrollment policy, backup operations, runtime actions, arbitrary task/provider URLs, deployment settings are deliberately excluded. WorkerAPI is separate and unchanged. The finite registry offers no arbitrary command dispatcher.
 
 ## Contract generation and validation
 

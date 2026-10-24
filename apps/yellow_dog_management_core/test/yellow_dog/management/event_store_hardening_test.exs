@@ -4,7 +4,6 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
   alias YellowDog.Management.Event
   alias YellowDog.Management.EventStore
   alias YellowDog.Management.ManifestStore
-  alias YellowDog.Management.Netmans
   alias YellowDog.Management.Servers
   alias YellowDog.ManagementCore
 
@@ -49,7 +48,7 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
     write_event(data_dir, "evt-2.json", Map.put(event_map(2), "metadata", metadata_21))
     write_event(data_dir, "evt-3.json", Map.put(event_map(3), "id", "../evt-3"))
     write_event(data_dir, "evt-4.json", Map.put(event_map(4), "source_id", "../server"))
-    write_event(data_dir, "evt-5.json", Map.put(event_map(5), "type", "netman_registered"))
+    write_event(data_dir, "evt-5.json", Map.put(event_map(5), "type", "retired_registered"))
 
     write_event(
       data_dir,
@@ -194,11 +193,11 @@ defmodule YellowDog.Management.EventStoreHardeningTest do
   end
 
   defp restart_management_children do
-    Enum.each([Servers, Netmans, EventStore, ManifestStore], fn child_id ->
+    Enum.each([Servers, EventStore, ManifestStore], fn child_id ->
       :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)
 
-    Enum.each([ManifestStore, EventStore, Servers, Netmans], fn child_id ->
+    Enum.each([ManifestStore, EventStore, Servers], fn child_id ->
       {:ok, _pid} = Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)
   end

@@ -3,7 +3,7 @@ defmodule YellowDog.Resolved.LinkDns do
   Per-link DNS configuration storage.
 
   Stores DNS server and search domain configuration per network interface,
-  as pushed by YellowDog.Netman. Higher-priority links' DNS servers are
+  as supplied by a network integration. Higher-priority links' DNS servers are
   prepended to the global upstream list in the Forwarder.
   """
 

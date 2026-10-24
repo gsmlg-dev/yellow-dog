@@ -56,23 +56,18 @@ defmodule YellowDog.Console.Router do
     plug YellowDog.Console.Hooks.ServiceScope, :server
   end
 
-  pipeline :netman_scope do
-    plug YellowDog.Console.Hooks.ServiceScope, :netman
-  end
-
   scope "/", YellowDog.Console do
     pipe_through :browser
 
     get "/", PageController, :home
   end
 
-  # Management section — service-node and Netman management foundation
+  # Management section — service-node management foundation
   scope "/management", YellowDog.Console do
     pipe_through :browser
 
     live "/", ManagementLive.Index, :overview
     live "/servers", ManagementLive.Index, :servers
-    live "/netman", ManagementLive.Index, :netman
     live "/profiles", ManagementLive.Index, :profiles
     live "/config", ManagementLive.Index, :config
     live "/events", ManagementLive.Index, :events
@@ -242,25 +237,6 @@ defmodule YellowDog.Console.Router do
 
     # MAC manufacturer database management
     live "/mac-database", MacDatabaseLive
-  end
-
-  # Netman selector and legacy unscoped routes
-  scope "/netman", YellowDog.Console do
-    pipe_through :browser
-
-    live "/", NetmanLive.DashboardLive
-    get "/config", ServiceRedirectController, :netman
-  end
-
-  # Netman section — all pages target one concrete management record
-  scope "/netman/:netman_id", YellowDog.Console do
-    pipe_through [:browser, :netman_scope]
-
-    live "/", NetmanLive.NodeLive
-    live "/config", NetmanLive.ConfigLive
-    live "/interfaces", NetmanLive.InterfacesLive
-    live "/resolved", NetmanLive.ResolvedLive
-    live "/dhcp-client", NetmanLive.DhcpClientLive
   end
 
   # HTTP boot endpoints — no CSRF, no session (called by iPXE/installer)

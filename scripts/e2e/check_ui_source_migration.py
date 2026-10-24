@@ -8,6 +8,10 @@ import subprocess
 repo_root = pathlib.Path(__file__).resolve().parents[2]
 manifest = json.loads((repo_root / "docs/phase1/ui-source-migration.json").read_text())
 entries = manifest["files"]
+retirement = manifest["netman_retirement"]
+removed_targets = set(retirement["removed_targets"])
+source_overrides = retirement["retained_source_sha256"]
+target_overrides = retirement["retained_target_sha256"]
 sources = set()
 source_hashes = {}
 targets = set()
@@ -32,7 +36,14 @@ for entry in entries:
     for before, after in entry["replacements"]:
         content = content.replace(before, after)
     expected = (content.rstrip() + "\n").encode()
+    if target in removed_targets:
+        assert "/live/netman_live/" in target, target
+        assert not (repo_root / target).exists(), f"Retired page restored: {target}"
+        continue
     actual = (repo_root / target).read_bytes()
+    if target in target_overrides:
+        assert hashlib.sha256(actual).hexdigest() == target_overrides[target], target
+        continue
     assert actual == expected, f"Incomplete or unexpected transformation: {target}"
     assert hashlib.sha256(actual).hexdigest() == entry["target_sha256"], target
 
@@ -59,6 +70,7 @@ historical_sources = subprocess.check_output(
     cwd=repo_root, text=True
 ).splitlines()
 expected_sources.update(historical_sources)
+expected_sources.update(retirement["removed_sources"])
 assert sources == expected_sources, (
     "Source coverage mismatch", sorted(expected_sources - sources), sorted(sources - expected_sources)
 )
@@ -69,7 +81,11 @@ for source in sorted(expected_sources):
     required_hashes = set()
     current_source = repo_root / source
     if current_source.exists():
-        required_hashes.add(hashlib.sha256(current_source.read_bytes()).hexdigest())
+        current_hash = hashlib.sha256(current_source.read_bytes()).hexdigest()
+        if source in source_overrides:
+            assert current_hash == source_overrides[source], source
+        else:
+            required_hashes.add(current_hash)
     historical_exists = source in historical_sources or subprocess.run(
         ["git", "cat-file", "-e", f'{manifest["historical_revision"]}:{source}'],
         cwd=repo_root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -92,5 +108,13 @@ actual_targets.update(
     for path in (repo_root / "apps/yellow_dog_management/assets/redesign").rglob("*")
     if path.is_file()
 )
-assert targets == actual_targets, ("Destination inventory mismatch", sorted(targets ^ actual_targets))
-print(f"UI SOURCE MIGRATION PASSED: {len(entries)} complete files; no runtime acceptance claimed")
+retained_targets = targets - removed_targets
+assert removed_targets <= targets, "Unknown retired targets"
+assert target_overrides.keys() <= retained_targets, "Unknown transformed targets"
+assert retained_targets == actual_targets, (
+    "Destination inventory mismatch", sorted(retained_targets ^ actual_targets)
+)
+print(
+    f"UI SOURCE MIGRATION PASSED: {len(retained_targets)} retained files; "
+    f"{len(removed_targets)} retired Netman pages; no runtime acceptance claimed"
+)

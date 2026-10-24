@@ -11,7 +11,6 @@ defmodule YellowDog.ManagementUI.Layouts do
   attr :flash, :map, default: %{}
   attr :current_path, :string, default: nil
   attr :servers, :list, default: []
-  attr :netmans, :list, default: []
   attr :caller, :any, default: nil
   slot :inner_block
 
@@ -21,7 +20,6 @@ defmodule YellowDog.ManagementUI.Layouts do
       |> assign_new(:content, fn -> assigns[:inner_content] end)
       |> assign_new(:current_path, fn -> nil end)
       |> assign_new(:servers, fn -> [] end)
-      |> assign_new(:netmans, fn -> [] end)
       |> assign(:navigation_scope, CurrentPath.selection_for_path(assigns[:current_path]))
 
     ~H"""
@@ -44,7 +42,6 @@ defmodule YellowDog.ManagementUI.Layouts do
           current_path={@current_path}
           navigation_scope={@navigation_scope}
           servers={@servers}
-          netmans={@netmans}
           caller={@caller}
         />
         <main id="workspace" class="yd-main">

@@ -67,9 +67,9 @@ export function navigationSmoke({ cdp, evaluate, navigate, until }) {
   }
 
   async function collapsible() {
-    await navigate('/management/netman');
-    await selected('nodes', 'netmans');
-    await screenshot('desktop-netman');
+    await navigate('/management/servers');
+    await selected('nodes', 'workers');
+    await screenshot('desktop-workers');
     const toggle = '#app-sidebar-navigation [data-left-menu-toggle]';
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-controls')`), 'app-sidebar-navigation-scroll');
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded')`), 'true');
@@ -157,7 +157,6 @@ export function navigationSmoke({ cdp, evaluate, navigate, until }) {
       ['/system/mac-database', 'data', 'mac_database'],
       ['/management/dns/views', 'data', 'dns_views'],
       ['/management/config', 'nodes', 'config_targets'],
-      ['/management/netman', 'nodes', 'netmans'],
       ['/management/events', 'monitoring', 'events'],
       ['/system/tasks', 'monitoring', 'tasks'],
       ['/system/logs/tasks', 'monitoring', 'logs'],

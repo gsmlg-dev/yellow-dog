@@ -6,9 +6,6 @@ defmodule E2ETest.ManagementTransport do
   @behaviour YellowDog.Management.Transport
 
   alias YellowDog.ManagementCore
-  alias YellowDog.NetmanAgent.CommandJournal, as: NetmanCommandJournal
-  alias YellowDog.NetmanAgent.Dispatcher, as: NetmanDispatcher
-  alias YellowDog.NetmanAgent.QueryDispatcher, as: NetmanQueryDispatcher
   alias YellowDog.ServerAgent.CommandJournal, as: ServerCommandJournal
   alias YellowDog.ServerAgent.ConfigApplier, as: ServerConfigApplier
   alias YellowDog.ServerAgent.ConfigApplyStore, as: ServerConfigApplyStore
@@ -66,7 +63,6 @@ defmodule E2ETest.ManagementTransport do
     {:ok,
      %{
        server: Keyword.fetch!(opts, :server),
-       netman: Keyword.fetch!(opts, :netman),
        connected: MapSet.new(),
        requests: [],
        deliveries: []
@@ -145,25 +141,6 @@ defmodule E2ETest.ManagementTransport do
     )
   end
 
-  defp dispatch(%Envelope{target_type: :netman} = envelope, %Operation{kind: :query}, endpoint) do
-    NetmanQueryDispatcher.dispatch(
-      envelope,
-      netman_id: endpoint.id,
-      capabilities: endpoint.capabilities,
-      runtime_adapter: E2ETest.NetmanRuntime
-    )
-  end
-
-  defp dispatch(%Envelope{target_type: :netman} = envelope, %Operation{kind: :command}, endpoint) do
-    NetmanDispatcher.dispatch(
-      envelope,
-      netman_id: endpoint.id,
-      capabilities: endpoint.capabilities,
-      command_journal: endpoint.command_journal,
-      runtime_adapter: E2ETest.NetmanRuntime
-    )
-  end
-
   defp dispatch(_envelope, _operation, _endpoint),
     do: {:error, Error.new(:unsupported, "unsupported operation", %{})}
 
@@ -205,9 +182,6 @@ defmodule E2ETest.ManagementTransport do
   defp journal(:server, command_journal),
     do: ServerCommandJournal.wire_projection(command_journal)
 
-  defp journal(:netman, command_journal),
-    do: NetmanCommandJournal.wire_projection(command_journal)
-
   defp maybe_deliver(nil), do: :ok
 
   defp maybe_deliver(version) do
@@ -226,7 +200,7 @@ defmodule E2ETest.ManagementTransport do
     })
   end
 
-  defp endpoint(state, target_type, target_id) when target_type in [:server, :netman] do
+  defp endpoint(state, target_type, target_id) when target_type == :server do
     case Map.fetch!(state, target_type) do
       %{id: ^target_id} = endpoint -> {:ok, endpoint}
       _other -> {:error, Error.new(:not_found, "runtime endpoint not found", %{})}
@@ -353,18 +327,4 @@ defmodule E2ETest.ServerRuntime do
   def handle_call({:dispatch, _envelope}, _from, state) do
     {:reply, {:error, Error.new(:unsupported, "unsupported operation", %{})}, state}
   end
-end
-
-defmodule E2ETest.NetmanRuntime do
-  @moduledoc false
-
-  alias YellowDog.Sync.Envelope
-  alias YellowDog.Sync.Error
-
-  def dispatch(%Envelope{operation: "netman.runtime.capabilities.get"}) do
-    {:ok, %{"capabilities" => ["runtime.capabilities"]}}
-  end
-
-  def dispatch(_envelope),
-    do: {:error, Error.new(:unsupported, "unsupported operation", %{})}
 end

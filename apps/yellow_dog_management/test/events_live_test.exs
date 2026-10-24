@@ -8,7 +8,6 @@ defmodule YellowDog.Management.EventsLiveTest do
 
   @endpoint YellowDog.ManagementUI.Endpoint
   @worker_operations ~w(create_worker update_worker put_service assign unassign confirm_target)
-  @netman_operations ~w(create_netman update_netman update_netman_config confirm_netman_config rollback_netman_config)
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
@@ -23,7 +22,7 @@ defmodule YellowDog.Management.EventsLiveTest do
     {:ok, view, html} = live(conn, "/management/events")
     assert has_element?(view, "#management-events")
     assert has_element?(view, "#management-worker-events", "No Worker desired events")
-    assert has_element?(view, "#management-netman-events", "No Netman desired events")
+    refute has_element?(view, "#management-netman-events")
     assert has_element?(view, "#management-command-outcomes")
     refute has_element?(view, "#management-command-outcomes [data-event-id]")
     refute has_element?(view, "input[type='password'], #login")
@@ -44,21 +43,17 @@ defmodule YellowDog.Management.EventsLiveTest do
     assert_source(view)
 
     workers = Enum.filter(source, &(&1["operation"] in @worker_operations))
-    netmans = Enum.filter(source, &(&1["operation"] in @netman_operations))
     assert :sys.get_state(view.pid).socket.assigns.worker_events == workers
-    assert :sys.get_state(view.pid).socket.assigns.netman_events == netmans
 
-    for {events, group} <- [{workers, "worker"}, {netmans, "netman"}] do
-      for {event, position} <- Enum.with_index(events, 1) do
-        assert has_element?(
-                 view,
-                 "#management-#{group}-events-list > tr:nth-child(#{position}) button[phx-value-id='#{event["id"]}']"
-               )
-      end
+    for {event, position} <- Enum.with_index(workers, 1) do
+      assert has_element?(
+               view,
+               "#management-worker-events-list > tr:nth-child(#{position}) button[phx-value-id='#{event["id"]}']"
+             )
     end
 
     for event <-
-          Enum.reject(source, &(&1["operation"] in (@worker_operations ++ @netman_operations))) do
+          Enum.reject(source, &(&1["operation"] in @worker_operations)) do
       refute has_element?(view, "#management-worker-events button[phx-value-id='#{event["id"]}']")
       refute has_element?(view, "#management-netman-events button[phx-value-id='#{event["id"]}']")
       assert has_element?(view, "#management-command-outcomes [data-event-id='#{event["id"]}']")
@@ -66,8 +61,6 @@ defmodule YellowDog.Management.EventsLiveTest do
 
     service = Enum.find(source, &(&1["operation"] == "put_service"))
     assert_target(view, service, "Worker events-worker")
-    netman_version = Enum.find(source, &(&1["operation"] == "confirm_netman_config"))
-    assert_target(view, netman_version, "Netman events-netman")
     zone_version = Enum.find(source, &(&1["operation"] == "confirm_zone"))
     assert_target(view, zone_version, "Zone #{references.zone["id"]}")
 
@@ -323,14 +316,6 @@ defmodule YellowDog.Management.EventsLiveTest do
       "config" => %{"listen_address" => "127.0.0.1", "port" => 5300}
     })
 
-    netman = mutate("create_netman", %{"id" => "events-netman", "name" => "Netman"})
-    assert {:ok, draft} = Domain.get_netman_config(netman["id"])
-
-    mutate("confirm_netman_config", %{
-      "id" => netman["id"],
-      "expected_revision" => draft["revision"]
-    })
-
     zone =
       mutate("create_zone", %{
         "name" => "events.test.",
@@ -400,8 +385,8 @@ defmodule YellowDog.Management.EventsLiveTest do
   end
 
   defp footprint do
-    {Domain.list_workers(), Domain.list_netmans(), Domain.list_zones(),
-     Repo.all(Audit) |> Enum.sort_by(& &1.id), Repo.all(Idempotency) |> Enum.sort_by(& &1.key),
+    {Domain.list_workers(), Domain.list_zones(), Repo.all(Audit) |> Enum.sort_by(& &1.id),
+     Repo.all(Idempotency) |> Enum.sort_by(& &1.key),
      Repo.all(Styx.Job, prefix: "management_jobs") |> Enum.sort_by(& &1.id)}
   end
 end

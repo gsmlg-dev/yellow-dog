@@ -16,7 +16,6 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
     "Servers" => ["/server"],
     "Tools" => ["/tool/"],
     "System" => ["/system/"],
-    "Netman" => ["/netman"],
     nil => ["/"]
   }
 
@@ -71,14 +70,6 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
      ]}
   ]
 
-  @netman_navigation [
-    %{label: "Overview", icon: "view-dashboard", destination: :overview, exact: true},
-    %{label: "Configuration", icon: "cog", destination: :config},
-    %{label: "Interfaces", icon: "ethernet", destination: :interfaces},
-    %{label: "Resolved", icon: "dns", destination: :resolved},
-    %{label: "DHCP Client", icon: "chip", destination: :dhcp_client}
-  ]
-
   @impl true
   def update(assigns, socket) do
     current_path = Map.get(assigns, :current_path)
@@ -98,10 +89,6 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
   @impl true
   def handle_event("select_server", %{"selection" => %{"id" => id}}, socket) do
     navigate_to_selection(socket, :server, id)
-  end
-
-  def handle_event("select_netman", %{"selection" => %{"id" => id}}, socket) do
-    navigate_to_selection(socket, :netman, id)
   end
 
   def section_for_path(nil), do: nil
@@ -147,13 +134,6 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
           />
           <.sidebar_tools :if={@section == "Tools"} current_path={@current_path} />
           <.sidebar_system :if={@section == "System"} current_path={@current_path} />
-          <.sidebar_netman
-            :if={@section == "Netman"}
-            current_path={@current_path}
-            myself={@myself}
-            records={@records}
-            selected_record={@selected_record}
-          />
         </ul>
       </div>
     </div>
@@ -173,12 +153,6 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
       <.link navigate="/management/servers" class={active?(@current_path, "/management/servers")}>
         <.dm_mdi name="server-network" class="w-5 h-5" />
         <span>Servers</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/management/netman" class={active?(@current_path, "/management/netman")}>
-        <.dm_mdi name="lan" class="w-5 h-5" />
-        <span>Netman</span>
       </.link>
     </li>
     <li>
@@ -434,37 +408,6 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
     """
   end
 
-  defp sidebar_netman(assigns) do
-    assigns = assign(assigns, :navigation, @netman_navigation)
-
-    ~H"""
-    <.selection_control
-      id="netman-selection-form"
-      event="select_netman"
-      label="Netman"
-      myself={@myself}
-      records={@records}
-      selected_record={@selected_record}
-    />
-
-    <li class="nested-menu-title mt-4">Network Manager</li>
-    <.service_navigation_item
-      :for={item <- @navigation}
-      target_type={:netman}
-      item={item}
-      selected_record={@selected_record}
-      current_path={@current_path}
-    />
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :event, :string, required: true
-  attr :label, :string, required: true
-  attr :myself, :any, required: true
-  attr :records, :list, required: true
-  attr :selected_record, :any, default: nil
-
   defp selection_control(assigns) do
     ~H"""
     <li class="nested-menu-title">Selected {@label}</li>
@@ -543,21 +486,10 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
   defp navigation_records("Servers", _scope),
     do: {valid_records(Data.list_servers(), :server), nil}
 
-  defp navigation_records("Netman", {:netman, selected_id}) do
-    records = valid_records(Data.list_netmans(), :netman)
-    {records, Enum.find(records, &(&1.id == selected_id))}
-  end
-
-  defp navigation_records("Netman", _scope),
-    do: {valid_records(Data.list_netmans(), :netman), nil}
-
   defp navigation_records(_section, _scope), do: {[], nil}
 
   defp valid_records(records, :server),
     do: Enum.filter(records, &ServicePaths.valid_server_id?(&1.id))
-
-  defp valid_records(records, :netman),
-    do: Enum.filter(records, &ServicePaths.valid_netman_id?(&1.id))
 
   defp navigate_to_selection(socket, target_type, "") do
     {:noreply, Phoenix.LiveView.push_navigate(socket, to: selector_path(target_type))}
@@ -578,15 +510,8 @@ defmodule YellowDog.ManagementUI.Redesign.Components.Sidebar do
   defp service_path(:server, id, destination),
     do: ServicePaths.server_path(id, destination)
 
-  defp service_path(:netman, id, destination),
-    do: ServicePaths.netman_path(id, destination)
-
   defp selector_path(:server), do: "/server"
-  defp selector_path(:netman), do: "/netman"
-
   defp selection_destination(:server), do: :dashboard
-  defp selection_destination(:netman), do: :overview
-
   defp selected_record?(%{id: selected_id}, %{id: id}), do: selected_id == id
   defp selected_record?(_selected_record, _record), do: false
 

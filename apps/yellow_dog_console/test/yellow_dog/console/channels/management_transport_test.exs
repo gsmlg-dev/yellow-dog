@@ -39,7 +39,6 @@ defmodule YellowDog.Console.ManagementTransportTest do
     socket = join_registered(server_id)
 
     refute ManagementTransport.connected?(:server, server_id)
-    refute ManagementTransport.connected?(:netman, server_id)
     refute ManagementTransport.connected?(:server, "")
 
     activate(socket, server_id)
@@ -57,21 +56,21 @@ defmodule YellowDog.Console.ManagementTransportTest do
       )
 
     hello_ref = push(socket, "sync", payload(hello(server_id)))
-    assert_reply hello_ref, :ok, %{"accepted" => true}
+    assert_reply(hello_ref, :ok, %{"accepted" => true})
     status_ref = push(socket, "sync", payload(status(server_id)))
-    assert_reply status_ref, :ok, %{"accepted" => true}
+    assert_reply(status_ref, :ok, %{"accepted" => true})
     refute ManagementTransport.connected?(:server, server_id)
 
     journal_ref = push(socket, "sync", payload(journal(server_id)))
-    assert_reply journal_ref, :ok, %{"accepted" => true}
+    assert_reply(journal_ref, :ok, %{"accepted" => true})
     assert_receive {:server_connection, :online, %{server_id: ^server_id}}
 
     envelope = query_envelope(server_id)
     task = Task.async(fn -> ManagementTransport.request(envelope, 1_000) end)
-    assert_push "sync", %{"message" => _encoded, "publication_sequence" => nil}
+    assert_push("sync", %{"message" => _encoded, "publication_sequence" => nil})
 
     result_ref = push(socket, "sync", payload(result(envelope, result_value(envelope))))
-    assert_reply result_ref, :ok, %{"accepted" => true}
+    assert_reply(result_ref, :ok, %{"accepted" => true})
     assert {:ok, result_value(envelope)} == Task.await(task)
   end
 
@@ -83,8 +82,10 @@ defmodule YellowDog.Console.ManagementTransportTest do
     for envelope <- [query_envelope(server_id), command_envelope(server_id)] do
       task = Task.async(fn -> ManagementTransport.request(envelope, 1_000) end)
 
-      assert_push "sync",
-                  %{"message" => encoded, "publication_sequence" => nil} = outbound
+      assert_push(
+        "sync",
+        %{"message" => encoded, "publication_sequence" => nil} = outbound
+      )
 
       assert map_size(outbound) == 2
       assert {:ok, decoded} = Message.decode(encoded)
@@ -95,7 +96,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
       assert %{__struct__: ^expected_module, envelope: ^envelope} = decoded
 
       ref = push(socket, "sync", payload(result(envelope, result_value(envelope))))
-      assert_reply ref, :ok, %{"accepted" => true}
+      assert_reply(ref, :ok, %{"accepted" => true})
       assert {:ok, result_value(envelope)} == Task.await(task)
     end
   end
@@ -109,8 +110,8 @@ defmodule YellowDog.Console.ManagementTransportTest do
 
     first_task = Task.async(fn -> ManagementTransport.request(first, 1_000) end)
     second_task = Task.async(fn -> ManagementTransport.request(second, 1_000) end)
-    assert_push "sync", _
-    assert_push "sync", _
+    assert_push("sync", _)
+    assert_push("sync", _)
 
     wrong = %{
       result(second, result_value(second))
@@ -118,31 +119,19 @@ defmodule YellowDog.Console.ManagementTransportTest do
     }
 
     wrong_ref = push(socket, "sync", payload(wrong))
-    assert_reply wrong_ref, :ok, %{"accepted" => true}
-    refute Task.yield(first_task, 20)
-
-    wrong_target = %Result{
-      request_id: first.request_id,
-      target_type: :netman,
-      operation: "netman.runtime.capabilities.get",
-      value: nil,
-      error: Error.new(:internal, "runtime failed", %{})
-    }
-
-    wrong_target_ref = push(socket, "sync", payload(wrong_target))
-    assert_reply wrong_target_ref, :error, %{"error" => %{"code" => "invalid"}}
+    assert_reply(wrong_ref, :ok, %{"accepted" => true})
     refute Task.yield(first_task, 20)
 
     second_ref = push(socket, "sync", payload(result(second, result_value(second))))
-    assert_reply second_ref, :ok, %{"accepted" => true}
+    assert_reply(second_ref, :ok, %{"accepted" => true})
     assert {:ok, result_value(second)} == Task.await(second_task)
 
     first_ref = push(socket, "sync", payload(result(first, result_value(first))))
-    assert_reply first_ref, :ok, %{"accepted" => true}
+    assert_reply(first_ref, :ok, %{"accepted" => true})
     assert {:ok, result_value(first)} == Task.await(first_task)
 
     duplicate_ref = push(socket, "sync", payload(result(first, result_value(first))))
-    assert_reply duplicate_ref, :ok, %{"accepted" => true}
+    assert_reply(duplicate_ref, :ok, %{"accepted" => true})
   end
 
   test "returns a fully validated typed Result error" do
@@ -152,7 +141,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
     envelope = command_envelope(server_id)
     result_error = Error.new(:apply_failed, "service start failed", %{"service" => "dns"})
     task = Task.async(fn -> ManagementTransport.request(envelope, 1_000) end)
-    assert_push "sync", _
+    assert_push("sync", _)
 
     result = %Result{
       request_id: envelope.request_id,
@@ -163,7 +152,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
     }
 
     ref = push(socket, "sync", payload(result))
-    assert_reply ref, :ok, %{"accepted" => true}
+    assert_reply(ref, :ok, %{"accepted" => true})
     assert {:error, ^result_error} = Task.await(task)
   end
 
@@ -174,11 +163,11 @@ defmodule YellowDog.Console.ManagementTransportTest do
     envelope = query_envelope(server_id)
 
     task = Task.async(fn -> ManagementTransport.request(envelope, 20) end)
-    assert_push "sync", _
+    assert_push("sync", _)
     assert {:error, %Error{code: :timeout, details: %{}}} = Task.await(task)
 
     late_ref = push(socket, "sync", payload(result(envelope, result_value(envelope))))
-    assert_reply late_ref, :ok, %{"accepted" => true}
+    assert_reply(late_ref, :ok, %{"accepted" => true})
   end
 
   test "disconnect and replacement clear pending requests with not_connected" do
@@ -189,9 +178,9 @@ defmodule YellowDog.Console.ManagementTransportTest do
 
     disconnected = query_envelope(server_id)
     disconnected_task = Task.async(fn -> ManagementTransport.request(disconnected, 1_000) end)
-    assert_push "sync", _
+    assert_push("sync", _)
     leave_ref = leave(first)
-    assert_reply leave_ref, :ok
+    assert_reply(leave_ref, :ok)
 
     assert {:error, %Error{code: :not_connected, details: %{}}} =
              Task.await(disconnected_task)
@@ -200,7 +189,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
     activate(second, server_id)
     replaced = query_envelope(server_id)
     replaced_task = Task.async(fn -> ManagementTransport.request(replaced, 1_000) end)
-    assert_push "sync", _
+    assert_push("sync", _)
 
     third = join(server_id)
     activate(third, server_id)
@@ -221,7 +210,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
       for _index <- 1..128 do
         envelope = query_envelope(server_id)
         task = Task.async(fn -> ManagementTransport.request(envelope, 2_000) end)
-        assert_push "sync", _
+        assert_push("sync", _)
         task
       end
 
@@ -229,7 +218,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
              ManagementTransport.request(query_envelope(server_id), 100)
 
     leave_ref = leave(socket)
-    assert_reply leave_ref, :ok
+    assert_reply(leave_ref, :ok)
 
     for task <- tasks do
       assert {:error, %Error{code: :not_connected, details: %{}}} = Task.await(task)
@@ -244,7 +233,7 @@ defmodule YellowDog.Console.ManagementTransportTest do
 
     assert :ok = ManagementTransport.deliver_config(envelope)
 
-    assert_push "sync", %{"message" => encoded, "publication_sequence" => nil} = outbound
+    assert_push("sync", %{"message" => encoded, "publication_sequence" => nil} = outbound)
     assert map_size(outbound) == 2
     assert {:ok, %ConfigDelivery{envelope: ^envelope}} = Message.decode(encoded)
   end
@@ -310,11 +299,11 @@ defmodule YellowDog.Console.ManagementTransportTest do
 
   defp activate(socket, server_id) do
     hello_ref = push(socket, "sync", payload(hello(server_id)))
-    assert_reply hello_ref, :ok, %{"accepted" => true}
+    assert_reply(hello_ref, :ok, %{"accepted" => true})
     status_ref = push(socket, "sync", payload(status(server_id)))
-    assert_reply status_ref, :ok, %{"accepted" => true}
+    assert_reply(status_ref, :ok, %{"accepted" => true})
     journal_ref = push(socket, "sync", payload(journal(server_id)))
-    assert_reply journal_ref, :ok, %{"accepted" => true}
+    assert_reply(journal_ref, :ok, %{"accepted" => true})
   end
 
   defp journal(server_id) do

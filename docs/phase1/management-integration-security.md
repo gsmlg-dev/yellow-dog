@@ -66,7 +66,7 @@ A connected LiveView mount independently authenticates the WebSocket handshake, 
 
 Every mounted callback (events, parameter changes, messages and async completions) checks expiration, current deployment policy revision, allowed scopes and entry-point provenance. Idle sockets schedule an expiry message and redirect when their Caller expires. LiveComponent commands separately authorize through the same shared boundary, including receipt replay. Policy changes are checked on callbacks; they do not promise immediate idle-socket push revocation before the scheduled expiry or next callback.
 
-`config:read` is required to enter the UI. Audit pages additionally require `audit:read`; privileged diagnostic, log, backup, task-administration, enrollment, Worker-connection/credential, Netman and network-tool pages require UI-only `ui:admin`. Corresponding mutation scopes remain independently enforced. The API/MCP information page reports `IntegrationSettings.public()` only: mode, enabled flags, canonical resource, issuer, policy revision and allowed scopes. It renders no key paths, keys, tokens, provider credentials or nonfunctional policy toggles.
+`config:read` is required to enter the UI. Audit pages additionally require `audit:read`; privileged diagnostic, log, backup, task-administration, enrollment, Worker-connection/credential and network-tool pages require UI-only `ui:admin`. Corresponding mutation scopes remain independently enforced. The API/MCP information page reports `IntegrationSettings.public()` only: mode, enabled flags, canonical resource, issuer, policy revision and allowed scopes. It renders no key paths, keys, tokens, provider credentials or nonfunctional policy toggles.
 
 ## Permission and command boundary
 
@@ -101,7 +101,7 @@ Worker polling/connection under `/api/worker` uses its separate Worker credentia
 
 Protected-remote mode retires legacy `/api/...` commands and legacy reads with HTTP 410, rather than leaving an unscoped generic dispatcher. Two existing UI download paths remain: Worker target TOML export requires verified UI `config:read`, and backup download requires verified UI `ui:admin`. Neither accepts an API bearer token in place of the gateway assertion. Trusted-local development retains legacy routes under its explicit local UI authorization; legacy commands require UI administration and stable request identity. Disabled mode still denies them.
 
-Enrollment policy, credential operations, Netman editing, backup operations, local MAC/OUI reload, network diagnostic tools, unsupported task types and platform security/settings are excluded from the versioned remote operation matrix. Existing UI administrative capabilities remain independently gated; a remote token with `ui:admin` is not a UI session and cannot open those paths. The permitted City/Country task operations use the shared facade; they do not accept arbitrary task keys, provider URLs, files or shell commands.
+Enrollment policy, credential operations, backup operations, local MAC/OUI reload, network diagnostic tools, unsupported task types and platform security/settings are excluded from the versioned remote operation matrix. Existing UI administrative capabilities remain independently gated; a remote token with `ui:admin` is not a UI session and cannot open those paths. The permitted City/Country task operations use the shared facade; they do not accept arbitrary task keys, provider URLs, files or shell commands.
 
 ## Reproducible checks and CI
 

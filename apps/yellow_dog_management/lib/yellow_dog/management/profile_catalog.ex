@@ -17,17 +17,7 @@ defmodule YellowDog.Management.ProfileCatalog do
     :server_agent
   ]
 
-  @netman_feature_keys [
-    :interfaces,
-    :dhcp_client,
-    :dns_client,
-    :routes,
-    :link_state,
-    :vpn
-  ]
-
   def server_service_keys, do: @server_service_keys
-  def netman_feature_keys, do: @netman_feature_keys
 
   def list_server_profiles do
     [
@@ -40,85 +30,11 @@ defmodule YellowDog.Management.ProfileCatalog do
     ]
   end
 
-  def list_netman_profiles do
-    [
-      netman_profile(
-        :local_server,
-        "Local server network manager",
-        [
-          :interfaces,
-          :dhcp_client,
-          :dns_client,
-          :routes,
-          :link_state
-        ],
-        :managed
-      ),
-      netman_profile(
-        :cloud_server,
-        "Cloud server network manager",
-        [
-          :interfaces,
-          :dhcp_client,
-          :dns_client,
-          :routes,
-          :link_state
-        ],
-        :observe_first
-      ),
-      netman_profile(
-        :bare_metal,
-        "Bare-metal network manager",
-        [
-          :interfaces,
-          :dhcp_client,
-          :dns_client,
-          :routes,
-          :link_state
-        ],
-        :managed
-      ),
-      netman_profile(
-        :vm,
-        "Virtual machine network manager",
-        [
-          :interfaces,
-          :dns_client,
-          :routes,
-          :link_state
-        ],
-        :managed
-      ),
-      netman_profile(
-        :vpn_gateway,
-        "Future VPN gateway network manager",
-        [:interfaces, :routes, :dns_client, :link_state, :vpn],
-        :managed
-      ),
-      netman_profile(
-        :observe_only,
-        "Observe-only network manager",
-        [:interfaces, :link_state],
-        :observe
-      ),
-      netman_profile(:custom, "Custom network manager", [], :managed)
-    ]
-  end
-
   defp server_profile(name, description, enabled_services) do
     %{
       name: name,
       description: description,
       services: flags(@server_service_keys, enabled_services)
-    }
-  end
-
-  defp netman_profile(name, description, enabled_features, apply_mode) do
-    %{
-      name: name,
-      description: description,
-      features: flags(@netman_feature_keys, enabled_features),
-      apply_mode: apply_mode
     }
   end
 

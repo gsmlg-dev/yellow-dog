@@ -74,9 +74,8 @@ or its legacy Agents. `/management`, `/server`, and the DNS Zone routes adapt
 existing PostgreSQL domain operations rather than calling a legacy Server.
 Logical Worker service configuration, version assignments, prepared targets,
 TOML export, and `/management/events` remain available without a live Worker.
-Server/Netman presets remain descriptive metadata in their respective editors;
-there is no separate Management Profiles page. Netman network-profile editing
-stores desired configuration in PostgreSQL.
+Worker presets remain descriptive metadata in the Worker editor;
+there is no separate Management Profiles page. Worker is the only node type.
 Worker registration requires only a name and defaults descriptive `profile_name`
 metadata to `custom`. Dashboard editing retains the six Server catalog profiles.
 Profile edits use the existing Worker revision CAS and never change capabilities,
@@ -102,14 +101,13 @@ infer a selection from existing records or query parameters.
 Global Zone, record and import pages ignore query-only identity parameters;
 scoped pages derive Worker/Zone/record IDs from the matched path, including when
 queries contain conflicting scalar, list or map values. Unknown scoped Workers
-cannot mutate shared Zones. Netman runtime operations and wider service functions remain pending;
+cannot mutate shared Zones. Wider service functions remain pending;
 their historical URLs are not current functionality promises.
 
 `/management/config` lists every immutable prepared target revision, its genuine
 digest, preparation time and Worker link directly from PostgreSQL. It does not
 load plan bodies to render the history or infer application, failure or rollback
-observations. Netman prepared versions and desired rollback publications also appear
-in this history; genuine runtime observations remain unknown.
+observations. Genuine runtime observations remain unknown.
 
 ### Named DNS ordered-rule ACL data
 
@@ -153,36 +151,16 @@ requests and SIGKILL recovery to verify desired CRUD, confirmation/cancellation,
 validation, scoped isolation, immutable export preservation and desktop/mobile
 no-login UI. It does not test or imply ACL execution.
 
-### Logical Netman and desired network configuration
+### Worker-only node domain
 
-`/management/netman` and `/netman` register/select logical Netman nodes.
-`/netman/:netman_id` edits metadata, catalog preset, desired feature flags and
-apply mode. These records never claim an online state or a last-seen time.
-IDs come from matched route parameters, not query-only identity overrides.
+The cancelled Netman product, Agent, node/configuration/version schemas and
+UI/API entries have been removed. `/management/netman`, `/netman/...` and
+`/api/netmans/...` return 404; generic commands reject retired operations.
+The cleanup migration is reviewed and verified only against disposable databases;
+see [schema cleanup and retained boundaries](../../docs/phase1/netman-removal.md).
+Retained DHCP client/Resolved libraries have not been implemented in Worker.
 
-`/netman/:netman_id/config` manages Ethernet profiles with interface/zone,
-autoconnect/priority, MTU and typed IPv4/IPv6 address, gateway, DNS and search
-settings. `/netman/:netman_id/resolved` edits desired resolver upstreams and
-search domains. The pure `NetmanConfig` validator validates the entire replacement
-document before saving, including unique profile IDs and manual-address/family
-semantics. It imposes a 256 KiB document limit and bounds profiles and resolver lists.
-
-Metadata and configuration have independent optimistic revisions. Configuration
-updates, publication and desired rollback use the existing atomic PostgreSQL
-Audit/Idempotency gateway. Publication creates immutable prepared snapshots;
-rollback selects stored content and creates a new draft revision and a new
-publication without modifying earlier history. Observe-only configuration cannot
-be saved, published or rolled back, including via direct API requests.
-
-The unauthenticated current APIs are `/api/netmans`, `/api/netmans/:id`,
-`/api/netmans/:id/config` and `/api/netmans/:id/versions`, plus the current
-`create_netman`, `update_netman`, `update_netman_config`, `confirm_netman_config`
-and `rollback_netman_config` commands. Mutation keys and revision checks remain
-mandatory. There is no Netman WorkerPlan export, delivery or host-network change:
-these desired documents do not extend the shared DNS-only ConfigSpec. Actual
-interfaces, DHCP leases, resolver caches, profile activation and runtime rollback
-still require genuine execution/observation support and are not implemented by
-pretending the Management host is the selected Netman.
+### DNS Zone editing
 
 Zone draft forms validate current SOA/NS/A content on change through the same
 pure ConfigSpec contract as Domain. Invalid candidates show field paths/messages
@@ -212,7 +190,7 @@ original record types remain pending.
 Track business-function coverage and pending backend work in
 `docs/phase1/ui-migration-matrix.md`; its historical route/action inventory is
 reference-only. Retaining a menu entry or passing unrelated checks does not
-complete a function. In particular, DHCP/mDNS/Netboot/Identity/Netman runtime
+complete a function. In particular, DHCP/mDNS/Netboot/Identity runtime
 observations cannot be fabricated or obtained by reconnecting legacy Agents.
 Control/operations proposals remain designs, not implemented features. Ordinary
 PostgreSQL additions have no blanket table-approval requirement; unresolved

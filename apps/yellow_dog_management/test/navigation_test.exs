@@ -31,10 +31,6 @@ defmodule YellowDog.ManagementUI.NavigationTest do
        "/server/:server_id/targets",
        "/server/:server_id/targets/:revision"
      ]},
-    {:nodes, :netmans, ["/management/netman", "/netman"]},
-    {:nodes, :netman_overview, ["/netman/:netman_id"]},
-    {:nodes, :netman_config, ["/netman/:netman_id/config"]},
-    {:nodes, :netman_resolved, ["/netman/:netman_id/resolved"]},
     {:nodes, :config_targets, ["/management/config"]},
     {:data, :dns_zones,
      for(
@@ -101,7 +97,7 @@ defmodule YellowDog.ManagementUI.NavigationTest do
       assert Navigation.section_for_path(concrete) == section, concrete
       assert Navigation.item_for_path(concrete) == item, concrete
       assert Navigation.section_for_path(concrete <> "?server_id=other#details") == section
-      assert Navigation.item_for_path(concrete <> "?netman_id=other#details") == item
+      assert Navigation.item_for_path(concrete <> "?zone_id=other#details") == item
     end
   end
 
@@ -118,6 +114,11 @@ defmodule YellowDog.ManagementUI.NavigationTest do
           "/server/a/dns/providers",
           "/server/a/dns/views/service/edit",
           "/server/a/dns/acl/service/edit",
+          "/management/netman",
+          "/netman",
+          "/netman/a",
+          "/netman/a/config",
+          "/netman/a/resolved",
           "/netman/a/interfaces",
           "/netman/a/dhcp-client",
           "/system/tasks/a/extra",
@@ -132,7 +133,7 @@ defmodule YellowDog.ManagementUI.NavigationTest do
   end
 
   test "all available links resolve to supported routes with and without a selection" do
-    for selection <- [nil, {:server, "worker-1"}, {:netman, "netman-1"}],
+    for selection <- [nil, {:server, "worker-1"}],
         section <- Navigation.sections(),
         item <- items(section.id, selection) do
       assert item.status in [:available, :requires_scope, :planned]
@@ -152,7 +153,6 @@ defmodule YellowDog.ManagementUI.NavigationTest do
   test "zero Workers leaves global navigation usable and scope-dependent items explanatory" do
     assert item(:nodes, :workers).status == :available
     assert item(:nodes, :worker_services).status == :requires_scope
-    assert item(:nodes, :netman_config).status == :requires_scope
     assert item(:data, :dns_zones).path == "/management/zones"
     assert item(:data, :dns_views).path == "/management/dns/views"
     assert item(:data, :dns_acls).path == "/management/dns/acl"
@@ -202,9 +202,8 @@ defmodule YellowDog.ManagementUI.NavigationTest do
                "/management/dns/acl"
     end
 
-    for selection <- [{:server, "bad/id"}, {:server, ".."}, {:netman, "bad/id"}] do
+    for selection <- [{:server, "bad/id"}, {:server, ".."}] do
       assert item(:nodes, :worker_services, selection).status == :requires_scope
-      assert item(:nodes, :netman_config, selection).status == :requires_scope
       assert item(:data, :dns_zones, selection).path == "/management/zones"
     end
 
@@ -221,7 +220,6 @@ defmodule YellowDog.ManagementUI.NavigationTest do
   defp concrete_path(pattern) do
     Regex.replace(~r/:[a-z_]+/, pattern, fn
       ":server_id" -> "worker-1"
-      ":netman_id" -> "netman-1"
       ":rr_index" -> "0"
       _parameter -> "resource-1"
     end)

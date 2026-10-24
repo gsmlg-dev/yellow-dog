@@ -159,26 +159,6 @@ defmodule YellowDog.Sync.MessageTest do
     end
   end
 
-  test "round trips a Netman config delivery with target version digest and payload" do
-    payload = %{"upstreams" => ["1.1.1.1"], "search_domains" => ["example.test"]}
-
-    message = %ConfigDelivery{
-      envelope:
-        envelope("netman.resolved.config.update", payload,
-          target_type: :netman,
-          config_version: 7
-        )
-    }
-
-    assert {:ok, encoded} = Message.encode(message)
-    assert {:ok, %ConfigDelivery{envelope: decoded}} = Message.decode(encoded)
-    assert decoded.target_type == :netman
-    assert decoded.target_id == "netman-1"
-    assert decoded.config_version == 7
-    assert decoded.payload_digest == digest(payload)
-    assert decoded.payload == payload
-  end
-
   test "query and command envelope encodings remain unchanged" do
     messages = [
       %Query{envelope: envelope("server.runtime.services.list", %{})},
@@ -374,10 +354,9 @@ defmodule YellowDog.Sync.MessageTest do
     assert_invalid(Message.decode(Jason.encode!(wire)))
   end
 
-  test "round trips the complete Server and Netman config state matrix" do
+  test "round trips the complete Server config state matrix" do
     for {target_type, operation} <- [
-          {:server, "server.settings.update"},
-          {:netman, "netman.resolved.config.update"}
+          {:server, "server.settings.update"}
         ],
         attrs <- valid_config_states() do
       message = config_state_message(target_type, operation, attrs)
@@ -525,7 +504,7 @@ defmodule YellowDog.Sync.MessageTest do
       protocol_version: 1,
       request_id: @request_id,
       target_type: target_type,
-      target_id: if(target_type == :server, do: "server-1", else: "netman-1"),
+      target_id: "server-1",
       operation: operation,
       idempotency_key: @idempotency_key,
       payload: payload,
@@ -582,7 +561,7 @@ defmodule YellowDog.Sync.MessageTest do
   defp config_state_message(target_type, operation, attrs) do
     message = %ConfigState{
       target_type: target_type,
-      target_id: if(target_type == :server, do: "server-1", else: "netman-1"),
+      target_id: "server-1",
       operation: operation,
       state: Map.fetch!(attrs, :state),
       version: 2,

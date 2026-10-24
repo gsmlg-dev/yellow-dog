@@ -13,7 +13,6 @@ defmodule YellowDog.ManagementUI.Redesign.OriginalSidebar do
     "Servers" => ["/server/"],
     "Tools" => ["/tool/"],
     "System" => ["/system/"],
-    "Netman" => ["/netman"],
     nil => ["/"]
   }
 
@@ -22,19 +21,11 @@ defmodule YellowDog.ManagementUI.Redesign.OriginalSidebar do
     current_path = Map.get(assigns, :current_path)
     section = section_for_path(current_path)
 
-    clients =
-      if section == "Netman" do
-        Function.capture(YellowDog.ManagementUI.Redesign.NetmanRegistry, :list, 0).()
-      else
-        []
-      end
-
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:section, section)
-     |> assign(:scroll_key, scroll_key(section))
-     |> assign(:clients, clients)}
+     |> assign(:scroll_key, scroll_key(section))}
   end
 
   def section_for_path(nil), do: nil
@@ -74,11 +65,6 @@ defmodule YellowDog.ManagementUI.Redesign.OriginalSidebar do
           <.sidebar_servers :if={@section == "Servers"} current_path={@current_path} />
           <.sidebar_tools :if={@section == "Tools"} current_path={@current_path} />
           <.sidebar_system :if={@section == "System"} current_path={@current_path} />
-          <.sidebar_netman
-            :if={@section == "Netman"}
-            current_path={@current_path}
-            clients={@clients}
-          />
         </ul>
       </div>
     </div>
@@ -98,12 +84,6 @@ defmodule YellowDog.ManagementUI.Redesign.OriginalSidebar do
       <.link navigate="/management/servers" class={active?(@current_path, "/management/servers")}>
         <.dm_mdi name="server-network" class="w-5 h-5" />
         <span>Servers</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/management/netman" class={active?(@current_path, "/management/netman")}>
-        <.dm_mdi name="lan" class="w-5 h-5" />
-        <span>Netman</span>
       </.link>
     </li>
     <li>
@@ -556,101 +536,6 @@ defmodule YellowDog.ManagementUI.Redesign.OriginalSidebar do
     """
   end
 
-  defp sidebar_netman(assigns) do
-    ~H"""
-    <li class="nested-menu-title">Network Manager</li>
-    <li>
-      <.link navigate="/netman" class={active?(@current_path, "/netman", :exact)}>
-        <.dm_mdi name="view-dashboard" class="w-5 h-5" />
-        <span>Dashboard</span>
-      </.link>
-    </li>
-    <li>
-      <.link navigate="/netman/config" class={active?(@current_path, "/netman/config")}>
-        <.dm_mdi name="cog" class="w-5 h-5" />
-        <span>Configuration</span>
-      </.link>
-    </li>
-    <!-- Connected Netman Instances -->
-    <%= for client <- @clients do %>
-      <li class="nested-menu-title mt-4">
-        <.dm_mdi name="circle" class="w-2 h-2 text-success inline-block" />
-        {client.hostname}
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}"}
-          class={active?(@current_path, "/netman/#{client.node_id}", :exact)}
-        >
-          <.dm_mdi name="server-network" class="w-5 h-5" />
-          <span>Overview</span>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/interfaces"}
-          class={active?(@current_path, "/netman/#{client.node_id}/interfaces")}
-        >
-          <.dm_mdi name="ethernet" class="w-5 h-5" />
-          <span>Interfaces</span>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/resolved"}
-          class={active?(@current_path, "/netman/#{client.node_id}/resolved")}
-        >
-          <.dm_mdi name="dns" class="w-5 h-5" />
-          <span>Resolved</span>
-          <%= if resolved = client[:resolved] do %>
-            <span class="ml-auto text-xs font-mono text-on-surface-variant">
-              {resolved["counters"]["total"] || 0}q
-            </span>
-          <% end %>
-        </.link>
-      </li>
-      <li>
-        <.link
-          navigate={"/netman/#{client.node_id}/dhcp-client"}
-          class={active?(@current_path, "/netman/#{client.node_id}/dhcp-client")}
-        >
-          <.dm_mdi name="chip" class="w-5 h-5" />
-          <span>DHCP Client</span>
-        </.link>
-      </li>
-      <%= for conn <- client.connections, conn["lease"] != nil do %>
-        <li class="pl-4">
-          <div class="flex flex-col py-1 text-xs text-on-surface-variant">
-            <span class="font-mono font-semibold text-on-surface">{conn["lease"]["ip"]}</span>
-            <span>
-              {conn["interface"]} · {format_remaining(conn["lease"]["time_remaining"])}
-            </span>
-          </div>
-        </li>
-      <% end %>
-    <% end %>
-    """
-  end
-
-  defp format_remaining(nil), do: "—"
-  defp format_remaining(seconds) when is_number(seconds) and seconds <= 0, do: "expired"
-
-  defp format_remaining(seconds) when is_number(seconds) do
-    hours = div(seconds, 3600)
-    mins = div(rem(seconds, 3600), 60)
-
-    cond do
-      hours > 24 -> "#{div(hours, 24)}d #{rem(hours, 24)}h"
-      hours > 0 -> "#{hours}h #{mins}m"
-      true -> "#{mins}m"
-    end
-  end
-
-  defp format_remaining(_), do: "—"
-
-  # Returns "active" class when current_path matches the target path.
-  # :exact mode requires exact match (for overview pages that share a prefix).
-  # Default mode uses prefix matching (e.g. /dns/views/... matches /dns/views).
   defp active?(nil, _target), do: nil
   defp active?(current, target), do: if(String.starts_with?(current, target), do: "active")
 

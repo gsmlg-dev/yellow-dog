@@ -53,29 +53,6 @@ defmodule YellowDog.Management.Storage.Path do
   @spec server_versions(term(), term()) :: result()
   def server_versions(root, server_id), do: versions(root, "servers", server_id)
 
-  @spec netman_manifest(term()) :: result()
-  def netman_manifest(netman_id), do: manifest("netmans", netman_id)
-
-  @doc false
-  @spec netman_manifest(term(), term()) :: result()
-  def netman_manifest(root, netman_id), do: manifest(root, "netmans", netman_id)
-
-  @spec netman_version(term(), term(), term()) :: result()
-  def netman_version(netman_id, version, digest),
-    do: version("netmans", netman_id, version, digest)
-
-  @doc false
-  @spec netman_version(term(), term(), term(), term()) :: result()
-  def netman_version(root, netman_id, version, digest),
-    do: version(root, "netmans", netman_id, version, digest)
-
-  @spec netman_versions(term()) :: result()
-  def netman_versions(netman_id), do: versions("netmans", netman_id)
-
-  @doc false
-  @spec netman_versions(term(), term()) :: result()
-  def netman_versions(root, netman_id), do: versions(root, "netmans", netman_id)
-
   @spec command(term()) :: result()
   def command(request_id) do
     with {:ok, request_id} <- request_id(request_id),
@@ -107,13 +84,6 @@ defmodule YellowDog.Management.Storage.Path do
   @doc false
   @spec server_snapshot(term(), term(), term()) :: result()
   def server_snapshot(root, server_id, domain), do: snapshot(root, "servers", server_id, domain)
-
-  @spec netman_snapshot(term(), term()) :: result()
-  def netman_snapshot(netman_id, domain), do: snapshot("netmans", netman_id, domain)
-
-  @doc false
-  @spec netman_snapshot(term(), term(), term()) :: result()
-  def netman_snapshot(root, netman_id, domain), do: snapshot(root, "netmans", netman_id, domain)
 
   @spec blob(term()) :: result()
   def blob(digest) do

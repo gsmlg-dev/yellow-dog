@@ -9,7 +9,6 @@ defmodule YellowDog.Management.ProfilesLiveTest do
   @endpoint YellowDog.ManagementUI.Endpoint
 
   @server_keys [:dns, :mdns, :dhcpv4, :dhcpv6, :netboot, :identity, :fingerprint, :server_agent]
-  @netman_keys [:interfaces, :dhcp_client, :dns_client, :routes, :link_state, :vpn]
 
   @server_specs [
     {:cloud_dns, "Cloud DNS server", [:dns, :server_agent]},
@@ -18,21 +17,6 @@ defmodule YellowDog.Management.ProfilesLiveTest do
     {:dhcp_only, "DHCP-only server", [:dhcpv4, :dhcpv6, :server_agent]},
     {:netboot_only, "Netboot-only server", [:netboot, :server_agent]},
     {:custom, "Custom server", []}
-  ]
-
-  @netman_specs [
-    {:local_server, "Local server network manager",
-     [:interfaces, :dhcp_client, :dns_client, :routes, :link_state], :managed},
-    {:cloud_server, "Cloud server network manager",
-     [:interfaces, :dhcp_client, :dns_client, :routes, :link_state], :observe_first},
-    {:bare_metal, "Bare-metal network manager",
-     [:interfaces, :dhcp_client, :dns_client, :routes, :link_state], :managed},
-    {:vm, "Virtual machine network manager", [:interfaces, :dns_client, :routes, :link_state],
-     :managed},
-    {:vpn_gateway, "Future VPN gateway network manager",
-     [:interfaces, :routes, :dns_client, :link_state, :vpn], :managed},
-    {:observe_only, "Observe-only network manager", [:interfaces, :link_state], :observe},
-    {:custom, "Custom network manager", [], :managed}
   ]
 
   setup do
@@ -51,23 +35,6 @@ defmodule YellowDog.Management.ProfilesLiveTest do
       end)
 
     assert ProfileCatalog.list_server_profiles() == expected
-  end
-
-  test "the pure Netman catalog preserves every original preset, flags and apply mode" do
-    assert Code.ensure_loaded?(ProfileCatalog)
-    assert ProfileCatalog.netman_feature_keys() == @netman_keys
-
-    expected =
-      Enum.map(@netman_specs, fn {name, description, enabled, apply_mode} ->
-        %{
-          name: name,
-          description: description,
-          features: flags(@netman_keys, enabled),
-          apply_mode: apply_mode
-        }
-      end)
-
-    assert ProfileCatalog.list_netman_profiles() == expected
   end
 
   test "the removed Profiles route returns 404 without changing durable state", %{conn: conn} do
@@ -91,7 +58,7 @@ defmodule YellowDog.Management.ProfilesLiveTest do
   end
 
   test "Management pages do not expose Profiles in sidebar navigation", %{conn: conn} do
-    for path <- ["/management", "/management/servers", "/management/netman", "/management/events"] do
+    for path <- ["/management", "/management/servers", "/management/events"] do
       {:ok, view, _html} = live(conn, path)
 
       assert has_element?(

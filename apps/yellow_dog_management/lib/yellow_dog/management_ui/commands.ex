@@ -21,7 +21,7 @@ defmodule YellowDog.ManagementUI.Commands do
     "update_task" => "task_update",
     "run_task" => "ip_database_sync"
   }
-  @administrative ~w(set_worker_enrollment create_netman update_netman update_netman_config confirm_netman_config rollback_netman_config create_backup delete_backup)
+  @administrative ~w(set_worker_enrollment create_backup delete_backup)
 
   def command(socket, operation, params, key) do
     caller = socket.assigns.caller

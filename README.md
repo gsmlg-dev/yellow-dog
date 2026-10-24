@@ -80,8 +80,11 @@ Both products use the same ConfigSpec and fixtures under
 Node/console asset build, or legacy service startup is needed.
 
 Legacy applications remain reusable source, not supported business releases.
-`yellow_dog_management_core`, `yellow_dog_server`, `yellow_dog_netman`, the combined
-`yellow_dog` release, and their console/server/Netman startup aliases are retired.
+`yellow_dog_management_core`, `yellow_dog_server`, the combined `yellow_dog`
+release, and their console/server startup aliases are retired. The cancelled
+Netman product, Agent, node domain and UI have been removed; Worker is the only
+node type. Shared DHCP client and resolver libraries remain retained source.
+See [Netman removal and database cleanup](docs/phase1/netman-removal.md).
 Historical Track A/B reports describe pre-integration runs; they are not current
 acceptance evidence.
 
@@ -130,9 +133,9 @@ backups stay under `.devenv/state/management/`. Stop all three processes with
 
 ### Management Overview and Events
 
-The overview displays real logical Worker/Netman/Zone counts, all 13 read-only
-Server/Netman presets and the latest five durable PostgreSQL audit events.
-Refresh is read-only. `/management/events` groups desired Worker/Netman events
+The overview displays real logical Worker/Zone counts, six read-only
+Worker presets and the latest five durable PostgreSQL audit events.
+Refresh is read-only. `/management/events` shows desired Worker events
 and exposes committed/rejected transaction outcomes and JSON details for the
 latest 100 retained audits. These are not remote execution, Worker application
 or task-completion claims; nonpersisted requests are not invented into history.

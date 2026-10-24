@@ -25,7 +25,7 @@ metadata; selecting one does not provision services or change assignments.
 ## Routes and ownership
 
 The primary order remains Node Management, Data Configuration, Monitoring,
-System Configuration. Netman behavior and global configuration history remain.
+System Configuration. Workers are the only nodes; global configuration history remains.
 
 | Route | Purpose |
 | --- | --- |

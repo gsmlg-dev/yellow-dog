@@ -1,5 +1,8 @@
 # Management navigation
 
+Worker is the only node type. The Netman entries and all `/netman` and
+`/management/netman` routes have been removed; see [cleanup scope](netman-removal.md).
+
 Step 1 groups the supported Management pages into four sections. The shared
 `YellowDog.ManagementUI.Navigation` definition owns ordering, destinations and
 route classification; `CurrentPath` and `ServicePaths` retain scope validation.
@@ -23,8 +26,6 @@ the listed supported descendants, not arbitrary prefix matches.
 | Nodes / Workers | `/management/servers`, `/server` |
 | Nodes / selected Worker's service configuration | `/server/:server_id/dashboard`, `/server/:server_id/dns` |
 | Nodes / configuration targets and history | `/management/config` |
-| Nodes / Netman list | `/management/netman`, `/netman` |
-| Nodes / selected Netman overview, configuration, resolver | `/netman/:netman_id`, `/netman/:netman_id/config`, `/netman/:netman_id/resolved` |
 | Data / DNS zones and records | `/management/zones` and `/server/:server_id/dns/zones`; both support `/new`, `/import`, `/:zone_id/edit`, `/:zone_id/versions`, `/:zone_id/application`, `/:zone_id/records`, `/:zone_id/records/new`, `/:zone_id/records/bulk`, `/:zone_id/records/:rr_index/edit` |
 | Data / DNS Views | `/management/dns/views`, `/server/:server_id/dns/views`, `/server/:server_id/dns/views/:service_id` |
 | Data / DNS ACLs | `/management/dns/acl`, `/server/:server_id/dns/acl`, `/server/:server_id/dns/acl/:service_id` |
@@ -43,7 +44,7 @@ the listed supported descendants, not arbitrary prefix matches.
 Available entries link to the router destinations above. Worker service controls
 require an explicit Worker; authentication, connections, enabled state, listeners
 and service parameters remain capabilities of the existing Worker detail page.
-Netman detail links require a selected Netman. DNS Views and ACLs offer global
+DNS Views and ACLs offer global
 Worker/service selectors, then retain the selected scope in their editor routes.
 Selected service View/ACL links preserve the service in the route. Scope-free
 navigation never selects the first Worker or constructs an invented ID.
@@ -62,8 +63,7 @@ canonical URLs, protocol versions and the finite operation catalog. See
 Configuration target history describes prepared configuration, not observed
 application. Tasks temporarily retain their existing settings, schedules and
 execution history on the same page; unavailable task types keep their current
-explanations. Netman observe-only restrictions, runtime-unavailable resolver
-controls, and backup safeguards remain as implemented. Navigation adds no service
+explanations. Backup safeguards remain as implemented. Navigation adds no service
 execution, assignments, integration endpoints or business-page implementations.
 
 ## Focused browser verification
@@ -133,8 +133,8 @@ The global anonymous admission policy now has a separate Node Management entry
 at `/management/servers/enrollment`. The Workers list retains name-only logical
 registration and canonical transient bootstrap presentation; individual token
 reset lives on the selected Worker's connection tab. Policy is not administrator
-login and disabling it does not revoke registered Workers. Netman, cross-node
-history, Data route ownership, and the four primary sections are unchanged.
+login and disabling it does not revoke registered Workers. Cross-node history,
+Data route ownership, and the four primary sections are unchanged.
 
 Node pages link to existing Data editors and show service-scoped references.
 They no longer provide a duplicate Zone assignment form. DNS View/ACL scope

@@ -906,7 +906,7 @@ defmodule YellowDog.Management.Commands do
 
   defp safe_command_stage?(_filename), do: false
 
-  defp valid_target(target_type, target_id) when target_type in [:server, :netman] do
+  defp valid_target(target_type, target_id) when target_type in [:server] do
     with {:ok, target_id} <- Bounds.id(target_id),
          true <- target_id != "" do
       :ok

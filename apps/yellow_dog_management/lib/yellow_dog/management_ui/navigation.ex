@@ -61,10 +61,6 @@ defmodule YellowDog.ManagementUI.Navigation do
        ["server", :server_id, "targets", :revision],
        ["server", :server_id, "dns"]
      ]},
-    {:nodes, :netmans, [["management", "netman"], ["netman"]]},
-    {:nodes, :netman_overview, [["netman", :netman_id]]},
-    {:nodes, :netman_config, [["netman", :netman_id, "config"]]},
-    {:nodes, :netman_resolved, [["netman", :netman_id, "resolved"]]},
     {:nodes, :config_targets, [["management", "config"]]},
     {:data, :ip_database, [["system", "ip-database"]]},
     {:data, :mac_database, [["system", "mac-database"]]},
@@ -125,12 +121,6 @@ defmodule YellowDog.ManagementUI.Navigation do
           "/management/config",
           "Prepared configuration targets and history; these do not establish applied runtime state."
         )
-      ]),
-      group("Netman", [
-        available(:netmans, "Netman nodes", "lan", "/management/netman"),
-        scoped(:netman_overview, "Overview", "view-dashboard", selection, :netman, :overview),
-        scoped(:netman_config, "Configuration", "cog", selection, :netman, :config),
-        scoped(:netman_resolved, "Resolved", "dns", selection, :netman, :resolved)
       ])
     ]
   end
@@ -283,7 +273,7 @@ defmodule YellowDog.ManagementUI.Navigation do
   defp contextual(id, label, icon, _selection, _destination, fallback),
     do: available(id, label, icon, fallback)
 
-  defp scoped(id, label, icon, selection, type, destination, description \\ nil) do
+  defp scoped(id, label, icon, selection, type, destination, description) do
     path = scoped_path(selection, type, destination)
 
     %{
@@ -294,16 +284,12 @@ defmodule YellowDog.ManagementUI.Navigation do
       status: if(path, do: :available, else: :requires_scope),
       description:
         description ||
-          "Select a #{if type == :server, do: "Worker", else: "Netman node"} to open #{label}."
+          "Select a Worker to open #{label}."
     }
   end
 
   defp scoped_path({:server, id}, :server, destination) do
     if ServicePaths.valid_server_id?(id), do: ServicePaths.server_path(id, destination)
-  end
-
-  defp scoped_path({:netman, id}, :netman, destination) do
-    if ServicePaths.valid_netman_id?(id), do: ServicePaths.netman_path(id, destination)
   end
 
   defp scoped_path(_selection, _type, _destination), do: nil

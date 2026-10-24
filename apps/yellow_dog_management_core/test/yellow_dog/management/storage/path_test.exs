@@ -35,12 +35,6 @@ defmodule YellowDog.Management.Storage.PathTest do
     server_version = Path.join([root, "servers", "server-01", "versions", "7-#{@digest}.json"])
     assert {:ok, ^server_version} = StoragePath.server_version("server-01", 7, @digest)
 
-    netman_manifest = Path.join([root, "netmans", "netman-01", "manifest.json"])
-    assert {:ok, ^netman_manifest} = StoragePath.netman_manifest("netman-01")
-
-    netman_version = Path.join([root, "netmans", "netman-01", "versions", "7-#{@digest}.json"])
-    assert {:ok, ^netman_version} = StoragePath.netman_version("netman-01", 7, @digest)
-
     command = Path.join([root, "commands", "d2d2d2d2-1111-2222-3333-444444444444.json"])
     assert {:ok, ^command} = StoragePath.command("d2d2d2d2-1111-2222-3333-444444444444")
 
@@ -49,9 +43,6 @@ defmodule YellowDog.Management.Storage.PathTest do
 
     server_snapshot = Path.join([root, "snapshots", "servers", "server-01", "example.com.json"])
     assert {:ok, ^server_snapshot} = StoragePath.server_snapshot("server-01", "example.com")
-
-    netman_snapshot = Path.join([root, "snapshots", "netmans", "netman-01", "example.com.json"])
-    assert {:ok, ^netman_snapshot} = StoragePath.netman_snapshot("netman-01", "example.com")
 
     blob = Path.join([root, "blobs", @digest])
     assert {:ok, ^blob} = StoragePath.blob(@digest)
@@ -128,15 +119,6 @@ defmodule YellowDog.Management.Storage.PathTest do
           "runtime.services.json"
         ])
 
-      expected_netman_snapshot =
-        Path.join([
-          expected_root,
-          "snapshots",
-          "netmans",
-          "netman-relative",
-          "runtime.network.json"
-        ])
-
       assert {:ok, ^expected_manifest} =
                StoragePath.server_manifest(expected_root, "server-relative")
 
@@ -151,13 +133,6 @@ defmodule YellowDog.Management.Storage.PathTest do
                  expected_root,
                  "server-relative",
                  "runtime.services"
-               )
-
-      assert {:ok, ^expected_netman_snapshot} =
-               StoragePath.netman_snapshot(
-                 expected_root,
-                 "netman-relative",
-                 "runtime.network"
                )
     end)
 

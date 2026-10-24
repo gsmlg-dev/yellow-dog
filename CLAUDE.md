@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Sub-App Context
 
-When working on files within a specific sub-app (`apps/<app_name>/`), read that sub-app's `CLAUDE.md` if it exists. Apps with their own CLAUDE.md: `ex_dhcp`, `ex_dns`, `yellow_dog_console`, `yellow_dog_dhcp_client`, `yellow_dog_netman`, `yellow_dog_store`.
+When working on files within a specific sub-app (`apps/<app_name>/`), read that sub-app's `CLAUDE.md` if it exists. Apps with their own CLAUDE.md: `ex_dhcp`, `ex_dns`, `yellow_dog_console`, `yellow_dog_dhcp_client`, `yellow_dog_store`.
 
 ## Project Overview
 
@@ -36,9 +36,8 @@ The following applications are legacy source, excluded from the supported root b
 
 | App | Location | Purpose |
 |-----|----------|---------|
-| **YellowDog.ManagementCore** | `apps/yellow_dog_management_core/` | In-memory management foundation for server/Netman records, profiles, config versions, and events |
+| **YellowDog.ManagementCore** | `apps/yellow_dog_management_core/` | In-memory management foundation for legacy server records, profiles, config versions, and events |
 | **YellowDog.ServerAgent** | `apps/yellow_dog_server_agent/` | Skeleton local status/heartbeat agent for `yellow_dog_server` |
-| **YellowDog.NetmanAgent** | `apps/yellow_dog_netman_agent/` | Skeleton local status/heartbeat agent for `yellow_dog_netman` |
 | **YellowDog** | `apps/yellow_dog/` | Core: orchestration, service manager, rate limiter |
 | **YellowDog.Config** | `apps/yellow_dog_config/` | TOML config loading, schema, validation, writer |
 | **YellowDog.Store** | `apps/yellow_dog_store/` | Unified data backend: Concord (Raft KV) + ETS cache facade, domain modules (Lease, Zone, Device, Rpz, Host, Cache), GenStage event bridge |
@@ -51,7 +50,6 @@ The following applications are legacy source, excluded from the supported root b
 | **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
 | **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
 | **YellowDog.Identity** | `apps/yellow_dog_identity/` | Host identity: registry, SSH key validation, trust verification, approval policies |
-| **YellowDog.Netman** | `apps/yellow_dog_netman/` | Network manager: wired ethernet, DHCP/static IP, reconciliation engine, netlink |
 | **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DuskMoon UI, DuskmoonBundler) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
@@ -62,6 +60,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 ### Key Architecture Decisions
 
 - The project is in design stage with no released/deployed versions to support. Preserve and redevelop business capabilities, not legacy routes, payloads, storage formats, or version-compatibility layers. Use scoped architecture/business/data-integrity/runtime checks; obsolete compatibility tests and unrelated whole-suite failures do not block design work.
+- Worker is the only node type. Netman runtime, Agent, Management domain and UI have been removed. Shared DHCP client and Resolved source remain outside the supported build; their removal does not implement Worker network management. See `docs/phase1/netman-removal.md`.
 - Management owns PostgreSQL business data and UI/API without built-in authentication; it does not execute Worker services.
 - Service configuration is authored in Management; network services execute only on Worker. Netboot and Identity belong exclusively to Worker, including provisioning and identity/trust runtime authority. Management configuration records do not constitute those runtime services.
 - The architecture-only slice is verified. The current task directly migrates original UI source into `lib/yellow_dog/management_ui/redesign/` for later redesign, without compilation/runtime guarantees. Existing native Management pages remain intact; backends, service repair, full functional redevelopment and shared-contract expansion remain separate work.
@@ -70,12 +69,12 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ### Legacy Architecture Reference (Outside Phase 1 Build)
 
-- Runtime `Application` modules exist for `yellow_dog_management_core`, `yellow_dog`, `yellow_dog_netman`, `yellow_dog_console`, `yellow_dog_server_agent`, `yellow_dog_netman_agent`, and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Most protocol apps remain library applications started by `YellowDog.Application`
+- Runtime `Application` modules exist for `yellow_dog_management_core`, `yellow_dog`, `yellow_dog_console`, `yellow_dog_server_agent`, and `abyss` (minimal — a single `Abyss.TableOwner` process that owns the shared ETS tables). Most protocol apps remain library applications started by `YellowDog.Application`
 - Server services are conditionally started by `YellowDog.Application` through `YellowDog.Server.ProfileResolver`, which supports `[yellow_dog_server]` profiles and falls back to legacy `[core]` flags
 - `ex_dns` and `ex_dhcp` are **in-umbrella** with shared build paths; `abyss` is a Hex dependency. The retained DHCP client explicitly adds upstream `abyss_raw` in production.
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
 - **Store** (`yellow_dog_store`) wraps Concord (Raft-based embedded KV) behind typed facade modules. Concord is the source of truth; ETS is the always-on local read cache (write-through). See `apps/yellow_dog_store/CLAUDE.md` for the full data-flow contract
-- **Netman apps never depend on `yellow_dog_store`** — netman is a separate product with its own persistence (TOML lease files via `LeaseStore`)
+- Retained DHCP client and resolver libraries have no Store dependency; client leases use TOML `LeaseStore` files.
 - **DhcpClient** uses swappable implementations via Application env: `socket_impl` (Abyss-owned NIF in prod, `UdpFallback` in test) and `os_integration` (`Standalone` via `ip` commands, or `HookNM` for NetworkManager)
 
 ## Constitution (Architectural Constraints)
@@ -179,7 +178,6 @@ YellowDog (core: orchestration) → yellow_dog_config + yellow_dog_store + abyss
 ├── YellowDog.Identity    → store + telemetry
 ├── YellowDog.DhcpClient  → config + ex_dhcp + abyss + telemetry   (no store)
 ├── YellowDog.Resolved    → abyss + ex_dns                (no store, no core)
-├── YellowDog.Netman      → dhcp_client + resolved + ex_dhcp + telemetry (no store)
 └── YellowDogConsole      → phoenix + all service apps + store + geo_ip_db
 ```
 
@@ -236,7 +234,7 @@ LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 - **Store (`YellowDog.Store.*`)**: unified backend for server-side apps — Concord (Raft KV, source of truth) with write-through ETS read cache. Domain facades: `Lease`, `Zone`, `Device`, `Rpz`, `Host`, `Cache`, `DynDns`, `Config`. GenStage `EventBridge` for cross-domain events
 - **DNS zones**: managed via `YellowDog.Store.Zone`; `YellowDog.Dns.ZoneStore` is deprecated (kept for import/export compatibility)
 - **DHCP leases (DHCPv4/v6)**: still direct Mnesia (`disc_copies`) in `LeaseStorage` — Store.Mnesia migration is planned but not done; tables have secondary indices by IP, state, and pool
-- **DHCP client leases**: TOML file persistence via `LeaseStore` (netman product, no Store dependency)
+- **DHCP client leases**: TOML file persistence via `LeaseStore` (retained client library, no Store dependency)
 
 ### Legacy TOML Configuration Structure
 

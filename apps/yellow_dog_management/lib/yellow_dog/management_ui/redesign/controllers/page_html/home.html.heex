@@ -12,7 +12,7 @@
         <p class="text-2xl font-light mb-8">Network Management Control Plane</p>
 
         <p class="text-lg text-on-surface-variant mb-12 max-w-2xl mx-auto">
-          Management is the source of truth. Select a registered Server or Netman node before
+          Management is the source of truth. Select a registered Worker node before
           viewing its status, configuration, and network services.
         </p>
 
@@ -42,21 +42,6 @@
               <div class="text-sm text-on-surface-variant">DNS, DHCP, mDNS, and Netboot</div>
             </div>
           </div>
-
-          <div class="card card-bordered bg-surface">
-            <div class="card-body">
-              <h2 class="card-title">
-                <div class="flex items-center gap-2">
-                  <.dm_mdi name="wifi" class="w-8 h-8 text-secondary" />
-                  <span>Netman</span>
-                </div>
-              </h2>
-              <div class="text-2xl font-bold text-secondary">Network agents</div>
-              <div class="text-sm text-on-surface-variant">
-                Profiles, interfaces, and resolver state
-              </div>
-            </div>
-          </div>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
@@ -66,10 +51,6 @@
 
           <.link navigate={~p"/server"} class="btn btn-tertiary gap-2">
             <.dm_mdi name="server-network" class="w-6 h-6" /> Select Server
-          </.link>
-
-          <.link navigate={~p"/netman"} class="btn btn-secondary gap-2">
-            <.dm_mdi name="lan" class="w-6 h-6" /> Select Netman
           </.link>
         </div>
 

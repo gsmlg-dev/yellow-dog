@@ -20,7 +20,6 @@ defmodule YellowDog.Console.EndpointHttpConfigTest do
 
     assert Keyword.fetch!(endpoint_options, :websocket_paths) == [
              "/live/websocket",
-             "/netman/ws/websocket",
              "/server/ws/websocket"
            ]
 

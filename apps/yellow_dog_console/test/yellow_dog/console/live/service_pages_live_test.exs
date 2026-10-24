@@ -106,7 +106,6 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       assert top_menu_paths == [
                "/management",
                "/server",
-               "/netman",
                "/tool/geoip",
                "/system/process-map"
              ]

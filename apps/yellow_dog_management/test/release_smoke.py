@@ -98,6 +98,13 @@ try:
         assert script.headers.get_content_type() in ('text/javascript', 'application/javascript')
         assert script.read()
     print('Packaged Console layout and LiveView client passed', flush=True)
+    for path in ['/management/netman', '/netman', '/netman/retired', '/netman/retired/config', '/netman/retired/resolved']:
+        try:
+            urllib.request.urlopen(f'http://127.0.0.1:{port}{path}', timeout=10)
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, (path, error.code)
+        else:
+            raise AssertionError(f'Retired entry is still reachable: {path}')
     assert request('/workers') == []
     assert request('/zones') == []
     large_zone = zone('large-body.test.')
@@ -174,53 +181,10 @@ try:
     assert {r['id'] for r in aggregate['resources']} == {a['id'], b['id'], unused['id']}
     assert aggregate['services'][0]['desired_state'] == 'stopped'
     print('A6: concurrent HTTP assignments on independent DB connections produced one conflict; retry preserved all three zones', flush=True)
-    assert request('/netmans') == []
-    netman = mutate('create_netman', {'id': 'release-netman', 'name': 'Release Netman', 'profile_name': 'vm'})
-    assert netman['status'] == 'not_yet_connected' and netman['actual_state'] == 'unknown'
-    assert netman['last_seen_at'] is None
-    netman_config = {'profiles': [{
-        'profile_id': 'wired', 'interface': 'eth0', 'zone': 'lan',
-        'ipv4': {'method': 'manual', 'address': '192.0.2.10/24', 'gateway': '192.0.2.1', 'dns': ['192.0.2.53'], 'dns_search': ['example.test']},
-        'ipv6': {'method': 'disabled'}
-    }], 'resolved': {'upstreams': ['192.0.2.53'], 'search_domains': ['example.test']}}
-    draft = mutate('update_netman_config', {'id': netman['id'], 'expected_revision': 1, 'document': netman_config})
-    first_netman_version = mutate('confirm_netman_config', {'id': netman['id'], 'expected_revision': draft['revision']}, 'durable-netman-confirm')
-    netman_requests = []
-    for address in ['192.0.2.11/24', '192.0.2.12/24']:
-        candidate = json.loads(json.dumps(draft['document']))
-        candidate['profiles'][0]['ipv4']['address'] = address
-        netman_requests.append({'id': netman['id'], 'expected_revision': draft['revision'], 'document': candidate})
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        netman_outcomes = list(pool.map(lambda body: attempt(body, 'update_netman_config'), netman_requests))
-    assert sorted(status for _, status, _ in netman_outcomes) == [200, 409], netman_outcomes
-    for body, status, result in netman_outcomes:
-        if status == 409:
-            assert result['error']['code'] == 'revision_conflict'
-            body['expected_revision'] = request('/netmans/release-netman/config')['revision']
-            mutate('update_netman_config', body)
-    current_draft = request('/netmans/release-netman/config')
-    second_netman_version = mutate('confirm_netman_config', {'id': netman['id'], 'expected_revision': current_draft['revision']})
-    rollback = mutate('rollback_netman_config', {'id': netman['id'], 'expected_revision': current_draft['revision'], 'target_version': first_netman_version['version']})
-    assert rollback['document'] == first_netman_version['document']
-    assert rollback['digest'] == first_netman_version['digest']
-    assert rollback['rollback_source_id'] == first_netman_version['id']
-    assert rollback['actual_state'] == 'unknown' and rollback['status'] == 'prepared'
-    assert request('/netmans/release-netman/versions') == [rollback, second_netman_version, first_netman_version]
-    mutate('create_netman', {'id': 'observer', 'profile_name': 'observe_only'})
-    rejected = mutate('confirm_netman_config', {'id': 'observer', 'expected_revision': 1}, expected=422)
-    assert rejected['error']['code'] == 'read_only'
-    netmans_before = request('/netmans')
-    netman_draft_before = request('/netmans/release-netman/config')
-    netman_versions_before = request('/netmans/release-netman/versions')
-    print('Netman: real concurrent PG requests, prepared immutable history, desired rollback and observe-only rejection passed; no host-network operations', flush=True)
     before = request('/workers/' + worker_id)
     stop()
     start()
     assert request('/workers/' + worker_id) == before
-    assert request('/netmans') == netmans_before
-    assert request('/netmans/release-netman/config') == netman_draft_before
-    assert request('/netmans/release-netman/versions') == netman_versions_before
-    assert mutate('confirm_netman_config', {'id': netman['id'], 'expected_revision': draft['revision']}, 'durable-netman-confirm') == first_netman_version
     assert mutate('confirm_zone', confirm_body, 'durable-confirm') == v
     assert len(request('/zones/' + a['id'] + '/versions')) == 1
     for wid, target in targets.items():
@@ -228,7 +192,6 @@ try:
         assert request(f'/workers/{wid}/targets/{target["revision"]}/export', raw=True) == exports[wid]
     assert len(request('/zones')) == 3
     print('A7-A8: real release process restart preserved drafts, assignments, versions, targets and durable idempotency; historical exports byte-identical', flush=True)
-    print('Netman: independent process restart preserved node metadata, desired draft, all versions and exact idempotent result', flush=True)
     print('RELEASE SMOKE PASSED', flush=True)
 finally:
     stop()

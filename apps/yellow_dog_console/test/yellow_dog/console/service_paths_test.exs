@@ -31,26 +31,9 @@ defmodule YellowDog.Console.ServicePathsTest do
              "/server/server-01/fingerprint/devices"
   end
 
-  test "builds explicit Netman paths" do
-    assert ServicePaths.netman_path("netman-01", :overview) == "/netman/netman-01"
-    assert ServicePaths.netman_path("netman-01", :config) == "/netman/netman-01/config"
-
-    assert ServicePaths.netman_path("netman-01", :interfaces) ==
-             "/netman/netman-01/interfaces"
-
-    assert ServicePaths.netman_path("netman-01", :resolved) ==
-             "/netman/netman-01/resolved"
-
-    assert ServicePaths.netman_path("netman-01", :dhcp_client) ==
-             "/netman/netman-01/dhcp-client"
-  end
-
   test "percent-encodes identifiers as complete path segments" do
     assert ServicePaths.server_path("server one@北京", :dashboard) ==
              "/server/server%20one%40%E5%8C%97%E4%BA%AC/dashboard"
-
-    assert ServicePaths.netman_path("netman one@北京", :overview) ==
-             "/netman/netman%20one%40%E5%8C%97%E4%BA%AC"
 
     assert ServicePaths.server_path("server-01", {:dns_zone_records, "a b.example"}) ==
              "/server/server-01/dns/zones/a%20b.example/records"
@@ -59,10 +42,8 @@ defmodule YellowDog.Console.ServicePathsTest do
   test "rejects malformed, overlong, traversal, and reserved identifiers" do
     for invalid <- ["", String.duplicate("a", 129), ".", "..", "a/b", "a\\b"] do
       assert_raise ArgumentError, fn -> ServicePaths.server_path(invalid, :dashboard) end
-      assert_raise ArgumentError, fn -> ServicePaths.netman_path(invalid, :overview) end
     end
 
-    assert_raise ArgumentError, fn -> ServicePaths.netman_path("config", :overview) end
     assert_raise ArgumentError, fn -> ServicePaths.server_path("settings", :dashboard) end
   end
 end

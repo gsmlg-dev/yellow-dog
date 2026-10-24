@@ -149,8 +149,8 @@ defmodule YellowDog.Management.FakeTransport do
   defp handle_config_reply({:report_committed_version, owner}, envelope, state) do
     result =
       case envelope.target_type do
-        :server -> ManagementCore.get_server_config_version(envelope.target_id, envelope.config_version)
-        :netman -> ManagementCore.get_netman_config_version(envelope.target_id, envelope.config_version)
+        :server ->
+          ManagementCore.get_server_config_version(envelope.target_id, envelope.config_version)
       end
 
     send(owner, {:committed_version_during_delivery, result})

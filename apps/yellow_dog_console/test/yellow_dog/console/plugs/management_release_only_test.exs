@@ -7,11 +7,9 @@ defmodule YellowDog.Console.Plugs.ManagementReleaseOnlyTest do
     previous = Application.get_env(:yellow_dog_console, :management_release_only)
     Application.put_env(:yellow_dog_console, :management_release_only, true)
     YellowDog.Management.Servers.reset()
-    YellowDog.Management.Netmans.reset()
 
     on_exit(fn ->
       YellowDog.Management.Servers.reset()
-      YellowDog.Management.Netmans.reset()
 
       case previous do
         nil -> Application.delete_env(:yellow_dog_console, :management_release_only)
@@ -33,7 +31,6 @@ defmodule YellowDog.Console.Plugs.ManagementReleaseOnlyTest do
 
     assert html =~ "Management"
     assert has_element?(view, ".navbar a[href='/server']", "Servers")
-    assert has_element?(view, ".navbar a[href='/netman']", "Netman")
     refute html =~ ~s(href="/server/dashboard")
     refute html =~ ~s(href="/tool/geoip")
     refute html =~ ~s(href="/system/process-map")
@@ -45,11 +42,7 @@ defmodule YellowDog.Console.Plugs.ManagementReleaseOnlyTest do
     assert {:ok, _view, server_html} = live(conn, "/server")
     assert server_html =~ "Select a Server"
 
-    assert {:ok, _view, netman_html} = live(conn, "/netman")
-    assert netman_html =~ "Select a Netman"
-
     assert conn |> get("/server/missing/dashboard") |> response(404) == "Server not found"
-    assert conn |> get("/netman/missing") |> response(404) == "Netman not found"
 
     assert conn |> get("/service-not-found/server") |> response(404) == "Server not found"
   end
@@ -69,7 +62,6 @@ defmodule YellowDog.Console.Plugs.ManagementReleaseOnlyTest do
 
   test "legacy service paths redirect while boot and api routes remain blocked", %{conn: conn} do
     assert conn |> get("/server/dashboard") |> redirected_to(302) == "/server"
-    assert conn |> get("/netman/config") |> redirected_to(302) == "/netman"
     assert conn |> get(~p"/boot/ipxe") |> response(404) == "Not Found"
     assert conn |> get(~p"/api/hosts/recipients") |> response(404) == "Not Found"
   end

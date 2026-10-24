@@ -78,7 +78,6 @@ defmodule YellowDog.Console.MixProject do
       {:yellow_dog_identity, in_umbrella: true, runtime: service_runtime?},
       {:yellow_dog_dns_provider, in_umbrella: true, runtime: service_runtime?},
       {:yellow_dog_dhcp_client, in_umbrella: true, runtime: service_runtime?},
-      {:yellow_dog_netman, in_umbrella: true, runtime: service_runtime?},
       {:gsmlg_whois, "~> 0.5"},
       {:gsmlg_mac, "~> 0.1"},
 

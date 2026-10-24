@@ -715,9 +715,7 @@ defmodule YellowDog.Sync.Message do
   end
 
   defp target_type_atom(:server), do: {:ok, :server}
-  defp target_type_atom(:netman), do: {:ok, :netman}
   defp target_type_atom("server"), do: {:ok, :server}
-  defp target_type_atom("netman"), do: {:ok, :netman}
   defp target_type_atom(_value), do: invalid_error()
 
   defp status_state(:online), do: {:ok, :online}

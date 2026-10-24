@@ -1,8 +1,6 @@
 defmodule YellowDog.Management.RestartDurabilityTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Management.Netman
-  alias YellowDog.Management.Netmans
   alias YellowDog.Management.EventStore
   alias YellowDog.Management.ManifestStore
   alias YellowDog.Management.Server
@@ -57,7 +55,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     %{data_dir: data_dir}
   end
 
-  test "server and Netman registrations and statuses survive registry restarts" do
+  test "server registrations and statuses survive registry restarts" do
     assert {:ok, %Server{registered_at: server_registered_at}} =
              ManagementCore.register_server(%{
                id: "srv-restart",
@@ -89,41 +87,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
             }} =
              ManagementCore.update_server_status("srv-restart", :online)
 
-    assert {:ok, %Netman{registered_at: netman_registered_at}} =
-             ManagementCore.register_netman(%{
-               id: "netman-restart",
-               name: "Restart Netman",
-               profile: :vm,
-               features: %{interfaces: true}
-             })
-
-    assert {:ok,
-            %Netman{
-              registered_at: ^netman_registered_at,
-              name: "Replacement Netman",
-              profile: :cloud_server,
-              apply_mode: :observe_first,
-              metadata: %{"rack" => "r1"}
-            }} =
-             ManagementCore.register_netman(%{
-               id: "netman-restart",
-               name: "Replacement Netman",
-               profile: :cloud_server,
-               apply_mode: :observe_first,
-               features: %{interfaces: true, routes: true},
-               metadata: %{"rack" => "r1"}
-             })
-
-    assert {:ok,
-            %Netman{
-              status: :offline,
-              last_seen_at: netman_last_seen_at,
-              updated_at: netman_updated_at
-            }} =
-             ManagementCore.update_netman_status("netman-restart", :offline)
-
     restart_child(Servers)
-    restart_child(Netmans)
 
     assert {:ok,
             %Server{
@@ -137,20 +101,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
               last_seen_at: ^server_last_seen_at,
               updated_at: ^server_updated_at
             }} = ManagementCore.get_server("srv-restart")
-
-    assert {:ok,
-            %Netman{
-              id: "netman-restart",
-              name: "Replacement Netman",
-              profile: :cloud_server,
-              apply_mode: :observe_first,
-              status: :offline,
-              features: %{interfaces: true, routes: true},
-              metadata: %{"rack" => "r1"},
-              registered_at: ^netman_registered_at,
-              last_seen_at: ^netman_last_seen_at,
-              updated_at: ^netman_updated_at
-            }} = ManagementCore.get_netman("netman-restart")
   end
 
   test "atom metadata is canonical before write and survives a fresh BEAM", %{
@@ -194,9 +144,7 @@ defmodule YellowDog.Management.RestartDurabilityTest do
 
   test "events keep one global deterministic order across restarts" do
     assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-events"})
-    assert {:ok, %Netman{}} = ManagementCore.register_netman(%{id: "netman-events"})
     assert {:ok, %Server{}} = ManagementCore.update_server_status("srv-events", :online)
-    assert {:ok, %Netman{}} = ManagementCore.update_netman_status("netman-events", :offline)
 
     before_restart = ManagementCore.list_events()
 
@@ -213,7 +161,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
   test "malformed individual manifests and event files are ignored", %{data_dir: data_dir} do
     assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-valid"})
     assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-invalid-time"})
-    assert {:ok, %Netman{}} = ManagementCore.register_netman(%{id: "netman-valid"})
     valid_event_ids = Enum.map(ManagementCore.list_events(), & &1.id)
 
     invalid_time_path =
@@ -234,7 +181,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     File.write!(invalid_time_path, Jason.encode!(invalid_time_manifest))
 
     write_file(data_dir, ["management", "servers", "srv-bad", "manifest.json"], "{")
-    write_file(data_dir, ["management", "netmans", "netman-bad", "manifest.json"], "[]")
     write_file(data_dir, ["management", "events", "evt-999999.json"], "{")
     write_file(data_dir, ["management", "events", "not-an-event.json"], ~s({"id":"bad"}))
     write_file(data_dir, ["management", "events", ".manifest.json.tmp"], "interrupted")
@@ -242,13 +188,11 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     restart_management_children()
 
     assert [%Server{id: "srv-valid"}] = ManagementCore.list_servers()
-    assert [%Netman{id: "netman-valid"}] = ManagementCore.list_netmans()
     assert Enum.map(ManagementCore.list_events(), & &1.id) == valid_event_ids
   end
 
   test "registration updates and restart preserve config lifecycle manifest keys" do
     assert {:ok, server_path} = StoragePath.server_manifest("srv-shared-manifest")
-    assert {:ok, netman_path} = StoragePath.netman_manifest("netman-shared-manifest")
 
     lifecycle = %{
       "desired_version" => 7,
@@ -261,50 +205,27 @@ defmodule YellowDog.Management.RestartDurabilityTest do
                lifecycle
              end)
 
-    assert {:ok, ^lifecycle} =
-             ManifestStore.update_section(netman_path, "config_lifecycle", fn _current ->
-               lifecycle
-             end)
-
     assert {:ok, %Server{}} = ManagementCore.register_server(%{id: "srv-shared-manifest"})
-    assert {:ok, %Netman{}} = ManagementCore.register_netman(%{id: "netman-shared-manifest"})
 
     restart_child(Servers)
-    restart_child(Netmans)
 
     assert {:ok, %Server{}} = ManagementCore.get_server("srv-shared-manifest")
-    assert {:ok, %Netman{}} = ManagementCore.get_netman("netman-shared-manifest")
 
     assert {:ok, %Server{status: :online}} =
              ManagementCore.update_server_status("srv-shared-manifest", :online)
 
-    assert {:ok, %Netman{name: "Replacement"}} =
-             ManagementCore.register_netman(%{
-               id: "netman-shared-manifest",
-               name: "Replacement"
-             })
-
     assert {:ok, server_manifest} = AtomicJson.read(server_path)
-    assert {:ok, netman_manifest} = AtomicJson.read(netman_path)
 
     assert server_manifest["config_lifecycle"] == lifecycle
-    assert netman_manifest["config_lifecycle"] == lifecycle
     assert is_map(server_manifest["registration"])
-    assert is_map(netman_manifest["registration"])
 
     restart_child(Servers)
-    restart_child(Netmans)
 
     assert {:ok, %Server{status: :online}} =
              ManagementCore.get_server("srv-shared-manifest")
 
-    assert {:ok, %Netman{name: "Replacement"}} =
-             ManagementCore.get_netman("netman-shared-manifest")
-
     assert {:ok, server_manifest} = AtomicJson.read(server_path)
-    assert {:ok, netman_manifest} = AtomicJson.read(netman_path)
     assert server_manifest["config_lifecycle"] == lifecycle
-    assert netman_manifest["config_lifecycle"] == lifecycle
   end
 
   test "event failure rollback serializes and preserves a concurrent lifecycle update" do
@@ -408,7 +329,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     manifest_store_pid = Process.whereis(ManifestStore)
     old_event_store_pid = Process.whereis(EventStore)
     old_servers_pid = Process.whereis(Servers)
-    old_netmans_pid = Process.whereis(Netmans)
 
     registration =
       Task.async(fn ->
@@ -427,7 +347,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     new_event_store_pid = wait_for_replacement(EventStore, old_event_store_pid)
     assert Process.alive?(new_event_store_pid)
     wait_for_replacement(Servers, old_servers_pid)
-    wait_for_replacement(Netmans, old_netmans_pid)
 
     Application.delete_env(:yellow_dog_management_core, :atomic_json_file_ops)
 
@@ -513,7 +432,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     old_manifest_store_pid = Process.whereis(ManifestStore)
     old_event_store_pid = Process.whereis(EventStore)
     old_servers_pid = Process.whereis(Servers)
-    old_netmans_pid = Process.whereis(Netmans)
 
     commit =
       Task.async(fn ->
@@ -531,7 +449,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     wait_for_replacement(ManifestStore, old_manifest_store_pid)
     wait_for_replacement(EventStore, old_event_store_pid)
     wait_for_replacement(Servers, old_servers_pid)
-    wait_for_replacement(Netmans, old_netmans_pid)
 
     assert {:ok, %Server{name: "Before"}} =
              ManagementCore.get_server("srv-killed-after-outbox")
@@ -585,7 +502,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     old_manifest_store_pid = Process.whereis(ManifestStore)
     old_event_store_pid = Process.whereis(EventStore)
     old_servers_pid = Process.whereis(Servers)
-    old_netmans_pid = Process.whereis(Netmans)
 
     commit =
       Task.async(fn ->
@@ -603,7 +519,6 @@ defmodule YellowDog.Management.RestartDurabilityTest do
     wait_for_replacement(ManifestStore, old_manifest_store_pid)
     wait_for_replacement(EventStore, old_event_store_pid)
     wait_for_replacement(Servers, old_servers_pid)
-    wait_for_replacement(Netmans, old_netmans_pid)
 
     assert {:ok, %Server{id: "srv-promoted-before-crash", name: "After"}} =
              ManagementCore.get_server("srv-promoted-before-crash")
@@ -1330,11 +1245,11 @@ defmodule YellowDog.Management.RestartDurabilityTest do
   end
 
   defp restart_management_children do
-    Enum.each([Servers, Netmans, EventStore, ManifestStore], fn child_id ->
+    Enum.each([Servers, EventStore, ManifestStore], fn child_id ->
       assert :ok = Supervisor.terminate_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)
 
-    Enum.each([ManifestStore, EventStore, Servers, Netmans], fn child_id ->
+    Enum.each([ManifestStore, EventStore, Servers], fn child_id ->
       assert {:ok, _pid} =
                Supervisor.restart_child(YellowDog.ManagementCore.Supervisor, child_id)
     end)

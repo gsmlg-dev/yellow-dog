@@ -30,7 +30,7 @@ import Config
 # to bundle .js and .css sources.
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   adapter: Gaoxy.PhoenixAdapter,
-  websocket_paths: ["/live/websocket", "/netman/ws/websocket", "/server/ws/websocket"],
+  websocket_paths: ["/live/websocket", "/server/ws/websocket"],
   # Binding to all interfaces to allow access from other machines.
   # Use `ip: {127, 0, 0, 1}` to bind only to localhost.
   http: [
@@ -105,26 +105,14 @@ config :yellow_dog_telemetry,
 config :abyss,
   log_level: :debug
 
-# macOS does not provide Linux netlink or the production DHCP socket setup.
-# Keep Netman bootable in dev with mock kernel state and writable local paths.
+# macOS uses the test DHCP socket implementation.
 if :os.type() == {:unix, :darwin} do
-  netman_dir = Path.join([System.tmp_dir!(), "yellowdog", "netman"])
-
-  config :yellow_dog_netman,
-    netlink_backend: :mock,
-    profile_dir: Path.join(netman_dir, "profiles"),
-    socket_path: Path.join(netman_dir, "netman.sock")
-
   config :yellow_dog_dhcp_client,
     socket_impl: YellowDog.DhcpClient.DhcpSocket.UdpFallback
 end
 
 # Resolved: disable in dev (requires privileged port 53)
 config :yellow_dog_resolved, enabled: false
-
-# Netman: disable autostart so `mix phx.server` does not start Netman services.
-# Use `mix netman.server` to start the Netman daemon separately.
-config :yellow_dog_netman, netman_autostart: false
 
 config :yellow_dog_console, :management_token, "dev-management-token"
 config :yellow_dog_console, :operator_api_token, "dev-operator-token"

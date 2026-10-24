@@ -69,7 +69,7 @@ const EditorGuard = {
       }
     };
     this.onSelection = event => {
-      if (!event.target.matches("[data-editor-navigation], #server-selection-form-select, #netman-selection-form-select")) return;
+      if (!event.target.matches("[data-editor-navigation], #server-selection-form-select")) return;
       const discard = event.target.form?.querySelector('input[name="_discard"]');
       if (discard) discard.value = "false";
       const wasDirty = this.dirty();

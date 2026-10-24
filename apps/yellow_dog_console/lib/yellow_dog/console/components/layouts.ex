@@ -73,7 +73,6 @@ defmodule YellowDog.Console.Layouts do
   @nav_sections [
     %{label: "Management", icon: "account-cog", path: "/management"},
     %{label: "Servers", icon: "server-network", path: "/server"},
-    %{label: "Netman", icon: "lan", path: "/netman"},
     %{label: "Tools", icon: "wrench", path: "/tool/geoip"},
     %{label: "System", icon: "cog", path: "/system/process-map"}
   ]

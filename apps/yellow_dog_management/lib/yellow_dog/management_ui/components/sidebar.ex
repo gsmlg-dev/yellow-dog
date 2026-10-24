@@ -12,7 +12,7 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
     current_path = Map.get(assigns, :current_path)
     section = Navigation.section_for_path(current_path)
     scope = Map.get(assigns, :navigation_scope)
-    target_type = if match?({:netman, _}, scope), do: :netman, else: :server
+    target_type = :server
     records = valid_records(assigns, target_type)
     selected_record = selected_record(records, scope, target_type)
 
@@ -32,9 +32,6 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
   @impl true
   def handle_event("select_server", %{"selection" => %{"id" => id}}, socket),
     do: authorized_selection(socket, :server, id)
-
-  def handle_event("select_netman", %{"selection" => %{"id" => id}}, socket),
-    do: authorized_selection(socket, :netman, id)
 
   @impl true
   def render(assigns) do
@@ -139,7 +136,7 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
     assigns =
       assigns
       |> assign(:id, "#{assigns.target_type}-selection-form")
-      |> assign(:label, if(assigns.target_type == :server, do: "Worker", else: "Netman"))
+      |> assign(:label, "Worker")
 
     ~H"""
     <div class="yd-node-selection">
@@ -173,18 +170,13 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
   defp valid_records(assigns, :server),
     do: Enum.filter(Map.get(assigns, :servers, []), &ServicePaths.valid_server_id?(&1.id))
 
-  defp valid_records(assigns, :netman),
-    do: Enum.filter(Map.get(assigns, :netmans, []), &ServicePaths.valid_netman_id?(&1.id))
-
   defp selected_record(records, {target_type, id}, target_type),
     do: Enum.find(records, &(&1.id == id))
 
   defp selected_record(_records, _scope, _target_type), do: nil
 
   defp authorized_selection(socket, target_type, id) do
-    scope = if target_type == :netman, do: "ui:admin", else: "config:read"
-
-    case YellowDog.Management.Access.authorize(socket.assigns[:caller], scope) do
+    case YellowDog.Management.Access.authorize(socket.assigns[:caller], "config:read") do
       :ok -> navigate_to_selection(socket, target_type, id)
       _ -> {:noreply, push_navigate(socket, to: "/management")}
     end
@@ -203,9 +195,7 @@ defmodule YellowDog.ManagementUI.Components.Sidebar do
   end
 
   defp selection_path(:server, id), do: ServicePaths.server_path(id, :dashboard)
-  defp selection_path(:netman, id), do: ServicePaths.netman_path(id, :overview)
   defp selector_path(:server), do: "/server"
-  defp selector_path(:netman), do: "/netman"
   defp selected_record?(%{id: id}, %{id: id}), do: true
   defp selected_record?(_selected_record, _record), do: false
 

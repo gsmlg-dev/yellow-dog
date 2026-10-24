@@ -36,11 +36,6 @@ defmodule YellowDog.Config.ManagerTest do
       "tftp_root" => "/srv/yellow-dog/tftp",
       "tftp_port" => 6969,
       "default_profile" => "old-bootstrap-profile"
-    },
-    "netman" => %{
-      "profile_dir" => "/etc/yellowdog/netman/profiles",
-      "socket_path" => "/run/yellowdog/netman.sock",
-      "reconciliation_interval_ms" => 10_000
     }
   }
 
@@ -166,10 +161,7 @@ defmodule YellowDog.Config.ManagerTest do
     assert runtime["netboot"]["tftp_root"] == @bootstrap["netboot"]["tftp_root"]
     assert runtime["netboot"]["tftp_port"] == 1069
     assert runtime["netboot"]["default_profile"] == "rescue"
-    assert runtime["netman"]["profile_dir"] == @bootstrap["netman"]["profile_dir"]
-    assert runtime["netman"]["socket_path"] == @bootstrap["netman"]["socket_path"]
     assert runtime["yellow_dog_server_agent"] == @bootstrap["yellow_dog_server_agent"]
-    assert runtime["netman"]["reconciliation_interval_ms"] == 5000
     assert runtime["core"]["dns"] == true
 
     assert runtime["yellow_dog_server"] == %{
@@ -202,7 +194,6 @@ defmodule YellowDog.Config.ManagerTest do
 
     assert runtime["mdns"]["mode"] == "responder"
     assert runtime["netboot"]["default_profile"] == ""
-    assert runtime["netman"]["reconciliation_interval_ms"] == 5000
     assert runtime["core"]["dns"] == true
 
     assert runtime["data_dir"] == @bootstrap["data_dir"]

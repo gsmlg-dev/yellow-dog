@@ -9,7 +9,7 @@ YellowDogConsole is the Phoenix LiveView web console for managing and monitoring
 This is retained source outside the supported Management/Worker root build.
 Its development and test listener definitions select `Gaoxy.PhoenixAdapter`,
 limit active requests with `limits: %{max_active: 128}`, and list the existing
-LiveView, Netman and Server WebSocket transport paths explicitly. These source
+LiveView and Server WebSocket transport paths explicitly. These source
 settings do not enable the Console in either supported product.
 
 ## Common Commands

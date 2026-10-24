@@ -26,23 +26,12 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
     :identity_host_list,
     :identity_approval_list,
     :identity_token_list,
-    :identity_audit_list,
-    :profile_list,
-    :profile_history,
-    :network_link_list,
-    :network_address_list,
-    :network_route_list,
-    :resolved_upstream_list,
-    :resolved_search_domain_list,
-    :resolved_link_dns_list,
-    :resolved_query_list,
-    :dhcp_client_lease_list
+    :identity_audit_list
   ]
 
   def schemas do
     operations =
-      Map.values(YellowDog.Sync.ServerOperation.all()) ++
-        Map.values(YellowDog.Sync.NetmanOperation.all())
+      Map.values(YellowDog.Sync.ServerOperation.all())
 
     operations
     |> Enum.flat_map(&[&1.payload_schema, &1.result_schema])
@@ -57,9 +46,7 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       "observed_at" => @observed_at
     }
 
-    if schema == :resolved_upstream_list,
-      do: Map.put(result, "config_revision", @revision),
-      else: result
+    result
   end
 
   def valid(:empty), do: %{}
@@ -138,27 +125,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       :settings_query ->
         %{"service" => "dns"}
 
-      :profile_list_query ->
-        %{}
-
-      :network_links_query ->
-        %{}
-
-      :network_addresses_query ->
-        %{}
-
-      :network_routes_query ->
-        %{}
-
-      :network_connection_query ->
-        connection_ref()
-
-      :resolved_link_dns_query ->
-        %{}
-
-      :resolved_queries_query ->
-        %{}
-
       :service_ref ->
         %{"service" => "dns"}
 
@@ -209,21 +175,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
 
       :settings_rollback ->
         %{"service" => "dns", "target_revision" => @revision}
-
-      :profile_ref ->
-        %{"profile_id" => "office"}
-
-      :profile_rollback ->
-        %{"profile_id" => "office", "target_revision" => @revision}
-
-      :connection_ref ->
-        connection_ref()
-
-      :dhcp_client_connection_ref ->
-        connection_ref()
-
-      :resolved_config_rollback ->
-        %{"target_revision" => @revision}
 
       :dns_view_write ->
         dns_view()
@@ -293,26 +244,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       :server_managed_config ->
         managed_server_config()
 
-      :profile_validate ->
-        netman_profile()
-
-      :profile_put ->
-        netman_profile()
-
-      :profile_set_replace ->
-        %{"profiles" => [netman_profile()]}
-
-      :profile_patch ->
-        %{
-          "profile_id" => "office",
-          "changes" => [
-            %{"field" => "ethernet.mtu", "value" => 1_500}
-          ]
-        }
-
-      :resolved_config_update ->
-        %{"upstreams" => ["1.1.1.1"], "search_domains" => ["example.test"]}
-
       :runtime_capabilities ->
         %{"capabilities" => ["runtime.services"]}
 
@@ -359,39 +290,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       :settings_validation ->
         %{"service" => "dns", "valid" => true, "errors" => []}
 
-      :apply_mode ->
-        %{"mode" => "managed"}
-
-      :reconciliation_health ->
-        %{"status" => "healthy", "pending_changes" => 0}
-
-      :profile_revision ->
-        %{
-          "profile_id" => "office",
-          "desired_revision" => @revision,
-          "active_revision" => @revision
-        }
-
-      :network_connection_state ->
-        Map.put(connection_ref(), "state", "activated")
-
-      :resolved_cache ->
-        %{
-          "revision" => @revision,
-          "entries" => [
-            %{"domain" => "example.test", "address" => "192.0.2.10", "expires_at" => @observed_at}
-          ]
-        }
-
-      :resolved_counters ->
-        %{"hits" => 5, "misses" => 1}
-
-      :dhcp_client_fsm ->
-        Map.put(connection_ref(), "state", "bound")
-
-      :vpn_resolved_profile ->
-        %{"profile_id" => "vpn-default", "state" => "resolved", "revision" => @revision}
-
       :service_command_result ->
         %{"service" => "dns", "state" => "running"}
 
@@ -401,13 +299,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
           "resource_id" => "default",
           "revision" => @revision,
           "resource" => dns_view()
-        }
-
-      :profile_write_result ->
-        %{
-          "profile" => netman_profile(),
-          "desired_revision" => @revision,
-          "active_revision" => @revision
         }
 
       :deleted_resource ->
@@ -437,21 +328,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
 
       :identity_token_create_result ->
         %{"token_id" => "token-1", "secret" => "one-time-token", "expires_at" => nil}
-
-      :profile_validation ->
-        %{"profile_id" => "office", "valid" => true, "errors" => []}
-
-      :profile_activation_result ->
-        %{
-          "profile_id" => "office",
-          "desired_revision" => @revision,
-          "active_revision" => @revision,
-          "state" => "activated",
-          "connections" => [Map.put(connection_ref(), "state", "activated")]
-        }
-
-      :connection_activation_result ->
-        Map.put(connection_ref(), "state", "activated")
 
       :config_state ->
         config_state()
@@ -516,8 +392,7 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       {"netboot_asset", "installer", netboot_asset()},
       {"identity_host", "host-1", list_item(:identity_host_list)},
       {"identity_token", "token-1", list_item(:identity_token_list)},
-      {"identity_policy", "default", identity_policy()},
-      {"netman_profile", "office", netman_profile()}
+      {"identity_policy", "default", identity_policy()}
     ]
   end
 
@@ -607,61 +482,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
       "occurred_at" => @observed_at
     }
 
-  defp list_item(:profile_list),
-    do: %{
-      "profile" => netman_profile(),
-      "desired_revision" => @revision,
-      "active_revision" => @revision
-    }
-
-  defp list_item(:profile_history),
-    do: %{
-      "profile_id" => "office",
-      "revision" => @revision,
-      "profile" => netman_profile(),
-      "stored_at" => @observed_at,
-      "activated_at" => @observed_at
-    }
-
-  defp list_item(:network_link_list),
-    do: %{"link_id" => "eth0", "name" => "eth0", "state" => "up"}
-
-  defp list_item(:network_address_list),
-    do: %{"link_id" => "eth0", "address" => "192.0.2.10/24", "scope" => "global"}
-
-  defp list_item(:network_route_list),
-    do: %{"destination" => "0.0.0.0/0", "gateway" => "192.0.2.1", "link_id" => "eth0"}
-
-  defp list_item(:resolved_upstream_list), do: %{"address" => "1.1.1.1", "source" => "managed"}
-
-  defp list_item(:resolved_search_domain_list),
-    do: %{"domain" => "example.test", "routing_only" => false}
-
-  defp list_item(:resolved_link_dns_list),
-    do: %{
-      "link_id" => "eth0",
-      "servers" => ["1.1.1.1"],
-      "search_domains" => ["example.test"],
-      "priority" => 100
-    }
-
-  defp list_item(:resolved_query_list),
-    do: %{
-      "timestamp" => @observed_at,
-      "domain" => "example.test",
-      "type" => "A",
-      "source" => "cache",
-      "duration_us" => 25
-    }
-
-  defp list_item(:dhcp_client_lease_list),
-    do:
-      Map.merge(connection_ref(), %{
-        "address" => "192.0.2.10",
-        "expires_at" => @observed_at,
-        "revision" => @revision
-      })
-
   defp dns_record_ref,
     do: %{"view_name" => "default", "zone_name" => "example.test", "record_id" => "www-a"}
 
@@ -737,31 +557,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
 
   defp identity_policy,
     do: %{"policy_id" => "default", "action" => "require_approval", "enabled" => true}
-
-  defp netman_profile,
-    do: %{
-      "profile_id" => "office",
-      "type" => "ethernet",
-      "interface" => "eth0",
-      "autoconnect" => true,
-      "autoconnect_priority" => 100,
-      "zone" => "trusted",
-      "ethernet" => %{"mtu" => 1_500},
-      "ipv4" => %{
-        "method" => "manual",
-        "address" => "192.0.2.10/24",
-        "gateway" => "192.0.2.1",
-        "dns" => ["192.0.2.53"],
-        "dns_search" => ["example.test"]
-      },
-      "ipv6" => %{
-        "method" => "manual",
-        "address" => "2001:db8::10/64",
-        "gateway" => "2001:db8::1",
-        "dns" => ["2001:db8::53"],
-        "dns_search" => ["example.test"]
-      }
-    }
 
   defp connection_ref, do: %{"profile_id" => "office", "interface" => "eth0"}
 
@@ -840,9 +635,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
 
       String.contains?(name, ".identity.policies.") ->
         {"identity_policy", "default", identity_policy()}
-
-      String.contains?(name, ".profiles.") ->
-        {"netman_profile", "office", netman_profile()}
     end
   end
 
@@ -862,7 +654,6 @@ defmodule YellowDog.Sync.OperationSchemaFixtures do
   defp resource_ref("identity_host", resource), do: Map.take(resource, ["host_id"])
   defp resource_ref("identity_token", resource), do: Map.take(resource, ["token_id"])
   defp resource_ref("identity_policy", resource), do: Map.take(resource, ["policy_id"])
-  defp resource_ref("netman_profile", resource), do: Map.take(resource, ["profile_id"])
 end
 
 defmodule YellowDog.Sync.ServerOperationTest do
@@ -1597,7 +1388,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
 
   test "every catalog schema has a strict valid missing extraneous and malformed shape" do
     schemas = Fixtures.schemas()
-    assert length(schemas) == 143
+    assert length(schemas) == 104
 
     for schema <- schemas do
       valid = Fixtures.valid(schema)
@@ -1615,7 +1406,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
   end
 
   test "forbidden transport keys and values are rejected at any nesting level" do
-    profile = Fixtures.valid(:profile_put)
+    view = Fixtures.valid(:dns_view_write)
 
     for forbidden <- [
           "expected_revision",
@@ -1633,16 +1424,16 @@ defmodule YellowDog.Sync.ServerOperationTest do
           "bytes",
           "data"
         ] do
-      nested = put_in(profile, ["ipv4", forbidden], "forbidden")
-      assert_invalid(Operation.validate_schema(:profile_put, nested))
+      nested = Map.put(view, forbidden, "forbidden")
+      assert_invalid(Operation.validate_schema(:dns_view_write, nested))
     end
 
     port = Port.open({:spawn, "cat"}, [])
 
     try do
       for forbidden_value <- [self(), make_ref(), port] do
-        malformed = put_in(profile, ["ipv4", "gateway"], forbidden_value)
-        assert_invalid(Operation.validate_schema(:profile_put, malformed))
+        malformed = put_in(view, ["match_clients"], [forbidden_value])
+        assert_invalid(Operation.validate_schema(:dns_view_write, malformed))
       end
     after
       if Port.info(port), do: Port.close(port)
@@ -2810,19 +2601,7 @@ defmodule YellowDog.Sync.ServerOperationTest do
     end
   end
 
-  test "reviewer probes reject profile transport fields and arbitrary DNS list items" do
-    profile = Fixtures.valid(:profile_put)
-
-    for payload <- [
-          Map.put(profile, "expected_revision", digest()),
-          put_in(profile, ["ipv4", "path"], "/etc/network"),
-          put_in(profile, ["ipv4", "blob"], "raw")
-        ] do
-      assert_invalid(
-        Operation.validate_payload("netman.profiles.put", :netman, :command, payload)
-      )
-    end
-
+  test "reviewer probes reject arbitrary DNS list items" do
     valid_result = Fixtures.valid(:dns_view_list)
 
     valid_item = hd(valid_result["items"])
@@ -2835,18 +2614,13 @@ defmodule YellowDog.Sync.ServerOperationTest do
   end
 
   test "rejects oversized values and collections and cross-domain shapes" do
-    profile = Fixtures.valid(:profile_put)
-    oversized_text = %{profile | "zone" => String.duplicate("x", 65)}
+    view = Fixtures.valid(:dns_view_write)
+    oversized_text = %{view | "view_name" => String.duplicate("x", 129)}
+    oversized_collection = %{view | "match_clients" => List.duplicate("192.0.2.0/24", 101)}
 
-    oversized_collection = %{
-      profile
-      | "ipv4" => %{profile["ipv4"] | "dns" => List.duplicate("192.0.2.53", 101)}
-    }
-
-    assert_invalid(Operation.validate_schema(:profile_put, oversized_text))
-    assert_invalid(Operation.validate_schema(:profile_put, oversized_collection))
-    assert_invalid(Operation.validate_schema(:dns_view_write, profile))
-    assert_invalid(Operation.validate_schema(:profile_put, Fixtures.valid(:dns_view_write)))
+    assert_invalid(Operation.validate_schema(:dns_view_write, oversized_text))
+    assert_invalid(Operation.validate_schema(:dns_view_write, oversized_collection))
+    assert_invalid(Operation.validate_schema(:dns_view_write, Fixtures.valid(:dhcp_pool_write)))
 
     assert_invalid(
       Operation.validate_result(
@@ -2876,7 +2650,6 @@ defmodule YellowDog.Sync.ServerOperationTest do
   defp resource_ref("identity_host", resource), do: Map.take(resource, ["host_id"])
   defp resource_ref("identity_token", resource), do: Map.take(resource, ["token_id"])
   defp resource_ref("identity_policy", resource), do: Map.take(resource, ["policy_id"])
-  defp resource_ref("netman_profile", resource), do: Map.take(resource, ["profile_id"])
 
   defp config_state(state, overrides \\ %{}) do
     Map.merge(

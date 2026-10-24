@@ -1,6 +1,6 @@
 defmodule YellowDog.Management.Event do
   @moduledoc """
-  Concrete management event emitted by server and Netman registries.
+  Concrete management event emitted by server registries.
   """
 
   @enforce_keys [:id, :source, :source_id, :type, :occurred_at, :sequence]
@@ -17,7 +17,7 @@ defmodule YellowDog.Management.Event do
 
   @type t :: %__MODULE__{
           id: String.t(),
-          source: :server | :netman,
+          source: :server,
           source_id: String.t(),
           type: atom(),
           message: String.t() | nil,
@@ -233,30 +233,20 @@ defmodule YellowDog.Management.Event do
   defp decode_metadata_entries(_entries, _remaining, _pairs), do: :error
 
   defp decode_source("server"), do: {:ok, :server}
-  defp decode_source("netman"), do: {:ok, :netman}
   defp decode_source(_source), do: :error
 
   defp decode_type("server_registered"), do: {:ok, :server_registered}
   defp decode_type("server_status_updated"), do: {:ok, :server_status_updated}
-  defp decode_type("netman_registered"), do: {:ok, :netman_registered}
-  defp decode_type("netman_status_updated"), do: {:ok, :netman_status_updated}
   defp decode_type(_type), do: :error
 
   defp decode_source_id(:server, value) do
     with {:ok, _path} <- StoragePath.server_manifest(value), do: {:ok, value}
   end
 
-  defp decode_source_id(:netman, value) do
-    with {:ok, _path} <- StoragePath.netman_manifest(value), do: {:ok, value}
-  end
-
   defp decode_source_id(_source, _source_id), do: :error
 
   defp coherent_source_type?(:server, type),
     do: type in [:server_registered, :server_status_updated]
-
-  defp coherent_source_type?(:netman, type),
-    do: type in [:netman_registered, :netman_status_updated]
 
   defp valid_commit_token?(token) when is_binary(token), do: Regex.match?(@commit_token, token)
   defp valid_commit_token?(_token), do: false

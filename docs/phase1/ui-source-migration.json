@@ -26,7 +26,7 @@
     {
       "source": "apps/yellow_dog_console/assets/css/app.css",
       "target": "apps/yellow_dog_management/assets/redesign/css/app.css",
-      "revision": "working-tree",
+      "revision": "ac3caa27c9792bc91e912ee49047edc7da94bc8b",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "asset-paths",
       "replacements": [
@@ -53,7 +53,7 @@
     {
       "source": "apps/yellow_dog_console/assets/js/app.js",
       "target": "apps/yellow_dog_management/assets/redesign/js/app.js",
-      "revision": "working-tree",
+      "revision": "ac3caa27c9792bc91e912ee49047edc7da94bc8b",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -72,7 +72,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-and-active-verified-routes",
       "replacements": [
         [
@@ -102,7 +102,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/button.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/button.ex",
-      "revision": "working-tree",
+      "revision": "26659aacc0cd4c57a553d3d57c91496c60baf36c",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -121,7 +121,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/core_components.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/core_components.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -140,7 +140,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/layouts.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/layouts.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "replacements": [
@@ -167,7 +167,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/layouts/root.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/layouts/root.html.heex",
-      "revision": "working-tree",
+      "revision": "ac3caa27c9792bc91e912ee49047edc7da94bc8b",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only-audited-compile-format",
       "replacements": [
@@ -194,7 +194,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/netboot_components.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/netboot_components.ex",
-      "revision": "working-tree",
+      "revision": "97be677cf951e9f606316aa03b03ccbf3c374957",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -213,7 +213,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/record_form.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/record_form.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "replacements": [
@@ -252,7 +252,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/sidebar.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/sidebar.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -271,7 +271,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/error_html.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/error_html.ex",
-      "revision": "working-tree",
+      "revision": "d85a9a30e3d38f2957f5e80193cd8f7444fdae49",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -293,7 +293,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/error_json.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/error_json.ex",
-      "revision": "working-tree",
+      "revision": "3e2127e8ecd7c5cf70442f2cdfef22ccfc9bc3a6",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -315,7 +315,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_controller.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_controller.ex",
-      "revision": "working-tree",
+      "revision": "aa5174be33fd71c5fe8c213355b2d02c79ab5973",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -337,7 +337,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_html.ex",
-      "revision": "working-tree",
+      "revision": "373a9e3a8bcf788fe377ed0645a4881ac6745741",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -359,7 +359,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html/home.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_html/home.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -381,7 +381,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/csv_helper.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/csv_helper.ex",
-      "revision": "working-tree",
+      "revision": "f3ec01cbefc0754f133a607b30ca30017eaf5965",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -403,7 +403,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/format_helper.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/format_helper.ex",
-      "revision": "working-tree",
+      "revision": "ac3caa27c9792bc91e912ee49047edc7da94bc8b",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "replacements": [
         [
@@ -445,7 +445,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/gettext.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/gettext.ex",
-      "revision": "working-tree",
+      "revision": "5ac754615dee95b17aaa5fe5ff68e13ebbb580e3",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -467,7 +467,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/hooks/current_path.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/hooks/current_path.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -486,7 +486,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/hooks/service_scope.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/hooks/service_scope.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "source_head": "d83442c0b12deb3173b9e96ca643061b070e6a58",
       "adaptation": "namespace-only",
       "replacements": [
@@ -505,7 +505,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/backups_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/backups_live.ex",
-      "revision": "working-tree",
+      "revision": "fa5ad9bd980ebf43d8e9c4e1c9650e5ba03404f9",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "56616b61392943d848f9325887f42132ce75ebda6667c658e94c3f6b2de915d4",
       "target_sha256": "1f0cc7250a604b5f5782b71106c696e06a23c128784a819745443f269d24b168",
@@ -587,7 +587,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/components/pool_form_component.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/components/pool_form_component.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only",
       "source_sha256": "a3a9738b49de1468ea3b0426693676a314e0c1a18f9dd565107ac9a1c9c1fcd3",
       "target_sha256": "6f511e9495e1eda0039326a77f839c10102489fcbd723a515bc56ead68ba84b0",
@@ -672,7 +672,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_client_live/activity_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_client_live/activity_live.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only",
       "source_sha256": "cee061a8ff877b925e9b9a2e60dd4223129a3421c8e059ccc77caf50b3399bd8",
       "target_sha256": "985ba470e71ed7d1b0d381e8dbcb1b4c58e66d447247e4af7c01fe6ecfaf5457",
@@ -695,7 +695,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_client_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_client_live/index.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "0fb8a4df577bfc128cddfea41d91fb0a7651d256e448d160b2cbfa7dad5b7d01",
       "target_sha256": "846424b314966f5c341754732cef22304a1a160c160cc252a2d7c299070b8b55",
@@ -734,7 +734,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_client_live/interfaces_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_client_live/interfaces_live.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "98f24408e1b4601eb5ee0763f8467d3de5674421bf09e3478c808ba1700000d5",
       "target_sha256": "93156599c4f71312b44b745fc879371d7f83bbf85b4033924b90e9fe3ed20a4c",
@@ -773,7 +773,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_live/management_components.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_live/management_components.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only-audited-format",
       "source_sha256": "3af1c0093a48d42b639d64b315c01dff7e7ff2f56edefbb41c7e2d182b704da5",
       "target_sha256": "84bcf7afa91045819e85c2fb83858a4f6afb19d695c79842a0b2587e6545c49c",
@@ -804,7 +804,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcp_live/management_support.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dhcp_live/management_support.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-and-runtime-result-patterns-late-bound-legacy-calls",
       "source_sha256": "595f288fbb0b1fc4707caf1f4575fbf6de56e2d84da56569628802a33da79412",
       "target_sha256": "22ee186c9372b63396a9855f81c5accd033e049d9f522621e76ae1afd27e20a3",
@@ -1415,7 +1415,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/hex_dump.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/components/hex_dump.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only",
       "source_sha256": "856374857970401becf6d83d793a1097483ba1fa4967902b6bbccf5918403015",
       "target_sha256": "54b47c364e3e2e1d2cfe54ef866ed7aabb55b25927fb700b4deea3ffeef882de",
@@ -1438,7 +1438,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/query_history.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/components/query_history.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "2a93be766fe5b41cf7e9f10fd6be78d4c0264c04765f5ae23ae61a454d497939",
       "target_sha256": "fc69e32888a26c92863e646975e8c3745e7dcb9718d23aa18adf4c1cd984e325",
@@ -1461,7 +1461,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/result_display.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/components/result_display.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only-deferred-legacy-structs",
       "source_sha256": "055f8ea740d1d16c8e874c7135cc0e5ca92a8b00c7d349ce9ef1a608e51dc99c",
       "target_sha256": "dfe32a4360b836b3187129f3ded5398777fb32233b2d6a4495b3f4d4f09f2820",
@@ -1492,7 +1492,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dhcpv4_tab.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/dhcpv4_tab.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "18afedbca98d4c416f95b0d027826980b751f39e3eb30662955cd2504fd9d0ae",
       "target_sha256": "2edf55cdf63d65ffdf8ae64a981af8227e977d123b1f35f0f963c7d86ef0b23b",
@@ -1515,7 +1515,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dhcpv6_tab.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/dhcpv6_tab.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "0b3446451619b72330dd02ef8cc415fb79ad82f9b0e71874d71e9f2248a92361",
       "target_sha256": "199268e9841677e5d64ec29dcc5b7a6e5d13e25a8c60c63e3773933e6c79c850",
@@ -1538,7 +1538,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/diagnostics_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/diagnostics_live.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only-late-bound-legacy-calls",
       "source_sha256": "3c0e81d1ad96d9c3e123873b827004521fc7e02161e4cfa71cac9a2f49bfdac4",
       "target_sha256": "e8362a53ff480e91a404fbdc529cd5aad82e91b09720467f1422180b7701a5a7",
@@ -1577,7 +1577,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dns_tab.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/dns_tab.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "cbda4e40996d16e01c9fc0b6674c7b70ebc278bbb4544cc4992bf46123490238",
       "target_sha256": "c5fe4dc21af5d275cfb6b2f0e72687124c664288cbf0d1eee1af89b0c8114a38",
@@ -1600,7 +1600,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/mdns_tab.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/diagnostics_live/mdns_tab.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "5dca26b7fa264916441f4ea24e1c0f1c070244fcb6a8b2c3147ec383df416201",
       "target_sha256": "cd1d6659193ea2604424ccc41390ecdad81aabe9f37ebb0b6cd9970219cf9756",
@@ -1791,7 +1791,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/management_support.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/dns_live/management_support.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-and-runtime-result-patterns-late-bound-legacy-calls",
       "source_sha256": "b7c73bb14ce2ab64a736b670809e067c2e97e647418b550c9855b4d7e860e9ab",
       "target_sha256": "51f3bf5b0ec3f73463087dc85edba542c101fde4b64ea576362ca8ef7a6bbb9a",
@@ -2439,8 +2439,8 @@
           "          stats = Function.capture(View, :stats, 1).(pid)\n"
         ],
         [
-          "  # Private Helpers — TOML Persistence\n  # ============================================================================\n\n  defp load_persisted_views do\n    views_path = Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n    Function.capture(ViewStore, :load_views, 1).(views_path)\n  end\n\n  defp save_views_to_toml(views) do\n    views_path = Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n\n    with :ok <- File.mkdir_p(Function.capture(ConfigPersistence, :default_data_path, 0).()) do\n      Function.capture(ViewStore, :save_views, 2).(views_path, views)\n    end\n",
-          "  # Private Helpers — TOML Persistence\n  # ============================================================================\n\n  defp load_persisted_views do\n    views_path =\n      Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n\n    Function.capture(ViewStore, :load_views, 1).(views_path)\n  end\n\n  defp save_views_to_toml(views) do\n    views_path =\n      Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n\n    with :ok <- File.mkdir_p(Function.capture(ConfigPersistence, :default_data_path, 0).()) do\n      Function.capture(ViewStore, :save_views, 2).(views_path, views)\n    end\n"
+          "  # Private Helpers \u2014 TOML Persistence\n  # ============================================================================\n\n  defp load_persisted_views do\n    views_path = Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n    Function.capture(ViewStore, :load_views, 1).(views_path)\n  end\n\n  defp save_views_to_toml(views) do\n    views_path = Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n\n    with :ok <- File.mkdir_p(Function.capture(ConfigPersistence, :default_data_path, 0).()) do\n      Function.capture(ViewStore, :save_views, 2).(views_path, views)\n    end\n",
+          "  # Private Helpers \u2014 TOML Persistence\n  # ============================================================================\n\n  defp load_persisted_views do\n    views_path =\n      Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n\n    Function.capture(ViewStore, :load_views, 1).(views_path)\n  end\n\n  defp save_views_to_toml(views) do\n    views_path =\n      Path.join(Function.capture(ConfigPersistence, :default_data_path, 0).(), \"views.toml\")\n\n    with :ok <- File.mkdir_p(Function.capture(ConfigPersistence, :default_data_path, 0).()) do\n      Function.capture(ViewStore, :save_views, 2).(views_path, views)\n    end\n"
         ]
       ]
     },
@@ -2605,8 +2605,8 @@
           "          {:ok, zone_pid} ->\n            # Register zone with view\n            try do\n              case Function.capture(ViewManager, :get_view, 1).(view_name) do\n                {:ok, view_pid} ->\n                  Function.capture(View, :register_zone, 3).(view_pid, :auth, zone_name)\n\n                :error ->\n                  :ok\n              end\n            catch\n              :exit, _ -> :ok\n            end\n\n            # Import the zone data\n            import_result =\n              try do\n                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(\n                  zone_pid,\n                  zone_data\n                )\n              catch\n                :exit, _ -> {:error, :service_unavailable}\n              end\n\n"
         ],
         [
-          "          {:error, {:already_started, existing_pid}} ->\n            # Zone already exists — import records into it\n            import_result =\n              try do\n                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(existing_pid, zone_data)\n              catch\n                :exit, _ -> {:error, :service_unavailable}\n              end\n\n",
-          "          {:error, {:already_started, existing_pid}} ->\n            # Zone already exists — import records into it\n            import_result =\n              try do\n                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(\n                  existing_pid,\n                  zone_data\n                )\n              catch\n                :exit, _ -> {:error, :service_unavailable}\n              end\n\n"
+          "          {:error, {:already_started, existing_pid}} ->\n            # Zone already exists \u2014 import records into it\n            import_result =\n              try do\n                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(existing_pid, zone_data)\n              catch\n                :exit, _ -> {:error, :service_unavailable}\n              end\n\n",
+          "          {:error, {:already_started, existing_pid}} ->\n            # Zone already exists \u2014 import records into it\n            import_result =\n              try do\n                Function.capture(YellowDog.Dns.Zone.Auth, :import_zone_file, 2).(\n                  existing_pid,\n                  zone_data\n                )\n              catch\n                :exit, _ -> {:error, :service_unavailable}\n              end\n\n"
         ],
         [
           "\n  defp maybe_enqueue_cloud_dns_sync(_view_name, _zone_name, _zone_type, _config), do: :ok\n\n  defp enqueue_all_cloud_zone_syncs(socket) do\n    cloud_zone_tasks = Enum.filter(Function.capture(Tasks, :list_tasks, 0).(), &cloud_zone_task?/1)\n\n    {queued, failed} =\n      Enum.reduce(cloud_zone_tasks, {0, []}, fn task, {queued, failed} ->\n        case Function.capture(Tasks, :enqueue, 1).(task.key) do\n",
@@ -3030,7 +3030,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/ip_database_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/ip_database_live.ex",
-      "revision": "working-tree",
+      "revision": "df786be4de08dfe3e1b10cf7971f576013953172",
       "adaptation": "namespace-only-late-bound-legacy-calls",
       "source_sha256": "c199f319381761c2290e41c1a0a6befd6a4e44751eaa25b4ee3e318a5b162f5d",
       "target_sha256": "97a140bd0d99e05b84380fc82ff8fb4f0ffc80520424af326844f4f0a99b5d66",
@@ -3077,7 +3077,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/logs_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/logs_live.ex",
-      "revision": "working-tree",
+      "revision": "690db40ccfd5b9c4b48e52be1ff3b14b65de9b4d",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "d266f1944ca79201b975176e9ff254fa79bcb3da69fa6526ec3b2fa3daf94c44",
       "target_sha256": "b9cc44b875a126ec3bd0ca9b05d8f77b05781d212588cee37717f5105271538f",
@@ -3120,7 +3120,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mac_database_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mac_database_live.ex",
-      "revision": "working-tree",
+      "revision": "df786be4de08dfe3e1b10cf7971f576013953172",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "984ab26384d43a8e6c4ca73ed0d7fddaeb422020cfb8658693a6654ac0ade86d",
       "target_sha256": "be1c8e9a210c45306a6a0f235f2d1aac82fa0311b8534c666387cba863aac766",
@@ -3167,7 +3167,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/data.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/management_live/data.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only",
       "source_sha256": "2584f850074849d58a42ac90a1b09e5920b926c74a9dc9b2d7ad55c1e054fef4",
       "target_sha256": "3d9c3483d82690d2b202464bdfbe4aad0bf584f000605d4c2a71f844b9913e68",
@@ -3190,7 +3190,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/management_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only",
       "source_sha256": "48976b038624cb279882a5f92a15d00f479d1f79df09cf6cdf2dcb374cb559b0",
       "target_sha256": "a242b1af50fa79cf2352e34fc9297214ace9527e0e5e185bbb55230097af4e42",
@@ -3333,7 +3333,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/management_support.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/mdns_live/management_support.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "16f3e848dc92790fde8366f3775bbdd4ae09806bf368c4bfbe3e0937219e585e",
       "target_sha256": "d96956f79bd8aa33ff78fe0ed04b71e68701c204d7c83315dd3df8477ee6ff87",
@@ -3732,7 +3732,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/management_support.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netboot_live/management_support.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only-deferred-legacy-structs-late-bound-legacy-calls",
       "source_sha256": "8feeb4b971119af343c67e18d6cd9f6f828865ca6d61c4909cd1e66cd1edd01b",
       "target_sha256": "cc840501f5b0921b94adc67b835cdf33012d5df8a301465f30835a84e39e5a30",
@@ -4150,7 +4150,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/process_map_live.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only-late-bound-legacy-calls-audited-compile-format",
       "source_sha256": "7f0c26fe9fd5983a9143cf08dac90fb2e7f8a06c8aa8e65e9963d9cbc12e985b",
       "target_sha256": "af48f3ce97b537609a4684ef5a2e34f9afd887e7974a11bb70ecebfa99e5621a",
@@ -4245,7 +4245,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/server_live/selector_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/server_live/selector_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only",
       "source_sha256": "75fe208c95d5bb2294fed735ec06369d461792b856ea1111d4882742b95fe378",
       "target_sha256": "5b0917df04940fe360b56ae10e99f6053dbbb31f1f6521d6d28064ce0ca291d2",
@@ -4493,7 +4493,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tasks_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tasks_live/index.ex",
-      "revision": "working-tree",
+      "revision": "8d53e3fba9cb6ef6004d5c9a0a0ab751fb14ec9a",
       "adaptation": "namespace-only-late-bound-legacy-calls",
       "source_sha256": "93e6515e3e7ee9fe3cb2164cdda0be33488ffc3e4dde9b82f66ca1e8953580dc",
       "target_sha256": "a00127f8d4b9a9cd1f4ff48ed19a54dca1c12057b2b31a3cb5b64e142b6d0651",
@@ -4544,7 +4544,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tasks_live/show.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tasks_live/show.ex",
-      "revision": "working-tree",
+      "revision": "df786be4de08dfe3e1b10cf7971f576013953172",
       "adaptation": "namespace-only-late-bound-legacy-calls",
       "source_sha256": "dc638e36e75e05d07137d92818d85a2fc262250aebf00a673ae375ec00cbb9ff",
       "target_sha256": "4e09881e51b8940e19070b2b81afe83c7a0ceb8c0cbc0058add50906f751c81b",
@@ -4579,7 +4579,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tools_live/geoip_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tools_live/geoip_live.ex",
-      "revision": "working-tree",
+      "revision": "a262c7062546470e4e76a0dee227696eed0da5f6",
       "adaptation": "namespace-only-late-bound-legacy-calls",
       "source_sha256": "f57adf9944eb6b2b662b16a07af647b32ae0a18eef12bd5b29fca3b916518f20",
       "target_sha256": "a288581be9995167568fff6d76a5d866b5a3f96b6e350ab89ecfc97ed255b7e3",
@@ -4610,7 +4610,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tools_live/mac_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tools_live/mac_live.ex",
-      "revision": "working-tree",
+      "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only",
       "source_sha256": "5b7547a0c62719026c79dd6ed755fa50e9fa1fcd7e13a2ee4fa5ae18fa3f4754",
       "target_sha256": "f6dcc47a2de559b9e4998bc8af830b895ed946b29b3598c29d014feba956e3cb",
@@ -4633,7 +4633,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/tools_live/whois_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/tools_live/whois_live.ex",
-      "revision": "working-tree",
+      "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "284d7ed696a7be94f2d52c8607a44d0296043d376148e72c9e3e7379f6945ab9",
       "target_sha256": "612bafb986c91b712eac443f1389d2bc3c7ea3ed77d209b694d45eaf12825b87",
@@ -4656,7 +4656,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/service_paths.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/service_paths.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -4678,7 +4678,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/settings/address_pool.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/settings/address_pool.ex",
-      "revision": "working-tree",
+      "revision": "29b4d91750dfcb3bba08fd3d1b376c48a7b27a56",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -4700,7 +4700,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/settings/service_configuration.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/settings/service_configuration.ex",
-      "revision": "working-tree",
+      "revision": "7903340d4e857acbf0900ab82b8eab5886695773",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -4722,7 +4722,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/string_helper.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/string_helper.ex",
-      "revision": "working-tree",
+      "revision": "e51d56dee3f948062e1bc009d077499151e2dbbf",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -4744,7 +4744,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/validators.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/validators.ex",
-      "revision": "working-tree",
+      "revision": "7e75a3c852ecfef18e62dcdab083a8d5bda04ab3",
       "adaptation": "namespace-only",
       "replacements": [
         [
@@ -4766,7 +4766,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/hex_formatter.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/diagnostics/hex_formatter.ex",
-      "revision": "working-tree",
+      "revision": "c2047edf9777091a242392c3ad4c594e62a559d7",
       "replacements": [
         [
           "YellowDog.Console",
@@ -4817,7 +4817,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/cloud_dns_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/cloud_dns_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -4873,7 +4873,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dashboard_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dashboard_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -4944,7 +4944,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dashboard_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dashboard_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -4970,7 +4970,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/activity_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/activity_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5009,7 +5009,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5052,7 +5052,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/leases_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/leases_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5099,7 +5099,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pool_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/pool_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5134,7 +5134,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv4_live/pools_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv4_live/pools_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5197,7 +5197,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/activity_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/activity_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5236,7 +5236,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5279,7 +5279,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/leases_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/leases_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5326,7 +5326,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pool_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/pool_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5361,7 +5361,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dhcpv6_live/pools_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dhcpv6_live/pools_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5424,7 +5424,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/acl_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/acl_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5475,7 +5475,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/acl_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/acl_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5501,7 +5501,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5536,7 +5536,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/index.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/index.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5562,7 +5562,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/metrics_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/metrics_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5593,7 +5593,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/conflict_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/conflict_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5624,7 +5624,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/conflict_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/conflict_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5650,7 +5650,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5685,7 +5685,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/index.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/index.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5711,7 +5711,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/show.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/show.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5758,7 +5758,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/provider_live/show.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/provider_live/show.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5784,7 +5784,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/query_logs_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/query_logs_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5807,8 +5807,8 @@
           "    result = Function.capture(ServerManagement, :dns_logs_list, 2).(server_id, %{\"view_name\" => socket.assigns.view_name})\n"
         ],
         [
-          "    \"\"\"\n  end\n\n  defp load_logs(socket, server_id) do\n    result = Function.capture(ServerManagement, :dns_logs_list, 2).(server_id, %{\"view_name\" => socket.assigns.view_name})\n\n    assign(socket,\n      page_title: \"#{socket.assigns.selected_server.name || server_id} — DNS Query Logs\",\n      logs: ManagementSupport.items(result),\n",
-          "    \"\"\"\n  end\n\n  defp load_logs(socket, server_id) do\n    result =\n      Function.capture(ServerManagement, :dns_logs_list, 2).(server_id, %{\n        \"view_name\" => socket.assigns.view_name\n      })\n\n    assign(socket,\n      page_title: \"#{socket.assigns.selected_server.name || server_id} — DNS Query Logs\",\n      logs: ManagementSupport.items(result),\n"
+          "    \"\"\"\n  end\n\n  defp load_logs(socket, server_id) do\n    result = Function.capture(ServerManagement, :dns_logs_list, 2).(server_id, %{\"view_name\" => socket.assigns.view_name})\n\n    assign(socket,\n      page_title: \"#{socket.assigns.selected_server.name || server_id} \u2014 DNS Query Logs\",\n      logs: ManagementSupport.items(result),\n",
+          "    \"\"\"\n  end\n\n  defp load_logs(socket, server_id) do\n    result =\n      Function.capture(ServerManagement, :dns_logs_list, 2).(server_id, %{\n        \"view_name\" => socket.assigns.view_name\n      })\n\n    assign(socket,\n      page_title: \"#{socket.assigns.selected_server.name || server_id} \u2014 DNS Query Logs\",\n      logs: ManagementSupport.items(result),\n"
         ]
       ],
       "source_sha256": "12809829fef8503da59b9e7cddf023380b68d9b1d32a07765b2df69829c7e4b4",
@@ -5819,7 +5819,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/rr_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/rr_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5866,7 +5866,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/rr_live/index.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/rr_live/index.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5892,7 +5892,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/view_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/view_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5939,7 +5939,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/view_live/index.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/view_live/index.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -5965,7 +5965,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/zone_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/zone_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6024,7 +6024,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/dns_live/zone_live/index.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/dns_live/zone_live/index.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6050,7 +6050,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/device_detail_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/fingerprint_live/device_detail_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6076,7 +6076,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/devices_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/fingerprint_live/devices_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6102,7 +6102,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/fingerprint_live/fingerprints_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/fingerprint_live/fingerprints_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6128,7 +6128,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/approvals_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/approvals_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6167,7 +6167,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/audit_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/audit_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6206,7 +6206,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/host_detail_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/host_detail_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6273,7 +6273,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/hosts_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/hosts_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6340,7 +6340,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6403,7 +6403,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/policies_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/policies_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6442,7 +6442,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/identity/tokens_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/identity/tokens_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6531,7 +6531,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/discovery_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/discovery_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6554,8 +6554,8 @@
           "%{__struct__: ManagementResult, "
         ],
         [
-          "    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)\n\n    case result do\n      %{__struct__: ManagementResult, status: :ok, value: %{\"items\" => services}} when is_list(services) ->\n        assign(socket,\n          page_title:\n            \"#{socket.assigns.selected_server.name || socket.assigns.selected_server.id} — mDNS Discovery\",\n",
-          "    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)\n\n    case result do\n      %{__struct__: ManagementResult, status: :ok, value: %{\"items\" => services}}\n      when is_list(services) ->\n        assign(socket,\n          page_title:\n            \"#{socket.assigns.selected_server.name || socket.assigns.selected_server.id} — mDNS Discovery\",\n"
+          "    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)\n\n    case result do\n      %{__struct__: ManagementResult, status: :ok, value: %{\"items\" => services}} when is_list(services) ->\n        assign(socket,\n          page_title:\n            \"#{socket.assigns.selected_server.name || socket.assigns.selected_server.id} \u2014 mDNS Discovery\",\n",
+          "    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)\n\n    case result do\n      %{__struct__: ManagementResult, status: :ok, value: %{\"items\" => services}}\n      when is_list(services) ->\n        assign(socket,\n          page_title:\n            \"#{socket.assigns.selected_server.name || socket.assigns.selected_server.id} \u2014 mDNS Discovery\",\n"
         ],
         [
           "    result = ServerManagement.mdns_discovery_list(socket.assigns.selected_server.id)\n",
@@ -6574,7 +6574,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/discovery_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/discovery_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6600,7 +6600,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6647,7 +6647,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/index.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/index.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6686,7 +6686,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/monitor_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6737,7 +6737,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/monitor_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/monitor_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6763,7 +6763,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/services_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/services_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6834,7 +6834,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/mdns_live/services_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/mdns_live/services_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6860,7 +6860,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/device_detail_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/device_detail_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6911,7 +6911,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/devices_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/devices_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -6962,7 +6962,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/index.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/index.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7005,7 +7005,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/log_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/log_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7036,7 +7036,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/profile_editor_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/profile_editor_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7091,7 +7091,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/profiles_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/profiles_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7130,7 +7130,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netboot_live/tftp_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netboot_live/tftp_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7165,7 +7165,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/config_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/config_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7260,7 +7260,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dashboard_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/dashboard_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7286,7 +7286,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dhcp_client_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/dhcp_client_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7361,7 +7361,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/interfaces_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/interfaces_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7440,7 +7440,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/node_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/node_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7511,7 +7511,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/resolved_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/resolved_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7614,7 +7614,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/settings_live.ex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7681,7 +7681,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/live/settings_live.html.heex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/settings_live.html.heex",
-      "revision": "working-tree",
+      "revision": "1764c945382c63db57693b0b46c74533386ddae1",
       "replacements": [
         [
           "YellowDog.Console",
@@ -7759,7 +7759,7 @@
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/service_helper.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/service_helper.ex",
-      "revision": "working-tree",
+      "revision": "f3ec01cbefc0754f133a607b30ca30017eaf5965",
       "source_head": "0301404b18b9faffa629982d5035474524f4c21e",
       "adaptation": "namespace-only",
       "replacements": [
@@ -7778,7 +7778,7 @@
     {
       "source": "apps/yellow_dog_config/lib/yellow_dog/config_helpers.ex",
       "target": "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/config_helpers.ex",
-      "revision": "working-tree",
+      "revision": "f853259045d8af83559d257f3d5ec858c0760ec3",
       "source_head": "0301404b18b9faffa629982d5035474524f4c21e",
       "adaptation": "namespace-only",
       "replacements": [
@@ -7790,5 +7790,49 @@
       "source_sha256": "46fd81bc63ad76020a3cd0b8a706bd0ea9070916a466d080295144bdc741453b",
       "target_sha256": "2cc2a585f6ae5208dba04ecbd0c54cc2a37997fa326b07776a71de51abe88a2e"
     }
-  ]
+  ],
+  "netman_retirement": {
+    "decision_date": "2026-10-24",
+    "reason": "Remove cancelled Netman product and its exclusive presentations; retain other source and original transfer evidence",
+    "removed_sources": [
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/config_live.ex",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dashboard_live.ex",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/dhcp_client_live.ex",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/interfaces_live.ex",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/node_live.ex",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/netman_live/resolved_live.ex"
+    ],
+    "removed_targets": [
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/config_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/dashboard_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/dhcp_client_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/interfaces_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/node_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/netman_live/resolved_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/config_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/dashboard_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/dhcp_client_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/interfaces_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/node_live.ex",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/current/live/netman_live/resolved_live.ex"
+    ],
+    "retained_source_sha256": {
+      "apps/yellow_dog_console/lib/yellow_dog/console/controllers/page_html/home.html.heex": "09fec87533afede6cbaeca801d64fb745f1ab55e9ab590e3fbcd0958ef309e42",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/data.ex": "3f6e061afa72e8192aa664b833e082dc849e1015dda06fe5ac030d7797caf7db",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/management_live/index.ex": "b61d91503f55a1d42d3f2c15e1ffd3d28de4c37044a341b7cad4bf33409e368a"
+    },
+    "retained_target_sha256": {
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/layouts.ex": "aa3802e642ed42948d450df39c05070ec22c81790cebba3de5e03c4b39cc4f43",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/sidebar.ex": "cb6e0623c5fb5267958c69f637a667bde0cb7df1b5cb52e18d975c1732501e6e",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/controllers/page_html/home.html.heex": "09fec87533afede6cbaeca801d64fb745f1ab55e9ab590e3fbcd0958ef309e42",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/hooks/current_path.ex": "32702ca9bf699a7da9d6b9f68cbf32a28b1a5adf3227f296c6f23e284267476f",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/hooks/service_scope.ex": "4c221214319b9cda30d1f46690279b6f7cdf54b78c62ebc7131d01a38d82d6fa",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/management_live/data.ex": "03cfe3f425faa19124fa1ce4ed2634bb82c681c6dfc010f6627ef72728f79c8e",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/live/management_live/index.ex": "c3e4a648a87b320ce2060f7dc22c0167c49326bcbfa98c98aa11e6dda8b3d280",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/service_paths.ex": "ff0e82f860356129896ee5108cf6dd6f268399db3289e91dc438c1b146bcc622",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/original_sidebar.ex": "aae9dc077cb6bbaa8cf8c274e3819127c38071ef4d018b9bb76b2f72ce5a4a24",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/management_live/data.ex": "b87227694e8be080107c9ec97b7a6393f883529e7839575ec360c9f60d424c37",
+      "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/management_live/index.ex": "5f5c2dc5312da8bb0e06dca6c1f7fcdfdc7d342acf0de73ee04857324de624a9"
+    }
+  }
 }

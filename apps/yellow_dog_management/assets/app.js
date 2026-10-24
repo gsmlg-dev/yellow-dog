@@ -68,7 +68,7 @@ CustomHooks.NodeWorkflow = {
       }
     };
     this.onSelection = event => {
-      if (!event.target.matches("#server-selection-form-select, #netman-selection-form-select")) return;
+      if (!event.target.matches("#server-selection-form-select")) return;
       if (!this.allowLeave()) {
         event.target.value = event.target.querySelector("option[selected]")?.value || "";
         event.stopImmediatePropagation();

@@ -103,9 +103,7 @@ def browser(verify_only=False):
         assert {key: observed[key] for key in ["id", "actor", "operation"]} == {key: stored[key] for key in ["id", "actor", "operation"]}
         assert datetime.fromisoformat(observed["inserted_at"]).replace(tzinfo=None) == datetime.fromisoformat(stored["inserted_at"]).replace(tzinfo=None)
     assert evidence["worker_count"] == int(sql("SELECT count(*) FROM management_workers"))
-    assert evidence["netman_count"] == int(sql("SELECT count(*) FROM management_netmans"))
     assert evidence["zone_count"] == int(sql("SELECT count(*) FROM management_zones WHERE deleted_at IS NULL"))
-    assert evidence["profile_count"] == 13
     outcomes = json.loads(sql("SELECT COALESCE(json_agg(event ORDER BY event.inserted_at DESC, event.id DESC), '[]'::json) FROM (SELECT id, operation, CASE WHEN jsonb_typeof(result->'error')='object' AND result->'error' ? 'code' AND result->'error' ? 'message' THEN 'rejected' ELSE 'committed' END AS outcome, inserted_at FROM management_audits ORDER BY inserted_at DESC, id DESC LIMIT 100) event"))
     assert evidence["outcomes"] == [{key: event[key] for key in ["id", "outcome", "operation"]} for event in outcomes]
     return evidence
@@ -113,7 +111,7 @@ def browser(verify_only=False):
 
 try:
     start()
-    assert request("/workers") == [] and request("/netmans") == [] and request("/zones") == []
+    assert request("/workers") == [] and request("/zones") == []
     zone_name = "overview.test."
     request("/commands/create_zone", {"name": zone_name, "records": [
         {"name": zone_name, "type": "SOA", "ttl": 300, "data": {"mname": "ns.overview.test.", "rname": "hostmaster.overview.test.", "serial": 1, "refresh": 3600, "retry": 600, "expire": 86400, "minimum": 300}},

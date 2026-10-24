@@ -40,16 +40,13 @@ async function api(path, timeout = 5000) {
 }
 
 async function businessState() {
-  const [workers, zones, netmans, tasks] = await Promise.all([
-    api('/workers'), api('/zones'), api('/netmans'), api('/tasks'),
+  const [workers, zones, tasks] = await Promise.all([
+    api('/workers'), api('/zones'), api('/tasks'),
   ]);
   return {
     workers: await Promise.all(workers.map(worker => api(`/workers/${encodeURIComponent(worker.id)}`))),
     zones: await Promise.all(zones.map(zone => api(`/zones/${encodeURIComponent(zone.id)}`))),
     zoneVersions: await Promise.all(zones.map(zone => api(`/zones/${encodeURIComponent(zone.id)}/versions`))),
-    netmans,
-    netmanConfigs: await Promise.all(netmans.map(netman => api(`/netmans/${encodeURIComponent(netman.id)}/config`))),
-    netmanVersions: await Promise.all(netmans.map(netman => api(`/netmans/${encodeURIComponent(netman.id)}/versions`))),
     schedules: tasks.map(task => ({ key: task.key, enabled: task.enabled, cron: task.cron, revision: task.revision })),
   };
 }

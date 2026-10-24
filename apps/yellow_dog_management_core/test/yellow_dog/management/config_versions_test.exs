@@ -75,7 +75,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
   test "publishes immutable monotonic versions independently per concrete target" do
     register_server("srv-a")
     register_server("srv-b")
-    register_netman("netman-a")
 
     versions =
       1..8
@@ -94,9 +93,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert {:ok, %ConfigVersion{version: 1}} =
              ManagementCore.publish_server_config("srv-b", server_attrs(1))
 
-    assert {:ok, %ConfigVersion{version: 1, target_type: :netman}} =
-             ManagementCore.publish_netman_config("netman-a", netman_attrs())
-
     assert {:ok, first} = ManagementCore.get_server_config_version("srv-a", 1)
     assert {:ok, last} = ManagementCore.get_server_config_version("srv-a", 8)
     assert first.payload != last.payload
@@ -106,7 +102,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
   test "lists sanitized config lifecycle summaries in deterministic order after restart" do
     register_server("srv-list-a")
     register_server("srv-list-b")
-    register_netman("netman-list-a")
 
     assert {:ok, first} =
              ManagementCore.publish_server_config("srv-list-a", server_attrs(1))
@@ -117,16 +112,12 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert {:ok, _other_server} =
              ManagementCore.publish_server_config("srv-list-b", server_attrs(1))
 
-    assert {:ok, _netman} =
-             ManagementCore.publish_netman_config("netman-list-a", netman_attrs())
-
     assert {:ok, summaries} = ManagementCore.list_config_versions()
 
     assert Enum.map(summaries, &{&1.target_type, &1.target_id, &1.version}) == [
              {:server, "srv-list-a", 2},
              {:server, "srv-list-a", 1},
-             {:server, "srv-list-b", 1},
-             {:netman, "netman-list-a", 1}
+             {:server, "srv-list-b", 1}
            ]
 
     assert Enum.find(summaries, &(&1.digest == first.digest)) == %{
@@ -469,7 +460,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
   test "rejects malformed, noncanonical, non-ConfigState, and incoherent publications" do
     server_id = "srv-publication-validation"
     register_server(server_id)
-    register_netman(server_id)
     register_server("srv-publication-other")
     assert {:ok, desired} = publish_server(server_id)
 
@@ -505,7 +495,7 @@ defmodule YellowDog.Management.ConfigVersionsTest do
         1,
         encoded_acknowledgement(desired, :delivered)
       ),
-      :conflict
+      :invalid
     )
 
     assert_error(
@@ -770,65 +760,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert_error(ManagementCore.latest_desired_config(:server, server_id), :invalid)
   end
 
-  test "Netman ConfigState publications persist and replay from the v2 lifecycle" do
-    netman_id = "netman-publication-v2"
-    register_netman(netman_id)
-
-    assert {:ok, desired} = ManagementCore.publish_netman_config(netman_id, netman_attrs())
-    encoded = encoded_acknowledgement(desired, :delivered)
-
-    assert {:ok, receipt} =
-             ManagementCore.accept_config_state_publication(:netman, netman_id, 1, encoded)
-
-    assert receipt == %{
-             "target_type" => "netman",
-             "target_id" => netman_id,
-             "publication_sequence" => 1,
-             "state_revision" => 1
-           }
-
-    assert {:ok, delivered} =
-             ManagementCore.get_netman_config_version(netman_id, desired.version)
-
-    assert delivered.state == :delivered
-    assert delivered.state_revision == 1
-
-    assert {:ok, manifest_path} = StoragePath.netman_manifest(netman_id)
-    assert {:ok, manifest} = AtomicJson.read(manifest_path)
-    assert manifest["config_lifecycle"]["schema_version"] == 2
-    assert manifest["config_lifecycle"]["publication_high_water"] == 1
-
-    restart_application()
-
-    assert {:ok, ^receipt} =
-             ManagementCore.accept_config_state_publication(:netman, netman_id, 1, encoded)
-  end
-
-  test "Netman publication remains single-flight until prior receipts durably drain" do
-    netman_id = "netman-publication-single-flight"
-    register_netman(netman_id)
-
-    assert {:ok, first} = ManagementCore.publish_netman_config(netman_id, netman_attrs())
-
-    assert_error(ManagementCore.publish_netman_config(netman_id, netman_attrs()), :conflict)
-
-    restart_application()
-
-    assert {:ok, _receipt} = accept_publication(first, 1, :delivered)
-    assert {:ok, delivered} = ManagementCore.get_netman_config_version(netman_id, first.version)
-    assert {:ok, _receipt} = accept_publication(delivered, 2, :applying)
-    assert {:ok, applying} = ManagementCore.get_netman_config_version(netman_id, first.version)
-
-    assert {:ok, _receipt} =
-             accept_publication(applying, 3, :applied, applied_revision: @digest_a)
-
-    assert {:ok, second} = ManagementCore.publish_netman_config(netman_id, netman_attrs())
-    assert second.version == first.version + 1
-    assert second.previous_version == first.version
-    assert second.previous_revision == @digest_a
-    assert {:ok, ^second} = ManagementCore.latest_desired_config(:netman, netman_id)
-  end
-
   test "clean v1 lifecycle upgrades on first accepted publication and preserves desired history" do
     server_id = "srv-publication-v1-upgrade"
     register_server(server_id)
@@ -1004,7 +935,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     assert {:ok, applying} = transition(delivered, :applying, 1)
 
     mismatches = [
-      [target_type: :netman],
       [target_id: "other"],
       [operation: "server.settings.apply"],
       [version: applying.version + 1],
@@ -1975,27 +1905,9 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       :invalid
     )
 
-    assert_error(
-      ConfigVersion.new(
-        :netman,
-        "netman-profile-new",
-        1,
-        "netman.resolved.config.update",
-        "dns_only",
-        netman_attrs().payload,
-        nil,
-        now,
-        nil
-      ),
-      :invalid
-    )
-
     cases = [
       {:server, "srv-profile-tampered", "vm", &register_server/1, &publish_server/1,
-       &ManagementCore.get_server_config_version/2, &server_attrs/1},
-      {:netman, "netman-profile-tampered", "dns_only", &register_netman/1,
-       fn id -> ManagementCore.publish_netman_config(id, netman_attrs()) end,
-       &ManagementCore.get_netman_config_version/2, fn _index -> netman_attrs() end}
+       &ManagementCore.get_server_config_version/2, &server_attrs/1}
     ]
 
     for {target_type, target_id, invalid_profile, register, publish, get, attrs} <- cases do
@@ -2031,7 +1943,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
       publish_result =
         case target_type do
           :server -> ManagementCore.publish_server_config(target_id, attrs.(2))
-          :netman -> ManagementCore.publish_netman_config(target_id, attrs.(2))
         end
 
       assert_error(publish_result, :invalid)
@@ -2044,12 +1955,6 @@ defmodule YellowDog.Management.ConfigVersionsTest do
              ManagementCore.register_server(%{id: "srv-profile-custom", profile: :custom})
 
     assert {:ok, %ConfigVersion{profile: "custom"}} = publish_server("srv-profile-custom")
-
-    assert {:ok, _netman} =
-             ManagementCore.register_netman(%{id: "netman-profile-custom", profile: :custom})
-
-    assert {:ok, %ConfigVersion{profile: "custom"}} =
-             ManagementCore.publish_netman_config("netman-profile-custom", netman_attrs())
   end
 
   test "current active desired previous pair must match the applied pointer", %{
@@ -2465,13 +2370,8 @@ defmodule YellowDog.Management.ConfigVersionsTest do
   defp target_version_path(:server, target_id, version, digest),
     do: StoragePath.server_version(target_id, version, digest)
 
-  defp target_version_path(:netman, target_id, version, digest),
-    do: StoragePath.netman_version(target_id, version, digest)
-
   defp target_manifest_path(:server, target_id), do: StoragePath.server_manifest(target_id)
-  defp target_manifest_path(:netman, target_id), do: StoragePath.netman_manifest(target_id)
   defp target_directory(:server), do: "servers"
-  defp target_directory(:netman), do: "netmans"
 
   defp rollback_phase_failure(server_id) do
     register_server(server_id)
@@ -2627,20 +2527,8 @@ defmodule YellowDog.Management.ConfigVersionsTest do
     Enum.into(overrides, defaults)
   end
 
-  defp netman_attrs do
-    %{
-      operation: "netman.resolved.config.update",
-      payload: %{"upstreams" => ["192.0.2.53"], "search_domains" => ["example.com"]},
-      expected_revision: nil
-    }
-  end
-
   defp register_server(id) do
     assert {:ok, _server} = ManagementCore.register_server(%{id: id, profile: :dns_only})
-  end
-
-  defp register_netman(id) do
-    assert {:ok, _netman} = ManagementCore.register_netman(%{id: id, profile: :vm})
   end
 
   defp assert_error(result, code) do

@@ -12,7 +12,6 @@ defmodule YellowDog.Console.ManagementLive.Index do
   @tabs [
     {:overview, "Overview", "/management"},
     {:servers, "Servers", "/management/servers"},
-    {:netman, "Netman", "/management/netman"},
     {:profiles, "Profiles", "/management/profiles"},
     {:config, "Config", "/management/config"},
     {:events, "Events", "/management/events"}
@@ -25,9 +24,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
        page_title: "Management Overview",
        tabs: @tabs,
        servers: [],
-       netmans: [],
        server_profiles: [],
-       netman_profiles: [],
        events: [],
        config_versions: [],
        command_outcomes: []
@@ -40,9 +37,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
      assign(socket,
        page_title: page_title(socket.assigns.live_action),
        servers: Data.list_servers(),
-       netmans: Data.list_netmans(),
        server_profiles: Data.list_server_profiles(),
-       netman_profiles: Data.list_netman_profiles(),
        events: Data.list_events(),
        config_versions: Data.list_config_versions(),
        command_outcomes: Data.list_command_outcomes()
@@ -58,7 +53,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
           <div>
             <h1 class="text-3xl font-bold">{@page_title}</h1>
             <p class="text-sm text-on-surface-variant mt-1">
-              Manage YellowDog servers, Netman instances, profiles, configuration, and events.
+              Manage YellowDog servers, profiles, configuration, and events.
             </p>
           </div>
         </div>
@@ -68,17 +63,13 @@ defmodule YellowDog.Console.ManagementLive.Index do
         <.overview
           :if={@live_action == :overview}
           servers={@servers}
-          netmans={@netmans}
           server_profiles={@server_profiles}
-          netman_profiles={@netman_profiles}
           events={@events}
         />
         <.servers :if={@live_action == :servers} servers={@servers} />
-        <.netman :if={@live_action == :netman} netmans={@netmans} />
         <.profiles
           :if={@live_action == :profiles}
           server_profiles={@server_profiles}
-          netman_profiles={@netman_profiles}
         />
         <.config :if={@live_action == :config} versions={@config_versions} />
         <.events
@@ -93,7 +84,6 @@ defmodule YellowDog.Console.ManagementLive.Index do
 
   defp page_title(:overview), do: "Management Overview"
   defp page_title(:servers), do: "Management Servers"
-  defp page_title(:netman), do: "Management Netman"
   defp page_title(:profiles), do: "Management Profiles"
   defp page_title(:config), do: "Management Config"
   defp page_title(:events), do: "Management Events"
@@ -115,7 +105,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
   defp overview(assigns) do
     assigns =
       assign(assigns,
-        profile_count: length(assigns.server_profiles) + length(assigns.netman_profiles),
+        profile_count: length(assigns.server_profiles),
         recent_events: Enum.take(assigns.events, 5)
       )
 
@@ -126,14 +116,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
           <.stat title="Servers" value={to_string(length(@servers))} desc="Registered service nodes" />
         </.card>
         <.card class="bg-surface">
-          <.stat
-            title="Netman Instances"
-            value={to_string(length(@netmans))}
-            desc="Managed network agents"
-          />
-        </.card>
-        <.card class="bg-surface">
-          <.stat title="Profiles" value={to_string(@profile_count)} desc="Server and Netman profiles" />
+          <.stat title="Profiles" value={to_string(@profile_count)} desc="Server profiles" />
         </.card>
         <.card class="bg-surface">
           <.stat
@@ -169,25 +152,6 @@ defmodule YellowDog.Console.ManagementLive.Index do
     """
   end
 
-  defp netman(assigns) do
-    ~H"""
-    <.card title="Netman Instances">
-      <.empty_state :if={@netmans == []} text="No Netman instances registered yet." />
-      <.table id="management-netmans" rows={@netmans}>
-        <:col :let={netman} label="ID">
-          <.target_link target_type={:netman} target_id={raw_field(netman, :id)} />
-        </:col>
-        <:col :let={netman} label="Name">{field(netman, :name)}</:col>
-        <:col :let={netman} label="Profile">{field(netman, :profile)}</:col>
-        <:col :let={netman} label="Status"><.status value={raw_field(netman, :status)} /></:col>
-        <:col :let={netman} label="Features">{list_field(netman, :features)}</:col>
-        <:col :let={netman} label="Apply Mode">{field(netman, :apply_mode)}</:col>
-        <:col :let={netman} label="Last Seen">{field(netman, :last_seen_at)}</:col>
-      </.table>
-    </.card>
-    """
-  end
-
   defp profiles(assigns) do
     ~H"""
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -195,11 +159,6 @@ defmodule YellowDog.Console.ManagementLive.Index do
         title="Server Profiles"
         id="management-server-profiles"
         profiles={@server_profiles}
-      />
-      <.profile_table
-        title="Netman Profiles"
-        id="management-netman-profiles"
-        profiles={@netman_profiles}
       />
     </div>
     """
@@ -249,8 +208,7 @@ defmodule YellowDog.Console.ManagementLive.Index do
   defp events(assigns) do
     assigns =
       assign(assigns,
-        server_events: filter_events(assigns.events, :server),
-        netman_events: filter_events(assigns.events, :netman)
+        server_events: filter_events(assigns.events, :server)
       )
 
     ~H"""
@@ -258,10 +216,6 @@ defmodule YellowDog.Console.ManagementLive.Index do
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <.card title="Server Events">
           <.events_list events={@server_events} empty_text="No server events recorded yet." />
-        </.card>
-
-        <.card title="Netman Events">
-          <.events_list events={@netman_events} empty_text="No Netman events recorded yet." />
         </.card>
       </div>
 
@@ -383,12 +337,6 @@ defmodule YellowDog.Console.ManagementLive.Index do
   defp direct_target_path(target_type, target_id) when target_type in [:server, "server"] do
     if ServicePaths.valid_server_id?(target_id),
       do: ServicePaths.server_path(target_id, :dashboard),
-      else: nil
-  end
-
-  defp direct_target_path(target_type, target_id) when target_type in [:netman, "netman"] do
-    if ServicePaths.valid_netman_id?(target_id),
-      do: ServicePaths.netman_path(target_id, :overview),
       else: nil
   end
 

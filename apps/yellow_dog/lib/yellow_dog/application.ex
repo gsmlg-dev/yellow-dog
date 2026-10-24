@@ -79,7 +79,7 @@ defmodule YellowDog.Application do
       YellowDog.ServiceHeartbeat
     ]
 
-    # Note: YellowDog.Console and YellowDog.Netman have their own Application
+    # Note: YellowDog.Console has its own Application
     # modules and start separately as OTP applications
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
@@ -486,7 +486,6 @@ defmodule YellowDog.Application do
 
     config
     |> maybe_adjust_for_test()
-    |> maybe_adjust_for_platform()
   end
 
   defp load_boot_config do
@@ -574,30 +573,6 @@ defmodule YellowDog.Application do
     defp maybe_adjust_for_test(config), do: config
   end
 
-  # Adjust configuration based on the runtime platform and execution mode.
-  # When :netman_enabled is explicitly set to false (e.g. on macOS via runtime.exs),
-  # force core.netman to false so the service is never started.
-  # If :netman_only is set to true, disable all server-side services.
-  defp maybe_adjust_for_platform(config) do
-    config =
-      if Application.get_env(:yellow_dog, :netman_enabled) == false do
-        put_in(config, ["core", "netman"], false)
-      else
-        config
-      end
-
-    if Application.get_env(:yellow_dog, :netman_only, false) == true do
-      config
-      |> put_in(["core", "dns"], false)
-      |> put_in(["core", "mdns"], false)
-      |> put_in(["core", "dhcpv4"], false)
-      |> put_in(["core", "dhcpv6"], false)
-      |> put_in(["core", "netboot"], false)
-    else
-      config
-    end
-  end
-
   # Logs configuration information
   defp log_config_info(config) do
     config_file_path = Application.get_env(:yellow_dog, :config_file_path)
@@ -620,15 +595,13 @@ defmodule YellowDog.Application do
     case Map.get(config, "core") do
       %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
         netboot = Map.get(core, "netboot", false)
-        netman = Map.get(core, "netman", true)
 
         services = [
           {"DNS", dns},
           {"mDNS", mdns},
           {"DHCPv4", dhcpv4},
           {"DHCPv6", dhcpv6},
-          {"Netboot", netboot},
-          {"NetMan", netman}
+          {"Netboot", netboot}
         ]
 
         enabled_services = for({name, true} <- services, do: name)

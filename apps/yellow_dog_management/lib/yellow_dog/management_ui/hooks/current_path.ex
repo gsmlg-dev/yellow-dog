@@ -46,26 +46,22 @@ defmodule YellowDog.ManagementUI.Hooks.CurrentPath do
   Returns the concrete service selection encoded in a scoped console path.
 
   Selector paths have no selection. Scoped paths identify the requested
-  Server or Netman, without reserving identifiers for old route aliases.
+  Worker, without reserving identifiers for old route aliases.
   """
-  @spec selection_for_path(String.t() | nil) :: {:server | :netman, String.t()} | nil
+  @spec selection_for_path(String.t() | nil) :: {:server, String.t()} | nil
   def selection_for_path(path) when is_binary(path) do
     case path |> URI.parse() |> Map.get(:path, "/") |> String.split("/", trim: true) do
       ["server", segment | _rest] -> decode_selection(:server, segment)
-      ["netman", segment | _rest] -> decode_selection(:netman, segment)
       _segments -> nil
     end
   end
 
   def selection_for_path(_path), do: nil
 
-  defp decode_selection(target_type, segment) do
+  defp decode_selection(:server, segment) do
     id = URI.decode(segment)
 
-    case target_type do
-      :server -> if ServicePaths.valid_server_id?(id), do: {:server, id}
-      :netman -> if ServicePaths.valid_netman_id?(id), do: {:netman, id}
-    end
+    if ServicePaths.valid_server_id?(id), do: {:server, id}
   rescue
     ArgumentError -> nil
   end

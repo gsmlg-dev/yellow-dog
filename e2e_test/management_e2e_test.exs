@@ -7,7 +7,6 @@ defmodule E2ETest.ManagementE2ETest do
   alias E2ETest.ServerRuntime
   alias YellowDog.Management.ConfigVersion
   alias YellowDog.ManagementCore
-  alias YellowDog.NetmanAgent.CommandJournal, as: NetmanCommandJournal
   alias YellowDog.ServerAgent.CommandJournal, as: ServerCommandJournal
   alias YellowDog.ServerAgent.ConfigApplier
   alias YellowDog.ServerAgent.ConfigApplyStore
@@ -18,9 +17,7 @@ defmodule E2ETest.ManagementE2ETest do
   @moduletag :tmp_dir
 
   @server_id "e2e-server"
-  @netman_id "e2e-netman"
   @server_capabilities ["runtime.capabilities", "runtime.services"]
-  @netman_capabilities ["runtime.capabilities"]
   @command_key "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
   setup %{tmp_dir: tmp_dir} do
@@ -46,7 +43,6 @@ defmodule E2ETest.ManagementE2ETest do
     end)
 
     server_agent = start_server_agent(Path.join(tmp_dir, "server-agent"))
-    netman_journal = start_netman_journal(Path.join(tmp_dir, "netman-agent"))
 
     transport =
       start_child(:management_transport, ManagementTransport,
@@ -56,11 +52,6 @@ defmodule E2ETest.ManagementE2ETest do
           command_journal: server_agent.command_journal,
           config_applier: server_agent.config_applier,
           config_apply_store: server_agent.config_apply_store
-        },
-        netman: %{
-          id: @netman_id,
-          capabilities: @netman_capabilities,
-          command_journal: netman_journal
         }
       )
 
@@ -70,9 +61,6 @@ defmodule E2ETest.ManagementE2ETest do
   test "Management remains source of truth across agent delivery, replay, rollback, and restart" do
     assert {:ok, %{id: @server_id, status: :registered}} =
              ManagementCore.register_server(%{id: @server_id, profile: :dns_only})
-
-    assert {:ok, %{id: @netman_id, status: :registered}} =
-             ManagementCore.register_netman(%{id: @netman_id, profile: :vm})
 
     assert {:ok, %{draft_revision: 1, document: first_document}} =
              ManagementCore.put_server_config(@server_id, 0, server_document("first"))
@@ -87,11 +75,7 @@ defmodule E2ETest.ManagementE2ETest do
     assert {:ok, %{pending_config: %ConfigVersion{version: 1}}} =
              ManagementTransport.connect(:server, @server_id)
 
-    assert {:ok, %{pending_config: nil}} =
-             ManagementTransport.connect(:netman, @netman_id)
-
     assert {:ok, %{status: :online}} = ManagementCore.get_server(@server_id)
-    assert {:ok, %{status: :online}} = ManagementCore.get_netman(@netman_id)
 
     assert {:ok, %ConfigVersion{state: :applied, applied_revision: first_revision}} =
              ManagementCore.get_server_config_version(@server_id, first_desired.version)
@@ -103,8 +87,6 @@ defmodule E2ETest.ManagementE2ETest do
       "capabilities" => ["runtime.capabilities", "runtime.services"]
     }
 
-    netman_result = %{"capabilities" => ["runtime.capabilities"]}
-
     assert {:ok, ^server_result} =
              ManagementCore.query_server(
                @server_id,
@@ -113,32 +95,17 @@ defmodule E2ETest.ManagementE2ETest do
                %{}
              )
 
-    assert {:ok, ^netman_result} =
-             ManagementCore.query_netman(
-               @netman_id,
-               "runtime.capabilities",
-               "netman.runtime.capabilities.get",
-               %{}
-             )
-
-    [server_query, netman_query] =
+    [server_query] =
       ManagementTransport.requests()
       |> Enum.filter(&(&1.kind == :query))
 
     assert server_query.envelope.target_type == :server
     assert server_query.envelope.target_id == @server_id
-    assert netman_query.envelope.target_type == :netman
-    assert netman_query.envelope.target_id == @netman_id
-    refute server_query.envelope.request_id == netman_query.envelope.request_id
 
     assert {:ok, %{request_id: server_request_id, value: ^server_result}} =
              ManagementCore.get_server_snapshot(@server_id, "runtime.capabilities")
 
-    assert {:ok, %{request_id: netman_request_id, value: ^netman_result}} =
-             ManagementCore.get_netman_snapshot(@netman_id, "runtime.capabilities")
-
     assert server_request_id == server_query.envelope.request_id
-    assert netman_request_id == netman_query.envelope.request_id
 
     command_args = [
       @server_id,
@@ -181,7 +148,6 @@ defmodule E2ETest.ManagementE2ETest do
     restart_management()
 
     assert {:ok, %{id: @server_id, status: :online}} = ManagementCore.get_server(@server_id)
-    assert {:ok, %{id: @netman_id, status: :online}} = ManagementCore.get_netman(@netman_id)
 
     assert {:ok, %{draft_revision: 2, document: persisted_document}} =
              ManagementCore.get_server_config(@server_id)
@@ -190,9 +156,6 @@ defmodule E2ETest.ManagementE2ETest do
 
     assert {:ok, %{request_id: ^server_request_id, value: ^server_result}} =
              ManagementCore.get_server_snapshot(@server_id, "runtime.capabilities")
-
-    assert {:ok, %{request_id: ^netman_request_id, value: ^netman_result}} =
-             ManagementCore.get_netman_snapshot(@netman_id, "runtime.capabilities")
 
     assert {:ok, %ConfigVersion{state: :applied, applied_revision: ^first_revision}} =
              ManagementCore.get_server_config_version(@server_id, 1)
@@ -252,17 +215,6 @@ defmodule E2ETest.ManagementE2ETest do
       config_applier: config_applier,
       config_apply_store: config_apply_store
     }
-  end
-
-  defp start_netman_journal(data_dir) do
-    File.mkdir_p!(data_dir)
-
-    start_child(:netman_command_journal, NetmanCommandJournal,
-      name: unique_name(:netman_command_journal),
-      data_dir: data_dir,
-      netman_id: @netman_id,
-      capabilities: @netman_capabilities
-    )
   end
 
   defp start_child(id, module, opts) do

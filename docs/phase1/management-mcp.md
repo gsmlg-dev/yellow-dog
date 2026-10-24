@@ -61,7 +61,7 @@ Save a Zone draft, confirm a version, replace the complete assignment snapshot a
 
 IP synchronization returns a persistent queue job ID. Query that job for completion separately. Catalog reads return metadata and `verification: unknown`, not filesystem byte verification or Worker loading. A failed replacement keeps the previous selected artifact. DNS Views, ACLs and IP artifacts remain excluded from current Worker target exports. A prepared target still reports actual runtime state as unknown.
 
-Credential issuance/rotation, Worker registration, enrollment policy, Netman configuration, arbitrary task/provider URLs, filesystem resources, raw Domain command dispatch and Worker runtime controls are excluded. Use the existing UI registration workflow for logical Workers. No generic dispatcher tool bypasses this finite contract.
+Credential issuance/rotation, Worker registration, enrollment policy, arbitrary task/provider URLs, filesystem resources, raw Domain command dispatch and Worker runtime controls are excluded. Use the existing UI registration workflow for logical Workers. No generic dispatcher tool bypasses this finite contract.
 
 ## Reproducible integration gate
 

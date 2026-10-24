@@ -4,7 +4,7 @@ import Config
 # you can enable the server option below.
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   adapter: Gaoxy.PhoenixAdapter,
-  websocket_paths: ["/live/websocket", "/netman/ws/websocket", "/server/ws/websocket"],
+  websocket_paths: ["/live/websocket", "/server/ws/websocket"],
   http: [
     ip: {127, 0, 0, 1},
     port: 4002,
@@ -79,19 +79,6 @@ config :yellow_dog_console, :swoosh_api_client, false
 # Resolved: disable in test (requires privileged port 53)
 config :yellow_dog_resolved, enabled: false
 
-# YellowDog Netman: use writable, run-scoped temp paths in tests.
-netman_profile_dir =
-  Path.join(
-    System.tmp_dir!(),
-    "yellow_dog_netman_profiles_#{System.unique_integer([:positive, :monotonic])}"
-  )
-
-config :yellow_dog_netman,
-  socket_path: "/tmp/yellow_dog_netman_test.sock",
-  profile_dir: netman_profile_dir,
-  netlink_backend: :mock
-
-config :yellow_dog_console, :netman_socket_token, "test-token"
 config :yellow_dog_console, :management_token, "test-management-token"
 config :yellow_dog_console, :operator_api_token, "test-operator-token"
 

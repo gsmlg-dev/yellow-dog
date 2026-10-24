@@ -97,12 +97,10 @@ defmodule YellowDog.Config.Manager do
   @local_machine_tokens MapSet.new(~w(
                            path file filename filepath directory dir root chroot socket pid ets table handle
                          ))
-  @agent_roots MapSet.new(
-                 ~w(yellow_dog_server_agent yellow_dog_netman_agent server_agent netman_agent)
-               )
-  @local_identity_keys MapSet.new(~w(hostname machine_id node_id node_name server_id netman_id))
-  @identity_roots ~w(agent global server netman yellow_dog_server yellow_dog_netman)
-  @identity_fields ~w(hostname id identity machine_id name netman_id node_id node_name server_id)
+  @agent_roots MapSet.new(~w(yellow_dog_server_agent server_agent))
+  @local_identity_keys MapSet.new(~w(hostname machine_id node_id node_name server_id))
+  @identity_roots ~w(agent global server yellow_dog_server)
+  @identity_fields ~w(hostname id identity machine_id name node_id node_name server_id)
 
   @type revision :: String.t()
   @opaque recovery_token :: binary()

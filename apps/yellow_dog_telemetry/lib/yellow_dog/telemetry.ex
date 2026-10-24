@@ -553,7 +553,12 @@ defmodule YellowDog.Telemetry do
       # Build full metadata
       full_metadata =
         metadata
-        |> Map.merge(%{app: app, module: caller.module, function: caller.function, line: caller.line})
+        |> Map.merge(%{
+          app: app,
+          module: caller.module,
+          function: caller.function,
+          line: caller.line
+        })
         |> maybe_add_span_context()
 
       # Emit telemetry event
@@ -823,7 +828,6 @@ defmodule YellowDog.Telemetry do
       String.starts_with?(module_str, "Elixir.YellowDog.Dhcpv6") -> :yellow_dog_dhcpv6
       String.starts_with?(module_str, "Elixir.YellowDog.Mdns") -> :yellow_dog_mdns
       String.starts_with?(module_str, "Elixir.YellowDog.Console") -> :yellow_dog_console
-      String.starts_with?(module_str, "Elixir.YellowDog.Netman") -> :yellow_dog_netman
       String.starts_with?(module_str, "Elixir.YellowDog") -> :yellow_dog
       true -> :unknown
     end

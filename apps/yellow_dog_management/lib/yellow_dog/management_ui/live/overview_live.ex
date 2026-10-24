@@ -16,7 +16,6 @@ defmodule YellowDog.ManagementUI.OverviewLive do
   defp load_overview(socket) do
     assign(socket,
       workers: Domain.list_workers(),
-      netmans: Domain.list_netmans(),
       zones: Domain.list_zones(),
       recent_events:
         if(YellowDog.Management.Access.authorize(socket.assigns.caller, "audit:read") == :ok,
@@ -55,13 +54,6 @@ defmodule YellowDog.ManagementUI.OverviewLive do
             <p class="text-3xl font-bold" id="management-zone-count">{length(@zones)}</p>
             <p class="mb-4 text-on-surface-variant">Shared drafts and immutable resource versions.</p>
             <.link navigate="/management/zones" class="btn btn-primary">Manage DNS Zones</.link>
-          </.card>
-          <.card title="Registered Netman Nodes">
-            <p class="text-3xl font-bold" id="management-netman-count">{length(@netmans)}</p>
-            <p class="mb-4 text-on-surface-variant">
-              Logical network managers; actual runtime state remains unknown.
-            </p>
-            <.link navigate="/management/netman" class="btn btn-primary">Manage Netman</.link>
           </.card>
           <.card title="Recent Events">
             <p class="text-3xl font-bold" id="management-recent-event-count">
