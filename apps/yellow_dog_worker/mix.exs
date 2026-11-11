@@ -14,11 +14,11 @@ defmodule YellowDog.Worker.MixProject do
       releases: [yellow_dog_worker: [include_executables_for: [:unix]]],
       deps: [
         {:yellow_dog_config_spec, in_umbrella: true},
-        {:abyss, "~> 0.9.0"},
+        {:abyss, "~> 1.0.0-rc.13"},
         {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
-        {:mint, "~> 1.10"},
-        {:toml, "== 0.7.0"},
+        {:http_fetch, "~> 1.0.0-rc.13"},
+        {:toml, "~> 0.7"},
         {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       ]
     ]

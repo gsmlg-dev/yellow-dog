@@ -1,6 +1,6 @@
 defmodule YellowDog.ManagementUI.Redesign.ToolsLive.MacLive do
   @moduledoc """
-  MAC address vendor lookup tool using the `gsmlg_mac` hex package.
+  MAC address vendor lookup tool using the `yellow_dog_mac` hex package.
   """
   use YellowDog.ManagementUI.Redesign, :live_view
 
@@ -78,7 +78,7 @@ defmodule YellowDog.ManagementUI.Redesign.ToolsLive.MacLive do
     if mac == "" do
       {:noreply, assign(socket, result: nil, error: nil, query: "")}
     else
-      case GSMLG.MAC.lookup_vendor(mac) do
+      case YellowDog.MAC.lookup_vendor(mac) do
         {:ok, short_name, full_name} ->
           {:noreply,
            assign(socket,

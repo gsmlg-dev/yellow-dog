@@ -26,8 +26,8 @@ defmodule YellowDog.DhcpClient.MixProject do
     [
       {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
-      {:abyss, "~> 0.9.0"},
-      {:abyss_raw, "~> 0.9.0", only: :prod},
+      {:abyss, "~> 1.0.0-rc.13"},
+      {:abyss_raw, "~> 1.0.0-rc.13", only: :prod},
       {:ex_dhcp, in_umbrella: true},
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},

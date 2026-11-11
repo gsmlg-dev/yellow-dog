@@ -7,7 +7,14 @@ defmodule YellowDog.Umbrella.MixProject do
       version: "1.2.12",
       start_permanent: Mix.env() == :prod,
       description: "Independent YellowDog Management and TOML-driven Worker",
-      apps: [:yellow_dog_config_spec, :yellow_dog_management, :yellow_dog_worker, :ex_dns],
+      apps: [
+        :yellow_dog_config_spec,
+        :yellow_dog_management,
+        :yellow_dog_worker,
+        :ex_dns,
+        :yellow_dog_whois,
+        :yellow_dog_mac
+      ],
       releases: [
         yellow_dog_management: [
           include_executables_for: [:unix],

@@ -1,7 +1,7 @@
 defmodule YellowDog.Management.MacDatabase do
   use GenServer
 
-  alias GSMLG.MAC.{Compiler, Parser, Vendor}
+  alias YellowDog.MAC.{Compiler, Parser, Vendor}
 
   @max_file_bytes 64 * 1024 * 1024
   @read_chunk_bytes 1024 * 1024

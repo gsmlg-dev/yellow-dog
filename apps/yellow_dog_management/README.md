@@ -230,7 +230,7 @@ snapshot. Task identity and download source are server-controlled. The bundled
 synthetic MaxMind fixture is for tests only, never a development database default.
 
 `/system/mac-database` uses a Management-owned runtime OUI snapshot, shared with
-`/tool/mac`. The default source is the actual compiled `gsmlg_mac` dataset. Set
+`/tool/mac`. The default source is the actual compiled `yellow_dog_mac` dataset. Set
 `YELLOW_DOG_MANAGEMENT_MAC_DATABASE_PATH` before startup to load a local Wireshark
 `manuf.txt` artifact instead. The page displays source, entry count, load time and
 file information, supports configured-file reload and test lookups, and retains

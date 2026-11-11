@@ -1,6 +1,6 @@
 defmodule YellowDog.ManagementUI.ToolsLive.WhoisLive do
   @moduledoc """
-  Whois lookup tool using the `gsmlg_whois` hex package.
+  Whois lookup tool using the `yellow_dog_whois` hex package.
   """
   use YellowDog.ManagementUI, :live_view
 
@@ -99,7 +99,7 @@ defmodule YellowDog.ManagementUI.ToolsLive.WhoisLive do
        |> push_event("reset_form", %{id: "whois-lookup-form"})}
     else
       lookup =
-        Application.get_env(:yellow_dog_management, :whois_lookup, &GSMLG.Whois.lookup_raw/1)
+        Application.get_env(:yellow_dog_management, :whois_lookup, &YellowDog.Whois.lookup_raw/1)
 
       token = make_ref()
 

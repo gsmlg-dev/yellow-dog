@@ -209,7 +209,7 @@ defmodule YellowDog.ManagementUI.MacDatabaseLive do
               <span class={source_class(@db_info.source)}>{source_label(@db_info.source)}</span> {if @db_info.source ==
                                                                                                        :compiled,
                                                                                                      do:
-                                                                                                       "Built-in (gsmlg_mac)",
+                                                                                                       "Built-in (yellow_dog_mac)",
                                                                                                      else:
                                                                                                        "Configured manuf file"}
             </dd>

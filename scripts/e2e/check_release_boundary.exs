@@ -1,12 +1,16 @@
 defmodule YellowDog.ReleaseBoundary do
+  @management_library_apps [:yellow_dog_whois, :yellow_dog_mac]
   @optional_native_apps [:abyss_raw, :abyss_dhcp_socket, :rustler]
   @retired_http_apps [:bandit, :thousand_island]
-  @http_apps [:gaoxy_http, :gaoxy, :hell, :websock_adapter, :websock, :plug, :hpax]
-  @http_server_apps @http_apps -- [:hpax]
+  @http_apps [:gaoxy_http, :gaoxy, :hell, :websock_adapter, :websock, :plug]
+  @http_server_apps @http_apps
 
   def check!(root) do
     products = [:yellow_dog_management, :yellow_dog_worker]
-    expected_apps = products ++ [:yellow_dog_config_spec, :ex_dns]
+
+    expected_apps =
+      products ++ [:yellow_dog_config_spec, :ex_dns, :yellow_dog_whois, :yellow_dog_mac]
+
     config = Mix.Project.config()
 
     lock = Mix.Dep.Lock.read()
@@ -109,8 +113,10 @@ defmodule YellowDog.ReleaseBoundary do
             &(&1 == :yellow_dog or String.starts_with?(Atom.to_string(&1), "yellow_dog_"))
           )
 
+        libraries = if product == :yellow_dog_management, do: @management_library_apps, else: []
+
         require!(
-          Enum.sort(business_apps) == Enum.sort([product, :yellow_dog_config_spec]),
+          Enum.sort(business_apps) == Enum.sort([product, :yellow_dog_config_spec | libraries]),
           "#{product}: another business runtime is packaged"
         )
 

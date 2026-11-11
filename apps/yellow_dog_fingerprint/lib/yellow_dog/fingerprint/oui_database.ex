@@ -3,7 +3,7 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
   Runtime-reloadable OUI (MAC manufacturer) database.
 
   Stores the lookup table in ETS for fast concurrent reads.
-  On startup, loads the compiled `gsmlg_mac` table as the baseline.
+  On startup, loads the compiled `yellow_dog_mac` table as the baseline.
   Supports downloading the latest Wireshark `manuf.txt` and hot-reloading
   the lookup table without restarting the application.
   """
@@ -179,8 +179,8 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
   defp load_from_file(path) do
     case File.read(path) do
       {:ok, contents} ->
-        table = GSMLG.MAC.Compiler.build_lookup_table(contents)
-        count = GSMLG.MAC.Compiler.count_entries(table)
+        table = YellowDog.MAC.Compiler.build_lookup_table(contents)
+        count = YellowDog.MAC.Compiler.count_entries(table)
         :ets.insert(@table_name, {:lookup_table, table})
         {:ok, count}
 
@@ -190,8 +190,8 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
   end
 
   defp load_compiled_fallback do
-    table = GSMLG.MAC.Vendor.mac_lookup_table()
-    count = GSMLG.MAC.Compiler.count_entries(table)
+    table = YellowDog.MAC.Vendor.mac_lookup_table()
+    count = YellowDog.MAC.Compiler.count_entries(table)
     :ets.insert(@table_name, {:lookup_table, table})
     {:compiled, count}
   end
@@ -246,9 +246,9 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
   defp validate_manuf_file(path) do
     case File.read(path) do
       {:ok, contents} ->
-        table = GSMLG.MAC.Compiler.build_lookup_table(contents)
+        table = YellowDog.MAC.Compiler.build_lookup_table(contents)
 
-        if GSMLG.MAC.Compiler.count_entries(table) > 0 do
+        if YellowDog.MAC.Compiler.count_entries(table) > 0 do
           :ok
         else
           {:error, :empty_database}
@@ -261,7 +261,7 @@ defmodule YellowDog.Fingerprint.OuiDatabase do
 
   defp do_lookup(table, mac) do
     {key, bit_mac} =
-      case GSMLG.MAC.Parser.to_bitstring(mac) do
+      case YellowDog.MAC.Parser.to_bitstring(mac) do
         <<key::bits-size(24), _::bits-size(24)>> = bit_mac -> {key, bit_mac}
         _ -> {nil, nil}
       end

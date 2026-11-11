@@ -37,10 +37,11 @@ defmodule DHCP.MixProject do
 
   defp deps() do
     [
-      {:machete, ">= 0.0.0", only: [:dev, :test]},
+      # machete 0.3.13 fails to compile on Elixir 1.18 (regex stored in module attribute)
+      {:machete, "~> 0.3.12 and < 0.3.13", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
 

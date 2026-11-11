@@ -38,10 +38,10 @@ defmodule GeoIpDb.MixProject do
   defp deps() do
     [
       {:mmdb2_decoder, "~> 3.0"},
-      {:http_fetch, "~> 0.8"},
+      {:http_fetch, "~> 1.0.0-rc.13"},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:credo, "~> 1.7.13", only: [:dev, :test], runtime: false},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
 

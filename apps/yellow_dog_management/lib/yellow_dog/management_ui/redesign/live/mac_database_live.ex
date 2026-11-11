@@ -167,7 +167,7 @@ defmodule YellowDog.ManagementUI.Redesign.MacDatabaseLive do
   defp source_badge(%{source: :compiled} = assigns) do
     ~H"""
     <span class="badge badge-info badge-sm">Compiled</span>
-    <span>Built-in (gsmlg_mac)</span>
+    <span>Built-in (yellow_dog_mac)</span>
     """
   end
 

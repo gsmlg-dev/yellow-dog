@@ -296,46 +296,115 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
     end
 
-    test "ws_closed message notifies parent and stops (RFC 6455 §5.5.1)" do
+    test "partial upgrade, heartbeat control frames and server close use the WebSocket transport" do
       parent = self()
+      {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      {:ok, port} = :inet.port(listener)
 
-      # Start a TCP listener that accepts the connection but never sends anything.
-      # This lets Mint.HTTP.connect succeed so the :connect handler can return
-      # {:noreply, state} — leaving the GenServer alive and reachable for our
-      # subsequent {:ws_closed} injection.
-      {:ok, listen_sock} =
-        :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      server =
+        Task.async(fn ->
+          {:ok, socket} = :gen_tcp.accept(listener, 2_000)
+          request = receive_headers(socket, "")
+          [_, key] = Regex.run(~r/sec-websocket-key: ([^\r]+)\r/i, request)
 
-      {:ok, port} = :inet.port(listen_sock)
+          accept =
+            :crypto.hash(:sha, key <> "258EAFA5-E914-47DA-95CA-C5AB0DC85B11") |> Base.encode64()
 
-      # Accept in a task so the TCP handshake completes (Mint needs it).
-      Task.start(fn ->
-        {:ok, _client_sock} = :gen_tcp.accept(listen_sock, 5000)
-        # Never send data — client waits for the HTTP 101 indefinitely.
-        Process.sleep(:infinity)
+          :ok =
+            :gen_tcp.send(socket, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n")
+
+          send(parent, :partial_upgrade)
+
+          receive do
+            :finish_upgrade -> :ok
+          after
+            2_000 -> flunk("upgrade continuation was not requested")
+          end
+
+          :ok =
+            :gen_tcp.send(
+              socket,
+              "Connection: Upgrade\r\nSec-WebSocket-Accept: #{accept}\r\n\r\n"
+            )
+
+          {1, connected} = receive_frame(socket)
+          send(parent, {:connected_message, Jason.decode!(connected)})
+          {9, ""} = receive_frame(socket)
+          :ok = :gen_tcp.send(socket, <<0x8A, 0, 0x89, 5, "probe">>)
+          {10, "probe"} = receive_frame(socket)
+          send(parent, :heartbeat_exchanged)
+
+          receive do
+            :close -> :ok
+          after
+            2_000 -> flunk("close was not requested")
+          end
+
+          :ok = :gen_tcp.send(socket, <<0x88, 2, 1000::16>>)
+          assert {8, <<1000::16>>} = receive_frame(socket)
+          :gen_tcp.close(socket)
+        end)
+
+      on_exit(fn ->
+        :gen_tcp.close(listener)
+        if Process.alive?(server.pid), do: Process.exit(server.pid, :kill)
       end)
 
       {:ok, pid} =
         GenServer.start_link(Client, %{
           endpoint: "ws://127.0.0.1:#{port}/ws",
           instance_id: :crypto.strong_rand_bytes(16),
-          parent: parent,
+          parent: self(),
           ws_config: %{}
         })
 
-      ref = Process.monitor(pid)
+      monitor = Process.monitor(pid)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
 
-      # Give :connect enough time to fire and succeed (TCP connect + HTTP upgrade
-      # request sent). The GenServer is now waiting for a {:tcp, _, _} response.
-      Process.sleep(50)
+      assert_receive :partial_upgrade, 2_000
+      refute :sys.get_state(pid).connected
+      send(server.pid, :finish_upgrade)
+      assert_receive {:connected_message, %{"type" => "connected"}}, 2_000
+      previous_pong = System.monotonic_time(:millisecond) - 1_000
+      :sys.replace_state(pid, &%{&1 | last_pong_at: previous_pong})
+      send(pid, :heartbeat)
+      assert_receive :heartbeat_exchanged, 2_000
+      assert :sys.get_state(pid).last_pong_at > previous_pong
+      send(server.pid, :close)
+      assert_receive {:management_down, {:ws_closed, {1000, ""}}}, 2_000
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 2_000
+      Task.await(server, 2_000)
+    end
 
-      # Inject the server-initiated close — should trigger handle_disconnect.
-      send(pid, {:ws_closed, :normal})
+    defp receive_headers(socket, bytes) do
+      if String.contains?(bytes, "\r\n\r\n") do
+        bytes
+      else
+        {:ok, chunk} = :gen_tcp.recv(socket, 0, 2_000)
+        receive_headers(socket, bytes <> chunk)
+      end
+    end
 
-      assert_receive {:management_down, {:ws_closed, :normal}}, 2000
-      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    defp receive_frame(socket) do
+      {:ok, <<_fin::1, _rsv::3, opcode::4, 1::1, length::7>>} = :gen_tcp.recv(socket, 2, 2_000)
 
-      :gen_tcp.close(listen_sock)
+      length =
+        if length == 126 do
+          {:ok, <<size::16>>} = :gen_tcp.recv(socket, 2, 2_000)
+          size
+        else
+          length
+        end
+
+      {:ok, mask} = :gen_tcp.recv(socket, 4, 2_000)
+      payload = if length == 0, do: <<>>, else: elem(:gen_tcp.recv(socket, length, 2_000), 1)
+
+      unmasked =
+        for {byte, index} <- Enum.with_index(:binary.bin_to_list(payload)), into: <<>> do
+          <<Bitwise.bxor(byte, :binary.at(mask, rem(index, 4)))>>
+        end
+
+      {opcode, unmasked}
     end
   end
 
@@ -348,9 +417,15 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       {:ok, port} = :inet.port(listen_sock)
 
-      Task.start(fn ->
-        {:ok, _sock} = :gen_tcp.accept(listen_sock, 5000)
-        Process.sleep(:infinity)
+      {:ok, server} =
+        Task.start(fn ->
+          {:ok, _sock} = :gen_tcp.accept(listen_sock, 5000)
+          Process.sleep(:infinity)
+        end)
+
+      on_exit(fn ->
+        :gen_tcp.close(listen_sock)
+        if Process.alive?(server), do: Process.exit(server, :kill)
       end)
 
       {:ok, pid} =

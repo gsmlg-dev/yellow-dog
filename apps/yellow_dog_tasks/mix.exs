@@ -35,7 +35,7 @@ defmodule YellowDog.Tasks.MixProject do
       {:yellow_dog_config, in_umbrella: true},
       {:yellow_dog_dns, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
-      {:tz, "~> 0.28.2"},
+      {:tz, "~> 0.28"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

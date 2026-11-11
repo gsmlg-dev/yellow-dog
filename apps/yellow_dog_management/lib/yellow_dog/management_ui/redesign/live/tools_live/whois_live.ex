@@ -1,6 +1,6 @@
 defmodule YellowDog.ManagementUI.Redesign.ToolsLive.WhoisLive do
   @moduledoc """
-  Whois lookup tool using the `gsmlg_whois` hex package.
+  Whois lookup tool using the `yellow_dog_whois` hex package.
   """
   use YellowDog.ManagementUI.Redesign, :live_view
 
@@ -84,7 +84,7 @@ defmodule YellowDog.ManagementUI.Redesign.ToolsLive.WhoisLive do
     if query == "" do
       {:noreply, assign(socket, results: nil, error: nil, query: "", loading: false)}
     else
-      task = Task.async(fn -> GSMLG.Whois.lookup_raw(query) end)
+      task = Task.async(fn -> YellowDog.Whois.lookup_raw(query) end)
 
       {:noreply,
        assign(socket, query: query, loading: true, error: nil, results: nil, task_ref: task.ref)}

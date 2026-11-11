@@ -5,44 +5,34 @@ defmodule YellowDog.Worker.ConnectionHTTP do
 
   def connect(options, report) do
     uri = URI.parse(options[:management_url])
-    scheme = if uri.scheme == "https", do: :https, else: :http
-    transport = [timeout: 3_000, send_timeout: @timeout, send_timeout_close: true]
-    transport = if scheme == :https, do: transport ++ tls(options), else: transport
 
-    with true <- YellowDog.Worker.Bootstrap.valid_url?(options[:management_url]),
-         {:ok, conn} <-
-           Mint.HTTP.connect(scheme, uri.host, uri.port,
-             mode: :passive,
-             protocols: [:http1],
-             transport_opts: transport
-           ) do
-      try do
-        headers = [
+    with true <- YellowDog.Worker.Bootstrap.valid_url?(options[:management_url]) do
+      fetch_options = [
+        method: "POST",
+        headers: [
           {"authorization", "Bearer " <> options[:token]},
           {"content-type", "application/json"},
           {"connection", "close"}
-        ]
+        ],
+        body: Jason.encode!(report),
+        redirect: :error,
+        http_version: :http1,
+        stream_response: true,
+        timeout: @timeout,
+        connect_timeout: 3_000
+      ]
 
-        case Mint.HTTP.request(
-               conn,
-               "POST",
-               "/api/worker/connect",
-               headers,
-               Jason.encode!(report)
-             ) do
-          {:ok, conn, ref} ->
-            receive_response(
-              conn,
-              ref,
-              %{code: nil, chunks: [], size: 0, done: false},
-              System.monotonic_time(:millisecond) + @timeout
-            )
+      fetch_options =
+        if uri.scheme == "https", do: [{:ssl, tls(options)} | fetch_options], else: fetch_options
 
-          _ ->
-            {:error, :request_failed}
-        end
-      after
-        Mint.HTTP.close(conn)
+      url = URI.to_string(%{uri | path: "/api/worker/connect", query: nil, fragment: nil})
+
+      case url |> HTTP.fetch(fetch_options) |> HTTP.Promise.await() do
+        %HTTP.Response{status: status} = response ->
+          read_body(response, status, System.monotonic_time(:millisecond) + @timeout)
+
+        _ ->
+          {:error, :request_failed}
       end
     else
       _ -> {:error, :request_failed}
@@ -53,56 +43,78 @@ defmodule YellowDog.Worker.ConnectionHTTP do
     _, _ -> {:error, :request_failed}
   end
 
-  defp receive_response(conn, ref, response, deadline) do
+  defp read_body(response, status, deadline) do
+    oversized? =
+      case HTTP.Response.get_header(response, "content-length") do
+        nil ->
+          false
+
+        length ->
+          case Integer.parse(length) do
+            {size, ""} -> size > @max_bytes
+            _ -> false
+          end
+      end
+
+    case HTTP.Response.stream_pid(response) do
+      _ when oversized? ->
+        {:error, :response_too_large}
+
+      nil ->
+        body = HTTP.Response.read_all(response)
+
+        if byte_size(body) > @max_bytes,
+          do: {:error, :response_too_large},
+          else: finish(%{code: status, chunks: [body]})
+
+      stream ->
+        monitor = Process.monitor(stream)
+        send(stream, {:read_chunk, self(), :ack})
+
+        try do
+          collect(stream, monitor, deadline, status, %{size: 0, chunks: []})
+        after
+          Process.demonitor(monitor, [:flush])
+        end
+    end
+  end
+
+  defp collect(stream, monitor, deadline, status, acc) do
     remaining = max(0, deadline - System.monotonic_time(:millisecond))
 
-    case Mint.HTTP.recv(conn, 0, remaining) do
-      {:ok, conn, events} ->
-        case collect(events, ref, response) do
-          {:ok, %{done: true} = response} -> finish(response)
-          {:ok, response} -> receive_response(conn, ref, response, deadline)
-          error -> error
-        end
+    receive do
+      {:stream_chunk, ^stream, chunk, ack_ref} ->
+        send(stream, {:stream_chunk_ack, ack_ref})
+        append(stream, monitor, deadline, status, acc, chunk)
 
-      _ ->
+      {:stream_chunk, ^stream, chunk} ->
+        append(stream, monitor, deadline, status, acc, chunk)
+
+      {:stream_end, ^stream} ->
+        finish(%{code: status, chunks: acc.chunks})
+
+      {:stream_error, ^stream, _reason} ->
+        {:error, :request_failed}
+
+      {:DOWN, ^monitor, :process, ^stream, _reason} ->
+        {:error, :request_failed}
+    after
+      remaining ->
+        HTTP.Stream.stop(stream, :timeout)
         {:error, :request_failed}
     end
   end
 
-  defp collect(events, ref, response) do
-    Enum.reduce_while(events, {:ok, response}, fn
-      {:status, ^ref, code}, {:ok, current} ->
-        {:cont, {:ok, %{current | code: code}}}
+  defp append(stream, monitor, deadline, status, acc, chunk) do
+    size = acc.size + byte_size(chunk)
 
-      {:headers, ^ref, headers}, {:ok, current} ->
-        oversized? =
-          Enum.any?(headers, fn
-            {"content-length", length} ->
-              case Integer.parse(length) do
-                {size, ""} -> size > @max_bytes
-                _ -> false
-              end
-
-            _ ->
-              false
-          end)
-
-        if oversized?, do: {:halt, {:error, :response_too_large}}, else: {:cont, {:ok, current}}
-
-      {:data, ^ref, bytes}, {:ok, current} ->
-        if current.size + byte_size(bytes) > @max_bytes do
-          {:halt, {:error, :response_too_large}}
-        else
-          chunks = if current.code == 200, do: [bytes | current.chunks], else: current.chunks
-          {:cont, {:ok, %{current | size: current.size + byte_size(bytes), chunks: chunks}}}
-        end
-
-      {:done, ^ref}, {:ok, current} ->
-        {:cont, {:ok, %{current | done: true}}}
-
-      _, _ ->
-        {:halt, {:error, :request_failed}}
-    end)
+    if size > @max_bytes do
+      HTTP.Stream.stop(stream, :response_too_large)
+      {:error, :response_too_large}
+    else
+      chunks = if status == 200, do: [chunk | acc.chunks], else: acc.chunks
+      collect(stream, monitor, deadline, status, %{size: size, chunks: chunks})
+    end
   end
 
   defp finish(%{code: 200, chunks: chunks}) do
@@ -132,10 +144,6 @@ defmodule YellowDog.Worker.ConnectionHTTP do
         []
       end
 
-    [
-      verify: :verify_peer,
-      depth: 10,
-      customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
-    ] ++ ca ++ client
+    [verify: :verify_peer] ++ ca ++ client
   end
 end

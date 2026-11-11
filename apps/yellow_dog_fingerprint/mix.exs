@@ -34,8 +34,8 @@ defmodule YellowDog.Fingerprint.MixProject do
       {:yellow_dog, in_umbrella: true},
       {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
-      {:gsmlg_mac, "~> 0.1"},
-      {:http_fetch, "~> 0.8"},
+      {:yellow_dog_mac, in_umbrella: true},
+      {:http_fetch, "~> 1.0.0-rc.13"},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

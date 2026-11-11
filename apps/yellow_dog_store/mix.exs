@@ -31,9 +31,9 @@ defmodule YellowDog.Store.MixProject do
       # External dependencies
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
-      {:concord, "~> 2.1"},
+      {:concord, "~> 3.1"},
       # WORKAROUND(upstream): gsmlg-dev/concord#75
-      {:ex_turso, "~> 0.3.0", override: true},
+      {:ex_turso, "~> 3.1", override: true},
       {:gen_stage, "~> 1.2"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
 

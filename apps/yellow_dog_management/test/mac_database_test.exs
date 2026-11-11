@@ -20,19 +20,19 @@ defmodule YellowDog.Management.MacDatabaseTest do
     %{directory: directory, path: Path.join(directory, "manuf.txt")}
   end
 
-  test "default is the actual compiled GSMLG table and reload requires a configured artifact" do
+  test "default is the actual compiled MAC table and reload requires a configured artifact" do
     server = start_database()
     info = MacDatabase.info(server)
     assert info.source == :compiled
     assert info.status == :loaded
-    assert info.entry_count == GSMLG.MAC.Vendor.entries()
+    assert info.entry_count == YellowDog.MAC.Vendor.entries()
     assert info.entry_count > 0
     assert %DateTime{} = info.loaded_at
     assert info.path == nil && !info.configured
     assert info.file_info == nil && info.last_error == nil
 
     assert MacDatabase.lookup("00:00:0A:BB:28:FC", server) ==
-             GSMLG.MAC.Vendor.lookup("00:00:0A:BB:28:FC")
+             YellowDog.MAC.Vendor.lookup("00:00:0A:BB:28:FC")
 
     assert {:error, :unconfigured} = MacDatabase.reload(server)
   end
@@ -50,7 +50,7 @@ defmodule YellowDog.Management.MacDatabaseTest do
 
       assert is_bitstring(prefix)
       address = <<prefix::bits, 0::size(48 - bit_size(prefix))>> |> Base.encode16()
-      assert {:ok, _short, _full} = expected = GSMLG.MAC.Vendor.lookup(address)
+      assert {:ok, _short, _full} = expected = YellowDog.MAC.Vendor.lookup(address)
       assert MacDatabase.lookup(address, server) == expected
     end
   end
@@ -66,13 +66,15 @@ defmodule YellowDog.Management.MacDatabaseTest do
     assert {:error, :invalid_mac} = MacDatabase.lookup("bad mac", server)
   end
 
-  test "packaged GSMLG manuf artifact reload preserves source parity" do
-    path = Application.app_dir(:gsmlg_mac, "priv/manuf.txt")
+  test "packaged manuf artifact reload preserves source parity" do
+    path = Application.app_dir(:yellow_dog_mac, "priv/manuf.txt")
 
     records = packaged_records() |> Enum.uniq_by(&elem(&1, 0))
     expected_count = length(records)
-    assert expected_count == GSMLG.MAC.Vendor.entries()
-    assert expected_count == GSMLG.MAC.Compiler.count_entries(GSMLG.MAC.Vendor.mac_lookup_table())
+    assert expected_count == YellowDog.MAC.Vendor.entries()
+
+    assert expected_count ==
+             YellowDog.MAC.Compiler.count_entries(YellowDog.MAC.Vendor.mac_lookup_table())
 
     server = start_database(path: path)
     # Allow the packaged source the loader's 30-second budget plus observation time.
@@ -84,7 +86,7 @@ defmodule YellowDog.Management.MacDatabaseTest do
 
     for {prefix, _vendor} <- records do
       address = <<prefix::bits, 0::size(48 - bit_size(prefix))>> |> Base.encode16()
-      assert {:ok, _short, _full} = expected = GSMLG.MAC.Vendor.lookup(address)
+      assert {:ok, _short, _full} = expected = YellowDog.MAC.Vendor.lookup(address)
       assert MacDatabase.lookup(address, server) == expected
     end
   end
@@ -192,7 +194,7 @@ defmodule YellowDog.Management.MacDatabaseTest do
              file_info: nil
            } = info
 
-    assert info.entry_count == GSMLG.MAC.Vendor.entries()
+    assert info.entry_count == YellowDog.MAC.Vendor.entries()
     assert {:ok, _short, _full} = MacDatabase.lookup("00:00:0A:BB:28:FC", server)
     File.write!(path, @artifact)
     assert :ok = MacDatabase.reload(server)
@@ -296,10 +298,10 @@ defmodule YellowDog.Management.MacDatabaseTest do
     do: start_supervised!({MacDatabase, Keyword.put(opts, :name, nil)})
 
   defp packaged_records do
-    :gsmlg_mac
+    :yellow_dog_mac
     |> Application.app_dir("priv/manuf.txt")
     |> File.read!()
-    |> GSMLG.MAC.Parser.parse_file()
+    |> YellowDog.MAC.Parser.parse_file()
   end
 
   defp wait_loaded(server, attempts \\ 200)

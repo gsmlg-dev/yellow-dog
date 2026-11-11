@@ -2,7 +2,7 @@ defmodule YellowDog.Fingerprint.OUI do
   @moduledoc """
   OUI (Organizationally Unique Identifier) vendor lookup.
 
-  Delegates to `GSMLG.MAC.lookup_vendor/1` for manufacturer resolution.
+  Delegates to `YellowDog.MAC.lookup_vendor/1` for manufacturer resolution.
   Provides a consistent API for the fingerprint app.
   """
 
@@ -56,7 +56,7 @@ defmodule YellowDog.Fingerprint.OUI do
   defp lookup_runtime_or_compiled(mac) do
     case YellowDog.Fingerprint.OuiDatabase.lookup(mac) do
       {:ok, short, full} -> {:ok, short, full}
-      :error -> GSMLG.MAC.lookup_vendor(mac)
+      :error -> YellowDog.MAC.lookup_vendor(mac)
     end
   end
 

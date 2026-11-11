@@ -42,21 +42,21 @@ defmodule YellowDog.Console.MixProject do
     service_runtime? = Mix.env() == :test
 
     [
-      {:phoenix, "~> 1.8.1"},
+      {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_live_view, "~> 1.0"},
-      {:phoenix_live_dashboard, "~> 0.9.0"},
-      {:duskmoon_bundler_runtime, "~> 9.7"},
-      {:duskmoon_bundler, "~> 9.7", runtime: Mix.env() in [:dev, :test]},
-      {:phoenix_duskmoon, "~> 9.7"},
+      {:phoenix_live_dashboard, "~> 0.9"},
+      {:duskmoon_bundler_runtime, "~> 10.1"},
+      {:duskmoon_bundler, "~> 10.1", runtime: Mix.env() in [:dev, :test]},
+      {:phoenix_duskmoon, "~> 10.1"},
       {:hackney, "~> 4.0"},
-      {:req, "~> 0.5"},
+      {:req, "~> 0.7"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.2.0"},
-      {:gaoxy_http, "~> 0.8.0"},
-      {:websock_adapter, "~> 0.8.0", hex: :gaoxy_websock_adapter, override: true},
+      {:dns_cluster, "~> 0.2"},
+      {:gaoxy_http, "~> 0.15"},
+      {:websock_adapter, "~> 0.15", hex: :gaoxy_websock_adapter, override: true},
       {:gettext, "~> 1.0"},
       {:ecto, "~> 3.12"},
       {:phoenix_ecto, "~> 4.6"},
@@ -78,14 +78,14 @@ defmodule YellowDog.Console.MixProject do
       {:yellow_dog_identity, in_umbrella: true, runtime: service_runtime?},
       {:yellow_dog_dns_provider, in_umbrella: true, runtime: service_runtime?},
       {:yellow_dog_dhcp_client, in_umbrella: true, runtime: service_runtime?},
-      {:gsmlg_whois, "~> 0.5"},
-      {:gsmlg_mac, "~> 0.1"},
+      {:yellow_dog_whois, in_umbrella: true},
+      {:yellow_dog_mac, in_umbrella: true},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:floki, "~> 0.38", only: :test},
-      {:lazy_html, ">= 0.1.0"}
+      {:lazy_html, "~> 0.1"}
     ]
   end
 

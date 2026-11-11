@@ -33,7 +33,7 @@ defmodule YellowDog.Mdns.MixProject do
 
       # External dependencies for mDNS functionality
       {:ex_dns, in_umbrella: true},
-      {:abyss, "~> 0.9.0"},
+      {:abyss, "~> 1.0.0-rc.13"},
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
       {:jason, "~> 1.4"},

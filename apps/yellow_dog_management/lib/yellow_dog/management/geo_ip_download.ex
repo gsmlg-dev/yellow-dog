@@ -157,7 +157,14 @@ defmodule YellowDog.Management.GeoIPDownload do
 
   defp own_download(caller, reference, config) do
     caller_monitor = Process.monitor(caller)
-    config = Map.put(config, :deadline, System.monotonic_time(:millisecond) + config.timeout)
+    signal = HTTP.AbortController.new()
+
+    config =
+      Map.merge(config, %{
+        deadline: System.monotonic_time(:millisecond) + config.timeout,
+        signal: signal
+      })
+
     suffix = Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
     compressed = Path.join(config.directory, ".geo-ip-#{suffix}.gz.tmp")
     inflated = Path.join(config.directory, ".geo-ip-#{suffix}.mmdb.tmp")
@@ -179,6 +186,7 @@ defmodule YellowDog.Management.GeoIPDownload do
     result = await_download(worker, worker_monitor, caller_monitor)
 
     Process.cancel_timer(timer)
+    HTTP.AbortController.abort(signal)
     shutdown_monitor = Process.monitor(worker)
     Process.exit(worker, :kill)
 
@@ -202,62 +210,9 @@ defmodule YellowDog.Management.GeoIPDownload do
     end
   end
 
-  defp connect(config) do
-    transport = [
-      timeout: remaining_timeout(config),
-      buffer: @chunk_size,
-      recbuf: @chunk_size
-    ]
-
-    {scheme, transport} =
-      case config.uri.scheme do
-        "https" ->
-          {:https,
-           transport ++
-             [
-               verify: :verify_peer,
-               cacerts: :public_key.cacerts_get(),
-               server_name_indication: String.to_charlist(config.uri.host),
-               customize_hostname_check: [
-                 match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-               ]
-             ]}
-
-        "http" ->
-          {:http, transport}
-      end
-
-    case Mint.HTTP.connect(scheme, config.uri.host, config.uri.port,
-           mode: :passive,
-           protocols: [:http1],
-           max_header_list_size: 32_768,
-           transport_opts: transport
-         ) do
-      {:ok, connection} -> connection
-      {:error, reason} -> fail(http_failure(reason))
-    end
-  end
-
   defp download(compressed, inflated, config) do
     with_file(compressed, [:write, :binary, :raw, :exclusive], fn output ->
-      connection = connect(config)
-
-      try do
-        path = if config.uri.path in [nil, ""], do: "/", else: config.uri.path
-        path = if is_nil(config.uri.query), do: path, else: path <> "?" <> config.uri.query
-        headers = [{"accept-encoding", "identity"}, {"connection", "close"}]
-
-        case Mint.HTTP.request(connection, "GET", path, headers, nil) do
-          {:ok, connection, request} ->
-            state = %{status: nil, headers: false, expected: nil, size: 0, done: false}
-            stream(connection, request, output, config, state)
-
-          {:error, _connection, reason} ->
-            fail(http_failure(reason))
-        end
-      after
-        Mint.HTTP.close(connection)
-      end
+      stream_download(output, config)
     end)
 
     {digest, size} = inflate(compressed, inflated, config.decompressed_limit)
@@ -270,51 +225,93 @@ defmodule YellowDog.Management.GeoIPDownload do
     {:ok, %{path: path, digest: digest, size: size, source_url: config.url, metadata: metadata}}
   end
 
-  defp stream(connection, request, output, config, state) do
-    case Mint.HTTP.recv(connection, 0, remaining_timeout(config)) do
-      {:ok, connection, responses} ->
-        state = consume(responses, request, output, config.compressed_limit, state)
+  defp stream_download(output, config) do
+    options = [
+      headers: [{"accept-encoding", "identity"}, {"connection", "close"}],
+      decode_body: false,
+      redirect: :manual,
+      signal: config.signal,
+      http_version: :http1,
+      stream_response: true,
+      timeout: remaining_timeout(config),
+      connect_timeout: remaining_timeout(config)
+    ]
 
-        if state.done do
-          finish_transfer(state)
-        else
-          stream(connection, request, output, config, state)
-        end
+    case config.url |> HTTP.fetch(options) |> HTTP.Promise.await() do
+      %HTTP.Response{status: 200} = response ->
+        expected =
+          response.headers |> HTTP.Headers.to_list() |> check_headers(config.compressed_limit)
 
-      {:error, _connection, reason, _responses} ->
+        stream = HTTP.Response.stream_pid(response)
+        state = %{size: 0, expected: expected}
+
+        state =
+          if is_pid(stream),
+            do: stream_chunks(stream, output, config, state),
+            else: buffered_chunk(response.body, output, config.compressed_limit, state)
+
+        finish_transfer(state)
+
+      %HTTP.Response{status: status} ->
+        fail({:http_status, status})
+
+      {:error, reason} ->
         fail(http_failure(reason))
     end
   end
 
-  defp consume(responses, request, output, limit, state) do
-    Enum.reduce(responses, state, fn response, state ->
-      case response do
-        {:status, ^request, 200} when is_nil(state.status) ->
-          %{state | status: 200}
+  defp buffered_chunk(body, output, limit, state) do
+    body = IO.iodata_to_binary(body || "")
+    write_chunk(output, body, limit, state)
+  end
 
-        {:status, ^request, status} ->
-          fail({:http_status, status})
+  defp stream_chunks(stream, output, config, state) do
+    monitor = Process.monitor(stream)
+    send(stream, {:read_chunk, self(), :ack})
 
-        {:headers, ^request, headers} when state.status == 200 and not state.headers ->
-          %{state | headers: true, expected: check_headers(headers, limit)}
+    try do
+      receive_chunks(stream, monitor, output, config, state)
+    after
+      Process.demonitor(monitor, [:flush])
+    end
+  end
 
-        {:headers, ^request, headers} when state.headers ->
-          check_headers(headers, limit)
-          state
+  defp receive_chunks(stream, monitor, output, config, state) do
+    receive do
+      {:stream_chunk, ^stream, chunk, ack_ref} ->
+        state = write_chunk(output, chunk, config.compressed_limit, state, stream)
+        send(stream, {:stream_chunk_ack, ack_ref})
+        receive_chunks(stream, monitor, output, config, state)
 
-        {:data, ^request, chunk} when state.status == 200 and state.headers and not state.done ->
-          next_size = state.size + byte_size(chunk)
-          if next_size > limit, do: fail(:compressed_limit)
-          ensure_ok(:file.write(output, chunk))
-          %{state | size: next_size}
+      {:stream_chunk, ^stream, chunk} ->
+        state = write_chunk(output, chunk, config.compressed_limit, state, stream)
+        receive_chunks(stream, monitor, output, config, state)
 
-        {:done, ^request} when state.status == 200 and state.headers ->
-          %{state | done: true}
+      {:stream_end, ^stream} ->
+        state
 
-        _ ->
-          fail(:invalid_http_response)
-      end
-    end)
+      {:stream_error, ^stream, reason} ->
+        fail(http_failure(reason))
+
+      {:DOWN, ^monitor, :process, ^stream, reason} ->
+        fail(http_failure({:stream_down, reason}))
+    after
+      remaining_timeout(config) ->
+        HTTP.Stream.stop(stream, :timeout)
+        fail(:timeout)
+    end
+  end
+
+  defp write_chunk(output, chunk, limit, state, stream \\ nil) do
+    next_size = state.size + byte_size(chunk)
+
+    if next_size > limit do
+      if stream, do: HTTP.Stream.stop(stream, :compressed_limit)
+      fail(:compressed_limit)
+    end
+
+    ensure_ok(:file.write(output, chunk))
+    %{state | size: next_size}
   end
 
   defp finish_transfer(state) do
@@ -330,8 +327,8 @@ defmodule YellowDog.Management.GeoIPDownload do
     remaining
   end
 
-  defp http_failure(%Mint.TransportError{reason: :timeout}), do: :timeout
   defp http_failure(:timeout), do: :timeout
+  defp http_failure({:stream_down, :timeout}), do: :timeout
   defp http_failure(reason), do: {:http_error, reason}
 
   defp check_headers(headers, limit) do

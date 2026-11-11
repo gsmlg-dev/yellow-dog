@@ -18,7 +18,7 @@ source outside the supported root build.
 The supported root umbrella releases are `yellow_dog_management` (Ecto/PostgreSQL,
 UI/API, logical targets and TOML exports) and `yellow_dog_worker` (local TOML-only
 service execution and authoritative DNS). Both use one pure `yellow_dog_config_spec`.
-The root build selects these products plus `ex_dns`. Worker depends on Hex `abyss` (`~> 0.9.0`); legacy apps remain
+The root build selects these products plus `ex_dns`. Worker depends on Hex `abyss` (`~> 1.0.0-rc.13`); legacy apps remain
 reusable source outside the supported product build. Mixed releases/startup aliases
 are retired. Phase 1 excludes live Agents, delivery and connected reconciliation.
 
@@ -29,8 +29,10 @@ are retired. Phase 1 excludes live Agents, delivery and connected reconciliation
 | **YellowDog.Management** | `apps/yellow_dog_management/` | PostgreSQL domain, UI/API without built-in login on port 4270, immutable target export; no service execution |
 | **YellowDog.Worker** | `apps/yellow_dog_worker/` | Local TOML bootstrap, durable snapshots and authoritative DNS; no PostgreSQL/UI/Agent |
 | **YellowDog.ConfigSpec** | `apps/yellow_dog_config_spec/` | Shared pure WorkerPlan validation, normalization, digests, TOML codec and fixtures |
-| **Abyss** | Hex `:abyss` (`~> 0.9.0`) | Worker UDP/server infrastructure; optional native DHCP is a separate upstream package |
+| **Abyss** | Hex `:abyss` (`~> 1.0.0-rc.13`) | Worker UDP/server infrastructure; optional native DHCP is a separate upstream package |
 | **ExDns** | `apps/ex_dns/` | Worker DNS protocol library (messages, zones, records) |
+| **YellowDog.Whois** | `apps/yellow_dog_whois/` | Whois/RDAP lookup (ETS cache only), copied from Hex `gsmlg_whois` 0.5.2 and ported to `http_fetch` 1.0 |
+| **YellowDog.MAC** | `apps/yellow_dog_mac/` | Compile-time MAC/OUI vendor lookup, copied from Hex `gsmlg_mac` 0.1.2 |
 
 The following applications are legacy source, excluded from the supported root build:
 

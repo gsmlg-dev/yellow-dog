@@ -1,6 +1,6 @@
 defmodule YellowDog.ManagementUI.ToolsLive.MacLive do
   @moduledoc """
-  MAC address vendor lookup tool using the `gsmlg_mac` hex package.
+  MAC address vendor lookup tool using the `yellow_dog_mac` hex package.
   """
   use YellowDog.ManagementUI, :live_view
 

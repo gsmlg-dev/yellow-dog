@@ -39,7 +39,7 @@ defmodule YellowDog.Management.MacDatabaseLiveTest do
              "#mac-database-status[data-source='compiled'][data-status='loaded']"
            )
 
-    assert html =~ "Built-in (gsmlg_mac)"
+    assert html =~ "Built-in (yellow_dog_mac)"
     assert html =~ to_string(info.entry_count)
     assert info.entry_count > 0
     assert has_element?(view, "#mac-database-reload[disabled]")
