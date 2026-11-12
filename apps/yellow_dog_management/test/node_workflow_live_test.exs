@@ -52,6 +52,77 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
     assert response.resp_body =~ "5302"
   end
 
+  test "DNS recursion, forward zones and allow list flow into the previewed plan", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/server/node-a/services/new")
+    assert has_element?(view, "input[type='checkbox'][name='service[recursion]'][checked]")
+    assert html =~ "10.10.10.0/24"
+    assert has_element?(view, "input[name='service[listen_address]'][value='0.0.0.0']")
+    assert has_element?(view, "input[name='service[port]'][value='53']")
+
+    policy = %{
+      "recursion" => "true",
+      "allow_query" => "10.10.10.5/24\n\n 192.168.0.0/16 ",
+      "forward_zones" => "corp.test 10.0.0.2 10.0.0.3:5353\n. [2001:db8::1]:5353"
+    }
+
+    submit(view, "save_service", %{
+      "service" => Map.merge(fields("dns-main", "running", "53"), policy)
+    })
+
+    assert {:ok, preview} = Domain.preview_target("node-a")
+    assert [%{"config" => config}] = preview["plan"]["services"]
+    assert config["recursion"] == true
+    assert config["allow_query"] == ["10.10.10.0/24", "192.168.0.0/16"]
+
+    assert [
+             %{"name" => ".", "forwarders" => [%{"address" => "2001:db8::1", "port" => 5353}]},
+             %{
+               "name" => "corp.test.",
+               "forwarders" => [
+                 %{"address" => "10.0.0.2", "port" => 53},
+                 %{"address" => "10.0.0.3", "port" => 5353}
+               ]
+             }
+           ] = config["forward_zones"]
+
+    [service] = Domain.list_services("node-a")
+    {:ok, edit, _} = live(build_conn(), "/server/node-a/services/#{service["id"]}/edit")
+    assert has_element?(edit, "input[type='checkbox'][name='service[recursion]'][checked]")
+    assert has_element?(edit, "textarea[name='service[allow_query]']", "192.168.0.0/16")
+
+    assert has_element?(
+             edit,
+             "textarea[name='service[forward_zones]']",
+             "corp.test 10.0.0.2:53 10.0.0.3:5353"
+           )
+
+    assert has_element?(edit, "textarea[name='service[forward_zones]']", "[2001:db8::1]:5353")
+  end
+
+  test "invalid CIDR and forward zone lines show field errors and save nothing", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/server/node-a/services/new")
+
+    html =
+      submit(view, "save_service", %{
+        "service" => Map.put(fields("dns-bad", "stopped", "53"), "allow_query", "10.0.0.0/33")
+      })
+
+    assert html =~ "invalid_cidr"
+    assert Domain.list_services("node-a") == []
+
+    html =
+      submit(view, "save_service", %{
+        "service" =>
+          fields("dns-bad", "stopped", "53")
+          |> Map.put("allow_query", "10.0.0.0/8")
+          |> Map.put("forward_zones", "corp.test\nlab.test 10.0.0.1:notaport")
+      })
+
+    assert html =~ "line 1"
+    assert html =~ "line 2"
+    assert Domain.list_services("node-a") == []
+  end
+
   test "duplicate create and forged instance rename retain fields and cannot overwrite", %{
     conn: conn,
     worker: worker

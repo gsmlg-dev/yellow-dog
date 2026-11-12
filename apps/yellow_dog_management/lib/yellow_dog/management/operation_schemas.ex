@@ -51,20 +51,24 @@ defmodule YellowDog.Management.OperationSchemas do
       "config" => dns_config()
     }
 
-  def dns_config, do: object(%{"listen_address" => ipv4(), "port" => integer(1, 65_535)})
+  # Service input and stored config: the policy keys are optional and default in the WorkerPlan.
+  def dns_config, do: object(dns_config_props(false), ~w(listen_address port))
 
-  # Normalized WorkerPlan DNS config always carries the policy keys (Task 8 adds editing).
-  def plan_dns_config do
-    forwarder = object(%{"address" => text(45), "port" => integer(1, 65_535)})
+  # Normalized WorkerPlan DNS config always carries the policy keys.
+  def plan_dns_config, do: object(dns_config_props(true))
 
-    object(%{
+  defp dns_config_props(port_required?) do
+    forwarder_props = %{"address" => text(45), "port" => integer(1, 65_535)}
+    forwarder = object(forwarder_props, if(port_required?, do: nil, else: ["address"]))
+
+    %{
       "listen_address" => ipv4(),
       "port" => integer(1, 65_535),
       "recursion" => boolean(),
       "allow_query" => array(text(49), 128),
       "forward_zones" =>
         array(object(%{"name" => text(253), "forwarders" => array(forwarder, 8)}), 64)
-    })
+    }
   end
 
   def ipv4,

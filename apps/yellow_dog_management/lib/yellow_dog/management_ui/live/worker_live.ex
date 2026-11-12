@@ -215,21 +215,34 @@ defmodule YellowDog.ManagementUI.WorkerLive do
        when is_map(params) do
     socket = assign(socket, service_form: to_form(params, as: "service"), dirty: true)
 
-    case Integer.parse(params["port"] || "") do
-      {port, ""} ->
-        command_params = %{
-          "instance_id" => params["id"],
-          "type" => "dns",
-          "desired_state" => params["desired_state"],
-          "config" => %{"listen_address" => params["listen_address"], "port" => port}
+    with {port, ""} <- Integer.parse(params["port"] || ""),
+         {:ok, forward_zones} <- parse_forward_zones(params["forward_zones"]) do
+      command_params = %{
+        "instance_id" => params["id"],
+        "type" => "dns",
+        "desired_state" => params["desired_state"],
+        "config" => %{
+          "listen_address" => params["listen_address"],
+          "port" => port,
+          "recursion" => params["recursion"] == "true",
+          "allow_query" => lines(params["allow_query"]),
+          "forward_zones" => forward_zones
         }
+      }
 
-        command_params =
-          if socket.assigns.service,
-            do: Map.put(command_params, "service_id", socket.assigns.service["id"]),
-            else: command_params
+      command_params =
+        if socket.assigns.service,
+          do: Map.put(command_params, "service_id", socket.assigns.service["id"]),
+          else: command_params
 
-        command(socket, service_operation(socket), command_params, payload["_submission"])
+      command(socket, service_operation(socket), command_params, payload["_submission"])
+    else
+      {:error, errors} ->
+        failure(socket, %{
+          code: "invalid_config",
+          message: "Configuration validation failed",
+          details: %{"errors" => errors}
+        })
 
       _ ->
         failure(socket, %{code: "invalid_config", message: "Port must be an integer"})
@@ -246,6 +259,73 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   end
 
   defp handle_submission(_event, _params, socket), do: {:noreply, socket}
+
+  defp lines(text),
+    do:
+      (text || "")
+      |> String.split(["\r\n", "\n"])
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+  # One forward zone per line: `<zone> <server> [<server> ...]`; the shared spec validates values.
+  defp parse_forward_zones(text) do
+    results =
+      (text || "")
+      |> String.split(["\r\n", "\n"])
+      |> Enum.with_index(1)
+      |> Enum.map(fn {line, number} -> {number, String.split(line)} end)
+      |> Enum.reject(fn {_number, tokens} -> tokens == [] end)
+      |> Enum.map(fn
+        {number, [_zone]} ->
+          {:error, forward_zone_error(number, "expected <zone> <server> [<server> ...]")}
+
+        {number, [zone | servers]} ->
+          servers
+          |> Enum.map(&parse_server/1)
+          |> Enum.find(&match?({:error, _}, &1))
+          |> case do
+            {:error, reason} ->
+              {:error, forward_zone_error(number, reason)}
+
+            nil ->
+              {:ok,
+               %{"name" => zone, "forwarders" => Enum.map(servers, &elem(parse_server(&1), 1))}}
+          end
+      end)
+
+    case Enum.filter(results, &match?({:error, _}, &1)) do
+      [] -> {:ok, Enum.map(results, &elem(&1, 1))}
+      errors -> {:error, Enum.map(errors, &elem(&1, 1))}
+    end
+  end
+
+  defp parse_server(server) do
+    cond do
+      match = Regex.run(~r/^\[([^\]]+)\](?::(\d+))?$/, server) ->
+        server_map(match)
+
+      match = Regex.run(~r/^([^:\[\]]+)(?::(\d+))?$/, server) ->
+        server_map(match)
+
+      length(String.split(server, ":")) > 2 and not String.contains?(server, ["[", "]"]) ->
+        {:ok, %{"address" => server}}
+
+      true ->
+        {:error, "invalid server #{inspect(server)}; use a.b.c.d[:port] or [v6]:port"}
+    end
+  end
+
+  defp server_map([_, address]), do: {:ok, %{"address" => address}}
+
+  defp server_map([_, address, port]),
+    do: {:ok, %{"address" => address, "port" => String.to_integer(port)}}
+
+  defp forward_zone_error(number, message),
+    do: %{
+      "path" => ["forward_zones"],
+      "code" => "invalid_forward_zone",
+      "message" => "line #{number}: #{message}"
+    }
 
   defp service_operation(socket),
     do: if(socket.assigns.service, do: "update_service", else: "create_service")
@@ -346,8 +426,11 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               to_form(
                 %{
                   "id" => "",
-                  "listen_address" => "127.0.0.1",
-                  "port" => "5300",
+                  "listen_address" => "0.0.0.0",
+                  "port" => "53",
+                  "recursion" => "true",
+                  "allow_query" => Enum.join(~w(127.0.0.0/8 10.10.10.0/24 10.88.0.0/16), "\n"),
+                  "forward_zones" => "",
                   "desired_state" => "stopped"
                 },
                 as: "service"
@@ -368,6 +451,9 @@ defmodule YellowDog.ManagementUI.WorkerLive do
                       "id" => service["instance_id"],
                       "listen_address" => service["config"]["listen_address"],
                       "port" => to_string(service["config"]["port"]),
+                      "recursion" => to_string(service["config"]["recursion"] == true),
+                      "allow_query" => Enum.join(service["config"]["allow_query"] || [], "\n"),
+                      "forward_zones" => format_forward_zones(service["config"]["forward_zones"]),
                       "desired_state" => service["desired_state"]
                     },
                     as: "service"
@@ -404,6 +490,21 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   defp message(error),
     do: "#{error[:code] || error["code"]}: #{error[:message] || error["message"]}"
+
+  defp format_forward_zones(zones) do
+    Enum.map_join(zones || [], "\n", fn zone ->
+      servers =
+        Enum.map_join(zone["forwarders"], " ", fn %{"address" => address} = forwarder ->
+          port = forwarder["port"] || 53
+
+          if String.contains?(address, ":"),
+            do: "[#{address}]:#{port}",
+            else: "#{address}:#{port}"
+        end)
+
+      "#{zone["name"]} #{servers}"
+    end)
+  end
 
   defp tab(action) when action in [:services, :dns, :new_service, :edit_service], do: :services
   defp tab(action) when action in [:targets, :target], do: :targets
@@ -553,7 +654,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             Last reported error: {@worker["apply_error"]}
           </p>
           <p class="management-help">
-            Use the bootstrap.toml issued at registration. It contains the Management URL, Worker ID, private token and polling interval. Stored credentials cannot be displayed again. Resetting immediately invalidates the previous credential and requires reconfiguring the Worker.
+            Use the bootstrap.toml issued at registration. It contains the Management URL, Worker ID, private token. Stored credentials cannot be displayed again. Resetting immediately invalidates the previous credential and requires reconfiguring the Worker.
           </p>
           <button
             class="btn btn-outline"
@@ -642,6 +743,33 @@ defmodule YellowDog.ManagementUI.WorkerLive do
               required
             /></label>
             <p :for={error <- errors_for_field(@field_errors, "port")} class="text-error">
+              {error_text(error)}
+            </p>
+            <input type="hidden" name="service[recursion]" value="false" />
+            <label class="form-control"><span class="label">Recursion</span><input
+              class="checkbox"
+              type="checkbox"
+              name="service[recursion]"
+              value="true"
+              checked={@service_form[:recursion].value in [true, "true"]}
+            /></label>
+            <p :for={error <- errors_for_field(@field_errors, "recursion")} class="text-error">
+              {error_text(error)}
+            </p>
+            <label class="form-control"><span class="label">Allowed query sources (one CIDR per line; empty denies all)</span><textarea
+              class="textarea textarea-bordered"
+              name="service[allow_query]"
+              rows="4"
+            >{@service_form[:allow_query].value}</textarea></label>
+            <p :for={error <- errors_for_field(@field_errors, "allow_query")} class="text-error">
+              {error_text(error)}
+            </p>
+            <label class="form-control"><span class="label">Forward zones (one per line: zone server [server ...]; server as a.b.c.d, a.b.c.d:port or [v6]:port)</span><textarea
+              class="textarea textarea-bordered"
+              name="service[forward_zones]"
+              rows="4"
+            >{@service_form[:forward_zones].value}</textarea></label>
+            <p :for={error <- errors_for_field(@field_errors, "forward_zones")} class="text-error">
               {error_text(error)}
             </p>
             <label class="form-control"><span class="label">Desired state</span><select
