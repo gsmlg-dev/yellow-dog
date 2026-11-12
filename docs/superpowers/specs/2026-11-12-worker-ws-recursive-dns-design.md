@@ -54,7 +54,7 @@
 
 ### 6.1 连接协议（Worker ↔ Management）
 
-- **Management 端**：新增 `Phoenix.Socket`，WebSocket 路径固定为 `/api/worker/connect`（与 Caddy 规则一致，见 6.7）和 channel `worker:<worker_id>`。
+- **Management 端**：新增 `Phoenix.Socket`，WebSocket 路径固定为 `/api/worker/connect`（与 Caddy 规则一致，见 6.7）。注意 Phoenix 默认会在 socket 路径后追加 `/websocket`，所以要写成 `socket "/api/worker", ..., websocket: [path: "/connect"]`，同时把该路径加入 Gaoxy 的 `websocket_paths`和 channel `worker:<worker_id>`。
   - `connect/3` 用 `worker_id` 和 `token` 认证，复用 `WorkerConnections` 的哈希比对（`secure_compare`）和匿名注册逻辑。
   - 认证失败时拒绝连接，不泄露原因。
 - **Worker 端**：用 `phoenix_socket_client` 0.9.x 连接。
