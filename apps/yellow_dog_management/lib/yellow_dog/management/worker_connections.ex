@@ -85,13 +85,26 @@ defmodule YellowDog.Management.WorkerConnections do
                {:ok, result} = Domain.get_worker(worker_id)
                result
              end) do
-          {:ok, worker} -> {:ok, %{"worker" => worker, "token" => token}}
-          {:error, error} -> {:error, error}
+          {:ok, worker} ->
+            disconnect(worker_id)
+            {:ok, %{"worker" => worker, "token" => token}}
+
+          {:error, error} ->
+            {:error, error}
         end
       end,
       worker_id
     )
   end
+
+  # Close live Worker sockets that authenticated with the revoked credential.
+  defp disconnect(worker_id),
+    do:
+      YellowDog.ManagementUI.Endpoint.broadcast(
+        "worker_socket:" <> worker_id,
+        "disconnect",
+        %{}
+      )
 
   defp credential_actor(nil), do: "operator"
   defp credential_actor(caller), do: YellowDog.Management.Caller.actor(caller)
@@ -167,6 +180,19 @@ defmodule YellowDog.Management.WorkerConnections do
   end
 
   def connect(_, _), do: {:error, error("unauthorized", "Invalid Worker credential")}
+
+  @doc "Whether `token` is the Worker's current credential."
+  def authorized?(worker_id, token) when is_binary(worker_id) and is_binary(token) do
+    case Repo.get(Worker, worker_id) do
+      %Worker{connection_token_hash: stored} when is_binary(stored) ->
+        Plug.Crypto.secure_compare(stored, hash(token))
+
+      _ ->
+        false
+    end
+  end
+
+  def authorized?(_, _), do: false
 
   defp initialize_worker(token, report) do
     unless valid_initial_report?(report) && valid_initial_token?(token),

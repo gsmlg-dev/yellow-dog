@@ -2,16 +2,26 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
   @moduledoc """
   Authenticated Worker runtime channel on topic `"worker:<worker_id>"`.
 
-  Join and every `"report"` re-authenticate through `WorkerConnections.connect/2`.
-  The channel pushes `"target"` with `%{"target" => target | nil}` after join, when
-  a newer target is confirmed and when a report observes a newer revision.
+  Join payload is `%{"token" => token, "report" => report}`; join and every
+  `"report"` re-authenticate through `WorkerConnections.connect/2`. The channel
+  pushes `"target"` with `%{"target" => target | nil}` after join, when a newer
+  target is confirmed (after re-verifying the credential) and when a report
+  observes a newer revision. Join parameters are never logged.
   """
-  use Phoenix.Channel
+  use Phoenix.Channel, log_join: false
   alias YellowDog.Management.{Domain, WorkerConnections}
 
   @impl true
-  def join("worker:" <> id, report, %{assigns: %{worker_id: id}} = socket)
-      when is_map(report) do
+  def join(
+        "worker:" <> id,
+        %{"token" => token, "report" => report} = payload,
+        %{assigns: %{worker_id: id}} = socket
+      )
+      when map_size(payload) == 2 and is_binary(token) and byte_size(token) == 43 and
+             is_map(report) do
+    # A closure keeps the raw credential out of inspected socket state and crash reports.
+    socket = assign(socket, :worker_token, fn -> token end)
+
     case authenticate(report, socket) do
       {:ok, %{"target" => target}} ->
         :ok = Phoenix.PubSub.subscribe(YellowDog.ManagementUI.PubSub, "worker_target:" <> id)
@@ -51,13 +61,17 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
   def handle_info({:push_target, target}, socket), do: {:noreply, push_target(socket, target)}
 
   def handle_info({:worker_target, id}, %{assigns: %{worker_id: id}} = socket) do
-    target =
-      case Domain.get_target(id) do
-        {:ok, target} -> Map.take(target, ~w(revision digest plan))
-        {:error, _} -> nil
-      end
+    if WorkerConnections.authorized?(id, socket.assigns.worker_token.()) do
+      target =
+        case Domain.get_target(id) do
+          {:ok, target} -> Map.take(target, ~w(revision digest plan))
+          {:error, _} -> nil
+        end
 
-    {:noreply, push_target(socket, target)}
+      {:noreply, push_target(socket, target)}
+    else
+      {:stop, :normal, socket}
+    end
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}

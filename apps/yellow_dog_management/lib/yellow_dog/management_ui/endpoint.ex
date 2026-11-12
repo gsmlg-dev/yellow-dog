@@ -13,7 +13,12 @@ defmodule YellowDog.ManagementUI.Endpoint do
     websocket: [connect_info: [:x_headers, :peer_data, :uri, session: @session_options]]
 
   socket "/api/worker", YellowDog.ManagementUI.WorkerSocket,
-    websocket: [path: "/connect", connect_info: [:x_headers, :peer_data], check_origin: false],
+    websocket: [
+      path: "/connect",
+      connect_info: [:peer_data],
+      check_origin: false,
+      max_frame_size: 65_536
+    ],
     longpoll: false
 
   plug YellowDog.ManagementUI.TrustedProxy

@@ -1,6 +1,7 @@
 defmodule YellowDog.ManagementUI.WorkerChannelTest do
   use ExUnit.Case, async: false
   import Phoenix.ChannelTest
+  import ExUnit.CaptureLog
 
   alias YellowDog.Management.{Domain, DomainFixtures, Repo, Worker, WorkerConnections}
   alias YellowDog.ManagementUI.{WorkerChannel, WorkerSocket}
@@ -12,30 +13,34 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     :ok
   end
 
-  test "socket requires a canonical-length token header and UUID worker identity" do
+  test "socket handshake requires only a canonical UUID worker identity" do
     id = Ecto.UUID.generate()
-    token = new_token()
-    assert {:ok, socket} = connect(WorkerSocket, %{"worker_id" => id}, connect_info: info(token))
-    assert socket.assigns.worker_id == id
+    assert {:ok, socket} = connect(WorkerSocket, %{"worker_id" => id})
+    assert socket.assigns == %{worker_id: id}
     assert WorkerSocket.id(socket) == "worker_socket:" <> id
-    refute inspect(socket) =~ token
 
-    assert :error = connect(WorkerSocket, %{"worker_id" => id}, connect_info: %{x_headers: []})
+    for params <- [%{}, %{"worker_id" => "not-a-uuid"}, %{"worker_id" => String.upcase(id)}],
+        do: assert(:error = connect(WorkerSocket, params))
+  end
 
-    assert :error =
-             connect(WorkerSocket, %{"worker_id" => id},
-               connect_info: info(String.duplicate("a", 42))
-             )
+  test "join requires exactly a canonical-length token and a report" do
+    {:ok, result} = WorkerConnections.create("Shape")
+    id = result["worker"]["id"]
+    {:ok, socket} = connect(WorkerSocket, %{"worker_id" => id})
 
-    assert :error =
-             connect(WorkerSocket, %{"worker_id" => id, "token" => token},
-               connect_info: %{x_headers: []}
-             )
+    for payload <- [
+          %{"report" => report(id)},
+          %{"token" => result["token"]},
+          %{"token" => String.slice(result["token"], 0, 42), "report" => report(id)},
+          %{"token" => nil, "report" => report(id)},
+          %{"token" => result["token"], "report" => report(id), "extra" => true},
+          report(id)
+        ] do
+      assert {:error, %{"code" => "unauthorized"}} =
+               subscribe_and_join(socket, WorkerChannel, "worker:" <> id, payload)
+    end
 
-    assert :error =
-             connect(WorkerSocket, %{"worker_id" => "not-a-uuid"}, connect_info: info(token))
-
-    assert :error = connect(WorkerSocket, %{}, connect_info: info(token))
+    assert Repo.get!(Worker, id).last_seen_at == nil
   end
 
   test "invalid credentials and mismatched topics are rejected" do
@@ -43,34 +48,35 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     {:ok, second} = WorkerConnections.create("Second")
     id = first["worker"]["id"]
 
-    assert {:error, %{"code" => "unauthorized"}} =
-             join_worker(id, new_token(), report(id))
+    assert {:error, %{"code" => "unauthorized"}} = join_worker(id, new_token(), report(id))
+    assert {:error, %{"code" => "unauthorized"}} = join_worker(id, second["token"], report(id))
 
-    assert {:error, %{"code" => "unauthorized"}} =
-             join_worker(id, second["token"], report(id))
-
-    {:ok, socket} = socket_for(id, first["token"])
+    {:ok, socket} = connect(WorkerSocket, %{"worker_id" => id})
 
     assert {:error, %{"code" => "unauthorized"}} =
              subscribe_and_join(
                socket,
                WorkerChannel,
                "worker:" <> second["worker"]["id"],
-               report(id)
+               payload(first["token"], report(id))
              )
 
     assert {:error, %{"code" => "unauthorized"}} =
-             subscribe_and_join(
-               socket,
-               WorkerChannel,
-               "worker:" <> id,
-               report(second["worker"]["id"])
-             )
+             join_worker(id, first["token"], report(second["worker"]["id"]))
 
     assert {:error, %{"code" => "invalid_report"}} =
              join_worker(id, first["token"], Map.put(report(id), "capabilities", ["dhcpv4"]))
 
     assert Repo.get!(Worker, id).last_seen_at == nil
+  end
+
+  test "the credential never appears in socket or channel state" do
+    {:ok, result} = WorkerConnections.create("State")
+    id = result["worker"]["id"]
+    assert {:ok, _, socket} = join_worker(id, result["token"], report(id))
+    assert_push "target", %{"target" => nil}
+    refute inspect(socket) =~ result["token"]
+    refute inspect(:sys.get_state(socket.channel_pid)) =~ result["token"]
   end
 
   test "join records contact and pushes the current target, then confirm pushes the new one" do
@@ -81,7 +87,6 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     assert reply == %{}
     assert_push "target", %{"target" => nil}
     assert %DateTime{} = Repo.get!(Worker, id).last_seen_at
-    refute inspect(socket) =~ result["token"]
 
     mutate("put_service", DomainFixtures.service(id, 1))
     target = mutate("confirm_target", %{"worker_id" => id, "expected_revision" => 2})
@@ -139,6 +144,23 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     assert_receive {:DOWN, ^monitor, :process, _, :normal}
   end
 
+  test "token rotation stops target pushes to a silent joined channel" do
+    {:ok, result} = WorkerConnections.create("Silent")
+    id = result["worker"]["id"]
+    mutate("put_service", DomainFixtures.service(id, 1))
+    assert {:ok, _, socket} = join_worker(id, result["token"], report(id))
+    assert_push "target", %{"target" => nil}
+    monitor = Process.monitor(socket.channel_pid)
+    Process.unlink(socket.channel_pid)
+
+    assert {:ok, _} = WorkerConnections.rotate(id)
+    {:ok, worker} = Domain.get_worker(id)
+    mutate("confirm_target", %{"worker_id" => id, "expected_revision" => worker["revision"]})
+
+    assert_receive {:DOWN, ^monitor, :process, _, :normal}, 1_000
+    refute_push "target", _
+  end
+
   test "anonymous enrollment admits a new UUID only while enabled" do
     id = Ecto.UUID.generate()
     token = new_token()
@@ -152,66 +174,183 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     assert Repo.get!(Worker, id).connection_token_hash == :crypto.hash(:sha256, token)
   end
 
-  test "the Worker socket upgrades over HTTP at exactly /api/worker/connect" do
-    {:ok, result} = WorkerConnections.create("Handshake")
-    id = result["worker"]["id"]
-    port = start_listener()
-
-    upgrade = fn path, token ->
-      {:ok, tcp} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
-
-      headers =
-        [
-          "GET #{path}?vsn=2.0.0&worker_id=#{id} HTTP/1.1",
-          "host: 127.0.0.1:#{port}",
-          "upgrade: websocket",
-          "connection: Upgrade",
-          "sec-websocket-version: 13",
-          "sec-websocket-key: dGhlIHNhbXBsZSBub25jZQ=="
-        ] ++ if(token, do: ["x-yellow-dog-worker-token: " <> token], else: [])
-
-      :ok = :gen_tcp.send(tcp, Enum.join(headers, "\r\n") <> "\r\n\r\n")
-      {:ok, response} = :gen_tcp.recv(tcp, 0, 5_000)
-      :gen_tcp.close(tcp)
-      response
+  describe "real HTTP listener" do
+    setup do
+      Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
+      %{port: start_listener()}
     end
 
-    assert upgrade.("/api/worker/connect", result["token"]) =~ ~r/\AHTTP\/1\.1 101/
-    assert upgrade.("/api/worker/connect", nil) =~ ~r/\AHTTP\/1\.1 403/
-    refute upgrade.("/api/worker/connect/websocket", result["token"]) =~ ~r/\AHTTP\/1\.1 101/
+    test "upgrades exactly /api/worker/connect with only a UUID worker_id", %{port: port} do
+      id = Ecto.UUID.generate()
+      assert {101, tcp} = upgrade(port, "/api/worker/connect?vsn=2.0.0&worker_id=#{id}")
+      :gen_tcp.close(tcp)
 
-    {:ok, tcp} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
+      for path <- [
+            "/api/worker/connect?vsn=2.0.0",
+            "/api/worker/connect?vsn=2.0.0&worker_id=not-a-uuid",
+            "/api/worker/connect/websocket?vsn=2.0.0&worker_id=#{id}"
+          ] do
+        assert {status, tcp} = upgrade(port, path)
+        assert status != 101, path
+        :gen_tcp.close(tcp)
+      end
 
-    :ok =
-      :gen_tcp.send(
-        tcp,
-        "POST /api/worker/connect HTTP/1.1\r\nhost: 127.0.0.1\r\n" <>
-          "content-type: application/json\r\ncontent-length: 2\r\n\r\n{}"
-      )
+      {:ok, tcp} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
 
-    assert {:ok, "HTTP/1.1 400" <> _} = :gen_tcp.recv(tcp, 0, 5_000)
-    :gen_tcp.close(tcp)
+      :ok =
+        :gen_tcp.send(
+          tcp,
+          "POST /api/worker/connect HTTP/1.1\r\nhost: 127.0.0.1\r\n" <>
+            "content-type: application/json\r\ncontent-length: 2\r\n\r\n{}"
+        )
+
+      assert {:ok, "HTTP/1.1 400" <> _} = :gen_tcp.recv(tcp, 0, 5_000)
+      :gen_tcp.close(tcp)
+    end
+
+    test "joins over the wire and rotation closes the live socket", %{port: port} do
+      {:ok, result} = WorkerConnections.create("Wire")
+      id = result["worker"]["id"]
+      assert {101, tcp} = upgrade(port, "/api/worker/connect?vsn=2.0.0&worker_id=#{id}")
+
+      join = ["1", "1", "worker:" <> id, "phx_join", payload(result["token"], report(id))]
+      level = Logger.level()
+      Logger.configure(level: :debug)
+
+      {messages, log} =
+        try do
+          with_log([level: :debug], fn ->
+            :ok = :gen_tcp.send(tcp, client_frame(0x1, Jason.encode!(join)))
+            joined = for _ <- 1..2, do: tcp |> read_frame() |> elem(1) |> Jason.decode!()
+            report = ["1", "2", "worker:" <> id, "report", report(id)]
+            :ok = :gen_tcp.send(tcp, client_frame(0x1, Jason.encode!(report)))
+            reply = tcp |> read_frame() |> elem(1) |> Jason.decode!()
+            assert ["1", "2", _, "phx_reply", %{"status" => "ok"}] = reply
+            joined
+          end)
+        after
+          Logger.configure(level: level)
+        end
+
+      assert log =~ "worker:" <> id
+      refute log =~ result["token"]
+
+      assert ["1", "1", "worker:" <> id, "phx_reply", %{"status" => "ok", "response" => %{}}] in messages
+
+      assert ["1", nil, "worker:" <> ^id, "target", %{"target" => nil}] =
+               Enum.find(messages, &(Enum.at(&1, 3) == "target"))
+
+      assert {:ok, _} = WorkerConnections.rotate(id)
+      assert closed?(tcp)
+    end
+
+    test "rejects frames over 64 KiB", %{port: port} do
+      id = Ecto.UUID.generate()
+      assert {101, tcp} = upgrade(port, "/api/worker/connect?vsn=2.0.0&worker_id=#{id}")
+      heartbeat = fn pad -> Jason.encode!([nil, "1", "phoenix", "heartbeat", %{"pad" => pad}]) end
+
+      :ok = :gen_tcp.send(tcp, client_frame(0x1, heartbeat.("")))
+      assert {0x1, reply} = read_frame(tcp)
+      assert [nil, "1", "phoenix", "phx_reply", %{"status" => "ok"}] = Jason.decode!(reply)
+
+      oversized = heartbeat.(String.duplicate("a", 65_536))
+      assert byte_size(oversized) > 65_536
+      :ok = :gen_tcp.send(tcp, client_frame(0x1, oversized))
+      assert closed?(tcp)
+    end
   end
 
   defp start_listener do
-    config =
-      @endpoint.config(:websocket_paths)
-      |> then(&[server: true, http: [ip: {127, 0, 0, 1}, port: 0], websocket_paths: &1])
+    config = [
+      server: true,
+      http: [ip: {127, 0, 0, 1}, port: 0],
+      websocket_paths: @endpoint.config(:websocket_paths)
+    ]
 
     for spec <- Gaoxy.PhoenixAdapter.child_specs(@endpoint, config), do: start_supervised!(spec)
     {:ok, {_, port}} = Gaoxy.PhoenixAdapter.server_info(@endpoint, :http)
     port
   end
 
-  defp join_worker(id, token, report) do
-    {:ok, socket} = socket_for(id, token)
-    subscribe_and_join(socket, WorkerChannel, "worker:" <> id, report)
+  defp upgrade(port, path) do
+    {:ok, tcp} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
+
+    request =
+      Enum.join(
+        [
+          "GET #{path} HTTP/1.1",
+          "host: 127.0.0.1:#{port}",
+          "upgrade: websocket",
+          "connection: Upgrade",
+          "sec-websocket-version: 13",
+          "sec-websocket-key: dGhlIHNhbXBsZSBub25jZQ=="
+        ],
+        "\r\n"
+      )
+
+    :ok = :gen_tcp.send(tcp, request <> "\r\n\r\n")
+    :ok = :inet.setopts(tcp, packet: :http_bin)
+    {:ok, {:http_response, _, status, _}} = :gen_tcp.recv(tcp, 0, 5_000)
+    skip_headers(tcp)
+    :ok = :inet.setopts(tcp, packet: :raw)
+    {status, tcp}
   end
 
-  defp socket_for(id, token),
-    do: connect(WorkerSocket, %{"worker_id" => id}, connect_info: info(token))
+  defp skip_headers(tcp) do
+    case :gen_tcp.recv(tcp, 0, 5_000) do
+      {:ok, :http_eoh} -> :ok
+      {:ok, {:http_header, _, _, _, _}} -> skip_headers(tcp)
+    end
+  end
 
-  defp info(token), do: %{x_headers: [{"x-yellow-dog-worker-token", token}], peer_data: nil}
+  defp client_frame(opcode, payload) do
+    mask = :crypto.strong_rand_bytes(4)
+    size = byte_size(payload)
+
+    length =
+      cond do
+        size < 126 -> <<1::1, size::7>>
+        size < 65_536 -> <<1::1, 126::7, size::16>>
+        true -> <<1::1, 127::7, size::64>>
+      end
+
+    key = mask |> :binary.copy(div(size, 4) + 1) |> binary_part(0, size)
+    <<1::1, 0::3, opcode::4>> <> length <> mask <> :crypto.exor(payload, key)
+  end
+
+  defp read_frame(tcp) do
+    {:ok, <<_::4, opcode::4, 0::1, short::7>>} = :gen_tcp.recv(tcp, 2, 5_000)
+
+    size =
+      case short do
+        126 -> tcp |> recv!(2) |> :binary.decode_unsigned()
+        127 -> tcp |> recv!(8) |> :binary.decode_unsigned()
+        size -> size
+      end
+
+    {opcode, if(size == 0, do: "", else: recv!(tcp, size))}
+  end
+
+  defp recv!(tcp, size) do
+    {:ok, data} = :gen_tcp.recv(tcp, size, 5_000)
+    data
+  end
+
+  # The server either sends a close frame or drops the connection.
+  defp closed?(tcp) do
+    case :gen_tcp.recv(tcp, 2, 5_000) do
+      {:ok, <<_::4, 0x8::4, _::8>>} -> true
+      {:error, :closed} -> true
+      _ -> false
+    end
+  end
+
+  defp join_worker(id, token, report) do
+    {:ok, socket} = connect(WorkerSocket, %{"worker_id" => id})
+    subscribe_and_join(socket, WorkerChannel, "worker:" <> id, payload(token, report))
+  end
+
+  defp payload(token, report), do: %{"token" => token, "report" => report}
 
   defp report(id) do
     %{
