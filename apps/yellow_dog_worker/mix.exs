@@ -11,6 +11,7 @@ defmodule YellowDog.Worker.MixProject do
       lockfile: "../../mix.lock",
       config_path: "config/config.exs",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       releases: [yellow_dog_worker: [include_executables_for: [:unix]]],
       deps: [
         {:yellow_dog_config_spec, in_umbrella: true},
@@ -30,4 +31,7 @@ defmodule YellowDog.Worker.MixProject do
       extra_applications: [:logger, :crypto, :ssl]
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 end
