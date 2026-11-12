@@ -129,7 +129,7 @@ pkgs.testers.runNixOSTest {
         assert worker.succeed("cat /var/lib/yellow-dog-worker/current") == pointer
         stopped()
 
-    with subtest("URL-only bootstrap persists identity and awaits Management"):
+    with subtest("URL-only bootstrap persists identity and joins the Management WebSocket channel"):
         stop()
         worker.succeed("rm -rf /var/lib/yellow-dog-worker")
         write("/run/secrets/worker-bootstrap.toml", 'management_url = "http://127.0.0.1:4270"\n')
@@ -139,42 +139,103 @@ pkgs.testers.runNixOSTest {
         identity = worker.succeed("sha256sum /var/lib/yellow-dog-worker/connection.toml")
         pid = worker.succeed("systemctl show yellow-dog-worker -p MainPID --value")
         stopped()
-        # Record real authenticated polling after an initial outage. The fake
-        # endpoint supplies no plan and never starts a network service.
-        write("/run/unavailable-management.py", """
-    from http.server import BaseHTTPRequestHandler, HTTPServer
-    import json, pathlib, tomllib
+        # Record real WebSocket channel joins after an initial outage. The fake
+        # endpoint is a minimal Phoenix V2 channel server (upgrade, phx_join,
+        # report, heartbeat); it supplies no plan and never starts a service.
+        write("/run/fake-management.py", """
+    import base64, hashlib, json, pathlib, socket, struct, threading, tomllib
     identity = tomllib.loads(pathlib.Path('/var/lib/yellow-dog-worker/connection.toml').read_text())
     token, worker_id = identity['token'], identity['worker_id']
-    class Unavailable(BaseHTTPRequestHandler):
-        def do_POST(self):
-            report = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            assert self.path == '/api/worker/connect'
-            assert self.headers['Authorization'] == 'Bearer ' + token
-            assert report['worker_id'] == worker_id and report['capabilities'] == ['dns']
-            assert report['services'] == {} and report['applied_revision'] is None
-            assert report['applied_digest'] is None and report['apply_error'] is None
-            path = pathlib.Path('/run/worker-polls')
+    expected_report = {'worker_id': worker_id, 'capabilities': ['dns'], 'services': {},
+                       'applied_revision': None, 'applied_digest': None, 'apply_error': None}
+    lock = threading.Lock()
+    def bump(name):
+        path = pathlib.Path('/run/worker-' + name)
+        with lock:
             path.write_text(str(int(path.read_text()) + 1) if path.exists() else '1')
-            body = json.dumps({'worker_id': worker_id, 'target': None}).encode()
-            self.send_response(200)
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        def log_message(self, *args):
-            pass
-    HTTPServer(('127.0.0.1', 4270), Unavailable).serve_forever()
+    def session(connection):
+        buffer = b""
+        while b"\\r\\n\\r\\n" not in buffer:
+            chunk = connection.recv(4096)
+            if not chunk:
+                return
+            buffer += chunk
+        head, buffer = buffer.split(b"\\r\\n\\r\\n", 1)
+        head = head.decode()
+        request = head.split("\\r\\n")[0]
+        assert request == 'GET /api/worker/connect?vsn=2.0.0&worker_id=' + worker_id + ' HTTP/1.1', request
+        # The token travels only in the join payload, never in the URL or headers.
+        assert token not in head and 'authorization:' not in head.lower(), head
+        key = next(line.split(':', 1)[1].strip() for line in head.split("\\r\\n")
+                   if line.lower().startswith('sec-websocket-key:'))
+        accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+        connection.sendall(('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\n'
+                            'Connection: Upgrade\\r\\nSec-WebSocket-Accept: ' + accept + '\\r\\n\\r\\n').encode())
+        def read(size):
+            nonlocal buffer
+            while len(buffer) < size:
+                chunk = connection.recv(65536)
+                if not chunk:
+                    raise EOFError
+                buffer += chunk
+            result, buffer = buffer[:size], buffer[size:]
+            return result
+        def send(value):
+            data = json.dumps(value).encode()
+            length = bytes([len(data)]) if len(data) < 126 else bytes([126]) + struct.pack('!H', len(data))
+            connection.sendall(bytes([0x81]) + length + data)
+        while True:
+            first, second = read(2)
+            size = second & 0x7F
+            if size == 126:
+                size = struct.unpack('!H', read(2))[0]
+            elif size == 127:
+                size = struct.unpack('!Q', read(8))[0]
+            mask = read(4) if second & 0x80 else bytes(4)
+            data = bytes(b ^ mask[i % 4] for i, b in enumerate(read(size)))
+            if first & 0x0F == 8:
+                return
+            if first & 0x0F != 1:
+                continue
+            join_ref, ref, topic, event, payload = json.loads(data)
+            if topic == 'phoenix':
+                send([None, ref, topic, 'phx_reply', {'status': 'ok', 'response': {}}])
+                continue
+            assert topic == 'worker:' + worker_id, topic
+            if event == 'phx_join':
+                assert payload == {'token': token, 'report': expected_report}, payload
+                bump('joins')
+            elif event == 'report':
+                assert payload == expected_report, payload
+                bump('reports')
+            send([join_ref, ref, topic, 'phx_reply', {'status': 'ok', 'response': {}}])
+            if event == 'phx_join':
+                send([join_ref, None, topic, 'target', {'target': None}])
+    def guarded(connection):
+        with connection:
+            try:
+                session(connection)
+            except (EOFError, OSError):
+                pass
+            except AssertionError as error:
+                pathlib.Path('/run/worker-protocol-error').write_text(str(error))
+    listener = socket.create_server(('127.0.0.1', 4270))
+    while True:
+        connection, _ = listener.accept()
+        threading.Thread(target=guarded, args=(connection,), daemon=True).start()
     """)
-        worker.succeed("systemd-run --unit=unavailable-management python3 /run/unavailable-management.py")
-        worker.wait_until_succeeds("test -f /run/worker-polls && test $(cat /run/worker-polls) -ge 3")
+        worker.succeed("systemd-run --unit=fake-management python3 /run/fake-management.py")
+        worker.wait_until_succeeds("test -f /run/worker-joins && test -f /run/worker-reports")
+        worker.succeed("test ! -e /run/worker-protocol-error || (cat /run/worker-protocol-error; false)")
         assert worker.succeed("systemctl show yellow-dog-worker -p MainPID --value") == pid
-        polls = int(worker.succeed("cat /run/worker-polls").strip())
+        joins = int(worker.succeed("cat /run/worker-joins").strip())
         restart()
         assert worker.succeed("sha256sum /var/lib/yellow-dog-worker/connection.toml") == identity
-        worker.wait_until_succeeds(f"test $(cat /run/worker-polls) -gt {polls}")
+        worker.wait_until_succeeds(f"test $(cat /run/worker-joins) -gt {joins}")
+        worker.succeed("test ! -e /run/worker-protocol-error || (cat /run/worker-protocol-error; false)")
         worker.succeed("test -z \"$(find /var/lib/yellow-dog-worker/snapshots -name '*.toml' -print -quit)\"")
         stopped()
-        worker.succeed("systemctl stop unavailable-management")
+        worker.succeed("systemctl stop fake-management")
         stopped()
         worker.succeed("python3 -c " + shlex.quote("""
     import pathlib, subprocess, tomllib
