@@ -18,7 +18,7 @@ defmodule YellowDog.Worker.MixProject do
         {:abyss, "~> 1.0.0-rc.13"},
         {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
-        {:phoenix_socket_client, "~> 0.9"},
+        {:phoenix_socket_client, "~> 0.9.1"},
         {:toml, "~> 0.7"},
         {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       ]

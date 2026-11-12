@@ -62,18 +62,8 @@ defmodule YellowDog.Worker.Connection.Channel do
     do: Phoenix.SocketClient.Channel.push_async(channel, event, payload)
 
   @doc false
-  # Channel and Socket processes look themselves up through the client
-  # supervisor while terminating, so stopping it during that work stalls until
-  # the children's shutdown timeouts. Disconnect first (terminating channels
-  # while the supervisor is idle), let the Socket drain, then stop.
-  # TODO: upstream gsmlg-dev/phoenix_socket_client#112 — revert to a plain Supervisor.stop/3 once fixed.
   def close(socket) do
-    if Process.alive?(socket) do
-      Phoenix.SocketClient.disconnect(socket)
-      _ = Phoenix.SocketClient.connection_info(socket)
-      Supervisor.stop(socket, :normal, 5_000)
-    end
-
+    if Process.alive?(socket), do: Supervisor.stop(socket, :normal, 5_000)
     :ok
   catch
     :exit, _ -> :ok
