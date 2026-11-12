@@ -1,7 +1,12 @@
 defmodule YellowDog.Worker.DnsAdapter do
-  @moduledoc "Authoritative DNS listener for one normalized Worker service."
+  @moduledoc """
+  DNS listener for one normalized Worker service: authoritative zones, forward
+  zones and (optionally) recursion behind a source ACL. The adapter only holds
+  the query context and owns the answer cache; queries run in handler processes.
+  """
   use GenServer
 
+  alias YellowDog.Worker.Dns.Cache
   alias YellowDog.Worker.Dns.Resolver
   alias YellowDog.Worker.Dns.UdpHandler
   alias YellowDog.Worker.OwnedShutdown
@@ -14,7 +19,7 @@ defmodule YellowDog.Worker.DnsAdapter do
   def status(pid), do: GenServer.call(pid, :status)
 
   def validate(service, resources) do
-    with {:ok, _zones} <- Resolver.build(resources),
+    with {:ok, _context} <- Resolver.build_context(service, resources, nil),
          {:ok, _ip, _port} <- parse_binding(service),
          do: :ok
   end
@@ -25,7 +30,7 @@ defmodule YellowDog.Worker.DnsAdapter do
     service = Keyword.fetch!(opts, :service)
     resources = Keyword.fetch!(opts, :resources)
 
-    with {:ok, zones} <- Resolver.build(resources),
+    with {:ok, context} <- Resolver.build_context(service, resources, Cache.new()),
          {:ok, ip, port} <- parse_binding(service) do
       case :gen_tcp.listen(port, [
              :binary,
@@ -36,7 +41,7 @@ defmodule YellowDog.Worker.DnsAdapter do
              {:send_timeout_close, true},
              {:packet, 0}
            ]) do
-        {:ok, tcp} -> start_listeners(tcp, service, resources, zones, ip, port)
+        {:ok, tcp} -> start_listeners(tcp, service, resources, context, ip, port)
         {:error, reason} -> {:stop, reason}
       end
     else
@@ -44,7 +49,7 @@ defmodule YellowDog.Worker.DnsAdapter do
     end
   end
 
-  defp start_listeners(tcp, service, resources, zones, ip, port) do
+  defp start_listeners(tcp, service, resources, context, ip, port) do
     case start_udp(ip, port) do
       {:ok, udp} ->
         case wait_udp(udp, ip, port, @ready_attempts) do
@@ -58,7 +63,7 @@ defmodule YellowDog.Worker.DnsAdapter do
              %{
                service: service,
                resources: resources,
-               zones: zones,
+               context: context,
                ip: ip,
                port: port,
                tcp: tcp,
@@ -82,13 +87,22 @@ defmodule YellowDog.Worker.DnsAdapter do
   end
 
   @impl GenServer
-  def handle_call(:snapshot, _from, state), do: {:reply, {:ok, state.zones}, state}
+  def handle_call(:snapshot, _from, state), do: {:reply, {:ok, state.context}, state}
 
   def handle_call({:update, service, resources}, _from, state) do
+    old = state.context
+
     with {:ok, ip, port} <- parse_binding(service),
          true <- ip == state.ip and port == state.port,
-         {:ok, zones} <- Resolver.build(resources) do
-      {:reply, :ok, %{state | service: service, resources: resources, zones: zones}}
+         {:ok, context} <- Resolver.build_context(service, resources, old.cache) do
+      # Cached forwarded answers may belong to forwarders that no longer apply.
+      context =
+        if context.forward_zones == old.forward_zones,
+          do: context,
+          else: %{context | cache: Cache.new()}
+
+      if context.cache != old.cache, do: Cache.delete(old.cache)
+      {:reply, :ok, %{state | service: service, resources: resources, context: context}}
     else
       false -> {:reply, {:error, :listener_change_requires_restart}, state}
       error -> {:reply, error, state}
@@ -133,6 +147,7 @@ defmodule YellowDog.Worker.DnsAdapter do
     acceptor_result = OwnedShutdown.terminate_task(state.acceptor)
     session_result = OwnedShutdown.stop(state.sessions)
     udp_result = OwnedShutdown.stop(state.udp, state.owned -- [state.sessions, state.acceptor])
+    Cache.delete(state.context.cache)
 
     case {acceptor_result, session_result, udp_result} do
       {:ok, :ok, :ok} -> :ok
@@ -243,8 +258,9 @@ defmodule YellowDog.Worker.DnsAdapter do
     with {:ok, <<length::16>>} <- :gen_tcp.recv(client, 2, 2_000),
          true <- length in 12..4096,
          {:ok, packet} <- :gen_tcp.recv(client, length, 2_000),
-         {:ok, zones} <- GenServer.call(adapter, :snapshot, 2_000),
-         response when is_binary(response) <- Resolver.reply(packet, zones, :tcp) do
+         {:ok, {peer, _port}} <- :inet.peername(client),
+         {:ok, context} <- GenServer.call(adapter, :snapshot, 2_000),
+         response when is_binary(response) <- Resolver.reply(packet, context, :tcp, peer) do
       case :gen_tcp.send(client, <<byte_size(response)::16, response::binary>>) do
         :ok -> handle_client(client, adapter)
         {:error, reason} -> {:error, {:send_failed, reason}}

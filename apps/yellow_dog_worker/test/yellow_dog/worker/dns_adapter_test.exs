@@ -2,8 +2,9 @@ defmodule YellowDog.Worker.DnsAdapterTest do
   use ExUnit.Case, async: false
 
   alias DNS.Message
-  alias DNS.Message.Question
+  alias DNS.Message.{EDNS0, Question, Record}
   alias YellowDog.Worker.DnsAdapter
+  alias YellowDog.Worker.Test.FakeDnsServer
 
   test "accepted idle and partial clients cannot block another TCP client or UDP" do
     {adapter, port} = adapter()
@@ -300,6 +301,221 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     assert_listeners_closed(port)
   end
 
+  describe "query policy" do
+    test "an empty allow_query refuses every source with the question echoed" do
+      {_adapter, port} = adapter([resource("192.0.2.53")], %{"allow_query" => []})
+
+      for transport <- [:udp, :tcp] do
+        assert {:ok, refused} = query(transport, port, "ns1.example.com.", 1)
+        assert refused.header.rcode.value == <<5::4>>
+        assert refused.header.qr == 1
+        assert refused.header.rd == 1
+        assert refused.header.ra == 0
+        assert refused.header.aa == 0
+        assert [%{type: %{value: <<1::16>>}}] = refused.qdlist
+        assert refused.anlist == []
+      end
+    end
+
+    test "a name outside every zone with recursion off is refused" do
+      {_adapter, port} = adapter([resource("192.0.2.53")], %{"recursion" => false})
+      assert {:ok, refused} = query(:udp, port, "www.elsewhere.test.", 1)
+      assert refused.header.rcode.value == <<5::4>>
+      assert refused.header.ra == 0
+    end
+
+    test "recursion on with the stub recursor answers servfail" do
+      {_adapter, port} = adapter([resource("192.0.2.53")], %{"recursion" => true})
+      assert {:ok, failed} = query(:udp, port, "www.elsewhere.test.", 1)
+      assert failed.header.rcode.value == <<2::4>>
+      assert failed.header.ra == 1
+    end
+
+    test "authoritative zones still answer with aa=1 when recursion and forwarding are on" do
+      upstream = fake_upstream(fn _ -> :drop end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{
+          "recursion" => true,
+          "forward_zones" => [forward(".", [upstream])]
+        })
+
+      for transport <- [:udp, :tcp] do
+        assert {:ok, a} = query(transport, port, "ns1.example.com.", 1)
+        assert a.header.aa == 1
+        assert a.header.ra == 0
+        assert Enum.map(a.anlist, & &1.data.data) == [{192, 0, 2, 53}]
+      end
+    end
+
+    test "a forward zone answers from its upstream with ra=1 and caches the answer" do
+      test = self()
+
+      upstream =
+        fake_upstream(fn q ->
+          send(test, {:upstream_query, to_string(hd(q.qdlist).name), q.header.rd})
+          upstream_reply(q, [a_record("a.corp.test", 7)])
+        end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{
+          "forward_zones" => [forward("corp.test.", [upstream])]
+        })
+
+      for _ <- 1..2 do
+        assert {:ok, answer} = query(:udp, port, "A.Corp.Test.", 1)
+        assert answer.header.rcode.value == <<0::4>>
+        assert answer.header.ra == 1
+        assert answer.header.aa == 0
+        assert Enum.map(answer.anlist, & &1.data.data) == [{10, 0, 0, 7}]
+      end
+
+      assert {:ok, tcp} = query(:tcp, port, "a.corp.test.", 1)
+      assert Enum.map(tcp.anlist, & &1.data.data) == [{10, 0, 0, 7}]
+
+      assert_receive {:upstream_query, _name, 1}
+      refute_receive {:upstream_query, _, _}, 200
+    end
+
+    test "the longest matching forward zone wins" do
+      test = self()
+
+      generic =
+        fake_upstream(fn q ->
+          send(test, :generic)
+          upstream_reply(q, [a_record("x.dev.corp.test", 1)])
+        end)
+
+      specific =
+        fake_upstream(fn q ->
+          send(test, :specific)
+          upstream_reply(q, [a_record("x.dev.corp.test", 2)])
+        end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{
+          "forward_zones" => [
+            forward("corp.test.", [generic]),
+            forward("dev.corp.test.", [specific])
+          ]
+        })
+
+      assert {:ok, answer} = query(:udp, port, "x.dev.corp.test.", 1)
+      assert Enum.map(answer.anlist, & &1.data.data) == [{10, 0, 0, 2}]
+      assert_receive :specific
+      refute_received :generic
+    end
+
+    test "upstream rcode is passed through" do
+      upstream =
+        fake_upstream(fn q ->
+          header = %{q.header | qr: 1, ra: 1, rcode: DNS.Message.RCode.new(3), arcount: 0}
+          DNS.to_iodata(%Message{header: header, qdlist: q.qdlist})
+        end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{
+          "forward_zones" => [forward("corp.test.", [upstream])]
+        })
+
+      assert {:ok, nx} = query(:udp, port, "gone.corp.test.", 1)
+      assert nx.header.rcode.value == <<3::4>>
+      assert nx.header.ra == 1
+    end
+
+    test "unreachable forwarders answer servfail" do
+      dead = %{"address" => "127.0.0.1", "port" => free_port()}
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{"forward_zones" => [forward("corp.test.", [dead])]})
+
+      assert {:ok, wire} = query_wire(:udp, port, packet("a.corp.test.", 1), 5_000)
+      failed = Message.from_iodata(wire)
+      assert failed.header.rcode.value == <<2::4>>
+      assert failed.header.ra == 1
+    end
+
+    test "large forwarded answers truncate over plain UDP, fit EDNS 1232 and arrive whole over TCP" do
+      upstream =
+        fake_upstream(fn q ->
+          upstream_reply(q, Enum.map(1..40, &a_record("big.corp.test", &1)))
+        end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{
+          "forward_zones" => [forward("corp.test.", [upstream])]
+        })
+
+      assert {:ok, wire} = query_wire(:udp, port, packet("big.corp.test.", 1))
+      truncated = Message.from_iodata(wire)
+      assert byte_size(wire) <= 512
+      assert truncated.header.tc == 1
+      assert truncated.anlist == []
+      assert truncated.arlist == []
+
+      assert {:ok, wire} = query_wire(:udp, port, edns_packet("big.corp.test.", 1, 1232))
+      full = Message.from_iodata(wire)
+      assert byte_size(wire) <= 1232
+      assert full.header.tc == 0
+      assert length(full.anlist) == 40
+      assert [%{type: %{value: <<41::16>>}}] = full.arlist
+
+      assert {:ok, wire} = query_wire(:udp, port, edns_packet("big.corp.test.", 1, 600))
+      clamped = Message.from_iodata(wire)
+      assert byte_size(wire) <= 600
+      assert clamped.header.tc == 1
+      assert [%{type: %{value: <<41::16>>}}] = clamped.arlist
+
+      assert {:ok, wire} = query_wire(:tcp, port, packet("big.corp.test.", 1))
+      tcp = Message.from_iodata(wire)
+      assert tcp.header.tc == 0
+      assert length(tcp.anlist) == 40
+    end
+
+    test "a hung forwarded query does not block an authoritative query" do
+      upstream = fake_upstream(fn _ -> :drop end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{
+          "forward_zones" => [forward("slow.test.", [upstream])]
+        })
+
+      for transport <- [:udp, :tcp] do
+        slow = Task.async(fn -> query_wire(transport, port, packet("x.slow.test.", 1), 5_000) end)
+        Process.sleep(50)
+
+        {us, result} = :timer.tc(fn -> query(transport, port, "ns1.example.com.", 1) end)
+        assert {:ok, %{header: %{aa: 1}}} = result
+        assert us < 200_000
+
+        assert {:ok, wire} = Task.await(slow, 6_000)
+        assert Message.from_iodata(wire).header.rcode.value == <<2::4>>
+      end
+    end
+
+    test "update that only changes allow_query takes effect without restarting listeners" do
+      {adapter, port} = adapter()
+      original = :sys.get_state(adapter)
+      assert {:ok, %{header: %{aa: 1}}} = query(:udp, port, "ns1.example.com.", 1)
+
+      denied = service(port, %{"allow_query" => ["10.0.0.0/8"]})
+      assert :ok = DnsAdapter.update(adapter, denied, [resource("192.0.2.53")])
+
+      for transport <- [:udp, :tcp] do
+        assert {:ok, refused} = query(transport, port, "ns1.example.com.", 1)
+        assert refused.header.rcode.value == <<5::4>>
+      end
+
+      assert :ok = DnsAdapter.update(adapter, service(port), [resource("192.0.2.53")])
+      assert {:ok, %{header: %{aa: 1}}} = query(:tcp, port, "ns1.example.com.", 1)
+
+      state = :sys.get_state(adapter)
+      assert state.udp == original.udp
+      assert state.acceptor == original.acceptor
+      assert state.tcp == original.tcp
+    end
+  end
+
   defp assert_listeners_closed(port) do
     assert {:error, :econnrefused} =
              :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 500)
@@ -308,11 +524,11 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     assert :ok = Abyss.Transport.UDP.Unicast.close(socket)
   end
 
-  defp adapter(resources \\ [resource("192.0.2.53")]) do
+  defp adapter(resources \\ [resource("192.0.2.53")], policy \\ %{}) do
     port = free_port()
 
     adapter =
-      start_supervised!({DnsAdapter, service: service(port), resources: resources},
+      start_supervised!({DnsAdapter, service: service(port, policy), resources: resources},
         id: make_ref(),
         restart: :temporary
       )
@@ -392,27 +608,52 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     )
   end
 
-  defp query(:udp, port, name, type) do
-    with {:ok, wire} <- Abyss.Client.send_recv({127, 0, 0, 1}, port, packet(name, type), 2_000) do
+  defp query(transport, port, name, type) do
+    with {:ok, wire} <- query_wire(transport, port, packet(name, type)) do
       {:ok, Message.from_iodata(wire)}
     end
   end
 
-  defp query(:tcp, port, name, type) do
-    with {:ok, socket} <- :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 2_000) do
-      packet = packet(name, type)
+  defp query_wire(transport, port, packet, timeout \\ 2_000)
+
+  defp query_wire(:udp, port, packet, timeout),
+    do: Abyss.Client.send_recv({127, 0, 0, 1}, port, packet, timeout)
+
+  defp query_wire(:tcp, port, packet, timeout) do
+    with {:ok, socket} <-
+           :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], timeout) do
       :ok = :gen_tcp.send(socket, <<byte_size(packet)::16, packet::binary>>)
 
       result =
-        with {:ok, <<length::16>>} <- :gen_tcp.recv(socket, 2, 2_000),
-             {:ok, wire} <- :gen_tcp.recv(socket, length, 2_000) do
-          {:ok, Message.from_iodata(wire)}
+        with {:ok, <<length::16>>} <- :gen_tcp.recv(socket, 2, timeout),
+             {:ok, wire} <- :gen_tcp.recv(socket, length, timeout) do
+          {:ok, wire}
         end
 
       :gen_tcp.close(socket)
       result
     end
   end
+
+  defp edns_packet(name, type, size) do
+    message = Message.new() |> Message.add_question(Question.new(name, type, 1))
+    message = %{message | header: %{message.header | arcount: 1}}
+    DNS.to_iodata(message) <> DNS.to_iodata(EDNS0.new({size, 0, 0, 0, 0, []}))
+  end
+
+  defp fake_upstream(handler) do
+    {:ok, pid} = FakeDnsServer.start_link({127, 0, 0, 1}, 0, handler)
+    %{"address" => "127.0.0.1", "port" => FakeDnsServer.port(pid)}
+  end
+
+  defp forward(name, forwarders), do: %{"name" => name, "forwarders" => forwarders}
+
+  defp upstream_reply(query, answers) do
+    header = %{query.header | qr: 1, ra: 1, ancount: length(answers), arcount: 0}
+    DNS.to_iodata(%Message{header: header, qdlist: query.qdlist, anlist: answers})
+  end
+
+  defp a_record(name, n), do: Record.new(name, <<1::16>>, <<1::16>>, 60, {10, 0, 0, n})
 
   defp packet(name, type) do
     Message.new()
@@ -427,12 +668,18 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     port
   end
 
-  defp service(port) do
+  defp service(port, policy \\ %{}) do
+    config =
+      Map.merge(
+        %{"listen_address" => "127.0.0.1", "port" => port, "allow_query" => ["127.0.0.0/8"]},
+        policy
+      )
+
     %{
       "id" => "dns-primary",
       "type" => "dns",
       "desired_state" => "running",
-      "config" => %{"listen_address" => "127.0.0.1", "port" => port},
+      "config" => config,
       "resources" => ["zone-example"]
     }
   end

@@ -7,7 +7,7 @@ id = "dns-primary"
 type = "dns"
 desired_state = "running"
 resources = ["zone-example"]
-config = { listen_address = "127.0.0.1", port = 1053 }
+config = { listen_address = "127.0.0.1", port = 1053, allow_query = ["127.0.0.0/8"] }
 
 [[resources]]
 id = "zone-example"

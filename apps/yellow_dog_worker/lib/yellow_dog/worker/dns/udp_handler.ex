@@ -10,8 +10,8 @@ defmodule YellowDog.Worker.Dns.UdpHandler do
 
     if is_pid(adapter) do
       case safe_snapshot(adapter) do
-        {:ok, zones} ->
-          if wire = Resolver.reply(packet, zones, :udp) do
+        {:ok, context} ->
+          if wire = Resolver.reply(packet, context, :udp, ip) do
             Abyss.Transport.UDP.send(state.socket, ip, port, wire)
           end
 

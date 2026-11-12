@@ -316,7 +316,10 @@ defmodule YellowDog.Worker.ConnectionTest do
     {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
     {:ok, {_, port}} = :inet.sockname(listener)
     :gen_tcp.close(listener)
-    put_in(plan, ["services", Access.at(0), "config", "port"], port)
+
+    plan
+    |> put_in(["services", Access.at(0), "config", "port"], port)
+    |> put_in(["services", Access.at(0), "config", "allow_query"], ["127.0.0.0/8"])
   end
 
   defp target(plan) do
