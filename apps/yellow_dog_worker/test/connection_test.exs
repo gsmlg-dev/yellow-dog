@@ -223,22 +223,22 @@ defmodule YellowDog.Worker.ConnectionTest do
     assert_receive {:opened, _, _, t0}, 3000
     join!({:error, "unauthorized"})
     assert %{connected: false, connection_error: "unauthorized"} = Connection.status(conn)
-    t1 = reopened_after(t0, 200)
+    t1 = reopened_after(t0, 200, 240)
     join!({:error, "unavailable"})
     assert %{connected: false, connection_error: "unavailable"} = Connection.status(conn)
-    t2 = reopened_after(t1, 400)
+    t2 = reopened_after(t1, 400, 480)
     join!({:error, :timeout})
     assert %{connected: false, connection_error: "request_failed"} = Connection.status(conn)
-    t3 = reopened_after(t2, 800)
+    t3 = reopened_after(t2, 640, 800)
     join!({:error, "unauthorized"})
-    t4 = reopened_after(t3, 800)
+    t4 = reopened_after(t3, 640, 800)
 
     # A successful join resets the backoff; a server phx_close reconnects.
     {channel, _, _} = join!()
     assert %{connected: true, connection_error: nil} = Connection.status(conn)
     send(conn, {@tag_message, channel, "phx_close", %{}})
     assert %{connected: false, connection_error: "disconnected"} = Connection.status(conn)
-    t5 = reopened_after(t4, 200)
+    t5 = reopened_after(t4, 200, 240)
 
     {channel, _, _} = join!()
     Process.exit(channel, :kill)
@@ -409,10 +409,11 @@ defmodule YellowDog.Worker.ConnectionTest do
     end
   end
 
-  defp reopened_after(previous, minimum) do
-    assert_receive {:opened, _, _, at}, minimum + 1000
+  # Delays carry up to 20% jitter (subtracted at the cap); allow scheduling slack above.
+  defp reopened_after(previous, minimum, maximum) do
+    assert_receive {:opened, _, _, at}, maximum + 1000
     assert at - previous >= minimum
-    assert at - previous < minimum + 700
+    assert at - previous < maximum + 500
     at
   end
 

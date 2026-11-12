@@ -66,6 +66,7 @@ defmodule YellowDog.Worker.Connection.Channel do
   # supervisor while terminating, so stopping it during that work stalls until
   # the children's shutdown timeouts. Disconnect first (terminating channels
   # while the supervisor is idle), let the Socket drain, then stop.
+  # TODO: upstream gsmlg-dev/phoenix_socket_client#112 — revert to a plain Supervisor.stop/3 once fixed.
   def close(socket) do
     if Process.alive?(socket) do
       Phoenix.SocketClient.disconnect(socket)

@@ -188,7 +188,11 @@ defmodule YellowDog.Worker.Connection do
   defp retry(state, error) do
     state = teardown(state)
     {minimum, maximum} = state.backoff
-    delay = min(minimum * Integer.pow(2, state.failures), maximum)
+    base = min(minimum * Integer.pow(2, state.failures), maximum)
+    # Up to 20% jitter spreads reconnecting Workers; it is subtracted at the
+    # cap so no delay ever exceeds the maximum.
+    jitter = :rand.uniform(div(base, 5) + 1) - 1
+    delay = if base + jitter <= maximum, do: base + jitter, else: maximum - jitter
 
     %{
       state
