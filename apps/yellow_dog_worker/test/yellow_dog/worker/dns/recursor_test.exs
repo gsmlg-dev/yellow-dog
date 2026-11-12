@@ -16,6 +16,7 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
   # A fake three-level hierarchy on one shared port:
   #   127.0.0.10  root      -> refers test. to ns.test (glue 127.0.0.11)
   #   127.0.0.11  test.     -> refers example.test (in-zone glue + out-of-bailiwick ns.evil. glue),
+  #                            bad.test (only the out-of-bailiwick ns.evil. glue),
   #                            noglue.test (NS ns.other.test, no glue), ping.test <-> pong.test;
   #                            authoritative for other.test and loop.test
   #   127.0.0.12  example.test. and noglue.test.
@@ -95,11 +96,39 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
              Recursor.resolve("www.example.test", 28, opts)
 
     assert soa.type.value == <<6::16>>
+    assert_rd_zero()
   end
 
-  test "out-of-bailiwick glue is ignored", %{opts: opts} do
-    assert {:ok, %{rcode: 0, answers: [_]}} = Recursor.resolve("www.example.test", 1, opts)
+  test "out-of-bailiwick glue is ignored next to in-zone glue", %{opts: opts} do
+    assert {:ok, %{rcode: 0, answers: [a]}} = Recursor.resolve("www.example.test", 1, opts)
+    assert a.data.data == {192, 0, 2, 80}
     refute Enum.any?(queries(), fn {ip, _, _, _} -> ip == @evil end)
+  end
+
+  # bad.test's only glue is ns.evil. A 127.0.0.66, outside the referral zone, so
+  # the NS name must be resolved instead; ns.evil. does not exist, so: servfail.
+  test "a referral whose only glue is out of bailiwick never contacts that address",
+       %{opts: opts} do
+    assert {:error, :servfail} = Recursor.resolve("www.bad.test", 1, opts)
+    sent = assert_rd_zero()
+    refute Enum.any?(sent, fn {ip, _, _, _} -> ip == @evil end)
+    assert {@root, "ns.evil", 1, 0} in sent
+  end
+
+  test "glue and delegation NS never reach the client-answer cache keys", %{opts: opts} do
+    cache = Cache.new()
+    authoritative = rr("ns.example.test", 1, {10, 9, 9, 9})
+    Cache.put(cache, "ns.example.test", 1, %{rcode: 0, answers: [authoritative], authority: []})
+
+    opts = Keyword.put(opts, :cache, cache)
+    assert {:ok, %{answers: [_]}} = Recursor.resolve("www.example.test", 1, opts)
+    assert_rd_zero()
+
+    assert {:ok, %{answers: [kept]}} = Cache.get(cache, "ns.example.test", 1)
+    assert kept.data.data == {10, 9, 9, 9}
+    assert :miss = Cache.get(cache, "ns.test", 1)
+    assert :miss = Cache.get(cache, "test", 2)
+    assert :miss = Cache.get(cache, "example.test", 2)
   end
 
   test "a glueless NS name is resolved first, then resolution continues", %{opts: opts} do
@@ -118,6 +147,7 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
   test "records outside the query name and CNAME chain are dropped", %{opts: opts} do
     assert {:ok, %{answers: answers}} = Recursor.resolve("www.example.test", 1, opts)
     assert Enum.map(answers, &to_string(&1.name)) == ["www.example.test."]
+    assert_rd_zero()
   end
 
   test "a CNAME loop is a servfail and finishes quickly", %{opts: opts} do
@@ -132,17 +162,16 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
     {micros, result} = :timer.tc(fn -> Recursor.resolve("www.ping.test", 1, opts) end)
     assert result == {:error, :servfail}
     assert micros < 1_000_000
-    sent = queries()
-    assert length(sent) <= 20
-    assert Enum.all?(sent, fn {_, _, _, rd} -> rd == 0 end)
+    assert length(assert_rd_zero()) <= 20
   end
 
   test "an exhausted deadline is a servfail" do
-    {:ok, silent} = FakeDnsServer.start_link(@root, 0, fn _ -> :drop end)
+    {:ok, silent} = FakeDnsServer.start_link(@root, 0, recorder(self(), @root, fn _ -> :drop end))
     opts = [root_hints: [{@root, FakeDnsServer.port(silent)}], deadline_ms: 300]
     {micros, result} = :timer.tc(fn -> Recursor.resolve("www.example.test", 1, opts) end)
     assert result == {:error, :servfail}
     assert micros < 1_000_000
+    assert_rd_zero()
   end
 
   test "TXT, MX, HTTPS and type 65280 answers come back unchanged", %{opts: opts} do
@@ -196,9 +225,12 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
     cond do
       under?(name, "example.test") ->
         referral(q, "example.test", [
-          {"ns.example.test", {127, 0, 0, 12}},
-          {"ns.evil", {127, 0, 0, 66}}
+          {"ns.evil", {127, 0, 0, 66}},
+          {"ns.example.test", {127, 0, 0, 12}}
         ])
+
+      under?(name, "bad.test") ->
+        referral(q, "bad.test", [{"ns.evil", {127, 0, 0, 66}}])
 
       under?(name, "noglue.test") ->
         referral(q, "noglue.test", [{"ns.other.test", nil}])
@@ -301,9 +333,16 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
 
   ## assertions
 
-  defp queries(acc \\ []) do
+  # Drains the recorded upstream queries; every one must have been sent with RD=0.
+  defp queries do
+    sent = drain([])
+    assert Enum.all?(sent, fn {_, _, _, rd} -> rd == 0 end)
+    sent
+  end
+
+  defp drain(acc) do
     receive do
-      {:query, ip, name, type, rd} -> queries([{ip, name, type, rd} | acc])
+      {:query, ip, name, type, rd} -> drain([{ip, name, type, rd} | acc])
     after
       0 -> Enum.reverse(acc)
     end
@@ -312,6 +351,6 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
   defp assert_rd_zero do
     sent = queries()
     assert sent != []
-    assert Enum.all?(sent, fn {_, _, _, rd} -> rd == 0 end)
+    sent
   end
 end

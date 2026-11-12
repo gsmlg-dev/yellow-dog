@@ -11,7 +11,8 @@ defmodule YellowDog.Worker.Dns.Recursor do
 
   Options: `root_hints` (`[{ip, port}]`, default the IPv4 `RootHints` on `port`;
   IPv6 roots and AAAA glue are used only with `ipv6: true`), `port` (53),
-  `cache` (`Cache.t()` for referral NS sets, glue and results), `max_steps`
+  `cache` (`Cache.t()`: results under `{name, type}`, referral NS sets and glue
+  under the separate `{name, type + 0x10000}` infrastructure keys), `max_steps`
   (64 upstream queries per resolution), `max_cname` (8), `deadline_ms` (5000).
   Exceeding any limit is `{:error, :servfail}`.
   """
@@ -25,6 +26,10 @@ defmodule YellowDog.Worker.Dns.Recursor do
   @cname 5
   @soa 6
   @aaaa 28
+  # Delegation NS sets and glue are cached under type + @infra, a key space
+  # (> 0xFFFF) that no client query type can reach, so they are never served
+  # as answers and never overwrite authoritative data (RFC 2181 §5.4.1).
+  @infra 0x10000
 
   @type result :: %{rcode: 0 | 3, answers: [DNS.Message.Record.t()], authority: [term()]}
 
@@ -80,7 +85,7 @@ defmodule YellowDog.Worker.Dns.Recursor do
     name
     |> ancestors()
     |> Enum.find_value({"", st.roots}, fn zone ->
-      with {:ok, %{answers: [_ | _] = ns}} <- cache_get(st.cache, zone, @ns),
+      with {:ok, %{answers: [_ | _] = ns}} <- cache_get(st.cache, zone, @infra + @ns),
            [_ | _] = servers <-
              Enum.flat_map(ns, &cached_addresses(norm(&1.data.data), st)) do
         {zone, servers}
@@ -90,13 +95,15 @@ defmodule YellowDog.Worker.Dns.Recursor do
     end)
   end
 
+  # Glue first, then an authoritative answer for the host.
   defp cached_addresses(host, st) do
-    Enum.flat_map(address_types(st), fn type ->
-      case cache_get(st.cache, host, type) do
+    for type <- address_types(st), key <- [@infra + type, type] do
+      case cache_get(st.cache, host, key) do
         {:ok, %{answers: answers}} -> addresses(answers, host, type, st.port)
         :miss -> []
       end
-    end)
+    end
+    |> Enum.find([], &(&1 != []))
   end
 
   defp iterate(name, type, zone, servers, cnames, st) do
@@ -253,13 +260,13 @@ defmodule YellowDog.Worker.Dns.Recursor do
   defp cache_referral(%{cache: nil}, _, _, _), do: :ok
 
   defp cache_referral(st, child, {ns, _hosts}, glue) do
-    cache_put(st.cache, child, @ns, %{rcode: 0, answers: ns, authority: []})
+    cache_put(st.cache, child, @infra + @ns, %{rcode: 0, answers: ns, authority: []})
 
     glue
     |> Enum.filter(&(&1.type.value in Enum.map(address_types(st), fn t -> <<t::16>> end)))
     |> Enum.group_by(&{norm(&1.name), &1.type.value})
     |> Enum.each(fn {{host, <<type::16>>}, records} ->
-      cache_put(st.cache, host, type, %{rcode: 0, answers: records, authority: []})
+      cache_put(st.cache, host, @infra + type, %{rcode: 0, answers: records, authority: []})
     end)
   end
 
