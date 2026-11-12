@@ -518,17 +518,40 @@ defmodule YellowDog.ConfigSpec do
   defp cidr(value, path) when is_binary(value) do
     with [address, length] <- String.split(value, "/"),
          {:ok, tuple} <- :inet.parse_strict_address(String.to_charlist(address)),
+         {prefix, ""} <- Integer.parse(length),
+         {:ok, tuple, prefix} <- unmap_ipv4(tuple, prefix),
          {bits, width} = {tuple_to_bits(tuple), tuple_width(tuple)},
-         {prefix, ""} when prefix in 0..width//1 <- Integer.parse(length) do
+         true <- prefix in 0..width//1 do
       shift = width - prefix
       masked = bits |> Bitwise.bsr(shift) |> Bitwise.bsl(shift)
       {:ok, tuple_ntoa(bits_to_tuple(masked, width)) <> "/" <> Integer.to_string(prefix)}
     else
-      _ -> err(path, :invalid_cidr, "expected IPv4 or IPv6 CIDR such as 10.0.0.0/24")
+      :short_mapped ->
+        err(
+          path,
+          :invalid_cidr,
+          "IPv4-mapped CIDR needs a prefix of at least 96; use IPv4 notation"
+        )
+
+      _ ->
+        err(path, :invalid_cidr, "expected IPv4 or IPv6 CIDR such as 10.0.0.0/24")
     end
   end
 
   defp cidr(_, path), do: err(path, :invalid_cidr, "CIDR must be a string")
+
+  # IPv4 clients are matched as IPv4, so an IPv4-mapped CIDR (::ffff:a.b.c.d/N)
+  # is stored as the IPv4 CIDR a.b.c.d/(N - 96); a shorter prefix would span
+  # non-mapped IPv6 space as well and is rejected.
+  defp unmap_ipv4({0, 0, 0, 0, 0, 0xFFFF, hi, lo}, prefix) when prefix >= 96 do
+    octets =
+      {Bitwise.bsr(hi, 8), Bitwise.band(hi, 0xFF), Bitwise.bsr(lo, 8), Bitwise.band(lo, 0xFF)}
+
+    {:ok, octets, prefix - 96}
+  end
+
+  defp unmap_ipv4({0, 0, 0, 0, 0, 0xFFFF, _, _}, _prefix), do: :short_mapped
+  defp unmap_ipv4(tuple, prefix), do: {:ok, tuple, prefix}
 
   defp tuple_width(tuple) when tuple_size(tuple) == 4, do: 32
   defp tuple_width(tuple) when tuple_size(tuple) == 8, do: 128

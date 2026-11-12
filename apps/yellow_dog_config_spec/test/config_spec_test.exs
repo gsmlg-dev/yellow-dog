@@ -360,8 +360,28 @@ defmodule YellowDog.ConfigSpecTest do
       assert config["allow_query"] == ["10.10.10.0/24", "::1/128"]
     end
 
+    test "IPv4-mapped CIDRs are stored as IPv4 CIDRs" do
+      config =
+        dns_of(
+          ConfigSpec.normalize_plan(
+            with_dns(%{"allow_query" => ["::ffff:10.0.0.1/128", "::FFFF:192.168.7.9/120"]})
+          )
+        )
+
+      assert config["allow_query"] == ["10.0.0.1/32", "192.168.7.0/24"]
+    end
+
     test "allow_query rejects bad CIDRs and over-limit lists" do
-      for bad <- ["10.0.0.0", "10.0.0.0/33", "::/129", "x/8", "10.0.0.0/-1", 5] do
+      for bad <- [
+            "10.0.0.0",
+            "10.0.0.0/33",
+            "::/129",
+            "x/8",
+            "10.0.0.0/-1",
+            5,
+            "::ffff:10.0.0.1/95",
+            "::ffff:10.0.0.1/129"
+          ] do
         assert error_code(ConfigSpec.normalize_plan(with_dns(%{"allow_query" => [bad]}))) in [
                  :invalid_cidr
                ]

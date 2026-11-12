@@ -36,4 +36,21 @@ defmodule YellowDog.Worker.Dns.AclTest do
     {:ok, all} = Acl.compile(["0.0.0.0/0"])
     assert Acl.allowed?(all, {8, 8, 8, 8})
   end
+
+  test "a v4-mapped /128 allows only that IPv4 address" do
+    {:ok, acl} = Acl.compile(["::ffff:10.0.0.1/128"])
+    assert Acl.allowed?(acl, {10, 0, 0, 1})
+    assert Acl.allowed?(acl, {0, 0, 0, 0, 0, 0xFFFF, 0x0A00, 0x0001})
+    refute Acl.allowed?(acl, {8, 8, 8, 8})
+    refute Acl.allowed?(acl, {0, 0, 0, 0, 0, 0xFFFF, 0x0808, 0x0808})
+    refute Acl.allowed?(acl, {10, 0, 0, 2})
+  end
+
+  test "prefixes beyond the family width do not crash and match exactly" do
+    {:ok, acl} = Acl.compile(["10.0.0.1/40", "::1/200"])
+    assert Acl.allowed?(acl, {10, 0, 0, 1})
+    refute Acl.allowed?(acl, {10, 0, 0, 2})
+    assert Acl.allowed?(acl, {0, 0, 0, 0, 0, 0, 0, 1})
+    refute Acl.allowed?(acl, {0, 0, 0, 0, 0, 0, 0, 2})
+  end
 end
