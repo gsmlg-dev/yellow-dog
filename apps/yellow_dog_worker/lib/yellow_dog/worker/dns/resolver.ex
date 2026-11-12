@@ -5,7 +5,7 @@ defmodule YellowDog.Worker.Dns.Resolver do
   alias DNS.Message.{Domain, EDNS0, Record}
   alias DNS.Message.Record.Data
   alias DNS.ResourceRecordType
-  alias YellowDog.Worker.Dns.{Acl, Cache, Forwarder}
+  alias YellowDog.Worker.Dns.{Acl, Cache, Forwarder, Recursor}
 
   @types %{"A" => 1, "NS" => 2, "SOA" => 6}
   @max_udp 1232
@@ -30,9 +30,14 @@ defmodule YellowDog.Worker.Dns.Resolver do
   @doc """
   Builds the per-service query context: authoritative zones, compiled ACL,
   forward zones (longest name first, names lowercase without the trailing dot)
-  and the shared answer cache handle.
+  and the shared answer cache handle. `recursor_opts` are extra `Recursor.resolve/3`
+  options (e.g. `root_hints`/`port` from the adapter's `:recursor_opts` start option,
+  used by tests); the context cache is added at query time.
   """
-  def build_context(%{"config" => config}, resources, cache) when is_map(config) do
+  def build_context(service, resources, cache, recursor_opts \\ [])
+
+  def build_context(%{"config" => config}, resources, cache, recursor_opts)
+      when is_map(config) and is_list(recursor_opts) do
     with {:ok, zones} <- build(resources),
          {:ok, acl} <- acl(Map.get(config, "allow_query", [])),
          {:ok, forward_zones} <- forward_zones(Map.get(config, "forward_zones", [])) do
@@ -43,12 +48,12 @@ defmodule YellowDog.Worker.Dns.Resolver do
          forward_zones: forward_zones,
          recursion: Map.get(config, "recursion", false) == true,
          cache: cache,
-         recursor_opts: []
+         recursor_opts: recursor_opts
        }}
     end
   end
 
-  def build_context(_, _, _), do: {:error, :invalid_service}
+  def build_context(_, _, _, _), do: {:error, :invalid_service}
 
   @doc """
   Answers one wire query in the calling process. Upstream work (forwarding,
@@ -97,7 +102,9 @@ defmodule YellowDog.Worker.Dns.Resolver do
           end)
 
         context.recursion and query.header.rd == 1 ->
-          upstream(context.cache, key, type, fn -> recurse(key, type, context.recursor_opts) end)
+          upstream(context.cache, key, type, fn ->
+            Recursor.resolve(key, type, Keyword.put(context.recursor_opts, :cache, context.cache))
+          end)
 
         true ->
           {5, 0, 0, [], []}
@@ -142,9 +149,6 @@ defmodule YellowDog.Worker.Dns.Resolver do
         {2, 0, 1, [], []}
     end
   end
-
-  # Task 5 replaces this stub with `Recursor.resolve(name, type, opts)`.
-  defp recurse(_name, _type, _opts), do: {:error, :servfail}
 
   # The cache table may be deleted by an adapter update while a handler still
   # holds the previous context; treat that as a miss / no-op.

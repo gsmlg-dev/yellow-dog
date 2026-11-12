@@ -8,19 +8,33 @@ defmodule YellowDog.Worker.Test.FakeDnsServer do
 
   def start_link(ip, port, handler), do: GenServer.start_link(__MODULE__, {ip, port, handler})
 
+  # Unlinked start that reports bind failures as {:error, reason}; link on success.
+  def start(ip, port, handler), do: GenServer.start(__MODULE__, {ip, port, handler})
+
   def port(pid), do: GenServer.call(pid, :port)
 
   @impl true
-  def init({ip, port, handler}) do
+  def init({ip, port, handler}), do: bind(ip, port, handler, 10)
+
+  # With port 0 the OS picks the UDP port; the TCP side may find it taken, so retry.
+  defp bind(ip, port, handler, attempts) do
     {:ok, udp} = :gen_udp.open(port, [:binary, ip: ip, active: true])
     {:ok, bound} = :inet.port(udp)
 
-    {:ok, listen} =
-      :gen_tcp.listen(bound, [:binary, ip: ip, active: false, packet: 2, reuseaddr: true])
+    case :gen_tcp.listen(bound, [:binary, ip: ip, active: false, packet: 2, reuseaddr: true]) do
+      {:ok, listen} ->
+        server = self()
+        spawn_link(fn -> accept_loop(listen, handler, server) end)
+        {:ok, %{udp: udp, listen: listen, port: bound, handler: handler}}
 
-    server = self()
-    spawn_link(fn -> accept_loop(listen, handler, server) end)
-    {:ok, %{udp: udp, listen: listen, port: bound, handler: handler}}
+      {:error, :eaddrinuse} when port == 0 and attempts > 1 ->
+        :gen_udp.close(udp)
+        bind(ip, port, handler, attempts - 1)
+
+      {:error, reason} ->
+        :gen_udp.close(udp)
+        {:stop, reason}
+    end
   end
 
   @impl true

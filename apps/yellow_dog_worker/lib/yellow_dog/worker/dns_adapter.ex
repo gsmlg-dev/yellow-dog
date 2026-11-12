@@ -3,6 +3,9 @@ defmodule YellowDog.Worker.DnsAdapter do
   DNS listener for one normalized Worker service: authoritative zones, forward
   zones and (optionally) recursion behind a source ACL. The adapter only holds
   the query context and owns the answer cache; queries run in handler processes.
+
+  Start options: `:service`, `:resources` and optional `:recursor_opts` (extra
+  `Recursor.resolve/3` options such as `root_hints`/`port`, default `[]`).
   """
   use GenServer
 
@@ -29,8 +32,10 @@ defmodule YellowDog.Worker.DnsAdapter do
     Process.flag(:trap_exit, true)
     service = Keyword.fetch!(opts, :service)
     resources = Keyword.fetch!(opts, :resources)
+    recursor_opts = Keyword.get(opts, :recursor_opts, [])
 
-    with {:ok, context} <- Resolver.build_context(service, resources, Cache.new()),
+    with {:ok, context} <-
+           Resolver.build_context(service, resources, Cache.new(), recursor_opts),
          {:ok, ip, port} <- parse_binding(service) do
       case :gen_tcp.listen(port, [
              :binary,
@@ -94,7 +99,8 @@ defmodule YellowDog.Worker.DnsAdapter do
 
     with {:ok, ip, port} <- parse_binding(service),
          true <- ip == state.ip and port == state.port,
-         {:ok, context} <- Resolver.build_context(service, resources, old.cache) do
+         {:ok, context} <-
+           Resolver.build_context(service, resources, old.cache, old.recursor_opts) do
       # Cached forwarded answers may belong to forwarders that no longer apply.
       context =
         if context.forward_zones == old.forward_zones,

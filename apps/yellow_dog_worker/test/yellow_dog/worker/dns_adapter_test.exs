@@ -324,11 +324,49 @@ defmodule YellowDog.Worker.DnsAdapterTest do
       assert refused.header.ra == 0
     end
 
-    test "recursion on with the stub recursor answers servfail" do
-      {_adapter, port} = adapter([resource("192.0.2.53")], %{"recursion" => true})
+    test "recursion on with unreachable roots answers servfail" do
+      {:ok, silent} = FakeDnsServer.start_link({127, 0, 0, 10}, 0, fn _ -> :drop end)
+      roots = [root_hints: [{{127, 0, 0, 10}, FakeDnsServer.port(silent)}], deadline_ms: 300]
+
+      {_adapter, port} = adapter([resource("192.0.2.53")], %{"recursion" => true}, roots)
       assert {:ok, failed} = query(:udp, port, "www.elsewhere.test.", 1)
       assert failed.header.rcode.value == <<2::4>>
       assert failed.header.ra == 1
+    end
+
+    test "recursion resolves from the root hints and answers with ra=1" do
+      test = self()
+
+      {:ok, root} =
+        FakeDnsServer.start_link({127, 0, 0, 10}, 0, fn q ->
+          send(test, {:recursive_query, :root, q.header.rd})
+          ns = Record.new("example.test", 2, 1, 300, "ns.example.test.")
+          glue = Record.new("ns.example.test", 1, 1, 300, {127, 0, 0, 12})
+          header = %{q.header | qr: 1, ancount: 0, nscount: 1, arcount: 1}
+          DNS.to_iodata(%Message{header: header, qdlist: q.qdlist, nslist: [ns], arlist: [glue]})
+        end)
+
+      upstream_port = FakeDnsServer.port(root)
+
+      {:ok, _leaf} =
+        FakeDnsServer.start_link({127, 0, 0, 12}, upstream_port, fn q ->
+          send(test, {:recursive_query, :leaf, q.header.rd})
+          upstream_reply(%{q | header: %{q.header | aa: 1}}, [a_record("www.example.test", 9)])
+        end)
+
+      {_adapter, port} =
+        adapter([resource("192.0.2.53")], %{"recursion" => true},
+          root_hints: [{{127, 0, 0, 10}, upstream_port}],
+          port: upstream_port
+        )
+
+      assert {:ok, answer} = query(:udp, port, "www.example.test.", 1)
+      assert answer.header.rcode.value == <<0::4>>
+      assert answer.header.ra == 1
+      assert answer.header.aa == 0
+      assert Enum.map(answer.anlist, & &1.data.data) == [{10, 0, 0, 9}]
+      assert_receive {:recursive_query, :root, 0}
+      assert_receive {:recursive_query, :leaf, 0}
     end
 
     test "authoritative zones still answer with aa=1 when recursion and forwarding are on" do
@@ -524,11 +562,13 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     assert :ok = Abyss.Transport.UDP.Unicast.close(socket)
   end
 
-  defp adapter(resources \\ [resource("192.0.2.53")], policy \\ %{}) do
+  defp adapter(resources \\ [resource("192.0.2.53")], policy \\ %{}, recursor_opts \\ []) do
     port = free_port()
 
     adapter =
-      start_supervised!({DnsAdapter, service: service(port, policy), resources: resources},
+      start_supervised!(
+        {DnsAdapter,
+         service: service(port, policy), resources: resources, recursor_opts: recursor_opts},
         id: make_ref(),
         restart: :temporary
       )
