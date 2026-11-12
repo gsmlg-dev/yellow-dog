@@ -292,7 +292,14 @@ defmodule YellowDog.Management.UITest do
 
     assert persisted["id"] == service["id"]
     assert persisted["instance_id"] == service["instance_id"]
-    assert persisted["config"] == service["config"]
+    # The form persists the DNS policy defaults explicitly; ConfigSpec treats
+    # absent keys as these same values.
+    assert persisted["config"] ==
+             Map.merge(service["config"], %{
+               "recursion" => false,
+               "allow_query" => [],
+               "forward_zones" => []
+             })
   end
 
   defp mutate(operation, params) do
