@@ -24,6 +24,7 @@ defmodule YellowDog.Management.Domain do
     Target,
     Tasks,
     Worker,
+    WorkerConnections,
     Zone
   }
 
@@ -54,6 +55,10 @@ defmodule YellowDog.Management.Domain do
         {:ok, {:ok, result}} ->
           if operation in @task_operations, do: Tasks.broadcast(params["key"])
           if operation in @backup_operations, do: Backups.broadcast(result["id"])
+
+          if operation == "confirm_target",
+            do: WorkerConnections.broadcast_target(params["worker_id"])
+
           {:ok, result}
 
         {:ok, {:error, error}} ->

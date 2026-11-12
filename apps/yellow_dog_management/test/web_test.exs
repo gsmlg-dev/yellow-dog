@@ -18,6 +18,10 @@ defmodule YellowDog.Management.WebTest do
     end
   end
 
+  test "the retired Worker HTTP polling endpoint is not routed" do
+    assert request(:post, "/api/worker/connect", "{}").status == 404
+  end
+
   test "API creates a logical Worker without login and retries exactly once" do
     body = %{"id" => "api-worker", "name" => "API Worker", "expected_capabilities" => ["dns"]}
     first = command("create_worker", body, "create-worker")

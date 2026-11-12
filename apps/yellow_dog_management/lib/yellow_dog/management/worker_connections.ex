@@ -103,8 +103,17 @@ defmodule YellowDog.Management.WorkerConnections do
   def bootstrap(worker, token, management_url) do
     "worker_id = #{Jason.encode!(worker["id"])}\ndata_dir = \"data\"\n" <>
       "management_url = #{Jason.encode!(management_url)}\n" <>
-      "token = #{Jason.encode!(token)}\npoll_interval_ms = 10000\n"
+      "token = #{Jason.encode!(token)}\n"
   end
+
+  @doc "Notify connected Worker channels that a newer target was confirmed."
+  def broadcast_target(worker_id) when is_binary(worker_id),
+    do:
+      Phoenix.PubSub.broadcast(
+        YellowDog.ManagementUI.PubSub,
+        "worker_target:" <> worker_id,
+        {:worker_target, worker_id}
+      )
 
   def connection_fields(worker) do
     status =

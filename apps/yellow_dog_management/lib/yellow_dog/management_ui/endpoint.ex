@@ -12,6 +12,10 @@ defmodule YellowDog.ManagementUI.Endpoint do
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [:x_headers, :peer_data, :uri, session: @session_options]]
 
+  socket "/api/worker", YellowDog.ManagementUI.WorkerSocket,
+    websocket: [path: "/connect", connect_info: [:x_headers, :peer_data], check_origin: false],
+    longpoll: false
+
   plug YellowDog.ManagementUI.TrustedProxy
 
   plug Plug.Static,

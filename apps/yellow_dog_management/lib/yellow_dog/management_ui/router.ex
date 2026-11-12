@@ -85,7 +85,6 @@ defmodule YellowDog.ManagementUI.Router do
     end
   end
 
-  forward "/api/worker", YellowDog.Management.WorkerAPI
   forward "/api/v1", YellowDog.Management.HTTPAPI
   forward "/mcp", YellowDog.Management.MCP
   forward "/.well-known", YellowDog.Management.ResourceMetadata

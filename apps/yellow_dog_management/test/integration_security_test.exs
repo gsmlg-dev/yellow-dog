@@ -121,13 +121,10 @@ defmodule YellowDog.Management.IntegrationSecurityTest do
           IntegrationSecurityFixtures.token(keys),
           IntegrationSecurityFixtures.token(keys, profile: :gateway)
         ] do
-      conn =
-        build_conn()
-        |> put_req_header("authorization", "Bearer " <> token)
-        |> put_req_header("content-type", "application/json")
-
-      assert post(conn, "/api/worker/connect", Jason.encode!(%{"worker_id" => worker["id"]})).status ==
-               401
+      assert {:error, %{code: "unauthorized"}} =
+               YellowDog.Management.WorkerConnections.connect(token, %{
+                 "worker_id" => worker["id"]
+               })
     end
 
     assert {Repo.all(YellowDog.Management.Worker), Repo.all(Audit), Repo.all(Idempotency)} ==

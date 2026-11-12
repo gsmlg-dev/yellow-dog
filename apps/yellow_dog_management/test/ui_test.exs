@@ -91,7 +91,7 @@ defmodule YellowDog.Management.UITest do
     assert config["worker_id"] == worker["id"]
     assert byte_size(config["token"]) == 43
     assert config["data_dir"] == "data"
-    assert config["poll_interval_ms"] == 10_000
+    refute Map.has_key?(config, "poll_interval_ms")
     refute Jason.encode!(Domain.list_audit()) =~ config["token"]
     render_click(view, "dismiss_connection")
     refute has_element?(view, "#worker-bootstrap")

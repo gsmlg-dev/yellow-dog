@@ -1,7 +1,5 @@
 defmodule YellowDog.Management.WorkerConnectionsTest do
   use ExUnit.Case, async: false
-  import Plug.Conn
-  import Plug.Test
   import Ecto.Query
 
   alias YellowDog.Management.{
@@ -11,11 +9,8 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
     Idempotency,
     Repo,
     Worker,
-    WorkerAPI,
     WorkerConnections
   }
-
-  alias YellowDog.ManagementUI.Router
 
   setup tags do
     unless tags[:unboxed], do: :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
@@ -25,7 +20,7 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
   test "anonymous enrollment is disabled by default without business or credential writes" do
     id = Ecto.UUID.generate()
     assert Domain.worker_enrollment_settings() == %{"allow_anonymous" => false}
-    assert request(anonymous_token(), anonymous_report(id)).status == 401
+    assert request(anonymous_token(), anonymous_report(id)) == "unauthorized"
     assert Repo.aggregate(Worker, :count) == 0
     assert Repo.aggregate(Audit, :count) == 0
     assert Repo.aggregate(Idempotency, :count) == 0
@@ -66,8 +61,8 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
     id = Ecto.UUID.generate()
     token = anonymous_token()
     report = anonymous_report(id)
-    assert request(token, report, Router, "/api/worker/connect").status == 200
-    assert request(token, report).status == 200
+    assert request(token, report) == :ok
+    assert request(token, report) == :ok
     assert Repo.aggregate(Worker, :count) == 1
     assert Repo.get!(Worker, id).connection_token_hash == :crypto.hash(:sha256, token)
     assert {:ok, worker} = Domain.get_worker(id)
@@ -85,8 +80,8 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
            ]) =~ token
 
     mutate("set_worker_enrollment", %{"allow_anonymous" => false})
-    assert request(token, report).status == 200
-    assert request(anonymous_token(), anonymous_report(Ecto.UUID.generate())).status == 401
+    assert request(token, report) == :ok
+    assert request(anonymous_token(), anonymous_report(Ecto.UUID.generate())) == "unauthorized"
   end
 
   test "anonymous enrollment cannot replace existing or revoked credentials" do
@@ -94,13 +89,13 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
     id = Ecto.UUID.generate()
     token = anonymous_token()
     report = anonymous_report(id)
-    assert request(token, report).status == 200
+    assert request(token, report) == :ok
     before = Repo.get!(Worker, id)
-    assert request(anonymous_token(), report).status == 401
+    assert request(anonymous_token(), report) == "unauthorized"
     assert Repo.get!(Worker, id) == before
     assert {:ok, rotated} = WorkerConnections.rotate(id)
-    assert request(token, report).status == 401
-    assert request(rotated["token"], report).status == 200
+    assert request(token, report) == "unauthorized"
+    assert request(rotated["token"], report) == :ok
     assert Repo.aggregate(Worker, :count) == 1
   end
 
@@ -117,10 +112,10 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
       Map.put(report, "capabilities", ["dns", "dhcpv4"])
     ]
 
-    for report <- invalid, do: assert(request(anonymous_token(), report).status == 401)
+    for report <- invalid, do: assert(request(anonymous_token(), report) == "unauthorized")
 
     for token <- [String.duplicate("!", 43), String.duplicate("A", 42), nil],
-        do: assert(request(token, report).status == 401)
+        do: assert(request(token, report) == "unauthorized")
 
     assert Repo.aggregate(Worker, :count) == 0
     assert Repo.aggregate(Audit, :count) == 1
@@ -289,30 +284,23 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
              "worker_id" => result["worker"]["id"],
              "data_dir" => "data",
              "management_url" => "https://yellow-dog.gsmlg.net",
-             "token" => result["token"],
-             "poll_interval_ms" => 10000
+             "token" => result["token"]
            }
   end
 
-  test "Bearer authentication scopes identity, records contact and needs no browser CSRF" do
+  test "credential authentication scopes identity and records contact" do
     {:ok, first} = WorkerConnections.create("First")
     {:ok, second} = WorkerConnections.create("Second")
     report = report(first)
-    assert request(nil, report).status == 401
-    assert request(String.duplicate("x", 43), report).status == 401
-    assert request(second["token"], report).status == 401
+    assert request(nil, report) == "unauthorized"
+    assert request(String.duplicate("x", 43), report) == "unauthorized"
+    assert request(second["token"], report) == "unauthorized"
 
-    assert request(first["token"], Map.put(report, "worker_id", second["worker"]["id"])).status ==
-             401
+    assert request(first["token"], Map.put(report, "worker_id", second["worker"]["id"])) ==
+             "unauthorized"
 
-    response = request(first["token"], report, Router, "/api/worker/connect")
-    assert response.status == 200, response.resp_body
-    assert get_resp_header(response, "cache-control") == ["no-store"]
-
-    assert Jason.decode!(response.resp_body) == %{
-             "worker_id" => first["worker"]["id"],
-             "target" => nil
-           }
+    assert WorkerConnections.connect(first["token"], report) ==
+             {:ok, %{"worker_id" => first["worker"]["id"], "target" => nil}}
 
     assert {:ok, worker} = Domain.get_worker(first["worker"]["id"])
     assert worker["connection_status"] == "connected"
@@ -323,12 +311,12 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
 
   test "rotation revokes old tokens and leaves credentials out of audits" do
     {:ok, first} = WorkerConnections.create("Rotate")
-    assert request(first["token"], report(first)).status == 200
+    assert request(first["token"], report(first)) == :ok
     {:ok, rotated} = WorkerConnections.rotate(first["worker"]["id"])
     assert rotated["token"] != first["token"]
     assert rotated["worker"]["connection_status"] == "not_yet_connected"
-    assert request(first["token"], report(first)).status == 401
-    assert request(rotated["token"], report(rotated)).status == 200
+    assert request(first["token"], report(first)) == "unauthorized"
+    assert request(rotated["token"], report(rotated)) == :ok
     {:ok, worker} = Domain.get_worker(first["worker"]["id"])
     ordinary = Jason.encode!([Domain.list_audit(), worker])
     refute ordinary =~ first["token"]
@@ -339,7 +327,7 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
 
   test "contact expires without changing reported observations or configuration" do
     {:ok, result} = WorkerConnections.create("Expire")
-    assert request(result["token"], report(result)).status == 200
+    assert request(result["token"], report(result)) == :ok
     worker = Repo.get!(Worker, result["worker"]["id"])
 
     worker
@@ -349,7 +337,7 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
     assert {:ok, expired} = Domain.get_worker(worker.id)
     assert expired["connection_status"] == "offline"
     assert expired["services"] == []
-    assert request(result["token"], report(result)).status == 200
+    assert request(result["token"], report(result)) == :ok
     assert {:ok, reconnected} = Domain.get_worker(worker.id)
     assert reconnected["connection_status"] == "connected"
   end
@@ -376,7 +364,7 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
           Map.put(report, "apply_error", result["token"]),
           Map.put(report, "token", result["token"])
         ] do
-      assert request(result["token"], invalid).status == 422
+      assert request(result["token"], invalid) == "invalid_report"
     end
 
     assert {:ok, worker} = Domain.get_worker(result["worker"]["id"])
@@ -388,13 +376,13 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
     {:ok, result} = WorkerConnections.create("Publish")
     id = result["worker"]["id"]
     mutate("put_service", DomainFixtures.service(id, 1))
-    response = request(result["token"], report(result))
-    assert Jason.decode!(response.resp_body)["target"] == nil
+    assert {:ok, %{"target" => nil}} = WorkerConnections.connect(result["token"], report(result))
     target = mutate("confirm_target", %{"worker_id" => id, "expected_revision" => 2})
-    response = request(result["token"], report(result))
 
-    assert Jason.decode!(response.resp_body)["target"] ==
-             Map.take(target, ~w(revision digest plan))
+    assert {:ok, %{"target" => delivered}} =
+             WorkerConnections.connect(result["token"], report(result))
+
+    assert delivered == Map.take(target, ~w(revision digest plan))
 
     applied =
       report(result)
@@ -404,37 +392,18 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
         "services" => %{"dns" => %{"state" => "running"}}
       })
 
-    assert request(result["token"], applied).status == 200
+    assert request(result["token"], applied) == :ok
 
-    assert request(result["token"], Map.put(applied, "applied_digest", String.duplicate("0", 64))).status ==
-             422
+    assert request(result["token"], Map.put(applied, "applied_digest", String.duplicate("0", 64))) ==
+             "invalid_report"
 
-    assert request(result["token"], Map.put(applied, "applied_revision", 999)).status == 422
+    assert request(result["token"], Map.put(applied, "applied_revision", 999)) == "invalid_report"
     assert {:ok, worker} = Domain.get_worker(id)
     assert worker["applied_revision"] == target["revision"]
     assert worker["reported_services"] == applied["services"]
 
     mutate("put_service", DomainFixtures.service(id, worker["revision"], "stopped"))
-    response = request(result["token"], applied)
-
-    assert Jason.decode!(response.resp_body)["target"] ==
-             Map.take(target, ~w(revision digest plan))
-  end
-
-  test "machine API bounds JSON and rejects malformed content without credential leakage" do
-    response =
-      conn(:post, "/connect", "{")
-      |> put_req_header("content-type", "application/json")
-      |> WorkerAPI.call([])
-
-    assert response.status == 400
-
-    response =
-      conn(:post, "/connect", String.duplicate(" ", 65_537))
-      |> put_req_header("content-type", "application/json")
-      |> WorkerAPI.call([])
-
-    assert response.status == 413
+    assert {:ok, %{"target" => ^delivered}} = WorkerConnections.connect(result["token"], applied)
   end
 
   defp report(result) do
@@ -448,13 +417,11 @@ defmodule YellowDog.Management.WorkerConnectionsTest do
     }
   end
 
-  defp request(token, report, plug \\ WorkerAPI, path \\ "/connect") do
-    conn =
-      conn(:post, path, Jason.encode!(report))
-      |> put_req_header("content-type", "application/json")
-
-    conn = if token, do: put_req_header(conn, "authorization", "Bearer " <> token), else: conn
-    plug.call(conn, plug.init([]))
+  defp request(token, report) do
+    case WorkerConnections.connect(token, report) do
+      {:ok, _} -> :ok
+      {:error, %{code: code}} -> code
+    end
   end
 
   defp mutate(operation, params) do
