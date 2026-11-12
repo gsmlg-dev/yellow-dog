@@ -75,11 +75,11 @@
 
 扩展 `dns` 服务的 `config` 字段。字段名留给实现者，但语义固定如下：
 
-- `listen_addresses`（替换现有单个 `listen_address`）、`port`：监听地址改为列表，使回环地址、VPN IP 和 podman 网桥地址可以同时监听（**我的决定**）。是否支持 IPv6 地址由实现者决定。
+- `listen_address`、`port`：保持单个 IPv4 地址。云上部署使用 `0.0.0.0`，同时覆盖回环、VPN 和 podman 网桥（**我的决定**，2026-11-12 修订：原计划改成列表，但 0.0.0.0 已满足需求，改列表会牵动大量现有测试）。
 - `recursion`：是否开启递归，布尔值。
 - `forward_zones`：列表，每项为 `{name, forwarders: [{address, port}]}`。匹配域名后缀，最长后缀优先。
 - `allow_query`：CIDR 列表，支持 IPv4 和 IPv6。为空表示拒绝所有来源。
-- 缓存上限和 TTL 上下限：可选，有默认值。
+- 缓存上限和 TTL：第一版不放进 WorkerPlan，在 Worker 中用固定默认值（**我的决定**）。
 
 所有字段都要有上限（参照现有的 1024/256/64 风格），要进入 digest 和 TOML 编解码，并补齐共享 fixtures。
 
