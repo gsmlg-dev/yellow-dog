@@ -328,4 +328,145 @@ defmodule YellowDog.ConfigSpecTest do
 
     assert {:ok, ^first} = ConfigSpec.decode(reformatted)
   end
+
+  describe "dns policy config" do
+    defp with_dns(extra) do
+      base = plan()
+      update_in(base, ["services", Access.at(0), "config"], &Map.merge(&1, extra))
+    end
+
+    defp dns_of({:ok, plan}), do: hd(plan["services"])["config"]
+
+    test "defaults when new keys are omitted" do
+      config = dns_of(ConfigSpec.normalize_plan(plan()))
+
+      assert config == %{
+               "listen_address" => "127.0.0.1",
+               "port" => 1053,
+               "recursion" => false,
+               "allow_query" => [],
+               "forward_zones" => []
+             }
+    end
+
+    test "allow_query is masked, sorted and deduplicated" do
+      config =
+        dns_of(
+          ConfigSpec.normalize_plan(
+            with_dns(%{"allow_query" => ["10.10.10.7/24", "::1/128", "10.10.10.0/24"]})
+          )
+        )
+
+      assert config["allow_query"] == ["10.10.10.0/24", "::1/128"]
+    end
+
+    test "allow_query rejects bad CIDRs and over-limit lists" do
+      for bad <- ["10.0.0.0", "10.0.0.0/33", "::/129", "x/8", "10.0.0.0/-1", 5] do
+        assert error_code(ConfigSpec.normalize_plan(with_dns(%{"allow_query" => [bad]}))) in [
+                 :invalid_cidr
+               ]
+      end
+
+      many = for i <- 0..128, do: "10.0.#{div(i, 256)}.#{rem(i, 256)}/32"
+
+      assert error_code(ConfigSpec.normalize_plan(with_dns(%{"allow_query" => many}))) ==
+               :too_many
+    end
+
+    test "forward zones are normalized and sorted" do
+      zones = [
+        %{"name" => "Corp.Example", "forwarders" => [%{"address" => "10.0.0.2", "port" => 53}]},
+        %{
+          "name" => ".",
+          "forwarders" => [%{"address" => "2001:DB8::53"}, %{"address" => "9.9.9.9"}]
+        }
+      ]
+
+      config = dns_of(ConfigSpec.normalize_plan(with_dns(%{"forward_zones" => zones})))
+
+      assert config["forward_zones"] == [
+               %{
+                 "name" => ".",
+                 "forwarders" => [
+                   %{"address" => "2001:db8::53", "port" => 53},
+                   %{"address" => "9.9.9.9", "port" => 53}
+                 ]
+               },
+               %{
+                 "name" => "corp.example.",
+                 "forwarders" => [%{"address" => "10.0.0.2", "port" => 53}]
+               }
+             ]
+    end
+
+    test "forward zone validation" do
+      fwd = [%{"address" => "10.0.0.2"}]
+      check = fn zones -> ConfigSpec.normalize_plan(with_dns(%{"forward_zones" => zones})) end
+
+      assert error_code(
+               check.([
+                 %{"name" => "a.example", "forwarders" => fwd},
+                 %{"name" => "A.example.", "forwarders" => fwd}
+               ])
+             ) == :duplicate_forward_zone
+
+      assert error_code(check.([%{"name" => "a.example", "forwarders" => []}])) == :invalid_value
+
+      assert error_code(
+               check.([
+                 %{
+                   "name" => "a.example",
+                   "forwarders" => List.duplicate(%{"address" => "10.0.0.2"}, 9)
+                 }
+               ])
+             ) == :too_many
+
+      for port <- [0, 65_536, "53"] do
+        assert error_code(
+                 check.([
+                   %{
+                     "name" => "a.example",
+                     "forwarders" => [%{"address" => "10.0.0.2", "port" => port}]
+                   }
+                 ])
+               ) == :invalid_integer
+      end
+
+      assert error_code(
+               check.([%{"name" => "a.example", "forwarders" => [%{"address" => "nope"}]}])
+             ) == :invalid_address
+
+      assert error_code(check.([%{"name" => "a.example", "forwarders" => fwd, "x" => 1}])) ==
+               :unsupported_field
+
+      too_many =
+        for i <- 1..65, do: %{"name" => "z#{i}.example", "forwarders" => fwd}
+
+      assert error_code(check.(too_many)) == :too_many
+    end
+
+    test "unknown keys still fail" do
+      assert error_code(ConfigSpec.normalize_plan(with_dns(%{"cache" => true}))) ==
+               :unsupported_field
+
+      assert error_code(ConfigSpec.normalize_plan(with_dns(%{"recursion" => "yes"}))) ==
+               :invalid_type
+    end
+
+    test "recursion participates in plan_digest" do
+      assert {:ok, a} = ConfigSpec.plan_digest(with_dns(%{"recursion" => false}))
+      assert {:ok, b} = ConfigSpec.plan_digest(with_dns(%{"recursion" => true}))
+      refute a == b
+    end
+
+    test "recursive_forward.toml round-trips" do
+      assert {:ok, plan} = ConfigSpec.decode(fixture("recursive_forward.toml"))
+      config = hd(plan["services"])["config"]
+      assert config["recursion"] == true
+      assert config["allow_query"] == ["10.10.10.0/24", "::1/128"]
+      assert [%{"name" => "."}, %{"name" => "corp.example."}] = config["forward_zones"]
+      assert {:ok, encoded} = ConfigSpec.encode(plan)
+      assert {:ok, ^plan} = ConfigSpec.decode(encoded)
+    end
+  end
 end

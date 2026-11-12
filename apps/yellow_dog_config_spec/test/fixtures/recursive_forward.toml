@@ -1,0 +1,20 @@
+schema_version = 1
+worker_id = "edge-01"
+revision = 1
+resources = []
+
+[[services]]
+id = "dns-primary"
+type = "dns"
+desired_state = "running"
+resources = []
+
+[services.config]
+listen_address = "0.0.0.0"
+port = 53
+recursion = true
+allow_query = ["::1/128", "10.10.10.0/24"]
+forward_zones = [
+  { name = "corp.example.", forwarders = [{ address = "10.0.0.2", port = 53 }, { address = "2001:db8::53" }] },
+  { name = ".", forwarders = [{ address = "9.9.9.9", port = 5353 }] },
+]

@@ -53,6 +53,20 @@ defmodule YellowDog.Management.OperationSchemas do
 
   def dns_config, do: object(%{"listen_address" => ipv4(), "port" => integer(1, 65_535)})
 
+  # Normalized WorkerPlan DNS config always carries the policy keys (Task 8 adds editing).
+  def plan_dns_config do
+    forwarder = object(%{"address" => text(45), "port" => integer(1, 65_535)})
+
+    object(%{
+      "listen_address" => ipv4(),
+      "port" => integer(1, 65_535),
+      "recursion" => boolean(),
+      "allow_query" => array(text(49), 128),
+      "forward_zones" =>
+        array(object(%{"name" => text(253), "forwarders" => array(forwarder, 8)}), 64)
+    })
+  end
+
   def ipv4,
     do:
       Map.put(
@@ -317,7 +331,7 @@ defmodule YellowDog.Management.OperationSchemas do
         "id" => identity(),
         "type" => enum(["dns"]),
         "desired_state" => enum(~w(running stopped)),
-        "config" => dns_config(),
+        "config" => plan_dns_config(),
         "resources" => array(identity(), 256)
       })
 

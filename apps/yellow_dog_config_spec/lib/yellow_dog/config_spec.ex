@@ -11,6 +11,9 @@ defmodule YellowDog.ConfigSpec do
   @max_services 64
   @max_resources 256
   @max_records 1_024
+  @max_allow_query 128
+  @max_forward_zones 64
+  @max_forwarders 8
   @max_id_bytes 64
   @max_domain_bytes 253
   @max_revision 2_147_483_647
@@ -225,10 +228,23 @@ defmodule YellowDog.ConfigSpec do
   defp service(_, path), do: err(path, :invalid_type, "service must be a map")
 
   defp dns_config(config, path) when is_map(config) do
-    with :ok <- shape(config, ~w(listen_address port), [], path),
+    with :ok <-
+           shape(config, ~w(listen_address port), ~w(recursion allow_query forward_zones), path),
          {:ok, address} <- ipv4(config["listen_address"], path ++ ["listen_address"]),
-         {:ok, port} <- integer(config["port"], 1, 65_535, path ++ ["port"]) do
-      {:ok, %{"listen_address" => address, "port" => port}}
+         {:ok, port} <- integer(config["port"], 1, 65_535, path ++ ["port"]),
+         {:ok, recursion} <- boolean(Map.get(config, "recursion", false), path ++ ["recursion"]),
+         {:ok, allow_query} <-
+           allow_query(Map.get(config, "allow_query", []), path ++ ["allow_query"]),
+         {:ok, zones} <-
+           forward_zones(Map.get(config, "forward_zones", []), path ++ ["forward_zones"]) do
+      {:ok,
+       %{
+         "listen_address" => address,
+         "port" => port,
+         "recursion" => recursion,
+         "allow_query" => allow_query,
+         "forward_zones" => zones
+       }}
     end
   end
 
@@ -489,6 +505,103 @@ defmodule YellowDog.ConfigSpec do
 
   defp ipv4(_, path), do: err(path, :invalid_address, "IPv4 address must be a string")
 
+  defp boolean(value, _path) when is_boolean(value), do: {:ok, value}
+  defp boolean(_, path), do: err(path, :invalid_type, "value must be a boolean")
+
+  defp allow_query(value, path) do
+    with {:ok, list} <- bounded_list(value, @max_allow_query, path),
+         {:ok, cidrs} <- map_indexed(list, &cidr/2, path) do
+      {:ok, cidrs |> Enum.uniq() |> Enum.sort()}
+    end
+  end
+
+  defp cidr(value, path) when is_binary(value) do
+    with [address, length] <- String.split(value, "/"),
+         {:ok, tuple} <- :inet.parse_strict_address(String.to_charlist(address)),
+         {bits, width} = {tuple_to_bits(tuple), tuple_width(tuple)},
+         {prefix, ""} when prefix in 0..width//1 <- Integer.parse(length) do
+      shift = width - prefix
+      masked = bits |> Bitwise.bsr(shift) |> Bitwise.bsl(shift)
+      {:ok, tuple_ntoa(bits_to_tuple(masked, width)) <> "/" <> Integer.to_string(prefix)}
+    else
+      _ -> err(path, :invalid_cidr, "expected IPv4 or IPv6 CIDR such as 10.0.0.0/24")
+    end
+  end
+
+  defp cidr(_, path), do: err(path, :invalid_cidr, "CIDR must be a string")
+
+  defp tuple_width(tuple) when tuple_size(tuple) == 4, do: 32
+  defp tuple_width(tuple) when tuple_size(tuple) == 8, do: 128
+
+  defp tuple_to_bits(tuple) do
+    group = if tuple_size(tuple) == 4, do: 8, else: 16
+
+    tuple
+    |> Tuple.to_list()
+    |> Enum.reduce(0, fn part, acc -> Bitwise.bsl(acc, group) + part end)
+  end
+
+  defp bits_to_tuple(bits, 32), do: bits_to_tuple(bits, 4, 8)
+  defp bits_to_tuple(bits, 128), do: bits_to_tuple(bits, 8, 16)
+
+  defp bits_to_tuple(bits, count, group) do
+    mask = Bitwise.bsl(1, group) - 1
+
+    for i <- (count - 1)..0//-1 do
+      bits |> Bitwise.bsr(i * group) |> Bitwise.band(mask)
+    end
+    |> List.to_tuple()
+  end
+
+  defp tuple_ntoa(tuple), do: tuple |> :inet.ntoa() |> to_string() |> String.downcase()
+
+  defp forward_zones(value, path) do
+    with {:ok, list} <- bounded_list(value, @max_forward_zones, path),
+         {:ok, zones} <- map_indexed(list, &forward_zone/2, path),
+         :ok <- unique(zones, "name", path, :duplicate_forward_zone) do
+      {:ok, Enum.sort_by(zones, & &1["name"])}
+    end
+  end
+
+  defp forward_zone(zone, path) when is_map(zone) do
+    with :ok <- shape(zone, ~w(name forwarders), [], path),
+         {:ok, name} <- forward_zone_name(zone["name"], path ++ ["name"]),
+         {:ok, forwarders} <- forwarders(zone["forwarders"], path ++ ["forwarders"]) do
+      {:ok, %{"name" => name, "forwarders" => forwarders}}
+    end
+  end
+
+  defp forward_zone(_, path), do: err(path, :invalid_type, "forward zone must be a map")
+
+  defp forward_zone_name(".", _path), do: {:ok, "."}
+  defp forward_zone_name(value, path), do: domain(value, path)
+
+  defp forwarders(value, path) do
+    with {:ok, list} <- bounded_list(value, @max_forwarders, path),
+         true <- list != [] or err(path, :invalid_value, "at least one forwarder is required") do
+      map_indexed(list, &forwarder/2, path)
+    end
+  end
+
+  defp forwarder(forwarder, path) when is_map(forwarder) do
+    with :ok <- shape(forwarder, ~w(address), ~w(port), path),
+         {:ok, address} <- ip_address(forwarder["address"], path ++ ["address"]),
+         {:ok, port} <- integer(Map.get(forwarder, "port", 53), 1, 65_535, path ++ ["port"]) do
+      {:ok, %{"address" => address, "port" => port}}
+    end
+  end
+
+  defp forwarder(_, path), do: err(path, :invalid_type, "forwarder must be a map")
+
+  defp ip_address(value, path) when is_binary(value) do
+    case :inet.parse_strict_address(String.to_charlist(value)) do
+      {:ok, tuple} -> {:ok, tuple_ntoa(tuple)}
+      _ -> err(path, :invalid_address, "invalid IPv4 or IPv6 address")
+    end
+  end
+
+  defp ip_address(_, path), do: err(path, :invalid_address, "address must be a string")
+
   defp positive(value, path), do: integer(value, 1, @max_revision, path)
 
   defp integer(value, min, max, _path) when is_integer(value) and value >= min and value <= max,
@@ -540,12 +653,13 @@ defmodule YellowDog.ConfigSpec do
       else: errors
   end
 
-  defp unique(items, key, path), do: unique_values(Enum.map(items, & &1[key]), path)
+  defp unique(items, key, path, code \\ :duplicate),
+    do: unique_values(Enum.map(items, & &1[key]), path, code)
 
-  defp unique_values(values, path) do
+  defp unique_values(values, path, code \\ :duplicate) do
     if length(values) == length(Enum.uniq(values)),
       do: :ok,
-      else: err(path, :duplicate, "duplicate entries are not allowed")
+      else: err(path, code, "duplicate entries are not allowed")
   end
 
   defp semantic_digest(content) do
@@ -563,6 +677,7 @@ defmodule YellowDog.ConfigSpec do
   defp canonical(value), do: Jason.encode!(value)
 
   defp toml(value) when is_binary(value), do: Jason.encode!(value)
+  defp toml(value) when is_boolean(value), do: Atom.to_string(value)
   defp toml(value) when is_integer(value), do: Integer.to_string(value)
   defp toml(value) when is_list(value), do: "[" <> Enum.map_join(value, ", ", &toml/1) <> "]"
 
