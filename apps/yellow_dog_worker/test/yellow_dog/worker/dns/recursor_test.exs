@@ -10,6 +10,7 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
   @tld {127, 0, 0, 11}
   @leaf {127, 0, 0, 12}
   @evil {127, 0, 0, 66}
+  @dead {127, 0, 0, 13}
 
   @https {1, Domain.new("."), <<0, 1, 0, 3, 2, 104, 50>>}
 
@@ -17,9 +18,13 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
   #   127.0.0.10  root      -> refers test. to ns.test (glue 127.0.0.11)
   #   127.0.0.11  test.     -> refers example.test (in-zone glue + out-of-bailiwick ns.evil. glue),
   #                            bad.test (only the out-of-bailiwick ns.evil. glue),
-  #                            noglue.test (NS ns.other.test, no glue), ping.test <-> pong.test;
+  #                            noglue.test (NS ns.other.test, no glue), ping.test <-> pong.test,
+  #                            sib.test (glue for ns.example.test, outside the child zone),
+  #                            multi.test (glue: dead ns1, live ns2, dead ns3),
+  #                            mixed.test (dead glued NS, then glueless ns.other.test);
   #                            authoritative for other.test and loop.test
-  #   127.0.0.12  example.test. and noglue.test.
+  #   127.0.0.12  example.test., noglue.test., sib.test., multi.test. and mixed.test.
+  #   127.0.0.13  drops every query (a dead nameserver)
   #   127.0.0.66  must never be queried
   setup do
     port = start_hierarchy(self(), 5)
@@ -33,7 +38,8 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
     port = FakeDnsServer.port(root)
 
     started =
-      Enum.reduce_while([{@tld, &tld/1}, {@leaf, &leaf/1}, {@evil, &evil/1}], [], fn
+      [{@tld, &tld/1}, {@leaf, &leaf/1}, {@evil, &evil/1}, {@dead, fn _ -> :drop end}]
+      |> Enum.reduce_while([], fn
         {ip, handler}, acc ->
           case FakeDnsServer.start(ip, port, recorder(test, ip, handler)) do
             {:ok, pid} -> {:cont, [pid | acc]}
@@ -144,6 +150,64 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
            ]
   end
 
+  test "glue outside the child zone but inside the referring server's zone is used",
+       %{opts: opts} do
+    assert {:ok, %{rcode: 0, answers: [a]}} = Recursor.resolve("www.sib.test", 1, opts)
+    assert a.data.data == {192, 0, 2, 82}
+
+    # ns.example.test is not under sib.test but is under test., the zone of the
+    # server that sent the referral; the glueless ns.other.test is never resolved.
+    assert Enum.map(queries(), fn {ip, name, _, _} -> {ip, name} end) == [
+             {@root, "www.sib.test"},
+             {@tld, "www.sib.test"},
+             {@leaf, "www.sib.test"}
+           ]
+  end
+
+  test "every glued nameserver is kept and a dead first server fails over", %{opts: opts} do
+    assert {:ok, %{rcode: 0, answers: [a]}} = Recursor.resolve("www.multi.test", 1, opts)
+    assert a.data.data == {192, 0, 2, 82}
+
+    assert Enum.map(queries(), fn {ip, _, _, _} -> ip end) == [@root, @tld, @dead, @leaf]
+  end
+
+  test "glueless nameservers are resolved only after every glued server failed",
+       %{opts: opts} do
+    assert {:ok, %{rcode: 0, answers: [a]}} = Recursor.resolve("www.mixed.test", 1, opts)
+    assert a.data.data == {192, 0, 2, 82}
+
+    assert Enum.map(queries(), fn {ip, name, _, _} -> {ip, name} end) == [
+             {@root, "www.mixed.test"},
+             {@tld, "www.mixed.test"},
+             {@dead, "www.mixed.test"},
+             {@root, "ns.other.test"},
+             {@tld, "ns.other.test"},
+             {@leaf, "www.mixed.test"}
+           ]
+  end
+
+  test "a CNAME in a cached delegation NS set is not used as a nameserver", %{opts: opts} do
+    cache = Cache.new()
+    infra = 0x10000
+
+    Cache.put(cache, "example.test", infra + 2, %{
+      rcode: 0,
+      answers: [rr("example.test", 5, "ns.evil.")],
+      authority: []
+    })
+
+    Cache.put(cache, "ns.evil", infra + 1, %{
+      rcode: 0,
+      answers: [rr("ns.evil", 1, @evil)],
+      authority: []
+    })
+
+    opts = Keyword.put(opts, :cache, cache)
+    assert {:ok, %{answers: [a]}} = Recursor.resolve("www.example.test", 1, opts)
+    assert a.data.data == {192, 0, 2, 80}
+    assert Enum.map(queries(), fn {ip, _, _, _} -> ip end) == [@root, @tld, @leaf]
+  end
+
   test "records outside the query name and CNAME chain are dropped", %{opts: opts} do
     assert {:ok, %{answers: answers}} = Recursor.resolve("www.example.test", 1, opts)
     assert Enum.map(answers, &to_string(&1.name)) == ["www.example.test."]
@@ -235,6 +299,21 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
       under?(name, "noglue.test") ->
         referral(q, "noglue.test", [{"ns.other.test", nil}])
 
+      under?(name, "sib.test") ->
+        referral(q, "sib.test", [{"ns.example.test", {127, 0, 0, 12}}, {"ns.other.test", nil}])
+
+      under?(name, "multi.test") ->
+        # Dead servers on both sides of the live one, so whichever end the
+        # glue list is read from, a dead server is tried first.
+        referral(q, "multi.test", [
+          {"ns1.multi.test", {127, 0, 0, 13}},
+          {"ns2.multi.test", {127, 0, 0, 12}},
+          {"ns3.multi.test", {127, 0, 0, 13}}
+        ])
+
+      under?(name, "mixed.test") ->
+        referral(q, "mixed.test", [{"ns.dead.test", {127, 0, 0, 13}}, {"ns.other.test", nil}])
+
       under?(name, "ping.test") ->
         referral(q, "ping.test", [{"ns.pong.test", nil}])
 
@@ -278,6 +357,9 @@ defmodule YellowDog.Worker.Dns.RecursorTest do
 
       {"www.noglue.test", 1} ->
         reply(q, 0, [rr("www.noglue.test", 1, {192, 0, 2, 81})])
+
+      {name, 1} when name in ["www.sib.test", "www.multi.test", "www.mixed.test"] ->
+        reply(q, 0, [rr(name, 1, {192, 0, 2, 82})])
 
       _ ->
         reply(q, 3, [], [soa("example.test")])

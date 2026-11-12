@@ -3,8 +3,12 @@ defmodule YellowDog.Worker.Dns.Recursor do
   Iterative recursive resolution starting from root hints.
 
   Every upstream query is sent with RD=0 through `Upstream.query/4`. Referrals
-  are followed using only in-bailiwick glue; glueless NS names are resolved from
-  the closest known servers within the same step budget. CNAME chains are
+  are followed using glue inside the bailiwick of the server that sent the
+  referral (the zone being queried, so the root may supply any glue). Every
+  glued nameserver address is kept and tried in order, failing over on timeout,
+  error or lame answers; glueless NS names are resolved lazily (A, then AAAA
+  with `ipv6: true`) from the closest known servers, within the same step
+  budget, only when no glued server produced an answer. CNAME chains are
   followed up to `max_cname` links, and answer records that are neither the
   query name nor part of its chain (or lie outside the answering server's zone)
   are dropped.
@@ -20,7 +24,7 @@ defmodule YellowDog.Worker.Dns.Recursor do
   alias DNS.Message
   alias YellowDog.Worker.Dns.{Cache, RootHints, Upstream}
 
-  @query_timeout 1_500
+  @query_timeout 1_000
   @a 1
   @ns 2
   @cname 5
@@ -69,9 +73,9 @@ defmodule YellowDog.Worker.Dns.Recursor do
         {:ok, cached}
 
       :miss ->
-        {zone, servers} = closest(name, st)
+        {zone, servers, glueless} = closest(name, st)
 
-        with {:ok, result} <- iterate(name, type, zone, servers, cnames, st) do
+        with {:ok, result} <- iterate(name, type, zone, servers, glueless, cnames, st) do
           cache_put(st.cache, name, type, result)
           {:ok, result}
         end
@@ -79,21 +83,26 @@ defmodule YellowDog.Worker.Dns.Recursor do
   end
 
   # Deepest ancestor whose NS set and at least one server address are cached.
-  defp closest(_name, %{cache: nil} = st), do: {"", st.roots}
+  # Only NS records owned by the zone count; hosts without a cached address are
+  # kept as lazily resolved fallbacks.
+  defp closest(_name, %{cache: nil} = st), do: {"", st.roots, []}
 
   defp closest(name, st) do
     name
     |> ancestors()
-    |> Enum.find_value({"", st.roots}, fn zone ->
-      with {:ok, %{answers: [_ | _] = ns}} <- cache_get(st.cache, zone, @infra + @ns),
-           [_ | _] = servers <-
-             Enum.flat_map(ns, &cached_addresses(norm(&1.data.data), st)) do
-        {zone, servers}
+    |> Enum.find_value({"", st.roots, []}, fn zone ->
+      with {:ok, %{answers: records}} <- cache_get(st.cache, zone, @infra + @ns),
+           hosts = for(r <- records, ns_of?(r, zone), do: norm(r.data.data)),
+           known = Enum.map(hosts, &{&1, cached_addresses(&1, st)}),
+           [_ | _] = servers <- Enum.flat_map(known, &elem(&1, 1)) do
+        {zone, servers, glueless_queue(for({host, []} <- known, do: host), st)}
       else
         _ -> nil
       end
     end)
   end
+
+  defp ns_of?(record, zone), do: record.type.value == <<@ns::16>> and norm(record.name) == zone
 
   # Glue first, then an authoritative answer for the host.
   defp cached_addresses(host, st) do
@@ -106,7 +115,9 @@ defmodule YellowDog.Worker.Dns.Recursor do
     |> Enum.find([], &(&1 != []))
   end
 
-  defp iterate(name, type, zone, servers, cnames, st) do
+  # Tries `servers` in order; once all are exhausted, resolves the next
+  # glueless `{host, type}` and tries its addresses.
+  defp iterate(name, type, zone, servers, glueless, cnames, st) do
     outcome =
       Enum.reduce_while(servers, :lame, fn server, :lame ->
         with {:ok, msg} <- query(server, name, type, st),
@@ -117,6 +128,17 @@ defmodule YellowDog.Worker.Dns.Recursor do
         end
       end)
 
+    case {outcome, glueless} do
+      {:lame, [{host, host_type} | rest]} ->
+        servers = resolve_host(host, host_type, st)
+        iterate(name, type, zone, servers, rest, cnames, st)
+
+      _ ->
+        follow(outcome, name, type, cnames, st)
+    end
+  end
+
+  defp follow(outcome, name, type, cnames, st) do
     case outcome do
       {:answer, records} ->
         {:ok, %{rcode: 0, answers: records, authority: []}}
@@ -129,13 +151,12 @@ defmodule YellowDog.Worker.Dns.Recursor do
           {:ok, %{result | answers: chain ++ result.answers}}
         end
 
-      {:referral, child, hosts, glue} ->
-        cache_referral(st, child, hosts, glue)
-
-        case glue_servers(glue, st) do
-          [] -> iterate(name, type, child, resolve_hosts(hosts, st), cnames, st)
-          servers -> iterate(name, type, child, servers, cnames, st)
-        end
+      {:referral, child, {_ns, hosts} = delegation, glue} ->
+        glue = usable_glue(glue, st)
+        cache_referral(st, child, delegation, glue)
+        glued = MapSet.new(glue, &norm(&1.name))
+        glueless = glueless_queue(Enum.reject(hosts, &MapSet.member?(glued, &1)), st)
+        iterate(name, type, child, glue_servers(glue, st), glueless, cnames, st)
 
       _ ->
         {:error, :servfail}
@@ -221,36 +242,43 @@ defmodule YellowDog.Worker.Dns.Recursor do
         ns = Enum.filter(ns, &(norm(&1.name) == child))
         hosts = Enum.map(ns, &norm(&1.data.data))
 
+        # Bailiwick is the responding server's zone, not the child: the root's
+        # com. referral may carry glue for *.gtld-servers.net, and the com.
+        # servers glue for any host under com.; glue outside `zone` is dropped.
         glue =
           Enum.filter(msg.arlist, fn r ->
             host = norm(r.name)
-            host in hosts and in_zone?(host, child)
+            host in hosts and in_zone?(host, zone)
           end)
 
         {:referral, child, {ns, hosts}, glue}
     end
   end
 
+  defp usable_glue(glue, st) do
+    types = Enum.map(address_types(st), &<<&1::16>>)
+    Enum.filter(glue, &(&1.type.value in types))
+  end
+
+  # Every usable glue address, IPv4 first, in referral order.
   defp glue_servers(glue, st) do
     Enum.flat_map(address_types(st), fn type ->
       Enum.flat_map(glue, &addresses([&1], norm(&1.name), type, st.port))
     end)
   end
 
-  defp resolve_hosts({_ns, hosts}, st) do
-    Enum.find_value(hosts, [], fn host ->
-      case lookup(host, @a, st.max_cname, st) do
-        # The answers are the validated chain, so every A record is the host's.
-        {:ok, %{rcode: 0, answers: answers}} ->
-          case for(r <- answers, r.type.value == <<@a::16>>, do: {r.data.data, st.port}) do
-            [] -> nil
-            servers -> servers
-          end
+  defp glueless_queue(hosts, st),
+    do: for(host <- hosts, type <- address_types(st), do: {host, type})
 
-        _ ->
-          nil
-      end
-    end)
+  defp resolve_host(host, type, st) do
+    case lookup(host, type, st.max_cname, st) do
+      # The answers are the validated chain, so every record of `type` is the host's.
+      {:ok, %{rcode: 0, answers: answers}} ->
+        for r <- answers, r.type.value == <<type::16>>, do: {r.data.data, st.port}
+
+      _ ->
+        []
+    end
   end
 
   defp addresses(records, host, type, port) do
@@ -263,7 +291,6 @@ defmodule YellowDog.Worker.Dns.Recursor do
     cache_put(st.cache, child, @infra + @ns, %{rcode: 0, answers: ns, authority: []})
 
     glue
-    |> Enum.filter(&(&1.type.value in Enum.map(address_types(st), fn t -> <<t::16>> end)))
     |> Enum.group_by(&{norm(&1.name), &1.type.value})
     |> Enum.each(fn {{host, <<type::16>>}, records} ->
       cache_put(st.cache, host, @infra + type, %{rcode: 0, answers: records, authority: []})
