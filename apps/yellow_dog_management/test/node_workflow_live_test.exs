@@ -89,7 +89,7 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
     {:ok, _details, details_html} = live(build_conn(), "/server/node-a/services")
     assert details_html =~ "Recursion: on"
     assert details_html =~ "10.10.10.5/24, 192.168.0.0/16"
-    assert details_html =~ "corp.test → 10.0.0.2:53, 10.0.0.3:5353"
+    assert details_html =~ "corp.test → 10.0.0.2, 10.0.0.3:5353"
     assert details_html =~ "[2001:db8::1]:5353"
     {:ok, edit, _} = live(build_conn(), "/server/node-a/services/#{service["id"]}/edit")
     assert has_element?(edit, "input[type='checkbox'][name='service[recursion]'][checked]")
@@ -98,7 +98,7 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
     assert has_element?(
              edit,
              "textarea[name='service[forward_zones]']",
-             "corp.test 10.0.0.2:53 10.0.0.3:5353"
+             "corp.test 10.0.0.2 10.0.0.3:5353"
            )
 
     assert has_element?(edit, "textarea[name='service[forward_zones]']", "[2001:db8::1]:5353")
