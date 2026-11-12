@@ -64,19 +64,30 @@ defmodule YellowDog.Worker.BootstrapTest do
   test "managed mode needs only generated identity and connection config", %{tmp_dir: dir} do
     assert {:ok, options} = Bootstrap.load(write(dir, managed()))
     assert options[:source] == nil
-    assert options[:connection][:poll_interval_ms] == 10_000
     assert options[:connection][:token] == @token
     assert options[:data_dir] == Path.join(dir, "state")
-    assert {:ok, bounded} = Bootstrap.load(write(dir, managed() <> "poll_interval_ms = 15000\n"))
-    assert bounded[:connection][:poll_interval_ms] == 15_000
+    refute Keyword.has_key?(options[:connection], :poll_interval_ms)
   end
 
-  test "credentials origins intervals and optional TLS paths are validated without leaking secrets",
+  test "HTTP polling intervals are no longer accepted", %{tmp_dir: dir} do
+    for interval <- ["100", "10000", "15000"] do
+      assert {:error, :invalid_bootstrap} =
+               Bootstrap.load(write(dir, managed() <> "poll_interval_ms = #{interval}\n"))
+
+      assert {:error, :invalid_bootstrap} =
+               Bootstrap.load(
+                 write(
+                   dir,
+                   "management_url = \"http://10.8.0.1\"\npoll_interval_ms = #{interval}\n"
+                 )
+               )
+    end
+  end
+
+  test "credentials origins and optional TLS paths are validated without leaking secrets",
        %{tmp_dir: dir} do
     for extra <- [
           "source = \"plan.toml\"\n",
-          "poll_interval_ms = 1\n",
-          "poll_interval_ms = 60000\n",
           "extra = true\n",
           "tls_cert_file = \"client.pem\"\n",
           "tls_ca_file = \"missing.pem\"\n"

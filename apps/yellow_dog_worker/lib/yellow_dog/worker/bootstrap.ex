@@ -3,7 +3,7 @@ defmodule YellowDog.Worker.Bootstrap do
 
   @local ~w(data_dir source worker_id)
   @managed ~w(data_dir management_url token worker_id)
-  @optional ~w(tls_ca_file tls_cert_file tls_key_file poll_interval_ms)
+  @optional ~w(tls_ca_file tls_cert_file tls_key_file)
 
   def load(path) when is_binary(path) do
     with {:ok, %{size: size, type: :regular}} when size <= 16_384 <- File.lstat(path),
@@ -28,7 +28,7 @@ defmodule YellowDog.Worker.Bootstrap do
 
     with true <- local? or managed?,
          true <-
-           Enum.all?(Map.delete(config, "poll_interval_ms"), fn {_key, value} ->
+           Enum.all?(config, fn {_key, value} ->
              is_binary(value) and byte_size(value) in 1..4096
            end),
          true <- valid_identity?(config["worker_id"]) do
@@ -42,8 +42,6 @@ defmodule YellowDog.Worker.Bootstrap do
              true <-
                config["token"] == nil or
                  Regex.match?(~r/\A[A-Za-z0-9_-]{32,256}\z/, config["token"]),
-             interval = Map.get(config, "poll_interval_ms", 10_000),
-             true <- is_integer(interval) and interval in 100..15_000,
              true <-
                Map.has_key?(config, "tls_cert_file") == Map.has_key?(config, "tls_key_file"),
              {:ok, tls} <- tls_files(config, root) do
@@ -52,11 +50,7 @@ defmodule YellowDog.Worker.Bootstrap do
              [
                source: nil,
                connection:
-                 [
-                   management_url: config["management_url"],
-                   token: config["token"],
-                   poll_interval_ms: interval
-                 ] ++ tls
+                 [management_url: config["management_url"], token: config["token"]] ++ tls
              ]}
         end
       end

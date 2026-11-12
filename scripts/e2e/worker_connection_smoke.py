@@ -1,4 +1,5 @@
-"""Real independent releases, disposable PostgreSQL, authenticated polling and DNS sockets."""
+"""Real independent releases, disposable PostgreSQL, the Worker WebSocket channel and DNS sockets."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,6 @@ import sys
 import tempfile
 import time
 import tomllib
-import urllib.error
 import urllib.request
 import uuid
 
@@ -19,7 +19,9 @@ os.umask(0o077)
 management_binary, worker_binary = (str(Path(arg).resolve()) for arg in sys.argv[1:])
 evidence = Path(tempfile.mkdtemp(prefix="yellow-dog-worker-connection-"))
 processes = {}
+worker_envs = {}
 logs = []
+tokens = []
 
 
 def free_port():
@@ -58,6 +60,7 @@ def start(name, binary):
     processes[name] = subprocess.Popen([binary, "start"], env=process_env, stdout=log, stderr=log,
                                        start_new_session=True)
     if name == "worker":
+        worker_envs[name] = process_env
         process = processes[name]
         until(lambda: worker_booted(process, process_env), "New Worker VM did not finish booting")
 
@@ -77,6 +80,74 @@ def worker_booted(process, process_env):
         return result.returncode == 0 and result.stdout.strip() == str(process.pid)
     except subprocess.TimeoutExpired:
         return False
+
+
+def worker_connection():
+    """The live Worker's own view of its Management channel."""
+    expression = (
+        "pid = Enum.find_value(Supervisor.which_children(YellowDog.Worker.Supervisor), "
+        "fn {id, pid, _, _} -> if id == YellowDog.Worker.Connection, do: pid end); "
+        "IO.puts(Jason.encode!(YellowDog.Worker.Connection.status(pid)))"
+    )
+    result = subprocess.run([worker_binary, "rpc", expression], env=worker_envs["worker"],
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+class Frames:
+    """Minimal RFC 6455 client framing over a plain TCP socket."""
+
+    def __init__(self, connection, buffered):
+        self.connection, self.buffer = connection, buffered
+
+    def read(self, size):
+        while len(self.buffer) < size:
+            chunk = self.connection.recv(65536)
+            assert chunk, "Unexpected WebSocket EOF"
+            self.buffer += chunk
+        result, self.buffer = self.buffer[:size], self.buffer[size:]
+        return result
+
+    def receive(self):
+        first, second = self.read(2)
+        size = second & 0x7F
+        if size == 126:
+            size = struct.unpack("!H", self.read(2))[0]
+        elif size == 127:
+            size = struct.unpack("!Q", self.read(8))[0]
+        return first & 0x0F, self.read(size)
+
+    def send(self, value):
+        data = json.dumps(value).encode()
+        mask = os.urandom(4)
+        length = bytes([0x80 | len(data)]) if len(data) < 126 else bytes([0x80 | 126]) + struct.pack("!H", len(data))
+        self.connection.sendall(b"\x81" + length + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+
+def channel_join(identity, token, report):
+    """Join worker:<id> exactly as the Worker does; return the join reply."""
+    key = base64.b64encode(os.urandom(16)).decode()
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+        connection.sendall((f"GET /api/worker/connect?vsn=2.0.0&worker_id={identity} HTTP/1.1\r\n"
+                            f"Host: 127.0.0.1:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                            f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = connection.recv(4096)
+            assert chunk, "Upgrade closed early"
+            head += chunk
+        head, rest = head.split(b"\r\n\r\n", 1)
+        assert head.startswith(b"HTTP/1.1 101"), head
+        frames = Frames(connection, rest)
+        topic = "worker:" + identity
+        frames.send(["1", "1", topic, "phx_join", {"token": token, "report": report}])
+        while True:
+            opcode, data = frames.receive()
+            assert opcode == 1, f"Unexpected WebSocket opcode {opcode}"
+            message = json.loads(data)
+            if message[1] == "1" and message[3] == "phx_reply":
+                return message[4]
 
 
 def stop(name):
@@ -138,7 +209,7 @@ def worker():
 def publish(state, listen_port=dns_port):
     mutate("put_service", {"worker_id": worker_id, "expected_revision": worker()["revision"],
                            "id": "dns", "type": "dns", "desired_state": state,
-                           "config": {"listen_address": "127.0.0.1", "port": listen_port}})
+                           "config": {"listen_address": "127.0.0.1", "port": listen_port, "allow_query": ["127.0.0.0/8"]}})
     target = mutate("confirm_target", {"worker_id": worker_id, "expected_revision": worker()["revision"]})
     return target["revision"]
 
@@ -203,13 +274,19 @@ else
 end
 File.write!(path, Jason.encode!(result))
 bootstrap = WorkerConnections.bootstrap(result["worker"], result["token"], System.fetch_env!("YELLOW_DOG_WORKER_SMOKE_BASE"))
-File.write!(System.fetch_env!("YELLOW_DOG_WORKER_SMOKE_BOOTSTRAP"), String.replace(bootstrap, "poll_interval_ms = 10000", "poll_interval_ms = 200"))
+File.write!(System.fetch_env!("YELLOW_DOG_WORKER_SMOKE_BOOTSTRAP"), bootstrap)
 '''
+
+
+def seed_worker():
+    command([management_binary, "eval", seed])
+    enrollment = json.loads(enrollment_path.read_text())
+    tokens.append(enrollment["token"])
+    return enrollment["worker"]["id"]
 
 try:
     command([management_binary, "migrate"])
-    command([management_binary, "eval", seed])
-    worker_id = json.loads(enrollment_path.read_text())["worker"]["id"]
+    worker_id = seed_worker()
     start("management", management_binary)
     until(lambda: worker()["connection_status"] == "not_yet_connected", "Management did not start")
     html = request("/management/servers")
@@ -227,7 +304,9 @@ try:
     start("worker", worker_binary)
     until(lambda: worker()["connection_status"] == "connected", "Worker did not authenticate")
     assert worker()["services"] == [] and worker()["reported_services"] == {}
-    print("Name-only creation, real authenticated connection, no initial services: PASS", flush=True)
+    assert worker_connection() == {"connected": True, "connection_error": None, "apply_error": None}
+    assert "poll_interval_ms" not in bootstrap_path.read_text()
+    print("Name-only creation, real authenticated WebSocket join, no initial services: PASS", flush=True)
 
     zone = mutate("create_zone", {"name": "worker-smoke.test.", "records": [
         {"name": "worker-smoke.test.", "type": "SOA", "ttl": 300,
@@ -238,14 +317,18 @@ try:
     version = mutate("confirm_zone", {"id": zone["id"], "expected_revision": zone["revision"]})
     service = mutate("put_service", {"worker_id": worker_id, "expected_revision": worker()["revision"],
                                      "id": "dns", "type": "dns", "desired_state": "stopped",
-                                     "config": {"listen_address": "127.0.0.1", "port": dns_port}})
+                                     "config": {"listen_address": "127.0.0.1", "port": dns_port, "allow_query": ["127.0.0.0/8"]}})
     mutate("assign", {"worker_id": worker_id, "expected_revision": worker()["revision"],
                       "service_id": service["id"], "resource_version_id": version["id"]})
     running_revision = publish("running")
-    until(lambda: applied(running_revision, "running"), "DNS running state not reported")
+    published_at = time.monotonic()
+    # Pushed over the channel: no polling interval between confirm and apply.
+    until(lambda: applied(running_revision, "running"), "Pushed target was not applied within 3 seconds", seconds=3)
+    push_latency = time.monotonic() - published_at
     dns_query()
     dns_query(tcp=True)
     print("Confirmed target delivered; actual DNS UDP/TCP answer: PASS", flush=True)
+    print(f"Pushed target applied and reported in {push_latency:.2f}s (< 3s): PASS", flush=True)
 
     stop("management")
     dns_query()
@@ -253,7 +336,9 @@ try:
     start("worker", worker_binary)
     until(lambda: dns_query(tcp=True) is None, "Offline snapshot did not restore DNS")
     start("management", management_binary)
-    until(lambda: worker()["connection_status"] == "connected" and applied(running_revision, "running"), "Worker did not reconnect")
+    # Reconnect backoff grows to at most 30s while Management is down.
+    until(lambda: worker()["connection_status"] == "connected" and applied(running_revision, "running"),
+          "Worker did not reconnect", seconds=45)
     print("Management outage, offline Worker restart, committed runtime and reconnect: PASS", flush=True)
 
     stopped_revision = publish("stopped")
@@ -263,9 +348,12 @@ try:
     until(lambda: applied(stopped_revision, "stopped") and stopped(), "Stopped state did not survive restart")
     print("DNS actual socket shutdown and persisted stopped state: PASS", flush=True)
 
-    command([management_binary, "eval", seed])
+    seed_worker()
     until(lambda: worker()["connection_status"] == "not_yet_connected", "Token reset retained a connection")
-    time.sleep(0.5)
+    # The online channel is re-verified on its next heartbeat report (15s) and
+    # every rejoin with the previous token is refused.
+    until(lambda: worker_connection()["connection_error"] == "unauthorized",
+          "Online Worker with a revoked token was not disconnected", seconds=40)
     assert worker()["connection_status"] == "not_yet_connected", "Revoked token still authenticates"
     stop("worker")
     start("worker", worker_binary)
@@ -294,20 +382,16 @@ try:
     identity_file = next(anonymous_dir.glob("*connection*.toml"))
     identity_before = identity_file.read_bytes()
     identity = tomllib.loads(identity_before.decode())
-    # A live HTTP exchange must be rejected while anonymous enrollment is disabled.
+    # A live channel join must be rejected while anonymous enrollment is disabled.
     initial_report = {"worker_id": identity["worker_id"], "capabilities": ["dns"], "services": {},
                       "applied_revision": None, "applied_digest": None, "apply_error": None}
-    try:
-        urllib.request.urlopen(urllib.request.Request(base + "/api/worker/connect",
-            data=json.dumps(initial_report).encode(),
-            headers={"Content-Type": "application/json", "Authorization": "Bearer " + identity["token"]}), timeout=5)
-    except urllib.error.HTTPError as error:
-        assert error.code == 401
-    else:
-        raise AssertionError("Anonymous initialization was accepted by default")
+    reply = channel_join(identity["worker_id"], identity["token"], initial_report)
+    assert reply == {"status": "error", "response": {"code": "unauthorized"}}, reply
+    until(lambda: worker_connection()["connection_error"] == "unauthorized", "Worker did not report the rejected join")
     assert {value["id"] for value in request("/api/workers")} == before_ids
     mutate("set_worker_enrollment", {"allow_anonymous": True})
-    until(lambda: len(request("/api/workers")) == len(before_ids) + 1, "Anonymous Worker did not enroll")
+    # The rejected Worker retries with backoff capped at 30s.
+    until(lambda: len(request("/api/workers")) == len(before_ids) + 1, "Anonymous Worker did not enroll", seconds=45)
     worker_id = next(value["id"] for value in request("/api/workers") if value["id"] not in before_ids)
     until(lambda: worker()["connection_status"] == "connected", "Anonymous Worker did not connect")
     assert worker()["services"] == [] and worker()["reported_services"] == {}
@@ -317,7 +401,7 @@ try:
 
     service = mutate("put_service", {"worker_id": worker_id, "expected_revision": worker()["revision"],
                                      "id": "dns", "type": "dns", "desired_state": "stopped",
-                                     "config": {"listen_address": "127.0.0.1", "port": dns_port}})
+                                     "config": {"listen_address": "127.0.0.1", "port": dns_port, "allow_query": ["127.0.0.0/8"]}})
     mutate("assign", {"worker_id": worker_id, "expected_revision": worker()["revision"],
                       "service_id": service["id"], "resource_version_id": version["id"]})
     anonymous_running = publish("running")
@@ -339,7 +423,9 @@ try:
     assert identity_file.read_bytes() == identity_before
     assert len(request("/api/workers")) == len(before_ids) + 1
     for log_path in evidence.glob("*.log"):
-        assert identity["token"] not in log_path.read_text(), "Automatic credential leaked to logs"
+        text = log_path.read_text()
+        for token in tokens + [identity["token"]]:
+            assert token not in text, f"Worker credential leaked to {log_path.name}"
     print("URL-only initialization gate, stable private credentials, published DNS and stopped restart: PASS", flush=True)
     (evidence / "result.json").write_text(json.dumps({"result": "PASS", "worker_id": worker_id,
                                                    "running_revision": running_revision,

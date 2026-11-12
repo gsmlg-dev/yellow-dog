@@ -39,15 +39,19 @@ bootstrap on the Worker host and set `YELLOW_DOG_WORKER_BOOTSTRAP` to that file.
 The managed file uses `worker_id`, `data_dir`, `management_url`, and `token`; it has
 no `source`. See `examples/managed-bootstrap.toml`. Protect this file as a credential.
 
-The Worker polls `POST /api/worker/connect` every 10 seconds, authenticates using
-its Bearer token, fetches only confirmed targets, and reports observed DNS states.
-Optional `poll_interval_ms` accepts 100–15000 milliseconds so regular polling stays
-within Management's 45-second contact expiry.
+The Worker opens a WebSocket to `GET /api/worker/connect` (`ws://` for `http`,
+`wss://` for `https`) and joins the Phoenix channel `worker:<worker_id>`. The
+upgrade request carries only the Worker ID; the token is sent only in the join
+payload, so proxy access logs never record it. Management pushes each confirmed
+target as soon as it is published; the Worker applies it, reports observed DNS
+states immediately and every 15 seconds within Management's 45-second contact
+expiry. Lost connections and rejected joins reconnect with exponential backoff
+from 1 to 30 seconds. `poll_interval_ms` is no longer accepted.
 Only authoritative DNS is executable. HTTPS verifies the server certificate and
 hostname. Optional `tls_ca_file`, `tls_cert_file`, and `tls_key_file` configure a
 private CA and client certificate; client certificate and key must be provided
 together. TLS file paths resolve relative to the bootstrap. Plain HTTP is allowed
-only for loopback development. Redirects are refused; replies are bounded to 1 MiB.
+only for loopback development. Redirects are refused; inbound messages are bounded to 1 MiB.
 
 An empty first boot waits for Management without starting services. Restart restores
 the last committed snapshot before reconnecting. Connection loss or a rejected

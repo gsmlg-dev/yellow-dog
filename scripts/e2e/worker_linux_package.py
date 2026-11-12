@@ -3,6 +3,7 @@
 import os
 import errno
 import base64
+import hashlib
 import json
 import pathlib
 import shutil
@@ -16,7 +17,6 @@ import threading
 import time
 import tomllib
 import uuid
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 def rpc(binary, env, expression):
@@ -93,6 +93,101 @@ def closed(port):
     except (ConnectionRefusedError, TimeoutError):
         return
     raise AssertionError("stopped DNS still answered UDP")
+
+
+class ChannelEndpoint:
+    """Minimal Management stand-in: WebSocket upgrade plus Phoenix V2 channel frames."""
+
+    def __init__(self):
+        self.listener = socket.socket()
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen()
+        self.port = self.listener.getsockname()[1]
+        self.lock = threading.Lock()
+        self.upgrades, self.messages = [], []
+        self.thread = threading.Thread(target=self.serve, daemon=True)
+        self.thread.start()
+
+    def serve(self):
+        while True:
+            try:
+                connection, _ = self.listener.accept()
+            except OSError:
+                return
+            threading.Thread(target=self.session, args=(connection,), daemon=True).start()
+
+    def session(self, connection):
+        with connection:
+            try:
+                connection.settimeout(60)
+                buffer = b""
+                while b"\r\n\r\n" not in buffer:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        return
+                    buffer += chunk
+                head, buffer = buffer.split(b"\r\n\r\n", 1)
+                head = head.decode()
+                with self.lock:
+                    self.upgrades.append(head)
+                key = next(line.split(":", 1)[1].strip() for line in head.split("\r\n")
+                           if line.lower().startswith("sec-websocket-key:"))
+                accept = base64.b64encode(hashlib.sha1(
+                    (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+                connection.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                                    f"Connection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n").encode())
+
+                def read(size):
+                    nonlocal buffer
+                    while len(buffer) < size:
+                        chunk = connection.recv(65536)
+                        if not chunk:
+                            raise EOFError
+                        buffer += chunk
+                    result, buffer = buffer[:size], buffer[size:]
+                    return result
+
+                def send(value):
+                    data = json.dumps(value).encode()
+                    length = bytes([len(data)]) if len(data) < 126 else bytes([126]) + struct.pack("!H", len(data))
+                    connection.sendall(b"\x81" + length + data)
+
+                while True:
+                    first, second = read(2)
+                    size = second & 0x7F
+                    if size == 126:
+                        size = struct.unpack("!H", read(2))[0]
+                    elif size == 127:
+                        size = struct.unpack("!Q", read(8))[0]
+                    mask = read(4) if second & 0x80 else b"\0\0\0\0"
+                    data = bytes(b ^ mask[i % 4] for i, b in enumerate(read(size)))
+                    if first & 0x0F == 8:
+                        return
+                    if first & 0x0F != 1:
+                        continue
+                    join_ref, ref, topic, event, payload = json.loads(data)
+                    if topic == "phoenix":
+                        send([None, ref, topic, "phx_reply", {"status": "ok", "response": {}}])
+                        continue
+                    with self.lock:
+                        self.messages.append((topic, event, payload))
+                    send([join_ref, ref, topic, "phx_reply", {"status": "ok", "response": {}}])
+                    if event == "phx_join":
+                        send([join_ref, None, topic, "target", {"target": None}])
+            except (EOFError, OSError):
+                return
+
+    def snapshot(self):
+        with self.lock:
+            return list(self.upgrades), list(self.messages)
+
+    def close(self):
+        try:
+            self.listener.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.listener.close()
+        self.thread.join(timeout=5)
 
 
 class Worker:
@@ -205,7 +300,6 @@ def main():
     managed = None
     anonymous = None
     endpoint = None
-    endpoint_thread = None
     try:
         local.start()
         answers(port, "192.0.2.53")
@@ -242,7 +336,7 @@ def main():
         managed_bootstrap = root / "managed-bootstrap.toml"
         managed_bootstrap.write_text('worker_id = "edge-managed"\n' +
             f'data_dir = "{root / "managed-state"}"\nmanagement_url = "http://127.0.0.1:{unavailable_port}"\n' +
-            'token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\npoll_interval_ms = 100\n')
+            'token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n')
         managed = Worker(binary, managed_bootstrap, root, "managed")
         managed.start("YellowDog.Worker.status().live and YellowDog.Worker.status().origin == :awaiting_connection")
         time.sleep(0.3)
@@ -250,27 +344,8 @@ def main():
         managed.stop()
         print("PASS managed package boot waits safely when Management is unavailable", flush=True)
 
-        requests = []
-        request_lock = threading.Lock()
-
-        class Capture(BaseHTTPRequestHandler):
-            def do_POST(self):
-                report = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                with request_lock:
-                    requests.append((self.path, self.headers.get("Authorization"), report))
-                body = json.dumps({"worker_id": report["worker_id"], "target": None}).encode()
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *_):
-                pass
-
-        endpoint = HTTPServer(("127.0.0.1", 0), Capture)
-        endpoint_thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
-        endpoint_thread.start()
-        url = f"http://127.0.0.1:{endpoint.server_port}"
+        endpoint = ChannelEndpoint()
+        url = f"http://127.0.0.1:{endpoint.port}"
         anonymous_bootstrap = root / "anonymous-bootstrap.toml"
         # Exactly the URL is configured; the package must resolve XDG state itself.
         anonymous_bootstrap.write_text(f'management_url = "{url}"\n')
@@ -292,23 +367,30 @@ def main():
         assert len(token_bytes) == 32
         assert base64.urlsafe_b64encode(token_bytes).decode().rstrip("=") == auth["token"]
 
-        def checked_requests(minimum):
+        expected_report = {"worker_id": auth["worker_id"], "capabilities": ["dns"], "services": {},
+                           "applied_revision": None, "applied_digest": None, "apply_error": None}
+
+        def checked_joins(minimum):
+            # Each session: one upgrade without credentials, a join carrying the
+            # token, then a report answering the pushed (empty) target.
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
-                with request_lock:
-                    observed = list(requests)
-                if len(observed) >= minimum:
-                    for path, authorization, report in observed:
-                        assert path == "/api/worker/connect"
-                        assert authorization == "Bearer " + auth["token"]
-                        assert report == {"worker_id": auth["worker_id"], "capabilities": ["dns"],
-                                          "services": {}, "applied_revision": None,
-                                          "applied_digest": None, "apply_error": None}
-                    return len(observed)
+                upgrades, messages = endpoint.snapshot()
+                joins = [payload for _, event, payload in messages if event == "phx_join"]
+                reports = [payload for _, event, payload in messages if event == "report"]
+                if len(joins) >= minimum and len(reports) >= minimum:
+                    for head in upgrades:
+                        assert head.startswith("GET /api/worker/connect?vsn=2.0.0&worker_id="
+                                               + auth["worker_id"] + " HTTP/1.1\r\n"), head
+                        assert auth["token"] not in head and "authorization" not in head.lower(), head
+                    assert {topic for topic, _, _ in messages} == {"worker:" + auth["worker_id"]}
+                    assert all(join == {"token": auth["token"], "report": expected_report} for join in joins)
+                    assert all(report == expected_report for report in reports)
+                    return len(joins)
                 time.sleep(0.1)
-            raise AssertionError("anonymous package did not send repeated authenticated reports")
+            raise AssertionError("anonymous package did not join the Worker channel and report")
 
-        count = checked_requests(2)
+        count = checked_joins(1)
         connected = ('pid = Enum.find_value(Supervisor.which_children(YellowDog.Worker.Supervisor), '
                      'fn {id, pid, _, _} -> if id == YellowDog.Worker.Connection, do: pid end); '
                      'if YellowDog.Worker.Connection.status(pid) == '
@@ -317,12 +399,12 @@ def main():
         assert "CONNECTED" in anonymous.eval(connected)
         anonymous.stop()
         anonymous.start("YellowDog.Worker.status().live and YellowDog.Worker.status().origin == :awaiting_connection")
-        checked_requests(count + 1)
+        checked_joins(count + 1)
         assert "CONNECTED" in anonymous.eval(connected)
         assert credential.read_bytes() == before
         assert credential.stat().st_mode & 0o777 == 0o600
         anonymous.stop()
-        print("PASS URL-only package initialization: private stable identity, repeated Bearer reports and graceful restart", flush=True)
+        print("PASS URL-only package initialization: private stable identity, token-in-join WebSocket channel reports and graceful restart", flush=True)
         print("LINUX WORKER PACKAGE SMOKE PASSED", flush=True)
     except BaseException:
         for worker in [local, managed, anonymous]:
@@ -344,10 +426,7 @@ def main():
                 local.close()
             finally:
                 if endpoint:
-                    endpoint.shutdown()
-                    endpoint.server_close()
-                if endpoint_thread:
-                    endpoint_thread.join(timeout=5)
+                    endpoint.close()
                 shutil.rmtree(root)
 
 

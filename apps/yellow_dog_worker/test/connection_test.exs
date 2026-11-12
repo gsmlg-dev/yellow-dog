@@ -1,303 +1,448 @@
-defmodule YellowDog.Worker.ConnectionTest do
-  use ExUnit.Case, async: false
-  alias YellowDog.ConfigSpec
-  alias YellowDog.Worker.{Connection, ConnectionHTTP, ServiceManager}
-  @moduletag :tmp_dir
-  @token String.duplicate("a", 43)
+defmodule YellowDog.Worker.ConnectionTest.FakeSocket do
+  @moduledoc false
+  # Stands in for YellowDog.Worker.Connection.Channel; every call runs in the
+  # Connection process and is reported to the registered test process.
 
-  test "URL-only initialization retries a lost response and restart with the same private credential",
-       ctx do
-    {url, replies} = server()
-    path = Path.join(ctx.tmp_dir, "bootstrap.toml")
-
-    File.write!(
-      path,
-      "management_url = #{inspect(url)}\ndata_dir = #{inspect(Path.join(ctx.tmp_dir, "state"))}\npoll_interval_ms = 15000\n"
-    )
-
-    {:ok, bootstrap} = YellowDog.Worker.Bootstrap.load(path)
-    options = Keyword.put(bootstrap, :connection_bootstrap, path) |> Keyword.delete(:connection)
-    manager = start_supervised!({ServiceManager, options})
-    {:ok, auth} = ServiceManager.connection_credentials(manager)
-    respond(replies, {0, %{}})
-    client = start_supervised!({Connection, bootstrap_path: path, manager: manager})
-    assert_receive {:request, headers, %{"worker_id" => id, "applied_revision" => nil}}, 3000
-    assert id == auth.worker_id
-    assert headers =~ "Bearer #{auth.token}"
-    assert headers =~ "POST /api/worker/connect"
-    assert %{connected: false} = Connection.status(client)
-    respond(replies, %{"worker_id" => id, "target" => nil})
-    assert %{connected: true} = Connection.poll(client)
-    assert_receive {:request, retry_headers, %{"worker_id" => ^id}}, 3000
-    assert retry_headers =~ "Bearer #{auth.token}"
-    refute inspect(:sys.get_status(manager)) =~ auth.token
-    refute inspect(ServiceManager.status(manager)) =~ auth.token
-    refute inspect(:sys.get_status(client)) =~ auth.token
-    :ok = stop_supervised(Connection)
-    :ok = stop_supervised(ServiceManager)
-    manager = start_supervised!({ServiceManager, options})
-    assert {:ok, ^auth} = ServiceManager.connection_credentials(manager)
-    start_supervised!({Connection, bootstrap_path: path, manager: manager})
-    assert_receive {:request, restarted_headers, %{"worker_id" => ^id}}, 3000
-    assert restarted_headers =~ "Bearer #{auth.token}"
-    assert ServiceManager.status(manager).origin == :awaiting_connection
+  def open(options) do
+    socket = spawn_link(fn -> Process.sleep(:infinity) end)
+    send(:connection_test, {:opened, socket, options, System.monotonic_time(:millisecond)})
+    {:ok, socket}
   end
 
-  test "real HTTP polling applies DNS, reports observations and keeps runtime on disconnect",
-       ctx do
-    {url, replies} = server()
+  def status(_socket), do: :connected
+
+  def join(socket, topic, payload) do
+    channel = spawn(fn -> Process.sleep(:infinity) end)
+    send(:connection_test, {:joining, self(), socket, channel, topic, payload})
+
+    receive do
+      {:join_reply, :ok} -> {:ok, channel}
+      {:join_reply, reply} -> reply
+    after
+      3_000 -> {:error, :timeout}
+    end
+  end
+
+  def push(channel, event, payload) do
+    send(:connection_test, {:pushed, channel, event, payload})
+    :ok
+  end
+
+  def close(socket) do
+    Process.unlink(socket)
+    Process.exit(socket, :kill)
+    :ok
+  end
+end
+
+defmodule YellowDog.Worker.ConnectionTest do
+  use ExUnit.Case, async: false
+  import Bitwise
+  alias YellowDog.ConfigSpec
+  alias YellowDog.Worker.{Connection, ServiceManager}
+  alias YellowDog.Worker.ConnectionTest.FakeSocket
+  @moduletag :tmp_dir
+  @token String.duplicate("a", 43)
+  @tag_message YellowDog.Worker.Connection.Channel
+
+  setup do
+    Process.register(self(), :connection_test)
+    :ok
+  end
+
+  test "derives the WebSocket URL and sends the token only in the join payload", ctx do
     manager = manager(ctx.tmp_dir)
-    connection = connection(url, manager)
-    assert_receive {:request, headers, %{"applied_revision" => nil}}, 3000
-    assert headers =~ "Bearer #{@token}"
+    conn = connection(manager, management_url: "http://127.0.0.1:4270")
+    assert_receive {:opened, _socket, options, _}, 3000
+    assert options[:url] == "ws://127.0.0.1:4270/api/worker/connect"
+    assert options[:params] == %{"worker_id" => "edge-01"}
+    refute Keyword.has_key?(options, :headers)
+    refute inspect(options) =~ @token
+    {_channel, topic, payload} = join!()
+    assert topic == "worker:edge-01"
+
+    assert payload == %{
+             "token" => @token,
+             "report" => %{
+               "worker_id" => "edge-01",
+               "capabilities" => ["dns"],
+               "services" => %{},
+               "applied_revision" => nil,
+               "applied_digest" => nil,
+               "apply_error" => nil
+             }
+           }
+
+    assert Connection.status(conn) == %{connected: true, connection_error: nil, apply_error: nil}
+    refute inspect(:sys.get_state(conn)) =~ @token
+    refute inspect(:sys.get_status(conn)) =~ @token
+    :ok = stop_supervised(Connection)
+
+    for file <- ~w(ca.pem client.pem client.key),
+        do: File.write!(Path.join(ctx.tmp_dir, file), "")
+
+    connection(manager,
+      management_url: "https://management.example:8443",
+      tls_ca_file: Path.join(ctx.tmp_dir, "ca.pem"),
+      tls_cert_file: Path.join(ctx.tmp_dir, "client.pem"),
+      tls_key_file: Path.join(ctx.tmp_dir, "client.key")
+    )
+
+    assert_receive {:opened, _socket, options, _}, 3000
+    assert options[:url] == "wss://management.example:8443/api/worker/connect"
+    assert options[:tls][:verify] == :verify_peer
+    assert options[:tls][:cacertfile] == String.to_charlist(Path.join(ctx.tmp_dir, "ca.pem"))
+    assert options[:tls][:certfile] == String.to_charlist(Path.join(ctx.tmp_dir, "client.pem"))
+    assert options[:tls][:keyfile] == String.to_charlist(Path.join(ctx.tmp_dir, "client.key"))
+  end
+
+  test "a pushed target applies DNS and immediately reports the applied revision", ctx do
+    manager = manager(ctx.tmp_dir)
+    conn = connection(manager)
+    {channel, _topic, _payload} = join!()
     assert ServiceManager.status(manager).origin == :awaiting_connection
     plan = dns_plan()
-    respond(replies, target(plan))
-    assert %{connected: true, apply_error: nil} = Connection.poll(connection)
-    assert ServiceManager.status(manager).ready
-    port = get_in(plan, ["services", Access.at(0), "config", "port"])
-    assert_dns(port)
-    assert %{connected: true} = Connection.poll(connection)
+    deliver(conn, channel, target(plan))
 
-    assert_receive {:request, _,
+    assert_receive {:pushed, ^channel, "report",
                     %{
                       "applied_revision" => 1,
+                      "applied_digest" => digest,
+                      "apply_error" => nil,
                       "capabilities" => ["dns"],
                       "services" => %{"dns-primary" => %{"state" => "running"}}
                     }},
                    3000
 
-    respond(replies, {401, %{}})
-    assert %{connected: false, connection_error: "unauthorized"} = Connection.poll(connection)
+    assert {:ok, digest} == ConfigSpec.plan_digest(plan)
+    assert ServiceManager.status(manager).ready
+    port = get_in(plan, ["services", Access.at(0), "config", "port"])
     assert_dns(port)
-    respond(replies, {503, %{}})
-    assert %{connected: false} = Connection.poll(connection)
-    assert_dns(port)
-    refute inspect(:sys.get_status(connection)) =~ @token
+    assert %{connected: true, apply_error: nil} = Connection.status(conn)
 
     stopped =
       plan
       |> Map.put("revision", 2)
       |> put_in(["services", Access.at(0), "desired_state"], "stopped")
 
-    respond(replies, target(stopped))
-    assert %{connected: true, apply_error: nil} = Connection.poll(connection)
+    deliver(conn, channel, target(stopped))
 
-    assert {:error, :econnrefused} =
-             :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 1000)
-
-    assert %{connected: true} = Connection.poll(connection)
-
-    assert_receive {:request, _,
+    assert_receive {:pushed, ^channel, "report",
                     %{
                       "applied_revision" => 2,
                       "services" => %{"dns-primary" => %{"state" => "stopped"}}
                     }},
                    3000
 
-    respond(replies, {401, %{}})
+    assert {:error, :econnrefused} =
+             :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 1000)
+
     :ok = stop_supervised(Connection)
     :ok = stop_supervised(ServiceManager)
     restored = manager(ctx.tmp_dir)
     assert ServiceManager.status(restored).desired == stopped
     assert ServiceManager.status(restored).origin == :snapshot
-
-    assert {:error, :econnrefused} =
-             :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 1000)
   end
 
-  test "rejects invalid identity digest stale and conflicting targets without changing snapshots",
+  test "stale, invalid and conflicting targets report apply errors without changing snapshots",
        ctx do
-    {url, replies} = server()
     manager = manager(ctx.tmp_dir)
-    client = connection(url, manager)
+    conn = connection(manager)
+    {channel, _, _} = join!()
     plan = empty_plan(3)
-    respond(replies, target(plan))
-    assert %{apply_error: nil} = Connection.poll(client)
+    deliver(conn, channel, target(plan))
+    assert_receive {:pushed, ^channel, "report", %{"applied_revision" => 3}}, 3000
 
-    for response <- [
-          Map.put(target(plan), "worker_id", "another-worker"),
-          put_in(target(plan), ["target", "digest"], String.duplicate("0", 64)),
-          target(Map.put(plan, "worker_id", "other"))
+    for {message, error} <- [
+          {put_in(target(plan), ["target", "digest"], String.duplicate("0", 64)),
+           "invalid_target"},
+          {target(Map.put(plan, "worker_id", "other")), "invalid_target"},
+          {%{"target" => "garbage"}, "invalid_target"},
+          {target(empty_plan(2)), "stale_target"},
+          {target(dns_plan() |> Map.put("revision", 3)), "invalid_target"}
         ] do
-      respond(replies, response)
-      Connection.poll(client)
+      deliver(conn, channel, message)
+
+      assert_receive {:pushed, ^channel, "report",
+                      %{"applied_revision" => 3, "apply_error" => ^error}},
+                     3000
+
+      assert %{connected: true, apply_error: ^error} = Connection.status(conn)
       assert ServiceManager.status(manager).desired == plan
     end
 
-    respond(replies, target(empty_plan(2)))
-    assert %{apply_error: "stale_target"} = Connection.poll(client)
-    different = dns_plan() |> Map.put("revision", 3)
-    respond(replies, target(different))
-    assert %{apply_error: "invalid_target"} = Connection.poll(client)
-    assert ServiceManager.status(manager).desired == plan
     higher = empty_plan(4)
-    respond(replies, target(higher))
-    assert %{apply_error: nil} = Connection.poll(client)
-    assert ServiceManager.status(manager).desired == higher
+    deliver(conn, channel, target(higher))
+
+    assert_receive {:pushed, ^channel, "report",
+                    %{"applied_revision" => 4, "apply_error" => nil}},
+                   3000
+
     :ok = stop_supervised(Connection)
     :ok = stop_supervised(ServiceManager)
     recovered = manager(ctx.tmp_dir)
+    restarted = connection(recovered)
+    {channel, _, %{"report" => %{"applied_revision" => 4}}} = join!()
+    deliver(restarted, channel, target(plan))
+
+    assert_receive {:pushed, ^channel, "report",
+                    %{"applied_revision" => 4, "apply_error" => "stale_target"}},
+                   3000
+
     assert ServiceManager.status(recovered).desired == higher
-    restarted = connection(url, recovered)
-    respond(replies, target(plan))
-    assert %{apply_error: "stale_target"} = Connection.poll(restarted)
-    assert ServiceManager.status(recovered).desired == higher
   end
 
-  test "HTTP redirects are refused and large streaming responses are bounded" do
-    {url, replies} = server(true)
-    options = [management_url: url, token: @token]
-    respond(replies, {302, %{}})
-    assert {:error, :request_failed} = ConnectionHTTP.connect(options, %{})
-    respond(replies, {200, String.duplicate("a", 1_048_577)})
-    assert {:error, :response_too_large} = ConnectionHTTP.connect(options, %{})
-    respond(replies, {503, String.duplicate("a", 1_048_577)})
-    assert {:error, :response_too_large} = ConnectionHTTP.connect(options, %{})
-    respond(replies, {206, target(empty_plan(1))})
-    assert {:error, :request_failed} = ConnectionHTTP.connect(options, %{})
+  test "reports are pushed as a periodic heartbeat while joined", ctx do
+    connection(manager(ctx.tmp_dir), report_interval_ms: 100)
+    {channel, _, _} = join!()
+    assert_receive {:pushed, ^channel, "report", %{"worker_id" => "edge-01"}}, 1000
+    assert_receive {:pushed, ^channel, "report", %{"worker_id" => "edge-01"}}, 1000
   end
 
-  test "HTTPS requires a trusted CA and presents optional mutual TLS credentials", ctx do
-    cert = Path.join(ctx.tmp_dir, "tls.pem")
-    key = Path.join(ctx.tmp_dir, "tls.key")
-    ca = Path.join(ctx.tmp_dir, "ca.pem")
-    ca_key = Path.join(ctx.tmp_dir, "ca.key")
-    csr = Path.join(ctx.tmp_dir, "tls.csr")
-
-    {_, 0} =
-      System.cmd(
-        "openssl",
-        [
-          "req",
-          "-x509",
-          "-newkey",
-          "rsa:2048",
-          "-nodes",
-          "-keyout",
-          ca_key,
-          "-out",
-          ca,
-          "-days",
-          "1",
-          "-subj",
-          "/CN=Worker Test CA"
-        ],
-        stderr_to_stdout: true
-      )
-
-    {_, 0} =
-      System.cmd(
-        "openssl",
-        [
-          "req",
-          "-newkey",
-          "rsa:2048",
-          "-nodes",
-          "-keyout",
-          key,
-          "-out",
-          csr,
-          "-subj",
-          "/CN=127.0.0.1",
-          "-addext",
-          "subjectAltName=IP:127.0.0.1"
-        ],
-        stderr_to_stdout: true
-      )
-
-    {_, 0} =
-      System.cmd(
-        "openssl",
-        [
-          "x509",
-          "-req",
-          "-in",
-          csr,
-          "-CA",
-          ca,
-          "-CAkey",
-          ca_key,
-          "-CAcreateserial",
-          "-out",
-          cert,
-          "-days",
-          "1",
-          "-copy_extensions",
-          "copy"
-        ],
-        stderr_to_stdout: true
-      )
-
-    {:ok, listener} =
-      :ssl.listen(0, [
-        :binary,
-        active: false,
-        ip: {127, 0, 0, 1},
-        certfile: String.to_charlist(cert),
-        keyfile: String.to_charlist(key),
-        cacertfile: String.to_charlist(ca),
-        verify: :verify_peer,
-        fail_if_no_peer_cert: true
-      ])
-
-    {:ok, {_, port}} = :ssl.sockname(listener)
-    acceptor = spawn_link(fn -> tls_accept_loop(listener) end)
-
-    on_exit(fn ->
-      :ssl.close(listener)
-      if Process.alive?(acceptor), do: Process.exit(acceptor, :normal)
-    end)
-
-    options = [management_url: "https://127.0.0.1:#{port}", token: @token]
-    assert {:error, :request_failed} = ConnectionHTTP.connect(options, %{})
-    assert {:error, :request_failed} = ConnectionHTTP.connect(options ++ [tls_ca_file: ca], %{})
-
-    assert {:ok, %{"worker_id" => "edge-01", "target" => nil}} =
-             ConnectionHTTP.connect(
-               options ++ [tls_ca_file: ca, tls_cert_file: cert, tls_key_file: key],
-               %{}
-             )
+  test "socket exit disconnects and reconnects after the default one second backoff", ctx do
+    manager = manager(ctx.tmp_dir)
+    conn = connection(manager)
+    assert_receive {:opened, socket, _, _}, 3000
+    join!()
+    plan = empty_plan(1)
+    assert %{connected: true} = Connection.status(conn)
+    Process.exit(socket, :kill)
+    assert %{connected: false, connection_error: "disconnected"} = disconnected(conn)
+    refute_receive {:opened, _, _, _}, 800
+    assert_receive {:opened, _, _, _}, 1000
+    {channel, _, _} = join!()
+    assert %{connected: true, connection_error: nil} = Connection.status(conn)
+    deliver(conn, channel, target(plan))
+    assert_receive {:pushed, ^channel, "report", %{"applied_revision" => 1}}, 3000
   end
 
-  defp tls_accept_loop(listener) do
-    case :ssl.transport_accept(listener) do
-      {:ok, socket} ->
-        case :ssl.handshake(socket, 3000) do
-          {:ok, socket} ->
-            read_request(socket, "", :ssl)
-            bytes = Jason.encode!(%{"worker_id" => "edge-01", "target" => nil})
+  test "join rejections, server close and channel exit back off exponentially up to the cap",
+       ctx do
+    manager = manager(ctx.tmp_dir)
+    conn = connection(manager, backoff_ms: {200, 800})
+    assert_receive {:opened, _, _, t0}, 3000
+    join!({:error, "unauthorized"})
+    assert %{connected: false, connection_error: "unauthorized"} = Connection.status(conn)
+    t1 = reopened_after(t0, 200)
+    join!({:error, "unavailable"})
+    assert %{connected: false, connection_error: "unavailable"} = Connection.status(conn)
+    t2 = reopened_after(t1, 400)
+    join!({:error, :timeout})
+    assert %{connected: false, connection_error: "request_failed"} = Connection.status(conn)
+    t3 = reopened_after(t2, 800)
+    join!({:error, "unauthorized"})
+    t4 = reopened_after(t3, 800)
 
-            :ssl.send(socket, [
-              "HTTP/1.1 200 OK\r\ncontent-length: #{byte_size(bytes)}\r\nconnection: close\r\n\r\n",
-              bytes
-            ])
+    # A successful join resets the backoff; a server phx_close reconnects.
+    {channel, _, _} = join!()
+    assert %{connected: true, connection_error: nil} = Connection.status(conn)
+    send(conn, {@tag_message, channel, "phx_close", %{}})
+    assert %{connected: false, connection_error: "disconnected"} = Connection.status(conn)
+    t5 = reopened_after(t4, 200)
 
-            :ssl.close(socket)
+    {channel, _, _} = join!()
+    Process.exit(channel, :kill)
+    assert_receive {:opened, _, _, t6}, 1000
+    assert t6 - t5 >= 200
+    refute inspect(:sys.get_state(conn)) =~ @token
+  end
 
-          {:error, _} ->
-            :ssl.close(socket)
-        end
+  test "URL-only initialization joins with and reuses the private persisted credential", ctx do
+    path = Path.join(ctx.tmp_dir, "bootstrap.toml")
 
-        tls_accept_loop(listener)
+    File.write!(
+      path,
+      "management_url = \"http://127.0.0.1:4270\"\ndata_dir = #{inspect(Path.join(ctx.tmp_dir, "state"))}\n"
+    )
 
-      {:error, :closed} ->
-        :ok
+    {:ok, bootstrap} = YellowDog.Worker.Bootstrap.load(path)
+    options = Keyword.put(bootstrap, :connection_bootstrap, path) |> Keyword.delete(:connection)
+    manager = start_supervised!({ServiceManager, options})
+    {:ok, auth} = ServiceManager.connection_credentials(manager)
+
+    client =
+      start_supervised!(
+        {Connection, bootstrap_path: path, manager: manager, socket_impl: FakeSocket}
+      )
+
+    assert_receive {:opened, _, opened, _}, 3000
+    assert opened[:params] == %{"worker_id" => auth.worker_id}
+    {_, topic, payload} = join!()
+    assert topic == "worker:" <> auth.worker_id
+    assert payload["token"] == auth.token
+    assert payload["report"]["worker_id"] == auth.worker_id
+    refute inspect(:sys.get_status(manager)) =~ auth.token
+    refute inspect(ServiceManager.status(manager)) =~ auth.token
+    refute inspect(:sys.get_status(client)) =~ auth.token
+    refute inspect(:sys.get_state(client)) =~ auth.token
+    :ok = stop_supervised(Connection)
+    :ok = stop_supervised(ServiceManager)
+    manager = start_supervised!({ServiceManager, options})
+    assert {:ok, ^auth} = ServiceManager.connection_credentials(manager)
+
+    start_supervised!(
+      {Connection, bootstrap_path: path, manager: manager, socket_impl: FakeSocket}
+    )
+
+    {_, _, %{"token" => token}} = join!()
+    assert token == auth.token
+    assert ServiceManager.status(manager).origin == :awaiting_connection
+  end
+
+  test "real WebSocket client exchanges Phoenix frames and reconnects after close", ctx do
+    {url, _listener} = ws_server(:gen_tcp, [])
+    manager = manager(ctx.tmp_dir)
+
+    conn =
+      start_supervised!(
+        {Connection, worker_id: "edge-01", manager: manager, management_url: url, token: @token}
+      )
+
+    assert_receive {:upgrade, request}, 5000
+    assert request =~ "GET /api/worker/connect?vsn=2.0.0&worker_id=edge-01 HTTP/1.1\r\n"
+    refute request =~ @token
+    refute request =~ ~r/x-yellow-dog/i
+    assert_receive {:ws, :gen_tcp, socket}, 3000
+    [join_ref, ref, topic, "phx_join", payload] = recv_frame(:gen_tcp, socket)
+    assert topic == "worker:edge-01"
+    assert %{"token" => @token, "report" => %{"worker_id" => "edge-01"}} = payload
+    send_frame(:gen_tcp, socket, [join_ref, ref, topic, "phx_reply", ok_reply()])
+    plan = dns_plan()
+    send_frame(:gen_tcp, socket, [join_ref, nil, topic, "target", target(plan)])
+
+    assert [^join_ref, _, ^topic, "report", %{"applied_revision" => 1, "apply_error" => nil}] =
+             recv_frame(:gen_tcp, socket)
+
+    assert_dns(get_in(plan, ["services", Access.at(0), "config", "port"]))
+    assert %{connected: true} = Connection.status(conn)
+
+    # Oversized inbound messages are refused instead of buffered.
+    send_frame(:gen_tcp, socket, [
+      join_ref,
+      nil,
+      topic,
+      "target",
+      String.duplicate("a", 1_048_577)
+    ])
+
+    assert {8, <<1009::16, _::binary>>} = read_frame(:gen_tcp, socket)
+    :gen_tcp.close(socket)
+    assert_receive {:upgrade, _}, 5000
+    assert %{connected: false} = Connection.status(conn)
+    assert_receive {:ws, :gen_tcp, socket}, 3000
+
+    [join_ref, ref, topic, "phx_join", %{"report" => %{"applied_revision" => 1}}] =
+      recv_frame(:gen_tcp, socket)
+
+    send_frame(:gen_tcp, socket, [
+      join_ref,
+      ref,
+      topic,
+      "phx_reply",
+      %{"status" => "error", "response" => %{"code" => "unauthorized"}}
+    ])
+
+    assert_receive {:upgrade, _}, 5000
+    assert %{connected: false, connection_error: "unauthorized"} = Connection.status(conn)
+    assert_receive {:ws, :gen_tcp, socket}, 3000
+    [join_ref, ref, topic, "phx_join", _] = recv_frame(:gen_tcp, socket)
+    send_frame(:gen_tcp, socket, [join_ref, ref, topic, "phx_reply", ok_reply()])
+    send_frame(:gen_tcp, socket, [join_ref, nil, topic, "target", %{"target" => nil}])
+    assert [_, _, ^topic, "report", _] = recv_frame(:gen_tcp, socket)
+    assert %{connected: true, connection_error: nil} = Connection.status(conn)
+    :gen_tcp.close(socket)
+    assert_receive {:upgrade, _}, 5000
+    assert_dns(get_in(plan, ["services", Access.at(0), "config", "port"]))
+  end
+
+  test "WSS requires a trusted CA and presents optional mutual TLS credentials", ctx do
+    {ca, cert, key} = certificates(ctx.tmp_dir)
+
+    tls = [
+      certfile: String.to_charlist(cert),
+      keyfile: String.to_charlist(key),
+      cacertfile: String.to_charlist(ca),
+      verify: :verify_peer,
+      fail_if_no_peer_cert: true
+    ]
+
+    {url, _listener} = ws_server(:ssl, tls)
+    url = String.replace(url, "http://", "https://")
+    manager = manager(ctx.tmp_dir)
+
+    for extra <- [[], [tls_ca_file: ca]] do
+      start_supervised!(
+        {Connection,
+         [worker_id: "edge-01", manager: manager, management_url: url, token: @token] ++ extra}
+      )
+
+      assert_receive {:tls_failed, _}, 5000
+      refute_receive {:upgrade, _}, 300
+      :ok = stop_supervised(Connection)
+    end
+
+    start_supervised!(
+      {Connection,
+       worker_id: "edge-01",
+       manager: manager,
+       management_url: url,
+       token: @token,
+       tls_ca_file: ca,
+       tls_cert_file: cert,
+       tls_key_file: key}
+    )
+
+    assert_receive {:upgrade, request}, 5000
+    assert request =~ "GET /api/worker/connect?vsn=2.0.0&worker_id=edge-01 HTTP/1.1\r\n"
+    assert_receive {:ws, :ssl, socket}, 3000
+    assert [_, _, "worker:edge-01", "phx_join", %{"token" => @token}] = recv_frame(:ssl, socket)
+  end
+
+  defp disconnected(conn, attempts \\ 50) do
+    case Connection.status(conn) do
+      %{connected: true} when attempts > 0 ->
+        Process.sleep(20)
+        disconnected(conn, attempts - 1)
+
+      status ->
+        status
     end
   end
+
+  defp reopened_after(previous, minimum) do
+    assert_receive {:opened, _, _, at}, minimum + 1000
+    assert at - previous >= minimum
+    assert at - previous < minimum + 700
+    at
+  end
+
+  defp join!(reply \\ :ok) do
+    assert_receive {:joining, conn, _socket, channel, topic, payload}, 3000
+    send(conn, {:join_reply, reply})
+    {channel, topic, payload}
+  end
+
+  defp deliver(conn, channel, payload), do: send(conn, {@tag_message, channel, "target", payload})
+
+  defp ok_reply, do: %{"status" => "ok", "response" => %{}}
 
   defp manager(dir),
     do: start_supervised!({ServiceManager, worker_id: "edge-01", data_dir: dir, source: nil})
 
-  defp connection(url, manager),
+  defp connection(manager, extra \\ []),
     do:
       start_supervised!(
         {Connection,
-         worker_id: "edge-01",
-         manager: manager,
-         management_url: url,
-         token: @token,
-         poll_interval_ms: 60_000}
+         Keyword.merge(
+           [
+             worker_id: "edge-01",
+             manager: manager,
+             management_url: "http://127.0.0.1:4270",
+             token: @token,
+             socket_impl: FakeSocket
+           ],
+           extra
+         )}
       )
 
   defp empty_plan(revision),
@@ -324,11 +469,7 @@ defmodule YellowDog.Worker.ConnectionTest do
 
   defp target(plan) do
     {:ok, digest} = ConfigSpec.plan_digest(plan)
-
-    %{
-      "worker_id" => "edge-01",
-      "target" => %{"revision" => plan["revision"], "digest" => digest, "plan" => plan}
-    }
+    %{"target" => %{"revision" => plan["revision"], "digest" => digest, "plan" => plan}}
   end
 
   defp assert_dns(port) do
@@ -340,78 +481,141 @@ defmodule YellowDog.Worker.ConnectionTest do
     :gen_tcp.close(socket)
   end
 
-  defp respond(agent, response), do: Agent.update(agent, fn _ -> response end)
-
-  defp server(chunked? \\ false) do
-    replies = start_supervised!({Agent, fn -> %{"worker_id" => "edge-01", "target" => nil} end})
+  # Minimal WebSocket endpoint: performs the upgrade, then hands the socket to
+  # the test process, which reads masked client frames and writes server frames.
+  defp ws_server(transport, tls) do
+    listen = if transport == :ssl, do: tls, else: []
 
     {:ok, listener} =
-      :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      transport.listen(
+        0,
+        [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}] ++ listen
+      )
 
-    {:ok, {_, port}} = :inet.sockname(listener)
+    {:ok, {_, port}} =
+      if transport == :ssl, do: :ssl.sockname(listener), else: :inet.sockname(listener)
+
     parent = self()
-    acceptor = spawn_link(fn -> accept_loop(listener, replies, parent, chunked?) end)
+    acceptor = spawn_link(fn -> ws_accept_loop(transport, listener, parent) end)
 
     on_exit(fn ->
-      :gen_tcp.close(listener)
+      transport.close(listener)
       if Process.alive?(acceptor), do: Process.exit(acceptor, :normal)
     end)
 
-    {"http://127.0.0.1:#{port}", replies}
+    {"http://127.0.0.1:#{port}", listener}
   end
 
-  defp accept_loop(listener, replies, parent, chunked?) do
-    case :gen_tcp.accept(listener) do
-      {:ok, socket} ->
-        {headers, body} = read_request(socket, "")
-        send(parent, {:request, headers, Jason.decode!(body)})
-        reply = Agent.get(replies, & &1)
-        {code, value} = if is_tuple(reply), do: reply, else: {200, reply}
-        bytes = if is_binary(value), do: value, else: Jason.encode!(value)
+  defp ws_accept_loop(transport, listener, parent) do
+    accepted =
+      if transport == :ssl do
+        with {:ok, socket} <- :ssl.transport_accept(listener) do
+          case :ssl.handshake(socket, 3000) do
+            {:ok, socket} ->
+              {:ok, socket}
 
-        if code == 0 do
-          :ok
-        else
-          if chunked? do
-            :gen_tcp.send(socket, [
-              "HTTP/1.1 #{code} Test\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
-              Integer.to_string(byte_size(bytes), 16),
-              "\r\n",
-              bytes,
-              "\r\n0\r\n\r\n"
-            ])
-          else
-            :gen_tcp.send(socket, [
-              "HTTP/1.1 #{code} Test\r\ncontent-type: application/json\r\ncontent-length: #{byte_size(bytes)}\r\nconnection: close\r\n\r\n",
-              bytes
-            ])
+            {:error, reason} ->
+              send(parent, {:tls_failed, reason})
+              :ssl.close(socket)
+              :retry
           end
         end
+      else
+        :gen_tcp.accept(listener)
+      end
 
-        :gen_tcp.close(socket)
-        accept_loop(listener, replies, parent, chunked?)
+    case accepted do
+      {:ok, socket} ->
+        request = read_head(transport, socket, "")
+        send(parent, {:upgrade, request})
+        [_, key] = Regex.run(~r/sec-websocket-key:\s*(\S+)/i, request)
+        accept = Base.encode64(:crypto.hash(:sha, key <> "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 
-      {:error, :closed} ->
+        :ok =
+          transport.send(
+            socket,
+            "HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: #{accept}\r\n\r\n"
+          )
+
+        :ok = transport.controlling_process(socket, parent)
+        send(parent, {:ws, transport, socket})
+        ws_accept_loop(transport, listener, parent)
+
+      :retry ->
+        ws_accept_loop(transport, listener, parent)
+
+      {:error, _} ->
         :ok
     end
   end
 
-  defp read_request(socket, bytes, transport \\ :gen_tcp) do
-    case :binary.split(bytes, "\r\n\r\n") do
-      [headers, body] ->
-        [_, size] = Regex.run(~r/content-length:\s*(\d+)/i, headers)
-        length = String.to_integer(size)
-
-        if byte_size(body) >= length do
-          {headers, binary_part(body, 0, length)}
-        else
-          {:ok, next} = transport.recv(socket, 0, 3000)
-          read_request(socket, bytes <> next, transport)
-        end
-
-      _ ->
-        {:ok, next} = transport.recv(socket, 0, 3000)
-        read_request(socket, bytes <> next, transport)
+  defp read_head(transport, socket, bytes) do
+    if String.contains?(bytes, "\r\n\r\n") do
+      bytes
+    else
+      {:ok, next} = transport.recv(socket, 0, 3000)
+      read_head(transport, socket, bytes <> next)
     end
+  end
+
+  defp recv_frame(transport, socket) do
+    {1, data} = read_frame(transport, socket)
+    Jason.decode!(data)
+  end
+
+  defp read_frame(transport, socket) do
+    {:ok, <<_fin::4, opcode::4, 1::1, size::7>>} = transport.recv(socket, 2, 3000)
+
+    size =
+      case size do
+        126 -> with {:ok, <<value::16>>} <- transport.recv(socket, 2, 3000), do: value
+        127 -> with {:ok, <<value::64>>} <- transport.recv(socket, 8, 3000), do: value
+        value -> value
+      end
+
+    {:ok, mask} = transport.recv(socket, 4, 3000)
+    {:ok, data} = if size == 0, do: {:ok, ""}, else: transport.recv(socket, size, 3000)
+
+    data =
+      data
+      |> :binary.bin_to_list()
+      |> Enum.with_index()
+      |> Enum.map(fn {byte, index} -> bxor(byte, :binary.at(mask, rem(index, 4))) end)
+      |> :binary.list_to_bin()
+
+    {opcode, data}
+  end
+
+  defp send_frame(transport, socket, message) do
+    data = Jason.encode!(message)
+    size = byte_size(data)
+
+    header =
+      cond do
+        size < 126 -> <<0x81, size>>
+        size < 65_536 -> <<0x81, 126, size::16>>
+        true -> <<0x81, 127, size::64>>
+      end
+
+    :ok = transport.send(socket, [header, data])
+  end
+
+  defp certificates(dir) do
+    cert = Path.join(dir, "tls.pem")
+    key = Path.join(dir, "tls.key")
+    ca = Path.join(dir, "ca.pem")
+    ca_key = Path.join(dir, "ca.key")
+    csr = Path.join(dir, "tls.csr")
+
+    for arguments <- [
+          ~w(req -x509 -newkey rsa:2048 -nodes -keyout #{ca_key} -out #{ca} -days 1 -subj) ++
+            ["/CN=Worker Test CA"],
+          ~w(req -newkey rsa:2048 -nodes -keyout #{key} -out #{csr} -subj /CN=127.0.0.1 -addext subjectAltName=IP:127.0.0.1),
+          ~w(x509 -req -in #{csr} -CA #{ca} -CAkey #{ca_key} -CAcreateserial -out #{cert} -days 1 -copy_extensions copy)
+        ] do
+      {_, 0} = System.cmd("openssl", arguments, stderr_to_stdout: true)
+    end
+
+    {ca, cert, key}
   end
 end
