@@ -6,6 +6,6 @@ defmodule YellowDog.Worker do
   def status(server \\ ServiceManager), do: ServiceManager.status(server)
   def check(server \\ ServiceManager), do: ServiceManager.check(server)
 
-  @doc "Complete-plan attachment point shared by local reload and authenticated Management polling."
+  @doc "Complete-plan attachment point shared by local reload and targets pushed over the Management WebSocket."
   def submit_plan(plan, server \\ ServiceManager), do: ServiceManager.submit_plan(server, plan)
 end

@@ -1,8 +1,9 @@
 # Independent Yellow Dog Management (Phase 1 Track A)
 
 Management owns editable DNS data in PostgreSQL and publishes complete confirmed
-configuration. Workers actively connect with their own Bearer tokens, retrieve
-their targets and report runtime observations. Network services execute on Worker.
+configuration. Workers actively connect over a WebSocket, authenticate with their
+own tokens in the channel join payload, receive pushed targets and report runtime
+observations. Network services execute on Worker.
 
 Management owns configuration authoring; network services run exclusively on
 Worker. Netboot provisioning and Identity enrollment/trust authority belong to
@@ -414,7 +415,6 @@ worker_id = "generated-worker-id"
 data_dir = "data"
 management_url = "https://yellow-dog.gsmlg.net"
 token = "generated-worker-token"
-poll_interval_ms = 10000
 # Optional local PEM files for a private CA or mutual-TLS gateway:
 # tls_ca_file = "/etc/yellow-dog/ca.pem"
 # tls_cert_file = "/etc/yellow-dog/client.pem"
@@ -430,8 +430,9 @@ YELLOW_DOG_WORKER_BOOTSTRAP=/absolute/path/bootstrap.toml bin/yellow_dog_worker 
 New Workers have no services. Configure a DNS instance and its Zone assignments,
 save the desired state, then **Publish configuration**. Saving a service draft
 does not publish it. The Worker validates and applies the complete confirmed
-target through its existing durable execution path. DNS is the only currently
-implemented service; historical profiles do not establish other runtime support.
+target through its existing durable execution path. DNS (authoritative zones,
+forward zones and optional recursion) is the only currently implemented service;
+historical profiles do not establish other runtime support.
 
 The table and dashboard refresh connection and actual service reports. No contact
 for 45 seconds changes the connection to Offline; older service reports are
@@ -439,12 +440,17 @@ labelled as the last report. Desired state, applied revision and actual state
 remain distinct. An outage leaves the last committed Worker configuration running;
 Worker restart restores that snapshot even when Management is unavailable.
 
-`POST /api/worker/connect` is a dedicated Bearer-authenticated machine endpoint.
-The credential permits only its own Worker identity, target and report. Tokens
-are SHA-256 hashes in PostgreSQL and are excluded from ordinary Worker queries,
-audit and idempotency records. Configure an external gateway to allow this route
-with the Worker authentication and any required TLS client certificate; browser
-session authentication cannot be supplied by the polling client.
+`GET /api/worker/connect?vsn=2.0.0&worker_id=<uuid>` is a dedicated machine
+WebSocket endpoint (Phoenix channel topic `worker:<worker_id>`); HTTP polling is
+not served. The upgrade request carries no `Authorization` or custom token
+header: the token travels only in the channel join payload `{"token", "report"}`,
+so gateway access logs never record it. Management pushes each confirmed target
+over the channel. The credential permits only its own Worker identity, target and
+report. Tokens are SHA-256 hashes in PostgreSQL and are excluded from ordinary
+Worker queries, audit and idempotency records. Configure an external gateway to
+pass the WebSocket upgrade for this route (any query string) with any required
+TLS client certificate; browser session authentication cannot be supplied by the
+machine client.
 
 Verify separate releases and real DNS UDP/TCP behavior with disposable PostgreSQL:
 

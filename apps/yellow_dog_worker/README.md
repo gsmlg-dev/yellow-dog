@@ -1,14 +1,15 @@
 # Yellow Dog Worker (Phase 1)
 
 An independent Linux service host. It obtains the shared ConfigSpec WorkerPlan from
-local TOML or Management, runs authoritative DNS, and recovers from its own committed snapshots.
+local TOML or Management, runs DNS (authoritative zones, forward zones and optional
+recursion), and recovers from its own committed snapshots.
 It has no PostgreSQL or Management application dependency. It supports either
 local TOML or an opt-in authenticated Management connection. Both submit complete
 WorkerPlans through `YellowDog.Worker.submit_plan/2`, the same path as local reload.
 
 Worker owns network-service execution, including Netboot and Identity. Management
 authors service configuration but does not run provisioning or identity/trust
-services. Only authoritative DNS is currently implemented here; restoring the
+services. Only DNS is currently implemented here; restoring the
 architecture does not require adding the remaining services or fixing runtime
 failures. This ownership decision is not a claim of functional acceptance.
 
@@ -46,12 +47,13 @@ payload, so proxy access logs never record it. Management pushes each confirmed
 target as soon as it is published; the Worker applies it, reports observed DNS
 states immediately and every 15 seconds within Management's 45-second contact
 expiry. Lost connections and rejected joins reconnect with exponential backoff
-from 1 to 30 seconds. `poll_interval_ms` is no longer accepted.
-Only authoritative DNS is executable. HTTPS verifies the server certificate and
+from 1 to 30 seconds. There is no HTTP polling; `poll_interval_ms` is no longer
+accepted. Only DNS is executable. HTTPS verifies the server certificate and
 hostname. Optional `tls_ca_file`, `tls_cert_file`, and `tls_key_file` configure a
 private CA and client certificate; client certificate and key must be provided
-together. TLS file paths resolve relative to the bootstrap. Plain HTTP is allowed
-only for loopback development. Redirects are refused; inbound messages are bounded to 1 MiB.
+together. TLS file paths resolve relative to the bootstrap. Plain HTTP (`ws://`)
+is not restricted by the Worker; use it only on loopback or a private network
+such as a VPN, because the join payload (and token) then travels unencrypted. Redirects are refused; inbound messages are bounded to 1 MiB.
 
 An empty first boot waits for Management without starting services. Restart restores
 the last committed snapshot before reconnecting. Connection loss or a rejected

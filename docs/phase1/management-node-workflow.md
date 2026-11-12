@@ -65,7 +65,7 @@ or establish execution. Stopping preserves assignments and prior targets.
 Preview is read-only and captures `worker_revision`. Publish submits exactly that
 reviewed revision; a concurrent service/assignment change or another publication
 rejects it. A fresh preview is required after a conflict. Publication is explicitly
-confirmed because a connected Worker may consume it through existing polling.
+confirmed because a connected Worker receives it at once over its WebSocket channel.
 A prepared target is separate from last authenticated applied revision/digest.
 Offline reports are last-known observations, never manufactured current stages.
 
@@ -120,7 +120,7 @@ They are not durable secret replay: an ambiguous lost response must be recovered
 reading non-secret state and an explicit new reset, never automatic rotation.
 There is no read-current-token endpoint or plaintext receipt. Future administrator
 API/MCP adapters must explicitly design authorization and specialized secret-result
-retry policy around these operations, separately from WorkerAPI Bearer credentials.
+retry policy around these operations, separately from Worker channel credentials.
 No `/api/v1`, OpenAPI, remote MCP transport, OAuth or account system is delivered.
 
 ## Step 2 review repair — 2026-10-22
@@ -266,7 +266,7 @@ Validation on 2026-10-21 (Asia/Shanghai), against the Step 2 tree before integra
 | Production architecture gate | Passed: two isolated releases, pure shared ConfigSpec, six negative mutations rejected |
 | Official DuskMoon menu integration | Locked `phoenix_duskmoon` 10.0.9; upstream issue 207 closed; 13 baseline navigation tests passed and final dedicated Chromium navigation passed |
 | Chromium node workflow | Passed; two offline Workers, canonical registration, invalid registration retained input, same-tab rapid-edit discard, selector cancel, polling, DNS create/edit, Data Zone create/confirm/assign, scoped references, stale-preview rejection, fresh publication and immutable earlier export |
-| Real connected Worker release smoke | All business assertions passed: authenticated polling, real DNS UDP/TCP, Management outage/offline restart/reconnect, stopped snapshot, credential reset, failed-target preservation and URL-only enrollment. Command exited 1 during final cleanup: Worker failed to exit within 20 seconds. Worker runtime unchanged; cleanup limitation remains unresolved/out of scope |
+| Real connected Worker release smoke | (Historical record; Workers have since moved from HTTP polling to the `/api/worker/connect` WebSocket.) All business assertions passed: authenticated polling, real DNS UDP/TCP, Management outage/offline restart/reconnect, stopped snapshot, credential reset, failed-target preservation and URL-only enrollment. Command exited 1 during final cleanup: Worker failed to exit within 20 seconds. Worker runtime unchanged; cleanup limitation remains unresolved/out of scope |
 | Restart | Passed; Management restarted on the same disposable PostgreSQL/artifact state, a new Chromium session re-read exact service/assignment/target data and earlier TOML |
 | Desktop/mobile | Passed: direct routes, refresh, node-route back/forward, mobile tab activation, readable horizontally scrolling service table and no viewport overflow |
 | Formatting/assets/JS/shell/diff | Passed; existing asset build used; no assertion skips or warning suppression |

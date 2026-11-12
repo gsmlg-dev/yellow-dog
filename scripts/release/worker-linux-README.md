@@ -4,7 +4,7 @@ This package contains the Worker, Erlang runtime and native socket library.
 Elixir, Erlang, Nix, PostgreSQL and Docker are not required on the Worker host.
 The supported baseline is Debian 12 x86_64 (glibc 2.36 and OpenSSL 3).
 Alpine/musl and other architectures are not supported by this package.
-Only authoritative DNS is currently executable.
+Only DNS (authoritative zones, forward zones and optional recursion) is currently executable.
 
 Install the system libraries and durability helpers on Debian 12:
 

@@ -61,7 +61,7 @@ gate. Every PostgreSQL wrapper used its own disposable database. Logs are under
 | Gate | Command / result | Evidence |
 | --- | --- | --- |
 | Management regressions | `scripts/e2e/phase1_postgres.sh mix do --app yellow_dog_management test` — **609 tests, 0 failures** | `step4-management-final609.log` |
-| Authorization additions | Scoped `test/integration_security_test.exs` — **14 tests, 0 failures**; issued Worker credentials fail API/MCP, Management JWTs fail WorkerAPI, ten same-key sync attempts create one job/receipt/audit and a subsequent cross-adapter attempt is limited | `step4-security-final2.log` |
+| Authorization additions | Scoped `test/integration_security_test.exs` — **14 tests, 0 failures**; issued Worker credentials fail API/MCP, Management JWTs fail WorkerAPI (then HTTP; Workers now authenticate only through the `/api/worker/connect` WebSocket join payload), ten same-key sync attempts create one job/receipt/audit and a subsequent cross-adapter attempt is limited | `step4-security-final2.log` |
 | Existing JavaScript suites | `node --test apps/yellow_dog_management/test/management_ui_test.mjs apps/yellow_dog_management/test/editor_guard_test.mjs` — **30 passed** | `step4-js-final.log` |
 | Assets | `npm run assets.management` — passed | `step4-assets-final.log` |
 | Source checks | Explicit changed-file `mix format --check-formatted`, `MIX_ENV=test mix compile --warnings-as-errors`, JavaScript/shell syntax, `git diff --check` — passed; 71 changed Elixir files | `step4-source-checks-final.log` |

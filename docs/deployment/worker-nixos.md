@@ -85,7 +85,6 @@ worker_id = "由 Management 生成的 ID"
 data_dir = "/var/lib/yellow-dog-worker"
 management_url = "http://VPN_MANAGEMENT_ADDRESS:4270"
 token = "由 Management 生成的 token"
-poll_interval_ms = 10000
 ```
 
 bootstrap 由 systemd 复制到临时 credentials 目录。**显式 `data_dir`、本地模式的

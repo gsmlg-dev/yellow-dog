@@ -20,7 +20,7 @@
 - 修改 `ex_dns`（共享协议库）前必须先停下来征得所有者同意（AGENTS.md）。
 - 依赖用 `{:phoenix_socket_client, "~> 0.9"}`，不能用 0.8，因为 0.8 与 `http_core 1.0.0-rc.13` 冲突。该库的问题按 upstream-issue-routing 上报到 gsmlg-dev，不在本地绕过。
 - Worker socket 路径固定为 `/api/worker/connect`，不带 `/websocket` 后缀。写法：`socket "/api/worker", ..., websocket: [path: "/connect"]`。同时把这个路径加入 Gaoxy 的 `websocket_paths`（`apps/yellow_dog_management/config/config.exs`、`config/dev.exs`、`config/test.exs`）。
-- 令牌只能放在 HTTP 头 `x-yellow-dog-worker-token` 里，不能出现在 URL query 中（Caddy 会把 URI 写进访问日志），也不能出现在日志、`format_status`、审计记录里。
+- 令牌只能放在 channel join payload `{"token", "report"}` 里，不能出现在 URL query 或 HTTP 头中（Caddy 访问日志会记录 URI 和自定义请求头），也不能出现在日志、`format_status`、审计记录里。握手为 `GET /api/worker/connect?vsn=2.0.0&worker_id=<uuid>`。（2026-11-12 裁定：原方案把令牌放在 HTTP 头 `x-yellow-dog-worker-token` 中，但 Caddy 访问日志会记录自定义请求头，令牌会落入日志，所以改为只放在 channel join payload 中。）
 - 没有配置 `allow_query` 时默认拒绝所有来源。
 - `listen_address` 保持单个 IPv4 地址，云上部署使用 `0.0.0.0`（设计文档 6.2 已修订）。
 - 项目在设计阶段，不保留 HTTP 轮询，也不做协议兼容层。
@@ -243,20 +243,18 @@
 - Modify: `apps/yellow_dog_management/lib/yellow_dog/management/domain.ex`（在 `mutate/5` 成功分支中，参照 `Tasks.broadcast` 的写法广播）
 - Modify: `apps/yellow_dog_management/lib/yellow_dog/management/worker_connections.ex`（`bootstrap/3` 去掉 `poll_interval_ms` 那一行；新增 `broadcast_target/1`）
 - Modify: `apps/yellow_dog_management/config/config.exs`、`config/dev.exs`、`config/test.exs`（`websocket_paths` 加入 `"/api/worker/connect"`，并删除已失效的 `"/server/ws/websocket"`）
-- Modify: `docs/phase1/management-integration-security.md`（Worker 凭据边界一节：路径相同，传输方式改为 WebSocket，令牌放在 header 中）
+- Modify: `docs/phase1/management-integration-security.md`（Worker 凭据边界一节：路径相同，传输方式改为 WebSocket，令牌只放在 join payload 中）
 - Test: `apps/yellow_dog_management/test/worker_channel_test.exs`（新建）、`worker_connections_test.exs`（修改），以及引用 `/api/worker` 的测试文件（`web_test.exs`、`export_scope_test.exs` 等，改为使用 channel 或删除对应断言）
 
 **Interfaces:**
-- 端点：`socket "/api/worker", YellowDog.ManagementUI.WorkerSocket, websocket: [path: "/connect", connect_info: [:x_headers, :peer_data], check_origin: false], longpoll: false`
+- 端点：`socket "/api/worker", YellowDog.ManagementUI.WorkerSocket, websocket: [path: "/connect", connect_info: [:peer_data], check_origin: false], longpoll: false`
 - `WorkerSocket.connect(params, socket, connect_info)`：
-  - 从 `connect_info.x_headers` 读取 `x-yellow-dog-worker-token`（必须是 43 字节）。
-  - 从 `params["worker_id"]` 读取 UUID。
-  - 两者都合法时把它们存入 assigns，否则返回 `:error`。
-  - 此处不访问数据库，真正的认证在 join 时完成。
+  - 从 `params["worker_id"]` 读取 UUID，合法时存入 assigns，否则返回 `:error`。
+  - 此处不读取令牌、不访问数据库，真正的认证在 join 时完成。（2026-11-12 裁定：原方案把令牌放在 HTTP 头 `x-yellow-dog-worker-token` 中，但 Caddy 访问日志会记录自定义请求头，令牌会落入日志，所以改为只放在 channel join payload 中。）
   - `id/1` 返回 `"worker_socket:<worker_id>"`。
 - `WorkerChannel`：
   - topic 为 `"worker:" <> worker_id`，必须与 assigns 中的 worker_id 一致。
-  - `join(topic, report, socket)` 调用 `WorkerConnections.connect(token, report)`：
+  - `join(topic, %{"token" => token, "report" => report}, socket)` 调用 `WorkerConnections.connect(token, report)`（令牌必须是 43 字节，只保存在 channel 进程的闭包/状态中，不写日志）：
     - 成功时订阅 PubSub `"worker_target:" <> id`，并在 join 后推送 `"target"`，payload 为 `%{"target" => target | nil}`。
     - 失败时返回 `{:error, %{"code" => code}}`。
   - `handle_in("report", report, socket)` 再次调用 `WorkerConnections.connect/2`：
@@ -267,7 +265,7 @@
 - 报告 payload 与现有的 `@report_keys` 完全相同，`capabilities` 仍为 `["dns"]`。
 
 - [ ] **Step 1：写失败的测试**（使用 `Phoenix.ChannelTest`）：
-  - 缺少令牌 header 时 `connect` 返回 `:error`。
+  - `worker_id` 缺失或不是 UUID 时 `connect` 返回 `:error`；join payload 缺少令牌时 join 被拒绝。
   - 令牌错误时 join 返回 `{:error, %{"code" => "unauthorized"}}`。
   - topic 中的 id 与 assigns 不一致时 join 被拒绝。
   - 合法 join 时 `assert_push "target", %{"target" => nil}`，并更新 `last_seen_at`。
@@ -302,8 +300,8 @@
 - Consumes：Task 6 的协议，具体为：
   - URL：由 `management_url` 推导，规则是 `http→ws`、`https→wss`，再拼上 `/api/worker/connect`。
   - 参数：`params: %{"worker_id" => id}`。
-  - 请求头：`headers: [{"x-yellow-dog-worker-token", token}]`。
-  - topic：`"worker:" <> id`；join 的 payload 是一份 report。
+  - 不带令牌请求头；令牌只放在 join payload：`%{"token" => token, "report" => report}`。
+  - topic：`"worker:" <> id`；join 的 payload 是 `{"token", "report"}`。
   - 事件：入站 `"target"`，出站 `"report"`。
 - `Connection.start_link(opts)` 和 `Connection.status(pid) :: %{connected: boolean, connection_error: String.t() | nil, apply_error: String.t() | nil}` 保持现有的公开形状。删除 `poll/1`。
 - 内部行为：
@@ -311,7 +309,7 @@
   - 每 15s 推送一次 `"report"` 作为心跳；应用完一个 target 后立即推送一次。
   - target 的校验和应用沿用现有的 `accept_target/3` 和 `fresh_target/3`。
   - 令牌不能出现在 GenServer 状态的 `format_status` 输出中，可参照现有的 redaction 写法。
-- 如果 `phoenix_socket_client` 0.9 不支持 header 或者 `ws://` 连接，**停下来**，按 upstream-issue-routing 处理，不要改成在 query 里传令牌。
+- 如果 `phoenix_socket_client` 0.9 不支持 `ws://` 连接或 join payload，**停下来**，按 upstream-issue-routing 处理，不要改成在 query 或请求头里传令牌。
 
 - [ ] **Step 1：改写测试**：
   - `connection_test.exs` 通过可注入的 socket 模块（opts `:socket_impl`，在测试中替换成假实现）验证以下行为：

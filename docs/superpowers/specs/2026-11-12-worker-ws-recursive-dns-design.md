@@ -55,7 +55,8 @@
 ### 6.1 连接协议（Worker ↔ Management）
 
 - **Management 端**：新增 `Phoenix.Socket`，WebSocket 路径固定为 `/api/worker/connect`（与 Caddy 规则一致，见 6.7）。注意 Phoenix 默认会在 socket 路径后追加 `/websocket`，所以要写成 `socket "/api/worker", ..., websocket: [path: "/connect"]`，同时把该路径加入 Gaoxy 的 `websocket_paths`和 channel `worker:<worker_id>`。
-  - `connect/3` 用 `worker_id` 和 `token` 认证，复用 `WorkerConnections` 的哈希比对（`secure_compare`）和匿名注册逻辑。
+  - 握手请求为 `GET /api/worker/connect?vsn=2.0.0&worker_id=<uuid>`，URL 和请求头中都没有令牌。`connect/3` 只校验 `worker_id` 是 UUID，不访问数据库。
+  - 令牌只出现在 channel join payload `{"token", "report"}` 中；`join/3` 用 `worker_id` 和 `token` 认证，复用 `WorkerConnections` 的哈希比对（`secure_compare`）和匿名注册逻辑。join 参数不写日志。（2026-11-12 裁定：原方案把令牌放在 HTTP 头 `x-yellow-dog-worker-token` 中，但 Caddy 访问日志会记录自定义请求头，令牌会落入日志，所以改为只放在 channel join payload 中。）
   - 认证失败时拒绝连接，不泄露原因。
 - **Worker 端**：用 `phoenix_socket_client` 0.9.x 连接。
   - 重连由 Worker 自己负责，采用指数退避加上限，可参考 `server_agent` 的 `schedule_rejoin`。
@@ -67,7 +68,7 @@
 - **在线状态**：以频道是否在线为准，同时更新 `last_seen_at`。UI 现有的 5 秒刷新可以保留。
 - **Bootstrap**：
   - `management_url` 改为 ws/http 源地址，由 Worker 自己推导出 socket 地址。
-  - `poll_interval_ms` 改为心跳和重连参数，或者删除。
+  - `poll_interval_ms` 已删除（Bootstrap 拒绝该键）；心跳固定 15 秒，重连退避 1–30 秒。
   - 本地模式（只有 TOML、没有 connection 段）保持不变。
 - **删除**：`ConnectionHTTP`、`WorkerAPI` 的 `POST /connect`，以及 Worker 的 `http_fetch` 依赖（前提是没有其他用途）。
 
