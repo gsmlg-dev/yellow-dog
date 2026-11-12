@@ -9,6 +9,7 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
   observes a newer revision. Join parameters are never logged.
   """
   use Phoenix.Channel, log_join: false
+  require Logger
   alias YellowDog.Management.{Domain, WorkerConnections}
 
   @impl true
@@ -22,7 +23,7 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
     # A closure keeps the raw credential out of inspected socket state and crash reports.
     socket = assign(socket, :worker_token, fn -> token end)
 
-    case authenticate(report, socket) do
+    case join_authenticate(report, socket) do
       {:ok, %{"target" => target}} ->
         :ok = Phoenix.PubSub.subscribe(YellowDog.ManagementUI.PubSub, "worker_target:" <> id)
         send(self(), {:push_target, target})
@@ -75,6 +76,19 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # A crash here would log the join message, which carries the raw token.
+  defp join_authenticate(report, socket) do
+    authenticate(report, socket)
+  rescue
+    error ->
+      Logger.error("Worker channel join failed: #{inspect(error.__struct__)}")
+      {:error, "unavailable"}
+  catch
+    :exit, _reason ->
+      Logger.error("Worker channel join failed: exit")
+      {:error, "unavailable"}
+  end
 
   defp authenticate(%{"worker_id" => id} = report, %{assigns: %{worker_id: id}} = socket) do
     case WorkerConnections.connect(socket.assigns.worker_token.(), report) do

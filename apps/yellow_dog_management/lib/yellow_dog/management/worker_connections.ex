@@ -1,6 +1,7 @@
 defmodule YellowDog.Management.WorkerConnections do
   @moduledoc "Worker enrollment credentials and authenticated runtime observations."
   import Ecto.Query
+  require Logger
   alias YellowDog.Management.{Audit, Database, Domain, EnrollmentSettings, Repo, Worker}
 
   @report_keys ~w(worker_id capabilities services applied_revision applied_digest apply_error)
@@ -97,14 +98,16 @@ defmodule YellowDog.Management.WorkerConnections do
     )
   end
 
-  # Close live Worker sockets that authenticated with the revoked credential.
-  defp disconnect(worker_id),
-    do:
-      YellowDog.ManagementUI.Endpoint.broadcast(
-        "worker_socket:" <> worker_id,
-        "disconnect",
-        %{}
-      )
+  # Close live Worker sockets that authenticated with the revoked credential. The
+  # rotation is committed; a failed notice must not lose the new token. Joined
+  # channels still re-verify before every report and target push.
+  defp disconnect(worker_id) do
+    YellowDog.ManagementUI.Endpoint.broadcast("worker_socket:" <> worker_id, "disconnect", %{})
+  rescue
+    error ->
+      Logger.error("Worker socket disconnect failed: #{inspect(error.__struct__)}")
+      :error
+  end
 
   defp credential_actor(nil), do: "operator"
   defp credential_actor(caller), do: YellowDog.Management.Caller.actor(caller)

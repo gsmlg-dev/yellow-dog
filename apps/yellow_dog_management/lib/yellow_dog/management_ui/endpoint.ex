@@ -15,7 +15,6 @@ defmodule YellowDog.ManagementUI.Endpoint do
   socket "/api/worker", YellowDog.ManagementUI.WorkerSocket,
     websocket: [
       path: "/connect",
-      connect_info: [:peer_data],
       check_origin: false,
       max_frame_size: 65_536
     ],

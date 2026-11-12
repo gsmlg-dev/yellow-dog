@@ -79,6 +79,48 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     refute inspect(:sys.get_state(socket.channel_pid)) =~ result["token"]
   end
 
+  test "a database failure during join is reported as unavailable without logging the token" do
+    {:ok, result} = WorkerConnections.create("Outage")
+    id = result["worker"]["id"]
+    {:ok, socket} = connect(WorkerSocket, %{"worker_id" => id})
+    # Releasing the Sandbox connection makes every Repo call in the channel raise.
+    :ok = Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+
+    log =
+      capture_log(fn ->
+        assert {:error, %{"code" => "unavailable"}} =
+                 subscribe_and_join(
+                   socket,
+                   WorkerChannel,
+                   "worker:" <> id,
+                   payload(result["token"], report(id))
+                 )
+      end)
+
+    assert log =~ "Worker channel join failed"
+    refute log =~ result["token"]
+  end
+
+  test "a database failure after join crashes the channel without logging the token" do
+    {:ok, result} = WorkerConnections.create("Later outage")
+    id = result["worker"]["id"]
+    assert {:ok, _, socket} = join_worker(id, result["token"], report(id))
+    assert_push "target", %{"target" => nil}
+    Process.unlink(socket.channel_pid)
+    monitor = Process.monitor(socket.channel_pid)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+
+    log =
+      capture_log(fn ->
+        push(socket, "report", report(id))
+        assert_receive {:DOWN, ^monitor, :process, _, _}, 1_000
+        Process.sleep(50)
+      end)
+
+    assert log =~ "Last message"
+    refute log =~ result["token"]
+  end
+
   test "join records contact and pushes the current target, then confirm pushes the new one" do
     {:ok, result} = WorkerConnections.create("Joined")
     id = result["worker"]["id"]
