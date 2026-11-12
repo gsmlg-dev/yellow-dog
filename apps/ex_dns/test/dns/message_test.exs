@@ -651,6 +651,32 @@ defmodule DNS.MessageTest do
 
       assert id == 0xABCD
     end
+
+    test "records keep wire order through decode and encode" do
+      cname = Record.new("www.example.com", 5, 1, 300, "web.example.com.")
+      a = Record.new("web.example.com", 1, 1, 300, {192, 0, 2, 1})
+      ns1 = Record.new("example.com", 2, 1, 300, "ns1.example.com.")
+      ns2 = Record.new("example.com", 2, 1, 300, "ns2.example.com.")
+
+      msg = %Message{
+        Message.new()
+        | header: %{Message.new().header | qr: 1, ancount: 2, nscount: 2},
+          anlist: [cname, a],
+          nslist: [ns1, ns2]
+      }
+
+      wire = DNS.to_iodata(msg)
+      decoded = Message.from_iodata(wire)
+
+      assert Enum.map(decoded.anlist, &to_string(&1.type)) == ["CNAME", "A"]
+
+      assert Enum.map(decoded.nslist, &to_string(&1.data)) == [
+               "ns1.example.com.",
+               "ns2.example.com."
+             ]
+
+      assert DNS.to_iodata(decoded) == wire
+    end
   end
 
   describe "edge cases" do

@@ -44,10 +44,7 @@ defmodule DNS.Message.WireFixtureTest do
 
     assert names(msg.nslist) == ["example.com.", "example.com."]
 
-    assert Enum.sort(rdata(msg.nslist)) == [
-             "elliott.ns.cloudflare.com.",
-             "hera.ns.cloudflare.com."
-           ]
+    assert rdata(msg.nslist) == ["hera.ns.cloudflare.com.", "elliott.ns.cloudflare.com."]
 
     assert length(msg.arlist) == 13
     assert "elliott.ns.cloudflare.com." in names(msg.arlist)
@@ -56,11 +53,14 @@ defmodule DNS.Message.WireFixtureTest do
   test "1.1.1.1 CNAME chain for www.amazon.com" do
     msg = Message.from_iodata(fixture("cf_www_amazon_a"))
 
-    assert Enum.sort(names(msg.anlist)) == [
-             "cf.47cf2c8c9-frontier.amazon.com.",
+    # Wire order: CNAME, CNAME, then the final A.
+    assert names(msg.anlist) == [
+             "www.amazon.com.",
              "tp.47cf2c8c9-frontier.amazon.com.",
-             "www.amazon.com."
+             "cf.47cf2c8c9-frontier.amazon.com."
            ]
+
+    assert Enum.map(msg.anlist, &to_string(&1.type)) == ["CNAME", "CNAME", "A"]
 
     cnames =
       for r <- msg.anlist,
@@ -83,7 +83,7 @@ defmodule DNS.Message.WireFixtureTest do
 
     assert length(msg.nslist) == 13
     assert Enum.uniq(names(msg.nslist)) == ["com."]
-    assert "l.gtld-servers.net." in rdata(msg.nslist)
+    assert hd(rdata(msg.nslist)) == "l.gtld-servers.net."
 
     glue = msg.arlist |> names() |> Enum.reject(&(&1 == "."))
     assert length(glue) == 26

@@ -146,7 +146,8 @@ defmodule DNS.Message.Record do
         {[record | records], offset + record.name.size + 2 + 2 + 4 + 2 + record.rdlength}
       end)
 
-    {record_list, end_offset}
+    # Records were prepended while reading; return them in wire order.
+    {Enum.reverse(record_list), end_offset}
   end
 
   defimpl DNS.Parameter, for: DNS.Message.Record do
