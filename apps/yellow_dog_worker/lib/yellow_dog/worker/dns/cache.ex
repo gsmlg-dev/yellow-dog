@@ -93,17 +93,21 @@ defmodule YellowDog.Worker.Dns.Cache do
 
   defp entry_ttl(_, _, _, _), do: nil
 
+  # Amortized: the scan only runs when the table overflows, and then trims it to
+  # 90% of max_entries (expired first, then oldest), so most puts do no scanning.
+  # Concurrent putters may briefly exceed max_entries by their own count.
   defp evict(%{table: table, max_entries: max}, now) do
     if :ets.info(table, :size) > max do
       :ets.select_delete(table, [{{:_, :_, :"$1", :_, :_, :_, :_}, [{:"=<", :"$1", now}], [true]}])
 
       size = :ets.info(table, :size)
+      target = div(max * 9, 10)
 
       if size > max do
         table
         |> :ets.select([{{:"$1", :_, :_, :_, :_, :_, :"$2"}, [], [{{:"$2", :"$1"}}]}])
         |> Enum.sort()
-        |> Enum.take(size - max)
+        |> Enum.take(size - target)
         |> Enum.each(fn {_, k} -> :ets.delete(table, k) end)
       end
     end

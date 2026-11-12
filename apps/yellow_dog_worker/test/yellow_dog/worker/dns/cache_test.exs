@@ -118,6 +118,37 @@ defmodule YellowDog.Worker.Dns.CacheTest do
     assert :miss = Cache.get(cache, "h1.test", 1)
   end
 
+  test "repeated puts at capacity stay bounded" do
+    {cache, _} = clock_cache(max_entries: 100)
+
+    for i <- 1..1_000 do
+      name = "r#{i}.test"
+      Cache.put(cache, name, 1, %{rcode: 0, answers: [a(name <> ".", 300)], authority: []})
+      assert :ets.info(cache.table, :size) <= 100
+    end
+
+    assert {:ok, _} = Cache.get(cache, "r1000.test", 1)
+  end
+
+  test "expired entries are evicted before live ones" do
+    {cache, advance} = clock_cache(max_entries: 100)
+
+    for i <- 1..50 do
+      name = "old#{i}.test"
+      Cache.put(cache, name, 1, %{rcode: 0, answers: [a(name <> ".", 10)], authority: []})
+    end
+
+    advance.(11)
+
+    for i <- 1..60 do
+      name = "new#{i}.test"
+      Cache.put(cache, name, 1, %{rcode: 0, answers: [a(name <> ".", 300)], authority: []})
+    end
+
+    assert :ets.info(cache.table, :size) == 60
+    assert {:ok, _} = Cache.get(cache, "new1.test", 1)
+  end
+
   test "delete drops the table" do
     {cache, _} = clock_cache()
     assert :ok = Cache.delete(cache)
