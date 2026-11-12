@@ -36,107 +36,77 @@ defmodule DNS.Message.Domain do
     }
   end
 
-  @max_compression_depth DNS.Constants.max_compression_depth()
+  # RFC 1035 §3.1/§4.1.4: a name is at most 255 octets on the wire; a pointer is
+  # any byte whose top two bits are 11, followed by a 14-bit message offset.
+  @max_name_octets 255
+  @max_pointer_hops DNS.Constants.max_compression_pointers()
 
   @doc """
-  Get name from bitstring, uncompress name in message
+  Get name from bitstring, uncompress name in message.
+
+  `bitstring` starts at the name; `dns_message` is the whole message that
+  compression pointers index into. The returned `size` is the number of octets
+  the name occupies in `bitstring` (up to and including the first pointer).
   """
   def from_iodata(bitstring, dns_message \\ <<>>) do
-    {len, domain} = parse_domain_from_message(bitstring, dns_message, 0, MapSet.new())
-    new(domain, len)
+    {size, labels} = walk(bitstring, dns_message, 0, false, [], 1, MapSet.new())
+
+    value =
+      case labels do
+        [] -> "."
+        _ -> labels |> Enum.reverse() |> Enum.join(".") |> Kernel.<>(".")
+      end
+
+    new(value, size)
   end
 
-  defp parse_domain_from_message(<<size::8, _::binary>>, _, _depth, _visited) when size == 0,
-    do: {1, "."}
+  # walk(bin, message, size, jumped?, labels, wire_octets, visited_offsets)
+  defp walk(<<0, _::binary>>, _message, size, jumped, labels, _octets, _visited),
+    do: {if(jumped, do: size, else: size + 1), labels}
 
-  defp parse_domain_from_message(_buffer, _message, depth, _visited)
-       when depth > @max_compression_depth do
-    Error.log_detailed_error(:compression_error, __MODULE__, %{
-      depth: depth,
-      max_depth: @max_compression_depth
-    })
+  defp walk(<<0b11::2, offset::14, _::binary>>, message, size, jumped, labels, octets, visited) do
+    cond do
+      MapSet.member?(visited, offset) ->
+        fail(:format_error, :loop_detected, %{position: offset})
 
-    throw(Error.new(:compression_error, __MODULE__, :depth_exceeded, %{depth: depth}))
-  end
+      MapSet.size(visited) >= @max_pointer_hops ->
+        fail(:compression_error, :depth_exceeded, %{depth: MapSet.size(visited) + 1})
 
-  defp parse_domain_from_message(<<pointer::2, pos::14, rest::binary>>, message, depth, visited)
-       when pointer == 0b11 do
-    # Check for compression loop detection
-    _current_pos = byte_size(message) - byte_size(rest) - 2
+      offset >= byte_size(message) ->
+        fail(:format_error, :invalid_pointer, %{position: offset})
 
-    if MapSet.member?(visited, pos) do
-      Error.log_detailed_error(:compression_error, __MODULE__, %{
-        loop_position: pos,
-        visited_positions: MapSet.to_list(visited)
-      })
-
-      throw(Error.new(:compression_error, __MODULE__, :loop_detected, %{position: pos}))
-    end
-
-    updated_visited = MapSet.put(visited, pos)
-
-    case message do
-      <<_::binary-size(pos), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
-        {_, name} =
-          parse_domain_from_message(
-            <<next::8, next_buffer::binary>>,
-            message,
-            depth + 1,
-            updated_visited
-          )
-
-        {2, name}
-
-      <<_::binary-size(pos), next_pointer::2, next_pos::14, next_buffer::binary>>
-      when next_pointer == 0b11 and pos != next_pos ->
-        {_, name} =
-          parse_domain_from_message(
-            <<next_pointer::2, next_pos::8, next_buffer::binary>>,
-            message,
-            depth + 1,
-            updated_visited
-          )
-
-        {2, name}
-
-      _ ->
-        Error.log_detailed_error(:format_error, __MODULE__, %{pointer: pointer, position: pos})
-        throw(Error.new(:format_error, __MODULE__, :invalid_pointer))
+      true ->
+        <<_::binary-size(offset), target::binary>> = message
+        size = if jumped, do: size, else: size + 2
+        walk(target, message, size, true, labels, octets, MapSet.put(visited, offset))
     end
   end
 
-  defp parse_domain_from_message(<<size::8, rest::binary>>, message, depth, visited)
-       when size > 0 and size < 64 do
-    case rest do
-      <<part::binary-size(size), next::8, _::binary>> when next == 0 ->
-        {1 + size + 1, part <> "."}
+  defp walk(
+         <<0b00::2, len::6, label::binary-size(len), rest::binary>>,
+         message,
+         size,
+         jumped,
+         labels,
+         octets,
+         visited
+       ) do
+    octets = octets + 1 + len
 
-      <<part::binary-size(size), next::8, next_pos::8, last_buffer::binary>> when next == 0xC0 ->
-        {_, compressed_name} =
-          parse_domain_from_message(
-            <<next::8, next_pos::8, last_buffer::binary>>,
-            message,
-            depth + 1,
-            visited
-          )
-
-        {1 + size + 2, part <> "." <> compressed_name}
-
-      <<part::binary-size(size), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
-        {last_size, last_name} =
-          parse_domain_from_message(<<next::8, next_buffer::binary>>, message, depth + 1, visited)
-
-        {1 + size + last_size, part <> "." <> last_name}
-
-      <<_::binary-size(size), _::binary>> ->
-        Error.log_detailed_error(:format_error, __MODULE__, %{size: size})
-        throw(Error.new(:format_error, __MODULE__, :invalid_domain_part))
+    if octets > @max_name_octets do
+      fail(:format_error, :name_too_long, %{octets: octets})
     end
+
+    size = if jumped, do: size, else: size + 1 + len
+    walk(rest, message, size, jumped, [label | labels], octets, visited)
   end
 
-  defp parse_domain_from_message(buffer, _message, _depth, _visited) do
-    Error.log_detailed_error(:format_error, __MODULE__, %{buffer_size: byte_size(buffer)})
-    throw(Error.new(:format_error, __MODULE__, :invalid_format))
+  defp walk(buffer, _message, _size, _jumped, _labels, _octets, _visited),
+    do: fail(:format_error, :invalid_format, %{buffer_size: byte_size(buffer)})
+
+  defp fail(type, reason, context) do
+    Error.log_detailed_error(type, __MODULE__, Map.put(context, :reason, reason))
+    throw(Error.new(type, __MODULE__, reason, context))
   end
 
   defp domain_byte_size(domain) do

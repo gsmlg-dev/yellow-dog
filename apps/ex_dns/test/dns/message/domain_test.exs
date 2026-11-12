@@ -197,6 +197,83 @@ defmodule DNS.Message.DomainTest do
       assert domain.value == "www.example.com."
       assert domain.size == 6
     end
+
+    test "many labels behind one pointer are not counted as compression depth" do
+      name = <<1, "a", 1, "b", 1, "c", 1, "d", 1, "e", 1, "f", 1, "g", 3, "com", 0>>
+      message = <<0::12*8>> <> name
+      buffer = <<1, "x", 1, "y", 1, "z", 0xC0, 12>>
+
+      domain = Domain.from_iodata(buffer, message)
+      assert domain.value == "x.y.z.a.b.c.d.e.f.g.com."
+      assert domain.size == 8
+    end
+
+    test "label followed by a pointer to an offset >= 256" do
+      message = <<0::300*8, 7, "example", 3, "com", 0>>
+      # 300 = 0x012C -> pointer bytes 0xC1 0x2C
+      domain = Domain.from_iodata(<<3, "www", 0xC1, 0x2C>>, message)
+      assert domain.value == "www.example.com."
+      assert domain.size == 6
+    end
+
+    test "any first byte with top bits 11 is a pointer (0xC0-0xFF)" do
+      # offset 0x3F00 = 16128
+      message = <<0::16128*8, 3, "org", 0>>
+      domain = Domain.from_iodata(<<2, "ns", 0xFF, 0x00>>, message)
+      assert domain.value == "ns.org."
+    end
+
+    test "pointer to pointer chain keeps the full 14-bit offset" do
+      # offset 256: "example" + pointer to 300; offset 300: "com"; offset 400: pointer to 256
+      message =
+        <<0::256*8, 7, "example", 0xC1, 0x2C>> <>
+          <<0::(300-266)*8, 3, "com", 0>> <>
+          <<0::(400-305)*8, 0xC1, 0x00>>
+
+      assert byte_size(message) == 402
+      domain = Domain.from_iodata(<<3, "www", 0xC1, 0x90>>, message)
+      assert domain.value == "www.example.com."
+      assert domain.size == 6
+    end
+
+    test "pointer loop is rejected" do
+      # offset 12: "a" + pointer to 16; offset 16: "b" + pointer to 12
+      message = <<0::12*8, 1, "a", 0xC0, 16, 1, "b", 0xC0, 12>>
+
+      assert {"DNS.Message.Domain Format Error", %{internal_reason: :loop_detected}} =
+               catch_throw(Domain.from_iodata(<<0xC0, 12>>, message))
+    end
+
+    test "too many pointer hops are rejected" do
+      # 20 chained pointers: the one at 12 + 2i points to 12 + 2(i + 1); a root label ends it
+      chain =
+        for i <- 0..19, into: <<>>, do: <<0b11::2, 12 + (i + 1) * 2::14>>
+
+      message = <<0::12*8>> <> chain <> <<0>>
+
+      assert {"DNS.Message.Domain Compression Error", %{internal_reason: :depth_exceeded}} =
+               catch_throw(Domain.from_iodata(<<0xC0, 12>>, message))
+    end
+
+    test "names longer than 255 octets are rejected" do
+      label = <<63>> <> String.duplicate("a", 63)
+      long = String.duplicate(label, 4) <> <<0>>
+
+      assert {"DNS.Message.Domain Format Error", %{internal_reason: :name_too_long}} =
+               catch_throw(Domain.from_iodata(long))
+    end
+
+    test "a 255-octet name is accepted" do
+      label = <<63>> <> String.duplicate("a", 63)
+      name = String.duplicate(label, 3) <> <<61>> <> String.duplicate("b", 61) <> <<0>>
+      assert byte_size(name) == 255
+      assert %Domain{size: 255} = Domain.from_iodata(name)
+    end
+
+    test "reserved label types (01/10 prefixes) are rejected" do
+      assert {"DNS.Message.Domain Format Error", _} = catch_throw(Domain.from_iodata(<<0x41, 0>>))
+      assert {"DNS.Message.Domain Format Error", _} = catch_throw(Domain.from_iodata(<<0x80, 0>>))
+    end
   end
 
   describe "DNS.Parameter protocol (to_iodata)" do
