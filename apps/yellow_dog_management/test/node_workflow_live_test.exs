@@ -86,6 +86,11 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
            ] = config["forward_zones"]
 
     [service] = Domain.list_services("node-a")
+    {:ok, _details, details_html} = live(build_conn(), "/server/node-a/services")
+    assert details_html =~ "Recursion: on"
+    assert details_html =~ "10.10.10.5/24, 192.168.0.0/16"
+    assert details_html =~ "corp.test → 10.0.0.2:53, 10.0.0.3:5353"
+    assert details_html =~ "[2001:db8::1]:5353"
     {:ok, edit, _} = live(build_conn(), "/server/node-a/services/#{service["id"]}/edit")
     assert has_element?(edit, "input[type='checkbox'][name='service[recursion]'][checked]")
     assert has_element?(edit, "textarea[name='service[allow_query]']", "192.168.0.0/16")
@@ -120,6 +125,23 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
 
     assert html =~ "line 1"
     assert html =~ "line 2"
+    assert Domain.list_services("node-a") == []
+  end
+
+  test "duplicate forward zone names are rejected with a field error", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/server/node-a/services/new")
+
+    html =
+      submit(view, "save_service", %{
+        "service" =>
+          Map.put(
+            fields("dns-dup", "stopped", "53"),
+            "forward_zones",
+            "corp.test 10.0.0.2\ncorp.test. 10.0.0.3"
+          )
+      })
+
+    assert html =~ "duplicate_forward_zone"
     assert Domain.list_services("node-a") == []
   end
 

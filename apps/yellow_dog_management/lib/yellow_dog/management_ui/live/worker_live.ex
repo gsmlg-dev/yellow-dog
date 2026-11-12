@@ -494,13 +494,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   defp format_forward_zones(zones) do
     Enum.map_join(zones || [], "\n", fn zone ->
       servers =
-        Enum.map_join(zone["forwarders"], " ", fn %{"address" => address} = forwarder ->
-          port = forwarder["port"] || 53
-
-          if String.contains?(address, ":"),
-            do: "[#{address}]:#{port}",
-            else: "#{address}:#{port}"
-        end)
+        Enum.map_join(zone["forwarders"], " ", &server_text/1)
 
       "#{zone["name"]} #{servers}"
     end)
@@ -541,6 +535,22 @@ defmodule YellowDog.ManagementUI.WorkerLive do
     after_service = Enum.find(current, &(&1["id"] == id))
     "#{id}: #{service_summary(before)} → #{service_summary(after_service)}"
   end
+
+  defp allow_query_summary(list) when list in [nil, []], do: "none (all sources denied)"
+  defp allow_query_summary(list), do: Enum.join(list, ", ")
+
+  defp forward_zones_summary(zones) when zones in [nil, []], do: "none"
+
+  defp forward_zones_summary(zones) do
+    Enum.map_join(zones, "; ", fn zone ->
+      "#{zone["name"]} → #{Enum.map_join(zone["forwarders"], ", ", &server_text/1)}"
+    end)
+  end
+
+  defp server_text(%{"address" => address, "port" => port}) when is_integer(port),
+    do: if(String.contains?(address, ":"), do: "[#{address}]:#{port}", else: "#{address}:#{port}")
+
+  defp server_text(%{"address" => address}), do: address
 
   defp service_summary(nil), do: "absent"
 
@@ -678,7 +688,9 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             <table class="table" id="dns-services">
               <thead>
                 <tr>
-                  <th>Instance / type</th><th>Desired state</th><th>Listener</th><th>References</th><th>
+                  <th>Instance / type</th><th>Desired state</th><th>Listener</th><th>DNS policy</th><th>
+                    References
+                  </th><th>
                     Observed state
                   </th><th>Action</th>
                 </tr>
@@ -687,6 +699,13 @@ defmodule YellowDog.ManagementUI.WorkerLive do
                   <td>{service["instance_id"]} / {service["type"]}</td><td>
                     {service["desired_state"]}
                   </td><td>{service["config"]["listen_address"]}:{service["config"]["port"]}</td>
+                  <td id={"policy-#{service["id"]}"}>
+                    <p>
+                      Recursion: {if service["config"]["recursion"] == true, do: "on", else: "off"}
+                    </p>
+                    <p>Allow query: {allow_query_summary(service["config"]["allow_query"])}</p>
+                    <p>Forward zones: {forward_zones_summary(service["config"]["forward_zones"])}</p>
+                  </td>
                   <td>{reference_count(@worker, service)} pinned Zones</td><td>
                     {report(@worker, service)}
                   </td>
