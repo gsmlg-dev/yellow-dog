@@ -1,4 +1,6 @@
 defmodule YellowDog.DnsProvider.ConflictResolutionTest do
+  alias YellowDog.DnsProvider.HTTPServer
+
   use ExUnit.Case, async: false
 
   alias YellowDog.DnsProvider
@@ -196,18 +198,17 @@ defmodule YellowDog.DnsProvider.ConflictResolutionTest do
     remote = start_supervised!({Agent, fn -> remote_cloudflare_state() end})
     owner = self()
 
-    req =
-      Req.new(
-        base_url: "https://api.cloudflare.test/client/v4",
-        adapter: cloudflare_stateful_adapter(remote, owner)
-      )
+    server = start_supervised!({HTTPServer, cloudflare_stateful_handler(remote, owner)})
 
     {:ok, config} =
       Config.new(%{
         name: "cf-main",
         type: :cloudflare,
         zones: [@zone],
-        credentials: %{api_token: "test-token", req: req},
+        credentials: %{
+          api_token: "test-token",
+          base_url: HTTPServer.base_url(server, "/client/v4")
+        },
         sync_interval: 3600,
         conflict_strategy: :manual,
         enabled: true
@@ -400,10 +401,9 @@ defmodule YellowDog.DnsProvider.ConflictResolutionTest do
     }
   end
 
-  defp cloudflare_stateful_adapter(remote, owner) do
+  defp cloudflare_stateful_handler(remote, owner) do
     fn request ->
-      response = cloudflare_stateful_response(request, remote, owner)
-      {request, response}
+      cloudflare_stateful_response(request, remote, owner)
     end
   end
 
@@ -412,7 +412,7 @@ defmodule YellowDog.DnsProvider.ConflictResolutionTest do
          _remote,
          _owner
        ) do
-    Req.Response.new(
+    HTTPServer.response(
       status: 200,
       body: %{"result" => [%{"name" => @zone, "id" => "zone-retry"}]}
     )
@@ -425,7 +425,7 @@ defmodule YellowDog.DnsProvider.ConflictResolutionTest do
        ) do
     records = Agent.get(remote, & &1.records)
 
-    Req.Response.new(
+    HTTPServer.response(
       status: 200,
       body: %{"result" => records, "result_info" => %{"total_pages" => 1}}
     )
@@ -444,7 +444,7 @@ defmodule YellowDog.DnsProvider.ConflictResolutionTest do
     end)
 
     send(owner, {:remote_write, :delete, path})
-    Req.Response.new(status: 200, body: %{"success" => true})
+    HTTPServer.response(status: 200, body: %{"success" => true})
   end
 
   defp cloudflare_stateful_response(
@@ -468,13 +468,13 @@ defmodule YellowDog.DnsProvider.ConflictResolutionTest do
     end)
 
     send(owner, {:remote_write, :post, path})
-    Req.Response.new(status: 200, body: %{"success" => true})
+    HTTPServer.response(status: 200, body: %{"success" => true})
   end
 
   defp cloudflare_stateful_response(request, _remote, _owner) do
-    Req.Response.new(
+    HTTPServer.response(
       status: 500,
-      body: %{"unexpected" => {request.method, request.url.path}}
+      body: %{"unexpected" => [to_string(request.method), request.url.path]}
     )
   end
 end

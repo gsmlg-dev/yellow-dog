@@ -6,6 +6,8 @@ defmodule YellowDog.DnsProvider.Provider.IanaRoot do
 
   @behaviour YellowDog.DnsProvider.Provider
 
+  alias YellowDog.DnsProvider.HTTPClient
+
   @default_url "https://www.internic.net/domain/root.zone"
 
   @impl true
@@ -119,7 +121,7 @@ defmodule YellowDog.DnsProvider.Provider.IanaRoot do
   end
 
   defp fetch_root_zone(url) do
-    case Req.get(url, receive_timeout: 30_000) do
+    case HTTPClient.request(HTTPClient.new(url, [], 30_000), :get, "", redirect: :follow) do
       {:ok, %{status: 200, body: body}} -> {:ok, body}
       {:ok, %{status: status}} -> {:error, {:http_error, status}}
       {:error, reason} -> {:error, reason}

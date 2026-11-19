@@ -26,7 +26,8 @@ defmodule YellowDog.DnsProvider.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.7"},
+      {:http_fetch, "~> 1.0.0-rc.20"},
+      {:jason, "~> 1.4"},
       {:telemetry, "~> 1.2"},
       {:yellow_dog, in_umbrella: true},
       {:yellow_dog_dns, in_umbrella: true},

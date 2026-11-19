@@ -34,7 +34,7 @@ defmodule YellowDog.Whois.MixProject do
   defp deps do
     [
       {:telemetry, "~> 1.2"},
-      {:http_fetch, "~> 1.0.0-rc.13"},
+      {:http_fetch, "~> 1.0.0-rc.20"},
       {:ex_doc, ">= 0.0.0", runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}

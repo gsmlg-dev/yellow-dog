@@ -80,7 +80,7 @@ defmodule YellowDog.Worker.DnsAdapter do
              }}
 
           {:error, reason} ->
-            Abyss.stop(udp, 2_000)
+            Abyss.Endpoint.stop(udp, 2_000)
             :gen_tcp.close(tcp)
             {:stop, reason}
         end
@@ -175,10 +175,12 @@ defmodule YellowDog.Worker.DnsAdapter do
   defp parse_binding(_), do: {:error, :invalid_service}
 
   defp start_udp(ip, port) do
-    Abyss.start_link(
+    Abyss.Endpoint.start_link(
       transport_module: Abyss.Transport.UDP.Unicast,
-      handler_module: UdpHandler,
+      datagram_handler: UdpHandler,
       handler_options: [adapter: self()],
+      execution: :per_datagram,
+      runtime_options: [callback_timeout: 60_000],
       port: port,
       transport_options: [ip: ip],
       num_listeners: 1,
@@ -201,9 +203,7 @@ defmodule YellowDog.Worker.DnsAdapter do
   end
 
   defp udp_ready?(udp, ip, port) do
-    with pool when is_pid(pool) <- Abyss.Server.listener_pool_pid(udp),
-         [listener | _] <- Abyss.ListenerPool.listener_pids(pool),
-         {:ok, {^ip, ^port}} <- Abyss.Listener.listener_info_cached(listener) do
+    with {:ok, {^ip, ^port}} <- Abyss.Endpoint.local_endpoint(udp) do
       true
     else
       _ -> false

@@ -111,7 +111,7 @@ defmodule YellowDog.Fingerprint.FingerbankClient do
   end
 
   defp do_interrogate(_fingerprint, _state) do
-    # Fingerbank API integration is a stub — requires HTTP client (Req)
+    # Fingerbank API integration is a stub.
     # POST /api/v2/combinations/interrogate
     # Headers: Authorization: Bearer <api_key>
     # Body: %{dhcp_fingerprint: "1,3,6,15,...", dhcp_vendor: "MSFT 5.0"}

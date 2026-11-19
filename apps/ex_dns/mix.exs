@@ -38,9 +38,8 @@ defmodule DNS.MixProject do
   defp deps() do
     [
       {:jason, "~> 1.4", optional: true},
-      {:http_fetch, "~> 1.0.0-rc.13", runtime: false},
-      # machete 0.3.13 fails to compile on Elixir 1.18 (regex stored in module attribute)
-      {:machete, "~> 0.3.12 and < 0.3.13", only: [:dev, :test]},
+      {:http_fetch, "~> 1.0.0-rc.20", runtime: false},
+      {:machete, "~> 0.3.14", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}

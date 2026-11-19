@@ -36,15 +36,16 @@ defmodule YellowDog.Dns.MixProject do
       {:geo_ip_db, in_umbrella: true},
 
       # External dependencies for DNS functionality
-      {:abyss, "~> 1.0.0-rc.13"},
+      {:abyss, "~> 1.0.0-rc.20"},
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
 
       # TCP server for DNS over TCP
-      {:hell, "~> 1.0.0-rc.13"},
+      {:hell, "~> 1.0.0-rc.20"},
 
-      # HTTP client for root zone fetching
-      {:req, "~> 0.7"},
+      # HTTP client for Cloud DNS synchronization
+      {:http_fetch, "~> 1.0.0-rc.20"},
+      {:jason, "~> 1.4"},
 
       # TOML configuration parsing
       {:toml, "~> 0.7"},

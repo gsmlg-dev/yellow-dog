@@ -9,10 +9,12 @@ defmodule YellowDog.DnsProvider.Provider.Gcp do
 
       %{project_id: "my-project", access_token: "ya29.…"}
 
-  An optional `:req` key can inject a pre-built `Req.Request` for testing.
+  An optional `:base_url` selects an alternative API endpoint.
   """
 
   @behaviour YellowDog.DnsProvider.Provider
+
+  alias YellowDog.DnsProvider.HTTPClient
 
   @api_base "https://dns.googleapis.com/dns/v1"
 
@@ -24,22 +26,19 @@ defmodule YellowDog.DnsProvider.Provider.Gcp do
   def init(%{project_id: project_id} = config) when is_binary(project_id) do
     access_token = Map.get(config, :access_token, "")
 
-    req =
-      Map.get_lazy(config, :req, fn ->
-        Req.new(
-          base_url: @api_base,
-          headers: [{"authorization", "Bearer #{access_token}"}]
-        )
-      end)
+    client =
+      HTTPClient.new(Map.get(config, :base_url, @api_base), [
+        {"authorization", "Bearer #{access_token}"}
+      ])
 
-    {:ok, %{req: req, project_id: project_id}}
+    {:ok, %{client: client, project_id: project_id}}
   end
 
   def init(_config), do: {:error, :missing_project_id}
 
   @impl true
   def list_zones(state) do
-    case Req.get(state.req, url: "/projects/#{state.project_id}/managedZones") do
+    case HTTPClient.request(state.client, :get, "/projects/#{state.project_id}/managedZones") do
       {:ok, %{status: 200, body: %{"managedZones" => zones}}} ->
         parsed = parse_zones(zones)
         {:ok, parsed, state}
@@ -54,8 +53,10 @@ defmodule YellowDog.DnsProvider.Provider.Gcp do
 
   @impl true
   def get_records(%{id: zone_id}, state) do
-    case Req.get(state.req,
-           url: "/projects/#{state.project_id}/managedZones/#{zone_id}/rrsets"
+    case HTTPClient.request(
+           state.client,
+           :get,
+           "/projects/#{state.project_id}/managedZones/#{zone_id}/rrsets"
          ) do
       {:ok, %{status: 200, body: %{"rrsets" => rrsets}}} ->
         records = parse_rrsets(rrsets)
@@ -80,8 +81,10 @@ defmodule YellowDog.DnsProvider.Provider.Gcp do
 
     body = %{"additions" => additions, "deletions" => deletions}
 
-    case Req.post(state.req,
-           url: "/projects/#{state.project_id}/managedZones/#{zone_id}/changes",
+    case HTTPClient.request(
+           state.client,
+           :post,
+           "/projects/#{state.project_id}/managedZones/#{zone_id}/changes",
            json: body
          ) do
       {:ok, %{status: status}} when status in [200, 201] ->

@@ -9,10 +9,12 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
 
       %{api_token: "cf-token-..."}
 
-  An optional `:req` key can inject a pre-built `Req.Request` for testing.
+  An optional `:base_url` selects an alternative API endpoint.
   """
 
   @behaviour YellowDog.DnsProvider.Provider
+
+  alias YellowDog.DnsProvider.HTTPClient
 
   @api_base "https://api.cloudflare.com/client/v4"
 
@@ -22,22 +24,19 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
 
   @impl true
   def init(%{api_token: api_token} = config) when is_binary(api_token) do
-    req =
-      Map.get_lazy(config, :req, fn ->
-        Req.new(
-          base_url: @api_base,
-          headers: [{"authorization", "Bearer #{api_token}"}]
-        )
-      end)
+    client =
+      HTTPClient.new(Map.get(config, :base_url, @api_base), [
+        {"authorization", "Bearer #{api_token}"}
+      ])
 
-    {:ok, %{req: req}}
+    {:ok, %{client: client}}
   end
 
   def init(_config), do: {:error, :missing_api_token}
 
   @impl true
   def list_zones(state) do
-    case Req.get(state.req, url: "/zones") do
+    case HTTPClient.request(state.client, :get, "/zones") do
       {:ok, %{status: 200, body: %{"result" => results}}} ->
         zones =
           Enum.map(results, fn z ->
@@ -56,7 +55,7 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
 
   @impl true
   def get_records(%{id: zone_id}, state) do
-    fetch_all_records(state.req, zone_id, 1, [])
+    fetch_all_records(state.client, zone_id, 1, [])
     |> case do
       {:ok, records} -> {:ok, records, state}
       {:error, reason} -> {:error, reason, state}
@@ -65,8 +64,8 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
 
   @impl true
   def apply_changeset(%{id: zone_id}, changeset, state) do
-    with :ok <- apply_deletions(state.req, zone_id, changeset.deletions),
-         :ok <- apply_additions(state.req, zone_id, changeset.additions) do
+    with :ok <- apply_deletions(state.client, zone_id, changeset.deletions),
+         :ok <- apply_additions(state.client, zone_id, changeset.additions) do
       {:ok, state}
     else
       {:error, reason} -> {:error, reason, state}
@@ -75,9 +74,8 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
 
   @impl true
   def zone_serial(%{id: zone_id}, state) do
-    case Req.get(state.req,
-           url: "/zones/#{zone_id}/dns_records",
-           params: [type: "SOA", per_page: 1]
+    case HTTPClient.request(state.client, :get, "/zones/#{zone_id}/dns_records",
+           query: [type: "SOA", per_page: 1]
          ) do
       {:ok, %{status: 200, body: %{"result" => [soa | _]}}} ->
         serial = parse_soa_serial(soa["content"])
@@ -146,10 +144,9 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
   # Private helpers
   # -------------------------------------------------------------------
 
-  defp fetch_all_records(req, zone_id, page, acc) do
-    case Req.get(req,
-           url: "/zones/#{zone_id}/dns_records",
-           params: [per_page: 100, page: page]
+  defp fetch_all_records(client, zone_id, page, acc) do
+    case HTTPClient.request(client, :get, "/zones/#{zone_id}/dns_records",
+           query: [per_page: 100, page: page]
          ) do
       {:ok, %{status: 200, body: %{"result" => results, "result_info" => info}}} ->
         parsed = parse_dns_records(results)
@@ -158,7 +155,7 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
         total_pages = Map.get(info, "total_pages", 1)
 
         if page < total_pages do
-          fetch_all_records(req, zone_id, page + 1, all)
+          fetch_all_records(client, zone_id, page + 1, all)
         else
           {:ok, all}
         end
@@ -174,14 +171,13 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
     end
   end
 
-  defp apply_deletions(_req, _zone_id, []), do: :ok
+  defp apply_deletions(_client, _zone_id, []), do: :ok
 
-  defp apply_deletions(req, zone_id, [record | rest]) do
+  defp apply_deletions(client, zone_id, [record | rest]) do
     name = String.trim_trailing(record.owner, ".")
 
-    case Req.get(req,
-           url: "/zones/#{zone_id}/dns_records",
-           params: [type: record.type, name: name]
+    case HTTPClient.request(client, :get, "/zones/#{zone_id}/dns_records",
+           query: [type: record.type, name: name]
          ) do
       {:ok, %{status: 200, body: %{"result" => results}}} ->
         # Find matching record by content
@@ -195,11 +191,11 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
         case matching do
           nil ->
             # Record not found, skip deletion
-            apply_deletions(req, zone_id, rest)
+            apply_deletions(client, zone_id, rest)
 
           %{"id" => record_id} ->
-            case Req.delete(req, url: "/zones/#{zone_id}/dns_records/#{record_id}") do
-              {:ok, %{status: 200}} -> apply_deletions(req, zone_id, rest)
+            case HTTPClient.request(client, :delete, "/zones/#{zone_id}/dns_records/#{record_id}") do
+              {:ok, %{status: 200}} -> apply_deletions(client, zone_id, rest)
               {:ok, %{status: status, body: body}} -> {:error, {:api_error, status, body}}
               {:error, reason} -> {:error, reason}
             end
@@ -213,13 +209,13 @@ defmodule YellowDog.DnsProvider.Provider.Cloudflare do
     end
   end
 
-  defp apply_additions(_req, _zone_id, []), do: :ok
+  defp apply_additions(_client, _zone_id, []), do: :ok
 
-  defp apply_additions(req, zone_id, [record | rest]) do
+  defp apply_additions(client, zone_id, [record | rest]) do
     body = build_create_body(record)
 
-    case Req.post(req, url: "/zones/#{zone_id}/dns_records", json: body) do
-      {:ok, %{status: 200}} -> apply_additions(req, zone_id, rest)
+    case HTTPClient.request(client, :post, "/zones/#{zone_id}/dns_records", json: body) do
+      {:ok, %{status: 200}} -> apply_additions(client, zone_id, rest)
       {:ok, %{status: status, body: resp}} -> {:error, {:api_error, status, resp}}
       {:error, reason} -> {:error, reason}
     end

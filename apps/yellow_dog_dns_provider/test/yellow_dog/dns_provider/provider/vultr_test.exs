@@ -5,8 +5,8 @@ defmodule YellowDog.DnsProvider.Provider.VultrTest do
 
   describe "init/1" do
     test "succeeds with api_key" do
-      assert {:ok, state} = Vultr.init(%{api_key: "vultr-key-123", req: Req.new()})
-      assert %{req: _} = state
+      assert {:ok, state} = Vultr.init(%{api_key: "vultr-key-123"})
+      assert %{client: _} = state
     end
 
     test "fails without api_key" do

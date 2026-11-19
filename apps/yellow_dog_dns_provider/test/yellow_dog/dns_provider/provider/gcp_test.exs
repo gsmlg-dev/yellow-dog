@@ -5,7 +5,7 @@ defmodule YellowDog.DnsProvider.Provider.GcpTest do
 
   describe "init/1" do
     test "succeeds with project_id" do
-      assert {:ok, state} = Gcp.init(%{project_id: "my-project", req: Req.new()})
+      assert {:ok, state} = Gcp.init(%{project_id: "my-project"})
       assert state.project_id == "my-project"
     end
 

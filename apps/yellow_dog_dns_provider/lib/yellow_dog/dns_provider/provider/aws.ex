@@ -10,10 +10,12 @@ defmodule YellowDog.DnsProvider.Provider.Aws do
 
       %{access_key_id: "AKIA...", secret_access_key: "..."}
 
-  An optional `:req` key can inject a pre-built `Req.Request` for testing.
+  An optional `:base_url` selects an alternative API endpoint.
   """
 
   @behaviour YellowDog.DnsProvider.Provider
+
+  alias YellowDog.DnsProvider.HTTPClient
 
   @api_base "https://route53.amazonaws.com/2013-04-01"
 
@@ -24,25 +26,20 @@ defmodule YellowDog.DnsProvider.Provider.Aws do
   @impl true
   def init(%{access_key_id: key, secret_access_key: secret} = config)
       when is_binary(key) and is_binary(secret) do
-    req =
-      Map.get_lazy(config, :req, fn ->
-        Req.new(
-          base_url: @api_base,
-          headers: [
-            {"x-amz-date", amz_date()},
-            {"content-type", "text/xml"}
-          ]
-        )
-      end)
+    client =
+      HTTPClient.new(Map.get(config, :base_url, @api_base), [
+        {"x-amz-date", amz_date()},
+        {"content-type", "text/xml"}
+      ])
 
-    {:ok, %{req: req, access_key_id: key, secret_access_key: secret}}
+    {:ok, %{client: client, access_key_id: key, secret_access_key: secret}}
   end
 
   def init(_config), do: {:error, :missing_credentials}
 
   @impl true
   def list_zones(state) do
-    case Req.get(state.req, url: "/hostedzone") do
+    case HTTPClient.request(state.client, :get, "/hostedzone") do
       {:ok, %{status: 200, body: body}} when is_binary(body) ->
         zones = parse_hosted_zones_xml(body)
         {:ok, zones, state}
@@ -57,7 +54,7 @@ defmodule YellowDog.DnsProvider.Provider.Aws do
 
   @impl true
   def get_records(%{id: zone_id}, state) do
-    case Req.get(state.req, url: "/hostedzone/#{zone_id}/rrset") do
+    case HTTPClient.request(state.client, :get, "/hostedzone/#{zone_id}/rrset") do
       {:ok, %{status: 200, body: body}} when is_binary(body) ->
         records = parse_rrsets_xml(body)
         {:ok, records, state}
@@ -74,7 +71,7 @@ defmodule YellowDog.DnsProvider.Provider.Aws do
   def apply_changeset(%{id: zone_id}, changeset, state) do
     xml = build_change_batch_xml(changeset)
 
-    case Req.post(state.req, url: "/hostedzone/#{zone_id}/rrset", body: xml) do
+    case HTTPClient.request(state.client, :post, "/hostedzone/#{zone_id}/rrset", body: xml) do
       {:ok, %{status: 200}} -> {:ok, state}
       {:ok, %{status: status, body: body}} -> {:error, {:api_error, status, body}, state}
       {:error, reason} -> {:error, reason, state}

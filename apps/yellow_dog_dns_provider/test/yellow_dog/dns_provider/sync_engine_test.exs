@@ -1,4 +1,6 @@
 defmodule YellowDog.DnsProvider.SyncEngineTest do
+  alias YellowDog.DnsProvider.HTTPServer
+
   use ExUnit.Case, async: false
 
   alias YellowDog.DnsProvider.{Config, SyncEngine}
@@ -190,7 +192,7 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
       owner = self()
 
       config = build_config(%{name: "cf-zone-id"})
-      pid = start_cloudflare_engine(config, cloudflare_adapter(owner))
+      pid = start_cloudflare_engine(config, cloudflare_handler(owner))
 
       conflict = conflict_records("example.com.")
 
@@ -211,10 +213,10 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
     test "returns not_found before writes when Cloudflare has no matching zone" do
       owner = self()
 
-      adapter = cloudflare_zone_list_adapter(owner, [])
+      handler = cloudflare_zone_list_handler(owner, [])
 
       config = build_config(%{name: "cf-zone-missing"})
-      pid = start_cloudflare_engine(config, adapter)
+      pid = start_cloudflare_engine(config, handler)
 
       assert {:error, :not_found} =
                SyncEngine.resolve_conflict(pid, conflict_records("example.com."), 5_000)
@@ -227,14 +229,14 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
     test "returns conflict before writes for duplicate Cloudflare zone mappings" do
       owner = self()
 
-      adapter =
-        cloudflare_zone_list_adapter(owner, [
+      handler =
+        cloudflare_zone_list_handler(owner, [
           %{"name" => "example.com", "id" => "zone-one"},
           %{"name" => "example.com.", "id" => "zone-two"}
         ])
 
       config = build_config(%{name: "cf-zone-duplicate"})
-      pid = start_cloudflare_engine(config, adapter)
+      pid = start_cloudflare_engine(config, handler)
 
       assert {:error, :conflict} =
                SyncEngine.resolve_conflict(pid, conflict_records("example.com."), 5_000)
@@ -247,13 +249,13 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
     test "returns unsupported before writes for an empty Cloudflare zone ID" do
       owner = self()
 
-      adapter =
-        cloudflare_zone_list_adapter(owner, [
+      handler =
+        cloudflare_zone_list_handler(owner, [
           %{"name" => "example.com", "id" => ""}
         ])
 
       config = build_config(%{name: "cf-zone-invalid"})
-      pid = start_cloudflare_engine(config, adapter)
+      pid = start_cloudflare_engine(config, handler)
 
       assert {:error, :unsupported} =
                SyncEngine.resolve_conflict(pid, conflict_records("example.com."), 5_000)
@@ -285,14 +287,16 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
     end
   end
 
-  defp start_cloudflare_engine(config, adapter) do
-    req =
-      Req.new(
-        base_url: "https://api.cloudflare.test/client/v4",
-        adapter: adapter
-      )
+  defp start_cloudflare_engine(config, handler) do
+    server = start_supervised!({HTTPServer, handler})
 
-    config = %{config | credentials: %{api_token: "test-token", req: req}}
+    config = %{
+      config
+      | credentials: %{
+          api_token: "test-token",
+          base_url: HTTPServer.base_url(server, "/client/v4")
+        }
+    }
 
     start_supervised!({SyncEngine, config: config, provider_module: Cloudflare})
   end
@@ -309,22 +313,22 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
     }
   end
 
-  defp cloudflare_adapter(owner) do
+  defp cloudflare_handler(owner) do
     fn request ->
       send(owner, {:request, request.method, request.url.path})
-      {request, cloudflare_resolution_response(request)}
+      cloudflare_resolution_response(request)
     end
   end
 
-  defp cloudflare_zone_list_adapter(owner, zones) do
+  defp cloudflare_zone_list_handler(owner, zones) do
     fn request ->
       send(owner, {:request, request.method, request.url.path})
-      {request, Req.Response.new(status: 200, body: %{"result" => zones})}
+      HTTPServer.response(status: 200, body: %{"result" => zones})
     end
   end
 
   defp cloudflare_resolution_response(%{method: :get, url: %{path: "/client/v4/zones"}}) do
-    Req.Response.new(
+    HTTPServer.response(
       status: 200,
       body: %{"result" => [%{"name" => "example.com", "id" => "zone-exact-123"}]}
     )
@@ -334,7 +338,7 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
          method: :get,
          url: %{path: "/client/v4/zones/zone-exact-123/dns_records"}
        }) do
-    Req.Response.new(
+    HTTPServer.response(
       status: 200,
       body: %{
         "result" => [
@@ -355,17 +359,17 @@ defmodule YellowDog.DnsProvider.SyncEngineTest do
          method: :delete,
          url: %{path: "/client/v4/zones/zone-exact-123/dns_records/remote-record"}
        }) do
-    Req.Response.new(status: 200, body: %{"success" => true})
+    HTTPServer.response(status: 200, body: %{"success" => true})
   end
 
   defp cloudflare_resolution_response(%{
          method: :post,
          url: %{path: "/client/v4/zones/zone-exact-123/dns_records"}
        }) do
-    Req.Response.new(status: 200, body: %{"success" => true})
+    HTTPServer.response(status: 200, body: %{"success" => true})
   end
 
   defp cloudflare_resolution_response(_request) do
-    Req.Response.new(status: 404, body: %{"error" => "unexpected request path"})
+    HTTPServer.response(status: 404, body: %{"error" => "unexpected request path"})
   end
 end

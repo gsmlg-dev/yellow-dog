@@ -8,7 +8,7 @@ defmodule YellowDog.DnsProvider.Provider.AwsTest do
       assert {:ok, state} =
                Aws.init(%{access_key_id: "AKIATEST", secret_access_key: "secret123"})
 
-      assert %{req: %Req.Request{}, access_key_id: "AKIATEST"} = state
+      assert %{client: %YellowDog.DnsProvider.HTTPClient{}, access_key_id: "AKIATEST"} = state
     end
 
     test "fails without credentials" do
@@ -23,11 +23,9 @@ defmodule YellowDog.DnsProvider.Provider.AwsTest do
       assert {:error, :missing_credentials} = Aws.init(%{secret_access_key: "secret"})
     end
 
-    test "accepts injected :req for testing" do
-      req = Req.new(base_url: "http://test")
-
-      assert {:ok, %{req: ^req}} =
-               Aws.init(%{access_key_id: "AK", secret_access_key: "SK", req: req})
+    test "accepts alternative base_url" do
+      assert {:ok, %{client: %{base_url: "http://test"}}} =
+               Aws.init(%{access_key_id: "AK", secret_access_key: "SK", base_url: "http://test"})
     end
   end
 

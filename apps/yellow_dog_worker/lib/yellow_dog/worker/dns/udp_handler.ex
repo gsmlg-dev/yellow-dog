@@ -1,26 +1,23 @@
 defmodule YellowDog.Worker.Dns.UdpHandler do
   @moduledoc false
-  use Abyss.Handler
+  @behaviour Abyss.DatagramHandler
 
   alias YellowDog.Worker.Dns.Resolver
 
-  @impl Abyss.Handler
-  def handle_data({ip, port, packet}, state) do
-    adapter = state.server_config.handler_options[:adapter]
+  @impl Abyss.DatagramHandler
+  def init(options, _context), do: {:ok, Keyword.fetch!(options, :adapter)}
 
-    if is_pid(adapter) do
-      case safe_snapshot(adapter) do
-        {:ok, context} ->
-          if wire = Resolver.reply(packet, context, :udp, ip) do
-            Abyss.Transport.UDP.send(state.socket, ip, port, wire)
-          end
-
-        _ ->
-          :ok
+  @impl Abyss.DatagramHandler
+  def handle_datagram(%Abyss.Datagram{payload: packet, peer: %{addr: ip}}, adapter) do
+    actions =
+      with {:ok, context} <- safe_snapshot(adapter),
+           wire when is_binary(wire) <- Resolver.reply(packet, context, :udp, ip) do
+        [{:reply, wire}]
+      else
+        _ -> []
       end
-    end
 
-    {:close, state}
+    {:ok, adapter, actions}
   end
 
   defp safe_snapshot(adapter) do

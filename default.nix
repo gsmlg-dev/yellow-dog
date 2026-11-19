@@ -25,7 +25,7 @@
   mixFodDeps = beam28Packages.fetchMixDeps {
     pname = "yellow-dog-phase1-mix-deps";
     inherit src version;
-    hash = "sha256-6AEMQZN1KP+n50BEDimWr9+OKk3utFc3wcvT0I0+cTM=";
+    hash = "sha256-ZFCVKyBjW3RTz+1qD+vQcinzK1jixRjE71ttqrZG3xk=";
     mixEnv = "prod";
   };
 
@@ -35,12 +35,12 @@
     aarch64-linux = "aarch64-unknown-linux-gnu";
   }.${pkgs.stdenv.hostPlatform.system};
   mdexHashes = {
-    x86_64-linux = "9a5ae57c9ee192c21c121832ce102aa9817087d26522582fd44dd16b6add5110";
-    aarch64-linux = "d627646d37a9260959ebf9db45a10eafbf70570f007e647bfc6376b22025b909";
+    x86_64-linux = "a47f7d480d0773ba35695c3de1b48932cbe80d151675ae2ef3c833cdac8037b2";
+    aarch64-linux = "bcb15d23ec2fab316ffd0bce711af8e84b23d6779d665b933a5be6ff6d48961a";
   };
   mdexArtifact = pkgs.fetchurl {
-    name = "libmdex_native_nif-v0.3.1-nif-2.15-${mdexTarget}.so.tar.gz";
-    url = "https://github.com/leandrocp/mdex_native/releases/download/v0.3.1/libmdex_native_nif-v0.3.1-nif-2.15-${mdexTarget}.so.tar.gz";
+    name = "libmdex_native_nif-v0.3.2-nif-2.15-${mdexTarget}.so.tar.gz";
+    url = "https://github.com/leandrocp/mdex_native/releases/download/v0.3.2/libmdex_native_nif-v0.3.2-nif-2.15-${mdexTarget}.so.tar.gz";
     sha256 = mdexHashes.${pkgs.stdenv.hostPlatform.system};
   };
 in

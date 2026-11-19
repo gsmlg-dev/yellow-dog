@@ -16,9 +16,9 @@ defmodule YellowDog.Dns.CloudDnsSync do
 
   @cloudflare_api "https://api.cloudflare.com/client/v4"
   @route53_api "https://route53.amazonaws.com"
-  @route53_host "route53.amazonaws.com"
   @route53_service "route53"
   @route53_signing_region "us-east-1"
+  @request_timeout 15_000
   @automatic_ttl 300
   @empty_payload_hash "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
@@ -115,7 +115,7 @@ defmodule YellowDog.Dns.CloudDnsSync do
   defp normalize_provider(_provider), do: :unknown
 
   defp fetch_route53_records(connector, mirror, zone_name, opts) do
-    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    request_fun = Keyword.get(opts, :request_fun, &http_request(&1, opts))
 
     with {:ok, credentials} <- route53_credentials(connector),
          {:ok, zone_id} <- route53_zone_id(mirror, zone_name, credentials, request_fun, opts),
@@ -248,7 +248,8 @@ defmodule YellowDog.Dns.CloudDnsSync do
 
   defp route53_get(path, params, credentials, request_fun, opts) do
     query = canonical_query_string(params)
-    url = @route53_api <> path <> if(query == "", do: "", else: "?#{query}")
+    api = Keyword.get(opts, :route53_api, @route53_api)
+    url = api <> path <> if(query == "", do: "", else: "?#{query}")
 
     request_fun.(
       method: :get,
@@ -269,7 +270,7 @@ defmodule YellowDog.Dns.CloudDnsSync do
 
     signed_headers =
       [
-        {"host", @route53_host},
+        {"host", URI.parse(Keyword.get(opts, :route53_api, @route53_api)).authority},
         {"x-amz-content-sha256", @empty_payload_hash},
         {"x-amz-date", amz_date}
       ]
@@ -638,11 +639,13 @@ defmodule YellowDog.Dns.CloudDnsSync do
   defp body_to_string(body), do: inspect(body)
 
   defp fetch_cloudflare_records(connector, mirror, zone_name, opts) do
-    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    request_fun = Keyword.get(opts, :request_fun, &http_request(&1, opts))
+
+    api = Keyword.get(opts, :cloudflare_api, @cloudflare_api)
 
     with {:ok, token} <- cloudflare_api_token(connector),
-         {:ok, zone_id} <- cloudflare_zone_id(mirror, zone_name, token, request_fun),
-         {:ok, cloud_records} <- cloudflare_dns_records(zone_id, token, request_fun) do
+         {:ok, zone_id} <- cloudflare_zone_id(mirror, zone_name, token, request_fun, api),
+         {:ok, cloud_records} <- cloudflare_dns_records(zone_id, token, request_fun, api) do
       records =
         cloud_records
         |> Enum.flat_map(fn record ->
@@ -667,13 +670,13 @@ defmodule YellowDog.Dns.CloudDnsSync do
     if token == "", do: {:error, :cloudflare_api_token_missing}, else: {:ok, token}
   end
 
-  defp cloudflare_zone_id(%{zone_id: zone_id}, _zone_name, _token, _request_fun)
+  defp cloudflare_zone_id(%{zone_id: zone_id}, _zone_name, _token, _request_fun, _api)
        when is_binary(zone_id) and zone_id != "" do
     {:ok, zone_id}
   end
 
-  defp cloudflare_zone_id(_mirror, zone_name, token, request_fun) do
-    case cloudflare_get("/zones", token, request_fun, name: zone_name, per_page: 1) do
+  defp cloudflare_zone_id(_mirror, zone_name, token, request_fun, api) do
+    case cloudflare_get(api, "/zones", token, request_fun, name: zone_name, per_page: 1) do
       {:ok, %{"result" => [%{"id" => zone_id} | _]}} when is_binary(zone_id) ->
         {:ok, zone_id}
 
@@ -688,31 +691,31 @@ defmodule YellowDog.Dns.CloudDnsSync do
     end
   end
 
-  defp cloudflare_dns_records(zone_id, token, request_fun) do
-    cloudflare_dns_records(zone_id, token, request_fun, 1, [])
+  defp cloudflare_dns_records(zone_id, token, request_fun, api) do
+    cloudflare_dns_records(zone_id, token, request_fun, api, 1, [])
   end
 
-  defp cloudflare_dns_records(zone_id, token, request_fun, page, acc) do
+  defp cloudflare_dns_records(zone_id, token, request_fun, api, page, acc) do
     path = "/zones/#{URI.encode(zone_id)}/dns_records"
 
-    with {:ok, body} <- cloudflare_get(path, token, request_fun, per_page: 100, page: page) do
+    with {:ok, body} <- cloudflare_get(api, path, token, request_fun, per_page: 100, page: page) do
       records = value(body, :result, [])
       info = value(body, :result_info, %{})
       total_pages = info |> value(:total_pages, 1) |> normalize_positive_integer(1)
       acc = acc ++ records
 
       if page < total_pages do
-        cloudflare_dns_records(zone_id, token, request_fun, page + 1, acc)
+        cloudflare_dns_records(zone_id, token, request_fun, api, page + 1, acc)
       else
         {:ok, acc}
       end
     end
   end
 
-  defp cloudflare_get(path, token, request_fun, params) do
+  defp cloudflare_get(api, path, token, request_fun, params) do
     request_fun.(
       method: :get,
-      url: @cloudflare_api <> path,
+      url: api <> path,
       headers: [
         {"authorization", "Bearer #{token}"},
         {"accept", "application/json"}
@@ -720,6 +723,49 @@ defmodule YellowDog.Dns.CloudDnsSync do
       params: params
     )
     |> normalize_cloudflare_response()
+  end
+
+  defp http_request(request, opts) do
+    params = Keyword.get(request, :params, [])
+    url = request[:url]
+
+    url =
+      if params == [] do
+        url
+      else
+        separator = if URI.parse(url).query, do: "&", else: "?"
+        url <> separator <> URI.encode_query(params)
+      end
+
+    timeout = Keyword.get(opts, :timeout, @request_timeout)
+
+    case url
+         |> HTTP.fetch(
+           method: request[:method],
+           headers: request[:headers],
+           timeout: timeout,
+           connect_timeout: timeout,
+           redirect: :error
+         )
+         |> HTTP.Promise.await() do
+      %HTTP.Response{} = response ->
+        body = HTTP.Response.read_all(response)
+        content_type = HTTP.Headers.get(response.headers, "content-type") || ""
+
+        if String.contains?(content_type, ["application/json", "+json"]) do
+          case Jason.decode(body) do
+            {:ok, decoded} -> {:ok, %{status: response.status, body: decoded}}
+            {:error, reason} -> {:error, reason}
+          end
+        else
+          {:ok, %{status: response.status, body: body}}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  rescue
+    error in HTTP.ResponseError -> {:error, error.reason}
   end
 
   defp normalize_cloudflare_response({:ok, %{status: status, body: body}})

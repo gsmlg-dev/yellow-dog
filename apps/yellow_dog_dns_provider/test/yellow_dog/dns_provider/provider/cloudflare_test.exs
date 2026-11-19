@@ -5,7 +5,8 @@ defmodule YellowDog.DnsProvider.Provider.CloudflareTest do
 
   describe "init/1" do
     test "succeeds with api_token" do
-      assert {:ok, %{req: %Req.Request{}}} = Cloudflare.init(%{api_token: "cf-tok-123"})
+      assert {:ok, %{client: %YellowDog.DnsProvider.HTTPClient{}}} =
+               Cloudflare.init(%{api_token: "cf-tok-123"})
     end
 
     test "fails without api_token" do
@@ -16,9 +17,9 @@ defmodule YellowDog.DnsProvider.Provider.CloudflareTest do
       assert {:error, :missing_api_token} = Cloudflare.init(%{api_token: nil})
     end
 
-    test "accepts injected :req for testing" do
-      req = Req.new(base_url: "http://test")
-      assert {:ok, %{req: ^req}} = Cloudflare.init(%{api_token: "tok", req: req})
+    test "accepts alternative base_url" do
+      assert {:ok, %{client: %{base_url: "http://test"}}} =
+               Cloudflare.init(%{api_token: "tok", base_url: "http://test"})
     end
   end
 

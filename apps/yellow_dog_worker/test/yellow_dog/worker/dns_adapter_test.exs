@@ -52,6 +52,19 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     end
   end
 
+  test "malformed UDP datagrams leave the endpoint available for subsequent queries" do
+    {adapter, port} = adapter()
+    original = :sys.get_state(adapter).udp
+
+    assert {:error, :timeout} = query_wire(:udp, port, <<0::96>>, 100)
+
+    assert {:ok, %{anlist: [%{data: %{data: {192, 0, 2, 53}}}]}} =
+             query(:udp, port, "ns1.example.com.", 1)
+
+    assert DnsAdapter.status(adapter).ready
+    assert :sys.get_state(adapter).udp == original
+  end
+
   test "a failed TCP handler does not restart listeners or interrupt another session" do
     {adapter, port} = adapter()
     bad = connect(port)

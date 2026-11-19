@@ -33,7 +33,7 @@ defmodule YellowDog.MixProject do
       {:yellow_dog_store, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:yellow_dog_sync, in_umbrella: true},
-      {:abyss, "~> 1.0.0-rc.13"},
+      {:abyss, "~> 1.0.0-rc.20"},
 
       # External dependencies for core functionality
       {:telemetry, "~> 1.0"},

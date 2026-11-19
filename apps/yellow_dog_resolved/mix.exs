@@ -24,12 +24,12 @@ defmodule YellowDog.Resolved.MixProject do
 
   defp deps do
     [
-      {:abyss, "~> 1.0.0-rc.13"},
+      {:abyss, "~> 1.0.0-rc.20"},
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
       {:file_system, "~> 1.0"},
-      {:http_web_socket, "~> 1.0.0-rc.13"},
+      {:http_web_socket, "~> 1.0.0-rc.20"},
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.0", only: [:test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

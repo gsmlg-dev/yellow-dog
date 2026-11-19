@@ -9,10 +9,12 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
 
       %{api_key: "vultr-api-key-..."}
 
-  An optional `:req` key can inject a pre-built `Req.Request` for testing.
+  An optional `:base_url` selects an alternative API endpoint.
   """
 
   @behaviour YellowDog.DnsProvider.Provider
+
+  alias YellowDog.DnsProvider.HTTPClient
 
   @api_base "https://api.vultr.com/v2"
 
@@ -22,22 +24,19 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
 
   @impl true
   def init(%{api_key: api_key} = config) when is_binary(api_key) do
-    req =
-      Map.get_lazy(config, :req, fn ->
-        Req.new(
-          base_url: @api_base,
-          headers: [{"authorization", "Bearer #{api_key}"}]
-        )
-      end)
+    client =
+      HTTPClient.new(Map.get(config, :base_url, @api_base), [
+        {"authorization", "Bearer #{api_key}"}
+      ])
 
-    {:ok, %{req: req}}
+    {:ok, %{client: client}}
   end
 
   def init(_config), do: {:error, :missing_api_key}
 
   @impl true
   def list_zones(state) do
-    case Req.get(state.req, url: "/domains") do
+    case HTTPClient.request(state.client, :get, "/domains") do
       {:ok, %{status: 200, body: %{"domains" => domains}}} ->
         zones = parse_domains(domains)
         {:ok, zones, state}
@@ -54,7 +53,7 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
   def get_records(%{name: zone_name}, state) do
     domain = strip_trailing_dot(zone_name)
 
-    case Req.get(state.req, url: "/domains/#{domain}/records") do
+    case HTTPClient.request(state.client, :get, "/domains/#{domain}/records") do
       {:ok, %{status: 200, body: %{"records" => records}}} ->
         parsed = parse_records(records, zone_name)
         {:ok, parsed, state}
@@ -71,8 +70,9 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
   def apply_changeset(%{name: zone_name}, changeset, state) do
     domain = strip_trailing_dot(zone_name)
 
-    with :ok <- apply_deletions(state.req, domain, zone_name, Map.get(changeset, :deletions, [])),
-         :ok <- apply_additions(state.req, domain, Map.get(changeset, :additions, [])) do
+    with :ok <-
+           apply_deletions(state.client, domain, zone_name, Map.get(changeset, :deletions, [])),
+         :ok <- apply_additions(state.client, domain, Map.get(changeset, :additions, [])) do
       {:ok, state}
     else
       {:error, reason} -> {:error, reason, state}
@@ -83,7 +83,7 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
   def zone_serial(%{name: zone_name}, state) do
     domain = strip_trailing_dot(zone_name)
 
-    case Req.get(state.req, url: "/domains/#{domain}/soa") do
+    case HTTPClient.request(state.client, :get, "/domains/#{domain}/soa") do
       {:ok, %{status: 200, body: %{"dns_soa" => %{"nserial" => serial}}}} ->
         {:ok, serial, state}
 
@@ -154,9 +154,9 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
   # Private helpers
   # -------------------------------------------------------------------
 
-  defp apply_additions(_req, _domain, []), do: :ok
+  defp apply_additions(_client, _domain, []), do: :ok
 
-  defp apply_additions(req, domain, [record | rest]) do
+  defp apply_additions(client, domain, [record | rest]) do
     body = %{
       "type" => record.type,
       "name" => owner_to_vultr_name(record.owner, domain <> "."),
@@ -164,9 +164,9 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
       "ttl" => record.ttl
     }
 
-    case Req.post(req, url: "/domains/#{domain}/records", json: body) do
+    case HTTPClient.request(client, :post, "/domains/#{domain}/records", json: body) do
       {:ok, %{status: status}} when status in [200, 201] ->
-        apply_additions(req, domain, rest)
+        apply_additions(client, domain, rest)
 
       {:ok, %{status: status, body: resp}} ->
         {:error, {:api_error, status, resp}}
@@ -176,11 +176,11 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
     end
   end
 
-  defp apply_deletions(_req, _domain, _zone_name, []), do: :ok
+  defp apply_deletions(_client, _domain, _zone_name, []), do: :ok
 
-  defp apply_deletions(req, domain, zone_name, [record | rest]) do
+  defp apply_deletions(client, domain, zone_name, [record | rest]) do
     # Fetch records to find matching ID
-    case Req.get(req, url: "/domains/#{domain}/records") do
+    case HTTPClient.request(client, :get, "/domains/#{domain}/records") do
       {:ok, %{status: 200, body: %{"records" => records}}} ->
         vultr_name = owner_to_vultr_name(record.owner, zone_name)
 
@@ -194,12 +194,12 @@ defmodule YellowDog.DnsProvider.Provider.Vultr do
         case matching do
           nil ->
             # Record not found, skip deletion
-            apply_deletions(req, domain, zone_name, rest)
+            apply_deletions(client, domain, zone_name, rest)
 
           %{"id" => record_id} ->
-            case Req.delete(req, url: "/domains/#{domain}/records/#{record_id}") do
+            case HTTPClient.request(client, :delete, "/domains/#{domain}/records/#{record_id}") do
               {:ok, %{status: status}} when status in [200, 204] ->
-                apply_deletions(req, domain, zone_name, rest)
+                apply_deletions(client, domain, zone_name, rest)
 
               {:ok, %{status: status, body: body}} ->
                 {:error, {:api_error, status, body}}
