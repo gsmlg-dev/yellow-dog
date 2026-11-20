@@ -6,8 +6,9 @@ Phase 1 has exactly two independent business releases:
 
 - `yellow_dog_management`: PostgreSQL-backed DNS data UI/API, logical Workers,
   immutable resource versions, complete target preview/confirmation, and TOML export.
-- `yellow_dog_worker`: local TOML or authenticated Management target polling, durable committed
-  snapshots, explicit reload, and authoritative DNS over UDP/TCP.
+- `yellow_dog_worker`: local TOML or authenticated Management WebSocket target push, durable
+  committed snapshots, explicit reload, and DNS over UDP/TCP (authoritative zones, forward
+  zones and optional recursion).
 
 Service configuration belongs to Management; network services execute on Worker.
 Netboot and Identity are exclusively Worker capabilities, not Management boot
@@ -20,8 +21,8 @@ runtime failures remain deferred and are not claimed fixed.
 
 Management can create data without any Worker records. Under Management → Workers
 (`/management/servers`), create a Worker using its name and copy the generated token
-configuration to the Worker host. Workers poll confirmed targets and report actual
-execution state. Local exported TOML remains supported. Legacy business-data
+configuration to the Worker host. Workers connect over a WebSocket, receive confirmed
+targets as they are published and report actual execution state. Local exported TOML remains supported. Legacy business-data
 migration and mixed-runtime compatibility are excluded.
 
 ## Download Worker for Linux x86_64
