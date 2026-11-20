@@ -35,8 +35,9 @@ defmodule YellowDog.ManagementUI.IntegrationsLive do
         </dl>
         <p class="management-help">
           Deployment configuration controls these values. Trusted-local mode accepts direct loopback
-          traffic only. Protected-remote mode verifies external access tokens; the trusted gateway
-          supplies a separate verified identity for this UI.
+          traffic only. Trusted-LAN mode allows this UI from the configured private network, with
+          HTTP API and MCP disabled. Protected-remote mode verifies external access tokens; the
+          trusted gateway supplies a separate verified identity for this UI.
         </p>
       </.card>
       <.card title="Endpoints and client setup">

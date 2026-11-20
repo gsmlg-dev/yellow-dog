@@ -12,6 +12,7 @@ defmodule YellowDog.Management.IntegrationSettings do
       mcp_enabled: enabled?("YELLOW_DOG_MANAGEMENT_MCP_ENABLED"),
       write_enabled: enabled?("YELLOW_DOG_MANAGEMENT_REMOTE_WRITES_ENABLED"),
       resource: resource(),
+      trusted_lan_network: System.get_env("YELLOW_DOG_MANAGEMENT_TRUSTED_LAN_NETWORK"),
       issuer: System.get_env("YELLOW_DOG_MANAGEMENT_OAUTH_ISSUER"),
       access_jwks_file: System.get_env("YELLOW_DOG_MANAGEMENT_OAUTH_JWKS_FILE"),
       gateway_issuer: System.get_env("YELLOW_DOG_MANAGEMENT_GATEWAY_ISSUER"),
@@ -59,6 +60,19 @@ defmodule YellowDog.Management.IntegrationSettings do
                  is_nil(System.get_env("YELLOW_DOG_MANAGEMENT_TRUSTED_PROXY_IP")) and
                  is_nil(System.get_env("YELLOW_DOG_MANAGEMENT_EXTERNAL_ORIGIN")),
                do: raise("Trusted-local Management requires a loopback listener without a proxy")
+
+      :trusted_lan ->
+        unless SettingsIP.valid_lan_network?(config.trusted_lan_network) and
+                 SettingsIP.in_network?(uri.host, config.trusted_lan_network) and
+                 uri.scheme == "http" and
+                 uri.port ==
+                   String.to_integer(System.get_env("YELLOW_DOG_MANAGEMENT_PORT", "4270")) and
+                 is_nil(System.get_env("YELLOW_DOG_MANAGEMENT_TRUSTED_PROXY_IP")) and
+                 is_nil(System.get_env("YELLOW_DOG_MANAGEMENT_EXTERNAL_ORIGIN")),
+               do:
+                 raise(
+                   "Trusted-LAN Management requires a private IPv4 network and matching HTTP resource without a proxy"
+                 )
 
       :protected_remote ->
         for key <- [
@@ -125,13 +139,55 @@ defmodule YellowDog.Management.IntegrationSettings do
   defp enabled?(name), do: System.get_env(name) == "1"
   defp mode("disabled"), do: :disabled
   defp mode("trusted_local"), do: :trusted_local
+  defp mode("trusted_lan"), do: :trusted_lan
   defp mode("protected_remote"), do: :protected_remote
   defp mode(_), do: :invalid
 end
 
 defmodule YellowDog.Management.SettingsIP do
   @moduledoc false
+  import Bitwise
+
   def loopback?({127, _, _, _}), do: true
   def loopback?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
   def loopback?(_), do: false
+
+  def valid_lan_network?(network), do: match?({:ok, _, _}, lan_network(network))
+
+  def in_network?(address, network) when is_binary(address) do
+    case :inet.parse_strict_address(String.to_charlist(address)) do
+      {:ok, ip} -> in_network?(ip, network)
+      _ -> false
+    end
+  end
+
+  def in_network?({_, _, _, _} = ip, network) do
+    case lan_network(network) do
+      {:ok, base, prefix} -> ipv4_integer(ip) >>> (32 - prefix) == base >>> (32 - prefix)
+      _ -> false
+    end
+  end
+
+  def in_network?(_, _), do: false
+
+  defp lan_network(network) when is_binary(network) do
+    with [address, prefix] <- String.split(network, "/"),
+         {:ok, {_, _, _, _} = ip} <- :inet.parse_strict_address(String.to_charlist(address)),
+         {bits, ""} when bits in 1..32 <- Integer.parse(prefix),
+         true <- private_prefix?(ip, bits),
+         base = ipv4_integer(ip),
+         true <- rem(base, 1 <<< (32 - bits)) == 0 do
+      {:ok, base, bits}
+    else
+      _ -> :error
+    end
+  end
+
+  defp lan_network(_), do: :error
+  defp private_prefix?({10, _, _, _}, bits), do: bits >= 8
+  defp private_prefix?({172, second, _, _}, bits), do: second in 16..31 and bits >= 12
+  defp private_prefix?({192, 168, _, _}, bits), do: bits >= 16
+  defp private_prefix?(_, _), do: false
+
+  defp ipv4_integer({a, b, c, d}), do: (a <<< 24) + (b <<< 16) + (c <<< 8) + d
 end

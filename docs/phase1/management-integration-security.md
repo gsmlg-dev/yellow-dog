@@ -8,13 +8,16 @@ The release defaults to `disabled`. Dynamic UI requests and both remote adapters
 
 `trusted_local` is a single-operator development boundary. Its listener and canonical resource must be loopback; proxy/external-origin configuration is rejected at startup. Each caller must have a direct loopback peer, an allowed loopback Host, and no `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`, or `X-Real-IP` header. Its identity is the configured local operator and its permissions are the deployment's allowed scopes. It never falls back from an invalid remote token to local trust.
 
+`trusted_lan` explicitly permits single-operator UI development from one configured private IPv4 network. Set `TRUSTED_LAN_NETWORK` to a canonical RFC1918 CIDR and `RESOURCE` to the listener's exact HTTP IPv4 origin inside that network. The port must match `PORT`; proxy/external-origin configuration is rejected. Direct LAN peers must match that network, Host and Origin, without forwarding headers. Real loopback peers retain local development access. LAN callers have separate `trusted_lan` provenance and cannot authenticate HTTP v1 or MCP, even if their enable flags are set. This mode trusts operators on the configured network and does not authenticate individual people.
+
 `protected_remote` verifies external access tokens for HTTP/MCP and a separate signed gateway assertion for UI traffic. The canonical resource and both issuer URLs require HTTPS, except HTTP loopback fixtures. The resource must be an origin without credentials, path, query or fragment. Configure a stable secret key base of at least 64 bytes for UI session and LiveView signing.
 
 Only the literal value `1` enables each flag below. Environment changes are deployment changes, not client parameters.
 
 | Environment variable | Default / meaning |
 | --- | --- |
-| `YELLOW_DOG_MANAGEMENT_AUTH_MODE` | `disabled`; supported alternatives `trusted_local`, `protected_remote` |
+| `YELLOW_DOG_MANAGEMENT_AUTH_MODE` | `disabled`; supported alternatives `trusted_local`, `trusted_lan`, `protected_remote` |
+| `YELLOW_DOG_MANAGEMENT_TRUSTED_LAN_NETWORK` | No default; one canonical private IPv4 CIDR, required only for `trusted_lan` |
 | `YELLOW_DOG_MANAGEMENT_API_ENABLED` | Off; `1` enables `/api/v1` |
 | `YELLOW_DOG_MANAGEMENT_MCP_ENABLED` | Off; `1` enables `/mcp` |
 | `YELLOW_DOG_MANAGEMENT_REMOTE_WRITES_ENABLED` | Off; `1` permits scoped HTTP/MCP writes |
@@ -24,7 +27,7 @@ Only the literal value `1` enables each flag below. Environment changes are depl
 | `YELLOW_DOG_MANAGEMENT_GATEWAY_ISSUER` | Required issuer of UI gateway assertions |
 | `YELLOW_DOG_MANAGEMENT_GATEWAY_AUDIENCE` | Required audience for UI gateway assertions |
 | `YELLOW_DOG_MANAGEMENT_GATEWAY_JWKS_FILE` | Required trusted local **public** gateway JWKS file |
-| `YELLOW_DOG_MANAGEMENT_LOCAL_OPERATOR` | `local-operator`; trusted-local principal name |
+| `YELLOW_DOG_MANAGEMENT_LOCAL_OPERATOR` | `local-operator`; development principal name |
 | `YELLOW_DOG_MANAGEMENT_POLICY_REVISION` | `1`; changing it invalidates already-created Callers, including mounted UI sessions |
 | `YELLOW_DOG_MANAGEMENT_ALLOWED_SCOPES` | All fixed scopes below; a space-separated configured list is intersected with the fixed vocabulary |
 | `YELLOW_DOG_MANAGEMENT_SECRET_KEY_BASE` | Required stable value of at least 64 bytes in protected mode. Do not put its value in examples, logs or UI |
@@ -61,6 +64,8 @@ Key removal affects subsequent HTTP requests and new WebSocket handshakes immedi
 ## UI session, socket and policy lifetime
 
 Protected UI HTTP requests verify the gateway assertion before rendering and store a signed, HTTP-only, SameSite=Lax, Secure session cookie. The session contains the verified identity, permissions and expiry, never the raw assertion, bearer token, key or provider credential. The cookie is signed, not an encrypted credential vault. Trusted-local mode does not set the Secure flag, supporting its direct HTTP loopback workflow.
+
+Trusted-LAN development also uses direct HTTP and a signed, HTTP-only, SameSite=Lax session without the Secure flag. A LAN session retains its separate provenance through the WebSocket handshake and callback authorization.
 
 A connected LiveView mount independently authenticates the WebSocket handshake, checks Host/Origin and actual peer information, and matches issuer/subject/client identity against the signed HTTP session. The resulting lifetime is the earlier of the HTTP session and current handshake expiry; permissions are the intersection of both grants. A fresh assertion cannot extend the prior HTTP session silently. A reconnect after expiry requires fresh authorized HTTP/session state.
 
@@ -100,6 +105,8 @@ Saving, confirming, assigning and publishing are distinct operations. DNS Views/
 Workers connect over a WebSocket at `GET /api/worker/connect` (Phoenix channel topic `worker:<worker_id>`); HTTP polling is not served. The socket uses its separate Worker credential boundary and explicit Worker identity: the upgrade request carries only the UUID `worker_id`, and the token travels only inside the channel join payload, never in the URL or HTTP headers that a reverse proxy may log. Join parameters are not logged. Each join, runtime report and target push re-verifies the credential; rotating a token closes the Worker's live sockets, and inbound frames are limited to 64 KiB. Opaque Worker tokens fail Management JWT verification. Management access tokens and gateway assertions do not become valid Worker tokens. UI registration/rotation requires `ui:admin`; issued bootstrap credentials are transient and are not returned by the finite remote API or MCP tools.
 
 Protected-remote mode retires legacy `/api/...` commands and legacy reads with HTTP 410, rather than leaving an unscoped generic dispatcher. Two existing UI download paths remain: Worker target TOML export requires verified UI `config:read`, and backup download requires verified UI `ui:admin`. Neither accepts an API bearer token in place of the gateway assertion. Trusted-local development retains legacy routes under its explicit local UI authorization; legacy commands require UI administration and stable request identity. Disabled mode still denies them.
+
+Trusted-LAN mode likewise retires non-download legacy routes for non-loopback peers. Real loopback development probes retain their existing authorized `/api/workers` reads. The two UI downloads still require LAN UI authorization and their existing scopes; LAN UI access never enables a generic remote legacy command dispatcher.
 
 Enrollment policy, credential operations, backup operations, local MAC/OUI reload, network diagnostic tools, unsupported task types and platform security/settings are excluded from the versioned remote operation matrix. Existing UI administrative capabilities remain independently gated; a remote token with `ui:admin` is not a UI session and cannot open those paths. The permitted City/Country task operations use the shared facade; they do not accept arbitrary task keys, provider URLs, files or shell commands.
 

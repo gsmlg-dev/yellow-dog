@@ -50,6 +50,13 @@ defmodule YellowDog.Management.Access do
   def ui_admin(%Caller{source: :ui} = caller), do: authorize(caller, "ui:admin")
   def ui_admin(_), do: denied()
   defp provenance?(%Caller{authentication: :trusted_local}, :trusted_local), do: true
+
+  defp provenance?(
+         %Caller{authentication: :trusted_lan, source: :ui, issuer: "urn:yellow-dog:trusted-lan"},
+         :trusted_lan
+       ),
+       do: true
+
   defp provenance?(%Caller{authentication: :gateway, source: :ui}, :protected_remote), do: true
 
   defp provenance?(%Caller{authentication: :access_token, source: source}, :protected_remote),

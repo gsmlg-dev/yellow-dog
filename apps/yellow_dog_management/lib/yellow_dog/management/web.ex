@@ -207,7 +207,12 @@ defmodule YellowDog.Management.Web do
         (Regex.match?(~r{\A/api/workers/[^/]+/targets/[^/]+/export\z}, conn.request_path) or
            Regex.match?(~r{\A/api/backups/[^/]+/download\z}, conn.request_path))
 
-    if config.mode == :protected_remote and not download? do
+    remote_legacy =
+      config.mode == :protected_remote or
+        (config.mode == :trusted_lan and
+           not YellowDog.Management.SettingsIP.loopback?(conn.remote_ip))
+
+    if remote_legacy and not download? do
       conn
       |> json(410, %{
         error: %{code: "legacy_disabled", message: "Use the versioned Management API"}

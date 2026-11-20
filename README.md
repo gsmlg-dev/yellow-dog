@@ -118,9 +118,8 @@ devenv processes list
 ```
 
 This starts PostgreSQL, initializes/migrates the development database, then starts
-Management on all IPv4 interfaces at port `4270` and a separate Worker that
-automatically connects to it. Open `http://HOST_IP:4270/management` from the LAN
-or `http://127.0.0.1:4270/management` locally.
+Management on `127.0.0.1:4270` and a separate Worker that automatically connects
+to it. Open `http://127.0.0.1:4270/management` locally.
 The first start creates **Devenv Worker** using the existing token
 enrollment flow; anonymous initialization remains controlled by the Workers page.
 Its private bootstrap and durable state persist under `.devenv/state/worker/`,
@@ -131,6 +130,27 @@ Database data persists under `.devenv/state/postgres/`; Management artifacts and
 backups stay under `.devenv/state/management/`. Stop all three processes with
 `devenv processes down`. To run Management alone, use
 `devenv processes up -d management`.
+
+For explicit LAN UI development, create a machine-local `devenv.local.nix`
+(automatically loaded by devenv and ignored by Git), using your server address
+and trusted private network:
+
+```nix
+{lib, ...}: {
+  processes.management.env = {
+    YELLOW_DOG_MANAGEMENT_BIND_ADDRESS = lib.mkForce "0.0.0.0";
+    YELLOW_DOG_MANAGEMENT_AUTH_MODE = lib.mkForce "trusted_lan";
+    YELLOW_DOG_MANAGEMENT_RESOURCE = "http://10.100.10.15:4270";
+    YELLOW_DOG_MANAGEMENT_TRUSTED_LAN_NETWORK = "10.100.0.0/20";
+  };
+}
+```
+
+Run `devenv processes down` followed by `devenv processes up -d` to load changed
+process configuration; a process restart alone retains its previous environment.
+LAN UI trust is limited to direct peers in the configured network. HTTP v1 and
+MCP stay unavailable in this mode. See [Management integration security](docs/phase1/management-integration-security.md)
+for its Host, Origin, session and legacy-route boundaries.
 
 ### Management Overview and Events
 

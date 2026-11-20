@@ -63,21 +63,29 @@ defmodule YellowDog.Management.Caller do
         "gateway" -> :gateway
         :trusted_local -> :trusted_local
         "trusted_local" -> :trusted_local
+        :trusted_lan -> :trusted_lan
+        "trusted_lan" -> :trusted_lan
         _ -> :invalid
       end
 
-    {:ok,
-     %__MODULE__{
-       issuer: issuer,
-       subject: subject,
-       client_id: data["client_id"],
-       scopes: scopes,
-       source: :ui,
-       correlation_id: Ecto.UUID.generate(),
-       expires_at: expires_at,
-       policy_revision: policy,
-       authentication: authentication
-     }}
+    caller = %__MODULE__{
+      issuer: issuer,
+      subject: subject,
+      client_id: data["client_id"],
+      scopes: scopes,
+      source: :ui,
+      correlation_id: Ecto.UUID.generate(),
+      expires_at: expires_at,
+      policy_revision: policy,
+      authentication: authentication
+    }
+
+    if authentication == :trusted_lan and
+         (issuer != "urn:yellow-dog:trusted-lan" or data["source"] not in [:ui, "ui"]) do
+      {:error, %{code: "authentication_required", message: "Verified LAN UI session required"}}
+    else
+      {:ok, caller}
+    end
   end
 
   def from_session(_),

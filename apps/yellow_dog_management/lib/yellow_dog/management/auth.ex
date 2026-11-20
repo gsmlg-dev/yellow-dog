@@ -1,5 +1,5 @@
 defmodule YellowDog.Management.Auth do
-  @moduledoc "External JWT resource-server authentication and explicit loopback development trust."
+  @moduledoc "External JWT resource-server authentication and explicit development trust."
   import Plug.Conn
   alias YellowDog.Management.{Caller, IntegrationSettings, SettingsIP}
 
@@ -13,6 +13,7 @@ defmodule YellowDog.Management.Auth do
       with :ok <- enabled(config, source), :ok <- guard_request(conn, config) do
         case config.mode do
           :trusted_local -> local(conn, source, config)
+          :trusted_lan -> development_caller(:ui, config, :trusted_lan)
           :protected_remote -> protected(conn, source, config)
           _ -> failure("adapters_disabled", "Management trust mode is not configured")
         end
@@ -103,21 +104,29 @@ defmodule YellowDog.Management.Auth do
 
   defp local(conn, source, config) do
     if SettingsIP.loopback?(conn.remote_ip) and not forwarding?(conn.req_headers) do
-      {:ok,
-       %Caller{
-         issuer: "urn:yellow-dog:trusted-local",
-         subject: config.operator,
-         client_id: nil,
-         scopes: config.allowed_scopes,
-         source: source,
-         correlation_id: Ecto.UUID.generate(),
-         expires_at: System.system_time(:second) + 3600,
-         policy_revision: config.policy_revision,
-         authentication: :trusted_local
-       }}
+      development_caller(source, config, :trusted_local)
     else
       failure("forbidden", "Trusted-local Management accepts direct loopback callers only")
     end
+  end
+
+  defp development_caller(source, config, authentication) do
+    {:ok,
+     %Caller{
+       issuer:
+         if(authentication == :trusted_lan,
+           do: "urn:yellow-dog:trusted-lan",
+           else: "urn:yellow-dog:trusted-local"
+         ),
+       subject: config.operator,
+       client_id: nil,
+       scopes: config.allowed_scopes,
+       source: source,
+       correlation_id: Ecto.UUID.generate(),
+       expires_at: System.system_time(:second) + 3600,
+       policy_revision: config.policy_revision,
+       authentication: authentication
+     }}
   end
 
   defp verify(token, source, profile, config)
@@ -223,7 +232,36 @@ defmodule YellowDog.Management.Auth do
   defp audience?(_, _), do: false
   defp bounded?(value, limit), do: is_binary(value) and byte_size(value) in 1..limit
 
-  def guard_request(conn, config \\ IntegrationSettings.get()) do
+  def guard_request(conn, config \\ IntegrationSettings.get())
+
+  def guard_request(conn, %{mode: :trusted_lan} = config) do
+    expected = URI.parse(config.resource)
+    loopback = SettingsIP.loopback?(conn.remote_ip)
+    local_hosts = ["localhost", "127.0.0.1", "::1"]
+    hosts = if loopback, do: [expected.host | local_hosts], else: [expected.host]
+
+    origin_ok =
+      case get_req_header(conn, "origin") do
+        [] ->
+          true
+
+        [origin] ->
+          origin == config.resource or
+            (loopback and conn.host in local_hosts and
+               origin == "http://#{format_host(conn.host)}:#{conn.port}")
+
+        _ ->
+          false
+      end
+
+    if (loopback or SettingsIP.in_network?(conn.remote_ip, config.trusted_lan_network)) and
+         conn.host in hosts and conn.scheme == :http and conn.port == expected.port and
+         origin_ok and not forwarding?(conn.req_headers),
+       do: :ok,
+       else: failure("forbidden", "Trusted-LAN Management peer, Host or Origin rejected")
+  end
+
+  def guard_request(conn, config) do
     expected = URI.parse(config.resource)
 
     allowed_hosts =
@@ -272,6 +310,9 @@ defmodule YellowDog.Management.Auth do
 
   defp enabled(%{mode: :disabled}, _),
     do: failure("adapters_disabled", "Management trust mode is not configured")
+
+  defp enabled(%{mode: :trusted_lan}, source) when source in [:http, :mcp],
+    do: failure("adapters_disabled", "Trusted-LAN Management permits browser UI access only")
 
   defp enabled(%{http_enabled: false}, :http),
     do: failure("adapters_disabled", "Management HTTP API is disabled")
