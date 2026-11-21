@@ -5,7 +5,7 @@ import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 
 // Duskmoon hooks and element registration
-import * as DuskmoonHooks from "phoenix_duskmoon/hooks";
+import * as DuskmoonHooks from "duskmoon_phoenix/hooks";
 // TODO(upstream): duskmoon-dev/duskmoon-elements#85
 // elements@1.9.1 still installs vulnerable KaTeX markdown dependencies.
 // WORKAROUND(upstream): duskmoon-dev/duskmoon-elements#50

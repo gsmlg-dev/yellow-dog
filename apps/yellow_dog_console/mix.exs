@@ -48,7 +48,7 @@ defmodule YellowDog.Console.MixProject do
       {:phoenix_live_dashboard, "~> 0.9"},
       {:duskmoon_bundler_runtime, "~> 10.1"},
       {:duskmoon_bundler, "~> 10.1", runtime: Mix.env() in [:dev, :test]},
-      {:phoenix_duskmoon, "~> 10.1"},
+      {:duskmoon_phoenix, "2.0.0-rc.3"},
       {:hackney, "~> 4.0"},
       {:telemetry_metrics, "~> 0.6 or ~> 1.0", override: true},
       {:telemetry_poller, "~> 1.0"},

@@ -5,7 +5,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv4Tab do
   Provides form fields for DHCPv4 message testing with privileged port warning.
   """
   use Phoenix.Component
-  use PhoenixDuskmoon.Component
+  use DuskmoonPhoenix.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.ResultDisplay
   alias YellowDog.Console.DiagnosticsLive.Components.QueryHistory

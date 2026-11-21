@@ -45,10 +45,14 @@
         [
           "@source \"../../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon\";",
           "@source \"../../../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon\";"
+        ],
+        [
+          "phoenix_duskmoon/lib/phoenix_duskmoon",
+          "duskmoon_phoenix/lib/duskmoon_phoenix"
         ]
       ],
       "source_sha256": "ecc36fb2197ad5f74d869ca1a0b3556426a327146399d99c1ca8fbc25c599a85",
-      "target_sha256": "e380de0809a45d2fe8ce2e4173f96bef62637d89865d4c603f6d6a02bbbbdfc8"
+      "target_sha256": "3ceeae4343e3e7c000bd87a97d90b5b2f539e131831cd93c3034e0dd44179570"
     },
     {
       "source": "apps/yellow_dog_console/assets/js/app.js",
@@ -64,10 +68,14 @@
         [
           ":yellow_dog_console",
           ":yellow_dog_management"
+        ],
+        [
+          "phoenix_duskmoon/hooks",
+          "duskmoon_phoenix/hooks"
         ]
       ],
       "source_sha256": "69c94f67bd28a2512269464aab4c50e3e40c8aa3375548551924bb0fba6fd2ab",
-      "target_sha256": "69c94f67bd28a2512269464aab4c50e3e40c8aa3375548551924bb0fba6fd2ab"
+      "target_sha256": "406cf5faa40b0b4bc9903bb1422ceb34ca5e531ee3be3cd2a8ab62c931665066"
     },
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console.ex",
@@ -94,10 +102,14 @@
         [
           "router: YellowDog.ManagementUI.Redesign.Router",
           "router: YellowDog.ManagementUI.Router"
+        ],
+        [
+          "PhoenixDuskmoon",
+          "DuskmoonPhoenix"
         ]
       ],
       "source_sha256": "26db2bc6fe4e3868eacceb7aacc3d0c38cfebdf6d2c992b86e90143dce97e22f",
-      "target_sha256": "9ee3d2d23e72cfe2749a06df8c45e0a3e458dbc00973f99b7871ac45b924e531"
+      "target_sha256": "7c5e96d8d92d435deb151932f69a8e54cfcc427bb61e9407217d74ca913d3101"
     },
     {
       "source": "apps/yellow_dog_console/lib/yellow_dog/console/components/button.ex",
@@ -1464,7 +1476,7 @@
       "revision": "f779f1bc4d29689b468a67ae48612f08efe37172",
       "adaptation": "namespace-only-deferred-legacy-structs",
       "source_sha256": "055f8ea740d1d16c8e874c7135cc0e5ca92a8b00c7d349ce9ef1a608e51dc99c",
-      "target_sha256": "dfe32a4360b836b3187129f3ded5398777fb32233b2d6a4495b3f4d4f09f2820",
+      "target_sha256": "9421f43f34ae1d58e13c5cb8f66d1c648e6516642d64071fc11497a269d64026",
       "selection_reason": "unchanged_ui_or_additive_current_source",
       "replacements": [
         [
@@ -1486,6 +1498,10 @@
         [
           "%DHCPv4Message{}",
           "%{__struct__: DHCPv4Message}"
+        ],
+        [
+          "PhoenixDuskmoon",
+          "DuskmoonPhoenix"
         ]
       ]
     },
@@ -1495,7 +1511,7 @@
       "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "18afedbca98d4c416f95b0d027826980b751f39e3eb30662955cd2504fd9d0ae",
-      "target_sha256": "2edf55cdf63d65ffdf8ae64a981af8227e977d123b1f35f0f963c7d86ef0b23b",
+      "target_sha256": "dc7bb60b1524c486d83589cbce76446dd1839f82afea2aaa912abdc32d6ad704",
       "selection_reason": "unchanged_ui_or_additive_current_source",
       "replacements": [
         [
@@ -1509,6 +1525,10 @@
         [
           "lib/yellow_dog/console",
           "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "PhoenixDuskmoon",
+          "DuskmoonPhoenix"
         ]
       ]
     },
@@ -1518,7 +1538,7 @@
       "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "0b3446451619b72330dd02ef8cc415fb79ad82f9b0e71874d71e9f2248a92361",
-      "target_sha256": "199268e9841677e5d64ec29dcc5b7a6e5d13e25a8c60c63e3773933e6c79c850",
+      "target_sha256": "c1966f77235546c53121833d0d17dfc52cdd0943064cfae097fd4301c6f933b8",
       "selection_reason": "unchanged_ui_or_additive_current_source",
       "replacements": [
         [
@@ -1532,6 +1552,10 @@
         [
           "lib/yellow_dog/console",
           "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "PhoenixDuskmoon",
+          "DuskmoonPhoenix"
         ]
       ]
     },
@@ -1603,7 +1627,7 @@
       "revision": "d97d01f3f629c08f2b564d07f693521eef0cc864",
       "adaptation": "namespace-only",
       "source_sha256": "5dca26b7fa264916441f4ea24e1c0f1c070244fcb6a8b2c3147ec383df416201",
-      "target_sha256": "cd1d6659193ea2604424ccc41390ecdad81aabe9f37ebb0b6cd9970219cf9756",
+      "target_sha256": "00e1e0ed092128821a13fa577adb249190a7af12a45e5a84707e8f66d54669d8",
       "selection_reason": "unchanged_ui_or_additive_current_source",
       "replacements": [
         [
@@ -1617,6 +1641,10 @@
         [
           "lib/yellow_dog/console",
           "lib/yellow_dog/management_ui/redesign"
+        ],
+        [
+          "PhoenixDuskmoon",
+          "DuskmoonPhoenix"
         ]
       ]
     },
@@ -7833,6 +7861,14 @@
       "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/components/original_sidebar.ex": "aae9dc077cb6bbaa8cf8c274e3819127c38071ef4d018b9bb76b2f72ce5a4a24",
       "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/management_live/data.ex": "b87227694e8be080107c9ec97b7a6393f883529e7839575ec360c9f60d424c37",
       "apps/yellow_dog_management/lib/yellow_dog/management_ui/redesign/original/live/management_live/index.ex": "5f5c2dc5312da8bb0e06dca6c1f7fcdfdc7d342acf0de73ee04857324de624a9"
+    }
+  },
+  "duskmoon_web_migration": {
+    "retained_source_sha256": {
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/components/result_display.ex": "df93d9aac98b5b5cd0a0ce2a5263f4c4a59c33e6e0defd8aca129efd43da8ad6",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dhcpv4_tab.ex": "5d9e48d7e2e5018a84112d2b6d87ec8b92a3cdb6d8121f199f162167c4dd6f79",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/dhcpv6_tab.ex": "f7ef8a7943d2513bee4175fc482221d580d55e8601b5baad466bcc173f34e140",
+      "apps/yellow_dog_console/lib/yellow_dog/console/live/diagnostics_live/mdns_tab.ex": "c334e7f72fbdc1e44f70add378c18a9d431f6c7bb487ebf2036390c662b3b257"
     }
   }
 }

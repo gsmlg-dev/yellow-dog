@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@duskmoon-dev/art-elements": "1.10.3",
-    "@duskmoon-dev/core": "1.21.4",
-    "@duskmoon-dev/css-art": "1.21.4",
-    "@duskmoon-dev/elements": "1.10.3"
+    "@duskmoon-dev/art-elements": "2.0.0-rc.3",
+    "@duskmoon-dev/core": "2.0.0-rc.3",
+    "@duskmoon-dev/css-art": "2.0.0-rc.3",
+    "@duskmoon-dev/elements": "2.0.0-rc.3",
+    "duskmoon_phoenix": "2.0.0-rc.3"
   }
 }

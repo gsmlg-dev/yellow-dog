@@ -6,7 +6,7 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive.MdnsTab do
   multiple responses from the multicast group.
   """
   use Phoenix.Component
-  use PhoenixDuskmoon.Component
+  use DuskmoonPhoenix.Component
 
   alias YellowDog.ManagementUI.Redesign.DiagnosticsLive.Components.ResultDisplay
   alias YellowDog.ManagementUI.Redesign.DiagnosticsLive.Components.QueryHistory

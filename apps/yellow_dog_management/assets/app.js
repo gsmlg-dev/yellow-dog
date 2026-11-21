@@ -4,7 +4,7 @@ import "../../../deps/phoenix_html/priv/static/phoenix_html.js";
 import { Socket } from "../../../deps/phoenix/priv/static/phoenix.mjs";
 import { LiveSocket } from "../../../deps/phoenix_live_view/priv/static/phoenix_live_view.esm.js";
 
-import * as DuskmoonHooks from "../../../deps/phoenix_duskmoon/assets/js/hooks/index.js";
+import * as DuskmoonHooks from "duskmoon_phoenix/hooks";
 
 
 

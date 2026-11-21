@@ -35,7 +35,7 @@ defmodule YellowDog.ManagementUI do
   defp html_helpers do
     quote do
       import Phoenix.HTML
-      use PhoenixDuskmoon.Component
+      use DuskmoonPhoenix.Component
       import YellowDog.ManagementUI.CoreComponents
       use Gettext, backend: YellowDog.ManagementUI.Gettext
       alias Phoenix.LiveView.JS

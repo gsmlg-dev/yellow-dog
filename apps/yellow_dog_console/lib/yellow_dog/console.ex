@@ -83,8 +83,8 @@ defmodule YellowDog.Console do
       # HTML escaping functionality
       import Phoenix.HTML
       # Duskmoon UI components
-      use PhoenixDuskmoon.Component
-      import PhoenixDuskmoon.Component.Action.Button, except: [dm_btn: 1]
+      use DuskmoonPhoenix.Component
+      import DuskmoonPhoenix.Component.Action.Button, except: [dm_btn: 1]
       import YellowDog.Console.Components.Button
       # Core UI components and translation
       import YellowDog.Console.CoreComponents

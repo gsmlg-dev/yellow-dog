@@ -10,7 +10,10 @@ manifest = json.loads((repo_root / "docs/phase1/ui-source-migration.json").read_
 entries = manifest["files"]
 retirement = manifest["netman_retirement"]
 removed_targets = set(retirement["removed_targets"])
-source_overrides = retirement["retained_source_sha256"]
+source_overrides = (
+    retirement["retained_source_sha256"]
+    | manifest["duskmoon_web_migration"]["retained_source_sha256"]
+)
 target_overrides = retirement["retained_target_sha256"]
 sources = set()
 source_hashes = {}

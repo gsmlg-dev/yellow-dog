@@ -6,7 +6,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
   with copy-to-clipboard functionality for both request and response.
   """
   use Phoenix.Component
-  use PhoenixDuskmoon.Component
+  use DuskmoonPhoenix.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.HexDump
   import YellowDog.Console.FormatHelper, only: [format_time: 1, format_ip: 1]

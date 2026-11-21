@@ -36,7 +36,7 @@ Pi is a terminal-based agent that thrives on concise context. When initiated:
 
 ### Restrictions & Safety Rules
 *   **CRITICAL**: NEVER use `:gen_udp` directly in product code (except inside `ex_dns`/`ex_dhcp` protocol libraries, or the `DhcpSocket.UdpFallback` dev/test fallback in `yellow_dog_dhcp_client`). All UDP servers must use the Hex `:abyss` abstraction.
-*   **CRITICAL**: NEVER override UI design tokens or replicate component internals of `@duskmoon-dev/core` or `phoenix_duskmoon`. Adhere strictly to the Upstream Issue Protocol when bugs are found in these components.
+*   **CRITICAL**: NEVER override UI design tokens or replicate component internals of `@duskmoon-dev/core` or `duskmoon_phoenix`. Adhere strictly to the Upstream Issue Protocol when bugs are found in these components.
 *   **CRITICAL**: Avoid raw Tailwind CSS utility classes in Phoenix LiveView templates if they are not provided by `@duskmoon-dev/core` tokens.
 
 ### Preferred Workflow
@@ -64,7 +64,7 @@ When tackling complex tasks, the main Pi agent should emulated specific sub-agen
 
 ### 2. The LiveView Component Architect (UI Specialist)
 *   **Focus**: `apps/yellow_dog_console/` pages, templates, and UI styling.
-*   **Behavior**: Consumes `phoenix_duskmoon` components and `@duskmoon-dev/core` utility classes. Rejects inline overrides. Prefers structural composition, and utilizes asynchronous task patterns (`Task.async` + `handle_info`) to prevent blockages on slow network diagnostics pages.
+*   **Behavior**: Consumes `duskmoon_phoenix` components and `@duskmoon-dev/core` utility classes. Rejects inline overrides. Prefers structural composition, and utilizes asynchronous task patterns (`Task.async` + `handle_info`) to prevent blockages on slow network diagnostics pages.
 
 ### 3. The Quality Assurance Automation (QA Specialist)
 *   **Focus**: End-to-end (E2E) suites in `e2e_test/` and ExUnit unit tests.
@@ -178,7 +178,7 @@ end
 *Goal: Modify the leases page without overriding Duskmoon UI components.*
 
 ```heex
-<!-- Good approach: Using only standard phoenix_duskmoon components and design tokens -->
+<!-- Good approach: Using only standard duskmoon_phoenix components and design tokens -->
 <.card class="bg-surface-container-low border border-outline-variant rounded-lg p-6">
   <div class="flex justify-between items-center mb-4">
     <h2 class="text-title-large text-on-surface">DHCPv4 Active Leases</h2>

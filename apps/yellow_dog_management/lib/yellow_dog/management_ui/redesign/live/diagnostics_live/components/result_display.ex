@@ -6,7 +6,7 @@ defmodule YellowDog.ManagementUI.Redesign.DiagnosticsLive.Components.ResultDispl
   with copy-to-clipboard functionality for both request and response.
   """
   use Phoenix.Component
-  use PhoenixDuskmoon.Component
+  use DuskmoonPhoenix.Component
 
   alias YellowDog.ManagementUI.Redesign.DiagnosticsLive.Components.HexDump
   import YellowDog.ManagementUI.Redesign.FormatHelper, only: [format_time: 1, format_ip: 1]

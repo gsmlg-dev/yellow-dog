@@ -1,6 +1,6 @@
 @import "tailwindcss" source(none);
 @source "../lib/yellow_dog/management_ui";
-@source "../../../deps/phoenix_duskmoon/lib/phoenix_duskmoon";
+@source "../../../deps/duskmoon_phoenix/lib/duskmoon_phoenix";
 @source "./app.js";
 
 @plugin "@duskmoon-dev/core/plugin";

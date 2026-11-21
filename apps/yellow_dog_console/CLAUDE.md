@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-YellowDogConsole is the Phoenix LiveView web console for managing and monitoring YellowDog network services (DNS, mDNS, DHCPv4, DHCPv6). It uses the DuskMoon design system (`@duskmoon-dev/core` + `phoenix_duskmoon`) and DuskmoonBundler for JavaScript/CSS bundling.
+YellowDogConsole is the Phoenix LiveView web console for managing and monitoring YellowDog network services (DNS, mDNS, DHCPv4, DHCPv6). It uses the DuskMoon design system (`@duskmoon-dev/core` + `duskmoon_phoenix`) and DuskmoonBundler for JavaScript/CSS bundling.
 
 This is retained source outside the supported Management/Worker root build.
 Its development and test listener definitions select `Gaoxy.PhoenixAdapter`,
@@ -56,7 +56,7 @@ Use `YellowDog.Console` for the entrypoint with these uses:
 - `use YellowDog.Console, :live_component` - LiveComponents
 - `use YellowDog.Console, :html` - Function components
 
-All views auto-import `PhoenixDuskmoon.Component` (`dm_*` components). Existing pages also import `YellowDog.Console.CoreComponents` for project-specific helpers during the component migration.
+All views auto-import `DuskmoonPhoenix.Component` (`dm_*` components). Existing pages also import `YellowDog.Console.CoreComponents` for project-specific helpers during the component migration.
 
 ### Directory Structure
 ```
@@ -87,7 +87,7 @@ lib/yellow_dog/console/
 
 **Stack:**
 - `@duskmoon-dev/core` — CSS component library (TailwindCSS v4 plugin, MD3 color system)
-- `phoenix_duskmoon` — Phoenix HEEX components (`dm_*` prefix)
+- `duskmoon_phoenix` — Phoenix HEEX components (`dm_*` prefix)
 - `@duskmoon-dev/elements` — Custom elements (`<el-dm-*>`)
 
 **Themes:** `sunshine` (light) / `moonlight` (dark), set via `data-theme` attribute on `<body>`.
@@ -100,7 +100,7 @@ lib/yellow_dog/console/
 - Borders: `border-outline`, `border-outline-variant`
 - Semantic: `text-primary`, `text-secondary`, `text-success`, `text-error`, `text-warning`, `text-info`
 
-**Components (from phoenix_duskmoon):**
+**Components (from duskmoon_phoenix):**
 ```heex
 <.dm_btn variant="primary" size="md">Save</.dm_btn>
 <.dm_card variant="bordered"><:title>Title</:title>Content</.dm_card>
@@ -151,7 +151,7 @@ Phoenix 1.8 function component layouts in `layouts.ex`:
 
 ### JavaScript Hooks
 Located in `assets/js/app.js`:
-- Duskmoon hooks: `ThemeSwitcher`, `WebComponentHook`, `FormElementHook`, `PageHeader`, `Spotlight` (from `phoenix_duskmoon/hooks`)
+- Duskmoon hooks: `ThemeSwitcher`, `PageHeader`, `Spotlight` (from `duskmoon_phoenix/hooks`)
 - Custom hooks: `CopyToClipboard`, `CsvDownload`, `LogAutoScroll`
 
 ## Testing Patterns
@@ -208,7 +208,7 @@ mix npm.install
 - `phoenix` ~> 1.8.1, `phoenix_live_view` ~> 1.0
 - `gaoxy_http` ~> 0.5.5 (HTTP server), with `Gaoxy.PhoenixAdapter`
 - `websock_adapter` ~> 0.5.5 from Hex `gaoxy_websock_adapter` (`override: true`)
-- `phoenix_duskmoon` ~> 9.7
+- `duskmoon_phoenix` 2.0.0-rc.3
 - `duskmoon_bundler_runtime` ~> 9.7, `duskmoon_bundler` ~> 9.7 (dev only)
 - `@duskmoon-dev/core`, `@duskmoon-dev/elements`, `@duskmoon-dev/css-art`, `@duskmoon-dev/art-elements` (npm)
 - In-umbrella: `yellow_dog`, `yellow_dog_mdns`, `yellow_dog_dhcpv4`, `yellow_dog_dhcpv6`, `yellow_dog_dns`
