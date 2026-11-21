@@ -11,8 +11,6 @@ from pathlib import Path
 import re
 import subprocess
 import time
-import urllib.error
-import urllib.request
 import uuid
 
 
@@ -61,10 +59,10 @@ def main():
             assert state["ExitCode"] == expected_exit, (state["ExitCode"], output)
         return output
 
-    def check_schema():
+    def check_schema(database="management_commands", expected=versions):
         applied = [int(version) for version in sql("SELECT version FROM schema_migrations ORDER BY version",
-                                                  "management_commands").splitlines()]
-        assert applied == versions, (applied, versions)
+                                                  database).splitlines()]
+        assert applied == expected, (applied, expected)
 
     def probe(task):
         # eval loads code without starting the business application. Probe the same
@@ -121,12 +119,13 @@ def main():
         print("PASS packaged setup creates absent database and applies all migrations", flush=True)
 
         zone_id = str(uuid.uuid4())
-        sql(f"INSERT INTO management_zones (id, name, revision, inserted_at, updated_at) "
-            f"VALUES ('{zone_id}', 'release-commands.example.test.', 1, now(), now())", "management_commands")
+        insert_zone = ("INSERT INTO management_zones (id, name, revision, inserted_at, updated_at) "
+                       f"VALUES ('{zone_id}', 'release-commands.example.test.', 1, now(), now())")
+        sql(insert_zone, "management_commands")
 
-        def check_zone():
+        def check_zone(database="management_commands"):
             assert sql(f"SELECT name || ':' || revision FROM management_zones WHERE id='{zone_id}'",
-                       "management_commands") == "release-commands.example.test.:1"
+                       database) == "release-commands.example.test.:1"
 
         output = run(["setup"])
         assert "database=already_exists" in output and "applied_migrations=0" in output, output
@@ -138,19 +137,26 @@ def main():
         check_zone()
         print("PASS repeated setup and migrate preserve business data", flush=True)
 
-        rollback = (
+        migrator = (
             "Application.load(:yellow_dog_management); "
             "Application.put_env(:yellow_dog_management, YellowDog.Management.Repo, "
             "YellowDog.Management.Settings.repo()); "
-            "{:ok, _, _} = Ecto.Migrator.with_repo(YellowDog.Management.Repo, "
-            "fn repo -> Ecto.Migrator.run(repo, :down, step: 1) end)"
+            "{:ok, _, _} = Ecto.Migrator.with_repo(YellowDog.Management.Repo, fn repo -> "
         )
-        run(["eval", rollback])
-        assert sql("SELECT max(version) FROM schema_migrations", "management_commands") == str(versions[-2])
-        output = run(["migrate"])
-        assert "applied_migrations=1" in output, output
+        output = run(["eval", migrator + "Ecto.Migrator.run(repo, :down, step: 1) end)"], success=False)
+        assert "restore a pre-migration backup" in output, output
         check_schema()
         check_zone()
+
+        pending = "management_pending"
+        sql(f"CREATE DATABASE {pending}")
+        run(["eval", migrator + f"Ecto.Migrator.run(repo, :up, to: {versions[-2]}) end)"], database=pending)
+        check_schema(pending, versions[:-1])
+        sql(insert_zone, pending)
+        output = run(["migrate"], database=pending)
+        assert "applied_migrations=1" in output, output
+        check_schema(pending)
+        check_zone(pending)
         print("PASS migrate applies pending real migration and preserves business data", flush=True)
 
         probe("setup")
@@ -178,24 +184,29 @@ def main():
 
         app = prefix + "-app"
         containers.append(app)
-        docker("create", "--name", app, "--network", network, "-p", "127.0.0.1::4270",
+        docker("create", "--name", app, "--network", network,
                "-e", f"YELLOW_DOG_MANAGEMENT_DATABASE_URL=postgres://postgres:{password}@{postgres}:5432/management_commands",
                "-e", "YELLOW_DOG_MANAGEMENT_SECRET_KEY_BASE=" + "release-smoke-" * 8,
-               "-e", "YELLOW_DOG_MANAGEMENT_BIND_ADDRESS=0.0.0.0",
+               "-e", "YELLOW_DOG_MANAGEMENT_BIND_ADDRESS=127.0.0.1",
+               "-e", "YELLOW_DOG_MANAGEMENT_AUTH_MODE=trusted_local",
                "-e", "RELEASE_DISTRIBUTION=none", "-e", "ERL_FLAGS=+S 2:2 +A 2", args.image)
         docker("start", app)
-        port = json.loads(docker("inspect", "--format", "{{json .NetworkSettings.Ports}}", app)[1])["4270/tcp"][0]["HostPort"]
+        request = (
+            "{:ok, _} = Application.ensure_all_started(:inets); "
+            f"{{:ok, {{{{_, 200, _}}, _, body}}}} = :httpc.request(~c\"http://127.0.0.1:4270/api/zones/{zone_id}\"); "
+            "IO.puts(body)"
+        )
         deadline = time.monotonic() + 60
         while True:
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/zones/{zone_id}", timeout=5) as response:
-                    zone = json.load(response)["data"]
+            code, output = docker("exec", app, "/usr/local/bin/yellow_dog_release", "eval", request,
+                                  timeout=10, expect_success=False)
+            if code == 0:
+                zone = json.loads(output)["data"]
                 break
-            except (OSError, urllib.error.URLError):
-                state = json.loads(docker("inspect", "--format", "{{json .State}}", app)[1])
-                assert state["Running"], "Default Management start failed: " + docker("logs", app)[1]
-                assert time.monotonic() < deadline, "Default Management start did not serve HTTP"
-                time.sleep(0.25)
+            state = json.loads(docker("inspect", "--format", "{{json .State}}", app)[1])
+            assert state["Running"], "Default Management start failed: " + docker("logs", app)[1]
+            assert time.monotonic() < deadline, "Default Management start did not serve HTTP: " + output
+            time.sleep(0.25)
         assert zone["id"] == zone_id and zone["name"] == "release-commands.example.test." and zone["revision"] == 1, zone
         output = docker("exec", app, "/usr/local/bin/yellow_dog_release", "migrate")[1]
         assert "applied_migrations=0" in output, output
