@@ -146,12 +146,12 @@ defmodule YellowDog.Management.NavigationLiveTest do
         |> LazyHTML.query("#app-sidebar-navigation a[aria-current='page']")
 
       assert LazyHTML.attribute(active, "data-nav-item") == [item]
-      assert has_element?(view, "[data-nav-item='dns_zones'][href='#{base}/zones']")
+      assert has_element?(view, "[data-nav-item='dns_zones'][href='/management/zones']")
 
       if item in ["dns_views", "dns_acls"] do
         assert has_element?(
                  view,
-                 "[data-nav-item='dns_views'][href='#{base}/views/#{service["id"]}']"
+                 "[data-nav-item='dns_views'][href='/management/dns/views']"
                )
 
         assert has_element?(

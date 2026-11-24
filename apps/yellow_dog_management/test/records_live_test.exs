@@ -116,6 +116,37 @@ defmodule YellowDog.Management.RecordsLiveTest do
            )
   end
 
+  test "TXT record editor preserves empty chunks and supports a draft with no A record",
+       %{conn: conn, zone: zone, path: path} do
+    {:ok, view, _html} = live(conn, path <> "/new")
+
+    view
+    |> form("#record-form", record: %{type: "TXT"})
+    |> render_change()
+
+    assert has_element?(view, "input[name='record[data][strings]']")
+    strings = ["", "quoted \"value\""]
+
+    view
+    |> form("#record-form",
+      record: %{name: "_acme-challenge", type: "TXT", data: %{strings: Jason.encode!(strings)}}
+    )
+    |> render_submit()
+
+    assert_patch(view, path)
+    assert {:ok, saved} = Domain.get_zone(zone["id"])
+    txt = Enum.find(saved["records"], &(&1["type"] == "TXT"))
+    assert txt["name"] == "_acme-challenge.example.test."
+    assert txt["data"] == %{"strings" => strings}
+
+    index = Enum.find_index(saved["records"], &(&1["type"] == "A"))
+    view |> element("#record-#{index} button[phx-click='delete_record']") |> render_click()
+    assert_patch(view, path)
+    assert {:ok, edited} = Domain.get_zone(zone["id"])
+    assert Enum.sort(Enum.map(edited["records"], & &1["type"])) == ~w(NS SOA TXT)
+    assert DnsRecordExports.bind(edited) =~ ~S(TXT "" "quoted \"value\"")
+  end
+
   test "bulk append is atomic and retains canonical JSON", %{conn: conn, zone: zone, path: path} do
     {:ok, view, _html} = live(conn, path <> "/bulk")
 
@@ -565,7 +596,7 @@ defmodule YellowDog.Management.RecordsLiveTest do
 
     for params <- [
           %{"filter" => [], "type" => "all"},
-          %{"filter" => "", "type" => "AAAA"},
+          %{"filter" => "", "type" => "HINFO"},
           %{"filter" => String.duplicate("a", 513), "type" => "all"}
         ] do
       assert render_submit(view, "filter", params) =~ "Invalid record filter"

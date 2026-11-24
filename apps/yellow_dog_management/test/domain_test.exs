@@ -338,7 +338,7 @@ defmodule YellowDog.Management.DomainTest do
              Enum.map(zones, & &1["id"]) |> Enum.sort()
   end
 
-  test "invalid complete target rolls back a newly inserted service and replays the failure" do
+  test "a second DNS service is rejected without changing the Worker or its target" do
     worker = create_worker("listener-worker")
     first = mutation("put_service", Fixtures.service(worker["id"], worker["revision"]))
 
@@ -347,7 +347,7 @@ defmodule YellowDog.Management.DomainTest do
 
     failure_key = key()
 
-    assert {:error, %{code: "invalid_config"} = failure} =
+    assert {:error, %{code: "conflict"} = failure} =
              Domain.mutate("put_service", attempted, "operator", failure_key)
 
     assert {:error, ^failure} = Domain.mutate("put_service", attempted, "operator", failure_key)
@@ -467,11 +467,12 @@ defmodule YellowDog.Management.DomainTest do
         "worker_id" => worker["id"],
         "expected_revision" => revision,
         "id" => "ignored-by-alias",
-        "instance_id" => "dns-secondary",
+        "instance_id" => "dns",
         "config" => %{config | "port" => 5301}
       })
 
-    assert alias_service["instance_id"] == "dns-secondary"
+    assert alias_service["id"] == running["id"]
+    assert alias_service["instance_id"] == "dns"
     assert alias_service["desired_state"] == "stopped"
     assert alias_service["type"] == "dns"
   end

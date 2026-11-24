@@ -6,14 +6,18 @@
   "workspaces": ["apps/*"],
   "scripts": {
     "openapi:validate": "scripts/e2e/management_openapi.sh",
-    "assets.management": "tailwindcss --input apps/yellow_dog_management/assets/management.css --output apps/yellow_dog_management/priv/static/management.css --minify && bun build apps/yellow_dog_management/assets/app.js --outfile apps/yellow_dog_management/priv/static/management-live.js --minify"
+    "assets.management": "tailwindcss --input apps/yellow_dog_management/assets/management.css --output apps/yellow_dog_management/priv/static/management.css --minify && bun build apps/yellow_dog_management/assets/app.js --outfile apps/yellow_dog_management/priv/static/management-live.js --production"
   },
   "dependencies": {
     "@duskmoon-dev/art-elements": "2.0.0-rc.3",
+    "@duskmoon-dev/components": "2.0.0-rc.3",
     "@duskmoon-dev/core": "2.0.0-rc.3",
     "@duskmoon-dev/css-art": "2.0.0-rc.3",
     "@duskmoon-dev/elements": "2.0.0-rc.3",
-    "duskmoon_phoenix": "2.0.0-rc.3"
+    "duskmoon_phoenix": "2.0.0-rc.3",
+    "jsonschema": "1.5.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

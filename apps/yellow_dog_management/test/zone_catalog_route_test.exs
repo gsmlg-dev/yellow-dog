@@ -121,62 +121,29 @@ defmodule YellowDog.Management.ZoneCatalogRouteTest do
     assert_selected(view, first)
   end
 
-  test "service choices are bounded with stable paging even for one Worker", %{conn: conn} do
+  test "a Worker is added with its single DNS service selected", %{conn: conn} do
     zone = mutate("create_zone", DomainFixtures.zone())
     mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1})
-    initial = service("many-services")
-
-    services =
-      for n <- 2..25 do
-        mutate(
-          "put_service",
-          DomainFixtures.service(initial["worker_id"], n, "stopped")
-          |> Map.put("id", "dns-#{String.pad_leading(to_string(n), 2, "0")}")
-        )
-      end
-
+    single = service("single-dns")
+    other = service("other-dns")
     {:ok, view, _} = live(conn, "/management/zones/#{zone["id"]}/application")
-    assert has_element?(view, "#zone-assignment-candidate-count[data-displayed='20']")
-    view |> element("button[phx-click='add_assignment_worker']") |> render_click()
-
-    assert has_element?(
-             view,
-             "fieldset[data-worker-id='many-services'] option[value=''][selected]"
-           )
-
-    assert length(
-             LazyHTML.from_document(render(view))
-             |> LazyHTML.query(
-               "fieldset[data-worker-id='many-services'] select[name$='[service_id]'] option"
-             )
-             |> LazyHTML.attribute("value")
-           ) == 21
-
-    last = List.last(services)
-    search(view, last["instance_id"])
-    assert has_element?(view, "option[value='#{last["id"]}']")
-
-    assert has_element?(
-             view,
-             "fieldset[data-worker-id='many-services'] option[value=''][selected]"
-           )
-
-    [row_key] =
-      LazyHTML.from_document(render(view))
-      |> LazyHTML.query("fieldset[data-worker-id='many-services']")
-      |> LazyHTML.attribute("id")
-
-    key = String.replace_prefix(row_key, "zone-assignment-", "")
 
     view
-    |> form("#zone-assignments-form", assignments: %{key => %{"service_id" => last["id"]}})
-    |> render_change()
+    |> element("button[phx-click='add_assignment_worker'][phx-value-id='single-dns']")
+    |> render_click()
+
+    assert_selected(view, single)
+
+    refute has_element?(
+             view,
+             "fieldset[data-worker-id='single-dns'] option[value='#{other["id"]}']"
+           )
 
     search(view, "no-match")
-    assert_selected(view, last)
+    assert_selected(view, single)
     view |> form("#zone-assignments-form") |> render_submit()
-    assert [%{"service_id" => id}] = Domain.list_assignments(initial["worker_id"])
-    assert id == last["id"]
+    assert [%{"service_id" => id}] = Domain.list_assignments(single["worker_id"])
+    assert id == single["id"]
   end
 
   test "zero Worker Application scope remains editable without fabricating choices", %{conn: conn} do

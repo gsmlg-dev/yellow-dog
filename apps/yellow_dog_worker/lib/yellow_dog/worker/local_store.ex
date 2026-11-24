@@ -21,6 +21,9 @@ defmodule YellowDog.Worker.LocalStore do
   def status(pid), do: GenServer.call(pid, :status)
   def connection_credentials(pid, url), do: GenServer.call(pid, {:connection_credentials, url})
 
+  def install_dns_certificate(pid, payload),
+    do: GenServer.call(pid, {:install_dns_certificate, payload}, 30_000)
+
   def begin_transition(pid, candidate, kind, base),
     do: GenServer.call(pid, {:begin_transition, candidate, kind, base}, 30_000)
 
@@ -68,6 +71,11 @@ defmodule YellowDog.Worker.LocalStore do
   @impl true
   def handle_call({:connection_credentials, url}, _from, state) do
     {:reply, YellowDog.Worker.Credentials.resolve(state.dir, url, state.ops), state}
+  end
+
+  def handle_call({:install_dns_certificate, payload}, _from, state) do
+    {:reply, YellowDog.Worker.Dns.CertificateStore.install(state.dir, payload.(), state.ops),
+     state}
   end
 
   def handle_call(:recover, _from, %{uncertain: error} = state) when not is_nil(error) do

@@ -260,15 +260,9 @@ defmodule YellowDog.Management.DnsAclsTest do
   test "uniqueness is per native DNS Service and rename preserves UUID under CAS", %{scope: scope} do
     first = mutate("create_dns_acl", params(scope))
     assert_error("conflict", "create_dns_acl", params(scope))
-    worker = Repo.get!(Worker, scope["worker_id"])
-
-    candidate =
-      Fixtures.service(worker.id, worker.revision)
-      |> Map.put("id", "second")
-      |> put_in(["config", "port"], 5301)
-
-    service = mutate("put_service", candidate)
-    second_scope = Map.put(scope, "service_id", service["id"])
+    worker = mutate("create_worker", %{"id" => "other-acl-worker", "name" => "Other Worker"})
+    service = mutate("put_service", Fixtures.service(worker["id"], worker["revision"]))
+    second_scope = %{"worker_id" => worker["id"], "service_id" => service["id"]}
     other = mutate("create_dns_acl", params(second_scope))
     refute first["id"] == other["id"]
     occupied = mutate("create_dns_acl", params(scope, "occupied"))

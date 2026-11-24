@@ -1,7 +1,9 @@
 @import "tailwindcss" source(none);
+@import "@duskmoon-dev/components/styles.css";
 @source "../lib/yellow_dog/management_ui";
 @source "../../../deps/duskmoon_phoenix/lib/duskmoon_phoenix";
 @source "./app.js";
+@source "./schema_modal.jsx";
 
 @plugin "@duskmoon-dev/core/plugin";
 @import "@duskmoon-dev/core/themes/sunshine";

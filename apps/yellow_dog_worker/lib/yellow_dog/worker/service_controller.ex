@@ -2,9 +2,18 @@ defmodule YellowDog.Worker.ServiceController do
   @moduledoc "Serializes a single service's preparation, lifecycle and runtime repair."
   use GenServer
   alias YellowDog.Worker.{DnsAdapter, OwnedShutdown}
+  alias YellowDog.Worker.Dns.ProtocolAdapter
 
   # This is the entire executable service allowlist; no input becomes an atom/module.
-  @adapters %{"dns" => DnsAdapter}
+  defp adapter(%{"type" => "dns", "config" => %{"listen" => _}}), do: {:ok, ProtocolAdapter}
+  defp adapter(%{"type" => "dns"}), do: {:ok, DnsAdapter}
+  defp adapter(_), do: {:error, :unsupported_service}
+
+  def requires_quiesce?(from, to) do
+    to["desired_state"] == "stopped" or
+      (from["config"] != to["config"] and
+         {adapter(from), adapter(to)} != {{:ok, ProtocolAdapter}, {:ok, ProtocolAdapter}})
+  end
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
@@ -14,11 +23,14 @@ defmodule YellowDog.Worker.ServiceController do
   def status(pid), do: GenServer.call(pid, :status)
   def quiesce(pid), do: GenServer.call(pid, :quiesce, 10_000)
 
+  def reload_dns_certificate(pid, id, revision) do
+    GenServer.call(pid, {:reload_dns_certificate, id, revision}, 26_000)
+  catch
+    :exit, _ -> {:error, :dns_certificate_reload_failed}
+  end
+
   def validate(service, resources) do
-    case Map.fetch(@adapters, service["type"]) do
-      {:ok, adapter} -> adapter.validate(service, resources)
-      :error -> {:error, :unsupported_service}
-    end
+    with {:ok, module} <- adapter(service), do: module.validate(service, resources)
   end
 
   @impl true
@@ -35,6 +47,7 @@ defmodule YellowDog.Worker.ServiceController do
        applied_resources: nil,
        owner: hd(Process.get(:"$ancestors")),
        observer: Keyword.get(opts, :observer),
+       data_dir: Keyword.get(opts, :data_dir),
        adapter: nil,
        error: nil,
        starts: 0,
@@ -47,6 +60,27 @@ defmodule YellowDog.Worker.ServiceController do
     {reply, state} = install(service, resources, state)
     {:reply, reply, state}
   end
+
+  def handle_call(
+        {:reload_dns_certificate, id, revision},
+        _from,
+        %{adapter: ProtocolAdapter} = state
+      )
+      when is_pid(state.runtime) do
+    result =
+      try do
+        ProtocolAdapter.reload_certificate(state.runtime, id, revision)
+      catch
+        :exit, _ -> {:error, :dns_certificate_reload_failed}
+      end
+
+    state = %{state | owned: Map.get(observation(state), :owned_pids, state.owned)}
+    notify_ownership(state)
+    {:reply, result, state}
+  end
+
+  def handle_call({:reload_dns_certificate, _id, _revision}, _from, state),
+    do: {:reply, :ok, state}
 
   def handle_call(:quiesce, _from, state) do
     {result, state} = stop_runtime(state)
@@ -116,9 +150,8 @@ defmodule YellowDog.Worker.ServiceController do
   defp install(nil, _resources, state), do: {:ok, state}
 
   defp install(service, resources, state) do
-    with :ok <- validate(service, resources) do
-      adapter = Map.fetch!(@adapters, service["type"])
-
+    with {:ok, adapter} <- adapter(service),
+         :ok <- adapter.validate(service, resources) do
       next = %{
         state
         | service: service,
@@ -139,11 +172,10 @@ defmodule YellowDog.Worker.ServiceController do
           end
 
         alive?(state.runtime) and state.service == service and state.resources == resources and
-          observation(state)[:ready] == true and
-            observation(state)[:loaded_resources] == identities(resources) ->
+            ready_configuration?(state, resources) ->
           confirm_runtime(next)
 
-        alive?(state.runtime) and state.service["config"] == service["config"] ->
+        alive?(state.runtime) and not requires_quiesce?(state.service, service) ->
           case adapter.update(state.runtime, service, resources) do
             :ok -> confirm_runtime(next)
             {:error, reason} -> {{:error, reason}, %{next | error: reason}}
@@ -172,8 +204,19 @@ defmodule YellowDog.Worker.ServiceController do
   defp observation(_), do: %{}
   defp alive?(pid), do: is_pid(pid) and Process.alive?(pid)
 
+  defp ready_configuration?(state, resources) do
+    status = observation(state)
+
+    status[:ready] == true and status[:operational] != false and
+      status[:loaded_resources] == identities(resources)
+  end
+
   defp start_runtime(state) do
-    case state.adapter.start_link(service: state.service, resources: state.resources) do
+    case state.adapter.start_link(
+           service: state.service,
+           resources: state.resources,
+           data_dir: state.data_dir
+         ) do
       {:ok, pid} ->
         started = %{state | runtime: pid, owned: [pid], starts: state.starts + 1}
         notify_ownership(started)

@@ -386,14 +386,16 @@ defmodule YellowDog.Management.DataWorkflowTest do
   } do
     zone = mutate("create_zone", DomainFixtures.zone())
     version = mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1})
-    worker = mutate("create_worker", %{"id" => "oversize-data", "name" => "Oversize"})
     now = DateTime.utc_now()
 
     for n <- 1..257 do
+      worker_id = "oversize-data-#{n}"
+      Repo.insert!(%YellowDog.Management.Worker{id: worker_id, name: worker_id})
+
       service =
         Repo.insert!(%YellowDog.Management.Service{
-          worker_id: worker["id"],
-          instance_id: "dns-#{n}",
+          worker_id: worker_id,
+          instance_id: "dns",
           type: "dns",
           desired_state: "stopped",
           config: %{"listen_address" => "127.0.0.1", "port" => 5300}
@@ -427,7 +429,12 @@ defmodule YellowDog.Management.DataWorkflowTest do
     refute has_element?(view, "fieldset[data-worker-id='small-data']")
     assert has_element?(view, "#zone-assignment-error", "more than 256")
     assert has_element?(view, "#zone-save-assignments[disabled]")
-    assert length(Domain.list_assignments(worker["id"])) == 257
+
+    assert {:ok, %{rows: [[257]]}} =
+             Repo.query(
+               "SELECT count(*) FROM management_assignments WHERE zone_id = $1::text::uuid",
+               [zone["id"]]
+             )
   end
 
   defp drain_sql(acc) do

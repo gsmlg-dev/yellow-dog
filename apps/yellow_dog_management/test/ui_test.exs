@@ -118,32 +118,67 @@ defmodule YellowDog.Management.UITest do
     refute has_element?(view, "#service-form")
     view |> element("#worker-tabs a[href='/server/ui-export/services']") |> render_click()
     assert_patch(view, "/server/ui-export/services")
-    view |> element("a[href='/server/ui-export/services/new']") |> render_click()
-    assert_patch(view, "/server/ui-export/services/new")
+
+    for label <- ["DHCPv4", "DHCPv6"] do
+      assert has_element?(view, "#worker-service-cards .card", label)
+      refute has_element?(view, "#worker-service-cards a, #worker-service-cards button", label)
+    end
+
+    view
+    |> element("#worker-service-cards a[href='/server/ui-export/dns']", "Configure DNS")
+    |> render_click()
+
+    assert_patch(view, "/server/ui-export/dns")
+    assert has_element?(view, "h2", "DNS settings")
+    refute has_element?(view, "#service-form textarea[name='service[allow_query]']")
+    refute has_element?(view, "#service-form textarea[name='service[forward_zones]']")
+
+    assert has_element?(view, "#dns-udp-settings input[type=checkbox][checked]")
+    assert has_element?(view, "#dns-tcp-settings input[type=checkbox][checked]")
+    refute has_element?(view, "#dns-doh-settings input[type=checkbox][checked]")
+
+    view |> form("#service-form", service: %{mode: "specific"}) |> render_change()
+    assert has_element?(view, "#service-form textarea[name='service[addresses]']")
 
     view
     |> form("#service-form",
-      service: %{id: "dns", listen_address: "127.0.0.1", port: "5300", desired_state: "stopped"}
+      service: %{addresses: "127.0.0.1\n::1", transports: %{udp: %{port: "5300"}}}
     )
     |> render_submit()
 
-    assert has_element?(view, "#dns-services", "stopped")
+    assert has_element?(view, "#dns-services", "running")
     [service] = Domain.list_services(worker["id"])
+    assert service["desired_state"] == "running"
 
-    view
-    |> element("#dns-services a[href='/server/ui-export/services/#{service["id"]}/edit']")
-    |> render_click()
+    assert service["config"]["listen"] == %{
+             "mode" => "specific",
+             "addresses" => ["127.0.0.1", "::1"]
+           }
 
-    assert_patch(view, "/server/ui-export/services/#{service["id"]}/edit")
-    refute has_element?(view, "#assignment-form")
+    assert service["config"]["transports"]["udp"] == %{"enabled" => true, "port" => 5300}
+    assert {:error, %{code: "not_found"}} = Domain.get_target(worker["id"])
+
+    {:ok, view, _html} =
+      view
+      |> element("a[href='/server/ui-export/dns/policy']", "DNS data and resolution policy")
+      |> render_click()
+      |> follow_redirect(conn, "/server/ui-export/dns/policy")
+
+    assert has_element?(view, "#dns-policy-form textarea[name='service[allow_query]']")
+    refute has_element?(view, "#dns-policy-form input[name='service[transports][udp][port]']")
+    view |> form("#dns-policy-form", service: %{allow_query: "127.0.0.0/8"}) |> render_submit()
+    assert [policy_saved] = Domain.list_services(worker["id"])
+    assert policy_saved["id"] == service["id"]
+    assert policy_saved["config"]["allow_query"] == ["127.0.0.0/8"]
+    assert policy_saved["config"]["transports"] == service["config"]["transports"]
 
     {:ok, data, _html} =
       view
-      |> element("#service-references a[href='/server/ui-export/dns/zones']")
+      |> element("#service-references a[href='/management/zones']")
       |> render_click()
-      |> follow_redirect(conn, "/server/ui-export/dns/zones")
+      |> follow_redirect(conn, "/management/zones")
 
-    assert has_element?(data, "#server-selection-form-select option[value='ui-export'][selected]")
+    refute has_element?(data, "#server-selection-form-select option[value='ui-export'][selected]")
 
     assert has_element?(
              data,
@@ -151,13 +186,13 @@ defmodule YellowDog.Management.UITest do
            )
 
     data
-    |> element("#zone-#{zone["id"]} a[href='/server/ui-export/dns/zones/#{zone["id"]}/edit']")
+    |> element("#zone-#{zone["id"]} a[href='/management/zones/#{zone["id"]}/edit']")
     |> render_click()
 
-    assert_patch(data, "/server/ui-export/dns/zones/#{zone["id"]}/edit")
+    assert_patch(data, "/management/zones/#{zone["id"]}/edit")
 
     data
-    |> element("a[href='/server/ui-export/dns/zones/#{zone["id"]}/application']")
+    |> element("a[href='/management/zones/#{zone["id"]}/application']")
     |> render_click()
 
     data
@@ -270,20 +305,13 @@ defmodule YellowDog.Management.UITest do
     service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
     {:ok, view, _html} = live(conn, "/server/ui-service/services")
 
-    view
-    |> element("#dns-services a[href='/server/ui-service/services/#{service["id"]}/edit']")
-    |> render_click()
+    view |> element("#worker-service-cards a[href='/server/ui-service/dns']") |> render_click()
 
-    assert_patch(view, "/server/ui-service/services/#{service["id"]}/edit")
-    assert has_element?(view, "input[name='service[id]'][value='dns'][readonly]")
-    assert has_element?(view, "input[name='service[listen_address]'][value='127.0.0.1']")
-
-    assert has_element?(
-             view,
-             "select[name='service[desired_state]'] option[value='running'][selected]"
-           )
-
-    assert has_element?(view, "input[name='service[port]'][value='5300']")
+    assert_patch(view, "/server/ui-service/dns")
+    assert has_element?(view, "textarea[name='service[addresses]']", "127.0.0.1")
+    assert has_element?(view, "input[type=checkbox][name='service[desired_state]'][checked]")
+    assert has_element?(view, "#dns-udp-settings input[type=number][value='5300']")
+    assert has_element?(view, "#dns-tcp-settings input[type=number][value='5300']")
 
     view |> form("#service-form", service: %{desired_state: "stopped"}) |> render_submit()
 
@@ -292,14 +320,12 @@ defmodule YellowDog.Management.UITest do
 
     assert persisted["id"] == service["id"]
     assert persisted["instance_id"] == service["instance_id"]
-    # The form persists the DNS policy defaults explicitly; ConfigSpec treats
-    # absent keys as these same values.
-    assert persisted["config"] ==
-             Map.merge(service["config"], %{
-               "recursion" => false,
-               "allow_query" => [],
-               "forward_zones" => []
-             })
+    assert persisted["config"]["listen"] == %{"mode" => "specific", "addresses" => ["127.0.0.1"]}
+    assert persisted["config"]["transports"]["udp"] == %{"enabled" => true, "port" => 5300}
+    assert persisted["config"]["transports"]["tcp"] == %{"enabled" => true, "port" => 5300}
+
+    assert Map.take(persisted["config"], ~w(recursion allow_query forward_zones)) ==
+             Map.take(service["config"], ~w(recursion allow_query forward_zones))
   end
 
   defp mutate(operation, params) do
@@ -315,23 +341,24 @@ defmodule YellowDog.Management.UITest do
     view |> element("#worker-tabs a[href='/server/settings/services']") |> render_click()
     assert_patch(view, "/server/settings/services")
 
-    view
-    |> element("#dns-services a[href='/server/settings/services/#{service["id"]}/edit']")
-    |> render_click()
+    {:ok, view, _html} = live(conn, "/server/settings/dns/policy")
 
-    assert_patch(view, "/server/settings/services/#{service["id"]}/edit")
+    assert has_element?(
+             view,
+             "#service-references a[href='/server/settings/dns/acl/#{service["id"]}']"
+           )
 
     {:ok, data, _html} =
       view
-      |> element("#service-references a[href='/server/settings/dns/zones']")
+      |> element("#service-references a[href='/management/zones']")
       |> render_click()
-      |> follow_redirect(conn, "/server/settings/dns/zones")
+      |> follow_redirect(conn, "/management/zones")
 
-    assert has_element?(data, "#server-selection-form-select option[value='settings'][selected]")
+    refute has_element?(data, "#server-selection-form-select option[value='settings'][selected]")
 
     assert has_element?(
              data,
-             "#app-sidebar-navigation a[data-nav-item='dns_zones'][href='/server/settings/dns/zones'][aria-current='page']"
+             "#app-sidebar-navigation a[data-nav-item='dns_zones'][href='/management/zones'][aria-current='page']"
            )
   end
 
@@ -374,15 +401,20 @@ defmodule YellowDog.Management.UITest do
              "#worker-tabs a[href='/server/settings/services'][aria-current='page']"
            )
 
-    view
-    |> element("#dns-services a[href='/server/settings/services/#{service["id"]}/edit']")
-    |> render_click()
-
-    assert_patch(view, "/server/settings/services/#{service["id"]}/edit")
+    {:ok, view, _html} =
+      view
+      |> element("a[href='/server/settings/dns/policy']", "DNS data and resolution policy")
+      |> render_click()
+      |> follow_redirect(conn, "/server/settings/dns/policy")
 
     assert has_element?(
              view,
-             "#service-references a[href='/server/settings/dns/zones']",
+             "#service-references a[href='/server/settings/dns/acl/#{service["id"]}']"
+           )
+
+    assert has_element?(
+             view,
+             "#service-references a[href='/management/zones']",
              "Edit Zone data and assignments"
            )
 

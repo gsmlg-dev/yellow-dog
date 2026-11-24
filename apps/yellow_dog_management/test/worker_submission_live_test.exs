@@ -7,6 +7,8 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
 
   alias YellowDog.Management.{Audit, Domain, DomainFixtures, Idempotency, Repo}
 
+  alias YellowDog.ManagementUI.DnsSettings
+
   @endpoint YellowDog.ManagementUI.Endpoint
 
   setup do
@@ -103,7 +105,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
   test "explicitly reopening a Service retires an unresolved submit even with identical fields",
        %{conn: conn, worker: worker} do
     service = mutate("put_service", DomainFixtures.service(worker["id"], worker["revision"]))
-    path = "/server/submission-worker/services/#{service["id"]}/edit"
+    path = "/server/submission-worker/dns"
     {:ok, view, _} = live(conn, path)
 
     mutate("update_worker", %{
@@ -112,84 +114,87 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
       "expected_revision" => service["worker_revision"]
     })
 
-    request = %{
-      "service" => %{
-        "id" => service["instance_id"],
-        "listen_address" => service["config"]["listen_address"],
-        "port" => to_string(service["config"]["port"]),
-        "desired_state" => service["desired_state"]
-      },
-      "_submission" => intent(view)
-    }
+    request = %{"service" => DnsSettings.form_params(service), "_submission" => intent(view)}
 
     render_submit(view, "save_service", request)
     failed = counts()
     render_patch(view, path)
     render_submit(view, "save_service", request)
     assert counts() == failed
-    assert has_element?(view, "#service-form input[value='#{service["instance_id"]}']")
+
+    assert has_element?(
+             view,
+             "#dns-udp-settings input[type=number][value='#{service["config"]["port"]}']"
+           )
   end
 
   test "invalid service ports preserve every typed field and make no database command", %{
     conn: conn
   } do
-    {:ok, view, _} = live(conn, "/server/submission-worker/services/new")
+    {:ok, view, _} = live(conn, "/server/submission-worker/dns")
 
     before = counts()
 
     html =
       submit_event(view, "save_service", %{
-        "service" => %{
-          "id" => "typed-dns",
-          "listen_address" => "192.0.2.53",
-          "port" => "invalid",
-          "desired_state" => "running"
-        }
+        "service" => dns_fields("192.0.2.53", "invalid")
       })
 
-    assert html =~ "Port must be an integer"
+    assert html =~ "UDP port must be an integer"
     refute html =~ "Configuration saved"
-    assert has_element?(view, "#service-form input[name='service[id]'][value='typed-dns']")
 
     assert has_element?(
              view,
-             "#service-form input[name='service[listen_address]'][value='192.0.2.53']"
+             "#service-form textarea[name='service[addresses]']",
+             "192.0.2.53"
            )
 
-    assert has_element?(view, "#service-form input[name='service[port]'][value='invalid']")
-    assert has_element?(view, "#service-form option[value='running'][selected]")
+    assert has_element?(view, "#dns-udp-settings input[type=number][value='invalid']")
+
+    assert has_element?(
+             view,
+             "#service-form input[type=checkbox][name='service[desired_state]'][checked]"
+           )
+
     assert counts() == before
     assert Domain.list_services("submission-worker") == []
   end
 
   test "database-rejected service saves retain input and stable retry results", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/server/submission-worker/services/new")
+    {:ok, view, _} = live(conn, "/server/submission-worker/dns")
     reject_inserts("management_services", "reject_service_submission")
 
-    request = %{
-      "service" => %{
-        "id" => "typed-dns",
-        "listen_address" => "127.0.0.2",
-        "port" => "5302",
-        "desired_state" => "running"
-      }
-    }
+    request = %{"service" => dns_fields("127.0.0.2", "5302")}
 
     before = counts()
     html = submit_event(view, "save_service", request)
     assert html =~ "Database constraint"
-    assert has_element?(view, "#service-form input[name='service[id]'][value='typed-dns']")
-    assert has_element?(view, "#service-form input[name='service[port]'][value='5302']")
-    assert has_element?(view, "#service-form option[value='running'][selected]")
+    assert has_element?(view, "#dns-udp-settings input[type=number][value='5302']")
+
+    assert has_element?(
+             view,
+             "#service-form input[type=checkbox][name='service[desired_state]'][checked]"
+           )
+
     failed = counts()
     assert failed == increment(before)
     Repo.query!("DROP TRIGGER reject_service_submission ON management_services")
     submit_event(view, "save_service", request)
     assert counts() == failed
     assert Domain.list_services("submission-worker") == []
-    html = submit_event(view, "save_service", put_in(request, ["service", "port"], "5303"))
+
+    html =
+      submit_event(
+        view,
+        "save_service",
+        put_in(request, ["service", "transports", "udp", "port"], "5303")
+      )
+
     assert html =~ "Configuration saved"
-    assert [%{"config" => %{"port" => 5303}}] = Domain.list_services("submission-worker")
+
+    assert [%{"config" => %{"transports" => %{"udp" => %{"port" => 5303}}}}] =
+             Domain.list_services("submission-worker")
+
     assert counts() == increment(failed)
   end
 
@@ -198,7 +203,7 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
   } do
     {:ok, view, _} = live(conn, "/server/submission-worker/dashboard")
     assert has_element?(view, "#worker-edit-form button[type='submit'][phx-disable-with]")
-    render_patch(view, "/server/submission-worker/services/new")
+    render_patch(view, "/server/submission-worker/dns")
     assert has_element?(view, "#service-form button[type='submit'][phx-disable-with]")
     render_patch(view, "/server/submission-worker/targets")
     refute has_element?(view, "button[phx-click='confirm_target']")
@@ -225,6 +230,12 @@ defmodule YellowDog.Management.WorkerSubmissionLiveTest do
 
     assert counts() == before
     assert has_element?(view, "#worker-edit-form input[value='Before']")
+  end
+
+  defp dns_fields(address, port) do
+    DnsSettings.form_params(nil)
+    |> Map.merge(%{"mode" => "specific", "addresses" => address})
+    |> put_in(["transports", "udp", "port"], port)
   end
 
   defp intent(view) do

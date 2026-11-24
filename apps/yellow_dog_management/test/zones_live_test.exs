@@ -154,7 +154,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
       assert version_id == version["id"]
 
       {:ok, worker_view, _} =
-        live(build_conn(), "/server/#{service["worker_id"]}/services/#{service["id"]}/edit")
+        live(build_conn(), "/server/#{service["worker_id"]}/dns/policy")
 
       assert has_element?(worker_view, "#service-references", zone["id"])
 
@@ -351,7 +351,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
 
     assert has_element?(view, "#zone-count[data-displayed='2'][data-total='2']")
     assert render(view) =~ "Global reusable Zone library"
-    assert render(view) =~ "Forward, stub, cloud and additional record types remain pending"
+    assert render(view) =~ "Only authoritative Zones are supported"
     refute has_element?(view, "select[name='filter[type]']")
     filter(view, "ALPHA.EXAMPLE")
     assert has_element?(view, "#zone-filter[value='ALPHA.EXAMPLE']")

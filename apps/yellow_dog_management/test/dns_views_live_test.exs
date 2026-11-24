@@ -348,7 +348,7 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert snapshot() == before_read
   end
 
-  test "single DNS Service preselects and multiple Services require a choice without query inference",
+  test "the single DNS service preselects without reading scope from query parameters",
        %{
          conn: conn
        } do
@@ -370,48 +370,49 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert get_resp_header(get(conn, selector(selected)), "www-authenticate") == []
 
     assert has_element?(view, "#dns-view-form[phx-hook='ResetForm']")
-    alternate = scope(selected.worker["id"], "dns-second")
-    {:ok, selector_view, _html} = live(conn, selector(selected))
-    refute has_element?(selector_view, "#dns-view-form")
-    assert has_element?(selector_view, "button[data-service-id='#{alternate.service["id"]}']")
-
-    selector_view
-    |> element("button[data-service-id='#{alternate.service["id"]}']")
-    |> render_click()
-
-    assert_patch(selector_view, path(alternate))
+    alternate = scope("view-alternate")
+    refute has_element?(view, "button[data-service-id='#{alternate.service["id"]}']")
+    {:ok, other_view, _html} = live(conn, selector(alternate))
+    assert has_element?(other_view, "#dns-view-form")
+    assert has_element?(other_view, "button[data-service-id='#{alternate.service["id"]}']")
   end
 
-  test "global Worker selector includes disconnected Workers and confirms discarding unsaved scope",
-       %{conn: conn} do
+  test "Views are global resources and the schema modal requires target Workers", %{conn: conn} do
     first = scope("view-selected")
     second = scope("view-disconnected")
-    {:ok, view, html} = live(conn, "/management/dns/views")
-    assert html =~ second.worker["name"]
+    {:ok, view, _html} = live(conn, "/management/dns/views")
+    refute has_element?(view, "#dns-view-worker-selector")
     refute has_element?(view, "#dns-view-form")
+    html = view |> element("#dns-view-new") |> render_click()
+    assert html =~ "SchemaModal"
+    assert html =~ first.worker["name"]
+    assert html =~ second.worker["name"]
 
-    render_change(view, "select_worker", %{"scope" => %{"worker_id" => first.worker["id"]}})
-    assert_patch(view, selector(first))
-    assert has_element?(view, "#dns-view-form")
-    render_change(view, "validate", %{"view" => fields("unsaved")})
-    render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
-    assert has_element?(view, "#dns-view-unsaved-scope")
-    assert has_element?(view, "input[name='view[name]'][value='unsaved']")
-    click_event(view, "cancel_scope")
-    refute has_element?(view, "#dns-view-unsaved-scope")
-    assert has_element?(view, "input[name='view[name]'][value='unsaved']")
+    input = %{
+      "name" => "shared",
+      "priority" => 10,
+      "enabled" => true,
+      "recursion_enabled" => true,
+      "client_rules" => ["allow networks 127.0.0.1/32"],
+      "worker_ids" => []
+    }
 
-    render_change(view, "select_worker", %{"scope" => %{"worker_id" => second.worker["id"]}})
-    click_event(view, "confirm_scope")
-    assert_patch(view, selector(second))
-    assert has_element?(view, "input[name='view[name]'][value='']")
+    render_hook(view, "submit_modal", input)
+    refute has_element?(view, "#dns-view-resources")
 
-    refute Enum.any?(
-             elem(Domain.list_dns_views(first.worker["id"], first.service["id"]), 1),
-             &(&1["name"] == "unsaved")
-           )
+    render_hook(view, "submit_modal", %{
+      input
+      | "worker_ids" => [first.worker["id"], second.worker["id"]]
+    })
 
-    assert has_element?(view, "#dns-views-table")
+    assert has_element?(view, "#dns-view-resources", "shared")
+
+    for worker <- [first.worker, second.worker] do
+      assert {:ok, preview} = Domain.preview_target(worker["id"])
+
+      assert [%{"config" => %{"views" => [%{"recursion_enabled" => true, "priority" => 10}]}}] =
+               preview["plan"]["services"]
+    end
   end
 
   test "Worker without DNS and malformed or foreign Service IDs cannot mutate", %{conn: conn} do
@@ -515,8 +516,18 @@ defmodule YellowDog.Management.DnsViewsLiveTest do
     assert has_element?(view, "input[name='view[name]'][value='']")
     assert_push_event(view, "set_form_values", %{id: "dns-view-form", values: values})
     assert values == Map.new(fields(""), fn {field, value} -> {"view[#{field}]", value} end)
-    assert render(view) =~ "not executed/exported"
-    assert business_snapshot() == before_save
+    assert render(view) =~ "publish a Worker target"
+    after_save = business_snapshot()
+    assert Map.delete(after_save, Worker) == Map.delete(before_save, Worker)
+    assert [worker_before] = before_save[Worker]
+    assert [worker_after] = after_save[Worker]
+
+    assert worker_after == %{
+             worker_before
+             | revision: worker_before.revision + 1,
+               updated_at: worker_after.updated_at
+           }
+
     assert get(conn, export_path).resp_body == export_before
   end
 

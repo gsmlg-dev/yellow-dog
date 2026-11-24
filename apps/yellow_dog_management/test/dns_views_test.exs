@@ -4,6 +4,7 @@ defmodule YellowDog.Management.DnsViewsTest do
   alias YellowDog.Management.{
     Assignment,
     Audit,
+    Caller,
     ConfigCompiler,
     DnsAcl,
     DnsAcls,
@@ -11,6 +12,7 @@ defmodule YellowDog.Management.DnsViewsTest do
     DnsViews,
     Domain,
     Idempotency,
+    IntegrationSettings,
     Repo,
     ResourceVersion,
     Rrset,
@@ -100,6 +102,126 @@ defmodule YellowDog.Management.DnsViewsTest do
 
     assert receipts() == before
     assert {:ok, [^edited]} = DnsViews.list(scope["worker_id"], scope["service_id"])
+  end
+
+  test "one resource is assigned to multiple registered Workers and projects explicit ordered rules",
+       %{scope: scope} do
+    second = mutate("create_worker", %{"id" => "second-worker", "name" => "Second Worker"})
+    third = mutate("create_worker", %{"id" => "third-worker", "name" => "Third Worker"})
+    original = worker_revisions([scope["worker_id"], second["id"], third["id"]])
+    assert DnsViews.resources() == []
+    refute DnsViews.has_assignments?(scope["worker_id"])
+
+    attrs = %{
+      "name" => "shared",
+      "priority" => 7,
+      "enabled" => true,
+      "recursion_enabled" => true,
+      "client_rules" => [
+        %{"action" => "deny", "kind" => "networks", "networks" => ["192.0.2.7"]},
+        %{"action" => "allow", "kind" => "any"}
+      ],
+      "worker_ids" => [scope["worker_id"], second["id"], scope["worker_id"]]
+    }
+
+    assert {:ok, resource} = DnsViews.save_resource(ui_caller(), attrs)
+    id = resource["id"]
+    assert resource["worker_ids"] == [second["id"], scope["worker_id"]]
+    assert [^resource] = DnsViews.resources()
+    assert DnsViews.has_assignments?(scope["worker_id"])
+    assert DnsViews.has_assignments?(second["id"])
+    refute DnsViews.has_assignments?(third["id"])
+
+    assert DnsViews.target_views(second["id"]) == [
+             %{
+               "id" => id,
+               "priority" => 7,
+               "recursion_enabled" => true,
+               "client_rules" => [
+                 %{"action" => "deny", "kind" => "networks", "networks" => ["192.0.2.7/32"]},
+                 %{"action" => "allow", "kind" => "any"}
+               ]
+             }
+           ]
+
+    assert [%{"id" => ^id, "name" => "shared"}] = DnsViews.references(second["id"], 1)
+    assert {:ok, %{"id" => ^id}} = DnsViews.get(scope["worker_id"], scope["service_id"], id)
+    error("conflict", "delete_dns_view", edit(scope, resource))
+
+    assert worker_revisions(Map.keys(original)) ==
+             Map.merge(original, %{
+               scope["worker_id"] => original[scope["worker_id"]] + 1,
+               second["id"] => original[second["id"]] + 1
+             })
+
+    updated_attrs =
+      Map.merge(attrs, %{
+        "id" => id,
+        "expected_revision" => resource["revision"],
+        "enabled" => false,
+        "worker_ids" => [second["id"], third["id"]]
+      })
+
+    assert {:ok, %{"id" => ^id, "revision" => 2} = updated} =
+             DnsViews.save_resource(ui_caller(), updated_attrs)
+
+    assert DnsViews.target_views(second["id"]) == []
+    assert DnsViews.has_assignments?(second["id"])
+    refute DnsViews.has_assignments?(scope["worker_id"])
+    assert DnsViews.has_assignments?(third["id"])
+
+    assert worker_revisions(Map.keys(original)) ==
+             Map.merge(original, %{
+               scope["worker_id"] => original[scope["worker_id"]] + 2,
+               second["id"] => original[second["id"]] + 2,
+               third["id"] => original[third["id"]] + 1
+             })
+
+    assert {:error, %{code: "revision_conflict"}} =
+             DnsViews.save_resource(ui_caller(), updated_attrs)
+
+    assert {:ok, ^updated} = DnsViews.delete_resource(ui_caller(), id, updated["revision"])
+    assert DnsViews.resources() == []
+    refute DnsViews.has_assignments?(second["id"])
+    refute DnsViews.has_assignments?(third["id"])
+  end
+
+  test "names are unique within one Worker and assignments validate before writing",
+       %{scope: scope} do
+    second = mutate("create_worker", %{"id" => "other-worker", "name" => "Other Worker"})
+    attrs = %{"name" => "same-name", "worker_ids" => [scope["worker_id"]]}
+    assert {:ok, first} = DnsViews.save_resource(ui_caller(), attrs)
+
+    assert {:ok, second_view} =
+             DnsViews.save_resource(
+               ui_caller(),
+               Map.merge(attrs, %{"worker_ids" => [second["id"]], "priority" => 12})
+             )
+
+    refute first["id"] == second_view["id"]
+    prior = worker_revisions([scope["worker_id"], second["id"]])
+
+    for {worker_ids, error} <- [
+          {[], "invalid_request"},
+          {["missing-worker"], "not_found"},
+          {[second["id"]], "conflict"}
+        ] do
+      assert {:error, %{code: ^error}} =
+               DnsViews.save_resource(
+                 ui_caller(),
+                 Map.merge(attrs, %{
+                   "id" => first["id"],
+                   "expected_revision" => first["revision"],
+                   "worker_ids" => worker_ids
+                 })
+               )
+    end
+
+    assert worker_revisions(Map.keys(prior)) == prior
+    assert Enum.sort(DnsViews.resources()) == Enum.sort([first, second_view])
+
+    assert {:error, %{code: "forbidden"}} =
+             DnsViews.save_resource(%{ui_caller() | scopes: ["config:read"]}, attrs)
   end
 
   test "custom Views have complete desired DTOs and numeric priority ordering with default last",
@@ -443,9 +565,10 @@ defmodule YellowDog.Management.DnsViewsTest do
              DnsViews.get(scope["worker_id"], scope["service_id"], updated["id"])
   end
 
-  test "View CRUD preserves business rows, named ACLs, immutable targets and export bytes", %{
-    scope: scope
-  } do
+  test "View CRUD invalidates the Worker revision while preserving immutable targets and export bytes",
+       %{
+         scope: scope
+       } do
     zone = mutate("create_zone", Fixtures.zone())
     version = mutate("confirm_zone", %{"id" => zone["id"], "expected_revision" => 1})
     worker = Repo.get!(Worker, scope["worker_id"])
@@ -482,7 +605,8 @@ defmodule YellowDog.Management.DnsViewsTest do
     assert updated in views
     assert receipts() == receipts
     mutate("delete_dns_view", edit(scope, updated))
-    assert business_snapshot() == before
+    assert Map.delete(business_snapshot(), Worker) == Map.delete(before, Worker)
+    assert Repo.get!(Worker, worker.id).revision == hd(before[Worker]).revision + 3
     assert {:ok, ^exported} = ConfigCompiler.export_target(worker.id, target["revision"])
   end
 
@@ -507,6 +631,21 @@ defmodule YellowDog.Management.DnsViewsTest do
     do: assert({:error, %{code: ^code}} = command(operation, params))
 
   defp receipts, do: {Repo.aggregate(Audit, :count), Repo.aggregate(Idempotency, :count)}
+
+  defp worker_revisions(ids), do: Map.new(ids, &{&1, Repo.get!(Worker, &1).revision})
+
+  defp ui_caller do
+    %Caller{
+      issuer: "urn:yellow-dog:trusted-local",
+      subject: "dns-view-resource-test",
+      scopes: IntegrationSettings.scopes(),
+      source: :ui,
+      correlation_id: Ecto.UUID.generate(),
+      expires_at: System.system_time(:second) + 600,
+      policy_revision: IntegrationSettings.get().policy_revision,
+      authentication: :trusted_local
+    }
+  end
 
   defp replay(operation, params) do
     key = Ecto.UUID.generate()

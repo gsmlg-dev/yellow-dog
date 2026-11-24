@@ -1,10 +1,12 @@
 """Real independent releases, disposable PostgreSQL, the Worker WebSocket channel and DNS sockets."""
 import base64
+import http.client
 import json
 import os
 from pathlib import Path
 import signal
 import socket
+import ssl
 import struct
 import subprocess
 import sys
@@ -229,9 +231,7 @@ def read_exact(connection, size):
 
 
 def dns_query(tcp=False):
-    query = struct.pack("!6H", 1234, 0, 1, 0, 0, 0)
-    query += b"".join(bytes([len(label)]) + label.encode() for label in "ns.worker-smoke.test".split("."))
-    query += b"\x00" + struct.pack("!2H", 1, 1)
+    query = dns_request()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM if tcp else socket.SOCK_DGRAM) as client:
         client.settimeout(1)
         if tcp:
@@ -241,9 +241,117 @@ def dns_query(tcp=False):
         else:
             client.sendto(query, ("127.0.0.1", dns_port))
             response = client.recv(65535)
+    assert_dns_answer(response)
+
+
+def dns_request(identifier=1234):
+    query = struct.pack("!6H", identifier, 0, 1, 0, 0, 0)
+    query += b"".join(bytes([len(label)]) + label.encode() for label in "ns.worker-smoke.test".split("."))
+    return query + b"\x00" + struct.pack("!2H", 1, 1)
+
+
+def assert_dns_answer(response, expected_id=1234):
     identifier, flags, questions, answers, _, _ = struct.unpack("!6H", response[:12])
-    assert identifier == 1234 and flags & 0x0400 and flags & 15 == 0 and questions == 1 and answers == 1
+    assert identifier == expected_id and flags & 0x0400 and flags & 15 == 0 and questions == 1 and answers == 1
     assert b"\xc0\x00\x02\x2c" in response, "Expected A 192.0.2.44"
+
+
+def browser(action=None, payload=None):
+    args = ["node", "apps/yellow_dog_management/test/worker_connection_browser_smoke.mjs", base, str(evidence)]
+    input_path = evidence / "dns-browser-input.json"
+    if action:
+        args.append(action)
+        input_path.write_text(json.dumps({"worker_id": worker_id, **(payload or {})}))
+    process = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               text=True, start_new_session=True)
+    processes["browser"] = process
+    try:
+        output, _ = process.communicate(timeout=90)
+        assert process.returncode == 0, output
+        print(output.strip(), flush=True)
+    finally:
+        input_path.unlink(missing_ok=True)
+        stop("browser")
+
+
+def test_certificate(label):
+    cert, key = evidence / f"{label}.pem", evidence / f"{label}.key"
+    command(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+             "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+             "-days", "1", "-keyout", str(key), "-out", str(cert)])
+    try:
+        return {"certificate": cert.read_text(), "private_key": key.read_text()}
+    finally:
+        key.unlink()
+
+
+def tls_context():
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def dot_query(port, certificate):
+    with socket.create_connection(("127.0.0.1", port), timeout=1) as tcp:
+        with tls_context().wrap_socket(tcp, server_hostname="localhost") as client:
+            assert client.getpeercert(binary_form=True) == ssl.PEM_cert_to_DER_cert(certificate)
+            query = dns_request()
+            client.sendall(struct.pack("!H", len(query)) + query)
+            response = read_exact(client, struct.unpack("!H", read_exact(client, 2))[0])
+            assert_dns_answer(response)
+
+
+def doh_query(port):
+    client = http.client.HTTPSConnection("127.0.0.1", port, context=tls_context(), timeout=1)
+    try:
+        client.request("POST", "/dns-query", dns_request(), {"Content-Type": "application/dns-message"})
+        response = client.getresponse()
+        assert response.status == 200 and response.headers["Content-Type"] == "application/dns-message"
+        assert_dns_answer(response.read())
+    finally:
+        client.close()
+
+
+def doq_query(port, certificate, ipv6=False):
+    query = base64.b64encode(dns_request(0)).decode()
+    der = base64.b64encode(ssl.PEM_cert_to_DER_cert(certificate)).decode()
+    ip = "{0, 0, 0, 0, 0, 0, 0, 1}" if ipv6 else "{127, 0, 0, 1}"
+    expression = f'''
+    ip = {ip}
+    {{:ok, endpoint}} = Quic.client(ip: ip, tls: [alpn: ["doq"], cacerts: [Base.decode64!("{der}")], reference_identity: {{:dns_id, "localhost"}}])
+    try do
+      {{:ok, connection}} = Quic.connect(endpoint, {{ip, {port}}})
+      :ok = Quic.attach(connection, self())
+      receive do
+        {{:quic_ready, ^connection, %{{alpn: "doq"}}}} -> :ok
+        {{:quic_closed, ^connection, reason}} -> raise "DoQ handshake failed: #{{inspect(reason)}}"
+      after
+        3_000 -> raise "DoQ handshake timed out"
+      end
+      {{:ok, stream}} = Quic.open_stream(connection, :bidi)
+      packet = Base.decode64!("{query}")
+      {{:ok, _}} = Quic.send_stream(stream, <<byte_size(packet)::16, packet::binary>>, true)
+      read = fn
+        _read, _buffer, 0 -> raise "DoQ answer timed out"
+        read, buffer, attempts ->
+          {{:ok, events}} = Quic.read(stream, 16_384)
+          {{buffer, fin?}} = Enum.reduce(events, {{buffer, false}}, fn
+            {{:data, _, bytes}}, {{acc, _}} -> {{acc <> bytes, false}}
+            {{:fin, _}}, {{acc, _}} -> {{acc, true}}
+          end)
+          if fin?, do: buffer, else: (Process.sleep(20); read.(read, buffer, attempts - 1))
+      end
+      <<length::16, answer::binary-size(length)>> = read.(read, <<>>, 100)
+      IO.puts(Base.encode64(answer))
+    after
+      GenServer.stop(endpoint)
+    end
+'''
+    result = subprocess.run([worker_binary, "rpc", expression], env=worker_envs["worker"],
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert_dns_answer(base64.b64decode(result.stdout.strip().splitlines()[-1]), expected_id=0)
 
 
 def stopped():
@@ -292,15 +400,7 @@ try:
     html = request("/management/servers")
     assert "worker[name]" in html and "worker[id]" not in html and "worker[profile_name]" not in html
     assert "Workers" in html and "server-selector-records" in html and "worker-bootstrap" not in html
-    browser = subprocess.Popen(["node", "apps/yellow_dog_management/test/worker_connection_browser_smoke.mjs", base, str(evidence)],
-                               env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
-    processes["browser"] = browser
-    try:
-        browser_output, _ = browser.communicate(timeout=90)
-        assert browser.returncode == 0, browser_output
-        print(browser_output.strip(), flush=True)
-    finally:
-        stop("browser")
+    browser()
     start("worker", worker_binary)
     until(lambda: worker()["connection_status"] == "connected", "Worker did not authenticate")
     assert worker()["services"] == [] and worker()["reported_services"] == {}
@@ -368,6 +468,72 @@ try:
         assert applied(stopped_revision, "stopped") and stopped()
         assert worker()["applied_revision"] < bad_revision
     print("Failed target preserves last committed stopped runtime and revision: PASS", flush=True)
+
+    original, rotated, offline = [test_certificate(label) for label in ("original", "rotated", "offline")]
+    dot_port, doh_port, doq_port = (free_port() for _ in range(3))
+    old_service = worker()["services"][0]
+
+    with socket.socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        blocked_port = occupied.getsockname()[1]
+        ports = {"udp": dns_port, "tcp": blocked_port, "dot": dot_port, "doh": doh_port, "doq": doq_port}
+        browser("setup", {**original, "ports": ports})
+        saved = worker()["services"]
+        assert len(saved) == 1 and saved[0]["id"] == old_service["id"]
+        assert saved[0]["config"]["listen"] == {"mode": "specific", "addresses": ["127.0.0.1", "::1"]}
+        assert saved[0]["config"]["transports"]["tcp"]["listen"] == {"mode": "all_ipv4"}
+        assert {name: saved[0]["config"]["transports"][name]["port"] for name in ports} == ports
+        assert worker()["applied_revision"] == stopped_revision and stopped()
+
+        browser("publish")
+        modern_revision = request(f"/api/workers/{worker_id}/targets/latest")["revision"]
+        until(lambda: applied(modern_revision, "partial"), "TCP failure did not leave other protocols running")
+        reported = worker()["reported_services"]["dns"]["protocols"]
+        assert reported["tcp"]["failure"] == {"address": "0.0.0.0", "reason": "eaddrinuse"}
+        assert reported["tcp"]["port"] == blocked_port
+        assert all(reported[name]["state"] == "running" for name in ("udp", "dot", "doh", "doq"))
+        dns_query()
+        dot_query(dot_port, original["certificate"])
+        doh_query(doh_port)
+        doq_query(doq_port, original["certificate"], ipv6=True)
+        print("Browser DNS configuration, publication, protocol-specific failure and real queries: PASS", flush=True)
+
+        browser("fix-tcp", {"ports": {"tcp": dns_port}})
+        modern_revision = request(f"/api/workers/{worker_id}/targets/latest")["revision"]
+        until(lambda: applied(modern_revision, "running"), "Corrected TCP listener did not start")
+        dns_query(tcp=True)
+
+    browser("delete")
+    browser("rotate", {**rotated, "private_key": original["private_key"]})
+    until(lambda: worker()["apply_error"] == "invalid_dns_certificate", "Worker did not report the invalid rotation")
+    dot_query(dot_port, original["certificate"])
+    doq_query(doq_port, original["certificate"])
+    browser("rotate", rotated)
+    until(lambda: worker()["reported_services"]["dns"]["protocols"]["dot"].get("certificate_revision") == 3,
+          "Online certificate replacement did not reach the Worker")
+    dot_query(dot_port, rotated["certificate"])
+    doq_query(doq_port, rotated["certificate"])
+    assert applied(modern_revision, "running")
+
+    stop("worker")
+    browser("rotate", offline)
+    start("worker", worker_binary)
+    until(lambda: worker()["reported_services"]["dns"]["protocols"]["doq"].get("certificate_revision") == 4,
+          "Reconnecting Worker did not catch up on certificate rotation")
+    assert applied(modern_revision, "running")
+    dot_query(dot_port, offline["certificate"])
+    doh_query(doh_port)
+    doq_query(doq_port, offline["certificate"])
+
+    stop("management")
+    stop("worker")
+    start("worker", worker_binary)
+    dot_query(dot_port, offline["certificate"])
+    doq_query(doq_port, offline["certificate"])
+    start("management", management_binary)
+    until(lambda: request("/management"), "Management did not restart")
+    print("Certificate delete protection, failed and successful hot reload, reconnect and offline TLS restart: PASS", flush=True)
 
     stop("worker")
     before_ids = {value["id"] for value in request("/api/workers")}

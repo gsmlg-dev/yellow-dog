@@ -10,7 +10,7 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
   """
   use Phoenix.Channel, log_join: false
   require Logger
-  alias YellowDog.Management.{Domain, WorkerConnections}
+  alias YellowDog.Management.{DnsCertificates, Domain, WorkerConnections}
 
   @impl true
   def join(
@@ -26,6 +26,7 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
     case join_authenticate(report, socket) do
       {:ok, %{"target" => target}} ->
         :ok = Phoenix.PubSub.subscribe(YellowDog.ManagementUI.PubSub, "worker_target:" <> id)
+        :ok = DnsCertificates.subscribe()
         send(self(), {:push_target, target})
         {:ok, assign(socket, :pushed_revision, nil)}
 
@@ -75,6 +76,22 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
     end
   end
 
+  def handle_info({:dns_certificate_updated, certificate_id}, socket) do
+    worker_id = socket.assigns.worker_id
+
+    with {:ok, target} <- Domain.get_target(worker_id),
+         true <- certificate_id in DnsCertificates.target_ids(target) do
+      if WorkerConnections.authorized?(worker_id, socket.assigns.worker_token.()) do
+        push_certificates(socket, [certificate_id])
+        {:noreply, socket}
+      else
+        {:stop, :normal, socket}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # A crash here would log the join message, which carries the raw token.
@@ -100,8 +117,16 @@ defmodule YellowDog.ManagementUI.WorkerChannel do
   defp authenticate(_report, _socket), do: {:error, "unauthorized"}
 
   defp push_target(socket, target) do
+    push_certificates(socket, DnsCertificates.target_ids(target))
     push(socket, "target", %{"target" => target})
     assign(socket, :pushed_revision, target && target["revision"])
+  end
+
+  defp push_certificates(socket, ids) do
+    case DnsCertificates.payloads(ids) do
+      [] -> :ok
+      certificates -> push(socket, "dns_certificates", %{"certificates" => certificates})
+    end
   end
 
   defp newer?(%{"revision" => revision}, nil), do: is_integer(revision)

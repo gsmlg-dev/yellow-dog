@@ -31,11 +31,15 @@ defmodule YellowDog.ManagementUI.Navigation do
 
   @routes [
     {:data, :dns_zones,
-     for(
-       prefix <- [["management", "zones"], ["server", :server_id, "dns", "zones"]],
-       suffix <- @zone_suffixes,
-       do: prefix ++ suffix
-     )},
+     [
+       ["management", "zones", "cloud"]
+       | for(
+           prefix <- [["management", "zones"], ["server", :server_id, "dns", "zones"]],
+           suffix <- @zone_suffixes,
+           do: prefix ++ suffix
+         )
+     ]},
+    {:data, :dns_forward_zones, [["management", "dns", "forward-zones"]]},
     {:data, :dns_views,
      [
        ["management", "dns", "views"],
@@ -48,6 +52,7 @@ defmodule YellowDog.ManagementUI.Navigation do
        ["server", :server_id, "dns", "acl"],
        ["server", :server_id, "dns", "acl", :service_id]
      ]},
+    {:data, :dns_policy, [["server", :server_id, "dns", "policy"]]},
     {:nodes, :workers, [["management", "servers"], ["server"]]},
     {:nodes, :enrollment, [["management", "servers", "enrollment"]]},
     {:nodes, :worker_services,
@@ -73,6 +78,8 @@ defmodule YellowDog.ManagementUI.Navigation do
     {:monitoring, :tool_whois, [["tool", "whois"]]},
     {:monitoring, :tool_geoip, [["tool", "geoip"]]},
     {:system, :api_mcp, [["system", "integrations"]]},
+    {:system, :certificates, [["system", "certificates"]]},
+    {:system, :cloud_providers, [["system", "cloud-providers"]]},
     {:system, :backups, [["system", "backups"], ["system", "backups", "restore"]]},
     {:system, :process_map, [["system", "process-map"]]}
   ]
@@ -126,27 +133,18 @@ defmodule YellowDog.ManagementUI.Navigation do
   end
 
   def groups(:data, selection, current_path) do
-    views_destination = service_destination(:dns_views, selection, current_path)
     acls_destination = service_destination(:dns_acl, selection, current_path)
 
     [
       group("DNS", [
-        contextual(
-          :dns_zones,
-          "Zones and records",
-          "folder-outline",
-          selection,
-          :dns_zones,
-          "/management/zones"
+        available(:dns_zones, "Zones and records", "folder-outline", "/management/zones"),
+        available(
+          :dns_forward_zones,
+          "Forward zones",
+          "server-network",
+          "/management/dns/forward-zones"
         ),
-        contextual(
-          :dns_views,
-          "Views",
-          "eye",
-          selection,
-          views_destination,
-          "/management/dns/views"
-        ),
+        available(:dns_views, "Views", "eye", "/management/dns/views"),
         contextual(
           :dns_acls,
           "ACLs / matching rules",
@@ -154,6 +152,15 @@ defmodule YellowDog.ManagementUI.Navigation do
           selection,
           acls_destination,
           "/management/dns/acl"
+        ),
+        scoped(
+          :dns_policy,
+          "Resolution policy",
+          "cog",
+          selection,
+          :server,
+          :dns_policy,
+          "Select a Worker"
         )
       ]),
       group("Service data", [
@@ -200,6 +207,8 @@ defmodule YellowDog.ManagementUI.Navigation do
       group("Management platform", [
         planned(:platform_settings, "Platform settings", "cog"),
         available(:api_mcp, "API & MCP integration", "api", "/system/integrations"),
+        available(:certificates, "Certificate management", "shield-lock", "/system/certificates"),
+        available(:cloud_providers, "Cloud Providers", "cloud-sync", "/system/cloud-providers"),
         planned(
           :platform_access,
           "Access & authentication",
@@ -312,6 +321,5 @@ defmodule YellowDog.ManagementUI.Navigation do
   end
 
   defp service_destination(destination, _selection, _path), do: destination
-  defp service_destination_name(:dns_views), do: :dns_views_service
   defp service_destination_name(:dns_acl), do: :dns_acl_service
 end

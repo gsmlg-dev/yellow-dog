@@ -1,9 +1,22 @@
 defmodule YellowDog.ManagementUI.WorkerChannelTest do
   use ExUnit.Case, async: false
   import Phoenix.ChannelTest
+  import Phoenix.ConnTest, only: [get: 2]
+
+  import Phoenix.LiveViewTest,
+    only: [element: 2, form: 3, has_element?: 3, live: 2, render_click: 1, render_submit: 1]
+
   import ExUnit.CaptureLog
 
-  alias YellowDog.Management.{Domain, DomainFixtures, Repo, Worker, WorkerConnections}
+  alias YellowDog.Management.{
+    DnsCertificates,
+    Domain,
+    DomainFixtures,
+    Repo,
+    Worker,
+    WorkerConnections
+  }
+
   alias YellowDog.ManagementUI.{WorkerChannel, WorkerSocket}
 
   @endpoint YellowDog.ManagementUI.Endpoint
@@ -152,6 +165,21 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     assert_reply ref, :ok, %{}
     assert {:ok, %{"applied_revision" => ^revision}} = Domain.get_worker(id)
 
+    protocols = %{
+      "udp" => %{"state" => "running", "port" => 53, "addresses" => ["::1", "127.0.0.1"]},
+      "tcp" => %{
+        "state" => "error",
+        "port" => 53,
+        "addresses" => ["127.0.0.1"],
+        "failure" => %{"address" => "127.0.0.1", "reason" => "eaddrinuse"}
+      }
+    }
+
+    observations = %{"dns" => %{"state" => "partial", "protocols" => protocols}}
+    ref = push(socket, "report", Map.put(applied, "services", observations))
+    assert_reply ref, :ok, %{}
+    assert {:ok, %{"reported_services" => ^observations}} = Domain.get_worker(id)
+
     ref = push(socket, "report", Map.put(applied, "applied_revision", 999))
     assert_reply ref, :error, %{"code" => "invalid_report"}
     assert Process.alive?(socket.channel_pid)
@@ -170,6 +198,110 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
     ref = push(socket, "report", report(id))
     assert_reply ref, :ok, %{}
     refute_push "target", _
+  end
+
+  test "certificate catalog delivers rotations and protects both saved and active DNS references" do
+    {:ok, view, _html} = live(Phoenix.ConnTest.build_conn(), "/system/certificates")
+    initial = certificate("Initial DNS certificate")
+    view |> form("#certificate-form", certificate: initial) |> render_submit()
+    assert [%{id: certificate_id, revision: 1}] = DnsCertificates.list()
+
+    {:ok, enrolled} = WorkerConnections.create("DNS Worker")
+    worker_id = enrolled["worker"]["id"]
+    assert {:ok, _, channel} = join_worker(worker_id, enrolled["token"], report(worker_id))
+    assert_push "target", %{"target" => nil}
+
+    config = %{
+      "listen" => %{"mode" => "all_ipv4"},
+      "transports" => %{"dot" => %{"enabled" => true, "certificate_id" => certificate_id}}
+    }
+
+    service = %{
+      "worker_id" => worker_id,
+      "expected_revision" => 1,
+      "desired_state" => "running",
+      "config" => config
+    }
+
+    missing =
+      put_in(service, ["config", "transports", "dot", "certificate_id"], Ecto.UUID.generate())
+
+    assert {:error, %{code: "certificate_not_found"}} =
+             Domain.mutate("put_service", missing, "operator", Ecto.UUID.generate())
+
+    mutate("put_service", service)
+    row = "#certificate-#{certificate_id}"
+    view |> element("#{row} button[phx-click=delete]") |> render_click()
+    assert has_element?(view, "#certificate-references", worker_id <> " · DOT")
+    refute_push "dns_certificates", _
+
+    mutate("confirm_target", %{"worker_id" => worker_id, "expected_revision" => 2})
+
+    assert_push "dns_certificates",
+                %{"certificates" => [%{"id" => ^certificate_id, "revision" => 1}]},
+                1_000
+
+    assert_push "target", %{"target" => %{"revision" => 1, "plan" => plan}}, 1_000
+    refute Map.has_key?(hd(plan["services"])["config"]["transports"]["dot"], "private_key_pem")
+
+    ref =
+      push(
+        channel,
+        "report",
+        Map.put(report(worker_id), "apply_error", "invalid_dns_certificate")
+      )
+
+    assert_reply ref, :ok, %{}
+    assert {:ok, %{"apply_error" => "invalid_dns_certificate"}} = Domain.get_worker(worker_id)
+
+    replacement = certificate("Updated DNS certificate")
+    view |> element("#{row} button[phx-click=edit]") |> render_click()
+
+    view
+    |> form("#certificate-form-#{certificate_id}", certificate: replacement)
+    |> render_submit()
+
+    assert_push "dns_certificates",
+                %{"certificates" => [%{"id" => ^certificate_id, "revision" => 2}]},
+                1_000
+
+    refute_push "target", _
+
+    monitor = Process.monitor(channel.channel_pid)
+    Process.unlink(channel.channel_pid)
+    leave(channel)
+    assert_receive {:DOWN, ^monitor, :process, _, {:shutdown, :left}}
+
+    view |> element("#{row} button[phx-click=edit]") |> render_click()
+
+    view
+    |> form("#certificate-form-#{certificate_id}", certificate: certificate("Offline rotation"))
+    |> render_submit()
+
+    assert {:ok, _, _} = join_worker(worker_id, enrolled["token"], report(worker_id))
+
+    assert_push "dns_certificates",
+                %{"certificates" => [%{"id" => ^certificate_id, "revision" => 3}]},
+                1_000
+
+    assert_push "target", %{"target" => %{"revision" => 1}}, 1_000
+
+    closed = put_in(service, ["config", "transports", "dot", "enabled"], false)
+    mutate("put_service", Map.put(closed, "expected_revision", 3))
+    view |> element("#{row} button[phx-click=delete]") |> render_click()
+    assert has_element?(view, "#certificate-references", worker_id <> " · DOT")
+
+    mutate("confirm_target", %{"worker_id" => worker_id, "expected_revision" => 4})
+    view |> element("#{row} button[phx-click=delete]") |> render_click()
+    assert has_element?(view, "#certificate-references", worker_id <> " · DOT")
+
+    unlinked =
+      update_in(closed, ["config", "transports", "dot"], &Map.delete(&1, "certificate_id"))
+
+    mutate("put_service", Map.put(unlinked, "expected_revision", 5))
+    mutate("confirm_target", %{"worker_id" => worker_id, "expected_revision" => 6})
+    view |> element("#{row} button[phx-click=delete]") |> render_click()
+    assert DnsCertificates.list() == []
   end
 
   test "token rotation rejects the next report and stops the joined channel" do
@@ -406,6 +538,17 @@ defmodule YellowDog.ManagementUI.WorkerChannelTest do
   end
 
   defp new_token, do: :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+  defp certificate(name) do
+    %{cert: der, key: key} = :public_key.pkix_test_root_cert(String.to_charlist(name), [])
+    type = elem(key, 0)
+
+    %{
+      name: name,
+      certificate_pem: :public_key.pem_encode([{:Certificate, der, :not_encrypted}]),
+      private_key_pem: :public_key.pem_encode([:public_key.pem_entry_encode(type, key)])
+    }
+  end
 
   defp mutate(operation, params) do
     assert {:ok, result} = Domain.mutate(operation, params, "operator", Ecto.UUID.generate())

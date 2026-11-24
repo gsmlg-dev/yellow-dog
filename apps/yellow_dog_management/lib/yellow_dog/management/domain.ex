@@ -10,10 +10,11 @@ defmodule YellowDog.Management.Domain do
     Database,
     Backups,
     Audit,
+    DnsCertificates,
     DnsAcl,
     DnsAcls,
-    DnsView,
     DnsViews,
+    ForwardZones,
     EnrollmentSettings,
     Idempotency,
     ProfileCatalog,
@@ -186,7 +187,7 @@ defmodule YellowDog.Management.Domain do
     Repo.transaction(fn -> scoped_service!(worker_id, service_id) |> service_map() end)
   end
 
-  @doc "Bounded metadata references; only pinned Zones enter the Worker target contract."
+  @doc "Bounded metadata references for DNS data assigned to a Worker."
   def list_service_references(worker_id, service_id, limit \\ 100) do
     Repo.transaction(fn ->
       limit = query_limit!(limit, 100)
@@ -213,20 +214,7 @@ defmodule YellowDog.Management.Domain do
           )
         )
 
-      views =
-        Repo.all(
-          from(v in DnsView,
-            where: v.service_id == ^service.id,
-            order_by: [v.name, v.id],
-            limit: ^limit,
-            select: %{
-              "id" => v.id,
-              "name" => v.name,
-              "revision" => v.revision,
-              "is_default" => v.is_default
-            }
-          )
-        )
+      views = DnsViews.references(worker_id, limit)
 
       acls =
         Repo.all(
@@ -704,6 +692,7 @@ defmodule YellowDog.Management.Domain do
       stringify_keys(Map.get(params, "config", if(existing, do: existing.config, else: %{})))
 
     validate_service(worker.id, instance_id, type, state, config)
+    validate_certificate_references([config])
 
     service =
       Repo.one(
@@ -712,6 +701,11 @@ defmodule YellowDog.Management.Domain do
 
     if operation == "create_service" and service != nil,
       do: abort("conflict", "Service instance ID already exists in Worker")
+
+    if type == "dns" and service == nil and
+         Repo.exists?(from(s in Service, where: s.worker_id == ^worker.id and s.type == "dns")) do
+      abort("conflict", "This Worker already has DNS settings. Update the existing settings.")
+    end
 
     service =
       case service do
@@ -812,6 +806,7 @@ defmodule YellowDog.Management.Domain do
     latest = latest_target(worker.id)
     revision = if latest, do: latest.revision + 1, else: 1
     plan = build_plan(worker.id, revision)
+    validate_certificate_references(Enum.map(plan["services"], & &1["config"]))
 
     target =
       Repo.insert!(%Target{
@@ -953,7 +948,7 @@ defmodule YellowDog.Management.Domain do
           "id" => service.instance_id,
           "type" => service.type,
           "desired_state" => service.desired_state,
-          "config" => service.config,
+          "config" => dns_target_config(service.config, worker_id),
           "resources" => refs |> Map.get(service.id, []) |> Enum.map(& &1.zone_id) |> Enum.sort()
         }
       end)
@@ -974,6 +969,23 @@ defmodule YellowDog.Management.Domain do
         "resources" => resources
       })
     )
+  end
+
+  defp dns_target_config(config, worker_id) do
+    forward_zones = ForwardZones.target_zones(worker_id)
+    assigned_suffixes = MapSet.new(forward_zones, & &1["name"])
+
+    previous =
+      Enum.reject(config["forward_zones"] || [], &MapSet.member?(assigned_suffixes, &1["name"]))
+
+    config =
+      Map.merge(config, %{"forward_zones" => previous ++ forward_zones, "recursion" => false})
+
+    if DnsViews.has_assignments?(worker_id) do
+      Map.put(config, "views", DnsViews.target_views(worker_id))
+    else
+      Map.delete(config, "views")
+    end
   end
 
   defp empty_plan(worker_id) do
@@ -1006,6 +1018,16 @@ defmodule YellowDog.Management.Domain do
         "resources" => []
       })
     )
+  end
+
+  defp validate_certificate_references(configs) do
+    case DnsCertificates.validate_references(configs) do
+      :ok ->
+        :ok
+
+      {:error, ids} ->
+        abort("certificate_not_found", "Referenced DNS certificate not found", %{"ids" => ids})
+    end
   end
 
   defp normalize_resource(id, version, content) do

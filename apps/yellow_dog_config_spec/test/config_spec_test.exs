@@ -209,10 +209,14 @@ defmodule YellowDog.ConfigSpecTest do
     unsupported = put_in(base, ["services", Access.at(0), "type"], "dhcpv4")
     assert error_code(ConfigSpec.normalize_plan(unsupported)) == :unsupported_value
 
-    txt =
-      put_in(base, ["resources", Access.at(0), "content", "records", Access.at(2), "type"], "TXT")
+    unsupported_record =
+      put_in(
+        base,
+        ["resources", Access.at(0), "content", "records", Access.at(2), "type"],
+        "HINFO"
+      )
 
-    assert error_code(ConfigSpec.normalize_plan(txt)) == :unsupported_value
+    assert error_code(ConfigSpec.normalize_plan(unsupported_record)) == :unsupported_value
 
     extra =
       put_in(
@@ -222,6 +226,54 @@ defmodule YellowDog.ConfigSpecTest do
       )
 
     assert error_code(ConfigSpec.normalize_plan(extra)) == :unsupported_field
+  end
+
+  test "zones without A records round-trip AAAA, CNAME, MX, TXT and PTR" do
+    fixtures = [
+      {"*.example.com.", "AAAA", %{"address" => "2001:0DB8:0:0:0:0:0:42"}},
+      {"_Check.example.com.", "CNAME", %{"target" => "_validation.external.TEST"}},
+      {"example.com.", "MX", %{"preference" => 0, "exchange" => "."}},
+      {"_policy.example.com.", "TXT", %{"strings" => ["", "quoted \"text\"", "多行\n内容", <<127>>]}},
+      {"reverse.example.com.", "PTR", %{"target" => "PTR.EXAMPLE.COM"}}
+    ]
+
+    records =
+      Enum.map(fixtures, fn {name, type, data} ->
+        %{"name" => name, "type" => type, "ttl" => 600, "data" => data}
+      end)
+
+    candidate =
+      update_in(plan(), ["resources", Access.at(0), "content", "records"], fn required ->
+        Enum.take(required, 2) ++ records
+      end)
+
+    assert {:ok, normalized} = ConfigSpec.normalize_plan(candidate)
+    assert {:ok, toml} = ConfigSpec.encode(normalized)
+    assert {:ok, ^normalized} = ConfigSpec.decode(toml)
+
+    normalized_records = get_in(normalized, ["resources", Access.at(0), "content", "records"])
+    by_type = Map.new(normalized_records, &{&1["type"], &1})
+    assert by_type["AAAA"]["data"]["address"] == "2001:db8::42"
+    assert by_type["CNAME"]["name"] == "_check.example.com."
+    assert by_type["CNAME"]["data"]["target"] == "_validation.external.test."
+    assert by_type["TXT"]["data"] == Enum.at(records, 3)["data"]
+
+    invalid =
+      update_in(candidate, ["resources", Access.at(0), "content", "records"], fn records ->
+        [%{by_type["AAAA"] | "name" => by_type["CNAME"]["name"]} | records]
+      end)
+
+    assert error_code(ConfigSpec.normalize_plan(invalid)) == :invalid_zone
+
+    for {index, field, value, error} <- [
+          {2, "address", "192.0.2.1", :invalid_address},
+          {4, "preference", 65_536, :invalid_integer},
+          {5, "strings", [], :invalid_record},
+          {5, "strings", [String.duplicate("é", 128)], :invalid_record}
+        ] do
+      path = ["resources", Access.at(0), "content", "records", Access.at(index), "data", field]
+      assert error_code(ConfigSpec.normalize_plan(put_in(candidate, path, value))) == error
+    end
   end
 
   test "incomplete zones and bad bounds fail" do
@@ -296,26 +348,93 @@ defmodule YellowDog.ConfigSpecTest do
     assert error_code(ConfigSpec.normalize_plan(duplicated_zone)) == :duplicate_zone
   end
 
-  test "running DNS services cannot bind overlapping listeners" do
+  test "the legacy listener format cannot create a second DNS service" do
     base = plan()
-    second = %{hd(base["services"]) | "id" => "dns-secondary", "resources" => []}
+    [first] = base["services"]
+    second = %{first | "id" => "dns-secondary", "resources" => []}
+    second = put_in(second, ["config", "listen_address"], "0.0.0.0")
 
-    assert error_code(
-             ConfigSpec.normalize_plan(%{base | "services" => base["services"] ++ [second]})
-           ) ==
-             :listener_conflict
+    for state <- ~w(running stopped) do
+      assert error_code(
+               ConfigSpec.normalize_plan(%{
+                 base
+                 | "services" => [first, %{second | "desired_state" => state}]
+               })
+             ) ==
+               :duplicate_service_type
+    end
+  end
 
-    stopped = %{second | "desired_state" => "stopped"}
+  test "DNS listeners inherit addresses and have independent protocol settings" do
+    config = %{
+      "listen" => %{"mode" => "all_ipv4"},
+      "transports" => %{
+        "tcp" => %{"enabled" => false},
+        "doh" => %{
+          "enabled" => true,
+          "listen" => %{"mode" => "specific", "addresses" => ["2001:0db8::1", "192.0.2.1"]},
+          "certificate_id" => "internal"
+        }
+      }
+    }
 
-    assert {:ok, _} =
-             ConfigSpec.normalize_plan(%{base | "services" => base["services"] ++ [stopped]})
+    target = put_in(plan(), ["services", Access.at(0), "config"], config)
+    assert {:ok, normalized} = ConfigSpec.normalize_plan(target)
+    [service] = normalized["services"]
+    assert service["config"]["listen"] == %{"mode" => "all_ipv4"}
+    assert service["config"]["transports"]["udp"] == %{"enabled" => true, "port" => 53}
+    assert service["config"]["transports"]["tcp"] == %{"enabled" => false, "port" => 53}
+    assert service["config"]["transports"]["doq"] == %{"enabled" => false, "port" => 853}
 
-    wildcard = put_in(second, ["config", "listen_address"], "0.0.0.0")
+    assert service["config"]["transports"]["doh"] == %{
+             "enabled" => true,
+             "port" => 443,
+             "listen" => %{"mode" => "specific", "addresses" => ["192.0.2.1", "2001:db8::1"]},
+             "certificate_id" => "internal"
+           }
 
-    assert error_code(
-             ConfigSpec.normalize_plan(%{base | "services" => base["services"] ++ [wildcard]})
-           ) ==
-             :listener_conflict
+    assert {:ok, toml} = ConfigSpec.encode(target)
+    assert {:ok, ^normalized} = ConfigSpec.decode(toml)
+
+    missing_cert =
+      update_in(
+        target,
+        ["services", Access.at(0), "config", "transports", "doh"],
+        &Map.delete(&1, "certificate_id")
+      )
+
+    assert error_code(ConfigSpec.normalize_plan(missing_cert)) == :missing_field
+  end
+
+  test "Worker DNS configuration has one service and explicit wildcard modes" do
+    target =
+      put_in(plan(), ["services", Access.at(0), "config"], %{"listen" => %{"mode" => "all"}})
+
+    assert {:ok, normalized} = ConfigSpec.normalize_plan(target)
+    [service] = normalized["services"]
+    assert service["config"]["transports"]["tcp"] == %{"enabled" => true, "port" => 53}
+
+    for mode <- ["all_ipv4", "all_ipv6"] do
+      assert {:ok, _} =
+               ConfigSpec.normalize_plan(
+                 put_in(target, ["services", Access.at(0), "config", "listen", "mode"], mode)
+               )
+    end
+
+    second = %{service | "id" => "dns-secondary", "resources" => []}
+
+    assert error_code(ConfigSpec.normalize_plan(%{target | "services" => [service, second]})) ==
+             :duplicate_service_type
+
+    for address <- ["0.0.0.0", "::", "192.0.2.1/24"] do
+      invalid =
+        put_in(target, ["services", Access.at(0), "config", "listen"], %{
+          "mode" => "specific",
+          "addresses" => [address]
+        })
+
+      assert error_code(ConfigSpec.normalize_plan(invalid)) == :invalid_address
+    end
   end
 
   test "malformed TOML and semantically equivalent formatting" do
@@ -477,6 +596,53 @@ defmodule YellowDog.ConfigSpecTest do
       assert {:ok, a} = ConfigSpec.plan_digest(with_dns(%{"recursion" => false}))
       assert {:ok, b} = ConfigSpec.plan_digest(with_dns(%{"recursion" => true}))
       refute a == b
+    end
+
+    test "views preserve rule ordering and have stable priority and ID ordering in TOML" do
+      rules = [
+        %{"action" => "deny", "kind" => "networks", "networks" => ["192.0.2.13/24", "::1/128"]},
+        %{"action" => "allow", "kind" => "any"}
+      ]
+
+      default = %{"id" => "default", "recursion_enabled" => false, "client_rules" => rules}
+      top = Map.merge(default, %{"id" => "top", "priority" => 0, "recursion_enabled" => true})
+      high = Map.merge(default, %{"id" => "z", "priority" => 9_223_372_036_854_775_807})
+      tied = %{high | "id" => "a"}
+
+      raw = with_dns(%{"views" => [default, high, tied, top]})
+      assert {:ok, normalized} = ConfigSpec.normalize_plan(raw)
+      assert {:ok, toml} = ConfigSpec.encode(normalized)
+      assert {:ok, ^normalized} = ConfigSpec.decode(toml)
+
+      views = hd(normalized["services"])["config"]["views"]
+      assert Enum.map(views, & &1["id"]) == ~w(top a z default)
+      assert List.last(views)["priority"] == nil
+      assert List.first(views)["recursion_enabled"]
+
+      assert [
+               %{"action" => "deny", "networks" => ["192.0.2.0/24", "::1/128"]},
+               %{"action" => "allow", "kind" => "any"}
+             ] = hd(views)["client_rules"]
+
+      assert {:ok, digest} = ConfigSpec.plan_digest(raw)
+
+      assert {:ok, ^digest} =
+               ConfigSpec.plan_digest(with_dns(%{"views" => [top, tied, high, default]}))
+
+      bad_rule =
+        put_in(top, ["client_rules"], [
+          %{"action" => "allow", "kind" => "countries", "countries" => ["US"]}
+        ])
+
+      assert {:error, [%{code: :unsupported_value, path: path}]} =
+               ConfigSpec.normalize_plan(with_dns(%{"views" => [bad_rule]}))
+
+      assert path == ["services", 0, "config", "views", 0, "client_rules", 0, "kind"]
+
+      assert {:ok, legacy} = ConfigSpec.normalize_plan(with_dns(%{}))
+      refute Map.has_key?(hd(legacy["services"])["config"], "views")
+      assert {:ok, empty} = ConfigSpec.normalize_plan(with_dns(%{"views" => []}))
+      assert hd(empty["services"])["config"]["views"] == []
     end
 
     test "recursive_forward.toml round-trips" do

@@ -52,23 +52,109 @@ defmodule YellowDog.Management.OperationSchemas do
     }
 
   # Service input and stored config: the policy keys are optional and default in the WorkerPlan.
-  def dns_config, do: object(dns_config_props(false), ~w(listen_address port))
+  def dns_config,
+    do: %{
+      "oneOf" => [
+        object(dns_config_props(false), ~w(listen_address port)),
+        network_dns_config(false)
+      ]
+    }
 
   # Normalized WorkerPlan DNS config always carries the policy keys.
-  def plan_dns_config, do: object(dns_config_props(true))
+  def plan_dns_config,
+    do: %{
+      "oneOf" => [
+        object(
+          dns_config_props(true),
+          ~w(listen_address port recursion allow_query forward_zones)
+        ),
+        network_dns_config(true)
+      ]
+    }
+
+  defp network_dns_config(normalized?) do
+    protocols = ~w(udp tcp dot doq doh)
+
+    transports =
+      Map.new(protocols, fn protocol ->
+        props = %{
+          "enabled" => boolean(),
+          "port" => integer(1, 65_535),
+          "listen" => listen_scope()
+        }
+
+        props =
+          if protocol in ~w(dot doq doh),
+            do: Map.put(props, "certificate_id", uuid()),
+            else: props
+
+        {protocol, object(props, if(normalized?, do: ~w(enabled port), else: []))}
+      end)
+
+    props =
+      dns_config_props(normalized?)
+      |> Map.drop(~w(listen_address port))
+      |> Map.merge(%{
+        "listen" => listen_scope(),
+        "transports" => object(transports, if(normalized?, do: protocols, else: []))
+      })
+
+    object(props, if(normalized?, do: Map.keys(props) -- ["views"], else: ["listen"]))
+  end
+
+  defp listen_scope do
+    %{
+      "oneOf" => [
+        object(%{"mode" => enum(~w(all all_ipv4 all_ipv6))}),
+        object(%{
+          "mode" => enum(["specific"]),
+          "addresses" =>
+            array(text(45), 32) |> Map.merge(%{"minItems" => 1, "uniqueItems" => true})
+        })
+      ]
+    }
+  end
 
   defp dns_config_props(port_required?) do
     forwarder_props = %{"address" => text(45), "port" => integer(1, 65_535)}
     forwarder = object(forwarder_props, if(port_required?, do: nil, else: ["address"]))
 
-    %{
+    props = %{
       "listen_address" => ipv4(),
       "port" => integer(1, 65_535),
       "recursion" => boolean(),
       "allow_query" => array(text(49), 128),
       "forward_zones" =>
-        array(object(%{"name" => text(253), "forwarders" => array(forwarder, 8)}), 64)
+        array(object(%{"name" => text(253), "forwarders" => array(forwarder, 8)}), 64),
+      "views" =>
+        array(
+          object(
+            %{
+              "id" => text(64),
+              "priority" => integer(0, 9_223_372_036_854_775_807),
+              "recursion_enabled" => boolean(),
+              "client_rules" =>
+                array(
+                  %{
+                    "oneOf" => [
+                      object(%{"action" => enum(~w(allow deny)), "kind" => enum(["any"])}),
+                      object(%{
+                        "action" => enum(~w(allow deny)),
+                        "kind" => enum(["networks"]),
+                        "networks" => array(text(49), 128)
+                      })
+                    ]
+                  },
+                  128
+                )
+            },
+            ~w(id recursion_enabled client_rules)
+          ),
+          128
+        )
     }
+
+    if port_required?, do: props, else: Map.delete(props, "views")
   end
 
   def ipv4,
@@ -79,9 +165,9 @@ defmodule YellowDog.Management.OperationSchemas do
         "^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"
       )
 
-  # Views retain their existing IPv4/IPv6 endpoint configuration. WorkerPlan
-  # service listeners and A records continue to use the IPv4-only schema.
-  defp forwarder_address do
+  defp forwarder_address, do: %{"anyOf" => [ipv4(), ipv6(64)]}
+
+  defp ipv6(max \\ 45) do
     hex = "[0-9A-Fa-f]{1,4}"
     groups = fn count -> Enum.join(List.duplicate(hex, count), ":") end
     ipv4_pattern = ipv4()["pattern"] |> String.trim_leading("^") |> String.trim_trailing("$")
@@ -99,10 +185,7 @@ defmodule YellowDog.Management.OperationSchemas do
 
     alternatives = [groups.(8), groups.(6) <> ":" <> ipv4_pattern] ++ compressed ++ embedded
 
-    ipv6 =
-      Map.put(text(64), "pattern", "^(?:" <> Enum.join(alternatives, "|") <> ")$(?![\\s\\S])")
-
-    %{"anyOf" => [ipv4(), ipv6]}
+    Map.put(text(max), "pattern", "^(?:" <> Enum.join(alternatives, "|") <> ")$(?![\\s\\S])")
   end
 
   def record do
@@ -117,7 +200,12 @@ defmodule YellowDog.Management.OperationSchemas do
     variants = [
       {"SOA", soa},
       {"NS", object(%{"host" => text(253)})},
-      {"A", object(%{"address" => ipv4()})}
+      {"A", object(%{"address" => ipv4()})},
+      {"AAAA", object(%{"address" => ipv6()})},
+      {"CNAME", object(%{"target" => text(253)})},
+      {"MX", object(%{"preference" => integer(0, 65_535), "exchange" => text(253)})},
+      {"TXT", object(%{"strings" => Map.put(array(string(255), 255), "minItems", 1)})},
+      {"PTR", object(%{"target" => text(253)})}
     ]
 
     %{
@@ -343,7 +431,7 @@ defmodule YellowDog.Management.OperationSchemas do
       "schema_version" => %{"const" => 1},
       "worker_id" => identity(),
       "revision" => revision(),
-      "services" => array(service, 64),
+      "services" => array(service, 1),
       "resources" => array(resource, 256)
     })
   end
@@ -381,7 +469,7 @@ defmodule YellowDog.Management.OperationSchemas do
     do:
       object(%{
         "scope" => enum(["dns_zones"]),
-        "excluded" => array(enum(~w(dns_views dns_acls geoip_artifacts)), 3)
+        "excluded" => array(enum(~w(dns_acls geoip_artifacts)), 2)
       })
 
   def preview do

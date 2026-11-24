@@ -38,6 +38,7 @@ function browser(overrides = {}) {
       connect() { this.connected = true; }
     },
     EditorGuard: { hasNewerInput: () => false },
+    SchemaModal: { mounted() {} },
     DuskmoonHooks: { PackageHook: {} },
     ...overrides,
   });
@@ -78,6 +79,7 @@ test('entry point connects LiveView with CSRF and package/custom hooks', () => {
   assert.equal(socket.options.params._csrf_token, 'csrf-fixture');
   assert.ok(hooks.PackageHook);
   assert.equal(typeof hooks.ResetForm.mounted, 'function');
+  assert.equal(typeof hooks.SchemaModal.mounted, 'function');
 });
 
 test('ResetForm resets only the requested form and updates named fields', () => {

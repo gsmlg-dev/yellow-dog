@@ -5,9 +5,19 @@ defmodule YellowDog.Worker.Dns.Resolver do
   alias DNS.Message.{Domain, EDNS0, Record}
   alias DNS.Message.Record.Data
   alias DNS.ResourceRecordType
-  alias YellowDog.Worker.Dns.{Acl, Cache, Forwarder, Recursor}
+  alias YellowDog.Worker.Dns.{Acl, Cache, Forwarder, Recursor, Views}
 
-  @types %{"A" => 1, "NS" => 2, "SOA" => 6}
+  @types %{
+    "A" => 1,
+    "NS" => 2,
+    "CNAME" => 5,
+    "SOA" => 6,
+    "PTR" => 12,
+    "MX" => 15,
+    "TXT" => 16,
+    "AAAA" => 28
+  }
+  @max_cname_hops 16
   @max_udp 1232
 
   def build(resources) when is_list(resources) do
@@ -28,7 +38,7 @@ defmodule YellowDog.Worker.Dns.Resolver do
   def build(_), do: {:error, :invalid_resources}
 
   @doc """
-  Builds the per-service query context: authoritative zones, compiled ACL,
+  Builds the per-service query context: authoritative zones, compiled client policy,
   forward zones (longest name first, names lowercase without the trailing dot)
   and the shared answer cache handle. `recursor_opts` are extra `Recursor.resolve/3`
   options (e.g. `root_hints`/`port` from the adapter's `:recursor_opts` start option,
@@ -39,14 +49,13 @@ defmodule YellowDog.Worker.Dns.Resolver do
   def build_context(%{"config" => config}, resources, cache, recursor_opts)
       when is_map(config) and is_list(recursor_opts) do
     with {:ok, zones} <- build(resources),
-         {:ok, acl} <- acl(Map.get(config, "allow_query", [])),
+         {:ok, query_policy} <- query_policy(config),
          {:ok, forward_zones} <- forward_zones(Map.get(config, "forward_zones", [])) do
       {:ok,
        %{
          zones: zones,
-         acl: acl,
+         query_policy: query_policy,
          forward_zones: forward_zones,
-         recursion: Map.get(config, "recursion", false) == true,
          cache: cache,
          recursor_opts: recursor_opts
        }}
@@ -54,6 +63,18 @@ defmodule YellowDog.Worker.Dns.Resolver do
   end
 
   def build_context(_, _, _, _), do: {:error, :invalid_service}
+
+  def update_context(service, resources, old) do
+    with {:ok, context} <- build_context(service, resources, old.cache, old.recursor_opts) do
+      if context.forward_zones == old.forward_zones and context.query_policy == old.query_policy do
+        {:ok, context}
+      else
+        cache = Cache.new()
+        Cache.delete(old.cache)
+        {:ok, %{context | cache: cache}}
+      end
+    end
+  end
 
   @doc """
   Answers one wire query in the calling process. Upstream work (forwarding,
@@ -78,51 +99,123 @@ defmodule YellowDog.Worker.Dns.Resolver do
   end
 
   defp respond(query, question, context, transport, client_ip) do
-    name = question.name |> to_string() |> String.downcase()
-    key = String.trim_trailing(name, ".")
-    <<type::16>> = question.type.value
+    policy = select_policy(context.query_policy, client_ip)
 
-    {rcode, aa, ra, answers, authority} =
+    result =
       cond do
         query.header.opcode.value != <<0::4>> ->
           {4, 0, 0, [], []}
 
-        not Acl.allowed?(context.acl, client_ip) or question.class.value != <<1::16>> ->
+        policy == nil or question.class.value != <<1::16>> ->
           {5, 0, 0, [], []}
-
-        zone = matching_zone(name, context.zones) ->
-          authoritative(zone, name, question.type.value)
-
-        servers = forward_servers(key, context.forward_zones) ->
-          upstream(context.cache, key, type, fn ->
-            with {:ok, message} <- Forwarder.resolve(servers, key, type, []) do
-              <<code::4>> = message.header.rcode.value
-              {:ok, %{rcode: code, answers: message.anlist, authority: message.nslist}}
-            end
-          end)
-
-        context.recursion and query.header.rd == 1 ->
-          upstream(context.cache, key, type, fn ->
-            Recursor.resolve(key, type, Keyword.put(context.recursor_opts, :cache, context.cache))
-          end)
 
         true ->
-          {5, 0, 0, [], []}
+          query
+          |> resolve(question, context, policy)
+          |> recursion_available(policy)
       end
 
-    encode(query, question, {rcode, aa, ra, answers, authority}, transport)
+    encode(query, question, result, transport)
   end
 
-  defp authoritative(zone, name, type) do
-    case Map.get(zone.by_name, name, []) do
+  defp resolve(query, question, context, policy) do
+    name = question.name |> to_string() |> String.downcase()
+    key = String.trim_trailing(name, ".")
+    <<type::16>> = question.type.value
+
+    cond do
+      zone = matching_zone(name, context.zones) ->
+        authoritative(zone, name, question.type.value, context.zones, @max_cname_hops)
+
+      servers = forward_servers(key, context.forward_zones) ->
+        cache = Cache.scoped(context.cache, {:forward, policy.scope})
+
+        upstream(cache, key, type, fn ->
+          with {:ok, message} <- Forwarder.resolve(servers, key, type, []) do
+            <<code::4>> = message.header.rcode.value
+            {:ok, %{rcode: code, answers: message.anlist, authority: message.nslist}}
+          end
+        end)
+
+      policy.recursion and query.header.rd == 1 ->
+        cache = Cache.scoped(context.cache, {:recursion, policy.scope})
+
+        upstream(cache, key, type, fn ->
+          Recursor.resolve(key, type, Keyword.put(context.recursor_opts, :cache, cache))
+        end)
+
+      true ->
+        {5, 0, 0, [], []}
+    end
+  end
+
+  defp recursion_available(result, %{scope: :legacy}), do: result
+
+  defp recursion_available({rcode, aa, _ra, answers, authority}, %{recursion: recursion}) do
+    {rcode, aa, if(recursion, do: 1, else: 0), answers, authority}
+  end
+
+  defp query_policy(%{"views" => views}) do
+    with {:ok, compiled} <- Views.compile(views), do: {:ok, {:views, compiled}}
+  end
+
+  defp query_policy(config) do
+    with {:ok, acl} <- acl(Map.get(config, "allow_query", [])) do
+      {:ok, {:legacy, acl, config["recursion"] == true}}
+    end
+  end
+
+  defp select_policy({:views, views}, ip), do: Views.select(views, ip)
+
+  defp select_policy({:legacy, acl, recursion}, ip) do
+    if Acl.allowed?(acl, ip), do: %{scope: :legacy, recursion: recursion}
+  end
+
+  defp authoritative(_zone, _name, _type, _zones, 0), do: {2, 1, 0, [], []}
+
+  defp authoritative(zone, name, type, zones, hops) do
+    {records, name_exists?} = records_at(zone, name)
+
+    case records do
       [] ->
-        descendant? = Enum.any?(Map.keys(zone.by_name), &String.ends_with?(&1, "." <> name))
-        {if(descendant?, do: 0, else: 3), 1, 0, [], negative_soa(zone.soa)}
+        {if(name_exists?, do: 0, else: 3), 1, 0, [], negative_soa(zone.soa)}
+
+      [%{type: %{value: <<5::16>>}, data: %{data: target}} = cname]
+      when type not in [<<5::16>>, <<255::16>>] ->
+        target = to_string(target)
+
+        case matching_zone(target, zones) do
+          nil ->
+            {0, 1, 0, [cname], []}
+
+          target_zone ->
+            {rcode, aa, ra, answers, authority} =
+              authoritative(target_zone, target, type, zones, hops - 1)
+
+            {rcode, aa, ra, if(rcode == 2, do: [], else: [cname | answers]), authority}
+        end
 
       records ->
         matching = Enum.filter(records, &(&1.type.value == type or type == <<255::16>>))
         authority = if matching == [], do: negative_soa(zone.soa), else: []
         {0, 1, 0, matching, authority}
+    end
+  end
+
+  defp records_at(zone, name) do
+    if MapSet.member?(zone.nodes, name) do
+      {Map.get(zone.by_name, name, []), true}
+    else
+      encloser = name |> ancestors() |> Enum.find(&MapSet.member?(zone.nodes, &1))
+      wildcard_records = Map.get(zone.by_name, "*." <> to_string(encloser), [])
+      {Enum.map(wildcard_records, &%{&1 | name: Domain.new(name)}), wildcard_records != []}
+    end
+  end
+
+  defp ancestors(name) do
+    case String.split(name, ".", parts: 2) do
+      [_label, "" = root] -> [root]
+      [_label, parent] -> [parent | ancestors(parent)]
     end
   end
 
@@ -292,7 +385,8 @@ defmodule YellowDog.Worker.Dns.Resolver do
         {:error, {:unsupported_delegation, name}}
       else
         if length(soa) == 1 do
-          {:ok, name, %{by_name: by_name, soa: soa}}
+          nodes = Map.keys(by_name) |> Enum.flat_map(&[&1 | ancestors(&1)]) |> MapSet.new()
+          {:ok, name, %{by_name: by_name, nodes: nodes, soa: soa}}
         else
           {:error, {:invalid_soa, name}}
         end
@@ -343,6 +437,20 @@ defmodule YellowDog.Worker.Dns.Resolver do
   end
 
   defp build_data("NS", %{"host" => host}), do: {:ok, Data.NS.new(host)}
+  defp build_data("CNAME", %{"target" => target}), do: {:ok, Data.CNAME.new(target)}
+  defp build_data("PTR", %{"target" => target}), do: {:ok, Data.PTR.new(target)}
+
+  defp build_data("MX", %{"preference" => preference, "exchange" => exchange}),
+    do: {:ok, Data.MX.new({preference, exchange})}
+
+  defp build_data("TXT", %{"strings" => strings}), do: {:ok, Data.TXT.new(strings)}
+
+  defp build_data("AAAA", %{"address" => address}) do
+    case :inet.parse_strict_address(String.to_charlist(address)) do
+      {:ok, ip} when tuple_size(ip) == 8 -> {:ok, Data.AAAA.new(ip)}
+      _ -> {:error, :invalid_address}
+    end
+  end
 
   defp build_data("SOA", %{
          "mname" => mname,

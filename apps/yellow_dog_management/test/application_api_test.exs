@@ -151,7 +151,7 @@ defmodule YellowDog.Management.ApplicationAPITest do
     )
 
     preview = q(caller, "worker_target_preview", %{"worker_id" => worker["id"]})
-    assert preview["export_scope"]["excluded"] == ~w(dns_views dns_acls geoip_artifacts)
+    assert preview["export_scope"]["excluded"] == ~w(dns_acls geoip_artifacts)
 
     publish_params = %{
       "worker_id" => worker["id"],
@@ -260,7 +260,7 @@ defmodule YellowDog.Management.ApplicationAPITest do
         "fallback_retries" => 5
       })
 
-    before = Domain.preview_target("rich-api-view")
+    assert {:ok, before} = Domain.preview_target("rich-api-view")
     created = c(caller, "dns_view_create", params)
 
     assert created["fallback_forwarders"] == [
@@ -288,7 +288,12 @@ defmodule YellowDog.Management.ApplicationAPITest do
     assert q(%{caller | source: :mcp}, "dns_view_get", Map.put(scope, "id", created["id"])) ==
              created
 
-    assert Domain.preview_target("rich-api-view") == before
+    disabled_preview =
+      before
+      |> update_in(["worker_revision"], &(&1 + 1))
+      |> put_in(["plan", "services", Access.at(0), "config", "views"], [])
+
+    assert {:ok, ^disabled_preview} = Domain.preview_target("rich-api-view")
 
     for address <- [
           "::",
@@ -321,13 +326,37 @@ defmodule YellowDog.Management.ApplicationAPITest do
                )
     end
 
+    enabled =
+      c(
+        caller,
+        "dns_view_update",
+        Map.merge(scope, %{
+          "id" => created["id"],
+          "expected_revision" => created["revision"],
+          "enabled" => true
+        })
+      )
+
+    assert {:error,
+            %{
+              code: "invalid_config",
+              details: %{
+                "errors" => [
+                  %{
+                    code: :unsupported_value,
+                    path: ["services", 0, "config", "views", 0, "client_rules", 1, "kind"]
+                  }
+                ]
+              }
+            }} = Domain.preview_target("rich-api-view")
+
     updated =
       c(
         caller,
         "dns_view_update",
         Map.merge(scope, %{
           "id" => created["id"],
-          "expected_revision" => 1,
+          "expected_revision" => enabled["revision"],
           "client_rules" => [],
           "fallback_forwarders" => List.duplicate(%{"address" => "::1", "port" => 53}, 128)
         })
@@ -338,12 +367,37 @@ defmodule YellowDog.Management.ApplicationAPITest do
     assert updated["fallback_forwarders"] ==
              List.duplicate(%{"address" => "::1", "port" => 53}, 128)
 
+    supported_rules = Enum.reject(created["client_rules"], &(&1["kind"] == "countries"))
+
+    published_view =
+      c(
+        caller,
+        "dns_view_update",
+        Map.merge(scope, %{
+          "id" => created["id"],
+          "expected_revision" => updated["revision"],
+          "client_rules" => supported_rules
+        })
+      )
+
+    assert {:ok, preview} = Domain.preview_target("rich-api-view")
+    assert [preview_service] = preview["plan"]["services"]
+
+    assert preview_service["config"]["views"] == [
+             %{
+               "id" => published_view["id"],
+               "priority" => 42,
+               "recursion_enabled" => false,
+               "client_rules" => supported_rules
+             }
+           ]
+
     assert {:error, %{code: "invalid_request"}} =
              ApplicationAPI.command(
                caller,
                "service_create",
                put_in(
-                 service_params("rich-api-view", service["worker_revision"]),
+                 service_params("rich-api-view", preview["worker_revision"]),
                  ["config", "listen_address"],
                  "::1"
                ),

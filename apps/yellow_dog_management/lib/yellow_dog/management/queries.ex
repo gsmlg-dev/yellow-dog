@@ -41,7 +41,10 @@ defmodule YellowDog.Management.Queries do
   end
 
   def export_scope,
-    do: %{"scope" => "dns_zones", "excluded" => ~w(dns_views dns_acls geoip_artifacts)}
+    do: %{
+      "scope" => YellowDog.Management.ExportScope.scope(),
+      "excluded" => YellowDog.Management.ExportScope.excluded()
+    }
 
   def worker_projection(row) do
     row = json(row)

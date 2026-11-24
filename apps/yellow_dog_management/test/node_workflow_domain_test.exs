@@ -82,13 +82,14 @@ defmodule YellowDog.Management.NodeWorkflowDomainTest do
     assert {:ok, references} = Domain.list_service_references(worker["id"], service["id"])
     assert [%{"zone_id" => zone_id, "version" => 1}] = references["zones"]
     assert zone_id == zone["id"]
-    assert [%{"name" => "default"}] = references["views"]
+    assert references["views"] == []
     assert Domain.list_services(other["id"]) == []
     other_service = mutate("create_service", service_params(other))
     assert other_service["instance_id"] == service["instance_id"]
     refute other_service["id"] == service["id"]
     assert {:ok, other_refs} = Domain.list_service_references(other["id"], other_service["id"])
     assert other_refs["zones"] == []
+    assert other_refs["views"] == []
     assert Domain.list_worker_target_history(worker["id"]) == []
   end
 
@@ -173,7 +174,7 @@ defmodule YellowDog.Management.NodeWorkflowDomainTest do
              "create_service",
              Map.put(duplicate_listener, "expected_revision", 4),
              Ecto.UUID.generate()
-           ).status == 422
+           ).status == 409
 
     assert get("/api/workers/http-node/services") |> decoded() |> length() == 1
     assert get("/api/workers/http-node/services/#{service["id"]}/references").status == 200

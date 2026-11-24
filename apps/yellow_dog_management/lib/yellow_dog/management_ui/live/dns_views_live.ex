@@ -233,7 +233,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
         operation,
         fields,
         payload["_submission"],
-        "Desired View saved; not executed/exported"
+        "DNS View saved; publish a Worker target to deliver it"
       )
     else
       {:error, {_field, error}} -> failure(socket, error)
@@ -250,7 +250,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
         "update_dns_view",
         fields,
         payload["_submission"],
-        "Desired View status saved; not executed/exported",
+        "DNS View status saved; publish a Worker target to deliver it",
         :row
       )
     else
@@ -266,7 +266,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
         "delete_dns_view",
         identity_fields(view),
         payload["_submission"],
-        "Desired View deleted; not executed/exported",
+        "DNS View deleted; publish a Worker target to remove it",
         :row
       )
     else
@@ -833,7 +833,7 @@ defmodule YellowDog.ManagementUI.DnsViewsLive do
         <input id="row-submission-intent" type="hidden" value={@row_submission_id} />
         <.card title="DNS Views">
           <p class="management-help">
-            Saved in Management; not included in the current Worker target/export. Views belong to one explicit Worker DNS Service.
+            Enabled Views are included in Worker targets. Use Data Management to edit a View and its Worker assignments.
           </p>
           <p :if={@refresh_error} role="alert">{@refresh_error}</p>
           <p :if={@error} id="dns-view-error" class="text-error" role="alert">{@error}</p>

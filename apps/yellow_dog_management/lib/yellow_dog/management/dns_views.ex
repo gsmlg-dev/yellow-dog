@@ -1,33 +1,150 @@
 defmodule YellowDog.Management.DnsViews do
-  @moduledoc "Service-scoped desired DNS Views; no matching, resolution or Zone associations."
+  @moduledoc "Desired DNS Views and their registered Worker assignments."
 
   import Ecto.Query
 
-  alias YellowDog.Management.{DnsAcls, DnsView, Repo, Service, Worker}
+  alias YellowDog.Management.{Access, DnsAcls, DnsView, DnsViewWorker, Repo, Service, Worker}
 
   @editable_keys ~w(priority enabled recursion_enabled ecs_enabled client_rules fallback_forwarders fallback_timeout fallback_retries)
   @scope_keys ~w(worker_id service_id id expected_revision)
+  @resource_fields ~w(name priority enabled recursion_enabled client_rules worker_ids)
   @maximum_priority 9_223_372_036_854_775_807
   @default_rules [%{"action" => "allow", "kind" => "any"}]
+
+  def resources do
+    Repo.all(
+      from(view in DnsView,
+        join: assignment in DnsViewWorker,
+        on: assignment.view_id == view.id,
+        group_by: view.id,
+        order_by: [view.name, view.id],
+        select:
+          {view, fragment("array_agg(? ORDER BY ?)", assignment.worker_id, assignment.worker_id)}
+      )
+    )
+    |> Enum.map(fn {view, worker_ids} -> resource_map(view, worker_ids) end)
+  end
+
+  def save_resource(caller, params) do
+    mutate_resource(caller, fn ->
+      allowed_keys!(params, @resource_fields ++ ~w(id expected_revision))
+      worker_ids = worker_ids!(params["worker_ids"])
+      name = view_name!(params["name"])
+
+      case params["id"] do
+        id when id in [nil, ""] ->
+          lock_workers!(worker_ids)
+
+          fields =
+            defaults()
+            |> Map.merge(%{"recursion_enabled" => false, "client_rules" => []})
+            |> Map.merge(Map.take(params, @editable_keys))
+            |> fields!(false)
+
+          insert_resource!(name, fields, worker_ids) |> resource_map(worker_ids)
+
+        raw_id ->
+          id = uuid!(raw_id, "id")
+          previous_workers = assigned_workers(id)
+          affected = Enum.sort(Enum.uniq(previous_workers ++ worker_ids))
+          lock_workers!(affected)
+          view = resource!(id)
+          expect_revision!(view, params)
+
+          if assigned_workers(id) != previous_workers,
+            do: abort("revision_conflict", "DNS View assignments changed")
+
+          check_names!(name, worker_ids, view.id)
+
+          fields =
+            view
+            |> view_map(nil)
+            |> Map.take(@editable_keys)
+            |> Map.merge(Map.take(params, @editable_keys))
+            |> fields!(false)
+
+          changed =
+            view
+            |> Ecto.Changeset.change(
+              Map.merge(fields, %{name: name, revision: view.revision + 1})
+            )
+            |> Repo.update!()
+
+          replace_assignments!(id, worker_ids)
+          bump_workers(affected)
+          resource_map(changed, worker_ids)
+      end
+    end)
+  end
+
+  def delete_resource(caller, raw_id, revision) do
+    mutate_resource(caller, fn ->
+      id = uuid!(raw_id, "id")
+      workers = assigned_workers(id)
+      lock_workers!(workers)
+      view = resource!(id)
+      expect_revision!(view, %{"expected_revision" => revision})
+
+      if assigned_workers(id) != workers,
+        do: abort("revision_conflict", "DNS View assignments changed")
+
+      Repo.delete!(view)
+      bump_workers(workers)
+      resource_map(view, workers)
+    end)
+  end
+
+  def has_assignments?(worker_id) do
+    Repo.exists?(from(assignment in DnsViewWorker, where: assignment.worker_id == ^worker_id))
+  end
+
+  def target_views(worker_id) do
+    Repo.all(
+      from(view in assigned_views(worker_id),
+        where: view.enabled,
+        order_by: [view.priority, view.id],
+        select: %{
+          "id" => view.id,
+          "priority" => view.priority,
+          "recursion_enabled" => view.recursion_enabled,
+          "client_rules" => view.client_rules
+        }
+      )
+    )
+  end
+
+  def references(worker_id, limit) do
+    Repo.all(
+      from(view in assigned_views(worker_id),
+        order_by: [view.name, view.id],
+        limit: ^limit,
+        select: %{
+          "id" => view.id,
+          "name" => view.name,
+          "revision" => view.revision,
+          "is_default" => view.is_default
+        }
+      )
+    )
+  end
 
   def list(worker_id, service_id) do
     read(fn ->
       service = scope!(worker_id, service_id)
 
       Repo.all(
-        from(view in DnsView,
-          where: view.service_id == ^service.id,
+        from(view in scoped_views(service),
           order_by: [asc: view.is_default, asc: view.priority, asc: view.name, asc: view.id]
         )
       )
-      |> Enum.map(&view_map(&1, service.worker_id))
+      |> Enum.map(&view_map(&1, service.worker_id, service.id))
     end)
   end
 
   def get(worker_id, service_id, id) do
     read(fn ->
       service = scope!(worker_id, service_id)
-      view!(service.id, id) |> view_map(service.worker_id)
+      view!(service, id) |> view_map(service.worker_id, service.id)
     end)
   end
 
@@ -54,33 +171,19 @@ defmodule YellowDog.Management.DnsViews do
   def dispatch("create_dns_view", params) do
     allowed_keys!(params, ~w(worker_id service_id name) ++ @editable_keys)
     service = scope!(params["worker_id"], params["service_id"], "FOR UPDATE")
-    name = params["name"]
-
-    unless is_binary(name) and String.valid?(name) and
-             Regex.match?(~r/\A[A-Za-z0-9_-]{1,63}\z/, name) and name != "default",
-           do:
-             abort(
-               "invalid_request",
-               "name must be 1–63 ASCII letters, digits, underscore or hyphen; default is reserved"
-             )
-
-    if Repo.exists?(
-         from(view in DnsView, where: view.service_id == ^service.id and view.name == ^name)
-       ),
-       do: abort("conflict", "DNS View name already exists in Service")
-
+    name = view_name!(params["name"])
     fields = fields!(Map.merge(defaults(), Map.take(params, @editable_keys)), false)
 
-    struct!(DnsView, Map.merge(fields, %{service_id: service.id, name: name}))
-    |> Repo.insert!()
-    |> view_map(service.worker_id)
+    view = insert_resource!(name, fields, [service.worker_id])
+    view_map(view, service.worker_id, service.id)
   end
 
   def dispatch("update_dns_view", params) do
     allowed_keys!(params, @scope_keys ++ @editable_keys)
     service = scope!(params["worker_id"], params["service_id"], "FOR UPDATE")
-    view = view!(service.id, params["id"], "FOR UPDATE")
+    view = view!(service, params["id"], "FOR UPDATE")
     expect_revision!(view, params)
+    require_single_scope!(view)
 
     if view.is_default and
          (Map.has_key?(params, "priority") or Map.has_key?(params, "client_rules")),
@@ -93,22 +196,140 @@ defmodule YellowDog.Management.DnsViews do
       |> Map.merge(Map.take(params, @editable_keys))
       |> fields!(view.is_default)
 
-    view
-    |> Ecto.Changeset.change(Map.put(fields, :revision, view.revision + 1))
-    |> Repo.update!()
-    |> view_map(service.worker_id)
+    changed =
+      view
+      |> Ecto.Changeset.change(Map.put(fields, :revision, view.revision + 1))
+      |> Repo.update!()
+
+    bump_workers([service.worker_id])
+    view_map(changed, service.worker_id, service.id)
   end
 
   def dispatch("delete_dns_view", params) do
     allowed_keys!(params, @scope_keys)
     service = scope!(params["worker_id"], params["service_id"], "FOR UPDATE")
-    view = view!(service.id, params["id"], "FOR UPDATE")
+    view = view!(service, params["id"], "FOR UPDATE")
     expect_revision!(view, params)
     if view.is_default, do: abort("conflict", "Default DNS View cannot be deleted")
-    Repo.delete!(view) |> view_map(service.worker_id)
+    require_single_scope!(view)
+    Repo.delete!(view)
+    bump_workers([service.worker_id])
+    view_map(view, service.worker_id, service.id)
   end
 
   def dispatch(_operation, _params), do: abort("invalid_request", "Unknown DNS View operation")
+
+  defp mutate_resource(caller, callback) do
+    with :ok <- Access.authorize(caller, "data:write") do
+      Repo.transaction(fn ->
+        case read(callback) do
+          {:ok, result} -> result
+          {:error, error} -> Repo.rollback(error)
+        end
+      end)
+    end
+  end
+
+  defp worker_ids!(ids) when is_list(ids) and ids != [] do
+    unless Enum.all?(ids, &valid_worker_id?/1),
+      do: abort("invalid_request", "Each Worker must be a valid Worker identifier")
+
+    ids |> Enum.uniq() |> Enum.sort()
+  end
+
+  defp worker_ids!(_), do: abort("invalid_request", "Select at least one Worker")
+
+  defp lock_workers!(ids) do
+    actual =
+      Repo.all(
+        from(worker in Worker,
+          where: worker.id in ^ids,
+          order_by: worker.id,
+          lock: "FOR UPDATE",
+          select: worker.id
+        )
+      )
+
+    unless Enum.sort(actual) == ids,
+      do: abort("not_found", "One or more selected Workers do not exist")
+  end
+
+  defp bump_workers(ids) do
+    Repo.update_all(from(worker in Worker, where: worker.id in ^ids),
+      inc: [revision: 1],
+      set: [updated_at: DateTime.utc_now()]
+    )
+  end
+
+  defp view_name!(name) do
+    unless is_binary(name) and String.valid?(name) and
+             Regex.match?(~r/\A[A-Za-z0-9_-]{1,63}\z/, name) and name != "default",
+           do:
+             abort(
+               "invalid_request",
+               "name must be 1–63 ASCII letters, digits, underscore or hyphen; default is reserved"
+             )
+
+    name
+  end
+
+  defp insert_resource!(name, fields, worker_ids) do
+    check_names!(name, worker_ids, nil)
+    view = struct!(DnsView, Map.put(fields, :name, name)) |> Repo.insert!()
+    replace_assignments!(view.id, worker_ids)
+    bump_workers(worker_ids)
+    view
+  end
+
+  defp check_names!(name, worker_ids, id) do
+    query =
+      from(view in DnsView,
+        join: assignment in DnsViewWorker,
+        on: assignment.view_id == view.id,
+        where: view.name == ^name and assignment.worker_id in ^worker_ids
+      )
+
+    query = if id, do: from(view in query, where: view.id != ^id), else: query
+
+    if Repo.exists?(query),
+      do: abort("conflict", "DNS View name already exists on a selected Worker")
+  end
+
+  defp assigned_workers(id) do
+    Repo.all(
+      from(assignment in DnsViewWorker,
+        where: assignment.view_id == ^id,
+        order_by: assignment.worker_id,
+        select: assignment.worker_id
+      )
+    )
+    |> Enum.sort()
+  end
+
+  defp assigned_views(worker_id) do
+    from(view in DnsView,
+      join: assignment in DnsViewWorker,
+      on: assignment.view_id == view.id,
+      where: assignment.worker_id == ^worker_id
+    )
+  end
+
+  defp replace_assignments!(id, worker_ids) do
+    Repo.delete_all(from(assignment in DnsViewWorker, where: assignment.view_id == ^id))
+    Repo.insert_all(DnsViewWorker, Enum.map(worker_ids, &%{view_id: id, worker_id: &1}))
+  end
+
+  defp resource!(id) do
+    Repo.one(
+      from(view in DnsView, where: view.id == ^id and not view.is_default, lock: "FOR UPDATE")
+    ) ||
+      abort("not_found", "DNS View not found")
+  end
+
+  defp require_single_scope!(view) do
+    if match?([_, _ | _], assigned_workers(view.id)),
+      do: abort("conflict", "Edit or delete this shared DNS View from Data Management")
+  end
 
   defp defaults do
     %{
@@ -195,9 +416,8 @@ defmodule YellowDog.Management.DnsViews do
   end
 
   defp scope!(worker_id, service_id, lock \\ nil) do
-    unless is_binary(worker_id) and String.valid?(worker_id) and
-             Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/, worker_id),
-           do: abort("invalid_request", "worker_id must be a valid Worker identifier")
+    unless valid_worker_id?(worker_id),
+      do: abort("invalid_request", "worker_id must be a valid Worker identifier")
 
     service_id = uuid!(service_id, "service_id")
 
@@ -220,12 +440,32 @@ defmodule YellowDog.Management.DnsViews do
     service
   end
 
-  defp view!(service_id, id, lock \\ nil) do
+  defp valid_worker_id?(id) do
+    is_binary(id) and String.valid?(id) and
+      Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/, id)
+  end
+
+  defp scoped_views(service) do
+    from(view in DnsView,
+      as: :view,
+      where:
+        (view.is_default and view.service_id == ^service.id) or
+          exists(
+            from(assignment in DnsViewWorker,
+              where:
+                assignment.view_id == parent_as(:view).id and
+                  assignment.worker_id == ^service.worker_id
+            )
+          )
+    )
+  end
+
+  defp view!(service, id, lock \\ nil) do
     id = uuid!(id, "id")
 
     Repo.one(
       locked(
-        from(view in DnsView, where: view.id == ^id and view.service_id == ^service_id),
+        from(view in scoped_views(service), where: view.id == ^id),
         lock
       )
     ) ||
@@ -259,11 +499,18 @@ defmodule YellowDog.Management.DnsViews do
       do: abort("revision_conflict", "Expected revision does not match current DNS View revision")
   end
 
-  defp view_map(view, worker_id) do
+  defp resource_map(view, worker_ids) do
+    view
+    |> view_map(nil)
+    |> Map.take(@resource_fields ++ ~w(id revision inserted_at updated_at))
+    |> Map.put("worker_ids", Enum.sort(worker_ids))
+  end
+
+  defp view_map(view, worker_id, service_id \\ nil) do
     %{
       "id" => view.id,
       "worker_id" => worker_id,
-      "service_id" => view.service_id,
+      "service_id" => service_id || view.service_id,
       "name" => view.name,
       "is_default" => view.is_default,
       "priority" => view.priority,

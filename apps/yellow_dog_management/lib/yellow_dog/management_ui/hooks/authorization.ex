@@ -46,8 +46,11 @@ defmodule YellowDog.ManagementUI.Hooks.Authorization do
   def path_scope(path) do
     case String.split(path, "/", trim: true) do
       ["management", "events" | _] -> "audit:read"
+      ["management", "zones", "cloud" | _] -> "ui:admin"
       ["system", "logs" | _] -> "ui:admin"
       ["system", "backups" | _] -> "ui:admin"
+      ["system", "certificates" | _] -> "ui:admin"
+      ["system", "cloud-providers" | _] -> "ui:admin"
       ["system", "process-map" | _] -> "ui:admin"
       ["system", "mac-database" | _] -> "ui:admin"
       ["system", "tasks" | _] -> "ui:admin"
@@ -65,7 +68,7 @@ defmodule YellowDog.ManagementUI.Hooks.Authorization do
       module == "EventsLive" ->
         "audit:read"
 
-      module in ~w(LogsLive BackupsLive ProcessMapLive MacDatabaseLive TasksLive MacLive WhoisLive GeoipLive) ->
+      module in ~w(LogsLive BackupsLive CertificatesLive CloudDnsLive CloudProvidersLive ProcessMapLive MacDatabaseLive TasksLive MacLive WhoisLive GeoipLive) ->
         "ui:admin"
 
       module == "WorkersLive" and socket.assigns.live_action == :enrollment ->

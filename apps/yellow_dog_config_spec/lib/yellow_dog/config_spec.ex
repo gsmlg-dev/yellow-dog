@@ -11,16 +11,26 @@ defmodule YellowDog.ConfigSpec do
   @max_services 64
   @max_resources 256
   @max_records 1_024
+  @record_types ~w(SOA NS A AAAA CNAME MX TXT PTR)
+  @max_txt_strings 255
   @max_allow_query 128
+  @max_views 128
+  @max_view_priority 9_223_372_036_854_775_807
   @max_forward_zones 64
   @max_forwarders 8
+  @max_listener_addresses 32
+  @dns_transports ~w(udp tcp dot doq doh)
+  @dns_policy_fields ~w(recursion allow_query forward_zones views)
   @max_id_bytes 64
   @max_domain_bytes 253
   @max_revision 2_147_483_647
   @id_pattern ~r/\A[a-zA-Z0-9][a-zA-Z0-9_.-]*\z/
   @domain_label ~r/\A[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\z/
+  @owner_label ~r/\A[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\z/
 
   @type error :: %{path: [String.t() | non_neg_integer()], code: atom(), message: String.t()}
+
+  def record_types, do: @record_types
 
   @spec normalize_resource(map()) :: {:ok, map()} | {:error, [error()]}
   def normalize_resource(resource) when is_map(resource) do
@@ -80,7 +90,7 @@ defmodule YellowDog.ConfigSpec do
          :ok <- unique(resources, "id", ["resources"]),
          :ok <- references(services, resources),
          :ok <- target_zones(services, resources),
-         :ok <- listener_bindings(services) do
+         :ok <- single_dns_service(services) do
       normalized = %{
         "schema_version" => 1,
         "worker_id" => worker_id,
@@ -227,28 +237,202 @@ defmodule YellowDog.ConfigSpec do
 
   defp service(_, path), do: err(path, :invalid_type, "service must be a map")
 
+  defp dns_config(%{"listen" => listen} = config, path) do
+    with :ok <- shape(config, ~w(listen), ["transports" | @dns_policy_fields], path),
+         {:ok, listen} <- listener_scope(listen, path ++ ["listen"]),
+         {:ok, transports} <-
+           dns_transports(Map.get(config, "transports", %{}), path ++ ["transports"]),
+         {:ok, policy} <- dns_policy(config, path) do
+      {:ok, Map.merge(policy, %{"listen" => listen, "transports" => transports})}
+    end
+  end
+
   defp dns_config(config, path) when is_map(config) do
-    with :ok <-
-           shape(config, ~w(listen_address port), ~w(recursion allow_query forward_zones), path),
+    with :ok <- shape(config, ~w(listen_address port), @dns_policy_fields, path),
          {:ok, address} <- ipv4(config["listen_address"], path ++ ["listen_address"]),
          {:ok, port} <- integer(config["port"], 1, 65_535, path ++ ["port"]),
-         {:ok, recursion} <- boolean(Map.get(config, "recursion", false), path ++ ["recursion"]),
-         {:ok, allow_query} <-
-           allow_query(Map.get(config, "allow_query", []), path ++ ["allow_query"]),
-         {:ok, zones} <-
-           forward_zones(Map.get(config, "forward_zones", []), path ++ ["forward_zones"]) do
-      {:ok,
-       %{
-         "listen_address" => address,
-         "port" => port,
-         "recursion" => recursion,
-         "allow_query" => allow_query,
-         "forward_zones" => zones
-       }}
+         {:ok, policy} <- dns_policy(config, path) do
+      {:ok, Map.merge(policy, %{"listen_address" => address, "port" => port})}
     end
   end
 
   defp dns_config(_, path), do: err(path, :invalid_type, "config must be a map")
+
+  defp dns_policy(config, path) do
+    with {:ok, recursion} <- boolean(Map.get(config, "recursion", false), path ++ ["recursion"]),
+         {:ok, allow_query} <-
+           allow_query(Map.get(config, "allow_query", []), path ++ ["allow_query"]),
+         {:ok, zones} <-
+           forward_zones(Map.get(config, "forward_zones", []), path ++ ["forward_zones"]),
+         {:ok, views} <- optional_field(config, "views", &dns_views/2, path) do
+      {:ok,
+       Map.merge(views, %{
+         "recursion" => recursion,
+         "allow_query" => allow_query,
+         "forward_zones" => zones
+       })}
+    end
+  end
+
+  defp dns_views(value, path) do
+    with {:ok, views} <- bounded_list(value, @max_views, path),
+         {:ok, views} <- map_indexed(views, &dns_view/2, path),
+         :ok <- unique(views, "id", path),
+         :ok <- single_default_view(views, path) do
+      {:ok, Enum.sort_by(views, &{Map.get(&1, "priority", @max_view_priority + 1), &1["id"]})}
+    end
+  end
+
+  defp dns_view(view, path) when is_map(view) do
+    with :ok <- shape(view, ~w(id recursion_enabled client_rules), ["priority"], path),
+         {:ok, id} <- identity(view["id"], path ++ ["id"]),
+         {:ok, recursion} <- boolean(view["recursion_enabled"], path ++ ["recursion_enabled"]),
+         {:ok, rules} <- view_rules(view["client_rules"], path ++ ["client_rules"]),
+         {:ok, priority} <- optional_field(view, "priority", &view_priority/2, path) do
+      {:ok,
+       Map.merge(priority, %{
+         "id" => id,
+         "recursion_enabled" => recursion,
+         "client_rules" => rules
+       })}
+    end
+  end
+
+  defp dns_view(_, path), do: err(path, :invalid_type, "DNS View must be a map")
+
+  defp view_priority(value, path), do: integer(value, 0, @max_view_priority, path)
+
+  defp single_default_view(views, path) do
+    if Enum.count(views, &(not is_map_key(&1, "priority"))) <= 1,
+      do: :ok,
+      else: err(path, :duplicate, "only one default DNS View can omit priority")
+  end
+
+  defp view_rules(value, path) do
+    with {:ok, rules} <- bounded_list(value, @max_allow_query, path),
+         {:ok, rules} <- map_indexed(rules, &view_rule/2, path) do
+      networks = Enum.sum(Enum.map(rules, &length(Map.get(&1, "networks", []))))
+
+      if networks <= @max_allow_query,
+        do: {:ok, rules},
+        else: err(path, :too_many, "View rules exceed #{@max_allow_query} total networks")
+    end
+  end
+
+  defp view_rule(rule, path) when is_map(rule) do
+    kind = rule["kind"]
+
+    with :ok <- member(rule["action"], ~w(allow deny), path ++ ["action"]),
+         :ok <- member(kind, ~w(any networks), path ++ ["kind"]),
+         {:ok, selector} <- view_selector(kind, rule, path) do
+      {:ok, Map.merge(selector, %{"action" => rule["action"], "kind" => kind})}
+    end
+  end
+
+  defp view_rule(_, path), do: err(path, :invalid_type, "View rule must be a map")
+
+  defp view_selector("any", rule, path) do
+    with :ok <- shape(rule, ~w(action kind), [], path), do: {:ok, %{}}
+  end
+
+  defp view_selector("networks", rule, path) do
+    with :ok <- shape(rule, ~w(action kind networks), [], path),
+         {:ok, networks} <- allow_query(rule["networks"], path ++ ["networks"]) do
+      {:ok, %{"networks" => networks}}
+    end
+  end
+
+  defp dns_transports(transports, path) when is_map(transports) do
+    with :ok <- shape(transports, [], @dns_transports, path) do
+      Enum.reduce_while(@dns_transports, {:ok, %{}}, fn protocol, {:ok, normalized} ->
+        case dns_transport(protocol, Map.get(transports, protocol, %{}), path ++ [protocol]) do
+          {:ok, config} -> {:cont, {:ok, Map.put(normalized, protocol, config)}}
+          {:error, _} = error -> {:halt, error}
+        end
+      end)
+    end
+  end
+
+  defp dns_transports(_, path), do: err(path, :invalid_type, "transports must be a map")
+
+  defp dns_transport(protocol, config, path) when is_map(config) do
+    encrypted? = protocol in ~w(dot doq doh)
+
+    optional =
+      if encrypted?, do: ~w(enabled port listen certificate_id), else: ~w(enabled port listen)
+
+    default_port = %{"udp" => 53, "tcp" => 53, "dot" => 853, "doq" => 853, "doh" => 443}[protocol]
+
+    with :ok <- shape(config, [], optional, path),
+         {:ok, enabled} <-
+           boolean(Map.get(config, "enabled", not encrypted?), path ++ ["enabled"]),
+         {:ok, port} <-
+           integer(Map.get(config, "port", default_port), 1, 65_535, path ++ ["port"]),
+         {:ok, listen} <- optional_field(config, "listen", &listener_scope/2, path),
+         :ok <- require_certificate(config, enabled and encrypted?, path),
+         {:ok, certificate} <- optional_field(config, "certificate_id", &identity/2, path) do
+      {:ok, Map.merge(%{"enabled" => enabled, "port" => port}, Map.merge(listen, certificate))}
+    end
+  end
+
+  defp dns_transport(_, _, path), do: err(path, :invalid_type, "transport must be a map")
+
+  defp require_certificate(config, true, path),
+    do: shape(config, ["certificate_id"], ~w(enabled port listen), path)
+
+  defp require_certificate(_config, false, _path), do: :ok
+
+  defp optional_field(config, key, validator, path) do
+    case Map.fetch(config, key) do
+      {:ok, value} ->
+        with {:ok, normalized} <- validator.(value, path ++ [key]),
+             do: {:ok, %{key => normalized}}
+
+      :error ->
+        {:ok, %{}}
+    end
+  end
+
+  defp listener_scope(%{"mode" => "specific"} = scope, path) do
+    address_path = path ++ ["addresses"]
+
+    with :ok <- shape(scope, ~w(mode addresses), [], path),
+         {:ok, addresses} <-
+           bounded_list(scope["addresses"], @max_listener_addresses, address_path),
+         :ok <- nonempty_addresses(addresses, address_path),
+         {:ok, addresses} <- map_indexed(addresses, &listener_address/2, address_path),
+         :ok <- unique_values(addresses, address_path) do
+      {:ok, %{"mode" => "specific", "addresses" => Enum.sort(addresses)}}
+    end
+  end
+
+  defp listener_scope(scope, path) when is_map(scope) do
+    with :ok <- shape(scope, ["mode"], [], path),
+         :ok <- member(scope["mode"], ~w(all all_ipv4 all_ipv6), path ++ ["mode"]),
+         do: {:ok, scope}
+  end
+
+  defp listener_scope(_, path), do: err(path, :invalid_type, "listen must be a map")
+
+  defp nonempty_addresses([], path),
+    do: err(path, :missing_field, "at least one address is required")
+
+  defp nonempty_addresses(_, _path), do: :ok
+
+  defp listener_address(address, path) when is_binary(address) and byte_size(address) <= 45 do
+    case :inet.parse_strict_address(String.to_charlist(address)) do
+      {:ok, tuple} when tuple in [{0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0}] ->
+        err(path, :invalid_address, "select an all-addresses mode for a wildcard listener")
+
+      {:ok, tuple} ->
+        {:ok, tuple |> :inet.ntoa() |> List.to_string()}
+
+      {:error, _} ->
+        err(path, :invalid_address, "invalid IP address")
+    end
+  end
+
+  defp listener_address(_, path), do: err(path, :invalid_address, "IP address must be a string")
 
   defp zone(content, path) when is_map(content) do
     with :ok <- shape(content, ~w(name records), [], path),
@@ -257,6 +441,7 @@ defmodule YellowDog.ConfigSpec do
          {:ok, records} <- map_indexed(records, &record/2, path ++ ["records"]),
          :ok <- unique_values(Enum.map(records, &canonical/1), path ++ ["records"]),
          :ok <- rrset_ttls(records, path),
+         :ok <- exclusive_cnames(records, path),
          :ok <- complete_zone(name, records, path) do
       {:ok, %{"name" => name, "records" => Enum.sort_by(records, &canonical/1)}}
     end
@@ -266,8 +451,8 @@ defmodule YellowDog.ConfigSpec do
 
   defp record(record, path) when is_map(record) do
     with :ok <- shape(record, ~w(name type ttl data), [], path),
-         {:ok, name} <- domain(record["name"], path ++ ["name"]),
-         :ok <- member(record["type"], ~w(SOA NS A), path ++ ["type"]),
+         {:ok, name} <- record_owner(record["name"], path ++ ["name"]),
+         :ok <- member(record["type"], @record_types, path ++ ["type"]),
          {:ok, ttl} <- integer(record["ttl"], 0, @max_revision, path ++ ["ttl"]),
          {:ok, data} <- record_data(record["type"], record["data"], path ++ ["data"]) do
       {:ok, %{"name" => name, "type" => record["type"], "ttl" => ttl, "data" => data}}
@@ -312,7 +497,55 @@ defmodule YellowDog.ConfigSpec do
     end
   end
 
+  defp record_data("AAAA", data, path) when is_map(data) do
+    with :ok <- shape(data, ~w(address), [], path),
+         {:ok, address} <- ipv6(data["address"], path ++ ["address"]) do
+      {:ok, %{"address" => address}}
+    end
+  end
+
+  defp record_data(type, data, path) when type in ~w(CNAME PTR) and is_map(data) do
+    with :ok <- shape(data, ~w(target), [], path),
+         {:ok, target} <- dns_name(data["target"], path ++ ["target"], @owner_label, false) do
+      {:ok, %{"target" => target}}
+    end
+  end
+
+  defp record_data("MX", data, path) when is_map(data) do
+    with :ok <- shape(data, ~w(preference exchange), [], path),
+         {:ok, preference} <- integer(data["preference"], 0, 65_535, path ++ ["preference"]),
+         {:ok, exchange} <- mx_exchange(data["exchange"], preference, path ++ ["exchange"]) do
+      {:ok, %{"preference" => preference, "exchange" => exchange}}
+    end
+  end
+
+  defp record_data("TXT", data, path) when is_map(data) do
+    with :ok <- shape(data, ~w(strings), [], path),
+         {:ok, strings} <- bounded_list(data["strings"], @max_txt_strings, path ++ ["strings"]),
+         :ok <- txt_nonempty(strings, path ++ ["strings"]),
+         {:ok, strings} <- map_indexed(strings, &txt_string/2, path ++ ["strings"]) do
+      {:ok, %{"strings" => strings}}
+    end
+  end
+
   defp record_data(_, _, path), do: err(path, :invalid_type, "invalid record data")
+
+  defp mx_exchange(".", 0, _path), do: {:ok, "."}
+  defp mx_exchange(exchange, _preference, path), do: domain(exchange, path)
+
+  defp txt_nonempty([], path),
+    do: err(path, :invalid_record, "TXT requires at least one character-string")
+
+  defp txt_nonempty(_, _path), do: :ok
+
+  defp txt_string(value, path) do
+    if is_binary(value) and byte_size(value) <= 255 and String.valid?(value) and
+         not String.contains?(value, <<0>>) do
+      {:ok, value}
+    else
+      err(path, :invalid_record, "TXT strings must contain at most 255 UTF-8 bytes without NUL")
+    end
+  end
 
   defp rrset_ttls(records, path) do
     inconsistent? =
@@ -330,7 +563,6 @@ defmodule YellowDog.ConfigSpec do
   defp complete_zone(name, records, path) do
     soa = Enum.filter(records, &(&1["type"] == "SOA"))
     apex_ns = Enum.filter(records, &(&1["type"] == "NS" and &1["name"] == name))
-    a = Enum.filter(records, &(&1["type"] == "A"))
 
     cond do
       length(soa) != 1 ->
@@ -342,9 +574,6 @@ defmodule YellowDog.ConfigSpec do
       apex_ns == [] ->
         err(path ++ ["records"], :invalid_zone, "zone requires an apex NS")
 
-      a == [] ->
-        err(path ++ ["records"], :invalid_zone, "zone requires an A record")
-
       Enum.any?(records, fn r ->
         r["name"] != name and not String.ends_with?(r["name"], "." <> name)
       end) ->
@@ -353,6 +582,19 @@ defmodule YellowDog.ConfigSpec do
       true ->
         :ok
     end
+  end
+
+  defp exclusive_cnames(records, path) do
+    conflicting? =
+      records
+      |> Enum.group_by(& &1["name"])
+      |> Enum.any?(fn {_name, records} ->
+        length(records) > 1 and Enum.any?(records, &(&1["type"] == "CNAME"))
+      end)
+
+    if conflicting?,
+      do: err(path ++ ["records"], :invalid_zone, "CNAME must be the only record at its owner"),
+      else: :ok
   end
 
   defp references(services, resources) do
@@ -410,35 +652,10 @@ defmodule YellowDog.ConfigSpec do
     end)
   end
 
-  defp listener_bindings(services) do
-    running = Enum.filter(services, &(&1["desired_state"] == "running"))
+  defp single_dns_service(services) when length(services) <= 1, do: :ok
 
-    Enum.reduce_while(running, [], fn service, seen ->
-      config = service["config"]
-      address = config["listen_address"]
-      port = config["port"]
-
-      conflict? =
-        Enum.any?(seen, fn {other_address, other_port} ->
-          port == other_port and
-            (address == other_address or address == "0.0.0.0" or other_address == "0.0.0.0")
-        end)
-
-      if conflict? do
-        {:halt,
-         err(
-           ["services", service["id"], "config"],
-           :listener_conflict,
-           "running DNS services cannot share an overlapping listener"
-         )}
-      else
-        {:cont, [{address, port} | seen]}
-      end
-    end)
-    |> case do
-      {:error, _} = error -> error
-      _ -> :ok
-    end
+  defp single_dns_service(_) do
+    err(["services"], :duplicate_service_type, "a Worker can configure only one DNS service")
   end
 
   defp shape(map, required, optional, path) do
@@ -467,19 +684,28 @@ defmodule YellowDog.ConfigSpec do
 
   defp identity(_, path), do: err(path, :invalid_identity, "ID must be a string")
 
-  defp domain(value, path) when is_binary(value) do
+  defp domain(value, path), do: dns_name(value, path, @domain_label, false)
+  defp record_owner(value, path), do: dns_name(value, path, @owner_label, true)
+
+  defp dns_name(value, path, label, wildcard?) when is_binary(value) do
     normalized = value |> String.trim_trailing(".") |> String.downcase()
-    labels = String.split(normalized, ".")
+
+    labels =
+      case String.split(normalized, ".") do
+        ["*", first | rest] when wildcard? -> [first | rest]
+        labels -> labels
+      end
 
     if not String.ends_with?(value, "..") and byte_size(normalized) in 1..@max_domain_bytes and
-         Enum.all?(labels, &Regex.match?(@domain_label, &1)) do
+         Enum.all?(labels, &Regex.match?(label, &1)) do
       {:ok, normalized <> "."}
     else
       err(path, :invalid_domain, "invalid DNS domain name")
     end
   end
 
-  defp domain(_, path), do: err(path, :invalid_domain, "domain must be a string")
+  defp dns_name(_, path, _label, _wildcard?),
+    do: err(path, :invalid_domain, "domain must be a string")
 
   defp soa_rname(value, path) when is_binary(value) do
     with {:ok, normalized} <- domain(value, path) do
@@ -504,6 +730,15 @@ defmodule YellowDog.ConfigSpec do
   end
 
   defp ipv4(_, path), do: err(path, :invalid_address, "IPv4 address must be a string")
+
+  defp ipv6(value, path) when is_binary(value) do
+    case :inet.parse_strict_address(String.to_charlist(value)) do
+      {:ok, tuple} when tuple_size(tuple) == 8 -> {:ok, tuple_ntoa(tuple)}
+      _ -> err(path, :invalid_address, "invalid IPv6 address")
+    end
+  end
+
+  defp ipv6(_, path), do: err(path, :invalid_address, "IPv6 address must be a string")
 
   defp boolean(value, _path) when is_boolean(value), do: {:ok, value}
   defp boolean(_, path), do: err(path, :invalid_type, "value must be a boolean")
@@ -577,6 +812,9 @@ defmodule YellowDog.ConfigSpec do
   end
 
   defp tuple_ntoa(tuple), do: tuple |> :inet.ntoa() |> to_string() |> String.downcase()
+
+  @doc "Normalize the forwarding zones used by a Worker DNS service."
+  def normalize_forward_zones(value), do: forward_zones(value, ["forward_zones"])
 
   defp forward_zones(value, path) do
     with {:ok, list} <- bounded_list(value, @max_forward_zones, path),
@@ -699,7 +937,9 @@ defmodule YellowDog.ConfigSpec do
   defp canonical(value) when is_list(value), do: Jason.encode!(Enum.map(value, &canonical/1))
   defp canonical(value), do: Jason.encode!(value)
 
-  defp toml(value) when is_binary(value), do: Jason.encode!(value)
+  defp toml(value) when is_binary(value),
+    do: value |> Jason.encode!() |> String.replace(<<127>>, "\\u007F")
+
   defp toml(value) when is_boolean(value), do: Atom.to_string(value)
   defp toml(value) when is_integer(value), do: Integer.to_string(value)
   defp toml(value) when is_list(value), do: "[" <> Enum.map_join(value, ", ", &toml/1) <> "]"

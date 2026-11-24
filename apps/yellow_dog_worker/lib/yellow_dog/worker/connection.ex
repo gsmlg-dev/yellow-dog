@@ -53,6 +53,7 @@ defmodule YellowDog.Worker.Connection do
       timer: nil,
       failures: 0,
       apply_error: nil,
+      certificate_error: nil,
       connection_error: nil,
       connected: false
     }
@@ -95,6 +96,13 @@ defmodule YellowDog.Worker.Connection do
     {:noreply, state |> apply_target(target) |> push_report()}
   end
 
+  def handle_info(
+        {__MODULE__.Channel, pid, "dns_certificates", payload},
+        %{channel: {pid, _}} = state
+      ) do
+    {:noreply, state |> apply_certificates(payload) |> push_report()}
+  end
+
   def handle_info({__MODULE__.Channel, pid, event, _}, %{channel: {pid, _}} = state)
       when event in ["phx_close", "phx_error"],
       do: {:noreply, retry(state, "disconnected")}
@@ -115,7 +123,17 @@ defmodule YellowDog.Worker.Connection do
   end
 
   @impl true
-  def format_status(status), do: Map.put(status, :state, "[redacted Worker connection]")
+  def format_status(status) do
+    status = Map.put(status, :state, "[redacted Worker connection]")
+
+    case status do
+      %{message: {__MODULE__.Channel, _pid, "dns_certificates", _payload}} ->
+        Map.put(status, :message, "[redacted DNS certificates]")
+
+      _ ->
+        status
+    end
+  end
 
   defp resolve(options) do
     case options[:bootstrap_path] do
@@ -257,6 +275,24 @@ defmodule YellowDog.Worker.Connection do
     :exit, _ -> {:error, :manager_unavailable}
   end
 
+  defp apply_certificates(state, %{"certificates" => certificates})
+       when is_list(certificates) and length(certificates) in 1..3 do
+    errors =
+      Enum.reduce(certificates, [], fn certificate, errors ->
+        case safe(fn -> ServiceManager.install_dns_certificate(state.manager, certificate) end) do
+          {:ok, _} -> errors
+          {:error, :invalid_dns_certificate} -> ["invalid_dns_certificate" | errors]
+          {:error, :dns_certificate_reload_failed} -> ["dns_certificate_reload_failed" | errors]
+          _ -> ["dns_certificate_storage_failed" | errors]
+        end
+      end)
+
+    %{state | certificate_error: List.first(errors)}
+  end
+
+  defp apply_certificates(state, _payload),
+    do: %{state | certificate_error: "invalid_dns_certificate"}
+
   # Adapter failures are reduced to an atom so neither the join payload nor
   # exception arguments can reach a crash report.
   defp safe(fun) do
@@ -323,13 +359,29 @@ defmodule YellowDog.Worker.Connection do
               true -> "running"
             end
 
-          {id, %{"state" => observed}}
+          {id, service_report(observed, get_in(service, [:active, :protocols]))}
         end),
       "applied_revision" => if(plan, do: plan["revision"]),
       "applied_digest" => digest,
-      "apply_error" => state.apply_error
+      "apply_error" => state.apply_error || state.certificate_error
     }
   end
+
+  defp service_report("running", protocols) when is_map(protocols) do
+    states = Enum.map(protocols, fn {_, value} -> value["state"] end)
+
+    state =
+      cond do
+        "error" in states and "running" in states -> "partial"
+        "error" in states -> "error"
+        "running" in states -> "running"
+        true -> "stopped"
+      end
+
+    %{"state" => state, "protocols" => protocols}
+  end
+
+  defp service_report(state, _protocols), do: %{"state" => state}
 
   defp accept_target(nil, _status, _state), do: :ok
 
@@ -365,5 +417,9 @@ defmodule YellowDog.Worker.Connection do
     end
   end
 
-  defp public_status(state), do: Map.take(state, [:connected, :connection_error, :apply_error])
+  defp public_status(state) do
+    state
+    |> Map.take([:connected, :connection_error])
+    |> Map.put(:apply_error, state.apply_error || state.certificate_error)
+  end
 end

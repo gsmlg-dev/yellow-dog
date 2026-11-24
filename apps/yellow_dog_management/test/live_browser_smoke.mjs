@@ -117,8 +117,9 @@ async function runSmoke() {
     await evaluate(`(() => {
       const form = document.querySelector(${JSON.stringify(selector)});
       for (const [name, value] of Object.entries(${JSON.stringify(values)})) {
-        const input = form.elements.namedItem(name);
-        input.value = value;
+        const input = Array.from(form.elements).find(field => field.name === name && field.type === 'checkbox') ?? form.elements.namedItem(name);
+        if (input.type === 'checkbox') input.checked = value;
+        else input.value = value;
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
       }
@@ -237,8 +238,8 @@ async function runSmoke() {
   await until(() => evaluate(`document.querySelector('[name="worker[name]"]').value === ''`), 'Worker registration form did not reset');
   await evaluate(`document.querySelector('#server-selector-${liveWorkerId} a').click()`);
   await until(() => evaluate('!!document.querySelector("#server-dashboard")'), 'Live navigation to dashboard failed');
-  await navigate(`/server/${liveWorkerId}/services/new`);
-  await submit('#service-form', { 'service[id]': 'dns', 'service[listen_address]': '127.0.0.1', 'service[port]': '5300', 'service[desired_state]': 'stopped' });
+  await navigate(`/server/${liveWorkerId}/dns`);
+  await submit('#service-form', { 'service[mode]': 'all_ipv4', 'service[transports][udp][port]': '5300', 'service[transports][tcp][port]': '5300', 'service[desired_state]': false });
   await until(async () => (await api(`/workers/${liveWorkerId}`)).services.length === 1, 'Desired DNS service was not saved');
   const worker = await api(`/workers/${liveWorkerId}`);
   await navigation.scoped(liveWorkerId, worker.services[0].id, zone.id);
@@ -257,7 +258,8 @@ async function runSmoke() {
   assert.equal(await evaluate('document.querySelector("#server-selection-form-select").value'), liveWorkerId);
   assert.ok(previewText.includes('Review target revision 1'));
   assert.ok(previewText.includes(`Bound saved configuration revision: ${reviewedWorker.revision}`));
-  assert.ok(previewText.includes('dns: stopped, 127.0.0.1:5300'));
+  assert.ok(previewText.includes('dns: stopped, UDP All IPv4, port 5300'));
+  assert.ok(previewText.includes('TCP All IPv4, port 5300'));
   assert.ok(previewText.includes(`${zone.id} · version ${version.version}`));
   assert.deepEqual(await api(`/workers/${liveWorkerId}/targets`), [], 'Preview published a target');
   // A second editor changes the reviewed input; publication must reject it.

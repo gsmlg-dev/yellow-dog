@@ -66,6 +66,10 @@ The command runs in the foreground. Worker waits for a confirmed target on first
 boot. Configure and publish DNS services in Management; saving a draft does not
 start them. Worker reports actual execution state to Management. If Management is
 unavailable, Worker preserves its committed services and recovers them on restart.
+Open Data Configuration in Management to assign authoritative zones, forwarding
+zones and Views to registered Workers. Set recursion in the View and publish
+a Target after saving the resource. An applicable View with recursion disabled
+can still answer assigned authoritative zones and use configured forwarders.
 After rotating the token in Management, use its new manual connection configuration,
 preserving the same Worker ID and state directory, and restart. Revoked credentials
 cannot register again, even when anonymous initialization is enabled.

@@ -137,23 +137,10 @@ defmodule YellowDog.Management.NodeDatabaseRecoveryTest do
   test "failed same-Worker route changes retire the old service scope and recover explicitly", %{
     worker: worker
   } do
-    {:ok, first} =
+    {:ok, _service} =
       Domain.mutate(
         "put_service",
         YellowDog.Management.DomainFixtures.service(worker["id"], worker["revision"], "stopped"),
-        "operator",
-        Ecto.UUID.generate()
-      )
-
-    {:ok, second} =
-      Domain.mutate(
-        "put_service",
-        YellowDog.Management.DomainFixtures.service(
-          worker["id"],
-          first["worker_revision"],
-          "stopped"
-        )
-        |> Map.put("id", "dns-b"),
         "operator",
         Ecto.UUID.generate()
       )
@@ -162,11 +149,11 @@ defmodule YellowDog.Management.NodeDatabaseRecoveryTest do
     audit_count = Repo.aggregate(Audit, :count)
     install_read_failure()
 
-    for {destination, expected_id} <- [
-          {"/server/#{worker["id"]}/services/#{second["id"]}/edit", "dns-b"},
-          {"/server/#{worker["id"]}/services/new", ""}
+    for {destination, selector} <- [
+          {"/server/#{worker["id"]}/dns/policy", "#dns-policy-form"},
+          {"/server/#{worker["id"]}/targets", "button[phx-click=preview]"}
         ] do
-      {:ok, view, _} = live(build_conn(), "/server/#{worker["id"]}/services/#{first["id"]}/edit")
+      {:ok, view, _} = live(build_conn(), "/server/#{worker["id"]}/dns")
       old_intent = socket(view).assigns.submission_id
 
       with_failure(fn ->
@@ -197,7 +184,7 @@ defmodule YellowDog.Management.NodeDatabaseRecoveryTest do
       assert Domain.list_services(worker["id"]) == before
       assert Repo.aggregate(Audit, :count) == audit_count
       view |> element("#retry-node-load") |> render_click()
-      assert has_element?(view, "#service-form input[name='service[id]'][value='#{expected_id}']")
+      assert has_element?(view, selector)
       refute has_element?(view, "#node-observation-error")
     end
   end

@@ -1,9 +1,17 @@
 defmodule YellowDog.ManagementUI.WorkerLive do
   use YellowDog.ManagementUI, :live_view
 
-  alias YellowDog.Management.{Database, Domain, ExportScope, ProfileCatalog, WorkerConnections}
+  alias YellowDog.Management.{
+    Database,
+    DnsCertificates,
+    Domain,
+    ExportScope,
+    ProfileCatalog,
+    WorkerConnections
+  }
+
   alias YellowDog.ManagementUI.Hooks.CurrentPath
-  alias YellowDog.ManagementUI.{ServicePaths, Submission, WorkerConnection}
+  alias YellowDog.ManagementUI.{DnsSettings, ServicePaths, Submission, WorkerConnection}
 
   @observation_fields ~w(connection_status last_seen_at reported_capabilities reported_services applied_revision applied_digest apply_error actual_state)
 
@@ -17,6 +25,7 @@ defmodule YellowDog.ManagementUI.WorkerLive do
        worker: nil,
        service: nil,
        references: nil,
+       certificates: [],
        preview: nil,
        target: nil,
        history: [],
@@ -37,10 +46,16 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   def handle_params(_params, uri, socket) do
     scope = CurrentPath.route_path_params(socket, uri)
 
-    {:noreply,
-     socket
-     |> assign(scope: scope, management_url: WorkerConnection.origin(uri), bootstrap: nil)
-     |> load()}
+    if socket.assigns.live_action in [:new_service, :edit_service] and
+         ServicePaths.valid_server_id?(scope["server_id"]) do
+      {:noreply,
+       push_patch(socket, to: ServicePaths.server_path(scope["server_id"], :dns), replace: true)}
+    else
+      {:noreply,
+       socket
+       |> assign(scope: scope, management_url: WorkerConnection.origin(uri), bootstrap: nil)
+       |> load()}
+    end
   end
 
   @impl true
@@ -182,7 +197,9 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   defp allowed_event?(socket, "save_service"),
     do:
-      socket.assigns.worker != nil and socket.assigns.live_action in [:new_service, :edit_service]
+      socket.assigns.worker != nil and
+        (socket.assigns.live_action == :dns or
+           (socket.assigns.live_action == :dns_policy and socket.assigns.service != nil))
 
   defp allowed_event?(socket, "confirm_target"),
     do:
@@ -214,38 +231,34 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   defp handle_submission("save_service", %{"service" => params} = payload, socket)
        when is_map(params) do
     socket = assign(socket, service_form: to_form(params, as: "service"), dirty: true)
+    service = socket.assigns.service
+    previous = (service && service["config"]) || %{}
 
-    with {port, ""} <- Integer.parse(params["port"] || ""),
-         {:ok, forward_zones} <- parse_forward_zones(params["forward_zones"]) do
+    with {:ok, config, state} <-
+           saved_dns_settings(socket.assigns.live_action, params, previous, service) do
       command_params = %{
-        "instance_id" => params["id"],
+        "instance_id" => (service && service["instance_id"]) || "dns",
         "type" => "dns",
-        "desired_state" => params["desired_state"],
-        "config" => %{
-          "listen_address" => params["listen_address"],
-          "port" => port,
-          "recursion" => params["recursion"] == "true",
-          "allow_query" => lines(params["allow_query"]),
-          "forward_zones" => forward_zones
-        }
+        "desired_state" => state,
+        "config" => config
       }
 
       command_params =
-        if socket.assigns.service,
-          do: Map.put(command_params, "service_id", socket.assigns.service["id"]),
+        if service,
+          do: Map.put(command_params, "service_id", service["id"]),
           else: command_params
 
       command(socket, service_operation(socket), command_params, payload["_submission"])
     else
-      {:error, errors} ->
+      {:error, errors} when is_list(errors) ->
         failure(socket, %{
           code: "invalid_config",
           message: "Configuration validation failed",
           details: %{"errors" => errors}
         })
 
-      _ ->
-        failure(socket, %{code: "invalid_config", message: "Port must be an integer"})
+      {:error, message} ->
+        failure(socket, %{code: "invalid_config", message: message})
     end
   end
 
@@ -260,72 +273,23 @@ defmodule YellowDog.ManagementUI.WorkerLive do
 
   defp handle_submission(_event, _params, socket), do: {:noreply, socket}
 
+  defp saved_dns_settings(:dns, params, previous, _service) do
+    with {:ok, config} <- DnsSettings.config(params, previous) do
+      {:ok, config, params["desired_state"]}
+    end
+  end
+
+  defp saved_dns_settings(:dns_policy, params, previous, service) do
+    {:ok, Map.put(previous, "allow_query", lines(params["allow_query"])),
+     service["desired_state"]}
+  end
+
   defp lines(text),
     do:
       (text || "")
       |> String.split(["\r\n", "\n"])
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
-
-  # One forward zone per line: `<zone> <server> [<server> ...]`; the shared spec validates values.
-  defp parse_forward_zones(text) do
-    results =
-      (text || "")
-      |> String.split(["\r\n", "\n"])
-      |> Enum.with_index(1)
-      |> Enum.map(fn {line, number} -> {number, String.split(line)} end)
-      |> Enum.reject(fn {_number, tokens} -> tokens == [] end)
-      |> Enum.map(fn
-        {number, [_zone]} ->
-          {:error, forward_zone_error(number, "expected <zone> <server> [<server> ...]")}
-
-        {number, [zone | servers]} ->
-          servers
-          |> Enum.map(&parse_server/1)
-          |> Enum.find(&match?({:error, _}, &1))
-          |> case do
-            {:error, reason} ->
-              {:error, forward_zone_error(number, reason)}
-
-            nil ->
-              {:ok,
-               %{"name" => zone, "forwarders" => Enum.map(servers, &elem(parse_server(&1), 1))}}
-          end
-      end)
-
-    case Enum.filter(results, &match?({:error, _}, &1)) do
-      [] -> {:ok, Enum.map(results, &elem(&1, 1))}
-      errors -> {:error, Enum.map(errors, &elem(&1, 1))}
-    end
-  end
-
-  defp parse_server(server) do
-    cond do
-      match = Regex.run(~r/^\[([^\]]+)\](?::(\d+))?$/, server) ->
-        server_map(match)
-
-      match = Regex.run(~r/^([^:\[\]]+)(?::(\d+))?$/, server) ->
-        server_map(match)
-
-      length(String.split(server, ":")) > 2 and not String.contains?(server, ["[", "]"]) ->
-        {:ok, %{"address" => server}}
-
-      true ->
-        {:error, "invalid server #{inspect(server)}; use a.b.c.d[:port] or [v6]:port"}
-    end
-  end
-
-  defp server_map([_, address]), do: {:ok, %{"address" => address}}
-
-  defp server_map([_, address, port]),
-    do: {:ok, %{"address" => address, "port" => String.to_integer(port)}}
-
-  defp forward_zone_error(number, message),
-    do: %{
-      "path" => ["forward_zones"],
-      "code" => "invalid_forward_zone",
-      "message" => "line #{number}: #{message}"
-    }
 
   defp service_operation(socket),
     do: if(socket.assigns.service, do: "update_service", else: "create_service")
@@ -404,75 +368,47 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   defp load_available(socket) do
     case Domain.get_worker(socket.assigns.scope["server_id"]) do
       {:ok, worker} ->
-        socket =
-          socket
-          |> Submission.new()
-          |> assign(
-            worker: worker,
-            observation_error: nil,
-            page_title: worker["name"],
-            preview: nil,
-            target: target(worker["id"], socket.assigns.scope["revision"]),
-            history: Domain.list_worker_target_history(worker["id"], 20),
-            service: nil,
-            references: nil,
-            dirty: false,
-            error: nil,
-            field_errors: [],
-            navigation_servers:
-              Enum.map(Domain.list_workers(), &%{id: &1["id"], name: &1["name"]}),
-            worker_form: to_form(Map.take(worker, ~w(name profile_name)), as: "worker"),
-            service_form:
-              to_form(
-                %{
-                  "id" => "",
-                  "listen_address" => "0.0.0.0",
-                  "port" => "53",
-                  "recursion" => "true",
-                  "allow_query" => Enum.join(~w(127.0.0.0/8 10.10.10.0/24 10.88.0.0/16), "\n"),
-                  "forward_zones" => "",
-                  "desired_state" => "stopped"
-                },
-                as: "service"
-              )
-          )
+        service = Enum.find(worker["services"], &(&1["type"] == "dns"))
+        action = socket.assigns.live_action
 
-        if socket.assigns.live_action == :edit_service do
-          case Domain.get_service(worker["id"], socket.assigns.scope["service_id"]) do
-            {:ok, service} ->
-              {:ok, references} = Domain.list_service_references(worker["id"], service["id"])
-
-              assign(socket,
-                service: service,
-                references: references,
-                service_form:
-                  to_form(
-                    %{
-                      "id" => service["instance_id"],
-                      "listen_address" => service["config"]["listen_address"],
-                      "port" => to_string(service["config"]["port"]),
-                      "recursion" => to_string(service["config"]["recursion"] == true),
-                      "allow_query" => Enum.join(service["config"]["allow_query"] || [], "\n"),
-                      "forward_zones" => format_forward_zones(service["config"]["forward_zones"]),
-                      "desired_state" => service["desired_state"]
-                    },
-                    as: "service"
-                  )
-              )
-
-            {:error, error} ->
-              socket
-              |> put_flash(:error, message(error))
-              |> push_patch(to: ServicePaths.server_path(worker["id"], :services))
+        references =
+          if action == :dns_policy and service do
+            {:ok, references} = Domain.list_service_references(worker["id"], service["id"])
+            references
           end
-        else
-          socket
-        end
+
+        socket
+        |> Submission.new()
+        |> assign(
+          worker: worker,
+          observation_error: nil,
+          page_title: worker["name"],
+          preview: nil,
+          target: target(worker["id"], socket.assigns.scope["revision"]),
+          history: Domain.list_worker_target_history(worker["id"], 20),
+          service: service,
+          references: references,
+          certificates: if(action == :dns, do: DnsCertificates.list(), else: []),
+          dirty: false,
+          error: nil,
+          field_errors: [],
+          navigation_servers: Enum.map(Domain.list_workers(), &%{id: &1["id"], name: &1["name"]}),
+          worker_form: to_form(Map.take(worker, ~w(name profile_name)), as: "worker"),
+          service_form: dns_form(action, service)
+        )
 
       {:error, error} ->
         socket |> put_flash(:error, message(error)) |> push_navigate(to: "/server")
     end
   end
+
+  defp dns_form(:dns, service), do: to_form(DnsSettings.form_params(service), as: "service")
+
+  defp dns_form(:dns_policy, %{"config" => config}) do
+    to_form(%{"allow_query" => Enum.join(config["allow_query"] || [], "\n")}, as: "service")
+  end
+
+  defp dns_form(_action, _service), do: nil
 
   defp target(worker_id, nil) do
     case Domain.get_target(worker_id) do
@@ -491,21 +427,13 @@ defmodule YellowDog.ManagementUI.WorkerLive do
   defp message(error),
     do: "#{error[:code] || error["code"]}: #{error[:message] || error["message"]}"
 
-  defp format_forward_zones(zones) do
-    Enum.map_join(zones || [], "\n", fn zone ->
-      servers =
-        Enum.map_join(zone["forwarders"], " ", &server_text/1)
-
-      "#{zone["name"]} #{servers}"
-    end)
-  end
-
   defp tab(action) when action in [:services, :dns, :new_service, :edit_service], do: :services
   defp tab(action) when action in [:targets, :target], do: :targets
   defp tab(action), do: action
 
-  defp reference_count(worker, service),
-    do: Enum.count(worker["assignments"], &(&1["service_id"] == service["id"]))
+  defp protocol_reports(worker, service) do
+    get_in(worker, ["reported_services", service["instance_id"], "protocols"]) || %{}
+  end
 
   defp report(worker, service) do
     case get_in(worker, ["reported_services", service["instance_id"], "state"]) do
@@ -536,27 +464,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
     "#{id}: #{service_summary(before)} → #{service_summary(after_service)}"
   end
 
-  defp allow_query_summary(list) when list in [nil, []], do: "none (all sources denied)"
-  defp allow_query_summary(list), do: Enum.join(list, ", ")
-
-  defp forward_zones_summary(zones) when zones in [nil, []], do: "none"
-
-  defp forward_zones_summary(zones) do
-    Enum.map_join(zones, "; ", fn zone ->
-      "#{zone["name"]} → #{Enum.map_join(zone["forwarders"], ", ", &server_text/1)}"
-    end)
-  end
-
-  defp server_text(%{"address" => address, "port" => port}) when is_integer(port),
-    do: if(String.contains?(address, ":"), do: "[#{address}]:#{port}", else: "#{address}:#{port}")
-
-  defp server_text(%{"address" => address}), do: address
-
   defp service_summary(nil), do: "absent"
 
   defp service_summary(service),
-    do:
-      "#{service["desired_state"]}, #{service["config"]["listen_address"]}:#{service["config"]["port"]}"
+    do: "#{service["desired_state"]}, #{DnsSettings.listener_summary(service["config"])}"
 
   @impl true
   def render(assigns) do
@@ -595,7 +506,12 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             Last reported applied revision: {@worker["applied_revision"] || "None"}
           </p>
         </header>
-        <nav aria-label="Worker tabs" class="flex flex-wrap gap-4" id="worker-tabs">
+        <nav
+          :if={@live_action != :dns_policy}
+          aria-label="Worker tabs"
+          class="flex flex-wrap gap-4"
+          id="worker-tabs"
+        >
           <.link
             :for={
               {action, destination, label} <- [
@@ -679,103 +595,71 @@ defmodule YellowDog.ManagementUI.WorkerLive do
           :if={@live_action == :connection and @bootstrap}
           bootstrap={@bootstrap}
         />
-        <.card :if={tab(@live_action) == :services} title="Service instances">
-          <p class="management-help">
-            DNS is supported. DHCPv4, DHCPv6, mDNS, Netboot and Identity configuration are unavailable. Saving desired state does not publish a target or start a Management service.
-          </p>
-          <.link patch={ServicePaths.server_path(@worker["id"], :service_new)} class="btn btn-primary">Create DNS service</.link>
-          <div class="management-records">
-            <table class="table" id="dns-services">
-              <thead>
-                <tr>
-                  <th>Instance / type</th><th>Desired state</th><th>Listener</th><th>DNS policy</th><th>
-                    References
-                  </th><th>
-                    Observed state
-                  </th><th>Action</th>
-                </tr>
-              </thead><tbody>
-                <tr :for={service <- @worker["services"]}>
-                  <td>{service["instance_id"]} / {service["type"]}</td><td>
-                    {service["desired_state"]}
-                  </td><td>{service["config"]["listen_address"]}:{service["config"]["port"]}</td>
-                  <td id={"policy-#{service["id"]}"}>
-                    <p>
-                      Recursion: {if service["config"]["recursion"] == true, do: "on", else: "off"}
-                    </p>
-                    <p>Allow query: {allow_query_summary(service["config"]["allow_query"])}</p>
-                    <p>Forward zones: {forward_zones_summary(service["config"]["forward_zones"])}</p>
-                  </td>
-                  <td>{reference_count(@worker, service)} pinned Zones</td><td>
-                    {report(@worker, service)}
-                  </td>
-                  <td>
-                    <.link
-                      patch={ServicePaths.server_path(@worker["id"], {:service_edit, service["id"]})}
-                      class="btn btn-outline"
-                    >Edit</.link>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p :if={@worker["services"] == []}>
-            No service instances. Create one to save desired configuration.
-          </p>
-        </.card>
-        <.card
-          :if={@live_action in [:new_service, :edit_service]}
-          title={if @service, do: "Edit DNS service", else: "Create DNS service"}
+        <section
+          :if={@live_action == :services}
+          id="worker-service-cards"
+          aria-label="Worker service types"
+          class="grid gap-4 sm:grid-cols-3"
         >
+          <.link
+            patch={ServicePaths.server_path(@worker["id"], :dns)}
+            class="block rounded-lg"
+          >
+            <.card title="DNS" class="h-full">
+              <span class="text-primary underline">Configure DNS</span>
+            </.card>
+          </.link>
+          <.card :for={label <- ["DHCPv4", "DHCPv6"]} title={label}>
+            <p class="management-help">Not yet available</p>
+          </.card>
+        </section>
+        <.card :if={@live_action == :dns} title="DNS settings">
+          <DnsSettings.editor
+            form={@service_form}
+            intent={@submission_id}
+            certificates={@certificates}
+          />
+          <p :for={error <- @field_errors} class="text-error">{error_text(error)}</p>
+          <p class="management-help">
+            Confirm a configuration target to send saved changes to the Worker.
+          </p>
+          <.link :if={@service} navigate={ServicePaths.server_path(@worker["id"], :dns_policy)}>
+            DNS data and resolution policy
+          </.link>
+        </.card>
+        <.card :if={tab(@live_action) == :services and @service} title="DNS status">
+          <div id="dns-services">
+            <p>Desired state: {@service["desired_state"]}</p>
+            <p>Default listening IPs: {DnsSettings.listener_label(@service["config"])}</p>
+            <p>{report(@worker, @service)}</p>
+            <p :for={{protocol, observation} <- protocol_reports(@worker, @service)}>
+              {String.upcase(protocol)}: {observation["state"]}
+              <span :if={observation["failure"]}>
+                · {observation["failure"]["address"]} · port {observation["port"]} · {observation[
+                  "failure"
+                ]["reason"]}
+              </span>
+              <span :if={observation["certificate_error"]}>
+                · Certificate reload: {observation["certificate_error"]}
+              </span>
+            </p>
+          </div>
+        </.card>
+        <.card :if={@live_action == :dns_policy} title="DNS resolution policy">
+          <p :if={is_nil(@service)}>
+            <.link navigate={ServicePaths.server_path(@worker["id"], :dns)}>Configure DNS</.link>
+            before setting the resolution policy.
+          </p>
           <.form
+            :if={@service}
             for={@service_form}
-            id="service-form"
+            id="dns-policy-form"
             phx-submit="save_service"
             phx-change="validate_service"
             class="grid gap-4"
           >
             <input type="hidden" name="_submission" value={@submission_id} />
-            <label class="form-control"><span class="label">Instance ID</span><input
-              class="input input-bordered"
-              name="service[id]"
-              value={@service_form[:id].value}
-              readonly={@service != nil}
-              required
-            /></label>
-            <p>Service type: DNS</p>
-            <label class="form-control"><span class="label">Listen IPv4 address</span><input
-              class="input input-bordered"
-              name="service[listen_address]"
-              value={@service_form[:listen_address].value}
-              required
-            /></label>
-            <p :for={error <- errors_for_field(@field_errors, "listen_address")} class="text-error">
-              {error_text(error)}
-            </p>
-            <label class="form-control"><span class="label">Port</span><input
-              class="input input-bordered"
-              type="number"
-              name="service[port]"
-              value={@service_form[:port].value}
-              min="1"
-              max="65535"
-              required
-            /></label>
-            <p :for={error <- errors_for_field(@field_errors, "port")} class="text-error">
-              {error_text(error)}
-            </p>
-            <input type="hidden" name="service[recursion]" value="false" />
-            <label class="form-control"><span class="label">Recursion</span><input
-              class="checkbox"
-              type="checkbox"
-              name="service[recursion]"
-              value="true"
-              checked={@service_form[:recursion].value in [true, "true"]}
-            /></label>
-            <p :for={error <- errors_for_field(@field_errors, "recursion")} class="text-error">
-              {error_text(error)}
-            </p>
-            <label class="form-control"><span class="label">Allowed query sources (one CIDR per line; empty denies all)</span><textarea
+            <label class="form-control"><span class="label">Allowed query sources without a View (one CIDR per line)</span><textarea
               class="textarea textarea-bordered"
               name="service[allow_query]"
               rows="4"
@@ -783,53 +667,33 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             <p :for={error <- errors_for_field(@field_errors, "allow_query")} class="text-error">
               {error_text(error)}
             </p>
-            <label class="form-control"><span class="label">Forward zones (one per line: zone server [server ...]; server as a.b.c.d, a.b.c.d:port or [v6]:port)</span><textarea
-              class="textarea textarea-bordered"
-              name="service[forward_zones]"
-              rows="4"
-            >{@service_form[:forward_zones].value}</textarea></label>
-            <p :for={error <- errors_for_field(@field_errors, "forward_zones")} class="text-error">
-              {error_text(error)}
-            </p>
-            <label class="form-control"><span class="label">Desired state</span><select
-              class="select select-bordered"
-              name="service[desired_state]"
-            >
-              <option value="stopped" selected={@service_form[:desired_state].value == "stopped"}>
-                Stopped
-              </option><option
-                value="running"
-                selected={@service_form[:desired_state].value == "running"}
-              >
-                Running
-              </option>
-            </select></label>
-            <button class="btn btn-primary" type="submit" phx-disable-with="Saving…">Save desired service</button>
+            <button class="btn btn-primary" type="submit" phx-disable-with="Saving…">Save resolution policy</button>
           </.form>
           <section :if={@references} id="service-references">
-            <h2>Data references for {@service["instance_id"]}</h2>
+            <h2>DNS data references</h2>
             <p class="management-help">
-              Pinned Zones are included in targets. Saved Views and ACLs remain Management relationships and are not serialized into the current WorkerPlan.
+              Targets include assigned authoritative zones, forward zones and enabled Views. Configure recursion in Views.
             </p>
             <p :for={zone <- @references["zones"]}>
               {zone["name"]} ({zone["zone_id"]}) · version {zone["version"]} · {zone[
                 "resource_version_id"
               ]}
               <.link navigate={
-                ServicePaths.server_path(@worker["id"], {:dns_zone_application, zone["zone_id"]})
+                "/management/zones/#{zone["zone_id"]}/application"
               }>Edit application scope</.link>
             </p>
             <p :for={view <- @references["views"]}>Saved View: {view["name"]}</p>
             <p :for={acl <- @references["acls"]}>Saved ACL: {acl["name"]}</p>
             <p>Showing up to {@references["limit"]} entries per reference type.</p>
             <.link
-              navigate={ServicePaths.server_path(@worker["id"], :dns_zones)}
+              navigate="/management/zones"
               class="btn btn-outline"
             >Edit Zone data and assignments</.link>
             <.link
-              navigate={ServicePaths.server_path(@worker["id"], {:dns_views_service, @service["id"]})}
+              navigate="/management/dns/views"
               class="btn btn-outline"
             >Edit DNS Views</.link>
+            <.link navigate="/management/dns/forward-zones" class="btn btn-outline">Edit Forward zones</.link>
             <.link
               navigate={ServicePaths.server_path(@worker["id"], {:dns_acl_service, @service["id"]})}
               class="btn btn-outline"
@@ -852,9 +716,10 @@ defmodule YellowDog.ManagementUI.WorkerLive do
             <p>Bound saved configuration revision: {@preview["worker_revision"]}</p>
             <h3>Included services</h3>
             <p :for={service <- @preview["plan"]["services"]}>
-              {service["id"]}: {service["desired_state"]}, {service["config"]["listen_address"]}:{service[
-                "config"
-              ]["port"]}; pinned resources: {Enum.join(service["resources"], ", ")}
+              {service["id"]}: {service_summary(service)} · Pinned resources: {Enum.join(
+                service["resources"],
+                ", "
+              )}
             </p>
             <h3>Pinned resource versions</h3>
             <p :for={resource <- @preview["plan"]["resources"]}>

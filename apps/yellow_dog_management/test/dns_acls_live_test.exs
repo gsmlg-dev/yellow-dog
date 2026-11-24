@@ -166,7 +166,7 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
 
   test "list is scoped by both explicit Worker and native Service UUID", %{conn: conn} do
     primary = scope()
-    alternate = scope(primary.worker["id"], "dns-alternate")
+    alternate = scope("acl-alternate")
     other = scope("acl-other")
     acl = create_acl(primary, "primary")
     alternate_acl = create_acl(alternate, "alternate")
@@ -407,15 +407,13 @@ defmodule YellowDog.Management.DnsAclsLiveTest do
 
   test "scope patches clear both editor and pending deletion", %{conn: conn} do
     selected = scope()
-    alternate = scope(selected.worker["id"], "dns-alternate")
+    alternate = scope("acl-alternate")
     acl = create_acl(selected, "original")
     {:ok, view, _html} = live(conn, path(selected.worker, selected.service))
     view |> element("#dns-acl-#{acl["id"]} button[phx-click='edit']") |> render_click()
     view |> element("#dns-acl-#{acl["id"]} button[phx-click='delete']") |> render_click()
 
-    view
-    |> element("#dns-acl-service-selector a[data-service-id='#{alternate.service["id"]}']")
-    |> render_click()
+    render_patch(view, path(alternate.worker, alternate.service))
 
     assert_patch(view, path(alternate.worker, alternate.service))
     assert has_element?(view, "#dns-acl-form input[name='acl[name]'][value='']")

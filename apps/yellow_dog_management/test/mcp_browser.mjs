@@ -49,9 +49,11 @@ export async function browser(base, gatewayAssertion, work) {
     const change = (selector, values) => evaluate(`(() => {
       const form = document.querySelector(${JSON.stringify(selector)});
       for (const [name,value] of Object.entries(${JSON.stringify(values)})) {
-        const field = form.elements.namedItem(name);
+        const field = Array.from(form.elements).find(input => input.name === name && input.type === 'checkbox') ?? form.elements.namedItem(name);
         if (!field) throw new Error('Missing form field '+name);
-        field.value = value; field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
+        if (field.type === 'checkbox') field.checked = value;
+        else field.value = value;
+        field.dispatchEvent(new Event('input',{bubbles:true})); field.dispatchEvent(new Event('change',{bubbles:true}));
       }
     })()`);
     const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -66,7 +68,7 @@ export async function browser(base, gatewayAssertion, work) {
     socket?.close();
     const stopped = new Promise(resolve => chromium.once('exit', resolve));
     chromium.kill('SIGTERM'); await stopped;
-    await rm(profile, { recursive: true, force: true });
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 export async function until(check, message, attempts = 150) {

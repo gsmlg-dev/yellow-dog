@@ -3,12 +3,12 @@ defmodule YellowDog.ManagementUI.RecordsLive do
 
   alias YellowDog.ConfigSpec
   alias YellowDog.Management.Domain
-  alias YellowDog.ManagementUI.{DnsRecordExports, Submission}
+  alias YellowDog.ManagementUI.{DnsRecordExports, DnsRecordFields, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
   @max_bulk_bytes 1_048_576
-  @numeric_fields ~w(serial refresh retry expire minimum)
-  @soa_fields ~w(mname rname serial refresh retry expire minimum)
+  @record_types ConfigSpec.record_types()
+  @record_type_filter ["all" | @record_types]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -99,7 +99,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   end
 
   def handle_event("filter", %{"filter" => filter, "type" => type}, socket)
-      when is_binary(filter) and byte_size(filter) <= 512 and type in ~w(all SOA NS A) do
+      when is_binary(filter) and byte_size(filter) <= 512 and type in @record_type_filter do
     if String.valid?(filter) do
       {:noreply, assign(socket, filter: filter, type_filter: type, error: nil)}
     else
@@ -163,10 +163,10 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   end
 
   def handle_event("validate", %{"record" => params}, socket) when is_map(params) do
-    if params["type"] in ~w(SOA NS A) do
+    if params["type"] in @record_types do
       defaults = new_record(params["type"])
       data = if is_map(params["data"]), do: params["data"], else: %{}
-      data = Map.merge(defaults["data"], Map.take(data, data_fields(params["type"])))
+      data = Map.merge(defaults["data"], Map.take(data, DnsRecordFields.keys(params["type"])))
       form = record_form(Map.put(params, "data", data))
 
       socket =
@@ -180,7 +180,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
          dirty: socket.assigns.dirty || form.params != socket.assigns.form.params
        )}
     else
-      {:noreply, assign(socket, :error, "Only SOA, NS and A records are supported.")}
+      {:noreply, assign(socket, :error, "Unsupported record type.")}
     end
   end
 
@@ -374,11 +374,8 @@ defmodule YellowDog.ManagementUI.RecordsLive do
     do: {:error, "Invalid record ordinal: use a nonnegative decimal index."}
 
   defp single_record(%{"type" => type, "data" => data} = params, apex)
-       when type in ["SOA", "NS", "A"] and is_map(data) do
-    data =
-      Map.new(Map.take(data, data_fields(type)), fn {field, value} ->
-        {field, if(numeric_field?(field), do: integer(value), else: value)}
-      end)
+       when type in @record_types and is_map(data) do
+    data = data |> Map.take(DnsRecordFields.keys(type)) |> DnsRecordFields.normalize()
 
     {:ok,
      %{
@@ -390,7 +387,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   end
 
   defp single_record(_params, _apex),
-    do: {:error, "Only SOA, NS and A records with structured data are supported."}
+    do: {:error, "A supported record type with structured data is required."}
 
   defp owner(value, apex) when value in ["", "@"], do: apex
 
@@ -460,34 +457,8 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   end
 
   defp new_record(type) do
-    data =
-      case type do
-        "SOA" ->
-          %{
-            "mname" => "",
-            "rname" => "",
-            "serial" => 1,
-            "refresh" => 3600,
-            "retry" => 600,
-            "expire" => 86400,
-            "minimum" => 300
-          }
-
-        "NS" ->
-          %{"host" => ""}
-
-        "A" ->
-          %{"address" => ""}
-      end
-
-    %{"name" => "@", "type" => type, "ttl" => 300, "data" => data}
+    %{"name" => "@", "type" => type, "ttl" => 300, "data" => DnsRecordFields.defaults(type)}
   end
-
-  defp data_fields("SOA"), do: @soa_fields
-  defp data_fields("NS"), do: ["host"]
-  defp data_fields("A"), do: ["address"]
-  defp data_fields(_type), do: []
-  defp numeric_field?(field), do: field in @numeric_fields
 
   defp record_form(params) do
     data = if is_map(params["data"]), do: params["data"], else: %{}
@@ -497,7 +468,9 @@ defmodule YellowDog.ManagementUI.RecordsLive do
         {field, input_value(value)}
       end)
 
-    data = Map.new(data, fn {field, value} -> {field, input_value(value)} end)
+    data =
+      Map.new(data, fn {field, value} -> {field, DnsRecordFields.input_value(field, value)} end)
+
     to_form(Map.put(fields, "data", data), as: "record")
   end
 
@@ -525,7 +498,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
         <input id="submission-intent" type="hidden" value={@submission_id} />
         <h1>DNS Records</h1>
         <p class="management-help">
-          SOA, NS and A only. Other original Console record types are not migrated. These are Management-owned drafts; actual Worker runtime state is unknown.
+          Changes update the Management draft. Actual Worker runtime state is unknown.
         </p>
         <p :if={@scope_error} id="record-scope-error" role="alert">{@scope_error}</p>
         <p :if={@error} id="record-error" role="alert">{@error}</p>
@@ -560,7 +533,11 @@ defmodule YellowDog.ManagementUI.RecordsLive do
                 name="type"
                 class="select"
               >
-                <option :for={type <- ~w(all SOA NS A)} value={type} selected={type == @type_filter}>
+                <option
+                  :for={type <- ["all" | ConfigSpec.record_types()]}
+                  value={type}
+                  selected={type == @type_filter}
+                >
                   {if type == "all", do: "All types", else: type}
                 </option>
               </select></label>
@@ -586,7 +563,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
               >Export Full Zone BIND</button>
             </div>
             <p class="management-help">
-              CSV includes the displayed records. BIND includes the full valid SOA/NS/A Zone draft, regardless of filters; it is not a Worker runtime snapshot.
+              CSV includes the displayed records. BIND includes the full Zone draft.
             </p>
             <div class="management-records">
               <table id="records-table" class="table table-striped">
@@ -647,7 +624,11 @@ defmodule YellowDog.ManagementUI.RecordsLive do
               <label class="management-field"><span>Type</span><select
                 class="select"
                 name="record[type]"
-              ><option :for={type <- ~w(SOA NS A)} value={type} selected={type == @form[:type].value}>
+              ><option
+                :for={type <- ConfigSpec.record_types()}
+                value={type}
+                selected={type == @form[:type].value}
+              >
                 {type}
               </option></select></label>
               <label class="management-field"><span>TTL (seconds)</span><input
@@ -658,11 +639,11 @@ defmodule YellowDog.ManagementUI.RecordsLive do
                 value={@form[:ttl].value}
                 required
               /></label>
-              <label :for={field <- data_fields(@form[:type].value)} class="management-field">
-                <span>{field}</span><input
+              <label :for={field <- DnsRecordFields.keys(@form[:type].value)} class="management-field">
+                <span>{if field == "strings", do: "TXT strings (JSON array)", else: field}</span><input
                   class="input"
-                  type={if numeric_field?(field), do: "number", else: "text"}
-                  min={if numeric_field?(field), do: "0"}
+                  type={if DnsRecordFields.integer_field?(field), do: "number", else: "text"}
+                  min={if DnsRecordFields.integer_field?(field), do: "0"}
                   name={"record[data][#{field}]"}
                   value={(@form[:data].value || %{})[field]}
                   required

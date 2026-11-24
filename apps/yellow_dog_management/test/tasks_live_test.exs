@@ -28,7 +28,7 @@ defmodule YellowDog.Management.TasksLiveTest do
 
     refute html =~ "type=\"password\""
     assert html =~ "UTC"
-    assert html =~ "Cloud-provider synchronization is not implemented"
+    assert html =~ "Cloud DNS synchronization is performed from Data Management"
 
     {:ok, detail, _html} = live(conn, "/system/tasks/ip_city")
     assert has_element?(detail, "#task-detail[data-task-key='ip_city']")

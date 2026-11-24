@@ -4,10 +4,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   alias YellowDog.ConfigSpec
   alias YellowDog.Management.{Database, Domain, ZoneAssignmentChoices}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
-  alias YellowDog.ManagementUI.Submission
-
-  @soa_fields ~w(mname rname serial refresh retry expire minimum)
-  @numeric_fields ~w(serial refresh retry expire minimum)
+  alias YellowDog.ManagementUI.{DnsRecordFields, Submission}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -818,20 +815,16 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     |> Map.get("records", %{})
     |> Enum.sort_by(fn {index, _record} -> {String.length(index), index} end)
     |> Enum.map(fn {_index, record} ->
-      Map.put(record, "data", Map.take(record["data"] || %{}, data_fields(record["type"])))
+      data = if is_map(record["data"]), do: record["data"], else: %{}
+      Map.put(record, "data", Map.take(data, DnsRecordFields.keys(record["type"])))
     end)
   end
 
   defp normalize_record(record) do
-    data =
-      Map.new(record["data"], fn {field, value} ->
-        {field, if(field in @numeric_fields, do: integer(value), else: value)}
-      end)
-
     record
     |> Map.take(~w(name type ttl))
     |> Map.put("ttl", integer(record["ttl"]))
-    |> Map.put("data", data)
+    |> Map.put("data", DnsRecordFields.normalize(record["data"]))
   end
 
   defp integer(value) when is_binary(value) do
@@ -844,35 +837,8 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   defp integer(value), do: value
 
   defp new_record(type) do
-    data =
-      case type do
-        "SOA" ->
-          %{
-            "mname" => "",
-            "rname" => "",
-            "serial" => 1,
-            "refresh" => 3600,
-            "retry" => 600,
-            "expire" => 86400,
-            "minimum" => 300
-          }
-
-        "NS" ->
-          %{"host" => ""}
-
-        "A" ->
-          %{"address" => ""}
-      end
-
-    %{"name" => "", "type" => type, "ttl" => 300, "data" => data}
+    %{"name" => "", "type" => type, "ttl" => 300, "data" => DnsRecordFields.defaults(type)}
   end
-
-  defp data_fields("SOA"), do: @soa_fields
-  defp data_fields("NS"), do: ["host"]
-  defp data_fields("A"), do: ["address"]
-  defp data_fields(_type), do: []
-
-  defp numeric_field?(field), do: field in @numeric_fields
 
   @impl true
   def render(assigns) do
@@ -888,15 +854,20 @@ defmodule YellowDog.ManagementUI.ZonesLive do
         <input id="submission-intent" type="hidden" value={@submission_id} />
         <h1>{@page_title}</h1>
         <p class="management-help">
-          Global reusable Zone library: Management-owned DNS drafts and immutable versions, not View-owned content. Actual Worker runtime state is unknown. SOA, NS and A records are supported by the current shared contract.
+          Global reusable Zone library for DNS drafts and immutable versions. Actual Worker runtime state is unknown.
         </p>
         <p class="management-help">
-          Only authoritative Zones are supported. Forward, stub, cloud and additional record types remain pending. Runtime query counts are unavailable.
+          Only authoritative Zones are supported. Runtime query counts are unavailable.
         </p>
         <div class="management-actions">
           <.link patch={query_path(@base_path, @catalog_options)} class="btn btn-ghost">Zones</.link>
           <.link patch={query_path(@base_path <> "/new", @catalog_options)} class="btn btn-primary">New Zone</.link>
           <.link navigate={@base_path <> "/import"} class="btn btn-ghost">Import Zone</.link>
+          <.link
+            :if={@base_path == "/management/zones"}
+            navigate="/management/zones/cloud"
+            class="btn btn-ghost"
+          >Cloud DNS</.link>
           <button id="zone-refresh" class="btn btn-ghost" phx-click="refresh">Refresh</button>
           <button id="zone-export" class="btn btn-ghost" phx-hook="CsvDownload" phx-click="export_csv">Export all matching Zones CSV</button>
         </div>
@@ -939,6 +910,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             data-editor-preserve="true"
             patch={query_path("#{@base_path}/#{@zone["id"]}/application", @catalog_options)}
           >Application scope</.link>
+          <.link navigate={"/management/zones/cloud?zone_id=#{@zone["id"]}"}>Cloud DNS</.link>
         </nav>
         <.card :if={@live_action == :index} title="DNS Zones">
           <p :if={@catalog["total"] == 0}>
@@ -1030,7 +1002,11 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                 <label class="management-field"><span>Type</span><select
                   class="select"
                   name={"zone[records][#{index}][type]"}
-                ><option :for={type <- ~w(SOA NS A)} value={type} selected={type == record["type"]}>
+                ><option
+                  :for={type <- ConfigSpec.record_types()}
+                  value={type}
+                  selected={type == record["type"]}
+                >
                   {type}
                 </option></select></label>
                 <label class="management-field"><span>TTL (seconds)</span><input
@@ -1041,13 +1017,13 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                   value={record["ttl"]}
                   required
                 /></label>
-                <label :for={field <- data_fields(record["type"])} class="management-field">
-                  <span>{field}</span><input
+                <label :for={field <- DnsRecordFields.keys(record["type"])} class="management-field">
+                  <span>{if field == "strings", do: "TXT strings (JSON array)", else: field}</span><input
                     class="input"
-                    type={if numeric_field?(field), do: "number", else: "text"}
-                    min={if numeric_field?(field), do: "0"}
+                    type={if DnsRecordFields.integer_field?(field), do: "number", else: "text"}
+                    min={if DnsRecordFields.integer_field?(field), do: "0"}
                     name={"zone[records][#{index}][data][#{field}]"}
-                    value={record["data"][field]}
+                    value={DnsRecordFields.input_value(field, record["data"][field])}
                     required
                   />
                 </label>
@@ -1179,7 +1155,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
               :if={dns_services(worker) == []}
             >
               {worker["name"]} has no DNS Services.
-              <.link navigate={ServicePaths.server_path(worker["id"], :service_new)}>Configure a DNS Service</.link>
+              <.link navigate={ServicePaths.server_path(worker["id"], :dns)}>Configure DNS</.link>
             </p>
             <form
               id="zone-assignments-form"

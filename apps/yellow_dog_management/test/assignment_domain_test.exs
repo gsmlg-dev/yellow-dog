@@ -219,39 +219,28 @@ defmodule YellowDog.Management.AssignmentDomainTest do
         request(zone, snapshot(zone), [selection(a, v1), selection(b, v2)])
       )
 
-    second =
-      mutate(
-        "put_service",
-        Fixtures.service("worker-a", saved["worker_revisions"]["worker-a"])
-        |> Map.put("id", "dns-second")
-        |> put_in(["config", "port"], 5301)
-      )
-
     before = snapshot(zone)
 
-    assert {:error, %{code: "invalid_assignment_versions", message: message}} =
+    assert {:error, %{code: "invalid_request", message: message}} =
              Domain.mutate(
                "set_zone_assignments",
-               request(zone, before, [selection(a, v1), selection(second, v2), selection(b, v2)]),
+               request(zone, before, [selection(a, v1), selection(a, v2), selection(b, v2)]),
                "operator",
                Ecto.UUID.generate()
              )
 
-    assert message =~ "same confirmed Zone version"
+    assert message =~ "Select each DNS Service only once"
     assert snapshot(zone) == before
 
-    assert {:error, %{code: "invalid_assignment_versions"}} =
-             Domain.mutate(
-               "assign",
-               %{
-                 "worker_id" => "worker-a",
-                 "service_id" => second["id"],
-                 "resource_version_id" => v2["id"],
-                 "expected_revision" => second["worker_revision"]
-               },
-               "operator",
-               Ecto.UUID.generate()
-             )
+    mutate("assign", %{
+      "worker_id" => "worker-a",
+      "service_id" => a["id"],
+      "resource_version_id" => v2["id"],
+      "expected_revision" => saved["worker_revisions"]["worker-a"]
+    })
+
+    assert [%{"resource_version_id" => id}] = Domain.list_assignments("worker-a")
+    assert id == v2["id"]
   end
 
   test "a database failure rolls back every assignment and revision and records an idempotent failure" do

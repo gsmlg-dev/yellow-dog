@@ -1,10 +1,12 @@
 defmodule YellowDog.ManagementUI.DnsRecordExports do
-  @moduledoc "Read-only CSV and BIND formatting for canonical SOA, NS and A records."
+  @moduledoc "Read-only CSV and BIND formatting for canonical DNS records."
+
+  alias YellowDog.Management.DnsRecordText
 
   def csv(records) do
     rows =
       Enum.map_join(records, "", fn record ->
-        [record["name"], record["type"], to_string(record["ttl"]), rdata(record)]
+        [record["name"], record["type"], to_string(record["ttl"]), DnsRecordText.format(record)]
         |> Enum.map_join(",", &csv_cell/1)
         |> Kernel.<>("\r\n")
       end)
@@ -15,20 +17,11 @@ defmodule YellowDog.ManagementUI.DnsRecordExports do
   def bind(zone) do
     records =
       Enum.map_join(zone["records"], "", fn record ->
-        "#{record["name"]} #{record["ttl"]} IN #{record["type"]} #{rdata(record)}\n"
+        "#{record["name"]} #{record["ttl"]} IN #{record["type"]} #{DnsRecordText.format(record)}\n"
       end)
 
     "$ORIGIN #{zone["name"]}\n" <> records
   end
-
-  defp rdata(%{"type" => "SOA", "data" => data}) do
-    Enum.map_join(~w(mname rname serial refresh retry expire minimum), " ", fn field ->
-      data |> Map.fetch!(field) |> to_string()
-    end)
-  end
-
-  defp rdata(%{"type" => "NS", "data" => %{"host" => host}}), do: host
-  defp rdata(%{"type" => "A", "data" => %{"address" => address}}), do: address
 
   defp csv_cell(value) do
     safe =

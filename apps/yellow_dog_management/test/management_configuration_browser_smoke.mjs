@@ -115,7 +115,7 @@ async function verifyAssignments(saved, workers) {
   for (const worker of saved.workers) {
     await navigate(`/server/${worker}/dashboard`, '#resource-assignments');
     if (!p1Only) {
-      assert.equal(await evaluate(`document.querySelector('#target-export-scope').textContent.includes('DNS Views and IP database artifacts are not serialized')`), true);
+      assert.equal(await evaluate(`document.querySelector('#target-export-scope').textContent.includes('Named ACLs and IP database artifacts are excluded')`), true);
     }
     const data = await api(`/workers/${worker}`);
     assert.equal(data.actual_state, 'unknown');
@@ -223,9 +223,7 @@ try {
       const worker = await api('/commands/create_worker', { id: worker_id, name: `Configuration Worker ${index + 1}` });
       services.push(await api('/commands/put_service', { worker_id, expected_revision: worker.revision, id: 'dns', type: 'dns', desired_state: 'stopped', config: { listen_address: '127.0.0.1', port: 15353 + index } }));
     }
-    await navigate('/management/dns/views', '#dns-view-worker-selector');
-    await change('#dns-view-worker-selector', { 'scope[worker_id]': workers[0] }, 'select_worker');
-    await until(() => evaluate(`!!document.querySelector('#dns-view-form')`), 'Single DNS Service was not preselected');
+    await navigate(`/server/${workers[0]}/dns/views/${services[0].id}`, '#dns-view-form');
     await change('#dns-view-form', { 'view[name]': 'configured', 'view[priority]': '7' });
     await submit('#dns-view-form', '#dns-view-save', 'save');
     const viewPath = `/workers/${workers[0]}/dns-services/${services[0].id}/views`;

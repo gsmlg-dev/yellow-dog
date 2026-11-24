@@ -16,6 +16,7 @@ defmodule YellowDog.Worker.MixProject do
       deps: [
         {:yellow_dog_config_spec, in_umbrella: true},
         {:abyss, "~> 1.0.0-rc.20"},
+        {:elixir_quic, "~> 1.0.0-rc.20"},
         {:ex_dns, in_umbrella: true},
         {:jason, "~> 1.4"},
         {:phoenix_socket_client, "~> 0.9.1"},

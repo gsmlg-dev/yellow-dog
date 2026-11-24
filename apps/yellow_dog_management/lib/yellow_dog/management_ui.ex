@@ -18,9 +18,9 @@ defmodule YellowDog.ManagementUI do
     end
   end
 
-  def live_view do
+  def live_view(opts \\ []) do
     quote do
-      use Phoenix.LiveView
+      use Phoenix.LiveView, unquote(opts)
       unquote(html_helpers())
     end
   end
@@ -53,6 +53,8 @@ defmodule YellowDog.ManagementUI do
         statics: YellowDog.ManagementUI.static_paths()
     end
   end
+
+  defmacro __using__({:live_view, opts}), do: live_view(opts)
 
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])

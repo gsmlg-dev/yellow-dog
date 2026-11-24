@@ -34,7 +34,8 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/events", EventsLive, :index
       live "/management/config", ConfigLive, :index
       live "/management/dns/acl", DnsAclsLive, :selector
-      live "/management/dns/views", DnsViewsLive, :selector
+      live "/management/dns/views", ResourceViewsLive, :index
+      live "/management/dns/forward-zones", ForwardZonesLive, :index
       live "/server", WorkersLive, :index
       live "/server/:server_id/dashboard", WorkerLive, :show
       live "/server/:server_id/connection", WorkerLive, :connection
@@ -43,7 +44,8 @@ defmodule YellowDog.ManagementUI.Router do
       live "/server/:server_id/services", WorkerLive, :services
       live "/server/:server_id/targets/:revision", WorkerLive, :target
       live "/server/:server_id/targets", WorkerLive, :targets
-      live "/server/:server_id/dns", WorkerLive, :services
+      live "/server/:server_id/dns", WorkerLive, :dns
+      live "/server/:server_id/dns/policy", WorkerLive, :dns_policy
       live "/server/:server_id/dns/acl", DnsAclsLive, :selector
       live "/server/:server_id/dns/acl/:service_id", DnsAclsLive, :index
       live "/server/:server_id/dns/views", DnsViewsLive, :selector
@@ -51,6 +53,7 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/zones", ZonesLive, :index
       live "/management/zones/new", ZonesLive, :new
       live "/management/zones/import", ZoneImportLive, :import
+      live "/management/zones/cloud", CloudDnsLive, :index
       live "/management/zones/:zone_id/edit", ZonesLive, :edit
       live "/management/zones/:zone_id/versions", ZonesLive, :versions
       live "/management/zones/:zone_id/application", ZonesLive, :application
@@ -80,6 +83,8 @@ defmodule YellowDog.ManagementUI.Router do
       live "/system/backups/restore", BackupsLive, :restore
       live "/system/process-map", ProcessMapLive, :index
       live "/system/integrations", IntegrationsLive, :index
+      live "/system/certificates", CertificatesLive, :index
+      live "/system/cloud-providers", CloudProvidersLive, :index
       live "/system/ip-database", IpDatabaseLive, :index
       live "/system/mac-database", MacDatabaseLive, :index
     end

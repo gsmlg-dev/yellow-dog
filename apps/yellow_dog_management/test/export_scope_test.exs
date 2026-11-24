@@ -22,7 +22,7 @@ defmodule YellowDog.Management.ExportScopeTest do
     assert get_resp_header(implicit, "x-yellow-dog-export-scope") == ["dns_zones"]
 
     assert get_resp_header(implicit, "x-yellow-dog-export-excludes") == [
-             "dns_views,geoip_artifacts"
+             "dns_acls,geoip_artifacts"
            ]
 
     assert {:ok, exported} =
@@ -36,7 +36,7 @@ defmodule YellowDog.Management.ExportScopeTest do
     assert digest == fixture.target["digest"]
   end
 
-  test "explicit full export rejects omitted Views and artifacts while drafts remain editable", %{
+  test "explicit full export rejects omitted ACLs and artifacts while drafts remain editable", %{
     fixture: fixture
   } do
     view =
@@ -56,13 +56,13 @@ defmodule YellowDog.Management.ExportScopeTest do
                "message" => message,
                "details" => %{
                  "supported_scope" => "dns_zones",
-                 "excluded" => ["dns_views", "geoip_artifacts"]
+                 "excluded" => ["dns_acls", "geoip_artifacts"]
                }
              }
            } =
              Jason.decode!(response.resp_body)
 
-    assert message =~ "DNS Views"
+    assert message =~ "named ACLs"
     assert message =~ "IP database artifacts"
     assert message =~ "drafts can still be saved"
     assert Domain.list_audit() == before_audit

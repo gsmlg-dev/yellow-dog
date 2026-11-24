@@ -17,6 +17,7 @@ defmodule YellowDog.ManagementUI.ServicePaths do
     service_new: "/services/new",
     targets: "/targets",
     dns: "/dns",
+    dns_policy: "/dns/policy",
     dns_zones: "/dns/zones",
     dns_zone_new: "/dns/zones/new",
     dns_zone_import: "/dns/zones/import",

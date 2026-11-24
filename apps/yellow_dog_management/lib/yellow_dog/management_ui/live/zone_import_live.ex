@@ -262,9 +262,8 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
           <p id="zone-import-format-help" class="management-help">
             Paste the complete WorkerPlan TOML downloaded from Management's Export TOML action
             (schema_version = 1), including services and resources. Maximum size: 1 MiB (1048576 bytes).
-            The shared ConfigSpec validates every field and record; unsupported content is rejected,
-            not discarded. SOA, NS and A records are supported by the current shared contract.
-            BIND files and provider/snapshot source imports are not supported by this import page.
+            Include exactly one apex SOA record and at least one apex NS record. The preview reports
+            unsupported fields and records before import.
           </p>
           <.form
             for={@source_form}

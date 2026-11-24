@@ -239,17 +239,10 @@ defmodule YellowDog.Worker.TransitionJournalTest do
     manager = manager(ctx)
     old = ServiceManager.status(manager)
 
-    target = %{
+    target =
       ctx.plan
-      | "revision" => 2,
-        "services" =>
-          ctx.plan["services"] ++
-            [
-              hd(ctx.plan["services"])
-              |> Map.put("id", "second")
-              |> put_in(["config", "port"], second_port)
-            ]
-    }
+      |> Map.put("revision", 2)
+      |> put_in(["services", Access.at(0), "config", "port"], second_port)
 
     :ets.insert(:journal_faults, {:fault, {:write, "applying", "accepted"}})
 
@@ -258,10 +251,7 @@ defmodule YellowDog.Worker.TransitionJournalTest do
 
     assert Enum.any?(attempted, &match?({:error, {:outcome_uncertain, :ok, _}}, &1.result))
 
-    assert Enum.any?(
-             attempted,
-             &(&1.id == "second" and &1.result == {:error, :transition_halted})
-           )
+    refute Enum.any?(attempted, &(&1[:operation] == :apply))
 
     status = ServiceManager.status(manager)
     assert status.ready
@@ -359,16 +349,13 @@ defmodule YellowDog.Worker.TransitionJournalTest do
 
   test "recovery checkpoint failure after partial rollback halts and explicit retry reconciles",
        ctx do
-    first = hd(ctx.plan["services"])
-    base = %{ctx.plan | "services" => [first, Map.put(first, "id", "second")]}
-    {:ok, base} = ConfigSpec.normalize_plan(base)
-    manager = manager(%{ctx | plan: base})
+    base = ctx.plan
+    manager = manager(ctx)
 
-    target = %{
+    target =
       base
-      | "revision" => 2,
-        "services" => Enum.map(base["services"], &put_in(&1, ["config", "port"], 11054))
-    }
+      |> Map.put("revision", 2)
+      |> put_in(["services", Access.at(0), "id"], "dns-replacement")
 
     :ets.insert(
       :journal_faults,
@@ -377,7 +364,7 @@ defmodule YellowDog.Worker.TransitionJournalTest do
          {:write,
           %{
             "phase" => "applying",
-            "service" => "second",
+            "service" => "dns-replacement",
             "operation" => "apply",
             "status" => "accepted"
           }},
@@ -386,7 +373,7 @@ defmodule YellowDog.Worker.TransitionJournalTest do
             "phase" => "recovering",
             "service" => "dns-primary",
             "operation" => "apply",
-            "status" => "accepted"
+            "status" => "dispatched"
           }}
        ]}
     )
@@ -398,17 +385,12 @@ defmodule YellowDog.Worker.TransitionJournalTest do
     status = ServiceManager.status(manager)
     refute status.ready
     assert status.desired == base
-    assert status.services["dns-primary"].desired == hd(base["services"])
-
-    assert status.services["second"].desired ==
-             hd(target["services"] |> Enum.filter(&(&1["id"] == "second")))
+    assert status.services == %{}
 
     recovery = Enum.filter(status.transition["actions"], &(&1["direction"] == "recovery"))
 
     assert [
-             %{"service" => "dns-primary", "operation" => "quiesce", "status" => "accepted"},
-             %{"service" => "second", "operation" => "quiesce", "status" => "accepted"},
-             %{"service" => "dns-primary", "operation" => "apply", "status" => "dispatched"}
+             %{"service" => "dns-replacement", "operation" => "remove", "status" => "accepted"}
            ] = recovery
 
     assert status.transition["phase"] == "recovering"

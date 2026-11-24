@@ -3,6 +3,8 @@ defmodule YellowDog.Worker.DnsAdapterTest do
 
   alias DNS.Message
   alias DNS.Message.{EDNS0, Question, Record}
+  alias YellowDog.ConfigSpec
+  alias YellowDog.Worker.Dns.ProtocolAdapter
   alias YellowDog.Worker.DnsAdapter
   alias YellowDog.Worker.Test.FakeDnsServer
 
@@ -268,6 +270,65 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     assert_listeners_closed(port)
   end
 
+  test "serves authoritative AAAA, CNAME, MX, TXT and PTR records" do
+    port = free_port()
+
+    fixtures = [
+      {"*.example.com.", "AAAA", %{"address" => "2001:db8::42"}},
+      {"alias.example.com.", "CNAME", %{"target" => "ns1.example.com."}},
+      {"example.com.", "MX", %{"preference" => 10, "exchange" => "mail.example.com."}},
+      {"_policy.branch.example.com.", "TXT", %{"strings" => ["", "first", "second"]}},
+      {"reverse.example.com.", "PTR", %{"target" => "ptr.example.com."}}
+    ]
+
+    records =
+      Enum.map(fixtures, fn {name, type, data} ->
+        %{"name" => name, "type" => type, "ttl" => 120, "data" => data}
+      end)
+
+    resource = update_in(resource("192.0.2.53"), ["content", "records"], &(&1 ++ records))
+
+    start_supervised!({DnsAdapter, service: service(port), resources: [resource]},
+      restart: :temporary
+    )
+
+    for transport <- [:udp, :tcp] do
+      assert {:ok, aaaa} = query(transport, port, "missing.example.com.", 28)
+      assert aaaa.header.aa == 1
+
+      assert [%{ttl: 120, name: name, data: %{data: {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0x42}}}] =
+               aaaa.anlist
+
+      assert to_string(name) == "missing.example.com."
+
+      assert {:ok, cname} = query(transport, port, "alias.example.com.", 5)
+      assert [%{data: %{data: target}}] = cname.anlist
+      assert to_string(target) == "ns1.example.com."
+
+      assert {:ok, chain} = query(transport, port, "alias.example.com.", 1)
+      assert [%{type: %{value: <<5::16>>}}, %{data: %{data: {192, 0, 2, 53}}}] = chain.anlist
+
+      assert {:ok, mx} = query(transport, port, "example.com.", 15)
+      assert [%{data: %{data: {10, exchange}}}] = mx.anlist
+      assert to_string(exchange) == "mail.example.com."
+
+      assert {:ok, txt} = query(transport, port, "_policy.branch.example.com.", 16)
+      assert [%{data: %{data: ["", "first", "second"]}}] = txt.anlist
+
+      assert {:ok, ptr} = query(transport, port, "reverse.example.com.", 12)
+      assert [%{data: %{data: target}}] = ptr.anlist
+      assert to_string(target) == "ptr.example.com."
+
+      assert {:ok, nonterminal} = query(transport, port, "branch.example.com.", 28)
+      assert nonterminal.header.rcode.value == <<0::4>>
+      assert nonterminal.anlist == []
+
+      assert {:ok, blocked} = query(transport, port, "missing.branch.example.com.", 28)
+      assert blocked.header.rcode.value == <<3::4>>
+      assert blocked.anlist == []
+    end
+  end
+
   test "abrupt adapter death closes both listeners and permits recovery on the same port" do
     port = free_port()
     service = service(port)
@@ -380,6 +441,131 @@ defmodule YellowDog.Worker.DnsAdapterTest do
       assert Enum.map(answer.anlist, & &1.data.data) == [{10, 0, 0, 9}]
       assert_receive {:recursive_query, :root, 0}
       assert_receive {:recursive_query, :leaf, 0}
+    end
+
+    test "protocol listeners match client Views and isolate recursive and forwarded caches" do
+      test = self()
+
+      {:ok, root} =
+        FakeDnsServer.start_link({127, 0, 0, 10}, 0, fn q ->
+          name = to_string(hd(q.qdlist).name)
+          send(test, {:view_root, name, q.header.rd})
+
+          record =
+            if name == "alias.external.test.",
+              do: Record.new(name, 5, 1, 60, "x.corp.test."),
+              else: a_record(name, 9)
+
+          upstream_reply(%{q | header: %{q.header | aa: 1}}, [record])
+        end)
+
+      upstream =
+        fake_upstream(fn q ->
+          send(test, {:view_forward, q.header.rd})
+          upstream_reply(q, [a_record("x.corp.test.", 7)])
+        end)
+
+      primary_clients = ["127.0.0.1/32", "127.0.0.2/32"]
+
+      views = [
+        view("fallback", nil, true, [view_network("allow", ["127.0.0.3/32"])]),
+        view("z-recursive", 10, true, [view_network("allow", primary_clients)]),
+        view("a-local", 10, false, [
+          view_network("deny", ["127.0.0.2/32"]),
+          view_network("allow", primary_clients)
+        ])
+      ]
+
+      port = free_port()
+
+      config = %{
+        "listen" => %{"mode" => "all_ipv4"},
+        "transports" => %{"udp" => %{"port" => port}, "tcp" => %{"port" => port}},
+        "views" => views,
+        "recursion" => true,
+        "allow_query" => ["127.0.0.0/8"],
+        "forward_zones" => [forward("corp.test.", [upstream])]
+      }
+
+      bare_service = service(port) |> Map.put("config", config) |> Map.put("resources", [])
+
+      plan = %{
+        "worker_id" => "test-worker",
+        "schema_version" => 1,
+        "revision" => 1,
+        "services" => [bare_service],
+        "resources" => []
+      }
+
+      assert {:ok, %{"services" => [service]}} = ConfigSpec.normalize_plan(plan)
+      resources = [resource("192.0.2.53")]
+
+      adapter =
+        start_supervised!(
+          {ProtocolAdapter,
+           service: service,
+           resources: resources,
+           data_dir: System.tmp_dir!(),
+           recursor_opts: [root_hints: [{{127, 0, 0, 10}, FakeDnsServer.port(root)}]]}
+        )
+
+      for transport <- [:udp, :tcp] do
+        local_ip = {127, 0, 0, 1}
+        recursive_ip = {127, 0, 0, 2}
+        fallback_ip = {127, 0, 0, 3}
+        denied_ip = {127, 0, 0, 4}
+
+        assert {:ok, %{header: %{ra: 1}, anlist: [%{data: %{data: {10, 0, 0, 9}}}]}} =
+                 query(transport, port, "x.external.test.", 1, recursive_ip)
+
+        assert {:ok, %{header: %{ra: 1}, anlist: [%{data: %{data: {10, 0, 0, 9}}}]}} =
+                 query(transport, port, "x.external.test.", 1, fallback_ip)
+
+        nonrecursive = Message.from_iodata(packet("x.external.test.", 1))
+        nonrecursive = DNS.to_iodata(%{nonrecursive | header: %{nonrecursive.header | rd: 0}})
+        assert {:ok, wire} = query_wire(transport, port, nonrecursive, 2_000, recursive_ip)
+
+        assert %{header: %{rcode: %{value: <<5::4>>}, rd: 0, ra: 1}, anlist: []} =
+                 Message.from_iodata(wire)
+
+        assert {:ok, %{header: %{rcode: %{value: <<5::4>>}, ra: 0}, anlist: []}} =
+                 query(transport, port, "x.external.test.", 1, local_ip)
+
+        assert {:ok, %{header: %{rcode: %{value: <<5::4>>}, ra: 0}}} =
+                 query(transport, port, "ns1.example.com.", 1, denied_ip)
+
+        for {ip, ra} <- [{local_ip, 0}, {recursive_ip, 1}] do
+          assert {:ok, %{header: %{aa: 1, ra: ^ra}, anlist: [%{data: %{data: {192, 0, 2, 53}}}]}} =
+                   query(transport, port, "ns1.example.com.", 1, ip)
+
+          assert {:ok, %{header: %{aa: 0, ra: ^ra}, anlist: [%{data: %{data: {10, 0, 0, 7}}}]}} =
+                   query(transport, port, "x.corp.test.", 1, ip)
+        end
+
+        # The iterative CNAME chain has its own cache even though the target
+        # also has a cached answer obtained directly through a forward zone.
+        assert {:ok, %{anlist: [%{type: %{value: <<5::16>>}}, %{data: %{data: {10, 0, 0, 9}}}]}} =
+                 query(transport, port, "alias.external.test.", 1, recursive_ip)
+      end
+
+      assert_receive {:view_root, "x.external.test.", 0}
+      assert_receive {:view_root, "x.external.test.", 0}
+      assert_receive {:view_root, "alias.external.test.", 0}
+      assert_receive {:view_root, "x.corp.test.", 0}
+      assert_receive {:view_forward, 1}
+      assert_receive {:view_forward, 1}
+      refute_received {:view_root, _, _}
+      refute_received {:view_forward, _}
+
+      assert :ok =
+               ProtocolAdapter.update(
+                 adapter,
+                 put_in(service, ["config", "views"], []),
+                 resources
+               )
+
+      assert {:ok, %{header: %{rcode: %{value: <<5::4>>}, ra: 0}, anlist: []}} =
+               query(:tcp, port, "x.external.test.", 1, {127, 0, 0, 2})
     end
 
     test "authoritative zones still answer with aa=1 when recursion and forwarding are on" do
@@ -661,20 +847,20 @@ defmodule YellowDog.Worker.DnsAdapterTest do
     )
   end
 
-  defp query(transport, port, name, type) do
-    with {:ok, wire} <- query_wire(transport, port, packet(name, type)) do
+  defp query(transport, port, name, type, source \\ {127, 0, 0, 1}) do
+    with {:ok, wire} <- query_wire(transport, port, packet(name, type), 2_000, source) do
       {:ok, Message.from_iodata(wire)}
     end
   end
 
-  defp query_wire(transport, port, packet, timeout \\ 2_000)
+  defp query_wire(transport, port, packet, timeout \\ 2_000, source \\ {127, 0, 0, 1})
 
-  defp query_wire(:udp, port, packet, timeout),
-    do: Abyss.Client.send_recv({127, 0, 0, 1}, port, packet, timeout)
+  defp query_wire(:udp, port, packet, timeout, source),
+    do: Abyss.Client.send_recv({127, 0, 0, 1}, port, packet, timeout, source: source)
 
-  defp query_wire(:tcp, port, packet, timeout) do
+  defp query_wire(:tcp, port, packet, timeout, source) do
     with {:ok, socket} <-
-           :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], timeout) do
+           :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false, ip: source], timeout) do
       :ok = :gen_tcp.send(socket, <<byte_size(packet)::16, packet::binary>>)
 
       result =
@@ -700,6 +886,14 @@ defmodule YellowDog.Worker.DnsAdapterTest do
   end
 
   defp forward(name, forwarders), do: %{"name" => name, "forwarders" => forwarders}
+
+  defp view(id, priority, recursion, rules) do
+    view = %{"id" => id, "recursion_enabled" => recursion, "client_rules" => rules}
+    if priority == nil, do: view, else: Map.put(view, "priority", priority)
+  end
+
+  defp view_network(action, networks),
+    do: %{"action" => action, "kind" => "networks", "networks" => networks}
 
   defp upstream_reply(query, answers) do
     header = %{query.header | qr: 1, ra: 1, ancount: length(answers), arcount: 0}

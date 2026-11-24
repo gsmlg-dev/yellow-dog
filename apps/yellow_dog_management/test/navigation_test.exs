@@ -33,11 +33,15 @@ defmodule YellowDog.ManagementUI.NavigationTest do
      ]},
     {:nodes, :config_targets, ["/management/config"]},
     {:data, :dns_zones,
-     for(
-       prefix <- ["/management/zones", "/server/:server_id/dns/zones"],
-       suffix <- @zone_suffixes,
-       do: prefix <> suffix
-     )},
+     [
+       "/management/zones/cloud"
+       | for(
+           prefix <- ["/management/zones", "/server/:server_id/dns/zones"],
+           suffix <- @zone_suffixes,
+           do: prefix <> suffix
+         )
+     ]},
+    {:data, :dns_forward_zones, ["/management/dns/forward-zones"]},
     {:data, :dns_views,
      [
        "/management/dns/views",
@@ -60,6 +64,9 @@ defmodule YellowDog.ManagementUI.NavigationTest do
     {:monitoring, :tool_whois, ["/tool/whois"]},
     {:monitoring, :tool_geoip, ["/tool/geoip"]},
     {:system, :api_mcp, ["/system/integrations"]},
+    {:data, :dns_policy, ["/server/:server_id/dns/policy"]},
+    {:system, :certificates, ["/system/certificates"]},
+    {:system, :cloud_providers, ["/system/cloud-providers"]},
     {:system, :backups, ["/system/backups", "/system/backups/restore"]},
     {:system, :process_map, ["/system/process-map"]}
   ]
@@ -173,23 +180,21 @@ defmodule YellowDog.ManagementUI.NavigationTest do
     end
   end
 
-  test "scoped Data keeps the validated Worker and DNS service in crosslinks" do
+  test "resource Data links remain global when viewing a Worker" do
     path = "/server/%77orker-1/dns/views/service%20one?server_id=other#settings"
     assert {:server, "worker-1"} = selection = CurrentPath.selection_for_path(path)
     assert Navigation.section_for_path(path) == :data
     assert Navigation.item_for_path(path) == :dns_views
-    assert item(:data, :dns_zones, selection, path).path == "/server/worker-1/dns/zones"
+    assert item(:data, :dns_zones, selection, path).path == "/management/zones"
 
-    assert item(:data, :dns_views, selection, path).path ==
-             "/server/worker-1/dns/views/service%20one"
+    assert item(:data, :dns_views, selection, path).path == "/management/dns/views"
 
     assert item(:data, :dns_acls, selection, path).path ==
              "/server/worker-1/dns/acl/service%20one"
 
     acl_path = "/server/worker-1/dns/acl/service%20one"
 
-    assert item(:data, :dns_views, selection, acl_path).path ==
-             "/server/worker-1/dns/views/service%20one"
+    assert item(:data, :dns_views, selection, acl_path).path == "/management/dns/views"
   end
 
   test "query identities and invalid selections cannot construct scoped links" do
@@ -210,7 +215,7 @@ defmodule YellowDog.ManagementUI.NavigationTest do
     selection = {:server, "worker-1"}
 
     for path <- ["/server/other/dns/views/foreign", "/server/worker-1/dns/views/bad%2Fservice"] do
-      assert item(:data, :dns_views, selection, path).path == "/server/worker-1/dns/views"
+      assert item(:data, :dns_views, selection, path).path == "/management/dns/views"
       assert item(:data, :dns_acls, selection, path).path == "/server/worker-1/dns/acl"
     end
 

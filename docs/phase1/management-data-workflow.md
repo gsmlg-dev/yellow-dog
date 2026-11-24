@@ -15,8 +15,9 @@ changing the Data workflow; retained redesign templates are not its contract.
 
 | Dataset | Fields and application operations | Concurrency/version | Application scope | Worker target |
 | --- | --- | --- | --- | --- |
-| Zone | Global name, SOA/NS/A records; create/update/delete, import, record editing, canonical reread | Expected draft revision; confirm freezes saved content, reuses matching source revision | Atomic complete assignment set, max 256; assignment token and expected Worker revisions; fixed version per DNS service, same version across one Worker's services | Confirmed assigned content only |
-| DNS View | Service-scoped name, priority, enabled, recursion/ECS, client CIDR/country rules, fallback endpoints/timeouts/retries | Expected revision; default restrictions; no immutable versions | Existing owning Worker/service; no allocation store | Excluded |
+| Zone | Global name, SOA, NS, A, AAAA, CNAME, MX, TXT and PTR records; create/update/delete, import, record editing, canonical reread | Expected draft revision; confirm freezes saved content, reuses matching source revision | Atomic complete assignment set, max 256; assignment token and expected Worker revisions; fixed version per DNS service, same version across one Worker's services | Confirmed assigned content only |
+| Forward zone | Domain suffix and upstream DNS endpoints | Expected revision | Choose one or more Workers on the resource | Assigned suffixes and ordered forwarders |
+| DNS View | Name, priority, ordered client match rules, enabled, and recursion | Expected revision | Choose one or more Workers in the View modal | Enabled assigned Views |
 | DNS ACL | Service-scoped name/description, ordered allow/deny rules, any/networks/countries; max 128 rules/networks | Expected revision; no immutable versions | Existing owning Worker/service and supported references | Excluded |
 | IP Database | Country/City metadata, selected digest, bounded history, existing task settings/run operations, asynchronous integrity checks | Immutable kind/digest files; task config revision and persistent job identity | Global selection; no recipient editor | Excluded |
 | MAC Database | Existing global OUI catalog and synchronization | Existing task/catalog semantics | Global | Excluded |
@@ -25,7 +26,7 @@ All saves are Management-only. Offline logical Workers are eligible for Zone
 assignments; no Worker process is needed for dataset authoring. Step 4 exposes
 these existing operations through the [HTTP/MCP contract](management-api-contract.md)
 and the [configured trust boundary](management-integration-security.md).
-Views, ACLs and IP artifacts remain excluded from Worker targets.
+Named ACLs and IP artifacts remain excluded from Worker targets.
 
 ## Routes and editor lifetime
 
@@ -87,7 +88,7 @@ the Domain transaction/audit boundary. No direct LiveView Repo writes are added.
 
 | Operations | Identity, allowed input and bounds | Result / retry / export |
 | --- | --- | --- |
-| `create_zone`, `update_zone`, `delete_zone` | Global UUID; name/content or name+records, up to 1,024 records and 253-byte domains; ConfigSpec SOA/NS/A validation; updates/deletes require expected revision | Canonical draft/deletion result; stable logical key; drafts never enter export |
+| `create_zone`, `update_zone`, `delete_zone` | Global UUID; name/content or name+records, up to 1,024 records and 253-byte domains; ConfigSpec authoritative record validation; updates/deletes require expected revision | Canonical draft/deletion result; stable logical key; drafts never enter export |
 | `confirm_zone` | Zone UUID + expected saved revision | Immutable version UUID/number/digest/content; unchanged saved revision reuses a version; no target publication |
 | `set_zone_assignments` | Zone UUID, assignment token, expected Worker revision map, complete list of at most 256 Worker/service/version selections | Canonical set/token/revisions; atomic rejection on wrong scope/version, duplicate service, stale token/revision or incompatible per-Worker versions; pinned versions enter target only after Node publication |
 | View create/update/delete | Owning Worker and DNS service DB UUID, View UUID/immutable name; up to 128 fallback endpoints, existing rule bounds and expected revisions | Existing canonical revision result and stable retry intent; default restrictions preserved; target/export excluded |
@@ -329,3 +330,51 @@ the declared native input hash. That verifies the downloaded input only; no ARM
 build, image execution or target-host runtime acceptance is claimed. ARM execution
 requires a configured native builder, and final delivery requires fresh-source
 package/image verification after subsequent changes.
+
+
+## Cloud DNS
+
+Create or edit a named provider under **System Configuration → Cloud Providers**.
+Then open **Data Configuration → Zones → Cloud DNS**, or choose **Cloud DNS**
+from a zone’s detail page, and select the provider in the binding dialog.
+Set credentials in the Management process environment. For the `DNS` profile,
+set `DNS_AWS_ACCESS_KEY_ID` and `DNS_AWS_SECRET_ACCESS_KEY` for Route 53, plus
+`DNS_AWS_SESSION_TOKEN` for temporary AWS credentials. For Cloudflare, set
+`DNS_CLOUDFLARE_API_TOKEN` and set `DNS_CLOUDFLARE_ACCOUNT_ID` if creating a zone.
+The database stores the profile prefix.
+
+- **Import cloud zone** uses the provider's zone ID. The first confirmed pull
+  replaces the matching local draft's editable records and apex authority, or
+  creates a draft when the zone is absent locally. Existing confirmed versions
+  and Worker targets stay pinned.
+- **Create cloud zone from local zone** checks for an existing matching cloud zone
+  before creating a new public zone. An existing cloud zone must be linked
+  through import. Once the new zone is linked, confirm the local draft version,
+  preview the record changes and confirm the push.
+- Subsequent pulls merge independent cloud changes and ask which side to use for
+  conflicting record sets. A push requires a confirmed local draft revision and
+  rechecks the reviewed local and cloud snapshots. Review a pull if the cloud
+  has changed. Unlinking only removes the synchronization binding.
+
+The editable cloud record types are A, AAAA, CNAME, MX, TXT, PTR and non-apex NS.
+Provider-managed apex records, Route 53 aliases and routing policies, Cloudflare
+proxy records and unsupported types remain protected in the cloud. The review
+lists those sets. Worker publication remains a separate action and still rejects
+non-apex NS delegations. A verified cloud push confirms the provider API state;
+authoritative DNS propagation and domain delegation follow the cloud provider.
+
+
+## Forward zones and recursive DNS Views
+
+Create a resource in **Data Configuration → Forward zones** or
+**Data Configuration → Views**, and select the Workers in that resource's dialog.
+Saving changes a Worker's desired configuration. Review and publish a Target to
+deliver it.
+
+Workers check enabled assigned Views in ascending priority and use the View ID to
+break ties. Within a View, the first matching rule decides whether it applies.
+If no View applies, the query is refused. An applicable View determines whether
+unmatched queries can use iterative recursion. Assigned authoritative and
+forward zones remain available when recursion is off. Forwarding selects the
+longest configured forwarding suffix after checking authoritative zones. The
+WorkerPlan uses ordered address/CIDR and any-match rules for View matching.

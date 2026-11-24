@@ -93,8 +93,8 @@ try {
         workers.push(worker);
         await until(() => evaluate("!!document.querySelector('#worker-bootstrap')"), 'Transient bootstrap');
         await click('[phx-click="dismiss_connection"]');
-        await navigate(`/server/${worker.id}/services/new`);
-        await submit('#service-form', { 'service[id]': 'dns', 'service[listen_address]': '127.0.0.1', 'service[port]': String(18553 + workers.length), 'service[desired_state]': 'stopped' });
+        await navigate(`/server/${worker.id}/dns`);
+        await submit('#service-form', { 'service[mode]': 'all_ipv4', 'service[transports][udp][port]': String(18553 + workers.length), 'service[transports][tcp][port]': String(18553 + workers.length), 'service[desired_state]': false });
         let service;
         await until(async () => { service = (await http(`/workers/${worker.id}/services`)).items[0]; return !!service; }, 'UI DNS instance');
         services.push(service);
@@ -155,7 +155,7 @@ try {
     assert.deepEqual(await http(`/workers/${worker.id}/targets/${target.revision}/export`), exported);
     assert.match(exported.toml, /integration\.test\./);
     assert.equal(target.actual_state, 'unknown');
-    assert.deepEqual(target.export_scope.excluded, ['dns_views', 'dns_acls', 'geoip_artifacts']);
+    assert.deepEqual(target.export_scope.excluded, ['dns_acls', 'geoip_artifacts']);
     console.log('PASS UI registered2Workers+DNS+Zone; HTTP edited draft; MCP confirmed+assigned fixed version; UI canonical reread; stale UI and MCP publication conflicts; exact reviewed target/export');
 
     // Discard the committed response at the actual transport boundary, then reconnect and retry.

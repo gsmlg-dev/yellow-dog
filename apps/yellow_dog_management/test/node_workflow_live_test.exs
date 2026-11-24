@@ -5,6 +5,7 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
   import Phoenix.LiveViewTest
 
   alias YellowDog.Management.{Domain, DomainFixtures, Repo}
+  alias YellowDog.ManagementUI.DnsSettings
 
   @endpoint YellowDog.ManagementUI.Endpoint
 
@@ -30,8 +31,8 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
   end
 
   test "create and edit persist offline desired configuration without publishing", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/server/node-a/services/new")
-    request = %{"service" => fields("dns-main", "stopped", "5301"), "_submission" => intent(view)}
+    {:ok, view, _} = live(conn, "/server/node-a/dns")
+    request = %{"service" => fields("stopped", "5301"), "_submission" => intent(view)}
     render_submit(view, "save_service", request)
     render_submit(view, "save_service", request)
     [service] = Domain.list_services("node-a")
@@ -39,11 +40,16 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
     assert {:error, %{code: "not_found"}} = Domain.get_target("node-a")
     assert Domain.list_services("node-b") == []
 
-    {:ok, fresh, _} = live(build_conn(), "/server/node-a/services/#{service["id"]}/edit")
-    assert has_element?(fresh, "input[name='service[id]'][readonly][value='dns-main']")
-    submit(fresh, "save_service", %{"service" => fields("dns-main", "running", "5302")})
+    {:ok, fresh, _} = live(build_conn(), "/server/node-a/dns")
+    refute has_element?(fresh, "input[name='service[id]']")
+    submit(fresh, "save_service", %{"service" => fields("running", "5302")})
 
-    assert [%{"config" => %{"port" => 5302}, "desired_state" => "running"}] =
+    assert [
+             %{
+               "config" => %{"transports" => %{"udp" => %{"port" => 5302}}},
+               "desired_state" => "running"
+             }
+           ] =
              Domain.list_services("node-a")
 
     assert {:error, %{code: "not_found"}} = Domain.get_target("node-a")
@@ -52,127 +58,63 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
     assert response.resp_body =~ "5302"
   end
 
-  test "DNS recursion, forward zones and allow list flow into the previewed plan", %{conn: conn} do
-    {:ok, view, html} = live(conn, "/server/node-a/services/new")
-    assert has_element?(view, "input[type='checkbox'][name='service[recursion]'][checked]")
-    assert html =~ "10.10.10.0/24"
-    assert has_element?(view, "input[name='service[listen_address]'][value='0.0.0.0']")
-    assert has_element?(view, "input[name='service[port]'][value='53']")
+  test "DNS policy keeps query sources and directs forwarding and recursion to resources", %{
+    conn: conn
+  } do
+    {:ok, settings, _html} = live(conn, "/server/node-a/dns")
+    refute has_element?(settings, "input[name='service[recursion]']")
+    assert has_element?(settings, "select[name='service[mode]'] option[value=all][selected]")
+    assert has_element?(settings, "#dns-udp-settings input[value='53']")
+    submit(settings, "save_service", %{"service" => fields("running", "53")})
+    {:ok, policy, _html} = live(build_conn(), "/server/node-a/dns/policy")
 
-    policy = %{
-      "recursion" => "true",
-      "allow_query" => "10.10.10.5/24\n\n 192.168.0.0/16 ",
-      "forward_zones" => "corp.test 10.0.0.2 10.0.0.3:5353\n. [2001:db8::1]:5353"
-    }
+    refute has_element?(policy, "[name='service[recursion]']")
+    refute has_element?(policy, "[name='service[forward_zones]']")
+    assert has_element?(policy, "a[href='/management/dns/views']")
+    assert has_element?(policy, "a[href='/management/dns/forward-zones']")
 
-    submit(view, "save_service", %{
-      "service" => Map.merge(fields("dns-main", "running", "53"), policy)
+    submit(policy, "save_service", %{
+      "service" => %{"allow_query" => "10.10.10.5/24\n192.168.0.0/16"}
     })
 
     assert {:ok, preview} = Domain.preview_target("node-a")
     assert [%{"config" => config}] = preview["plan"]["services"]
-    assert config["recursion"] == true
+    assert config["recursion"] == false
     assert config["allow_query"] == ["10.10.10.0/24", "192.168.0.0/16"]
-
-    assert [
-             %{"name" => ".", "forwarders" => [%{"address" => "2001:db8::1", "port" => 5353}]},
-             %{
-               "name" => "corp.test.",
-               "forwarders" => [
-                 %{"address" => "10.0.0.2", "port" => 53},
-                 %{"address" => "10.0.0.3", "port" => 5353}
-               ]
-             }
-           ] = config["forward_zones"]
-
-    [service] = Domain.list_services("node-a")
-    {:ok, _details, details_html} = live(build_conn(), "/server/node-a/services")
-    assert details_html =~ "Recursion: on"
-    assert details_html =~ "10.10.10.5/24, 192.168.0.0/16"
-    assert details_html =~ "corp.test → 10.0.0.2, 10.0.0.3:5353"
-    assert details_html =~ "[2001:db8::1]:5353"
-    {:ok, edit, _} = live(build_conn(), "/server/node-a/services/#{service["id"]}/edit")
-    assert has_element?(edit, "input[type='checkbox'][name='service[recursion]'][checked]")
-    assert has_element?(edit, "textarea[name='service[allow_query]']", "192.168.0.0/16")
-
-    assert has_element?(
-             edit,
-             "textarea[name='service[forward_zones]']",
-             "corp.test 10.0.0.2 10.0.0.3:5353"
-           )
-
-    assert has_element?(edit, "textarea[name='service[forward_zones]']", "[2001:db8::1]:5353")
+    assert has_element?(policy, "textarea[name='service[allow_query]']", "192.168.0.0/16")
   end
 
-  test "invalid CIDR and forward zone lines show field errors and save nothing", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/server/node-a/services/new")
+  test "invalid policy CIDR displays a field error and saves nothing", %{
+    conn: conn,
+    worker: worker
+  } do
+    mutate("put_service", DomainFixtures.service("node-a", worker["revision"]))
+    before = Domain.list_services("node-a")
+    {:ok, view, _} = live(conn, "/server/node-a/dns/policy")
 
-    html =
-      submit(view, "save_service", %{
-        "service" => Map.put(fields("dns-bad", "stopped", "53"), "allow_query", "10.0.0.0/33")
-      })
-
+    html = submit(view, "save_service", %{"service" => %{"allow_query" => "10.0.0.0/33"}})
     assert html =~ "invalid_cidr"
-    assert Domain.list_services("node-a") == []
-
-    html =
-      submit(view, "save_service", %{
-        "service" =>
-          fields("dns-bad", "stopped", "53")
-          |> Map.put("allow_query", "10.0.0.0/8")
-          |> Map.put("forward_zones", "corp.test\nlab.test 10.0.0.1:notaport")
-      })
-
-    assert html =~ "line 1"
-    assert html =~ "line 2"
-    assert Domain.list_services("node-a") == []
+    assert Domain.list_services("node-a") == before
   end
 
-  test "duplicate forward zone names are rejected with a field error", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/server/node-a/services/new")
-
-    html =
-      submit(view, "save_service", %{
-        "service" =>
-          Map.put(
-            fields("dns-dup", "stopped", "53"),
-            "forward_zones",
-            "corp.test 10.0.0.2\ncorp.test. 10.0.0.3"
-          )
-      })
-
-    assert html =~ "duplicate_forward_zone"
-    assert Domain.list_services("node-a") == []
-  end
-
-  test "duplicate create and forged instance rename retain fields and cannot overwrite", %{
+  test "DNS settings ignore forged identifiers and update only the selected Worker", %{
     conn: conn,
     worker: worker
   } do
     service =
       mutate("put_service", DomainFixtures.service("node-a", worker["revision"], "stopped"))
 
-    {:ok, view, _} = live(conn, "/server/node-a/services/new")
+    {:ok, view, _} = live(conn, "/server/node-a/dns")
 
-    assert submit(view, "save_service", %{
-             "service" => fields(service["instance_id"], "running", "5399")
-           }) =~ "conflict: Service instance ID already exists in Worker"
+    inputs =
+      fields("running", "5399") |> Map.merge(%{"id" => "forged-rename", "worker_id" => "node-b"})
 
-    assert has_element?(view, "input[name='service[port]'][value='5399']")
-    assert {:ok, persisted} = Domain.get_service("node-a", service["id"])
-    assert persisted == Map.delete(service, "worker_revision")
-
-    {:ok, edit, _} = live(build_conn(), "/server/node-a/services/#{service["id"]}/edit")
-
-    assert submit(edit, "save_service", %{"service" => fields("forged-rename", "running", "5399")}) =~
-             "invalid_request: Service instance ID cannot be changed"
-
-    assert {:ok, persisted} = Domain.get_service("node-a", service["id"])
-    assert persisted == Map.delete(service, "worker_revision")
-    assert {:ok, _} = Domain.get_worker("node-b")
-
-    assert {:error, {:live_redirect, %{to: "/server/node-b/services"}}} =
-             live(build_conn(), "/server/node-b/services/#{service["id"]}/edit")
+    assert submit(view, "save_service", %{"service" => inputs}) =~ "Configuration saved"
+    assert [saved] = Domain.list_services("node-a")
+    assert saved["id"] == service["id"]
+    assert saved["instance_id"] == service["instance_id"]
+    assert saved["config"]["transports"]["udp"]["port"] == 5399
+    assert Domain.list_services("node-b") == []
   end
 
   test "polling retains dirty fields and original revision; conflict reload is explicit", %{
@@ -254,12 +196,12 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
       "expected_revision" => service["worker_revision"]
     })
 
-    {:ok, view, _} = live(conn, "/server/node-a/services/#{service["id"]}/edit")
+    {:ok, view, _} = live(conn, "/server/node-a/dns/policy")
     assert has_element?(view, "#service-references", "node-reference.test.")
 
     assert has_element?(
              view,
-             "#service-references a[href='/server/node-a/dns/views/#{service["id"]}']"
+             "#service-references a[href='/management/dns/views']"
            )
 
     assert has_element?(
@@ -285,8 +227,11 @@ defmodule YellowDog.Management.NodeWorkflowLiveTest do
     refute render(historical) =~ "node-b/targets"
   end
 
-  defp fields(id, state, port),
-    do: %{"id" => id, "desired_state" => state, "listen_address" => "127.0.0.1", "port" => port}
+  defp fields(state, port) do
+    DnsSettings.form_params(nil)
+    |> Map.merge(%{"desired_state" => state, "mode" => "specific", "addresses" => "127.0.0.1"})
+    |> put_in(["transports", "udp", "port"], port)
+  end
 
   defp submit(view, event, params),
     do: render_submit(view, event, Map.put(params, "_submission", intent(view)))

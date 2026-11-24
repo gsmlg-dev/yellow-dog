@@ -11,6 +11,9 @@ defmodule YellowDog.Worker.ServiceManager do
   def check(server), do: GenServer.call(server, :check, 30_000)
   @doc false
   def connection_credentials(server), do: GenServer.call(server, :connection_credentials)
+  @doc false
+  def install_dns_certificate(server, payload),
+    do: GenServer.call(server, {:install_dns_certificate, fn -> payload end}, 30_000)
 
   @impl true
   def init(opts) do
@@ -20,6 +23,7 @@ defmodule YellowDog.Worker.ServiceManager do
          {:ok, worker_id} <- resolve_identity(store, opts) do
       state = %{
         store: store,
+        data_dir: Keyword.fetch!(opts, :data_dir),
         worker_id: worker_id,
         connection_bootstrap: opts[:connection_bootstrap],
         source: Keyword.fetch!(opts, :source),
@@ -81,6 +85,29 @@ defmodule YellowDog.Worker.ServiceManager do
 
   def handle_call(:connection_credentials, _from, state) do
     {:reply, credentials(state.store, state.connection_bootstrap), state}
+  end
+
+  def handle_call({:install_dns_certificate, payload}, _from, state) do
+    result = LocalStore.install_dns_certificate(state.store, payload)
+
+    reply =
+      case result do
+        {:ok, outcome} when outcome in [:stored, :current] ->
+          %{"id" => id, "revision" => revision} = payload.()
+
+          if Enum.all?(state.controllers, fn {_, controller} ->
+               ServiceController.reload_dns_certificate(controller, id, revision) == :ok
+             end) do
+            result
+          else
+            {:error, :dns_certificate_reload_failed}
+          end
+
+        _ ->
+          result
+      end
+
+    {:reply, reply, state}
   end
 
   def handle_call(:check, _from, state), do: {:reply, differences(state), state}
@@ -434,9 +461,7 @@ defmodule YellowDog.Worker.ServiceManager do
           pid when is_pid(pid) ->
             current = observation(pid)
 
-            if current[:desired] &&
-                 (service["desired_state"] == "stopped" or
-                    current.desired["config"] != service["config"]) do
+            if current[:desired] && ServiceController.requires_quiesce?(current.desired, service) do
               {result, acc} =
                 execute_action(acc, service["id"], :quiesce, fn current ->
                   {quiesce(pid), current}
@@ -536,7 +561,7 @@ defmodule YellowDog.Worker.ServiceManager do
   end
 
   defp new_controller(state, id) do
-    {:ok, pid} = ServiceController.start_link(observer: self())
+    {:ok, pid} = ServiceController.start_link(observer: self(), data_dir: state.data_dir)
 
     {:ok, pid,
      %{

@@ -95,19 +95,9 @@ defmodule YellowDog.Worker.DnsAdapter do
   def handle_call(:snapshot, _from, state), do: {:reply, {:ok, state.context}, state}
 
   def handle_call({:update, service, resources}, _from, state) do
-    old = state.context
-
     with {:ok, ip, port} <- parse_binding(service),
          true <- ip == state.ip and port == state.port,
-         {:ok, context} <-
-           Resolver.build_context(service, resources, old.cache, old.recursor_opts) do
-      # Cached forwarded answers may belong to forwarders that no longer apply.
-      context =
-        if context.forward_zones == old.forward_zones,
-          do: context,
-          else: %{context | cache: Cache.new()}
-
-      if context.cache != old.cache, do: Cache.delete(old.cache)
+         {:ok, context} <- Resolver.update_context(service, resources, state.context) do
       {:reply, :ok, %{state | service: service, resources: resources, context: context}}
     else
       false -> {:reply, {:error, :listener_change_requires_restart}, state}

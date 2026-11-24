@@ -19,9 +19,11 @@ try {
 } catch (_err) {}
 
 import EditorGuard from "./editor_guard.js";
+import SchemaModal from "./schema_modal.jsx";
 
 let CustomHooks = {};
 CustomHooks.EditorGuard = EditorGuard;
+CustomHooks.SchemaModal = SchemaModal;
 
 // Register before LiveSocket connects so rejected node traversals never reach
 // its popstate handler. Inactive pages retain no hook or DOM reference.

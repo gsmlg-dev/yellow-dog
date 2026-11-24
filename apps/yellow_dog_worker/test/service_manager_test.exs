@@ -1,6 +1,7 @@
 defmodule YellowDog.Worker.ServiceManagerTest do
   use ExUnit.Case, async: false
   alias YellowDog.Worker.ServiceManager
+  alias YellowDog.Worker.Dns.{CertificateStore, DoqListener}
   alias YellowDog.ConfigSpec
 
   test "a blocked quiesce returns a lifecycle error instead of discarding ownership", ctx do
@@ -340,24 +341,11 @@ defmodule YellowDog.Worker.ServiceManagerTest do
 
   @tag :candidate_diff
   test "candidate differences describe additions replacements lifecycle and removals", ctx do
+    empty = %{ctx.plan | "services" => [], "resources" => []}
+    write(ctx.source, empty)
     pid = manager(ctx)
     initial = ServiceManager.status(pid)
-    [service] = ctx.plan["services"]
-    [resource] = ctx.plan["resources"]
-    second_resource = Map.put(resource, "id", "zone-second")
-
-    second_service =
-      service
-      |> Map.put("id", "dns-secondary")
-      |> Map.put("desired_state", "stopped")
-      |> Map.put("resources", ["zone-second"])
-      |> put_in(["config", "port"], free_port())
-
-    added = %{
-      ctx.plan
-      | "services" => [second_service, service],
-        "resources" => [second_resource, resource]
-    }
+    added = ctx.plan
 
     write(ctx.source, added)
     assert {:ok, :committed} = ServiceManager.reload(pid)
@@ -365,34 +353,26 @@ defmodule YellowDog.Worker.ServiceManagerTest do
     assert {:ok, status.candidate.base_digest} == ConfigSpec.plan_digest(initial.desired)
     assert {:ok, status.candidate.digest} == ConfigSpec.plan_digest(added)
     assert {:ok, status.candidate.differences} == ConfigSpec.diff(initial.desired, added)
-    assert status.candidate.differences["services"]["added"] == ["dns-secondary"]
-    assert status.candidate.differences["resources"]["added"] == ["zone-second"]
+    assert status.candidate.differences["services"]["added"] == ["dns-primary"]
+    assert status.candidate.differences["resources"]["added"] == ["zone-example"]
     assert status.candidate.result == {:ok, :committed}
-    assert status.services["dns-secondary"].runtime_pid == nil
+    assert is_pid(status.services["dns-primary"].runtime_pid)
 
     replaced =
       added
       |> put_in(["services", Access.at(0), "config", "port"], free_port())
-      |> Map.put("resources", [
-        second_resource,
-        hd(update_address(ctx.plan, "192.0.2.99")["resources"])
-      ])
+      |> update_address("192.0.2.99")
 
     assert {:ok, :committed} = ServiceManager.submit_plan(pid, replaced)
     status = ServiceManager.status(pid)
     assert {:ok, status.candidate.base_digest} == ConfigSpec.plan_digest(added)
     assert {:ok, status.candidate.digest} == ConfigSpec.plan_digest(replaced)
     assert {:ok, status.candidate.differences} == ConfigSpec.diff(added, replaced)
-    assert status.candidate.differences["services"]["replaced"] == ["dns-secondary"]
+    assert status.candidate.differences["services"]["replaced"] == ["dns-primary"]
     assert status.candidate.differences["resources"]["replaced"] == ["zone-example"]
     assert status.candidate.result == {:ok, :committed}
 
-    assert status.services["dns-primary"].runtime_pid ==
-             initial.services["dns-primary"].runtime_pid
-
-    assert status.services["dns-secondary"].runtime_pid == nil
-
-    stopped = put_in(replaced, ["services", Access.at(1), "desired_state"], "stopped")
+    stopped = put_in(replaced, ["services", Access.at(0), "desired_state"], "stopped")
     assert {:ok, :committed} = ServiceManager.submit_plan(pid, stopped)
     status = ServiceManager.status(pid)
     assert {:ok, status.candidate.differences} == ConfigSpec.diff(replaced, stopped)
@@ -419,8 +399,8 @@ defmodule YellowDog.Worker.ServiceManagerTest do
     assert {:ok, status.candidate.base_digest} == ConfigSpec.plan_digest(replaced)
     assert {:ok, status.candidate.digest} == ConfigSpec.plan_digest(empty)
     assert {:ok, status.candidate.differences} == ConfigSpec.diff(replaced, empty)
-    assert status.candidate.differences["services"]["removed"] == ["dns-primary", "dns-secondary"]
-    assert status.candidate.differences["resources"]["removed"] == ["zone-example", "zone-second"]
+    assert status.candidate.differences["services"]["removed"] == ["dns-primary"]
+    assert status.candidate.differences["resources"]["removed"] == ["zone-example"]
     assert status.candidate.result == {:ok, :committed}
     assert status.desired == normalized(empty)
     assert status.services == %{}
@@ -597,24 +577,24 @@ defmodule YellowDog.Worker.ServiceManagerTest do
     assert ServiceManager.status(pid).services == %{}
   end
 
-  test "partial multi-service apply is observed and rolled back completely", ctx do
+  test "a second configured DNS service is rejected without changing the running plan", ctx do
     pid = manager(ctx)
-    first = ServiceManager.status(pid)
-    second_service = ctx.plan["services"] |> hd() |> Map.put("id", "dns-secondary")
-    {:ok, occupied} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
-    {:ok, {_, port}} = :inet.sockname(occupied)
-    second_service = put_in(second_service, ["config", "port"], port)
-    changed = update_address(ctx.plan, "192.0.2.100")
-    candidate = Map.put(changed, "services", changed["services"] ++ [second_service])
+    before = ServiceManager.status(pid)
+    [first] = ctx.plan["services"]
+    second = %{first | "id" => "dns-secondary", "resources" => []}
+    candidate = %{ctx.plan | "services" => [first, second]}
 
-    assert {:error, %{attempted_outcomes: outcomes, recovery: :ok}} =
+    assert {:error, [%{code: :duplicate_service_type}]} =
              ServiceManager.submit_plan(pid, candidate)
 
-    assert Enum.any?(outcomes, &(&1.id == "dns-primary" and &1.result == :ok))
-    assert Enum.any?(outcomes, &(&1.id == "dns-secondary" and match?({:error, _}, &1.result)))
-    assert ServiceManager.status(pid).desired == first.desired
-    assert ServiceManager.status(pid).services |> Map.keys() == ["dns-primary"]
-    :gen_tcp.close(occupied)
+    after_rejection = ServiceManager.status(pid)
+    assert after_rejection.desired == before.desired
+    assert after_rejection.persisted.active == before.persisted.active
+
+    assert after_rejection.services["dns-primary"].runtime_pid ==
+             before.services["dns-primary"].runtime_pid
+
+    assert_dns(first["config"]["port"])
   end
 
   test "missing persisted snapshot is observable and repaired without restarting healthy DNS",
@@ -631,39 +611,292 @@ defmodule YellowDog.Worker.ServiceManagerTest do
              before.services["dns-primary"].runtime_pid
   end
 
-  test "running instances exchange bindings and failed swaps restore both listeners", ctx do
-    secondary = ctx.plan["services"] |> hd() |> Map.put("id", "dns-secondary")
-    secondary = put_in(secondary, ["config", "port"], free_port())
-    plan = %{ctx.plan | "services" => ctx.plan["services"] ++ [secondary]}
-    write(ctx.source, plan)
+  test "stream protocols exchange listener ports without conflicting with their old bindings",
+       ctx do
     pid = manager(ctx)
-    [first, second] = plan["services"]
+    {der, certificate} = test_certificate(1, key: {:rsa, 2048, 65_537})
+    assert {:ok, :stored} = ServiceManager.install_dns_certificate(pid, certificate)
+    tcp = free_port()
+    dot = free_port()
 
-    swapped = %{
-      plan
-      | "services" => [
-          %{first | "config" => second["config"]},
-          %{second | "config" => first["config"]}
-        ]
+    config = %{
+      "listen" => %{"mode" => "specific", "addresses" => ["127.0.0.1"]},
+      "transports" => %{
+        "udp" => %{"enabled" => false},
+        "tcp" => %{"port" => tcp},
+        "dot" => %{"port" => dot, "enabled" => true, "certificate_id" => "dns-test"}
+      }
     }
 
-    assert {:ok, :committed} = ServiceManager.submit_plan(pid, swapped)
-    assert ServiceManager.status(pid).ready
+    plan = put_in(ctx.plan, ["services", Access.at(0), "config"], config)
     assert {:ok, :committed} = ServiceManager.submit_plan(pid, plan)
-    {:ok, occupied} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
-    {:ok, {_, port}} = :inet.sockname(occupied)
-    failing = secondary |> Map.put("id", "z-failing") |> put_in(["config", "port"], port)
-    rejected = %{swapped | "services" => swapped["services"] ++ [failing]}
-    assert {:error, %{recovery: :ok}} = ServiceManager.submit_plan(pid, rejected)
-    assert ServiceManager.status(pid).ready
-    assert ServiceManager.status(pid).desired == normalized(plan)
+    assert_certificate(dot, der)
 
-    for service <- plan["services"] do
-      assert {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, service["config"]["port"], [], 1000)
-      :gen_tcp.close(socket)
+    swapped =
+      plan
+      |> put_in(["services", Access.at(0), "config", "transports", "tcp", "port"], dot)
+      |> put_in(["services", Access.at(0), "config", "transports", "dot", "port"], tcp)
+
+    assert {:ok, :committed} = ServiceManager.submit_plan(pid, swapped)
+    protocols = ServiceManager.status(pid).services["dns-primary"].active.protocols
+    assert protocols["tcp"]["state"] == "running"
+    assert protocols["dot"]["state"] == "running"
+    assert {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, dot, [], 1_000)
+    :gen_tcp.close(socket)
+    assert_certificate(tcp, der)
+  end
+
+  test "a protocol fails as a group and correcting it preserves unaffected listeners", ctx do
+    pid = manager(ctx)
+    udp_port = free_port()
+    dot_port = free_port()
+    doh_port = free_port()
+    doq_port = free_port()
+    {:ok, conflict} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 2}])
+    on_exit(fn -> :gen_tcp.close(conflict) end)
+    {:ok, {_, tcp_port}} = :inet.sockname(conflict)
+
+    {der, initial} = test_certificate(1, key: {:rsa, 2048, 65_537})
+
+    assert {:ok, :stored} = ServiceManager.install_dns_certificate(pid, initial)
+
+    config = %{
+      "listen" => %{"mode" => "all"},
+      "allow_query" => ["127.0.0.0/8", "::1/128"],
+      "transports" => %{
+        "udp" => %{"port" => udp_port},
+        "tcp" => %{
+          "port" => tcp_port,
+          "listen" => %{"mode" => "specific", "addresses" => ["127.0.0.1", "127.0.0.2"]}
+        },
+        "dot" => %{
+          "enabled" => true,
+          "port" => dot_port,
+          "certificate_id" => "dns-test",
+          "listen" => %{"mode" => "specific", "addresses" => ["127.0.0.1"]}
+        },
+        "doh" => %{
+          "enabled" => true,
+          "port" => doh_port,
+          "certificate_id" => "dns-test",
+          "listen" => %{"mode" => "specific", "addresses" => ["127.0.0.1"]}
+        },
+        "doq" => %{
+          "enabled" => true,
+          "port" => doq_port,
+          "certificate_id" => "dns-test"
+        }
+      }
+    }
+
+    target =
+      ctx.plan |> put_in(["services", Access.at(0), "config"], config) |> Map.put("revision", 2)
+
+    assert {:ok, :committed} = ServiceManager.submit_plan(pid, target)
+
+    first = ServiceManager.status(pid).services["dns-primary"]
+    assert first.active.protocols["udp"]["state"] == "running"
+    assert first.active.protocols["dot"]["state"] == "running"
+    assert first.active.protocols["doh"]["state"] == "running"
+    assert first.active.protocols["doq"]["state"] == "running"
+
+    assert first.active.protocols["tcp"]["failure"] == %{
+             "address" => "127.0.0.2",
+             "reason" => "eaddrinuse"
+           }
+
+    assert first.active.protocols["tcp"]["port"] == tcp_port
+
+    assert {:error, :econnrefused} =
+             :gen_tcp.connect({127, 0, 0, 1}, tcp_port, [:binary, active: false], 1_000)
+
+    query =
+      DNS.Message.new()
+      |> DNS.Message.add_question(DNS.Message.Question.new("ns1.example.com.", 1, 1))
+      |> DNS.to_iodata()
+
+    for ip <- [{127, 0, 0, 1}, {0, 0, 0, 0, 0, 0, 0, 1}] do
+      assert {:ok, answer} = Abyss.Client.send_recv(ip, udp_port, query, 1_000)
+      assert [_] = DNS.Message.from_iodata(answer).anlist
     end
 
-    :gen_tcp.close(occupied)
+    assert {:ok, client} =
+             :ssl.connect(
+               {127, 0, 0, 1},
+               dot_port,
+               [:binary, active: false, verify: :verify_none],
+               1_000
+             )
+
+    assert :ssl.peercert(client) == {:ok, der}
+    assert :ok = :ssl.send(client, <<byte_size(query)::16, query::binary>>)
+    assert {:ok, <<size::16>>} = :ssl.recv(client, 2, 1_000)
+    assert {:ok, answer} = :ssl.recv(client, size, 1_000)
+    assert [_] = DNS.Message.from_iodata(answer).anlist
+
+    get =
+      "GET /dns-query?dns=#{Base.url_encode64(query, padding: false)} HTTP/1.1\r\nHost: localhost\r\n\r\n"
+
+    post = [
+      "POST /dns-query HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/dns-message\r\n",
+      "Content-Length: #{byte_size(query)}\r\n\r\n",
+      query
+    ]
+
+    for request <- [get, post] do
+      assert {:ok, https} =
+               :ssl.connect(
+                 {127, 0, 0, 1},
+                 doh_port,
+                 [:binary, active: false, verify: :verify_none],
+                 1_000
+               )
+
+      :ok = :ssl.send(https, request)
+      [headers, answer] = :binary.split(ssl_response(https, ""), "\r\n\r\n")
+      assert headers =~ "200 OK"
+      assert headers =~ "application/dns-message"
+      assert [_] = DNS.Message.from_iodata(answer).anlist
+    end
+
+    assert_doq(doq_port, der, query)
+
+    target =
+      target
+      |> Map.put("revision", 3)
+      |> put_in(
+        ["services", Access.at(0), "config", "transports", "tcp", "listen", "addresses"],
+        ["127.0.0.1"]
+      )
+
+    assert {:ok, :committed} = ServiceManager.submit_plan(pid, target)
+    second = ServiceManager.status(pid).services["dns-primary"]
+    assert second.runtime_pid == first.runtime_pid
+    assert second.active.protocols["tcp"]["state"] == "running"
+
+    {_unusable, unusable} = test_certificate(2, key: {:namedCurve, :secp160k1})
+
+    assert {:error, :dns_certificate_reload_failed} =
+             ServiceManager.install_dns_certificate(pid, unusable)
+
+    protocols = ServiceManager.status(pid).services["dns-primary"].active.protocols
+
+    for protocol <- ~w(dot doh doq) do
+      assert protocols[protocol]["certificate_revision"] == 1
+      assert protocols[protocol]["certificate_error"] == "invalid_dns_certificate"
+      assert protocols[protocol]["state"] == "running"
+    end
+
+    assert_certificate(dot_port, der)
+    assert_doq(doq_port, der, query)
+
+    {updated, rotated} = test_certificate(3, key: {:rsa, 2048, 65_537})
+    assert {:ok, :stored} = ServiceManager.install_dns_certificate(pid, rotated)
+    assert_certificate(dot_port, updated)
+    assert_certificate(doh_port, updated)
+    assert_doq(doq_port, updated, query)
+    assert_doq(doq_port, updated, query, {0, 0, 0, 0, 0, 0, 0, 1})
+    protocols = ServiceManager.status(pid).services["dns-primary"].active.protocols
+
+    for protocol <- ~w(dot doh doq) do
+      assert protocols[protocol]["certificate_revision"] == 3
+      refute Map.has_key?(protocols[protocol], "certificate_error")
+    end
+
+    runtime = :sys.get_state(second.runtime_pid)
+    assert {{0, 0, 0, 0}, listener} = List.keyfind(runtime.groups["doq"].pids, {0, 0, 0, 0}, 0)
+    assert {:ok, original} = CertificateStore.fetch(runtime.data_dir, "dns-test", 1)
+    assert :ok = DoqListener.prepare_reload(listener, original)
+    assert :ok = DoqListener.activate_reload(listener)
+    assert_doq(doq_port, der, query)
+    assert :ok = DoqListener.finish_reload(listener, false)
+    assert_doq(doq_port, updated, query)
+
+    assert :ok = :ssl.send(client, <<byte_size(query)::16, query::binary>>)
+    assert {:ok, <<size::16>>} = :ssl.recv(client, 2, 1_000)
+    assert {:ok, answer} = :ssl.recv(client, size, 1_000)
+    assert [_] = DNS.Message.from_iodata(answer).anlist
+    :ssl.close(client)
+  end
+
+  defp test_certificate(revision, opts) do
+    %{cert: der, key: key} =
+      :public_key.pkix_test_root_cert(
+        ~c"localhost",
+        opts ++ [extensions: [{:Extension, {2, 5, 29, 17}, false, [dNSName: ~c"localhost"]}]]
+      )
+
+    {der,
+     %{
+       "id" => "dns-test",
+       "revision" => revision,
+       "certificate_pem" => :public_key.pem_encode([{:Certificate, der, :not_encrypted}]),
+       "private_key_pem" =>
+         :public_key.pem_encode([:public_key.pem_entry_encode(elem(key, 0), key)])
+     }}
+  end
+
+  defp assert_certificate(port, der) do
+    assert {:ok, socket} =
+             :ssl.connect(
+               {127, 0, 0, 1},
+               port,
+               [:binary, active: false, verify: :verify_none],
+               1_000
+             )
+
+    assert :ssl.peercert(socket) == {:ok, der}
+    :ssl.close(socket)
+  end
+
+  defp assert_doq(port, certificate, query, ip \\ {127, 0, 0, 1}) do
+    assert {:ok, quic} =
+             Quic.client(
+               ip: ip,
+               tls: [
+                 alpn: ["doq"],
+                 cacerts: [certificate],
+                 reference_identity: {:dns_id, "localhost"}
+               ]
+             )
+
+    assert {:ok, connection} = Quic.connect(quic, {ip, port})
+    assert :ok = Quic.attach(connection, self())
+    assert_receive {:quic_ready, ^connection, %{alpn: "doq"}}, 3_000
+    assert {:ok, stream} = Quic.open_stream(connection, :bidi)
+    <<_id::16, dns::binary>> = query
+    frame = <<byte_size(query)::16, 0::16, dns::binary>>
+    assert {:ok, _} = Quic.send_stream(stream, frame, true)
+    <<size::16, answer::binary-size(size)>> = quic_response(stream, "", 100)
+    assert [_] = DNS.Message.from_iodata(answer).anlist
+    assert :ok = GenServer.stop(quic)
+  end
+
+  defp quic_response(_stream, _data, 0), do: flunk("QUIC response timed out")
+
+  defp quic_response(stream, data, attempts) do
+    assert {:ok, events} = Quic.read(stream, 16_384)
+
+    {data, fin?} =
+      Enum.reduce(events, {data, false}, fn
+        {:data, _, bytes}, {data, _} -> {data <> bytes, false}
+        {:fin, _}, {data, _} -> {data, true}
+      end)
+
+    if fin? do
+      data
+    else
+      Process.sleep(20)
+      quic_response(stream, data, attempts - 1)
+    end
+  end
+
+  defp ssl_response(socket, data) do
+    case :ssl.recv(socket, 0, 1_000) do
+      {:ok, next} -> ssl_response(socket, data <> next)
+      {:error, :closed} -> data
+      {:error, reason} -> flunk("HTTPS response failed: #{inspect(reason)}")
+    end
   end
 
   defp stopped_plan(plan),

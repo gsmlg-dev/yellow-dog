@@ -7,7 +7,7 @@ defmodule YellowDog.Management.WorkerConnections do
   @report_keys ~w(worker_id capabilities services applied_revision applied_digest apply_error)
   @id ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
   @digest ~r/^[a-f0-9]{64}$/
-  @errors ~w(request_failed invalid_response invalid_target apply_failed stale_target identity_mismatch digest_mismatch connection_failed)
+  @errors ~w(request_failed invalid_response invalid_target apply_failed stale_target identity_mismatch digest_mismatch connection_failed invalid_dns_certificate dns_certificate_storage_failed dns_certificate_reload_failed)
 
   def create(name, caller \\ nil) do
     if is_binary(name) && byte_size(name) in 1..128 && String.valid?(name) &&
@@ -258,12 +258,65 @@ defmodule YellowDog.Management.WorkerConnections do
 
   defp valid_services?(services) when is_map(services) and map_size(services) <= 64 do
     Enum.all?(services, fn {id, observation} ->
-      is_binary(id) && Regex.match?(@id, id) && is_map(observation) &&
-        Map.keys(observation) == ["state"] && observation["state"] in ~w(running stopped error)
+      is_binary(id) && Regex.match?(@id, id) && valid_service_observation?(observation)
     end)
   end
 
   defp valid_services?(_), do: false
+
+  defp valid_service_observation?(%{"state" => state} = observation)
+       when map_size(observation) == 1,
+       do: state in ~w(running stopped error)
+
+  defp valid_service_observation?(%{"state" => state, "protocols" => protocols} = observation)
+       when map_size(observation) == 2 and is_map(protocols) and map_size(protocols) in 1..5 do
+    state in ~w(running stopped error partial) and
+      Enum.all?(protocols, fn {name, listener} ->
+        name in ~w(udp tcp dot doq doh) and valid_listener_observation?(listener)
+      end)
+  end
+
+  defp valid_service_observation?(_), do: false
+
+  defp valid_listener_observation?(
+         %{"state" => state, "port" => port, "addresses" => addresses} = listener
+       )
+       when is_integer(port) and port in 1..65_535 and is_list(addresses) and
+              length(addresses) in 1..32 do
+    Enum.all?(addresses, &ip_address?/1) and valid_listener_certificate?(listener) and
+      valid_listener_state?(state, Map.drop(listener, ~w(certificate_revision certificate_error)))
+  end
+
+  defp valid_listener_observation?(_), do: false
+
+  defp valid_listener_certificate?(listener) do
+    revision = listener["certificate_revision"]
+
+    (is_nil(revision) or (is_integer(revision) and revision in 1..2_147_483_647)) and
+      listener["certificate_error"] in [
+        nil,
+        "invalid_dns_certificate",
+        "dns_certificate_reload_failed"
+      ]
+  end
+
+  defp valid_listener_state?(state, observation) when state in ~w(running stopped),
+    do: map_size(observation) == 3
+
+  defp valid_listener_state?(
+         "error",
+         %{"failure" => %{"address" => address, "reason" => reason} = failure} = observation
+       ) do
+    map_size(observation) == 4 and map_size(failure) == 2 and address in observation["addresses"] and
+      reason in ~w(eaddrinuse eaddrnotavail eacces dns_certificate_not_found invalid_dns_certificate dns_certificate_storage_failed udp_not_ready listener_unavailable listener_failed)
+  end
+
+  defp valid_listener_state?(_state, _observation), do: false
+
+  defp ip_address?(address) when is_binary(address) and byte_size(address) <= 45,
+    do: match?({:ok, _}, :inet.parse_strict_address(String.to_charlist(address)))
+
+  defp ip_address?(_), do: false
 
   defp valid_applied?(id, report) do
     case {report["applied_revision"], report["applied_digest"]} do

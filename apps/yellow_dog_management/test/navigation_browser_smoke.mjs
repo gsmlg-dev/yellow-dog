@@ -212,7 +212,7 @@ export function navigationSmoke({ cdp, evaluate, navigate, until }) {
       if (item === 'dns_views' || item === 'dns_acls') {
         const destination = item === 'dns_views' ? 'acl' : 'views';
         const otherItem = item === 'dns_views' ? 'dns_acls' : 'dns_views';
-        assert.equal(await evaluate(`document.querySelector('#app-sidebar-navigation a[data-nav-item="${otherItem}"]').getAttribute('href')`), `${prefix}/${destination}/${encodeURIComponent(serviceId)}`, 'Switching scoped DNS data must preserve the service');
+        assert.equal(await evaluate(`document.querySelector('#app-sidebar-navigation a[data-nav-item="${otherItem}"]').getAttribute('href')`), item === 'dns_acls' ? '/management/dns/views' : `${prefix}/${destination}/${encodeURIComponent(serviceId)}`, 'DNS resource link scope');
       }
     }
     const [aclPath] = routes.at(-1);

@@ -1,7 +1,7 @@
 defmodule YellowDog.Worker.Dns.Cache do
   @moduledoc """
   Per-service DNS answer cache backed by an unnamed public ETS table owned by the
-  creating process. Keys are `{lowercase name, integer type}`.
+  creating process. Each resolution policy can use a separate namespace.
   """
 
   alias DNS.Message.Record
@@ -11,9 +11,10 @@ defmodule YellowDog.Worker.Dns.Cache do
           clock: (-> integer()),
           max_entries: pos_integer(),
           max_ttl: non_neg_integer(),
-          negative_ttl_cap: non_neg_integer()
+          negative_ttl_cap: non_neg_integer(),
+          namespace: term()
         }
-  defstruct [:table, :clock, :max_entries, :max_ttl, :negative_ttl_cap]
+  defstruct [:table, :clock, :max_entries, :max_ttl, :negative_ttl_cap, :namespace]
 
   @type result :: %{rcode: 0 | 3, answers: [Record.t()], authority: [Record.t()]}
 
@@ -28,11 +29,14 @@ defmodule YellowDog.Worker.Dns.Cache do
     }
   end
 
+  def scoped(nil, _namespace), do: nil
+  def scoped(%__MODULE__{} = cache, namespace), do: %{cache | namespace: namespace}
+
   @spec get(t(), String.t(), non_neg_integer()) :: {:ok, result()} | :miss
-  def get(%__MODULE__{table: table, clock: clock}, name, type) do
+  def get(%__MODULE__{table: table, clock: clock} = cache, name, type) do
     now = clock.()
 
-    case :ets.lookup(table, key(name, type)) do
+    case :ets.lookup(table, key(cache, name, type)) do
       [{_, inserted, expires, rcode, answers, authority, _seq}] when now < expires ->
         elapsed = div(now - inserted, 1000)
         remaining = div(expires - now + 999, 1000)
@@ -59,7 +63,7 @@ defmodule YellowDog.Worker.Dns.Cache do
 
         :ets.insert(
           cache.table,
-          {key(name, type), now, now + ttl * 1000, rcode, Enum.map(answers, capped),
+          {key(cache, name, type), now, now + ttl * 1000, rcode, Enum.map(answers, capped),
            Enum.map(authority, capped), :erlang.unique_integer([:monotonic])}
         )
 
@@ -76,7 +80,7 @@ defmodule YellowDog.Worker.Dns.Cache do
     :ok
   end
 
-  defp key(name, type), do: {String.downcase(name), type}
+  defp key(cache, name, type), do: {cache.namespace, String.downcase(name), type}
 
   defp entry_ttl(cache, 0, [_ | _] = answers, _authority),
     do: min(answers |> Enum.map(& &1.ttl) |> Enum.min(), cache.max_ttl)

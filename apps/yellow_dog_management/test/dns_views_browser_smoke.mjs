@@ -30,6 +30,7 @@ let sequence = 0;
 let socket;
 let browser;
 let browserClosed;
+let acceptDiscard;
 
 async function until(check, message) {
   const deadline = Date.now() + 15000;
@@ -93,6 +94,17 @@ async function click(selector, event) {
   await acknowledged(event, () => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`));
 }
 
+async function discardClick(selector, event) {
+  let confirmed = false;
+  acceptDiscard = () => { confirmed = true; };
+  try {
+    await click(selector, event);
+    assert.equal(confirmed, true, `Missing discard confirmation for ${event}`);
+  } finally {
+    acceptDiscard = undefined;
+  }
+}
+
 async function changeFields(fields) {
   await acknowledged('validate', () => evaluate(`(() => {
     const form = document.querySelector('#dns-view-form');
@@ -123,7 +135,8 @@ async function verifyRows(worker, service, expected) {
   assert.deepEqual(await api(viewsApi(worker, service)), expected);
   const rows = await evaluate(`Array.from(document.querySelectorAll('#dns-views-table tbody tr')).map(row => ({ id: row.id.slice('dns-view-'.length), name: row.dataset.viewName, revision: Number(row.dataset.viewRevision), enabled: row.dataset.viewEnabled === 'true', priority: row.dataset.viewPriority, rules: JSON.parse(row.dataset.viewRules) }))`);
   assert.deepEqual(rows, expected.map(view => ({ id: view.id, name: view.name, revision: view.revision, enabled: view.enabled, priority: view.is_default ? 'infinity' : String(view.priority), rules: view.client_rules })));
-  assert.match(await evaluate(`document.querySelector('main').textContent`), /Desired configuration only.*do not execute DNS/s);
+  assert.match(await evaluate(`document.querySelector('#dns-views-workflow .management-help').textContent`),
+    /Enabled Views are included in Worker targets/);
   assert.equal(rows.at(-1).name, 'default');
   for (const view of expected) {
     const defaultDelete = await evaluate(`!!document.querySelector(${JSON.stringify(`#dns-view-${view.id} [phx-click="delete"]`)})`);
@@ -160,6 +173,13 @@ try {
     if (result.method === 'Runtime.exceptionThrown') errors.push(result.params);
     if (result.method === 'Runtime.consoleAPICalled' && result.params.type === 'error') errors.push(result.params);
     if (result.method === 'Page.lifecycleEvent' && result.params.name === 'load') loadedPages.add(result.params.loaderId);
+    if (result.method === 'Page.javascriptDialogOpening') {
+      const { type, message } = result.params;
+      const accept = Boolean(acceptDiscard && type === 'confirm' && message === 'Discard unsaved data changes?');
+      if (accept) acceptDiscard();
+      else errors.push(`Unexpected browser dialog: ${type} ${message}`);
+      cdp('Page.handleJavaScriptDialog', { accept }).catch(error => errors.push(error.message));
+    }
     if (['Network.webSocketFrameSent', 'Network.webSocketFrameReceived'].includes(result.method)) {
       let frame;
       try { frame = JSON.parse(result.params.response.payloadData); } catch { frame = null; }
@@ -189,11 +209,12 @@ try {
   for (const domain of ['Runtime', 'Page', 'Network']) await cdp(`${domain}.enable`);
   await cdp('Page.setLifecycleEventsEnabled', { enabled: true });
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
-  await selectorCheck('view-fixture', [serviceId, secondId]);
+  await selectorCheck('view-fixture', [serviceId]);
+  await selectorCheck('view-secondary', [secondId]);
   await selectorCheck('view-other', [otherId]);
   let evidence;
   if (!verifyOnly) {
-    const secondaryBefore = await api(viewsApi('view-fixture', secondId));
+    const secondaryBefore = await api(viewsApi('view-secondary', secondId));
     const otherBefore = await api(viewsApi('view-other', otherId));
     for (const views of [await api(viewsApi('view-fixture', serviceId)), secondaryBefore, otherBefore]) {
       assert.equal(views.length, 1);
@@ -229,6 +250,7 @@ try {
       { address: '192.0.2.53', port: 53 }, { address: '198.51.100.53', port: 5353 },
       { address: '2001:db8::53', port: 53 }, { address: '2001:db8::54', port: 5354 },
     ]);
+    assert.equal((await api('/workers/view-fixture/preview', undefined, 422)).code, 'invalid_config');
     await click(`#dns-view-${created.id} [phx-click="edit"]`, 'edit');
     assert.equal(await evaluate(`document.querySelector('#dns-view-form').elements.namedItem('view[name]').disabled`), true);
     assert.equal(await evaluate(`document.querySelector('#dns-view-forwarders').value`), '192.0.2.53\n198.51.100.53:5353\n2001:db8::53\n[2001:db8::54]:5354');
@@ -250,13 +272,13 @@ try {
     await saveEditor();
     await until(() => evaluate(`!!document.querySelector('#dns-view-error')?.textContent.match(/revision|stale|changed/i)`), 'Stale conflict not shown');
     assert.deepEqual(await api(viewsApi('view-fixture', serviceId, edited.id)), concurrent);
-    await click('#dns-view-refresh', 'refresh');
+    await discardClick('#dns-view-refresh', 'refresh');
     await changeFields({ 'view[name]': 'invalid', 'view[client_rules]': 'allow networks bad-cidr' });
     assert.equal(await evaluate(`!!document.querySelector('#dns-view-client_rules-error')`), true);
     assert.equal(await evaluate(`document.querySelector('#dns-view-save').disabled`), true);
     assert.deepEqual(await api(viewsApi('view-fixture', serviceId, edited.id)), concurrent);
     await evaluate(`document.querySelector('#dns-view-rules').focus()`);
-    await click('#dns-view-cancel', 'cancel');
+    await discardClick('#dns-view-cancel', 'cancel');
     assert.equal(await evaluate(`document.querySelector('#dns-view-rules').value`), 'allow any', 'Cancel must replace focused dirty rules with authoritative defaults');
     assert.equal(await evaluate(`document.querySelector('#dns-view-forwarders').value`), '');
     await evaluate(`document.querySelector('#dns-view-rules').blur()`);
@@ -279,7 +301,7 @@ try {
     assert.deepEqual(defaultToggled.client_rules, defaultEdited.client_rules);
     assert.deepEqual(defaultToggled.fallback_forwarders, defaultEdited.fallback_forwarders);
 
-    await changeFields({ 'view[name]': 'geo-picker', 'view[client_rules]': 'deny networks ::1', 'view[fallback_forwarders]': '[2001:db8::1]:5353' });
+    await changeFields({ 'view[name]': 'geo-picker', 'view[enabled]': 'false', 'view[client_rules]': 'deny networks ::1', 'view[fallback_forwarders]': '[2001:db8::1]:5353' });
     await click('#dns-view-country-US', 'toggle_country');
     await changeFields({ country_search: 'Canada' });
     assert.equal(await evaluate(`!!document.querySelector('[data-selected-country-code="US"]')`), true);
@@ -295,6 +317,7 @@ try {
     assert.equal(await evaluate(`document.querySelector('#dns-view-rules').value`), 'deny networks ::1\nallow networks 192.0.2.7\nallow countries CA, US', 'Append lost unsent typed text');
     await saveEditor();
     const geo = (await api(viewsApi('view-fixture', serviceId))).find(view => view.name === 'geo-picker');
+    assert.equal(geo.enabled, false);
     assert.deepEqual(geo.client_rules, [
       { action: 'deny', kind: 'networks', networks: ['::1/128'] },
       { action: 'allow', kind: 'networks', networks: ['192.0.2.7/32'] },
@@ -338,7 +361,7 @@ try {
     await until(async () => (await readdir(downloadDirectory)).includes(csvName), 'Filtered CSV download missing');
     assert.equal(await readFile(join(downloadDirectory, csvName), 'utf8'), 'View Name,Status,Priority,Recursion,ECS\r\noffice,Disabled,3,Disabled,Enabled\r\n');
     assert.deepEqual(await api(viewsApi('view-fixture', serviceId)), beforeExport);
-    assert.deepEqual(await api(viewsApi('view-fixture', secondId)), secondaryBefore);
+    assert.deepEqual(await api(viewsApi('view-secondary', secondId)), secondaryBefore);
     assert.deepEqual(await api(viewsApi('view-other', otherId)), otherBefore);
     assert.equal((await api(viewsApi('view-other', otherId, created.id), undefined, 404)).code, 'not_found');
     evidence = { main: await api(viewsApi('view-fixture', serviceId)), secondary: secondaryBefore, other: otherBefore };
@@ -347,10 +370,10 @@ try {
 
   for (const viewport of [{ width: 1440, height: 1000, mobile: false }, { width: 390, height: 844, mobile: true }]) {
     await cdp('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor: 1 });
-    await verifyRows('view-fixture', secondId, evidence.secondary);
+    await verifyRows('view-secondary', secondId, evidence.secondary);
     await verifyRows('view-other', otherId, evidence.other);
     await verifyRows('view-fixture', serviceId, evidence.main);
-    const style = await evaluate(`({ overflow: document.documentElement.scrollWidth > innerWidth + 1, padding: parseFloat(getComputedStyle(document.querySelector('#dns-view-form input')).paddingLeft) })`);
+    const style = await evaluate(`({ overflow: document.documentElement.scrollWidth > innerWidth + 1, padding: parseFloat(getComputedStyle(document.querySelector('#dns-view-form input[name="view[name]"]')).paddingLeft) })`);
     assert.equal(style.overflow, false, `Horizontal overflow at ${viewport.width}px`);
     assert.ok(style.padding > 0, 'Bundled DuskMoon input styling missing');
     const screenshot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });

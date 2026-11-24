@@ -41,6 +41,7 @@ defmodule YellowDog.Worker.ConnectionTest do
   alias YellowDog.ConfigSpec
   alias YellowDog.Worker.{Connection, ServiceManager}
   alias YellowDog.Worker.ConnectionTest.FakeSocket
+  alias YellowDog.Worker.Dns.CertificateStore
   @moduletag :tmp_dir
   @token String.duplicate("a", 43)
   @tag_message YellowDog.Worker.Connection.Channel
@@ -199,6 +200,50 @@ defmodule YellowDog.Worker.ConnectionTest do
     assert_receive {:pushed, ^channel, "report", %{"worker_id" => "edge-01"}}, 1000
   end
 
+  test "pushed certificates are persisted and mismatched keys leave the saved version usable",
+       ctx do
+    manager = manager(ctx.tmp_dir)
+    conn = connection(manager)
+    {channel, _, _} = join!()
+    id = "internal-dns"
+    initial = dns_certificate(id, 1)
+    rotated = dns_certificate(id, 2)
+
+    send(conn, {@tag_message, channel, "dns_certificates", %{"certificates" => [initial]}})
+    assert_receive {:pushed, ^channel, "report", %{"apply_error" => nil}}, 3_000
+
+    assert {:ok, %{revision: 1, certs: [before_rotation]}} =
+             CertificateStore.latest(ctx.tmp_dir, id)
+
+    mismatch = Map.put(rotated, "private_key_pem", initial["private_key_pem"])
+    send(conn, {@tag_message, channel, "dns_certificates", %{"certificates" => [mismatch]}})
+
+    assert_receive {:pushed, ^channel, "report", %{"apply_error" => "invalid_dns_certificate"}},
+                   3_000
+
+    assert {:ok, %{revision: 1, certs: [^before_rotation]}} =
+             CertificateStore.latest(ctx.tmp_dir, id)
+
+    assert {:error, :dns_certificate_not_found} = CertificateStore.fetch(ctx.tmp_dir, id, 2)
+
+    send(conn, {@tag_message, channel, "dns_certificates", %{"certificates" => [rotated]}})
+    assert_receive {:pushed, ^channel, "report", %{"apply_error" => nil}}, 3_000
+
+    directory = Path.join(ctx.tmp_dir, "dns-certificates")
+    assert File.stat!(directory).mode |> band(0o777) == 0o700
+    assert File.stat!(Path.join(directory, "#{id}.2.json")).mode |> band(0o777) == 0o600
+
+    stop_supervised!(Connection)
+    stop_supervised!(ServiceManager)
+    manager(ctx.tmp_dir)
+
+    assert {:ok, %{revision: 2, certs: [after_rotation]}} =
+             CertificateStore.latest(ctx.tmp_dir, id)
+
+    refute before_rotation == after_rotation
+    assert {:ok, %{certs: [^before_rotation]}} = CertificateStore.fetch(ctx.tmp_dir, id, 1)
+  end
+
   test "socket exit disconnects and reconnects after the default one second backoff", ctx do
     manager = manager(ctx.tmp_dir)
     conn = connection(manager)
@@ -307,6 +352,22 @@ defmodule YellowDog.Worker.ConnectionTest do
     assert topic == "worker:edge-01"
     assert %{"token" => @token, "report" => %{"worker_id" => "edge-01"}} = payload
     send_frame(:gen_tcp, socket, [join_ref, ref, topic, "phx_reply", ok_reply()])
+
+    cert = dns_certificate("transport-tls", 1)
+
+    send_frame(:gen_tcp, socket, [
+      join_ref,
+      nil,
+      topic,
+      "dns_certificates",
+      %{"certificates" => [cert]}
+    ])
+
+    assert [^join_ref, _, ^topic, "report", %{"applied_revision" => nil, "apply_error" => nil}] =
+             recv_frame(:gen_tcp, socket)
+
+    assert {:ok, %{revision: 1}} = CertificateStore.latest(ctx.tmp_dir, "transport-tls")
+
     plan = dns_plan()
     send_frame(:gen_tcp, socket, [join_ref, nil, topic, "target", target(plan)])
 
@@ -424,6 +485,18 @@ defmodule YellowDog.Worker.ConnectionTest do
   end
 
   defp deliver(conn, channel, payload), do: send(conn, {@tag_message, channel, "target", payload})
+
+  defp dns_certificate(id, revision) do
+    %{cert: der, key: key} = :public_key.pkix_test_root_cert(~c"Worker test", [])
+
+    %{
+      "id" => id,
+      "revision" => revision,
+      "certificate_pem" => :public_key.pem_encode([{:Certificate, der, :not_encrypted}]),
+      "private_key_pem" =>
+        :public_key.pem_encode([:public_key.pem_entry_encode(elem(key, 0), key)])
+    }
+  end
 
   defp ok_reply, do: %{"status" => "ok", "response" => %{}}
 

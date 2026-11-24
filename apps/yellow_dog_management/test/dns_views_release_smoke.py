@@ -60,6 +60,38 @@ def evaluate(expression):
     subprocess.run([str(binary), "eval", expression], env=env, stdout=log, stderr=log, check=True, timeout=90)
 
 
+def migrate_to(version):
+    evaluate(f'Application.load(:yellow_dog_management); {{:ok, _, _}} = Ecto.Migrator.with_repo(YellowDog.Management.Repo, fn repo -> Ecto.Migrator.run(repo, :up, to: {version}) end)')
+
+
+def assert_only_view_changes(before, after):
+    allowed = {"public.management_dns_views", "public.management_dns_view_workers",
+               "public.management_audits", "public.management_idempotency", "public.management_workers"}
+    assert {k: v for k, v in before.items() if k not in allowed} == {
+        k: v for k, v in after.items() if k not in allowed
+    }, "View editing changed unrelated tables"
+    audits_before = {row["id"] for row in before["public.management_audits"]}
+    mutations = [row for row in after["public.management_audits"]
+                 if row["id"] not in audits_before
+                 and row["operation"] in {"create_dns_view", "update_dns_view", "delete_dns_view"}
+                 and "error" not in row["result"]]
+    assert mutations and all(row["request"]["worker_id"] == "view-fixture" for row in mutations)
+    workers_before = {row["id"]: row for row in before["public.management_workers"]}
+    workers_after = {row["id"]: row for row in after["public.management_workers"]}
+    assert workers_before.keys() == workers_after.keys()
+    changed = workers_after["view-fixture"]
+    original = workers_before["view-fixture"]
+    assert changed["revision"] == original["revision"] + len(mutations)
+    assert dict(changed, revision=original["revision"], updated_at=original["updated_at"]) == original
+    assert {k: v for k, v in workers_before.items() if k != "view-fixture"} == {
+        k: v for k, v in workers_after.items() if k != "view-fixture"
+    }
+    assert set((row["view_id"], row["worker_id"]) for row in after["public.management_dns_view_workers"]) == {
+        (view["id"], "view-existing" if view["name"] == "legacy-office" else "view-fixture")
+        for view in after["public.management_dns_views"] if not view["is_default"]
+    }
+
+
 def request(path, body=None, expected=200, key=None, raw=False):
     headers = {} if body is None else {"Content-Type": "application/json", "Idempotency-Key": key or str(uuid.uuid4())}
     try:
@@ -114,28 +146,48 @@ try:
     assert Path(sql("SHOW data_directory")).resolve() == cluster, "Not the disposable helper cluster"
     assert sql("SHOW server_encoding") == "UTF8"
     assert snapshot() == {}, "Expected a fresh disposable database"
-    evaluate('Application.load(:yellow_dog_management); {:ok, _, _} = Ecto.Migrator.with_repo(YellowDog.Management.Repo, fn repo -> Ecto.Migrator.run(repo, :up, to: 20261001050000) end)')
+    migrate_to(20261001050000)
     existing_service = str(uuid.uuid4())
     sql(f"""INSERT INTO management_workers (id,name,revision,expected_capabilities,inserted_at,updated_at)
       VALUES ('view-existing','Existing',4,ARRAY['dns'],now(),now());
       INSERT INTO management_services (id,worker_id,instance_id,type,desired_state,config,inserted_at,updated_at)
       VALUES ('{existing_service}','view-existing','dns','dns','stopped','{{"listen_address":"127.0.0.1","port":5300}}',now(),now());""")
+    before_default = snapshot()
+    migrate_to(20261001060000)
+    after_default = snapshot()
+    for table, data in before_default.items():
+        if table != "public.schema_migrations":
+            assert after_default[table] == data, f"View provisioning changed {table}"
+    assert len(after_default["public.management_dns_views"]) == 1
+    default = after_default["public.management_dns_views"][0]
+    assert default["service_id"] == existing_service and default["is_default"] and default["priority"] is None
+    assert default["client_rules"] == [{"action": "allow", "kind": "any"}]
+    legacy_id = str(uuid.uuid4())
+    sql(f"""INSERT INTO management_dns_views
+      (id,service_id,name,priority,revision,client_rules,inserted_at,updated_at)
+      VALUES ('{legacy_id}','{existing_service}','legacy-office',12,4,
+        ARRAY['{{"action":"deny","kind":"any"}}'::jsonb],now(),now());""")
+    migrate_to(20261123000000)
     migration_before = snapshot()
+    assert not any(table.startswith("public.management_netman") for table in migration_before)
     evaluate('YellowDog.Management.Release.migrate()')
     migration_after = snapshot()
     for table, data in migration_before.items():
-        if table != "public.schema_migrations":
-            assert migration_after[table] == data, f"View provisioning changed {table}"
-    assert len(migration_after["public.management_dns_views"]) == 1
-    default = migration_after["public.management_dns_views"][0]
-    assert default["service_id"] == existing_service and default["is_default"] and default["priority"] is None
-    assert default["client_rules"] == [{"action": "allow", "kind": "any"}]
+        if table not in {"public.schema_migrations", "public.management_dns_views"}:
+            assert migration_after[table] == data, f"Resource migration changed {table}"
+    expected_views = {row["id"]: row for row in migration_before["public.management_dns_views"]}
+    expected_views[legacy_id] = dict(expected_views[legacy_id], service_id=None)
+    assert {row["id"]: row for row in migration_after["public.management_dns_views"]} == expected_views
+    assert migration_after["public.management_dns_view_workers"] == [
+        {"view_id": legacy_id, "worker_id": "view-existing"}
+    ]
     evaluate('YellowDog.Management.Release.migrate()')
     assert snapshot() == migration_after, "Repeated migration modified desired data"
     (directory / "migration.json").write_text(json.dumps(migration_after, sort_keys=True))
 
     start()
     worker = request("/commands/create_worker", {"id": "view-fixture", "name": "Views", "expected_capabilities": ["dns"]})
+    secondary = request("/commands/create_worker", {"id": "view-secondary", "name": "Secondary", "expected_capabilities": ["dns"]})
     other = request("/commands/create_worker", {"id": "view-other", "name": "Other", "expected_capabilities": ["dns"]})
 
     def service(owner, identifier, listener_port):
@@ -144,12 +196,16 @@ try:
 
     first = service(worker, "dns", 5301)
     worker = request("/workers/view-fixture")
-    second = service(worker, "dns-two", 5302)
+    duplicate = request("/commands/put_service", {"worker_id": worker["id"], "expected_revision": worker["revision"],
+        "id": "dns-two", "type": "dns", "desired_state": "stopped",
+        "config": {"listen_address": "127.0.0.1", "port": 5302}}, expected=409)
+    assert duplicate["code"] == "conflict"
+    second = service(secondary, "dns", 5302)
     third = service(other, "dns", 5303)
     env.update(MANAGEMENT_DNS_VIEWS_SERVICE_ID=first["id"], MANAGEMENT_DNS_VIEWS_SECOND_SERVICE_ID=second["id"], MANAGEMENT_DNS_VIEWS_OTHER_SERVICE_ID=third["id"])
     scope = {"worker_id": "view-fixture", "service_id": first["id"]}
     path = f'/workers/view-fixture/dns-services/{first["id"]}/views'
-    for owner, created in [("view-fixture", first), ("view-fixture", second), ("view-other", third)]:
+    for owner, created in [("view-fixture", first), ("view-secondary", second), ("view-other", third)]:
         defaults = request(f'/workers/{owner}/dns-services/{created["id"]}/views')
         assert len(defaults) == 1 and defaults[0]["is_default"] and defaults[0]["priority"] is None
         assert defaults[0]["client_rules"] == [{"action": "allow", "kind": "any"}]
@@ -171,10 +227,21 @@ try:
     preview = request("/workers/view-fixture/preview")
     browser()
     after_ui = snapshot()
-    for table, data in baseline.items():
-        if table not in {"public.management_dns_views", "public.management_audits", "public.management_idempotency"}:
-            assert after_ui[table] == data, f"View editing changed unrelated {table}"
-    assert request("/workers/view-fixture/preview") == preview
+    assert_only_view_changes(baseline, after_ui)
+    after_preview = request("/workers/view-fixture/preview")
+    active = [view for view in request(path) if view["enabled"] and not view["is_default"]]
+    assert [view["name"] for view in active] == ["localhost-preset"]
+    policy = [{key: view[key] for key in ("id", "priority", "recursion_enabled", "client_rules")}
+              for view in active]
+    assert after_preview["worker_revision"] == request("/workers/view-fixture")["revision"]
+    assert after_preview["worker_revision"] > preview["worker_revision"]
+    assert after_preview["next_target_revision"] == preview["next_target_revision"]
+    assert after_preview["previous_plan"] == preview["previous_plan"]
+    assert after_preview["plan"]["resources"] == preview["plan"]["resources"]
+    assert after_preview["plan"]["services"] == [
+        dict(view_service, config=dict(view_service["config"], views=policy))
+        for view_service in preview["plan"]["services"]
+    ]
     assert request(target_path) == target
     assert request(target_path + "/export", raw=True) == exported
     (directory / "after-ui.json").write_text(json.dumps(after_ui, sort_keys=True))
@@ -202,19 +269,17 @@ try:
     request("/commands/delete_dns_view", dict(scope, id=winner["id"], expected_revision=winner["revision"]))
     assert request(path + "/" + winner["id"], expected=404)["code"] == "not_found"
     read_before = snapshot()
-    for table, data in baseline.items():
-        if table not in {"public.management_dns_views", "public.management_audits", "public.management_idempotency"}:
-            assert read_before[table] == data, f"Concurrent View mutations changed unrelated {table}"
+    assert_only_view_changes(baseline, read_before)
     stop(force=True)
     start()
     browser(verify_only=True)
-    for worker_id, service_id in [("view-fixture", first["id"]), ("view-fixture", second["id"]), ("view-other", third["id"]), ("view-existing", existing_service)]:
+    for worker_id, service_id in [("view-fixture", first["id"]), ("view-secondary", second["id"]), ("view-other", third["id"]), ("view-existing", existing_service)]:
         request(f"/workers/{worker_id}/dns-services/{service_id}/views")
     assert snapshot() == read_before, "Restart/read-only refresh wrote persistent data"
     assert request(target_path) == target
     assert request(target_path + "/export", raw=True) == exported
     (directory / "final.json").write_text(json.dumps(read_before, sort_keys=True))
-    print("PASS desired Views: default backfill/provisioning, browser CRUD/filters/CSV, no target effects, concurrent CAS/idempotency and SIGKILL read-only recovery")
+    print("PASS desired Views: default backfill, assignment migration, browser CRUD/filters/CSV, scoped target preview and immutable exports, concurrent CAS/idempotency and SIGKILL read-only recovery")
 finally:
     stop()
     log.close()

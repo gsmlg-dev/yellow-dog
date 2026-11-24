@@ -121,7 +121,7 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   assert.deepEqual(await api('/workers'), []);
 
   const workers = [];
-  for (const workerName of ['Data Worker A','Data Worker B']) {
+  for (const workerName of ['Data Worker A','Data Worker B','Data Worker C']) {
     await navigate('/management/servers');
     await submit('#worker-form',{'worker[name]':workerName});
     let worker;
@@ -132,23 +132,22 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
     await until(() => evaluate(`!document.querySelector('#worker-bootstrap')`),'Transient credential not dismissed');
   }
   const services = [];
-  for (const [worker,label,port] of [[workers[0],'dns',18553],[workers[0],'dns-secondary',18554],[workers[1],'dns',18555]]) {
-    await navigate(`/server/${worker}/services/new`);
-    await submit('#service-form',{'service[id]':label,'service[listen_address]':'127.0.0.1','service[port]':String(port),'service[desired_state]':'stopped'});
+  for (const [index,worker] of workers.entries()) {
+    const port = String(18553 + index);
+    await navigate(`/server/${worker}/dns`);
+    await submit('#service-form',{'service[mode]':'all_ipv4','service[transports][udp][port]':port,'service[transports][tcp][port]':port,'service[desired_state]':false});
     let service;
-    await until(async()=>{service=(await api(`/workers/${worker}`)).services.find(item=>item.instance_id===label);return !!service;},'Node DNS instance missing');
+    await until(async()=>{service=(await api(`/workers/${worker}`)).services[0];return !!service;},'Node DNS instance missing');
     services.push(service);
     await until(()=>evaluate(`document.querySelector('#node-workflow').dataset.dirty === 'false'`),'Service save not acknowledged');
   }
   await navigate(detail(zone.id,'application'));
   await click(`[phx-click="add_assignment_worker"][phx-value-id="${workers[0]}"]`);
   await until(()=>evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 1`),'First proposal missing');
-  assert.equal(await evaluate(`document.querySelector('#zone-assignments-form select[name$="[service_id]"]').value`),'','Multiple services must require explicit choice');
-  const serviceSelect = await evaluate(`document.querySelector('#zone-assignments-form select[name$="[service_id]"]').name`);
-  await change('#zone-assignments-form',{[serviceSelect]:services[0].id});
+  assert.equal(await evaluate(`document.querySelector('#zone-assignments-form select[name$="[service_id]"]').value`),services[0].id);
   await click(`[phx-click="add_assignment_worker"][phx-value-id="${workers[1]}"]`);
   await until(()=>evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 2`),'Second Worker proposal missing');
-  assert.equal(await evaluate(`document.querySelector('#zone-assignments-form fieldset[data-worker-id="${workers[1]}"] select[name$="[service_id]"]').value`),services[2].id);
+  assert.equal(await evaluate(`document.querySelector('#zone-assignments-form fieldset[data-worker-id="${workers[1]}"] select[name$="[service_id]"]').value`),services[1].id);
   await save('#zone-assignments-form','#zone-save-assignments');
   await until(async()=>(await api(assignmentPath(zone.id))).assignments.length===2,'Canonical assignment save failed');
   await clean('#zone-assignments-form');
@@ -185,11 +184,10 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
 
   // Both editors remain mounted: save one while retaining the other's proposal.
   await tab(zone.id,'application');
-  await click(`[phx-click="add_assignment_worker"][phx-value-id="${workers[0]}"]`);
-  await until(()=>evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 3`),'Additional service proposal missing');
-  const proposed = await evaluate(`Array.from(document.querySelectorAll('#zone-assignments-form fieldset')).find(row=>row.dataset.workerId===${JSON.stringify(workers[0])} && row.querySelector('select[name$="[service_id]"]').value==='').id`);
-  const proposedFields=await evaluate(`Object.fromEntries(Array.from(document.querySelectorAll('#${proposed} select')).map(field=>[field.name,field.name.endsWith('[service_id]')?${JSON.stringify(services[1].id)}:${JSON.stringify(v1.id)}]))`);
-  await change('#zone-assignments-form',proposedFields);
+  await click(`[phx-click="add_assignment_worker"][phx-value-id="${workers[2]}"]`);
+  await until(()=>evaluate(`document.querySelectorAll('#zone-assignments-form fieldset').length === 3`),'Third Worker proposal missing');
+  const proposed = await evaluate(`document.querySelector('#zone-assignments-form fieldset[data-worker-id="${workers[2]}"] select[name$="[resource_version_id]"]').name`);
+  await change('#zone-assignments-form',{[proposed]:v1.id});
   await tab(zone.id,'edit');
   await change('#zone-form',{[addressField]:'192.0.2.21'});
   await save('#zone-form','#zone-save');
@@ -288,19 +286,19 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   await navigate('/management/zones?search=renamed-data-workflow');
   assert.equal(await evaluate(`document.querySelector('#zone-count').dataset.displayed`),'1');
   for(const item of exports) assert.equal(await(await fetch(`${base}/api/workers/${workers[0]}/targets/${item.revision}/export`)).text(),item.toml);
-  await navigate(`/server/${workers[0]}/services/${services[0].id}/edit`);
+  await navigate(`/server/${workers[0]}/dns/policy`);
   assert.match(await evaluate(`document.querySelector('#service-references').innerText`),/data-workflow\.test\./);
   assert.equal(await evaluate(`!!document.querySelector('#assignment-form')`),false);
 
-  const otherViews=await api(viewPath(workers[0],services[1].id));
-  const otherAcls=await api(aclPath(workers[0],services[1].id));
+  const otherViews=await api(viewPath(workers[2],services[2].id));
+  const otherAcls=await api(aclPath(workers[2],services[2].id));
   await navigate(`/server/${workers[0]}/dns/views/${services[0].id}`);
   await change('#dns-view-form',{'view[name]':'data-view','view[priority]':'7','view[client_rules]':'allow networks 192.0.2.0/24'});
   await save('#dns-view-form','#dns-view-save');
   await until(async()=>(await api(viewPath(workers[0],services[0].id))).some(view=>view.name==='data-view'),'Scoped View save missing');
   await clean('#dns-view-form');
-  assert.deepEqual(await api(viewPath(workers[0],services[1].id)),otherViews);
-  assert.match(await evaluate(`document.querySelector('#dns-views-workflow').textContent`),/not included in the current Worker target\/export/);
+  assert.deepEqual(await api(viewPath(workers[2],services[2].id)),otherViews);
+  assert.match(await evaluate(`document.querySelector('#dns-views-workflow').textContent`),/included in Worker targets/);
   await navigate('/management/dns/acl');
   assert.equal(await evaluate(`!!document.querySelector('#dns-acl-form')`),false,'Global ACL selector must not infer ownership');
   await navigate(`/server/${workers[0]}/dns/acl/${services[0].id}`);
@@ -308,7 +306,7 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   await save('#dns-acl-form','#dns-acl-form button[type="submit"]');
   await until(async()=>(await api(aclPath(workers[0],services[0].id))).some(acl=>acl.name==='data-acl'),'Scoped ACL save missing');
   await clean('#dns-acl-form');
-  assert.deepEqual(await api(aclPath(workers[0],services[1].id)),otherAcls);
+  assert.deepEqual(await api(aclPath(workers[2],services[2].id)),otherAcls);
 
   await navigate('/system/ip-database');
   const digest=createHash('sha256').update(await readFile(process.env.MANAGEMENT_DATA_CITY_FILE)).digest('hex');
@@ -335,7 +333,101 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
     const mobile=await cdp('Page.captureScreenshot',{format:'png'});
     await writeFile(`${process.env.MANAGEMENT_SCREENSHOT_PREFIX}-data-mobile.png`,Buffer.from(mobile.data,'base64'));
   }
+  await dnsPolicyResourceSmoke({navigate, evaluate, until, click, workers});
+  await cloudProviderModalSmoke({navigate, evaluate, until, click, zone});
   const state={zone:await api(`/zones/${zone.id}`),versions:await api(`/zones/${zone.id}/versions`),assignments:await api(assignmentPath(zone.id)),workers,services,exports,digest,successJob,failedJob,views:await api(viewPath(workers[0],services[0].id)),acls:await api(aclPath(workers[0],services[0].id))};
   await writeFile(stateFile,JSON.stringify(state,null,2));
-  console.log('PASS Data browser: zero-Worker draft/confirmation, explicit multiple services, independent editors, immutable v1/v2 and exports, real draft/assignment conflicts, UI/API parity, scoped View/ACL, fixture success/failure and durable artifact selection');
+  console.log('PASS Data browser: zero-Worker draft/confirmation, one DNS service per Worker, independent editors, immutable v1/v2 and exports, real draft/assignment conflicts, UI/API parity, scoped View/ACL, fixture success/failure and durable artifact selection');
+}
+
+
+async function cloudProviderModalSmoke({navigate, evaluate, until, click, zone}) {
+  const waitForModal = () => until(() => evaluate(`!!document.querySelector('.schema-form')`), 'React schema form mounted');
+  const field = (path, value) => evaluate(`(() => {
+    const control = document.querySelector('[data-field-path="/' + ${JSON.stringify(path)} + '"]');
+    const input = control?.matches('input') ? control : control?.querySelector('input');
+    if (!input) throw new Error(document.querySelector('.schema-form').outerHTML.slice(0, 4000));
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+  })()`);
+  const pick = async (path, text) => {
+    await evaluate(`(() => {
+      const field = document.querySelector('[data-field-path="/' + ${JSON.stringify(path)} + '"]');
+      (field.matches('[role=combobox],button,input') ? field : field.querySelector('[role=combobox],button,input')).click();
+    })()`);
+    const match = `Array.from(document.querySelectorAll('[role=option]')).find(el => el.textContent.includes(${JSON.stringify(text)}))`;
+    await until(() => evaluate(`!!(${match})`), `Select option ${text}`);
+    await evaluate(`(${match}).click()`);
+  };
+  const submit = () => click('.schema-form button[type=submit]');
+  await navigate('/system/cloud-providers');
+  await click('#cloud-provider-new');
+  await waitForModal();
+  await submit();
+  await until(() => evaluate(`!!document.querySelector('.schema-form [aria-invalid=true]')`), 'Schema validation requires provider fields');
+  await field('name', 'Data Workflow Cloud');
+  await pick('kind', 'Cloudflare DNS');
+  await field('profile', 'LAB_DNS');
+  await submit();
+  await until(() => evaluate(`document.body.innerText.includes('Data Workflow Cloud') && !document.querySelector('.schema-form')`), 'Create provider from React modal');
+
+  await evaluate(`Array.from(document.querySelectorAll('tr')).find(row => row.textContent.includes('Data Workflow Cloud')).querySelector('[phx-click="edit"]').click()`);
+  await waitForModal();
+  await field('name', 'Data Workflow Cloud edited');
+  await submit();
+  await until(() => evaluate(`document.body.innerText.includes('Data Workflow Cloud edited') && !document.querySelector('.schema-form')`), 'Edit provider from React modal');
+
+  await navigate(`/management/zones/${zone.id}/edit`);
+  await evaluate(`document.querySelector('a[href*="zones/cloud?zone_id="]').click()`);
+  await until(() => evaluate(`!!document.querySelector('#cloud-dns-import-binding')`), 'Zone Cloud DNS navigation');
+  await click('#cloud-dns-import-binding');
+  await waitForModal();
+  await pick('provider_id', 'Data Workflow Cloud edited');
+  await field('remote_id', 'cccccccccccccccccccccccccccccccc');
+  await submit();
+  await until(() => evaluate(`!!document.querySelector('#cloud-dns-preview-pull') && !document.querySelector('.schema-form')`), 'Provider binding accepted');
+  assert.equal(await evaluate(`document.body.innerText.includes('Data Workflow Cloud edited') && document.body.innerText.includes('renamed-data-workflow.test.')`), true);
+  console.log('PASS Cloud DNS schema modals: add and edit Provider, then select it from a Zone');
+}
+
+
+async function dnsPolicyResourceSmoke({navigate, evaluate, until, click, workers}) {
+  const modalReady = () => until(() => evaluate(`!!document.querySelector('.schema-form')`), 'DNS resource modal mounted');
+  const setField = (path, value) => evaluate(`(() => {
+    const control = document.querySelector('[data-field-path=' + JSON.stringify(${JSON.stringify(path)}) + ']');
+    const input = control.matches('input') ? control : control.querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+  })()`);
+  const selectWorkers = () => evaluate(`(() => {
+    const controls = Array.from(document.querySelectorAll('.schema-form input[type=checkbox]'));
+    for (const id of ${JSON.stringify(workers.slice(0, 2))}) {
+      const checkbox = controls.find((input) => input.closest('label')?.textContent.includes(id));
+      checkbox.click();
+    }
+  })()`);
+  const submitModal = () => click('.schema-form button[type=submit]');
+
+  await navigate('/management/dns/views');
+  assert.equal(await evaluate(`!!document.querySelector('#dns-view-worker-selector')`), false);
+  await click('#dns-view-new');
+  await modalReady();
+  await setField('/name', 'browser-recursion');
+  await selectWorkers();
+  await evaluate(`(() => {
+    const field = document.querySelector('[data-field-path="/recursion_enabled"]');
+    (field.matches('[role=switch]') ? field : field.querySelector('[role=switch]')).click();
+  })()`);
+  await submitModal();
+  await until(() => evaluate(`document.querySelector('#dns-view-resources')?.textContent.includes('browser-recursion')`), 'View saved with multiple assigned Workers');
+
+  await navigate('/management/dns/forward-zones');
+  await click('#add-forward-zone');
+  await modalReady();
+  await setField('/name', 'forward-browser.test.');
+  await setField('/forwarders/0/address', '127.0.0.1');
+  await selectWorkers();
+  await submitModal();
+  await until(() => evaluate(`document.querySelector('#forward-zones')?.textContent.includes('forward-browser.test.')`), 'Forward zone saved with multiple assigned Workers');
+  console.log('PASS DNS resource modals: forward zone and recursive View assigned to multiple Workers');
 }
