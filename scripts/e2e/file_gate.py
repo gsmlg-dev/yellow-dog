@@ -163,11 +163,12 @@ def decode_name(packet, offset, depth=0):
     return ".".join(labels) + ".", offset + 1
 
 
-def query(name, record_type, tcp):
+def query(name, record_type, tcp, client="127.0.0.1"):
     encoded = b"".join(bytes([len(label)]) + label.encode() for label in name.rstrip(".").split(".")) + b"\0"
     packet = struct.pack("!6H", 4321, 0x0100, 1, 0, 0, 0) + encoded + struct.pack("!HH", record_type, 1)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM if tcp else socket.SOCK_DGRAM) as connection:
         connection.settimeout(1)
+        connection.bind((client, 0))
         if tcp:
             connection.connect(("127.0.0.1", dns_port))
             connection.sendall(struct.pack("!H", len(packet)) + packet)
@@ -259,9 +260,19 @@ try:
             mutate(operation, dict(body, worker_id=worker_id, expected_revision=logical["revision"]))
             logical = request("/workers/" + worker_id)
         assert logical["actual_state"] == "unknown" and logical["status"] == "not_yet_connected"
+        view = mutate("create_dns_view", {
+            "worker_id": worker_id, "service_id": logical["services"][0]["id"],
+            "name": "offline-clients", "recursion_enabled": False,
+            "client_rules": [{"action": "allow", "kind": "networks", "networks": ["127.0.0.1/32"]}]
+        })
+        logical = request("/workers/" + worker_id)
         current = mutate("confirm_target", {"worker_id": worker_id, "expected_revision": logical["revision"]})
         assert {resource["id"] for resource in current["plan"]["resources"]} == {first["id"], second["id"]}
         assert {resource["version"] for resource in current["plan"]["resources"]} == {1}
+        assert current["plan"]["services"][0]["config"]["views"] == [{
+            "id": view["id"], "priority": view["priority"], "recursion_enabled": False,
+            "client_rules": view["client_rules"]
+        }]
     assert len(request("/zones")) == 2 and len(request("/workers")) == 4
     initial = export_target("initial")
     worker_mutation("put_service", service("stopped"))
@@ -286,6 +297,9 @@ try:
     source.write_bytes(exports["initial"][0])
     start_worker()
     verify_answers(initial)
+    for tcp in (False, True):
+        flags, answers = query("ns.example.test.", 1, tcp, client="127.0.0.2")
+        assert flags & 0xF == 5 and answers == [], (flags, answers)
     before = {str(path.relative_to(state)): (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
               for path in state.rglob("*") if path.is_file() and path.name != ".lock"}
     runtime = rpc('IO.inspect(YellowDog.Worker.status().services["dns"].runtime_pid)')

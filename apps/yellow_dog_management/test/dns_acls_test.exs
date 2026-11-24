@@ -415,11 +415,13 @@ defmodule YellowDog.Management.DnsAclsTest do
       :foreign_key_violation
     )
 
-    pg_error(
-      "DELETE FROM management_services WHERE id = '#{scope["service_id"]}'",
-      [],
-      :foreign_key_violation
-    )
+    assert {:error,
+            %Postgrex.Error{
+              postgres: %{code: code, constraint: "management_dns_acls_service_id_fkey"}
+            }} =
+             Repo.query("DELETE FROM management_services WHERE id = '#{scope["service_id"]}'")
+
+    assert code in [:foreign_key_violation, :restrict_violation]
 
     assert {:ok, ^acl} = DnsAcls.get(scope["worker_id"], scope["service_id"], acl["id"])
   end
