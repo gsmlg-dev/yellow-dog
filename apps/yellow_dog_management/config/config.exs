@@ -7,8 +7,6 @@ config :phoenix, :json_library, Jason
 config :yellow_dog_management, YellowDog.ManagementUI.Endpoint,
   adapter: Gaoxy.PhoenixAdapter,
   websocket_paths: ["/live/websocket", "/api/worker/connect"],
-  url: [host: "localhost"],
-  check_origin: :conn,
   pubsub_server: YellowDog.ManagementUI.PubSub,
   live_view: [signing_salt: "management-live-view"]
 

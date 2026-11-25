@@ -2,6 +2,7 @@ defmodule YellowDog.Management.SettingsTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Management.Settings
+  alias YellowDog.ManagementUI.Endpoint
 
   setup do
     names = [
@@ -50,6 +51,16 @@ defmodule YellowDog.Management.SettingsTest do
     assert Settings.endpoint()[:url][:port] == 443
     System.put_env("YELLOW_DOG_MANAGEMENT_TRUSTED_PROXY_IP", "::1")
     assert Settings.endpoint()[:trusted_proxy_ip] == {0, 0, 0, 0, 0, 0, 0, 1}
+  end
+
+  test "Phoenix startup keeps the configured public URL and WebSocket origin" do
+    public_origin = "https://management.example:8443"
+    System.put_env("YELLOW_DOG_MANAGEMENT_EXTERNAL_ORIGIN", public_origin)
+
+    settings = Phoenix.Config.from_env(:yellow_dog_management, Endpoint, Settings.endpoint())
+
+    assert {settings[:url][:host], settings[:check_origin]} ==
+             {"management.example", [public_origin]}
   end
 
   test "external origin rejects insecure URLs, wildcard hosts and non-origin components" do
