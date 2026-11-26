@@ -143,10 +143,20 @@ def main():
             "YellowDog.Management.Settings.repo()); "
             "{:ok, _, _} = Ecto.Migrator.with_repo(YellowDog.Management.Repo, fn repo -> "
         )
-        output = run(["eval", migrator + "Ecto.Migrator.run(repo, :down, step: 1) end)"], success=False)
+        irreversible = "management_irreversible"
+        view_migration = 20261124000002
+        view_schema = [version for version in versions if version <= view_migration]
+        assert view_schema[-1] == view_migration
+        sql(f"CREATE DATABASE {irreversible}")
+        run(["eval", migrator + f"Ecto.Migrator.run(repo, :up, to: {view_migration}) end)"],
+            database=irreversible)
+        sql(insert_zone, irreversible)
+        output = run(["eval", migrator + "Ecto.Migrator.run(repo, :down, step: 1) end)"],
+                     database=irreversible, success=False)
         assert "restore a pre-migration backup" in output, output
-        check_schema()
-        check_zone()
+        check_schema(irreversible, view_schema)
+        check_zone(irreversible)
+        print("PASS irreversible DNS View migration rejects rollback and preserves data", flush=True)
 
         pending = "management_pending"
         sql(f"CREATE DATABASE {pending}")
