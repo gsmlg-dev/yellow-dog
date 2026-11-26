@@ -69,7 +69,7 @@ defmodule YellowDog.Management.RecordsLiveTest do
     assert {:ok, saved} = Domain.get_zone(zone["id"])
     assert saved["revision"] == 2
     index = Enum.find_index(saved["records"], &(&1["name"] == "www.example.test."))
-    view |> element("#record-#{index} a", "Edit") |> render_click()
+    view |> element("#record-#{index} a[title='Edit record']") |> render_click()
     assert_patch(view, path <> "/#{index}/edit")
 
     view
@@ -473,7 +473,7 @@ defmodule YellowDog.Management.RecordsLiveTest do
     index = Enum.find_index(saved["records"], &(&1["name"] == "www.example.test."))
     {:ok, view, _html} = live(conn, path)
     filter(view, "WWW", "A")
-    view |> element("#record-#{index} a", "Edit") |> render_click()
+    view |> element("#record-#{index} a[title='Edit record']") |> render_click()
     assert_patch(view, path <> "/#{index}/edit")
 
     assert has_element?(

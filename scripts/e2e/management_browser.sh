@@ -71,7 +71,31 @@ if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ] || [ "${MANAGEMENT_BROWSER_SCO
 fi
 
 "$release" eval 'YellowDog.Management.Release.migrate()' > "$artifact_dir/migration.log" 2>&1
-"$release" start > "$artifact_dir/server.log" 2>&1 &
+
+start_server() {
+  case "${MANAGEMENT_BROWSER_SCOPE:-full}" in
+    data|full)
+      exec "$release" eval '
+        defmodule BrowserCloudflareFixture do
+          def list_zones(%{"api_token" => "browser-test-token"}) do
+            {:ok,
+             [
+               %{id: String.duplicate("c", 32), name: "renamed-data-workflow.test."},
+               %{id: String.duplicate("d", 32), name: "other-data-workflow.test."}
+             ]}
+          end
+        end
+
+        Application.put_env(:yellow_dog_management, :cloud_dns_adapters, %{"cloudflare" => BrowserCloudflareFixture})
+        {:ok, _} = Application.ensure_all_started(:yellow_dog_management)
+        Process.sleep(:infinity)
+      '
+      ;;
+    *) exec "$release" start ;;
+  esac
+}
+
+start_server > "$artifact_dir/server.log" 2>&1 &
 server_pid=$!
 for attempt in $(seq 1 100); do
   if curl -fsS --max-time 1 "$MANAGEMENT_UI_URL/management" >/dev/null 2>&1; then
@@ -90,7 +114,7 @@ timeout "${MANAGEMENT_BROWSER_TIMEOUT:-$browser_timeout}" node apps/yellow_dog_m
 if [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = nodes ] || [ "${MANAGEMENT_BROWSER_SCOPE:-full}" = data ]; then
   kill "$server_pid"
   wait "$server_pid" || true
-  "$release" start >> "$artifact_dir/server.log" 2>&1 &
+  start_server >> "$artifact_dir/server.log" 2>&1 &
   server_pid=$!
   for attempt in $(seq 1 100); do
     if curl -fsS --max-time 1 "$MANAGEMENT_UI_URL/management" >/dev/null 2>&1; then break; fi

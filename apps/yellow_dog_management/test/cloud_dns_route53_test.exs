@@ -17,6 +17,33 @@ defmodule YellowDog.Management.CloudDns.Route53Test do
   </GetHostedZoneResponse>
   """
 
+  test "lists hosted zones across pages and preserves the provider IDs" do
+    request = fn
+      "GET", @create, _headers, "" ->
+        {:ok, 200,
+         """
+         <ListHostedZonesResponse>
+           <HostedZones><HostedZone><Name>Example.Test.</Name><Id>/hostedzone/Z123</Id>
+             <CallerReference>first</CallerReference></HostedZone></HostedZones>
+           <IsTruncated>true</IsTruncated><NextMarker>next&amp;2</NextMarker>
+         </ListHostedZonesResponse>
+         """}
+
+      "GET", @create <> "?marker=next%262", _headers, "" ->
+        {:ok, 200,
+         """
+         <ListHostedZonesResponse>
+           <HostedZones><HostedZone><Name>Example.Test.</Name><Id>/hostedzone/Z456</Id>
+             <CallerReference>second</CallerReference></HostedZone></HostedZones>
+           <IsTruncated>false</IsTruncated>
+         </ListHostedZonesResponse>
+         """}
+    end
+
+    assert {:ok, [%{id: "Z123", name: "example.test."}, %{id: "Z456", name: "example.test."}]} =
+             Route53.list_zones(@credentials, request)
+  end
+
   test "signs canonical requests in the Route 53 signing region with the session token" do
     assert {:ok, headers} =
              Route53.signed_headers(

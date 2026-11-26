@@ -2,9 +2,9 @@ defmodule YellowDog.ManagementUI.ZonesLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.ConfigSpec
-  alias YellowDog.Management.{Database, Domain, ZoneAssignmentChoices}
+  alias YellowDog.Management.{CloudDns, Database, Domain, ZoneAssignmentChoices}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
-  alias YellowDog.ManagementUI.{DnsRecordFields, Submission}
+  alias YellowDog.ManagementUI.{CloudDnsForms, DnsRecordFields, Submission}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -28,6 +28,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
        filter: "",
        deleting: nil,
        zone: nil,
+       cloud_synced?: false,
        versions: [],
        assignment_zone_id: nil,
        assignment_editable: false,
@@ -95,7 +96,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           |> Submission.new()
           |> reset_assignments()
           |> assign(
-            page_title: "New DNS Zone",
+            page_title: "DNS Zones",
             deleting: nil,
             zone: nil,
             content_dirty: false,
@@ -634,6 +635,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
       |> assign(
         page_title: "Edit DNS Zone",
         zone: zone,
+        cloud_synced?: CloudDns.synced_zone?(socket.assigns.caller, zone["id"]),
         versions: Domain.list_versions(zone["id"]),
         content_dirty: false,
         content_reset: Ecto.UUID.generate()
@@ -840,6 +842,27 @@ defmodule YellowDog.ManagementUI.ZonesLive do
     %{"name" => "", "type" => type, "ttl" => 300, "data" => DnsRecordFields.defaults(type)}
   end
 
+  attr :new?, :boolean, required: true
+  slot :inner_block, required: true
+
+  defp zone_draft_panel(assigns) do
+    ~H"""
+    <.dm_modal
+      :if={@new?}
+      id="new-zone-dialog"
+      size="xl"
+      hide_close
+      phx-hook="NewZoneDialog"
+    >
+      <:title>New Zone</:title>
+      <:body>{render_slot(@inner_block)}</:body>
+    </.dm_modal>
+    <.card :if={!@new?} title="Zone Draft">
+      {render_slot(@inner_block)}
+    </.card>
+    """
+  end
+
   @impl true
   def render(assigns) do
     assigns = assign(assigns, :visible_zones, assigns.zones)
@@ -863,11 +886,6 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           <.link patch={query_path(@base_path, @catalog_options)} class="btn btn-ghost">Zones</.link>
           <.link patch={query_path(@base_path <> "/new", @catalog_options)} class="btn btn-primary">New Zone</.link>
           <.link navigate={@base_path <> "/import"} class="btn btn-ghost">Import Zone</.link>
-          <.link
-            :if={@base_path == "/management/zones"}
-            navigate="/management/zones/cloud"
-            class="btn btn-ghost"
-          >Cloud DNS</.link>
           <button id="zone-refresh" class="btn btn-ghost" phx-click="refresh">Refresh</button>
           <button id="zone-export" class="btn btn-ghost" phx-hook="CsvDownload" phx-click="export_csv">Export all matching Zones CSV</button>
         </div>
@@ -910,9 +928,11 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             data-editor-preserve="true"
             patch={query_path("#{@base_path}/#{@zone["id"]}/application", @catalog_options)}
           >Application scope</.link>
-          <.link navigate={"/management/zones/cloud?zone_id=#{@zone["id"]}"}>Cloud DNS</.link>
+          <.link :if={@cloud_synced?} navigate={"/management/zones/#{@zone["id"]}/sync"}>
+            Cloud Sync
+          </.link>
         </nav>
-        <.card :if={@live_action == :index} title="DNS Zones">
+        <.card :if={@live_action in [:index, :new]} title="DNS Zones">
           <p :if={@catalog["total"] == 0}>
             No zones configured. Create a Zone without registering a Worker.
           </p>
@@ -921,14 +941,18 @@ defmodule YellowDog.ManagementUI.ZonesLive do
             <table id="zones-table" class="table table-striped">
               <thead>
                 <tr>
-                  <th>Zone / identity</th><th>Draft revision</th><th>Records</th><th>
+                  <th>Zone name</th><th>Draft revision</th><th>Records</th><th>
                     Latest confirmed
                   </th><th>Usage</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr :for={zone <- @visible_zones} id={"zone-#{zone["id"]}"}>
-                  <td>{zone["name"]}<br /><code>{zone["id"]}</code></td><td>{zone["revision"]}</td><td>
+                  <td>
+                    <.link navigate={"#{@base_path}/#{zone["id"]}/records"} class="link">
+                      {zone["name"]}
+                    </.link>
+                  </td><td>{zone["revision"]}</td><td>
                     {zone["record_count"]}
                   </td>
                   <td>{zone["latest_version"] || "No confirmed version"}</td>
@@ -937,21 +961,33 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                     <div class="management-actions">
                       <.link
                         patch={query_path("#{@base_path}/#{zone["id"]}/edit", @catalog_options)}
-                        class="btn btn-ghost"
-                      >Edit</.link>
-                      <.link navigate={"#{@base_path}/#{zone["id"]}/records"} class="btn btn-ghost">Records</.link>
+                        class="btn btn-ghost btn-square"
+                        title="Edit zone"
+                        aria-label="Edit zone"
+                      >
+                        <.dm_mdi name="pencil" aria-hidden="true" />
+                      </.link>
                       <button
-                        class="btn btn-primary"
+                        type="button"
+                        class="btn btn-ghost btn-square"
+                        title="Confirm version"
+                        aria-label="Confirm version"
                         phx-click="confirm_zone"
                         phx-value-_submission={@submission_id}
-                        phx-disable-with="Confirming…"
                         phx-value-id={zone["id"]}
-                      >Confirm Version</button>
+                      >
+                        <.dm_mdi name="check-circle-outline" aria-hidden="true" />
+                      </button>
                       <button
-                        class="btn btn-error"
+                        type="button"
+                        class="btn btn-error btn-square"
+                        title="Delete zone"
+                        aria-label="Delete zone"
                         phx-click="delete_zone"
                         phx-value-id={zone["id"]}
-                      >Delete</button>
+                      >
+                        <.dm_mdi name="delete" aria-hidden="true" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -960,7 +996,11 @@ defmodule YellowDog.ManagementUI.ZonesLive do
           </div>
         </.card>
         <div :if={@live_action != :index} hidden={@live_action not in [:new, :edit]}>
-          <.card title="Zone Draft">
+          <.zone_draft_panel new?={@live_action == :new}>
+            <CloudDnsForms.zone_type_links
+              :if={@live_action == :new && @base_path == "/management/zones"}
+              cloud?={false}
+            />
             <.form
               for={@form}
               id="zone-form"
@@ -976,6 +1016,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                 class="input"
                 name="zone[name]"
                 value={@form[:name].value}
+                autofocus={@live_action == :new}
                 required
               /></label>
               <p :if={@zone}>Draft revision {@zone["revision"]}</p>
@@ -1043,7 +1084,11 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                   disabled={!@zone_valid?}
                   phx-disable-with="Saving…"
                 >Save Draft</button>
-                <.link patch={query_path(@base_path, @catalog_options)} class="btn btn-ghost">Cancel</.link>
+                <.link
+                  id="zone-cancel"
+                  patch={query_path(@base_path, @catalog_options)}
+                  class="btn btn-ghost"
+                >Cancel</.link>
               </div>
             </.form>
             <div :if={@zone} class="management-actions">
@@ -1066,7 +1111,7 @@ defmodule YellowDog.ManagementUI.ZonesLive do
                 phx-value-id={@zone["id"]}
               >Delete</button>
             </div>
-          </.card>
+          </.zone_draft_panel>
         </div>
         <div :if={@zone} hidden={@live_action != :application}>
           <.card title="Application scope">

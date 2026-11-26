@@ -32,7 +32,8 @@ defmodule YellowDog.ManagementUI.Navigation do
   @routes [
     {:data, :dns_zones,
      [
-       ["management", "zones", "cloud"]
+       ["management", "zones", "new", "cloud"],
+       ["management", "zones", :zone_id, "sync"]
        | for(
            prefix <- [["management", "zones"], ["server", :server_id, "dns", "zones"]],
            suffix <- @zone_suffixes,

@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.ConfigSpec
-  alias YellowDog.Management.Domain
+  alias YellowDog.Management.{DnsRecordText, Domain}
   alias YellowDog.ManagementUI.{DnsRecordExports, DnsRecordFields, Submission}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
@@ -569,7 +569,7 @@ defmodule YellowDog.ManagementUI.RecordsLive do
               <table id="records-table" class="table table-striped">
                 <thead>
                   <tr>
-                    <th>Name</th><th>Type</th><th>TTL</th><th>Data</th><th>Actions</th>
+                    <th>Name</th><th>Type</th><th>TTL</th><th>RDATA</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -579,18 +579,30 @@ defmodule YellowDog.ManagementUI.RecordsLive do
                     data-rr-index={index}
                   >
                     <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td><td>
-                      <code>{Jason.encode!(record["data"])}</code>
+                      <code>{DnsRecordText.format(record)}</code>
                     </td>
                     <td>
                       <div class="management-actions">
-                        <.link patch={"#{@records_path}/#{index}/edit"} class="btn btn-ghost">Edit</.link>
+                        <.link
+                          patch={"#{@records_path}/#{index}/edit"}
+                          class="btn btn-ghost btn-square"
+                          title="Edit record"
+                          aria-label="Edit record"
+                        >
+                          <.dm_mdi name="pencil" aria-hidden="true" />
+                        </.link>
                         <button
-                          class="btn btn-error"
+                          type="button"
+                          class="btn btn-error btn-square"
+                          title="Delete record"
+                          aria-label="Delete record"
                           phx-click="delete_record"
                           phx-value-_submission={@submission_id}
                           phx-value-rr_index={index}
                           data-confirm="Delete this record from the draft? The Zone must remain valid."
-                        >Delete</button>
+                        >
+                          <.dm_mdi name="delete" aria-hidden="true" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -697,13 +709,13 @@ defmodule YellowDog.ManagementUI.RecordsLive do
                   <table id="bulk-record-preview-table" class="table table-striped">
                     <thead>
                       <tr>
-                        <th>Name</th><th>Type</th><th>TTL</th><th>Data</th>
+                        <th>Name</th><th>Type</th><th>TTL</th><th>RDATA</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr :for={record <- @bulk_preview.records}>
                         <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td><td>
-                          <code>{Jason.encode!(record["data"])}</code>
+                          <code>{DnsRecordText.format(record)}</code>
                         </td>
                       </tr>
                     </tbody>

@@ -24,6 +24,19 @@ import SchemaModal from "./schema_modal.jsx";
 let CustomHooks = {};
 CustomHooks.EditorGuard = EditorGuard;
 CustomHooks.SchemaModal = SchemaModal;
+CustomHooks.NewZoneDialog = {
+  mounted() {
+    this.cancel = (event) => {
+      event.preventDefault();
+      this.el.querySelector("#zone-cancel").click();
+    };
+    this.el.addEventListener("cancel", this.cancel);
+    this.el.showModal();
+  },
+  destroyed() {
+    this.el.removeEventListener("cancel", this.cancel);
+  }
+};
 
 // Register before LiveSocket connects so rejected node traversals never reach
 // its popstate handler. Inactive pages retain no hook or DOM reference.

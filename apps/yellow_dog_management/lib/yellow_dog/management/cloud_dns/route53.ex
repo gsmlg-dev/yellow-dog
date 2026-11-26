@@ -11,6 +11,44 @@ defmodule YellowDog.Management.CloudDns.Route53 do
   @editable_types ~w(A AAAA CNAME MX TXT PTR NS)
   @route_fields ~w(SetIdentifier Weight Region GeoLocation Failover MultiValueAnswer AliasTarget HealthCheckId TrafficPolicyInstanceId CidrRoutingConfig GeoProximityLocation)
 
+  def list_zones(credentials, request \\ &http_request/4) do
+    list_zones(request, credentials, [], [], 0)
+  end
+
+  defp list_zones(_request, _credentials, _query, _zones, @max_pages),
+    do: {:error, :route53_zone_search_too_large}
+
+  defp list_zones(request, credentials, query, zones, page) do
+    with {:ok, response} <- call(request, credentials, "GET", @hostedzone_path, query, ""),
+         {:ok, hosted_zones} <- container(response, "HostedZones"),
+         {:ok, entries} <- hosted_zone_entries(hosted_zones),
+         {:ok, next} <- list_zone_next_page(response) do
+      zones = Enum.reverse(entries, zones)
+
+      case next do
+        [] -> {:ok, Enum.map(Enum.reverse(zones), &Map.take(&1, [:id, :name]))}
+        ^query -> {:error, :invalid_route53_pagination}
+        _ -> list_zones(request, credentials, next, zones, page + 1)
+      end
+    end
+  end
+
+  defp list_zone_next_page(response) do
+    case element(response, "IsTruncated") do
+      {:ok, "false"} ->
+        {:ok, []}
+
+      {:ok, "true"} ->
+        case unescaped_element(response, "NextMarker") do
+          {:ok, marker} when marker != "" -> {:ok, [{"marker", marker}]}
+          _ -> {:error, :invalid_route53_pagination}
+        end
+
+      _ ->
+        {:error, :invalid_route53_pagination}
+    end
+  end
+
   def fetch(zone_id, credentials, request \\ &http_request/4) do
     with {:ok, path} <- zone_path(zone_id),
          {:ok, zone} <- get_zone(request, credentials, path),
@@ -98,8 +136,10 @@ defmodule YellowDog.Management.CloudDns.Route53 do
   defp hosted_zone_matches(request, credentials, zone, query, matches, page) do
     with {:ok, response} <- call(request, credentials, "GET", @hostedzonesbyname_path, query, ""),
          {:ok, hosted_zones} <- container(response, "HostedZones"),
-         {:ok, found} <- matching_zone_entries(hosted_zones, zone),
+         {:ok, entries} <- hosted_zone_entries(hosted_zones),
          {:ok, next} <- hosted_zone_next_page(response, zone) do
+      found = Enum.filter(entries, &(&1.name == zone))
+
       case next do
         [] ->
           {:ok, Enum.reverse(found, matches)}
@@ -120,7 +160,7 @@ defmodule YellowDog.Management.CloudDns.Route53 do
     end
   end
 
-  defp matching_zone_entries(xml, zone) do
+  defp hosted_zone_entries(xml) do
     entry = ~r/<HostedZone>(.*?)<\/HostedZone>/s
 
     if String.trim(Regex.replace(entry, xml, "")) == "" do
@@ -128,8 +168,7 @@ defmodule YellowDog.Management.CloudDns.Route53 do
       |> Regex.scan(xml, capture: :all_but_first)
       |> Enum.reduce_while({:ok, []}, fn [hosted_zone], {:ok, acc} ->
         case hosted_zone_entry(hosted_zone) do
-          {:ok, %{name: ^zone} = match} -> {:cont, {:ok, [match | acc]}}
-          {:ok, _other_zone} -> {:cont, {:ok, acc}}
+          {:ok, entry} -> {:cont, {:ok, [entry | acc]}}
           {:error, _} = error -> {:halt, error}
         end
       end)

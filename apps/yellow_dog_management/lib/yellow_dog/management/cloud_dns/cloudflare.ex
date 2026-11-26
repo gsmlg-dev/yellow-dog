@@ -8,6 +8,36 @@ defmodule YellowDog.Management.CloudDns.Cloudflare do
   @zone_page_size 25
   @max_pages 500
 
+  def list_zones(credentials, request \\ &http/4) do
+    with {:ok, token} <- api_token(credentials),
+         {:ok, filters} <- account_filter(credentials["account_id"]) do
+      list_zones(filters, token, request, 1, nil, [])
+    end
+  end
+
+  defp account_filter(account_id) when account_id in [nil, ""], do: {:ok, []}
+
+  defp account_filter(account_id) do
+    if valid_id?(account_id),
+      do: {:ok, [{"account.id", String.downcase(account_id)}]},
+      else: {:error, :invalid_account_id}
+  end
+
+  defp list_zones(filters, token, request, page, expected, acc) do
+    with {:ok, zones, pages} <- zone_page(filters, token, request, page, expected) do
+      acc = Enum.reverse(zones, acc)
+
+      if page < pages do
+        list_zones(filters, token, request, page + 1, pages, acc)
+      else
+        {:ok,
+         Enum.map(Enum.reverse(acc), fn zone ->
+           %{id: String.downcase(zone["id"]), name: canonical_name(zone["name"])}
+         end)}
+      end
+    end
+  end
+
   @doc "Fetch a zone and all of its records using a zone-scoped API token."
   def fetch(zone_id, credentials, request \\ &http/4) do
     with {:ok, path, token} <- connection(zone_id, credentials),
@@ -89,20 +119,14 @@ defmodule YellowDog.Management.CloudDns.Cloudflare do
   defp api_token(_credentials), do: {:error, :cloudflare_invalid_configuration}
 
   defp zone_absent(name, account_id, token, request, page, expected) do
-    query =
-      URI.encode_query([
-        {"account.id", account_id},
-        {"name", undot(name)},
-        {"match", "all"},
-        {"type", "full,partial,secondary,internal"},
-        {"page", page},
-        {"per_page", @zone_page_size}
-      ])
+    filters = [
+      {"account.id", account_id},
+      {"name", undot(name)},
+      {"match", "all"},
+      {"type", "full,partial,secondary,internal"}
+    ]
 
-    with {:ok, %{"result" => zones, "result_info" => info}} when is_list(zones) <-
-           call(request, :get, "/zones?" <> query, token),
-         {:ok, pages} <- page_count(info, page, expected, zones),
-         true <- Enum.all?(zones, &valid_zone_identifier?/1) do
+    with {:ok, zones, pages} <- zone_page(filters, token, request, page, expected) do
       cond do
         Enum.any?(zones, &zone_matches?(&1, name, account_id)) ->
           {:error, :remote_zone_exists}
@@ -113,6 +137,18 @@ defmodule YellowDog.Management.CloudDns.Cloudflare do
         true ->
           :ok
       end
+    end
+  end
+
+  defp zone_page(filters, token, request, page, expected) do
+    query =
+      URI.encode_query(filters ++ [{"page", page}, {"per_page", @zone_page_size}])
+
+    with {:ok, %{"result" => zones, "result_info" => info}} when is_list(zones) <-
+           call(request, :get, "/zones?" <> query, token),
+         {:ok, pages} <- page_count(info, page, expected, zones),
+         true <- Enum.all?(zones, &valid_zone_identifier?/1) do
+      {:ok, zones, pages}
     else
       {:error, _} = error -> error
       _ -> {:error, :cloudflare_invalid_response}

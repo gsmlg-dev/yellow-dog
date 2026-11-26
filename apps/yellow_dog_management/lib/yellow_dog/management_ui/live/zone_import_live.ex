@@ -2,7 +2,7 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
   use YellowDog.ManagementUI, :live_view
 
   alias YellowDog.ConfigSpec
-  alias YellowDog.Management.Domain
+  alias YellowDog.Management.{DnsRecordText, Domain}
   alias YellowDog.ManagementUI.Hooks.CurrentPath
 
   @max_toml_bytes 1_048_576
@@ -342,13 +342,13 @@ defmodule YellowDog.ManagementUI.ZoneImportLive do
                 <table class="table table-striped">
                   <thead>
                     <tr>
-                      <th>Name</th><th>Type</th><th>TTL</th><th>Data</th>
+                      <th>Name</th><th>Type</th><th>TTL</th><th>RDATA</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr :for={record <- @selected_resource["content"]["records"]}>
                       <td>{record["name"]}</td><td>{record["type"]}</td><td>{record["ttl"]}</td>
-                      <td><code>{Jason.encode!(record["data"])}</code></td>
+                      <td><code>{DnsRecordText.format(record)}</code></td>
                     </tr>
                   </tbody>
                 </table>

@@ -14,12 +14,23 @@ defmodule YellowDog.Management.CloudDnsTest do
   @protected {"proxy.sync.example.", "A"}
 
   defmodule Provider do
-    def fetch(id, _credentials) do
+    def list_zones(%{"access_key_id" => "denied"}), do: {:error, :route53_access_denied}
+
+    def list_zones(_credentials) do
       Agent.get(__MODULE__, fn state ->
-        case state.zones[id] do
-          nil -> {:error, :zone_not_found}
-          zone -> {:ok, zone}
-        end
+        {:ok, Enum.map(state.zones, fn {id, zone} -> %{id: id, name: zone.name} end)}
+      end)
+    end
+
+    def fetch(id, credentials) do
+      Agent.get_and_update(__MODULE__, fn state ->
+        result =
+          case state.zones[id] do
+            nil -> {:error, :zone_not_found}
+            zone -> {:ok, zone}
+          end
+
+        {result, Map.put(state, :last_credentials, credentials)}
       end)
     end
 
@@ -204,39 +215,151 @@ defmodule YellowDog.Management.CloudDnsTest do
     assert {:ok, %{rrsets: %{^key => %{values: ["192.0.2.8"]}}}} = Provider.fetch("ZNEW", %{})
   end
 
-  test "Cloud DNS page uses a schema modal to select a configured provider", %{caller: caller} do
+  test "Cloud DNS imports a listed zone by name and reviews the pull before saving", %{
+    caller: caller
+  } do
     provider = add_provider(caller)
-    {:ok, view, _html} = live(Phoenix.ConnTest.build_conn(), "/management/zones/cloud")
-    modal = render_click(view |> element("#cloud-dns-import-binding"))
-    assert modal =~ "SchemaModal"
-    assert modal =~ "provider_id"
-    assert modal =~ provider.id
-    refute modal =~ "Credential profile prefix"
+    conn = Phoenix.ConnTest.build_conn()
+    {:ok, new_zone, _html} = live(conn, "/management/zones/new")
+    assert has_element?(new_zone, "a[href='/management/zones/new/cloud']", "Cloud-synced")
+    {:ok, view, _html} = live(conn, "/management/zones/new/cloud")
+    view |> element("#cloud-dns-import-binding") |> render_click()
+    render_async(view)
 
-    render_hook(view, "submit_modal", %{"provider_id" => provider.id, "remote_id" => @remote_id})
+    assert has_element?(
+             view,
+             "#cloud-dns-import-provider option[selected][value='#{provider.id}']"
+           )
+
+    assert has_element?(view, "#cloud-dns-import-zone option[value='#{@remote_id}']", @name)
+
+    view
+    |> form("#cloud-dns-import-form", %{provider_id: provider.id, remote_id: @remote_id})
+    |> render_submit()
+
+    assert has_element?(view, "button[phx-click='select']", @name)
+    assert has_element?(view, "#cloud-dns-zone-name", @name)
+    refute has_element?(view, "button[phx-click='select']", @remote_id)
+
+    {:ok, view, _html} = live(conn, "/management/zones/new/cloud")
+    assert render_async(view) =~ @name
+    view |> element("button[phx-click='select']", @name) |> render_click()
+    assert has_element?(view, "#cloud-dns-zone-name", @name)
+    refute has_element?(view, "p", "Zone ID")
+
     view |> element("#cloud-dns-preview-pull") |> render_click()
     assert render_async(view) =~ "Review pull"
     assert [] = Domain.list_zones()
     view |> element("#cloud-dns-confirm") |> render_click()
-    assert render_async(view) =~ "Cloud records saved to the local zone draft"
-    assert [%{"name" => @name}] = Domain.list_zones()
+    {path, flash} = assert_redirect(view, 2_000)
+    assert [%{"name" => @name, "id" => zone_id}] = Domain.list_zones()
+    assert URI.parse(path).path == "/management/zones/#{zone_id}/sync"
+    assert flash["info"] == "Cloud records saved to the local zone draft."
+
+    {:ok, details, _html} = live(conn, "/management/zones/#{zone_id}/edit")
+    assert has_element?(details, "a[href='/management/zones/#{zone_id}/sync']", "Cloud Sync")
+
+    {:ok, sync, _html} = live(conn, path)
+    assert has_element?(sync, "#cloud-dns-zone-name", @name)
+    assert has_element?(sync, "#cloud-dns-preview-pull")
+    refute has_element?(sync, "#cloud-dns-import-binding")
+
+    {:ok, records, _html} = live(conn, "/management/zones/#{zone_id}/records")
+    assert has_element?(records, "#records-table th", "RDATA")
+    assert has_element?(records, "#records-table code", "192.0.2.1")
+    refute has_element?(records, "#records-table code", ~s("address"))
+  end
+
+  test "switching providers clears the cloud zone list and rejects stale selections", %{
+    caller: caller
+  } do
+    provider = add_provider(caller)
+
+    assert {:ok, denied} =
+             CloudDns.add_provider(caller, %{
+               "name" => "Denied provider",
+               "kind" => "route53",
+               "access_key_id" => "denied",
+               "secret_access_key" => "fixture"
+             })
+
+    {:ok, view, _html} = live(Phoenix.ConnTest.build_conn(), "/management/zones/new/cloud")
+    view |> element("#cloud-dns-import-binding") |> render_click()
+    refute has_element?(view, "#cloud-dns-import-zone option[value='#{@remote_id}']")
+
+    view
+    |> element("#cloud-dns-import-provider")
+    |> render_change(%{"provider_id" => provider.id})
+
+    render_async(view)
+    assert has_element?(view, "#cloud-dns-import-zone option[value='#{@remote_id}']", @name)
+
+    view |> element("#cloud-dns-import-provider") |> render_change(%{"provider_id" => denied.id})
+    assert render_async(view) =~ "Could not load cloud zones"
+    assert has_element?(view, "#cloud-dns-import-zone[disabled]")
+    refute has_element?(view, "#cloud-dns-import-zone option[value='#{@remote_id}']")
+
+    assert render_submit(view, "import_cloud_zone", %{
+             "provider_id" => provider.id,
+             "remote_id" => @remote_id
+           }) =~
+             "Select a cloud zone for this provider."
+
+    assert {:ok, []} = CloudDns.list(caller)
+  end
+
+  test "adding cloud sync from a local zone keeps it in the authoritative zone workflow", %{
+    caller: caller
+  } do
+    provider = add_provider(caller)
+    zone = create_zone(@name, [])
+    conn = Phoenix.ConnTest.build_conn()
+    path = "/management/zones/#{zone["id"]}"
+
+    {:ok, details, _html} = live(conn, path <> "/edit")
+    refute has_element?(details, "a[href='#{path}/sync']")
+
+    {:ok, setup, _html} = live(conn, "/management/zones/new/cloud")
+    assert setup |> element("#cloud-dns-create-binding") |> render_click() =~ "Local zone"
+
+    render_hook(setup, "submit_modal", %{"provider_id" => provider.id, "zone_id" => zone["id"]})
+    {sync_path, _flash} = assert_redirect(setup)
+    assert URI.parse(sync_path).path == path <> "/sync"
+
+    {:ok, sync, _html} = live(conn, sync_path)
+    refute has_element?(sync, "#cloud-dns-create-binding")
+    sync |> element("#cloud-dns-create-remote") |> render_click()
+    assert render_async(sync) =~ "A matching cloud zone already exists"
+    assert writes() == []
+    assert [%{"id" => id}] = Domain.list_zones()
+    assert id == zone["id"]
   end
 
   test "system management creates and edits providers through schema modals", %{caller: caller} do
     {:ok, view, _html} = live(Phoenix.ConnTest.build_conn(), "/system/cloud-providers")
     assert render_click(view |> element("#cloud-provider-new")) =~ "SchemaModal"
 
+    assert render_hook(view, "submit_modal", %{"kind" => "route53"}) =~ "AWS Secret Access Key"
+    render_hook(view, "submit_modal", %{"name" => "DNS test"})
+    assert_reply view, %{error: "Credentials require all mandatory fields for this provider"}
+
     render_hook(view, "submit_modal", %{
       "name" => "DNS test",
-      "kind" => "route53",
-      "profile" => "TEST_DNS"
+      "access_key_id" => "web-access-key",
+      "secret_access_key" => "web-secret-key",
+      "session_token" => "web-session-token"
     })
 
     assert {:ok, [provider]} = CloudDns.providers(caller)
     assert has_element?(view, "#cloud-provider-#{provider.id}", "DNS test")
+    assert is_nil(provider.credentials)
 
-    view |> element("#cloud-provider-#{provider.id} button[phx-click=edit]") |> render_click()
-    render_hook(view, "submit_modal", %{"name" => "Production DNS"})
+    edit = fn ->
+      view |> element("#cloud-provider-#{provider.id} button[phx-click=edit]") |> render_click()
+    end
+
+    refute edit.() =~ "web-secret-key"
+    render_hook(view, "submit_modal", %{"name" => "Production DNS", "secret_access_key" => ""})
     assert has_element?(view, "#cloud-provider-#{provider.id}", "Production DNS")
 
     binding = import_binding(caller)
@@ -244,12 +367,60 @@ defmodule YellowDog.Management.CloudDnsTest do
     assert provider.bound?
     assert binding.provider_id == provider.id
 
-    assert {:error, :provider_in_use} =
-             CloudDns.update_provider(caller, provider, %{"profile" => "DIFFERENT"})
+    assert {:ok, preview} = CloudDns.preview(caller, binding.id, :pull)
+
+    assert %{
+             "access_key_id" => "web-access-key",
+             "secret_access_key" => "web-secret-key",
+             "session_token" => "web-session-token"
+           } = Agent.get(Provider, & &1.last_credentials)
+
+    edit.()
+
+    render_hook(view, "submit_modal", %{
+      "name" => "Production DNS",
+      "secret_access_key" => "rotated-secret-key",
+      "remove_session_token" => true
+    })
+
+    assert {:error, :stale_preview} = CloudDns.confirm(caller, binding.id, :pull, preview.stamp)
+
+    assert %{"access_key_id" => "web-access-key", "secret_access_key" => "rotated-secret-key"} =
+             credentials = Agent.get(Provider, & &1.last_credentials)
+
+    refute Map.has_key?(credentials, "session_token")
 
     assert {:error, %Ecto.Changeset{}} = CloudDns.delete_provider(caller, provider.id)
     assert {:ok, :unlinked} = CloudDns.unlink(caller, binding.id)
     assert {:ok, _provider} = CloudDns.delete_provider(caller, provider.id)
+  end
+
+  test "web credentials replace an existing environment profile without unlinking its zone", %{
+    caller: caller
+  } do
+    binding = import_binding(caller)
+    assert {:ok, [_]} = CloudDns.providers(caller)
+    assert {:ok, _} = CloudDns.preview(caller, binding.id, :pull)
+    assert %{"access_key_id" => "key"} = Agent.get(Provider, & &1.last_credentials)
+
+    {:ok, view, _html} = live(Phoenix.ConnTest.build_conn(), "/system/cloud-providers")
+
+    view
+    |> element("#cloud-provider-#{binding.provider_id} button[phx-click=edit]")
+    |> render_click()
+
+    render_hook(view, "submit_modal", %{
+      "name" => "DNS test",
+      "access_key_id" => "REPLACEMENTKEY",
+      "secret_access_key" => "replacement-secret"
+    })
+
+    assert {:ok, [%{id: id, profile: nil, bound?: true}]} = CloudDns.providers(caller)
+    assert id == binding.provider_id
+    assert {:ok, _} = CloudDns.preview(caller, binding.id, :pull)
+
+    assert %{"access_key_id" => "REPLACEMENTKEY", "secret_access_key" => "replacement-secret"} =
+             Agent.get(Provider, & &1.last_credentials)
   end
 
   defp rr(value), do: %{ttl: 300, values: [value], protected: false}

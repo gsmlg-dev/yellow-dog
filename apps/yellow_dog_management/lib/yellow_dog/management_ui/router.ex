@@ -53,7 +53,8 @@ defmodule YellowDog.ManagementUI.Router do
       live "/management/zones", ZonesLive, :index
       live "/management/zones/new", ZonesLive, :new
       live "/management/zones/import", ZoneImportLive, :import
-      live "/management/zones/cloud", CloudDnsLive, :index
+      live "/management/zones/new/cloud", CloudDnsLive, :new
+      live "/management/zones/:zone_id/sync", CloudDnsLive, :sync
       live "/management/zones/:zone_id/edit", ZonesLive, :edit
       live "/management/zones/:zone_id/versions", ZonesLive, :versions
       live "/management/zones/:zone_id/application", ZonesLive, :application

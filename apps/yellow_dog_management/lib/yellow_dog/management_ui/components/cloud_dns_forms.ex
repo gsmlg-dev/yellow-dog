@@ -2,6 +2,7 @@ defmodule YellowDog.ManagementUI.CloudDnsForms do
   @moduledoc false
   use YellowDog.ManagementUI, :html
   alias YellowDog.Management.CloudDns.Provider
+  alias YellowDog.ManagementUI.CoreComponents
 
   attr :form, :map, default: nil
 
@@ -17,63 +18,200 @@ defmodule YellowDog.ManagementUI.CloudDnsForms do
     """
   end
 
-  def provider_form(provider, bound?) do
-    title = if provider, do: "Edit Cloud Provider", else: "Add Cloud Provider"
+  attr :cloud?, :boolean, required: true
 
-    fields = %{
-      "name" => %{type: "string", title: "Name", minLength: 1, maxLength: 128}
-    }
-
-    fields =
-      if bound? do
-        fields
-      else
-        Map.merge(fields, %{
-          "kind" =>
-            options("Provider", [
-              {"route53", Provider.label("route53")},
-              {"cloudflare", Provider.label("cloudflare")}
-            ]),
-          "profile" => %{
-            type: "string",
-            title: "Credential profile prefix",
-            description: "Prefix of the provider credentials set in the Management environment.",
-            pattern: "^[A-Z][A-Z0-9_]{0,63}$"
-          }
-        })
-      end
-
-    initial =
-      if provider, do: Map.take(provider, [:name, :kind, :profile]), else: %{profile: "DNS"}
-
-    form(title, fields, Map.take(initial, Enum.map(Map.keys(fields), &String.to_existing_atom/1)))
+  def zone_type_links(assigns) do
+    ~H"""
+    <nav aria-label="Authoritative zone type" class="management-actions">
+      <.link
+        navigate="/management/zones/new"
+        class={["btn", if(@cloud?, do: "btn-outline", else: "btn-primary")]}
+        aria-current={if !@cloud?, do: "page"}
+      >Local</.link>
+      <.link
+        navigate="/management/zones/new/cloud"
+        class={["btn", if(@cloud?, do: "btn-primary", else: "btn-outline")]}
+        aria-current={if @cloud?, do: "page"}
+      >Cloud-synced</.link>
+    </nav>
+    """
   end
 
-  def binding_form(mode, providers, zones, zone) do
-    title =
-      if mode == "import", do: "Import cloud zone", else: "Create cloud zone from local zone"
+  def provider_type_form do
+    form(
+      "Add Cloud Provider",
+      %{
+        "kind" =>
+          options("Provider", [
+            {"route53", Provider.label("route53")},
+            {"cloudflare", Provider.label("cloudflare")}
+          ])
+      },
+      %{}
+    )
+    |> Map.put(:choose_provider?, true)
+  end
 
+  def provider_form(kind, provider) do
+    {required, optional} = Provider.credential_fields(kind)
+    saved? = provider && is_nil(provider.profile)
+
+    credentials =
+      for field <- required ++ [optional], into: %{} do
+        {field, credential(field, not is_nil(provider))}
+      end
+
+    fields =
+      Map.put(credentials, "name", %{type: "string", title: "Name", minLength: 1, maxLength: 128})
+
+    fields =
+      if saved? do
+        Map.put(fields, "remove_" <> optional, %{
+          type: "boolean",
+          title: "Remove saved " <> credential_label(optional)
+        })
+      else
+        fields
+      end
+
+    action = if provider, do: "Edit", else: "Add"
+    initial = if provider, do: %{name: provider.name}, else: %{}
+    required_fields = if provider, do: ["name"], else: ["name" | required]
+
+    form("#{action} #{Provider.label(kind)}", fields, initial, required_fields)
+    |> Map.put(:kind, kind)
+    |> Map.put(:textFields, ["name" | required] ++ [optional])
+  end
+
+  defp credential(field, editing?) do
+    field_schema = %{
+      type: "string",
+      title: credential_label(field),
+      writeOnly: true,
+      maxLength: 8192
+    }
+
+    description =
+      case {field, editing?} do
+        {"account_id", true} ->
+          "Needed to create Cloudflare zones. Leave blank to keep the current value."
+
+        {"account_id", false} ->
+          "Needed to create Cloudflare zones."
+
+        {"session_token", true} ->
+          "For temporary AWS credentials. Leave blank to keep the current value."
+
+        {"session_token", false} ->
+          "For temporary AWS credentials."
+
+        {_, true} ->
+          "Leave blank to keep the current value."
+
+        {_, false} ->
+          nil
+      end
+
+    if description, do: Map.put(field_schema, :description, description), else: field_schema
+  end
+
+  defp credential_label("access_key_id"), do: "AWS Access Key ID"
+  defp credential_label("secret_access_key"), do: "AWS Secret Access Key"
+  defp credential_label("session_token"), do: "AWS Session Token"
+  defp credential_label("api_token"), do: "Cloudflare API Token"
+  defp credential_label("account_id"), do: "Cloudflare Account ID"
+
+  attr :providers, :list, required: true
+  attr :provider_id, :string, required: true
+  attr :remote_zones, :any, required: true
+  attr :error, :string, required: true
+
+  def import_modal(assigns) do
+    options =
+      case assigns.remote_zones do
+        {:ok, zones} -> zone_options(zones)
+        _ -> []
+      end
+
+    assigns = assign(assigns, options: options, providers: provider_options(assigns.providers))
+
+    ~H"""
+    <CoreComponents.modal
+      id="cloud-dns-import-modal"
+      title="Import cloud zone"
+      show
+      on_cancel={JS.push("close_modal")}
+    >
+      <form id="cloud-dns-import-form" phx-submit="import_cloud_zone">
+        <label class="management-field" for="cloud-dns-import-provider">
+          <span>Cloud Provider</span>
+          <select
+            id="cloud-dns-import-provider"
+            name="provider_id"
+            class="select"
+            phx-change="select_import_provider"
+            required
+          >
+            <option value="">Select a provider</option>
+            {Phoenix.HTML.Form.options_for_select(@providers, @provider_id)}
+          </select>
+        </label>
+        <label class="management-field" for="cloud-dns-import-zone">
+          <span>Cloud zone</span>
+          <select
+            id="cloud-dns-import-zone"
+            name="remote_id"
+            class="select"
+            disabled={@options == []}
+            required
+          >
+            <option value="">Select a cloud zone</option>
+            {Phoenix.HTML.Form.options_for_select(@options, nil)}
+          </select>
+        </label>
+        <p :if={@remote_zones == :loading} role="status">Loading cloud zones…</p>
+        <p :if={@remote_zones == {:ok, []}} role="status">
+          No cloud zones found.
+        </p>
+        <p :if={@error} role="alert" class="alert alert-error">{@error}</p>
+        <div class="modal-action">
+          <button
+            :if={match?({:error, _}, @remote_zones)}
+            type="button"
+            class="btn btn-outline"
+            phx-click="retry_import_provider"
+          >Retry</button>
+          <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" disabled={@options == []}>Import</button>
+        </div>
+      </form>
+    </CoreComponents.modal>
+    """
+  end
+
+  def create_binding_form(providers, zones) do
     fields = %{
       "provider_id" =>
         options(
           "Cloud Provider",
-          Enum.map(providers, &{&1.id, "#{&1.name} · #{Provider.label(&1.kind)}"})
-        )
+          Enum.map(provider_options(providers), fn {label, id} -> {id, label} end)
+        ),
+      "zone_id" => options("Local zone", Enum.map(zones, &{&1.id, &1.name}))
     }
 
-    fields =
-      case {mode, zone} do
-        {"import", _} ->
-          Map.put(fields, "remote_id", %{type: "string", title: "Cloud zone ID", minLength: 1})
+    form("Create cloud zone from local zone", fields, %{})
+  end
 
-        {"create", nil} ->
-          Map.put(fields, "zone_id", options("Local zone", Enum.map(zones, &{&1.id, &1.name})))
+  defp provider_options(providers),
+    do: Enum.map(providers, &{"#{&1.name} · #{Provider.label(&1.kind)}", &1.id})
 
-        {"create", _} ->
-          fields
-      end
+  defp zone_options(zones) do
+    name_counts = Enum.frequencies_by(zones, & &1.name)
 
-    form(title, fields, %{})
+    Enum.map(zones, fn %{id: id, name: name} ->
+      label = if name_counts[name] > 1, do: "#{name} (#{id})", else: name
+      {label, id}
+    end)
   end
 
   def conflicts_form(rows) do
@@ -101,7 +239,7 @@ defmodule YellowDog.ManagementUI.CloudDnsForms do
     }
   end
 
-  defp form(title, fields, initial) do
+  defp form(title, fields, initial, required \\ nil) do
     %{
       id: "cloud-dns-form-#{Ecto.UUID.generate()}",
       title: title,
@@ -109,7 +247,7 @@ defmodule YellowDog.ManagementUI.CloudDnsForms do
         type: "object",
         additionalProperties: false,
         properties: fields,
-        required: Map.keys(fields)
+        required: required || Map.keys(fields)
       },
       initial: initial
     }

@@ -78,6 +78,10 @@ defmodule YellowDog.Management.RecordsBulkPreviewLiveTest do
            )
 
     assert has_element?(view, "#bulk-record-preview-table")
+
+    assert preview_text(view, "#bulk-record-preview-table tbody tr:first-child code") ==
+             "192.0.2.20"
+
     assert preview_text(view, "#bulk-record-types") =~ ~r/\bA\D+2\b/
     assert preview_text(view, "#bulk-record-types") =~ ~r/\bNS\D+1\b/
     refute has_element?(view, "#bulk-record-save[disabled]")

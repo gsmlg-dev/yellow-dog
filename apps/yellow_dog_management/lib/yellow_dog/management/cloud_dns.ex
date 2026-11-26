@@ -15,6 +15,23 @@ defmodule YellowDog.Management.CloudDns do
     end
   end
 
+  def list(caller, zone_id) do
+    with :ok <- Access.ui_admin(caller) do
+      query =
+        case zone_id do
+          nil -> from(b in Binding, where: is_nil(b.zone_id))
+          id -> from(b in Binding, where: b.zone_id == ^id)
+        end
+
+      {:ok, Repo.all(from(b in query, order_by: b.inserted_at, preload: [:provider]))}
+    end
+  end
+
+  def synced_zone?(caller, zone_id) do
+    Access.ui_admin(caller) == :ok and
+      Repo.exists?(from(b in Binding, where: b.zone_id == ^zone_id))
+  end
+
   def zones(caller) do
     with :ok <- Access.ui_admin(caller) do
       {:ok,
@@ -35,6 +52,7 @@ defmodule YellowDog.Management.CloudDns do
          from(p in Provider,
            as: :provider,
            order_by: [p.name, p.kind, p.id],
+           select: struct(p, [:id, :name, :kind, :profile, :inserted_at, :updated_at]),
            select_merge: %{
              bound?: exists(from(b in Binding, where: b.provider_id == parent_as(:provider).id))
            }
@@ -43,9 +61,22 @@ defmodule YellowDog.Management.CloudDns do
     end
   end
 
+  def remote_zones(caller, provider_id) do
+    with :ok <- Access.ui_admin(caller),
+         {:ok, id} <- parse_id(provider_id),
+         %Provider{} = provider <- Repo.get(Provider, id),
+         {:ok, credentials} <- credentials(provider),
+         {:ok, zones} <- adapter(provider).list_zones(credentials) do
+      {:ok, Enum.sort_by(zones, &{&1.name, &1.id})}
+    else
+      nil -> {:error, :provider_not_found}
+      error -> error
+    end
+  end
+
   def add_provider(caller, attrs) do
     with :ok <- Access.ui_admin(caller) do
-      %Provider{} |> Provider.changeset(attrs) |> Repo.insert()
+      %Provider{} |> Provider.changeset(attrs) |> Repo.insert(log: false)
     end
   end
 
@@ -56,11 +87,14 @@ defmodule YellowDog.Management.CloudDns do
           %Provider{updated_at: updated_at} = provider when updated_at == selected.updated_at ->
             changeset = Provider.changeset(provider, attrs)
 
-            if (changed?(changeset, :kind) or changed?(changeset, :profile)) and
+            profile_changed? =
+              changed?(changeset, :profile) and not is_nil(get_field(changeset, :profile))
+
+            if (changed?(changeset, :kind) or profile_changed?) and
                  Repo.exists?(from(b in Binding, where: b.provider_id == ^provider.id)) do
               {:error, :provider_in_use}
             else
-              Repo.update(changeset)
+              Repo.update(changeset, log: false)
             end
 
           _ ->
@@ -350,7 +384,8 @@ defmodule YellowDog.Management.CloudDns do
       end)
 
     stamp =
-      {binding.id, binding.remote_id, binding.baseline, context.zone, context.remote, direction}
+      {binding.id, binding.remote_id, binding.baseline, binding.provider.updated_at, context.zone,
+       context.remote, direction}
       |> :erlang.term_to_binary([:deterministic])
       |> then(&:crypto.hash(:sha256, &1))
       |> Base.encode16(case: :lower)
@@ -464,12 +499,20 @@ defmodule YellowDog.Management.CloudDns do
     |> Repo.update()
   end
 
-  defp adapter(binding) do
+  defp adapter(%Binding{provider: provider}), do: adapter(provider)
+
+  defp adapter(%Provider{kind: kind}) do
     adapters = Application.get_env(:yellow_dog_management, :cloud_dns_adapters, @providers)
-    Map.fetch!(adapters, binding.provider.kind)
+    Map.fetch!(adapters, kind)
   end
 
-  defp credentials(%Binding{provider: %Provider{kind: "route53", profile: profile}}) do
+  defp credentials(%Binding{provider: provider}), do: credentials(provider)
+
+  defp credentials(%Provider{credentials: credentials})
+       when is_map(credentials),
+       do: {:ok, credentials}
+
+  defp credentials(%Provider{kind: "route53", profile: profile}) do
     with {:ok, key} <- env(profile, "AWS_ACCESS_KEY_ID"),
          {:ok, secret} <- env(profile, "AWS_SECRET_ACCESS_KEY") do
       {:ok,
@@ -481,7 +524,7 @@ defmodule YellowDog.Management.CloudDns do
     end
   end
 
-  defp credentials(%Binding{provider: %Provider{kind: "cloudflare", profile: profile}}) do
+  defp credentials(%Provider{kind: "cloudflare", profile: profile}) do
     with {:ok, token} <- env(profile, "CLOUDFLARE_API_TOKEN") do
       {:ok,
        %{

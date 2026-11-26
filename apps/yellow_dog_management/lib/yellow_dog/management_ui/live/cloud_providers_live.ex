@@ -12,7 +12,7 @@ defmodule YellowDog.ManagementUI.CloudProvidersLive do
 
   @impl true
   def handle_event("new", _, socket) do
-    {:noreply, assign(socket, form: CloudDnsForms.provider_form(nil, false), editing: nil)}
+    {:noreply, assign(socket, form: CloudDnsForms.provider_type_form(), editing: nil)}
   end
 
   def handle_event("edit", %{"id" => id}, socket) do
@@ -23,7 +23,7 @@ defmodule YellowDog.ManagementUI.CloudProvidersLive do
       provider ->
         {:noreply,
          assign(socket,
-           form: CloudDnsForms.provider_form(provider, provider.bound?),
+           form: CloudDnsForms.provider_form(provider.kind, provider),
            editing: provider
          )}
     end
@@ -31,9 +31,19 @@ defmodule YellowDog.ManagementUI.CloudProvidersLive do
 
   def handle_event("close_modal", _, socket), do: {:noreply, clear(socket)}
 
-  def handle_event("submit_modal", values, %{assigns: %{form: form}} = socket)
-      when is_map(values) and is_map(form) do
+  def handle_event(
+        "submit_modal",
+        %{"kind" => kind},
+        %{assigns: %{form: %{choose_provider?: true}}} = socket
+      )
+      when kind in ["route53", "cloudflare"] do
+    {:reply, %{}, assign(socket, form: CloudDnsForms.provider_form(kind, nil))}
+  end
+
+  def handle_event("submit_modal", values, %{assigns: %{form: %{kind: kind} = form}} = socket)
+      when is_map(values) do
     caller = socket.assigns.caller
+    values = values |> Map.take(Map.keys(form.schema.properties)) |> Map.put("kind", kind)
 
     result =
       case socket.assigns.editing do
@@ -75,7 +85,7 @@ defmodule YellowDog.ManagementUI.CloudProvidersLive do
   defp error(:stale_provider), do: "The provider changed. Reopen it and try again."
 
   defp error(:provider_in_use),
-    do: "Unlink the provider from its zones before changing its credentials or type."
+    do: "Unlink the provider from its zones before changing its type."
 
   defp error(%Ecto.Changeset{errors: errors}) do
     Enum.map_join(errors, ". ", fn {field, {message, _}} ->
@@ -99,13 +109,15 @@ defmodule YellowDog.ManagementUI.CloudProvidersLive do
           <table class="table">
             <thead>
               <tr>
-                <th>Name</th><th>Provider</th><th>Credential profile</th><th>Actions</th>
+                <th>Name</th><th>Provider</th><th>Authentication</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr :for={provider <- @providers} id={"cloud-provider-#{provider.id}"}>
                 <td>{provider.name}</td><td>{Provider.label(provider.kind)}</td><td>
-                  {provider.profile}
+                  {if provider.profile,
+                    do: "Environment profile (#{provider.profile})",
+                    else: "Configured"}
                 </td>
                 <td>
                   <button
@@ -127,12 +139,6 @@ defmodule YellowDog.ManagementUI.CloudProvidersLive do
             </tbody>
           </table>
         </div>
-        <p class="management-help">
-          For profile DNS, set DNS_AWS_ACCESS_KEY_ID and DNS_AWS_SECRET_ACCESS_KEY for Route 53,
-          or DNS_CLOUDFLARE_API_TOKEN for Cloudflare.
-          Use DNS_AWS_SESSION_TOKEN for temporary AWS credentials.
-          Set DNS_CLOUDFLARE_ACCOUNT_ID to create Cloudflare zones.
-        </p>
       </.card>
       <CloudDnsForms.modal form={@form} />
     </Layouts.app>

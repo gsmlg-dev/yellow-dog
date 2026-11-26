@@ -335,15 +335,19 @@ package/image verification after subsequent changes.
 ## Cloud DNS
 
 Create or edit a named provider under **System Configuration → Cloud Providers**.
-Then open **Data Configuration → Zones → Cloud DNS**, or choose **Cloud DNS**
-from a zone’s detail page, and select the provider in the binding dialog.
-Set credentials in the Management process environment. For the `DNS` profile,
-set `DNS_AWS_ACCESS_KEY_ID` and `DNS_AWS_SECRET_ACCESS_KEY` for Route 53, plus
-`DNS_AWS_SESSION_TOKEN` for temporary AWS credentials. For Cloudflare, set
-`DNS_CLOUDFLARE_API_TOKEN` and set `DNS_CLOUDFLARE_ACCOUNT_ID` if creating a zone.
-The database stores the profile prefix.
+In **Data Configuration → Zones → New Zone**, select **Cloud-synced** and
+choose the provider in the setup dialog. Once linked, use **Cloud Sync** from
+the authoritative zone’s detail page to review pulls and pushes.
+Enter the AWS access key ID and secret access key for Route 53, with a session
+token when using temporary credentials. For Cloudflare, enter the API token and
+supply the account ID if creating zones. On edit, blank credential fields keep
+the saved values. Use the removal checkbox to clear an optional value.
+Existing environment-backed providers keep using their profile until you save
+their required credentials in the form.
 
-- **Import cloud zone** uses the provider's zone ID. The first confirmed pull
+- **Import cloud zone** loads the selected provider's zones and lists them by name.
+  Listing requires `route53:ListHostedZones` on AWS or Zone Read on Cloudflare.
+  The first confirmed pull
   replaces the matching local draft's editable records and apex authority, or
   creates a draft when the zone is absent locally. Existing confirmed versions
   and Worker targets stay pinned.

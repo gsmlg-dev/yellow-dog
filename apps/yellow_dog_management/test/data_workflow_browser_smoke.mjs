@@ -90,7 +90,20 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
 
   assert.deepEqual(await api('/workers'), []);
   assert.deepEqual(await api('/zones'), []);
+  await navigate('/management/zones');
+  await click('a[href="/management/zones/new"]');
+  await until(() => evaluate(`!!document.querySelector('#new-zone-dialog:modal #zone-form')`), 'New Zone opens as a modal');
+  await change('#zone-form', {'zone[name]':'unsaved.test.'});
+  confirmNext(false);
+  await evaluate(`document.querySelector('#new-zone-dialog').dispatchEvent(new Event('cancel', {cancelable:true}))`);
+  await until(dialogHandled, 'Modal cancel checks unsaved edits');
+  assert.equal(await evaluate(`document.querySelector('#new-zone-dialog:modal #zone-name').value`), 'unsaved.test.');
+  confirmNext(true);
+  await click('#zone-cancel');
+  await until(() => evaluate(`location.pathname === '/management/zones' && !document.querySelector('#new-zone-dialog')`), 'Cancel returns to the zone list');
+  assert.deepEqual(await api('/zones'), []);
   await navigate('/management/zones/new');
+  await until(() => evaluate(`!!document.querySelector('#new-zone-dialog:modal #zone-form')`), 'Direct New Zone link opens the modal');
   await click('[phx-click="add_record"]');
   await until(() => evaluate(`document.querySelectorAll('#zone-form fieldset').length === 3`), 'Zone record row missing');
   const name = 'data-workflow.test.';
@@ -109,9 +122,24 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
   let zone;
   await until(async () => { zone = (await api('/zones'))[0]; return !!zone; }, 'Zero-Worker Zone save failed');
   await clean('#zone-form');
+  assert.equal(await evaluate(`!!document.querySelector('#new-zone-dialog')`), false);
   const ordered = values => [...values].sort((left,right)=>`${left.name}:${left.type}`.localeCompare(`${right.name}:${right.type}`));
   assert.deepEqual(ordered(zone.records), ordered(records));
   assert.deepEqual(await api('/workers'), []);
+  await navigate('/management/zones');
+  const zoneRecordsLink = `#zone-${zone.id} a[href="/management/zones/${zone.id}/records"]`;
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(zoneRecordsLink)}).textContent.trim()`), zone.name);
+  const actionLabels = table => evaluate(`[...document.querySelectorAll('${table} tbody tr:first-child td:last-child .btn')].map(button => [button.title, button.getAttribute('aria-label'), !!button.querySelector('svg')])`);
+  assert.deepEqual(await actionLabels('#zones-table'), ['Edit zone', 'Confirm version', 'Delete zone'].map(label => [label, label, true]));
+  await click(zoneRecordsLink);
+  await until(() => evaluate(`document.querySelectorAll('#records-table tbody tr').length === ${records.length}`), 'Zone name opens its DNS record table');
+  assert.deepEqual(await evaluate(`Object.fromEntries([...document.querySelectorAll('#records-table tbody tr')].map(row => [row.cells[1].textContent.trim(), row.cells[3].textContent.trim()]))`), {
+    SOA: `ns.${name} hostmaster.${name} 1 3600 600 86400 300`,
+    NS: `ns.${name}`,
+    A: '192.0.2.10',
+  });
+  assert.deepEqual(await actionLabels('#records-table'), ['Edit record', 'Delete record'].map(label => [label, label, true]));
+  await navigate(detail(zone.id));
   await tab(zone.id,'versions');
   await click('#zone-confirm-version');
   await until(async () => (await api(`/zones/${zone.id}/versions`)).length === 1, 'Zero-Worker confirmation failed');
@@ -334,14 +362,14 @@ export async function dataWorkflowSmoke({ api, cdp, evaluate, navigate, until, s
     await writeFile(`${process.env.MANAGEMENT_SCREENSHOT_PREFIX}-data-mobile.png`,Buffer.from(mobile.data,'base64'));
   }
   await dnsPolicyResourceSmoke({navigate, evaluate, until, click, workers});
-  await cloudProviderModalSmoke({navigate, evaluate, until, click, zone});
+  await cloudProviderModalSmoke({navigate, evaluate, until, click});
   const state={zone:await api(`/zones/${zone.id}`),versions:await api(`/zones/${zone.id}/versions`),assignments:await api(assignmentPath(zone.id)),workers,services,exports,digest,successJob,failedJob,views:await api(viewPath(workers[0],services[0].id)),acls:await api(aclPath(workers[0],services[0].id))};
   await writeFile(stateFile,JSON.stringify(state,null,2));
   console.log('PASS Data browser: zero-Worker draft/confirmation, one DNS service per Worker, independent editors, immutable v1/v2 and exports, real draft/assignment conflicts, UI/API parity, scoped View/ACL, fixture success/failure and durable artifact selection');
 }
 
 
-async function cloudProviderModalSmoke({navigate, evaluate, until, click, zone}) {
+async function cloudProviderModalSmoke({navigate, evaluate, until, click}) {
   const waitForModal = () => until(() => evaluate(`!!document.querySelector('.schema-form')`), 'React schema form mounted');
   const field = (path, value) => evaluate(`(() => {
     const control = document.querySelector('[data-field-path="/' + ${JSON.stringify(path)} + '"]');
@@ -365,29 +393,49 @@ async function cloudProviderModalSmoke({navigate, evaluate, until, click, zone})
   await waitForModal();
   await submit();
   await until(() => evaluate(`!!document.querySelector('.schema-form [aria-invalid=true]')`), 'Schema validation requires provider fields');
-  await field('name', 'Data Workflow Cloud');
   await pick('kind', 'Cloudflare DNS');
-  await field('profile', 'LAB_DNS');
+  await submit();
+  await until(() => evaluate(`!!document.querySelector('input[type=password][data-field-path="/api_token"]')`), 'Cloudflare credentials form');
+  assert.equal(await evaluate(`document.querySelector('dialog [data-field-path]').dataset.fieldPath`), '/name');
+  await field('name', 'Data Workflow Cloud');
+  await submit();
+  await until(() => evaluate(`document.querySelector('[data-field-path="/api_token"]').getAttribute('aria-invalid') === 'true'`), 'Cloudflare requires an API token');
+  await field('api_token', 'browser-test-token');
+  await field('account_id', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   await submit();
   await until(() => evaluate(`document.body.innerText.includes('Data Workflow Cloud') && !document.querySelector('.schema-form')`), 'Create provider from React modal');
 
   await evaluate(`Array.from(document.querySelectorAll('tr')).find(row => row.textContent.includes('Data Workflow Cloud')).querySelector('[phx-click="edit"]').click()`);
   await waitForModal();
+  assert.equal(await evaluate(`document.querySelector('dialog [data-field-path]').dataset.fieldPath`), '/name');
+  assert.equal(await evaluate(`document.querySelector('[data-field-path="/name"]').value`), 'Data Workflow Cloud');
+  assert.equal(await evaluate(`document.querySelector('[data-field-path="/api_token"]').value`), '');
   await field('name', 'Data Workflow Cloud edited');
   await submit();
   await until(() => evaluate(`document.body.innerText.includes('Data Workflow Cloud edited') && !document.querySelector('.schema-form')`), 'Edit provider from React modal');
 
-  await navigate(`/management/zones/${zone.id}/edit`);
-  await evaluate(`document.querySelector('a[href*="zones/cloud?zone_id="]').click()`);
-  await until(() => evaluate(`!!document.querySelector('#cloud-dns-import-binding')`), 'Zone Cloud DNS navigation');
+  await navigate('/management/zones');
+  assert.equal(await evaluate(`!!document.querySelector('a[href="/management/zones/cloud"]')`), false);
+  await click('a[href="/management/zones/new"]');
+  await until(() => evaluate(`!!document.querySelector('a[href="/management/zones/new/cloud"]')`), 'New Zone type choices');
+  await click('a[href="/management/zones/new/cloud"]');
+  await until(() => evaluate(`!!document.querySelector('#cloud-dns-import-binding')`), 'Cloud-synced authoritative zone setup');
   await click('#cloud-dns-import-binding');
-  await waitForModal();
-  await pick('provider_id', 'Data Workflow Cloud edited');
-  await field('remote_id', 'cccccccccccccccccccccccccccccccc');
-  await submit();
-  await until(() => evaluate(`!!document.querySelector('#cloud-dns-preview-pull') && !document.querySelector('.schema-form')`), 'Provider binding accepted');
-  assert.equal(await evaluate(`document.body.innerText.includes('Data Workflow Cloud edited') && document.body.innerText.includes('renamed-data-workflow.test.')`), true);
-  console.log('PASS Cloud DNS schema modals: add and edit Provider, then select it from a Zone');
+  const remoteZone = 'cccccccccccccccccccccccccccccccc';
+  const cloudZoneSelect = '#cloud-dns-import-zone';
+  await until(() => evaluate(`!!document.querySelector('${cloudZoneSelect} option[value="${remoteZone}"]')`), 'Cloud zones loaded');
+  assert.equal(await evaluate(`document.querySelector('#cloud-dns-import-provider').selectedOptions[0].textContent.includes('Data Workflow Cloud edited')`), true);
+  assert.equal(await evaluate(`document.querySelector('${cloudZoneSelect} option[value="${remoteZone}"]').textContent`), 'renamed-data-workflow.test.');
+  assert.equal(await evaluate(`document.querySelector('${cloudZoneSelect}').options.length`), 3);
+  await evaluate(`document.querySelector('${cloudZoneSelect}').value = '${remoteZone}'`);
+  await click('#cloud-dns-import-form button[type=submit]');
+  await until(() => evaluate(`!!document.querySelector('#cloud-dns-preview-pull') && !document.querySelector('#cloud-dns-import-modal')`), 'Provider binding accepted');
+  assert.equal(await evaluate(`document.body.innerText.includes('Data Workflow Cloud edited')`), true);
+  assert.equal(await evaluate(`document.querySelector('#cloud-dns-zone-name').textContent.trim()`), 'renamed-data-workflow.test.');
+  await navigate('/management/zones/new/cloud');
+  await until(() => evaluate(`document.querySelector('[phx-click="select"]')?.textContent.includes('renamed-data-workflow.test.')`), 'Pending import shows the zone name after reopening');
+  assert.equal(await evaluate(`document.body.innerText.includes('${remoteZone}')`), false);
+  console.log('PASS Cloud DNS: add and edit a provider, then import a listed zone by name');
 }
 
 

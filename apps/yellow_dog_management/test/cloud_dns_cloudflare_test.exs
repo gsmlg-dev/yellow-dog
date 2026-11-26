@@ -12,6 +12,23 @@ defmodule YellowDog.Management.CloudDnsCloudflareTest do
   @account_id String.duplicate("d", 32)
   @account_credentials Map.put(@credentials, "account_id", @account_id)
 
+  test "lists zones across pages without requiring an account ID" do
+    request = fn
+      :get, "/zones?page=1&per_page=25", @token, nil ->
+        page([Map.put(zone(), "account", %{"id" => @account_id})], 1, 2)
+
+      :get, "/zones?page=2&per_page=25", @token, nil ->
+        page(
+          [%{"id" => @record_id, "name" => "Other.NET", "account" => %{"id" => @account_id}}],
+          2,
+          2
+        )
+    end
+
+    assert {:ok, [%{id: @zone_id, name: "example.net."}, %{id: @record_id, name: "other.net."}]} =
+             Cloudflare.list_zones(@credentials, request)
+  end
+
   test "reads and normalizes a paginated zone while retaining protected records" do
     get = fn
       :get, @path, @token, nil ->

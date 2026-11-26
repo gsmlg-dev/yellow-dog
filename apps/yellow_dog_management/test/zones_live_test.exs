@@ -466,7 +466,7 @@ defmodule YellowDog.Management.ZonesLiveTest do
     assert has_element?(view, "#zone-count[data-displayed='2'][data-total='2']")
     assert snapshot() == before_refresh
 
-    view |> element("#zone-#{zone["id"]} a", "Edit") |> render_click()
+    view |> element("#zone-#{zone["id"]} a[title='Edit zone']") |> render_click()
     assert_patch(view, "/management/zones/#{zone["id"]}/edit?page=1&search=EXAMPLE")
     mutate("delete_zone", %{"id" => zone["id"], "expected_revision" => 1})
     before_refresh = snapshot()
@@ -615,10 +615,10 @@ defmodule YellowDog.Management.ZonesLiveTest do
     assert has_element?(
              view,
              "a[href='/server/zone-worker/dns/zones/#{zone["id"]}/records']",
-             "Records"
+             zone["name"]
            )
 
-    view |> element("#zone-#{zone["id"]} a", "Edit") |> render_click()
+    view |> element("#zone-#{zone["id"]} a[title='Edit zone']") |> render_click()
     assert_patch(view, "/server/zone-worker/dns/zones/#{zone["id"]}/edit")
     assert has_element?(view, "a[href='/server/zone-worker/dns/zones']", "Cancel")
     assert render(view) =~ "runtime state is unknown"
