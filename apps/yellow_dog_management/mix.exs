@@ -33,7 +33,7 @@ defmodule YellowDog.Management.MixProject do
         {:phoenix_pubsub, "~> 2.1"},
         {:phoenix_live_view, "~> 1.2"},
         {:phoenix_html, "~> 4.3"},
-        {:duskmoon_phoenix, "2.0.0-rc.3"},
+        {:duskmoon_phoenix, "~> 2.0"},
         {:gettext, "~> 1.0"},
         {:yellow_dog_mac, in_umbrella: true},
         {:yellow_dog_whois, in_umbrella: true},
